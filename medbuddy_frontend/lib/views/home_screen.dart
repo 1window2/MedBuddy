@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../viewmodels/medication_viewmodel.dart';
 
 class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     // ViewModel 상태를 구독
