@@ -1,0 +1,7 @@
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>처방전 및 약품 사진을 촬영하여 약 정보를 분석하기 위해 카메라 접근 권한이 필요합니다.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>갤러리에서 처방전 및 약품 사진을 불러오기 위해 사진첩 접근 권한이 필요합니다.</string>
+    
+</dict>

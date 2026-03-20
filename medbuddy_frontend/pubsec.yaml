@@ -1,0 +1,7 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  image_picker: ^1.0.7  # 갤러리/카메라 접근
+  google_mlkit_text_recognition: ^0.12.0 # 구글 ML Kit OCR
+  http: ^1.2.0 # API 통신
+  provider: ^6.1.2 # 상태 관리
