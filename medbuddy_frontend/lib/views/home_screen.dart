@@ -29,9 +29,46 @@ class HomeScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final drug = viewModel.drugList[index];
                     return Card(
-                      child: ListTile(
-                        title: Text(drug.itemName, style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(drug.efficacy, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      elevation: 2,
+                      margin: EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 1. 약품명
+                            Text(drug.itemName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            SizedBox(height: 12),
+                            
+                            // 2. AI 약사 가이드 (파란색 강조 박스)
+                            if (drug.aiGuide != null && drug.aiGuide!.isNotEmpty)
+                              Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue.shade100),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.auto_awesome, color: Colors.blue, size: 20),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        drug.aiGuide!,
+                                        style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            SizedBox(height: 12),
+
+                            // 3. 식약처 원본 요약 (작고 연한 글씨로 표시)
+                            Text("식약처 원문: ${drug.efficacy}", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          ],
+                        ),
                       ),
                     );
                   },
