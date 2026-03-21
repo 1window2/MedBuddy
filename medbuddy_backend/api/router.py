@@ -3,11 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from schemas.medication import MedicationRequest, MedicationResponse
 from services.ocr_service import OCRService
 from services.drug_service import DrugService
+import logging
 
 # Gemini 라이브러리 임포트
 import google.generativeai as genai
 
 router = APIRouter()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
 
 # 의존성 주입을 위한 함수
 def get_ocr_service(): return OCRService()
@@ -37,7 +45,7 @@ async def identify_medication(
             )
         
         # AI 활용하여 데이터 가공, 요약
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         for drug in drug_data:
             # 식약처 원본 데이터
@@ -61,6 +69,7 @@ async def identify_medication(
                 drug.ai_guide = ai_response.text
             except Exception as e:
                 # AI 서버가 응답하지 않을 경우
+                logger.error(f"Gemini API 호출 에러: {e}")
                 drug.ai_guide = "AI 요약을 불러오는 중 일시적인 오류가 발생했어요."
 
         return MedicationResponse(
