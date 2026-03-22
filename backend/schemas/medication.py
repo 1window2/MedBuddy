@@ -15,6 +15,14 @@ class DrugInfo(BaseModel):
     warning_message: str   # 주의사항
     ai_guide: Optional[str] = None  # AI가 생성한 복용안내
 
+# 앱에서 '내 약통에 담기'를 눌렀을 때 백엔드로 보낼 데이터 구조
+class SavedMedicationCreate(BaseModel):
+    item_name: str
+    efficacy: str
+    use_method: str
+    warning_message: str
+    ai_guide: Optional[str] = None
+
 # 최종 응답 모델
 class MedicationResponse(BaseModel):
     success: bool

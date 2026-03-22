@@ -1,12 +1,14 @@
 #API 엔드포인트 관리 블록
+import logging
+import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException
 from schemas.medication import MedicationRequest, MedicationResponse
 from services.ocr_service import OCRService
 from services.drug_service import DrugService
-import logging
-
-# Gemini 라이브러리 임포트
-import google.generativeai as genai
+from sqlalchemy.orm import Session
+from core.database import get_db
+from models.db_models import SavedMedication
+from schemas.medication import SavedMedicationCreate
 
 router = APIRouter()
 
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 def get_ocr_service(): return OCRService()
 
 def get_drug_service(): return DrugService()
+
 
 @router.post("/identify", response_model=MedicationResponse)
 async def identify_medication(
@@ -80,3 +83,34 @@ async def identify_medication(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.post("/save")
+async def save_medication(
+    medication: SavedMedicationCreate,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Pydantic으로 받은 데이터를 DB 테이블 모델로 변환
+        db_med = SavedMedication(
+            item_name=medication.item_name,
+            efficacy=medication.efficacy,
+            use_method=medication.use_method,
+            warning_message=medication.warning_message,
+            ai_guide=medication.ai_guide
+        )
+        
+        # DB 저장소에 commit
+        db.add(db_med)
+        db.commit()
+        db.refresh(db_med) # 방금 생성된 데이터의 ID 번호 등을 갱신해서 가져옴
+        
+        return {
+            "success": True, 
+            "message": f"'{db_med.item_name}'이(가) 약통에 무사히 저장되었습니다!", 
+            "id": db_med.id
+        }
+    
+    except Exception as e:
+        db.rollback() # 에러 시 롤백
+        raise HTTPException(status_code=500, detail=f"저장 실패: {str(e)}")
