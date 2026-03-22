@@ -16,7 +16,7 @@ class MedicationViewModel extends ChangeNotifier {
   String _statusMessage = '처방전이나 약통을 촬영해주세요.';
   String get statusMessage => _statusMessage;
 
-  // UI에서 버튼을 누를 때 실행될 메인 함수
+  // 사진 촬영 버튼 함수
   Future<void> processMedicationImage() async {
     _setLoading(true);
     _statusMessage = '사진에서 글자를 읽는 중...';
@@ -46,5 +46,44 @@ class MedicationViewModel extends ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners(); // UI 갱신 신호 발송
+  }
+
+  // '내 약통' 상태 관리 변수
+  List<DrugInfo> _savedDrugs = [];
+  List<DrugInfo> get savedDrugs => _savedDrugs;
+
+  // 저장 버튼 함수
+  Future<bool> saveDrugToPillbox(DrugInfo drug) async {
+    _statusMessage = '${drug.itemName} 저장 중...';
+    notifyListeners();
+
+    bool success = await _apiService.saveMedication(drug);
+    
+    if (success) {
+      _statusMessage = '약통에 성공적으로 저장되었습니다!';
+      await fetchPillbox();   
+    } 
+
+    else {
+      _statusMessage = '저장에 실패했습니다. 다시 시도해주세요.';
+    }
+
+    notifyListeners();
+    return success;
+  }
+
+  // 저장한 약 목록 fetch
+  Future<void> fetchPillbox() async {
+    _savedDrugs = await _apiService.getSavedMedications();
+    notifyListeners();
+  }
+
+  // 저장 목록에서 특정 약 지우기
+  Future<void> removeDrugFromPillbox(int id) async {
+    bool success = await _apiService.deleteMedication(id);
+    if (success) {
+      _savedDrugs.removeWhere((drug) => drug.id == id);
+      notifyListeners();
+    }
   }
 }

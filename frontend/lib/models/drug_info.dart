@@ -4,6 +4,7 @@ class DrugInfo {
   final String useMethod;
   final String warningMessage;
   final String? aiGuide;
+  final int? id;
 
   DrugInfo({
     required this.itemName,
@@ -11,6 +12,7 @@ class DrugInfo {
     required this.useMethod,
     required this.warningMessage,
     this.aiGuide,
+    this.id,
   });
 
   // JSON 데이터를 Dart 객체로 변환하는 팩토리 생성자
@@ -21,6 +23,7 @@ class DrugInfo {
       useMethod: json['use_method'] ?? '정보 없음',
       warningMessage: json['warning_message'] ?? '정보 없음',
       aiGuide: json['ai_guide'],
+      id: json['id'],
     );
   }
 }

@@ -103,7 +103,7 @@ async def save_medication(
         # DB 저장소에 commit
         db.add(db_med)
         db.commit()
-        db.refresh(db_med) # 방금 생성된 데이터의 ID 번호 등을 갱신해서 가져옴
+        db.refresh(db_med) # 방금 생성된 데이터 갱신해서 가져옴
         
         return {
             "success": True, 
@@ -114,3 +114,34 @@ async def save_medication(
     except Exception as e:
         db.rollback() # 에러 시 롤백
         raise HTTPException(status_code=500, detail=f"저장 실패: {str(e)}")
+    
+@router.get("/list")
+async def get_saved_medications(db: Session = Depends(get_db)):
+    try:
+        # DB에서 저장된 모든 약 데이터 가져옴
+        saved_drugs = db.query(SavedMedication).all()
+        return {
+            "success": True, 
+            "message": "약통 목록 조회 성공", 
+            "data": saved_drugs
+        }
+    except Exception as e:
+        logger.error(f"DB 불러오기 에러: {e}")
+        raise HTTPException(status_code=500, detail=f"불러오기 실패: {str(e)}")
+
+@router.delete("/delete/{drug_id}")
+async def delete_medication(drug_id: int, db: Session = Depends(get_db)):
+    try:
+        # DB에서 해당 ID를 가진 약 찾기
+        drug = db.query(SavedMedication).filter(SavedMedication.id == drug_id).first()
+        if not drug:
+            raise HTTPException(status_code=404, detail="약을 찾을 수 없습니다.")
+        
+        # 찾으면 삭제
+        db.delete(drug)
+        db.commit()
+        return {"success": True, "message": "약통에서 삭제되었습니다."}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"삭제 에러: {e}")
+        raise HTTPException(status_code=500, detail=f"삭제 실패: {str(e)}")

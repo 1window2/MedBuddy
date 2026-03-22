@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../viewmodels/medication_viewmodel.dart';
+import 'pillbox_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -11,7 +12,20 @@ class HomeScreen extends StatelessWidget {
     final viewModel = context.watch<MedicationViewModel>();
 
     return Scaffold(
-      appBar: AppBar(title: Text('MedBuddy 약품 인식')),
+      appBar: AppBar(
+        title: Text('MedBuddy 약품 인식'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.medication, color: Colors.blue[800]),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => PillboxScreen()),
+              );
+            },
+          )
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -40,7 +54,7 @@ class HomeScreen extends StatelessWidget {
                             Text(drug.itemName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             SizedBox(height: 12),
                             
-                            // 2. AI 약사 가이드 (파란색 강조 박스)
+                            // 2. AI 약사 가이드
                             if (drug.aiGuide != null && drug.aiGuide!.isNotEmpty)
                               Container(
                                 padding: EdgeInsets.all(12),
@@ -65,8 +79,37 @@ class HomeScreen extends StatelessWidget {
                               ),
                             SizedBox(height: 12),
 
-                            // 3. 식약처 원본 요약 (작고 연한 글씨로 표시)
+                            // 3. 식약처 원본 요약
                             Text("식약처 원문: ${drug.efficacy}", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 12)),
+
+                            // 4. '내 약통에 담기' 버튼
+                            SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  // 뷰모델의 저장 함수 실행
+                                  bool success = await viewModel.saveDrugToPillbox(drug);
+                                  
+                                  // 화면 아래쪽에 까만색 토스트 알림(SnackBar) 띄우기
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(success ? '💊 약통에 쏙 담았어요!' : '❌ 저장 실패'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: Icon(Icons.add_task),
+                                label: Text('내 약통에 담기'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade50,
+                                  foregroundColor: Colors.blue.shade700,
+                                  elevation: 0,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
