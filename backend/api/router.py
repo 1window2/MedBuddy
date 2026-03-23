@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from models.db_models import SavedMedication
 from schemas.medication import SavedMedicationCreate
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -145,3 +146,46 @@ async def delete_medication(drug_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"삭제 에러: {e}")
         raise HTTPException(status_code=500, detail=f"삭제 실패: {str(e)}")
+
+# 클래스명: OCRParseRequest
+# 클래스역할:
+# - 프론트엔드가 보낸 OCR 텍스트를 받기 위한 요청 바디 모델
+# 변수명: text
+# 변수역할:
+# - OCR로 읽은 전체 문자열
+class OCRParseRequest(BaseModel):
+    text: str
+
+
+# 함수명: parse_prescription_endpoint
+# 함수역할:
+# - 프론트엔드에서 보낸 OCR 문자열을 받아
+#   처방전 구조화 JSON으로 변환 후 반환
+# 변수명: request
+# 변수역할:
+# - 프론트가 보낸 요청 바디
+# 변수명: ocr_service
+# 변수역할:
+# - OCR 문자열 분리 및 파싱을 담당하는 서비스 객체
+@router.post("/parse-prescription")
+async def parse_prescription_endpoint(
+    request: OCRParseRequest,
+    ocr_service: OCRService = Depends(get_ocr_service),
+):
+    if not request.text:
+        raise HTTPException(status_code=400, detail="OCR 텍스트가 없습니다.")
+
+    try:
+        # 변수명: parsed_data
+        # 변수역할:
+        # - 파서가 반환한 최종 구조화 결과
+        parsed_data = ocr_service.parse_prescription_text(request.text)
+
+        return {
+            "success": True,
+            "message": "처방전 파싱 성공",
+            "parsed": parsed_data,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"처방전 파싱 실패: {str(e)}")
