@@ -115,42 +115,46 @@ def extract_prescription_date(line: str) -> Optional[str]:
 # - 파싱 성공 시 약품 정보 dict
 # - 실패 시 None
 def parse_medication_line(line: str) -> Optional[Dict[str, Any]]:
-    match = MED_LINE_PATTERN.match(line)
-    if not match:
+    # 변수이름: parts
+    # 변수역할:
+    # - 문자열을 뒤에서부터 3개 기준으로 나눈 리스트
+    # - [약이름, dose, freq, days]
+    parts = line.rsplit(maxsplit=3)
+
+    if len(parts) != 4:
         return None
 
-    # 변수이름: name
+    # 변수이름: name, dose_raw, freq_raw, days_raw
     # 변수역할:
-    # - 약 이름
-    name = match.group(1).strip()
+    # - 각각 약 이름, 1회 투약량, 1일 복용 횟수, 총 복용 일수
+    name, dose_raw, freq_raw, days_raw = parts
 
-    # 변수이름: dose_raw
-    # 변수역할:
-    # - 1회 투약량의 원본 문자열
-    dose_raw = match.group(2)
+    try:
+        # 변수이름: dose
+        # 변수역할:
+        # - 숫자형으로 변환된 1회 투약량
+        dose = float(dose_raw)
+        if dose.is_integer():
+            dose = int(dose)
 
-    # 변수이름: freq_raw
-    # 변수역할:
-    # - 1일 복용 횟수의 원본 문자열
-    freq_raw = match.group(3)
+        # 변수이름: frequency_per_day
+        # 변수역할:
+        # - 하루 복용 횟수
+        frequency_per_day = int(freq_raw)
 
-    # 변수이름: days_raw
-    # 변수역할:
-    # - 총 복용 일수의 원본 문자열
-    days_raw = match.group(4)
+        # 변수이름: duration_days
+        # 변수역할:
+        # - 총 복용 일수
+        duration_days = int(days_raw)
 
-    # 변수이름: dose
-    # 변수역할:
-    # - 숫자형으로 변환된 1회 투약량
-    dose = float(dose_raw)
-    if dose.is_integer():
-        dose = int(dose)
+    except ValueError:
+        return None
 
     return {
-        "name": name,
+        "name": name.strip(),
         "dose_per_time": dose,
-        "frequency_per_day": int(freq_raw),
-        "duration_days": int(days_raw),
+        "frequency_per_day": frequency_per_day,
+        "duration_days": duration_days,
     }
 
 
