@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/drug_info.dart';
 import '../services/vision_service.dart';
 import '../services/api_service.dart';
+import '../utils/prescription_parser.dart';
+import 'dart:developer' as developer;
 
 class MedicationViewModel extends ChangeNotifier {
   final VisionService _visionService = VisionService();
@@ -30,9 +32,19 @@ class MedicationViewModel extends ChangeNotifier {
       return;
     }
 
-    // 2. 백엔드 API로 텍스트 전송
+    // 2. On-Device 개인정보 마스킹
+    final safeText = PrescriptionParser.maskPrivacyInfo(extractedText);
+    
+    // 3. 알람 데이터 추출
+    final dosageInfo = PrescriptionParser.extractDosageInfo(safeText);
+    
+    // for logging
+    developer.log('마스킹 완료된 텍스트: $safeText', name: 'PrivacyShield');
+    developer.log('추출된 알람 데이터: $dosageInfo', name: 'SmartParser');
+
+    // 4. 정제된 텍스트만 전송
     _statusMessage = '약 정보를 검색하는 중...';
-    _drugList = await _apiService.identifyMedication(extractedText);
+    _drugList = await _apiService.identifyMedication(safeText);
 
     if (_drugList.isEmpty) {
       _statusMessage = '해당하는 약 정보를 찾을 수 없습니다.';
