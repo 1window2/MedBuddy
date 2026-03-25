@@ -78,4 +78,32 @@ class ApiService {
       return false;
     }
   }
+
+  // 처방전 텍스트를 백엔드로 보내서 파싱된 데이터(JSON) 받아오기
+  Future<Map<String, dynamic>?> parsePrescription(String ocrText) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/parse-prescription'),
+        headers: {'Content-Type': 'application/json'},
+        // 백엔드의 OCRParseRequest 스키마에 맞춰 'text' 키에 담아 보냄
+        body: jsonEncode({'text': ocrText}), 
+      );
+
+      if (response.statusCode == 200) {
+        final decodedData = jsonDecode(utf8.decode(response.bodyBytes));
+        
+        if (decodedData['success'] == true) {
+          // 백엔드에서 예쁘게 정리해준 'parsed' 딕셔너리만 반환!
+          return decodedData['parsed']; 
+        }
+      } else {
+        developer.log('파싱 실패: 상태 코드 ${response.statusCode}', name: 'ApiService');
+      }
+      return null;
+      
+    } catch (e) {
+      developer.log('처방전 파싱 API 통신 에러: $e', name: 'ApiService');
+      return null;
+    }
+  }
 }

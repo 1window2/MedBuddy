@@ -32,19 +32,36 @@ class MedicationViewModel extends ChangeNotifier {
       return;
     }
 
-    // 2. On-Device 개인정보 마스킹
-    final safeText = PrescriptionParser.maskPrivacyInfo(extractedText);
-    
-    // 3. 알람 데이터 추출
-    final dosageInfo = PrescriptionParser.extractDosageInfo(safeText);
-    
-    // for logging
-    developer.log('마스킹 완료된 텍스트: $safeText', name: 'PrivacyShield');
-    developer.log('추출된 알람 데이터: $dosageInfo', name: 'SmartParser');
+    // backend API call
+    _statusMessage = '서버에서 처방전을 분석 중입니다...';
+    notifyListeners();
 
-    // 4. 정제된 텍스트만 전송
-    _statusMessage = '약 정보를 검색하는 중...';
-    _drugList = await _apiService.identifyMedication(safeText);
+    // backend Parser API call
+    final parsedData = await _apiService.parsePrescription(extractedText);
+    
+    if (parsedData != null) {
+      developer.log('✅ 백엔드 파싱 완료: $parsedData', name: 'MedicationViewModel');
+      
+      final patientName = parsedData['patient_name'] ?? '환자';
+      final medicines = parsedData['medicines'] as List<dynamic>? ?? [];
+      
+      developer.log('환자명: $patientName', name: 'MedicationViewModel');
+      developer.log('처방받은 약 개수: ${medicines.length}개', name: 'MedicationViewModel');
+      
+      // 맞춤형 복약 알람을 위한 데이터 check
+      for (var med in medicines) {
+        developer.log(' - ${med['name']} (하루 ${med['frequency_per_day']}회, ${med['duration_days']}일치)', name: 'MedicationViewModel');
+      }
+    } else {
+      developer.log('❌ 파싱 실패 또는 추출된 데이터가 없습니다.', name: 'MedicationViewModel');
+    }
+
+    // 상세 정보 조회 로직
+    _statusMessage = '약 상세 정보를 검색하는 중...';
+    notifyListeners();
+    
+    // extractedText 바로 넘김
+    _drugList = await _apiService.identifyMedication(extractedText); 
 
     if (_drugList.isEmpty) {
       _statusMessage = '해당하는 약 정보를 찾을 수 없습니다.';
