@@ -93,7 +93,7 @@ class ApiService {
         final decodedData = jsonDecode(utf8.decode(response.bodyBytes));
         
         if (decodedData['success'] == true) {
-          // 백엔드에서 예쁘게 정리해준 'parsed' 딕셔너리만 반환!
+          // 백엔드에서 정리한 parsed dictinoary 반환
           return decodedData['parsed']; 
         }
       } else {

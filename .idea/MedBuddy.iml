@@ -7,6 +7,9 @@
       <excludeFolder url="file://$MODULE_DIR$/medbuddy_frontend/.dart_tool" />
       <excludeFolder url="file://$MODULE_DIR$/medbuddy_frontend/.pub" />
       <excludeFolder url="file://$MODULE_DIR$/medbuddy_frontend/build" />
+      <excludeFolder url="file://$MODULE_DIR$/frontend/.dart_tool" />
+      <excludeFolder url="file://$MODULE_DIR$/frontend/.pub" />
+      <excludeFolder url="file://$MODULE_DIR$/frontend/build" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
