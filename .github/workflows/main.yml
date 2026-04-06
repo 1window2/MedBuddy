@@ -1,0 +1,29 @@
+name: Python App Workflow
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9' # 추후 버전 수정 가능성 있음
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run sanity check
+      env: # API 키 추가 시 변경 요망
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        DRUG_API_KEY: ${{ secrets.DRUG_API_KEY }}
+      run: |
+        python -c "import main; print('No error occured during import. Sanity check passed.')"

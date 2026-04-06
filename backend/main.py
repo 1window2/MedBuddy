@@ -9,8 +9,12 @@ from models import db_models
 # .env에서 환경 변수 로드
 load_dotenv()
 
+gemini_key = os.getenv("GEMINI_API_KEY")
+if not gemini_key: # API 키가 없을 경우
+    raise ValueError("환경 변수에 GEMINI_API_KEY가 설정되지 않았습니다. Secrets 설정을 확인하세요.")
+
 # Google Generative AI 초기화
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=gemini_key)
 
 # 앱 실행 시 DB 테이블 생성
 db_models.Base.metadata.create_all(bind=database.engine)
