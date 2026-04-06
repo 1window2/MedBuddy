@@ -8,11 +8,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./backend
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9' # 추후 버전 수정 가능성 있음
 
@@ -22,8 +26,8 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run sanity check
-      env: # API 키 추가 시 변경 요망
+      env: # 환경 변수 추가/삭제 시 변경 요망
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         DRUG_API_KEY: ${{ secrets.DRUG_API_KEY }}
       run: |
-        python -c "import main; print('No error occured during import. Sanity check passed.')"
+        python -c "import main; print('no errors occured on import')"
