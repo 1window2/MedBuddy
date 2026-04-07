@@ -2,18 +2,18 @@
 
 # 💊 MedBuddy
 > **AI-Powered Medication Management System** <br/>
-> OCR과 LLM 기술을 활용하여 처방전을 디지털화하고, 환자의 안전한 복약을 돕는 맞춤형 AI 약사 서비스입니다.
+> An intelligent platform that digitizes prescriptions via OCR and fine-tuned LLMs, providing a personalized AI pharmacist for safe medication management.
 <br/>
 
 ## 🌟 Key Features
 
-* **📸 AI 비전 처방전 인식 (Auto-Parsing)**
-  * 스마트폰 카메라로 처방전/약봉투를 촬영하면 AI가 즉시 정형 데이터(병원명, 조제일자, 약품명, 투약량 등)로 추출합니다.
-  * 개인정보(환자 이름, 주민번호)를 자동으로 마스킹하여 보안을 유지합니다.
-* **👩‍⚕️ AI 맞춤형 약사 가이드**
-  * 식약처 공공데이터를 기반으로 어려운 의약품 전문 용어를 일반인이 이해하기 쉬운 '친절한 동네 약사' 말투로 요약해 제공합니다.
-* **🗂️ 내 약통 관리 (Pillbox)**
-  * 현재 복용 중인 약의 효능, 복용법, 주의사항을 언제든 쉽게 확인하고 관리할 수 있습니다.
+* **📸 AI Vision Prescription Parsing**
+  * Simply snap a photo of a prescription or pill envelope. Our AI instantly extracts structured data (hospital name, prescription date, medication names, and dosage).
+  * Automatically masks Personally Identifiable Information (PII) to ensure data privacy.
+* **👩‍⚕️ Personalized AI Pharmacist**
+  * Leverages public health data to translate complex medical jargon into friendly, easy-to-understand instructions.
+* **🗂️ Smart Pillbox Management**
+  * Easily track and manage your current medications, their efficacy, and important precautions in one place.
 
 <br/>
 
@@ -39,12 +39,43 @@
 
 ```text
 📱 Client (Flutter)                  🚀 Server (FastAPI)                       🤖 AI & API
-   [처방전 촬영] ---------------------> [이미지 전처리 (OpenCV)]
+   [Capture Prescription] -----------> [Image Preprocessing (OpenCV)]
                                               |
                                               v
-   [구조화된 UI 출력] <---------------- [Gemini 1.5 Flash (데이터 추출 및 마스킹)]
+   [Structured UI Display] <-------- [Fine-Tuned LLM (Data Extraction & PII Masking)]
                                               |
-   [상세 분석 요청] ------------------> [식약처 공공 API 검색]
+   [Detailed Analysis Req.] -------> [Public Drug Safety API]
                                               |
                                               v
-   [내 약통 저장 완료] <--------------- [Gemini 2.5 Flash (AI 요약 생성) & DB 저장]
+   [Save to Pillbox] <-------------- [Fine-Tuned LLM (Personalized Summary) & DB Storage]
+```
+<br/>
+
+## 🚀 Getting Started
+
+### 1. Backend Setup
+```bash
+$ cd backend
+$ pip install -r requirements.txt
+$ uvicorn main:app --reload
+```
+
+### 2. Frontend Setup
+```bash
+$ cd frontend
+$ flutter pub get
+$ flutter run
+```
+
+<br/>
+
+## 👥 Contributors
+
+| Profile | Name | Role | GitHub |
+| :---: | :---: | :---: | :---: |
+| <img src="https://avatars.githubusercontent.com/u/1window2?v=4" width="80"> | **1window2** | Lead Full-Stack Developer & AI Pipeline Architecture | [@1window2](https://github.com/1window2) |
+| <img src="https://avatars.githubusercontent.com/u/tmdgusdl9647?v=4" width="80"> | **tmdgusdl9647** | Backend Developer & AI Logic | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
+| <img src="https://avatars.githubusercontent.com/u/jeeon0318?v=4" width="80"> | **jeeon0318** | Backend Developer & Compliance Specialist | [@jeeon0318](https://github.com/jeeon0318) |
+| <img src="https://avatars.githubusercontent.com/u/onlyone130?v=4" width="80"> | **onlyone130** | Frontend Designer & UI/UX Lead | [@onlyone130](https://github.com/onlyone130) |
+
+<br/>
