@@ -9,7 +9,7 @@ from schemas.ocr import PrescriptionData
 
 class OCRService:
     def __init__(self): # 임시 테스트용으로 넣은 모델. 추후 변경
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
 
     def process_text(self, raw_text: str) -> str:
         """
@@ -89,8 +89,27 @@ class OCRService:
             )
         )
 
-        # 4. JSON 파싱 및 2차 보안 마스킹 적용
-        raw_data = json.loads(response.text)
+        # 4. JSON 파싱 전 마크다운 찌꺼기 청소하기
+        response_text = response.text.strip()
+        
+        # ```json ... ``` 형태로 보낸 경우 처리
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+            
+        response_text = response_text.strip() # 남은 공백 제거
+
+        try:
+            raw_data = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            # 파싱 실패 시 원본 출력
+            print("❌ JSON 파싱 에러! 제미나이 원본 응답:\n", response.text)
+            raise ValueError("AI가 올바른 JSON 형식을 반환하지 않았습니다.")
+
+        # 5. python 정규식 마스킹
         safe_data = self._apply_secondary_masking(raw_data)
 
         return PrescriptionData(**safe_data)
