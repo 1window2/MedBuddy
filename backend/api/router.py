@@ -1,5 +1,6 @@
 #API 엔드포인트 관리 블록
 import logging
+import re
 import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from schemas.medication import MedicationRequest, MedicationResponse
@@ -39,6 +40,9 @@ async def identify_medication(
     try:
         # 텍스트 정제(OCR)
         search_keyword = ocr_service.process_text(request.extracted_text)
+        search_keyword = re.sub(r'([0-9.]+)(mg|g|ml).*$', '', search_keyword) # 20mg 등 제거
+        search_keyword = search_keyword.replace('정', '').replace('캡슐', '') # 정, 캡슐 제거
+        search_keyword = search_keyword.strip()
 
         # DB 검색 (공공 API 활용)
         drug_data = await drug_service.fetch_drug_info(search_keyword)

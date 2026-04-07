@@ -23,6 +23,9 @@ class DrugService:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(self.base_url, params=params)
 
+            # 식약처 API 응답 체크 디버깅용
+            # print(f"식약처 API 응답 결과: {response.text}")
+
             if response.status_code != 200:
                 raise Exception("공공데이터 API 서버와 통신할 수 없습니다.")
 
