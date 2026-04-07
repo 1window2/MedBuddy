@@ -82,8 +82,9 @@ flowchart TD
 ```
 
 <details>
-<summary><b><size=40>📊Class Diagram</b></size></summary>
+<summary><b>📊Class Diagram</b></summary>
 
+## Class Diagram
 ```mermaid
 classDiagram
     direction TD
@@ -311,6 +312,150 @@ classDiagram
     OCRService ..> OCRSchemas : Returns
     DrugService ..> Settings : Reads Config
     DrugService ..> MedicationSchemas : Returns
+```
+</details>
+
+<details>
+<summary><b>📊Sequence Diagram</b></summary>
+
+## Phase 1. AI Vision Parsing & Secure Data Extraction
+```mermaid
+sequenceDiagram
+    autonumber
+    
+    actor User as 사용자
+    participant View as HomeScreen
+    participant VM as MedicationViewModel
+    participant API as FastAPI (main.py)
+    participant Router as MedicationRouter
+    participant OCR as OCRService
+    participant AI as Gemini Vision API
+    
+    User->>View: '처방전 촬영' 버튼 클릭
+    
+    activate View
+    View->>VM: processMedicationImage()
+    activate VM
+    
+    VM->>VM: _picker.pickImage(camera) 호출
+    
+    alt 촬영 완료 시
+        VM->>VM: _setLoading(true)
+        VM-->>View: notifyListeners() (스피너 렌더링)
+        
+        Note over VM, API: HTTP Multipart POST /upload-prescription
+        VM->>API: 처방전 이미지 파일(imageFile) 전송
+        activate API
+        
+        API->>Router: upload_and_parse_prescription()
+        activate Router
+        
+        Router->>OCR: extract_prescription_data(image_bytes)
+        activate OCR
+        
+        OCR->>OCR: preprocess_prescription_image() 전처리
+        
+        OCR->>AI: model.generate_content_async() 호출
+        activate AI
+        Note over OCR, AI: 보안 프롬프트 + 이미지 전송
+        AI-->>OCR: 구조화된 JSON Text 응답 반환
+        deactivate AI
+        
+        OCR->>OCR: 마크다운 제거 및 JSON 디코딩
+        OCR->>OCR: _apply_secondary_masking() (정규식 2차 마스킹)
+        
+        OCR-->>Router: PrescriptionData (DTO 객체) 반환
+        deactivate OCR
+        
+        Router-->>API: HTTP 200 OK
+        deactivate Router
+        
+        API-->>VM: JSON 응답 수신 (decodedBody)
+        deactivate API
+        
+        VM->>VM: _parsedDrugList 업데이트 & _setLoading(false)
+        VM-->>View: notifyListeners() (결과 화면 렌더링)
+    end
+    deactivate VM
+    View-->>User: 병원 정보 및 추출된 약품 목록 UI 표시
+    deactivate View
+
+    Note over User, View: 사용자가 화면의 약품 리스트를 확인하며 대기
+```
+
+## Phase 2. Public API Enrichment & AI Pharmacist Summary
+```mermaid
+sequenceDiagram
+    autonumber
+    
+    actor User as 사용자
+    participant View as HomeScreen
+    participant VM as MedicationViewModel
+    participant ApiS as ApiService (Dart)
+    participant Router as MedicationRouter
+    participant OCR as OCRService
+    participant DrugS as DrugService
+    participant PubAPI as 공공데이터 API
+    participant AI as Gemini Text API
+    participant DB as SQLite DB
+
+    Note over User, View: Phase 1에서 추출된 약품 목록 중 하나를 선택하여 진행
+    
+    User->>View: 약품 리스트에서 '상세 분석 & 저장' 클릭
+    activate View
+    
+    View->>VM: saveDrugToPillbox(DrugInfo)
+    activate VM
+    VM-->>View: 상태 메시지 업데이트 (저장 중...)
+    
+    VM->>ApiS: identifyMedication(text) 호출
+    activate ApiS
+    Note over ApiS, Router: HTTP POST /identify
+    ApiS->>Router: 약품명(extracted_text) 전송
+    activate Router
+    
+    Router->>OCR: process_text() 노이즈 제거
+    OCR-->>Router: 정제된 검색어(search_keyword) 반환
+    
+    Router->>DrugS: fetch_drug_info(search_keyword)
+    activate DrugS
+    DrugS->>PubAPI: HTTP GET e약은요 API 호출
+    PubAPI-->>DrugS: XML/JSON 원본 데이터 반환
+    DrugS-->>Router: List<DrugInfo> 반환 (효능, 주의사항 포함)
+    deactivate DrugS
+    
+    Router->>AI: model.generate_content_async(식약처 원본 데이터)
+    activate AI
+    Note over Router, AI: "친절한 약사 말투로 1~2줄 요약해줘" 프롬프트 전송
+    AI-->>Router: 친절한 AI 가이드 텍스트(ai_guide) 반환
+    deactivate AI
+    
+    Router-->>ApiS: MedicationResponse JSON 반환
+    deactivate Router
+    
+    ApiS->>ApiS: DrugInfo.fromJson() 모델 매핑
+    
+    Note over ApiS, Router: HTTP POST /save
+    ApiS->>Router: 완성된 DrugInfo 전송
+    activate Router
+    
+    Router->>DB: db.add(SavedMedication) & db.commit()
+    activate DB
+    DB-->>Router: DB 저장 성공 확인
+    deactivate DB
+    
+    Router-->>ApiS: 저장 성공 응답
+    deactivate Router
+    
+    ApiS-->>VM: boolean(success) 반환
+    deactivate ApiS
+    
+    VM->>VM: fetchPillbox() 호출 (데이터 최신화)
+    VM-->>View: 저장 완료 메시지 표시
+    deactivate VM
+    
+    View-->>User: SnackBar 알림 ("성공적으로 저장되었습니다!")
+    deactivate View
 ```
 </details>
 <br/>
