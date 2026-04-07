@@ -43,7 +43,7 @@ async def identify_medication(
         search_keyword = ocr_service.process_text(raw_text)
 
         # 용량 단위 앞부분만 추출
-        parts = re.split(r'[0-9.]+\s*(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
+        parts = re.split(r'\d+(?:\.\d+)?\s*(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
         search_keyword = parts[0]
         
         # 제형 및 공백 제거
