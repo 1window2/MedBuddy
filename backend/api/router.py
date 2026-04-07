@@ -199,8 +199,8 @@ async def upload_and_parse_prescription(
     """
     약봉투 image 업로드 -> 노이즈 전처리 -> AI 추출 -> 구조화 -> 마스킹 -> 반환
     """
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
+    #if not file.content_type.startswith("image/"):
+    #    raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
     
     try:
         # image bytes read
