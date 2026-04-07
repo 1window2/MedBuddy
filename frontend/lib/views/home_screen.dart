@@ -8,12 +8,13 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ViewModel 상태를 구독
     final viewModel = context.watch<MedicationViewModel>();
 
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: Text('MedBuddy 약품 인식'),
+        title: Text('MedBuddy AI 비전 인식', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue[50],
         actions: [
           IconButton(
             icon: Icon(Icons.medication, color: Colors.blue[800]),
@@ -30,100 +31,132 @@ class HomeScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            Text(viewModel.statusMessage, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            // 상태 메시지 
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue),
+                  SizedBox(width: 10),
+                  Expanded(child: Text(viewModel.statusMessage, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                ],
+              ),
+            ),
             SizedBox(height: 20),
             
-            // 로딩 중이면 스피너, 아니면 결과 리스트 보여주기
+            // 로딩 스피너
             if (viewModel.isLoading) 
-              CircularProgressIndicator()
-            else if (viewModel.drugList.isNotEmpty)
+              Expanded(child: Center(child: CircularProgressIndicator(color: Colors.blue)))
+            
+            // 결과 화면 (병원 정보 + 약 리스트)
+            else if (viewModel.parsedDrugList.isNotEmpty)
               Expanded(
-                child: ListView.builder(
-                  itemCount: viewModel.drugList.length,
-                  itemBuilder: (context, index) {
-                    final drug = viewModel.drugList[index];
-                    return Card(
-                      elevation: 2,
-                      margin: EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 병원/조제 정보 카드
+                    Card(
+                      color: Colors.blue[800],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1. 약품명
-                            Text(drug.itemName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            SizedBox(height: 12),
-                            
-                            // 2. AI 약사 가이드
-                            if (drug.aiGuide != null && drug.aiGuide!.isNotEmpty)
-                              Container(
-                                padding: EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.blue.shade100),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(Icons.auto_awesome, color: Colors.blue, size: 20),
-                                    SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        drug.aiGuide!,
-                                        style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            SizedBox(height: 12),
-
-                            // 3. 식약처 원본 요약
-                            Text("식약처 원문: ${drug.efficacy}", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 12)),
-
-                            // 4. '내 약통에 담기' 버튼
-                            SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  // 뷰모델의 저장 함수 실행
-                                  bool success = await viewModel.saveDrugToPillbox(drug);
-                                  
-                                  // 화면 아래쪽에 까만색 토스트 알림(SnackBar) 띄우기
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(success ? '💊 약통에 쏙 담았어요!' : '❌ 저장 실패'),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: Icon(Icons.add_task),
-                                label: Text('내 약통에 담기'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade50,
-                                  foregroundColor: Colors.blue.shade700,
-                                  elevation: 0,
-                                ),
-                              ),
-                            ),
+                            Text('${viewModel.hospitalName}', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                            SizedBox(height: 8),
+                            Text('조제 일자: ${viewModel.prescriptionDate}', style: TextStyle(color: Colors.blue[100], fontSize: 16)),
                           ],
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    SizedBox(height: 12),
+                    Text('추출된 약품 목록 (${viewModel.parsedDrugList.length}건)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                    SizedBox(height: 8),
+
+                    // 약 리스트
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: viewModel.parsedDrugList.length,
+                        itemBuilder: (context, index) {
+                          final drug = viewModel.parsedDrugList[index];
+                          return Card(
+                            elevation: 1,
+                            margin: EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.medication_liquid, color: Colors.blue[400]),
+                                      SizedBox(width: 8),
+                                      Expanded(child: Text(drug['drug_name'], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                  Divider(height: 24, color: Colors.grey[200]),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildInfoBadge('1회 투약량', drug['dosage_per_time']),
+                                      _buildInfoBadge('1일 횟수', drug['daily_frequency']),
+                                      _buildInfoBadge('총 투약일', drug['total_days']),
+                                    ],
+                                  ),
+                                  SizedBox(height: 12),
+                                  // 시연용 임시 저장 버튼
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton.icon(
+                                      onPressed: () {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${drug['drug_name']} 상세 분석 및 저장은 다음 스텝에 진행됩니다.')));
+                                      },
+                                      icon: Icon(Icons.analytics, size: 18),
+                                      label: Text('상세 분석하기'),
+                                    ),
+                                  )
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.read<MedicationViewModel>().processMedicationImage(),
-        child: Icon(Icons.camera_alt),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => viewModel.processMedicationImage(),
+        icon: Icon(Icons.camera_alt),
+        label: Text('처방전 촬영'),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
       ),
+    );
+  }
+
+  // badge widget 헬퍼 함수
+  Widget _buildInfoBadge(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        SizedBox(height: 4),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(20)),
+          child: Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[800])),
+        ),
+      ],
     );
   }
 }

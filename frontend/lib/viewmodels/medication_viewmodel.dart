@@ -1,87 +1,88 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../models/drug_info.dart';
-import '../services/vision_service.dart';
-import '../services/api_service.dart';
-import '../utils/prescription_parser.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
+import '../models/drug_info.dart';
+import '../services/api_service.dart';
 
 class MedicationViewModel extends ChangeNotifier {
-  final VisionService _visionService = VisionService();
   final ApiService _apiService = ApiService();
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  List<DrugInfo> _drugList = [];
-  List<DrugInfo> get drugList => _drugList;
-
-  String _statusMessage = '처방전이나 약통을 촬영해주세요.';
+  String _statusMessage = '처방전이나 약봉투를 촬영해 주세요.';
   String get statusMessage => _statusMessage;
 
-  // 사진 촬영 버튼 함수
-  Future<void> processMedicationImage() async {
-    _setLoading(true);
-    _statusMessage = '사진에서 글자를 읽는 중...';
+  String _hospitalName = '';
+  String get hospitalName => _hospitalName;
 
-    // 1. 사진 촬영 및 OCR 처리
-    final extractedText = await _visionService.captureAndRecognizeText();
+  String _prescriptionDate = '';
+  String get prescriptionDate => _prescriptionDate;
+
+  List<dynamic> _parsedDrugList = [];
+  List<dynamic> get parsedDrugList => _parsedDrugList;
+
+  // 카메라 연동 객체 및 서버 주소 (for emulator and local connected devices)
+  final ImagePicker _picker = ImagePicker();
+  final String _apiUrl = 'http://localhost:8000/api/v1/medication/upload-prescription';
+
+  Future<void> processMedicationImage() async {
+    // 1. 사진 촬영 (또는 갤러리 선택)
+    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera);
     
-    if (extractedText == null || extractedText.isEmpty) {
-      _statusMessage = '글자를 인식하지 못했습니다.';
-      _setLoading(false);
+    if (pickedFile == null) {
+      _statusMessage = '사진 촬영이 취소되었습니다.';
+      notifyListeners();
       return;
     }
 
-    // backend API call
-    _statusMessage = '서버에서 처방전을 분석 중입니다...';
-    notifyListeners();
+    File imageFile = File(pickedFile.path);
 
-    // backend Parser API call
-    final parsedData = await _apiService.parsePrescription(extractedText);
-    
-    if (parsedData != null) {
-      developer.log('✅ 백엔드 파싱 완료: $parsedData', name: 'MedicationViewModel');
-      
-      final patientName = parsedData['patient_name'] ?? '환자';
-      final medicines = parsedData['medicines'] as List<dynamic>? ?? [];
-      
-      developer.log('환자명: $patientName', name: 'MedicationViewModel');
-      developer.log('처방받은 약 개수: ${medicines.length}개', name: 'MedicationViewModel');
-      
-      // 맞춤형 복약 알람을 위한 데이터 check
-      for (var med in medicines) {
-        developer.log(' - ${med['name']} (하루 ${med['frequency_per_day']}회, ${med['duration_days']}일치)', name: 'MedicationViewModel');
+    _setLoading(true);
+    _statusMessage = '서버에서 AI가 처방전을 분석 중입니다...';
+
+    try {
+      // 2. 백엔드로 사진 파일 직접 쏘기
+      var request = http.MultipartRequest('POST', Uri.parse(_apiUrl));
+      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+      final String decodedBody = utf8.decode(response.bodyBytes); // 한글 깨짐 방지
+
+      if (response.statusCode == 200) {
+        // 3. 백엔드에서 온 JSON 쪼개서 변수에 담기
+        final Map<String, dynamic> data = json.decode(decodedBody);
+
+        _hospitalName = data['hospital_name'] ?? '알 수 없음';
+        _prescriptionDate = data['prescription_date'] ?? '알 수 없음';
+        _parsedDrugList = data['medications'] ?? [];
+
+        _statusMessage = '분석 완료! 처방 내역을 확인해 주세요.';
+        developer.log('분석 성공: ${data['hospital_name']}', name: 'MedicationViewModel');
+      } else {
+        _statusMessage = '분석 실패 (에러코드: ${response.statusCode})';
+        developer.log('에러 응답: $decodedBody', name: 'MedicationViewModel');
       }
-    } else {
-      developer.log('❌ 파싱 실패 또는 추출된 데이터가 없습니다.', name: 'MedicationViewModel');
+    } catch (e) {
+      _statusMessage = '서버 연결에 실패했습니다.';
+      developer.log('네트워크 에러: $e', name: 'MedicationViewModel');
+    } finally {
+      _setLoading(false);
     }
-
-    // 상세 정보 조회 로직
-    _statusMessage = '약 상세 정보를 검색하는 중...';
-    notifyListeners();
-    
-    // extractedText 바로 넘김
-    _drugList = await _apiService.identifyMedication(extractedText); 
-
-    if (_drugList.isEmpty) {
-      _statusMessage = '해당하는 약 정보를 찾을 수 없습니다.';
-    } else {
-      _statusMessage = '조회 완료!';
-    }
-
-    _setLoading(false);
   }
 
   void _setLoading(bool value) {
     _isLoading = value;
-    notifyListeners(); // UI 갱신 신호 발송
+    notifyListeners();
   }
 
-  // '내 약통' 상태 관리 변수
   List<DrugInfo> _savedDrugs = [];
   List<DrugInfo> get savedDrugs => _savedDrugs;
 
-  // 저장 버튼 함수
   Future<bool> saveDrugToPillbox(DrugInfo drug) async {
     _statusMessage = '${drug.itemName} 저장 중...';
     notifyListeners();
@@ -91,9 +92,7 @@ class MedicationViewModel extends ChangeNotifier {
     if (success) {
       _statusMessage = '약통에 성공적으로 저장되었습니다!';
       await fetchPillbox();   
-    } 
-
-    else {
+    } else {
       _statusMessage = '저장에 실패했습니다. 다시 시도해주세요.';
     }
 
@@ -101,13 +100,11 @@ class MedicationViewModel extends ChangeNotifier {
     return success;
   }
 
-  // 저장한 약 목록 fetch
   Future<void> fetchPillbox() async {
     _savedDrugs = await _apiService.getSavedMedications();
     notifyListeners();
   }
 
-  // 저장 목록에서 특정 약 지우기
   Future<void> removeDrugFromPillbox(int id) async {
     bool success = await _apiService.deleteMedication(id);
     if (success) {
