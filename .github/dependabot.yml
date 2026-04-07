@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "pip" # pip update
+    directory: "/backend" # requirements.txt
+    schedule:
+      interval: "weekly" 
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "backend"
+
+  # GitHub Actions update settings
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
