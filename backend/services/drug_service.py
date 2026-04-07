@@ -33,7 +33,8 @@ class DrugService:
             results = []
 
             # 응답 데이터 파싱 (e약은요 API의 실제 JSON 응답 구조에 맞춰 조정 필요)
-            items = data.get('body', {}).get('items', [])
+            items = data.get('body', {}).get('items') or []
+            
             for item in items:
                 drug_info = DrugInfo(
                     item_name=item.get('itemName', '정보 없음'),
