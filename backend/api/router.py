@@ -39,9 +39,15 @@ async def identify_medication(
 
     try:
         # 텍스트 정제(OCR)
-        search_keyword = ocr_service.process_text(request.extracted_text)
-        search_keyword = re.sub(r'([0-9.]+)(mg|g|ml).*$', '', search_keyword) # 20mg 등 제거
-        search_keyword = search_keyword.replace('정', '').replace('캡슐', '') # 정, 캡슐 제거
+        raw_text = request.extracted_text[:50]
+        search_keyword = ocr_service.process_text(raw_text)
+
+        # 용량 단위 앞부분만 추출
+        parts = re.split(r'[0-9.]+\s*(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
+        search_keyword = parts[0]
+        
+        # 제형 및 공백 제거
+        search_keyword = search_keyword.replace('정', '').replace('캡슐', '')
         search_keyword = search_keyword.strip()
 
         # DB 검색 (공공 API 활용)
