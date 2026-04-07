@@ -112,4 +112,35 @@ class MedicationViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<bool> analyzeAndSave(Map<String, dynamic> rawDrug) async {
+    String drugName = rawDrug['drug_name']; // 추출된 약품명
+    
+    // 1. 화면을 로딩 상태로 변경
+    _statusMessage = '$drugName 정보를 공공 API와 AI가 분석 중입니다...';
+    _setLoading(true); 
+
+    try {
+      // 2. 백엔드 /identify API 호출 (공공데이터 + Gemini 요약)
+      List<DrugInfo> results = await _apiService.identifyMedication(drugName);
+
+      if (results.isNotEmpty) {
+        // 가장 유사도가 높은 첫 번째 검색 결과
+        DrugInfo identifiedDrug = results.first;
+
+        // 3. 내 약통 저장 로직 연계
+        bool isSaved = await saveDrugToPillbox(identifiedDrug);
+        return isSaved;
+      } else {
+        _statusMessage = '해당 약품 정보를 찾을 수 없습니다.';
+        return false;
+      }
+    } catch (e) {
+      _statusMessage = '분석 중 오류가 발생했습니다.';
+      return false;
+    } finally {
+      // 4. 로딩 스피너 종료
+      _setLoading(false);
+    }
+  }
 }

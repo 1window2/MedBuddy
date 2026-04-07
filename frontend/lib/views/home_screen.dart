@@ -111,15 +111,31 @@ class HomeScreen extends StatelessWidget {
                                     ],
                                   ),
                                   SizedBox(height: 12),
-                                  // 시연용 임시 저장 버튼
+                                  // 실제 작동하는 저장 버튼
                                   Align(
                                     alignment: Alignment.centerRight,
                                     child: TextButton.icon(
-                                      onPressed: () {
-                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${drug['drug_name']} 상세 분석 및 저장은 다음 스텝에 진행됩니다.')));
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.blue[800], // 버튼 색상을 조금 더 강조
+                                        backgroundColor: Colors.blue[50],
+                                      ),
+                                      onPressed: () async {
+                                        // 1. ViewModel의 분석 및 저장 파이프라인 가동!
+                                        bool success = await viewModel.analyzeAndSave(drug);
+
+                                        // 2. 완료 후 하단에 스낵바 알림 띄우기
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(viewModel.statusMessage),
+                                              backgroundColor: success ? Colors.green[600] : Colors.red[400],
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
                                       },
                                       icon: Icon(Icons.analytics, size: 18),
-                                      label: Text('상세 분석하기'),
+                                      label: Text('상세 분석 & 약통에 저장'),
                                     ),
                                   )
                                 ],
