@@ -36,14 +36,13 @@ async def identify_medication(
 ):
     if not request.extracted_text:
         raise HTTPException(status_code=400, detail="추출된 텍스트가 없습니다.")
-    
-    # CodeQL ReDoS 방어막
-    if len(request.extracted_text) > 100:
-        raise HTTPException(status_code=400, detail="입력된 텍스트가 너무 깁니다. (최대 100자)")
 
     try:
         # 텍스트 정제(OCR)
         search_keyword = ocr_service.process_text(request.extracted_text)
+        
+        if len(search_keyword) > 100:
+            raise HTTPException(status_code=400, detail="텍스트가 너무 깁니다.")
 
         # 용량 단위 앞부분만 추출
         parts = re.split(r'\d+(?:\.\d+)?\s*(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
