@@ -141,6 +141,6 @@ class MedicationViewModel extends ChangeNotifier {
     } finally {
       // 4. 로딩 스피너 종료
       _setLoading(false);
-    }
+    } 
   }
 }

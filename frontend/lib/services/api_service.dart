@@ -13,7 +13,7 @@ class ApiService {
         Uri.parse('$baseUrl/identify'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'extracted_text': text}),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));

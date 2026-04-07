@@ -20,7 +20,7 @@ class DrugService:
             "numOfRows": 3  # 유사 검색 결과 개수 제한
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(self.base_url, params=params)
 
             if response.status_code != 200:
