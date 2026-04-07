@@ -17,7 +17,7 @@ python-dotenv==1.2.2
 python-multipart==0.0.20
 
 # 5. Data & AI Utilities
-numpy==2.0.2   
+numpy==2.4.4   
 opencv-python==4.13.0.92 
 tqdm==4.67.3 
 PyYAML==6.0.3 
