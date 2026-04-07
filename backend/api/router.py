@@ -1,7 +1,7 @@
 #API 엔드포인트 관리 블록
 import logging
 import google.generativeai as genai
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from schemas.medication import MedicationRequest, MedicationResponse
 from services.ocr_service import OCRService
 from services.drug_service import DrugService
@@ -10,6 +10,7 @@ from core.database import get_db
 from models.db_models import SavedMedication
 from schemas.medication import SavedMedicationCreate
 from pydantic import BaseModel
+from schemas.ocr import PrescriptionData
 
 router = APIRouter()
 
@@ -189,3 +190,30 @@ async def parse_prescription_endpoint(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"처방전 파싱 실패: {str(e)}")
+
+@router.post("/upload-prescription", response_model=PrescriptionData)
+async def upload_and_parse_prescription(
+    file: UploadFile = File(...),
+    ocr_service: OCRService = Depends(get_ocr_service) # 의존성 주입
+):
+    """
+    약봉투 image 업로드 -> 노이즈 전처리 -> AI 추출 -> 구조화 -> 마스킹 -> 반환
+    """
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
+    
+    try:
+        # image bytes read
+        image_bytes = await file.read()
+        
+        # service logic call
+        extracted_data = await ocr_service.extract_prescription_data(image_bytes)
+        
+        return extracted_data
+        
+    except ValueError as ve:
+        # image corrupt 등으로 발생한 처리 오류
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"이미지 파싱 에러: {e}")
+        raise HTTPException(status_code=500, detail="데이터 추출 중 서버 오류가 발생했습니다.")

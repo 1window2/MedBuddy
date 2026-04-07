@@ -1,11 +1,15 @@
 #OCR 처리 로직
 from typing import List, Dict, Any
 from services.prescription_parser import parse_prescription
+import json
+import re
+import google.generativeai as genai
+from utils.image_processing import preprocess_prescription_image
+from schemas.ocr import PrescriptionData
 
 class OCRService:
-    def __init__(self):
-        # 나중에 Tesseract나 Cloud Vision 모델을 초기화하는 코드가 들어갈 수 있어.
-        pass
+    def __init__(self): # 임시 테스트용으로 넣은 모델. 추후 변경
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     def process_text(self, raw_text: str) -> str:
         """
@@ -51,3 +55,49 @@ class OCRService:
         # - 파서가 만든 최종 구조화 결과
         parsed_result = parse_prescription(lines)
         return parsed_result
+    
+    ### 04/07 신규 추가
+    async def extract_prescription_data(self, image_bytes: bytes) -> PrescriptionData:
+        """전처리된 이미지를 Gemini에 보내서 JSON 데이터로 추출하고 마스킹을 적용합니다."""
+        # 1. 이미지 전처리
+        processed_image = preprocess_prescription_image(image_bytes)
+
+        image_part = {
+            "mime_type": "image/jpeg",
+            "data": processed_image
+        }
+
+        # 2. 강력한 시스템 프롬프트 (1차 마스킹 명령 포함)
+        prompt = """
+        당신은 한국의 의료 데이터 추출 전문가입니다. 
+        첨부된 약봉투 또는 처방전 이미지에서 다음 정보만 정확하게 추출하세요.
+        
+        [보안 규칙]
+        - 환자 이름은 가운데 글자를 마스킹하세요 (예: 홍길동 -> 홍*동)
+        - 주민등록번호가 있다면 뒷자리를 마스킹하세요 (예: 900101-*******)
+        - 상세 주소가 있다면 동 단위까지만 남기고 나머지는 마스킹하세요.
+        
+        반드시 결과만 JSON 형식으로 출력하세요. 추가적인 설명은 절대 하지 마세요.
+        """
+
+        # 3. 제미나이 API 호출
+        response = await self.model.generate_content_async(
+            [prompt, image_part],
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=PrescriptionData 
+            )
+        )
+
+        # 4. JSON 파싱 및 2차 보안 마스킹 적용
+        raw_data = json.loads(response.text)
+        safe_data = self._apply_secondary_masking(raw_data)
+
+        return PrescriptionData(**safe_data)
+
+    def _apply_secondary_masking(self, data: dict) -> dict:
+        """정규식을 활용한 2차 철통 마스킹"""
+        data_str = json.dumps(data, ensure_ascii=False)
+        # 주민번호 패턴 강제 마스킹
+        data_str = re.sub(r'(\d{6})[-]\d{7}', r'\1-*******', data_str)
+        return json.loads(data_str)
