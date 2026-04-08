@@ -9,7 +9,7 @@ from schemas.ocr import PrescriptionData
 
 class OCRService:
     def __init__(self): # 임시 테스트용으로 넣은 모델. 추후 변경
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-3.1-flash-lite')
 
     def process_text(self, raw_text: str) -> str:
         """

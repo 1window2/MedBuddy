@@ -45,7 +45,7 @@ async def identify_medication(
             raise HTTPException(status_code=400, detail="텍스트가 너무 깁니다.")
 
         # 용량 단위 앞부분만 추출
-        parts = re.split(r'\d+(?:\.\d+)?\s*(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
+        parts = re.split(r'\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml)', search_keyword, flags=re.IGNORECASE)
         search_keyword = parts[0]
         
         # 제형 및 공백 제거
@@ -62,7 +62,7 @@ async def identify_medication(
             )
         
         # AI 활용하여 데이터 가공, 요약
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel('gemini-3.1-flash-lite')
         
         for drug in drug_data:
             # 식약처 원본 데이터
