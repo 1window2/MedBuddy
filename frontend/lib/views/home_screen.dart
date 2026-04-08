@@ -68,7 +68,7 @@ class HomeScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${viewModel.hospitalName}', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                            Text(viewModel.hospitalName, style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                             SizedBox(height: 8),
                             Text('조제 일자: ${viewModel.prescriptionDate}', style: TextStyle(color: Colors.blue[100], fontSize: 16)),
                           ],

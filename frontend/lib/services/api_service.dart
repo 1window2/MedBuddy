@@ -24,7 +24,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('API 통신 에러: $e');
+      developer.log('API 통신 에러: $e', name: 'ApiService');
       return [];
     }
   }
