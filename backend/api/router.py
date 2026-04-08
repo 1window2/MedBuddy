@@ -1,7 +1,8 @@
 #API 엔드포인트 관리 블록
 import logging
 import re
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from schemas.medication import MedicationRequest, MedicationResponse
 from services.ocr_service import OCRService
@@ -62,9 +63,11 @@ async def identify_medication(
             )
         
         # AI 활용하여 데이터 가공, 요약
-        model = genai.GenerativeModel('gemini-3.1-flash-lite')
+        client = genai.Client(http_options={'api_version': 'v1alpha'})
         
-        for drug in drug_data:
+        if drug_data:
+            drug = drug_data[0]
+
             # 식약처 원본 데이터
             raw_data = f"효능: {drug.efficacy}\n사용법: {drug.use_method}\n주의사항: {drug.warning_message}"
             
@@ -81,8 +84,10 @@ async def identify_medication(
             """
             
             try:
-                # API를 호출해서 답변을 받아옴
-                ai_response = await model.generate_content_async(prompt)
+                ai_response = await client.aio.models.generate_content(
+                    model='gemini-3.1-flash-lite-preview',
+                    contents=prompt
+                )
                 drug.ai_guide = ai_response.text
             except Exception as e:
                 # AI 서버가 응답하지 않을 경우

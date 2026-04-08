@@ -1,10 +1,12 @@
 #공공DB API 통신 블록
 
 import httpx
+import logging
 from core.config import settings
 from schemas.medication import DrugInfo
 import xml.etree.ElementTree as ET
 
+logger = logging.getLogger(__name__)
 
 class DrugService:
     def __init__(self):
@@ -30,6 +32,7 @@ class DrugService:
                 raise Exception("공공데이터 API 서버와 통신할 수 없습니다.")
 
             data = response.json()
+            logger.info(f"식약처 API 응답 ({drug_name}): {data.get('body', {}).get('totalCount')}건 찾음")
             results = []
 
             # 응답 데이터 파싱 (e약은요 API의 실제 JSON 응답 구조에 맞춰 조정 필요)

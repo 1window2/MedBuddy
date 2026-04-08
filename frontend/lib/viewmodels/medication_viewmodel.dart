@@ -27,7 +27,7 @@ class MedicationViewModel extends ChangeNotifier {
 
   // 카메라 연동 객체 및 서버 주소 (for emulator and local connected devices)
   final ImagePicker _picker = ImagePicker();
-  final String _apiUrl = 'http://localhost:8000/api/v1/medication/upload-prescription';
+  final String _apiUrl = 'http://127.0.0.1:8000/api/v1/medication/upload-prescription';
 
   Future<void> processMedicationImage() async {
     // 1. 사진 촬영 (또는 갤러리 선택)

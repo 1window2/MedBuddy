@@ -5,7 +5,7 @@ import 'dart:developer' as developer;
 
 class ApiService {
   // 에뮬레이터 기준 로컬호스트 주소. (iOS 시뮬레이터는 127.0.0.1 사용)
-  final String baseUrl = 'http://localhost:8000/api/v1/medication';
+  final String baseUrl = 'http://127.0.0.1:8000/api/v1/medication';
 
   Future<List<DrugInfo>> identifyMedication(String text) async {
     try {
@@ -13,7 +13,7 @@ class ApiService {
         Uri.parse('$baseUrl/identify'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'extracted_text': text}),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
