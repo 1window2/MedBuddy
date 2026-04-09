@@ -1,7 +1,9 @@
-name: Python CI
+name: FastAPI CI
 
 on:
   push:
+    branches: [ "main" ]
+  pull_request:
     branches: [ "main" ]
 
 permissions:
@@ -16,9 +18,10 @@ jobs:
         working-directory: ./backend
 
     steps:
-    - uses: actions/checkout@v6
+    - name: Source Code Checkout
+      uses: actions/checkout@v6
 
-    - name: Set up Python
+    - name: Set up Python for FastAPI
       uses: actions/setup-python@v6
       with:
         python-version: '3.11' # 추후 버전 수정 가능성 있음
@@ -28,7 +31,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run sanity check
+    - name: Run FastAPI sanity check
       env: # 환경 변수 추가/삭제 시 변경 요망
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         DRUG_API_KEY: ${{ secrets.DRUG_API_KEY }}

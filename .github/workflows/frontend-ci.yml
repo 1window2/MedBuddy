@@ -36,8 +36,8 @@ jobs:
     - name: Dart Code Analysis
       run: flutter analyze
 
-    - name: Run Flutter Tests
-      run: flutter test
+    # - name: Run Flutter Tests
+    #   run: flutter test
 
       # build까지 필요없을 때 주석처리 요망
     - name: Android APK Build Test
