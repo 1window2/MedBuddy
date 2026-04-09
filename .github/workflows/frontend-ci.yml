@@ -10,6 +10,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./frontend
+
     steps:
     - name: Source Code Checkout
       uses: actions/checkout@v4
@@ -35,6 +39,6 @@ jobs:
     - name: Run Flutter Tests
       run: flutter test
 
-    - name: Android APK Build Test
       # build까지 필요없을 때 주석처리 요망
+    - name: Android APK Build Test
       run: flutter build apk --debug
