@@ -105,14 +105,36 @@ String? normalizeDate(String text) {
 
 We follow the Conventional Commits specification to maintain a consistent commit history.
 
-- `feat:` A new feature
-- `fix:` A bug fix
-- `docs:` Documentation only changes (README, CONTRIBUTING, etc.)
-- `style:` Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.)
-- `refactor:` A code change that neither fixes a bug nor adds a feature
-- `test:` Adding missing tests or correcting existing tests
-- `chore:` Changes to the build process or auxiliary tools and libraries
+#### `feat:` (New Feature)
+Used when adding a new feature or a new functional capability to the application or server.
+* **Example:** `feat: allow users to manually edit extracted drug names`
+* **Example:** `feat: integrate secondary public DB for drug search`
 
-#### Exmaple
-- `feat: Add OCR image parsing and JSON structuring features`
+#### `fix:` (Bug Fix)
+Used when fixing a bug or restoring broken functionality.
+* **Example:** `fix: correct AI prompt to auto-fix OCR typos`
+* **Example:** `fix: increase API timeout to 60 seconds to prevent empty responses`
+
+#### `docs:` (Documentation)
+Used for documentation-only changes. No production code logic is modified.
+* **Example:** `docs: add MIT license`
+* **Example:** `docs: update README with CI status badges`
+
+#### `chore:` (Chores & Configuration)
+Used for changes to the build process, development environment, configuration files, or auxiliary tools/libraries.
+* **Example:** `chore: add issue templates for bug reports and feature requests`
+* **Example:** `chore: upgrade flutter dependencies to latest versions`
+* **Example:** `chore: update setup-java action to v4 in frontend-ci`
+
+#### `refactor:` (Code Refactoring)
+Used for a code change that neither fixes a bug nor adds a feature, but improves the internal structure, readability, or performance of the code.
+* **Example:** `refactor: optimize Gemini API call to summarize only the top result`
+
+#### `style:` (Code Style & Formatting)
+Used for changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc.).
+* **Example:** `style: fix dart formatting issues`
+
+#### `test:` (Testing)
+Used when adding missing tests or correcting existing tests.
+* **Example:** `test: add dummy test for CI pipeline`
 
