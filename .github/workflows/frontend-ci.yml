@@ -1,0 +1,40 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [ "main" ] 
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Source Code Checkout
+      uses: actions/checkout@v4
+
+    - name: Java Setup (for Flutter)
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Flutter Setup
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.41.5'
+        channel: 'stable'
+
+    - name: Package Get
+      run: flutter pub get
+
+    - name: Dart Code Analysis
+      run: flutter analyze
+
+    - name: Run Flutter Tests
+      run: flutter test
+
+    - name: Android APK Build Test
+      # build까지 필요없을 때 주석처리 요망
+      run: flutter build apk --debug
