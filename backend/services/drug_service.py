@@ -83,9 +83,9 @@ class DrugService:
             actual_item_name = adv_item.get('ITEM_NAME', drug_name)
             
             # text만 추출 요약
-            raw_efficacy = str(adv_item.get('ee_doc_data', '정보 없음'))[:2000] 
-            raw_usage = str(adv_item.get('ud_doc_data', '정보 없음'))[:2000]    
-            raw_warning = str(adv_item.get('nb_doc_data', '정보 없음'))[:2000]
+            raw_efficacy = str(adv_item.get('EE_DOC_DATA', '정보 없음'))[:2000] 
+            raw_usage = str(adv_item.get('UD_DOC_DATA', '정보 없음'))[:2000]    
+            raw_warning = str(adv_item.get('NB_DOC_DATA', '정보 없음'))[:2000]
             
             prompt = f"""
             당신은 친절한 약사입니다. 아래는 식약처의 전문가용 의약품 허가 정보 원문입니다.
