@@ -13,7 +13,9 @@ class ApiService {
         Uri.parse('$baseUrl/identify'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'extracted_text': text}),
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(const Duration(seconds: 60), onTimeout: () {
+        throw Exception('서버 응답 시간이 초과되었습니다.');
+      });
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
