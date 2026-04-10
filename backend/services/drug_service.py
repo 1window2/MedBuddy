@@ -20,7 +20,7 @@ class DrugService:
         # Gemini 클라이언트 초기화
         self.ai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-async def fetch_drug_info(self, drug_name: str) -> list[DrugInfo]:
+    async def fetch_drug_info(self, drug_name: str) -> list[DrugInfo]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             
             # =================================================================
