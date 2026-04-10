@@ -74,7 +74,7 @@ class DrugService:
             
             if not adv_items:
                 logger.warning(f"[{drug_name}] 식약처 DB에 등록되지 않은 약품입니다.")
-                raise HTTPException(status_code=404, detail="식약처 DB에 등록되지 않은 약품입니다.")
+                return []
 
             # =================================================================
             # 3단계: 복잡한 원문을 Gemini로 요약
@@ -90,12 +90,13 @@ class DrugService:
             prompt = f"""
             당신은 친절한 약사입니다. 아래는 식약처의 전문가용 의약품 허가 정보 원문입니다.
             일반 환자가 이해하기 쉽게 각 항목을 2~3문장 이내로 친절하게 요약해 주세요.
-            반드시 아래의 3가지 키 (key)를 가진 JSON 형식으로만 답변해 주세요.
+            반드시 아래의 4가지 키 (key)를 가진 JSON 형식으로만 답변해 주세요.
             
             {{
                 "efficacy": "요약된 효능",
                 "use_method": "요약된 용법",
-                "warning_message": "요약된 주의사항"
+                "warning_message": "요약된 주의사항",
+                "ai_guide": "친한 동네 약사님처럼 따뜻하고 부드러운 말투(~해요, ~하세요)로 전체적인 복약 가이드 2줄 요약"
             }}
             
             [원문 데이터]
@@ -122,7 +123,8 @@ class DrugService:
                         efficacy=summary_data.get('efficacy', '요약 실패'),
                         use_method=summary_data.get('use_method', '요약 실패'),
                         warning_message=summary_data.get('warning_message', '요약 실패'),
-                        source="Advanced (허가정보) + AI 요약"
+                        source="Advanced (허가정보) + AI 요약",
+                        ai_guide=summary_data.get('ai_guide', '요약 실패')
                     )
                 ]
                 

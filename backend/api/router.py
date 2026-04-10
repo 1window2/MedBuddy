@@ -59,7 +59,8 @@ async def identify_medication(
         if not drug_data:
             return MedicationResponse(
                 success=False,
-                message=f"'{search_keyword}'에 해당하는 약 정보를 찾을 수 없습니다."
+                message=f"'{search_keyword}'에 해당하는 약 정보를 찾을 수 없습니다.",
+                data=[]
             )
         
         # AI 활용하여 데이터 가공, 요약
@@ -68,31 +69,32 @@ async def identify_medication(
         if drug_data:
             drug = drug_data[0]
 
-            # 식약처 원본 데이터
-            raw_data = f"효능: {drug.efficacy}\n사용법: {drug.use_method}\n주의사항: {drug.warning_message}"
-            
-            # AI 프롬프트
-            prompt = f"""
-            너는 환자의 건강을 챙겨주는 친절하고 다정한 AI 약사야.
-            다음은 식약처에서 제공하는 어려운 약품 설명서야:
-            {raw_data}
+            if not drug.ai_guide: 
+                # 식약처 원본 데이터
+                raw_data = f"효능: {drug.efficacy}\n사용법: {drug.use_method}\n주의사항: {drug.warning_message}"
+                
+                # AI 프롬프트
+                prompt = f"""
+                너는 환자의 건강을 챙겨주는 친절하고 다정한 AI 약사야.
+                다음은 식약처에서 제공하는 어려운 약품 설명서야:
+                {raw_data}
 
-            이 내용을 일반인이 이해하기 쉽게 다음 규칙에 따라 설명해줘:
-            1. 가장 핵심적인 효능과 복용법을 1~2줄로 요약할 것.
-            2. 주의해야 할 부작용을 친절하게 당부할 것.
-            3. "친한 동네 약사님"처럼 따뜻하고 부드러운 말투(~해요, ~하세요)를 사용할 것.
-            """
-            
-            try:
-                ai_response = await client.aio.models.generate_content(
-                    model='gemini-3.1-flash-lite-preview',
-                    contents=prompt
-                )
-                drug.ai_guide = ai_response.text
-            except Exception as e:
-                # AI 서버가 응답하지 않을 경우
-                logger.error(f"Gemini API 호출 에러: {e}")
-                drug.ai_guide = "AI 요약을 불러오는 중 일시적인 오류가 발생했어요."
+                이 내용을 일반인이 이해하기 쉽게 다음 규칙에 따라 설명해줘:
+                1. 가장 핵심적인 효능과 복용법을 1~2줄로 요약할 것.
+                2. 주의해야 할 부작용을 친절하게 당부할 것.
+                3. "친한 동네 약사님"처럼 따뜻하고 부드러운 말투(~해요, ~하세요)를 사용할 것.
+                """
+                
+                try:
+                    ai_response = await client.aio.models.generate_content(
+                        model='gemini-3.1-flash-lite-preview',
+                        contents=prompt
+                    )
+                    drug.ai_guide = ai_response.text
+                except Exception as e:
+                    # AI 서버가 응답하지 않을 경우
+                    logger.error(f"Gemini API 호출 에러: {e}")
+                    drug.ai_guide = "AI 요약을 불러오는 중 일시적인 오류가 발생했어요."
 
         return MedicationResponse(
             success=True,
