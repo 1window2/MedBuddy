@@ -13,6 +13,7 @@ class DrugInfo(BaseModel):
     efficacy: str          # 효능
     use_method: str        # 사용법
     warning_message: str   # 주의사항
+    source: str = "e약은요" # 어떤 API에서 가져왔는지 명시
     ai_guide: Optional[str] = None  # AI가 생성한 복용안내
 
 # 앱에서 '내 약통에 담기'를 눌렀을 때 백엔드로 보낼 데이터 구조

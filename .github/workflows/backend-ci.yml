@@ -34,6 +34,6 @@ jobs:
     - name: Run FastAPI sanity check
       env: # 환경 변수 추가/삭제 시 변경 요망
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        DRUG_API_KEY: ${{ secrets.DRUG_API_KEY }}
+        PUBLIC_DATA_API_KEY: ${{ secrets.PUBLIC_DATA_API_KEY }}
       run: |
         python -c "import main; print('no errors occured on import')"

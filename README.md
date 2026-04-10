@@ -206,8 +206,9 @@ classDiagram
         class Settings {
             <<Config : core/config.py>>
             +GEMINI_API_KEY : str
-            +DRUG_API_KEY : str
-            +DRUG_API_BASE_URL : str
+            +PUBLIC_DATA_API_KEY : str
+            +BASIC_DRUG_API_BASE_URL : str
+            +ADVANCED_DRUG_API_BASE_URL : str
         }
 
         class OCRService {
@@ -222,7 +223,8 @@ classDiagram
         class DrugService {
             <<Service : services/drug_service.py>>
             +api_key : str
-            +base_url : str
+            +basic_url : str
+            +advanced_url : str
             +fetch_drug_info(drug_name) List~DrugInfo~
         }
 
