@@ -101,7 +101,8 @@ async def identify_medication(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Identify API 내부 에러 발생: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {str(e)}")
     
 
 @router.post("/save")
