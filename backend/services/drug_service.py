@@ -2,11 +2,12 @@
 import json
 import httpx
 import logging
+import redis.asyncio as redis
 from fastapi import HTTPException
 from core.config import settings
 from schemas.medication import DrugInfo
-import xml.etree.ElementTree as ET
 from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,32 @@ class DrugService:
         # Gemini 클라이언트 초기화
         self.ai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
+        # Redis 클라이언트 초기화
+        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
     async def fetch_drug_info(self, drug_name: str) -> list[DrugInfo]:
+        # =================================================================
+        # [0단계] Redis Cache Hit Check
+        # =================================================================
+        cache_key = f"drug_info:{drug_name}"
+        try:
+            cached_data = await self.redis.get(cache_key)
+            if cached_data:
+                logger.info(f"[Redis Cache Hit] '{drug_name}' 정보를 cache에서 확인했습니다")
+                drugs_dict = json.loads(cached_data)
+                
+                results = []
+                for item in drugs_dict:
+                    item['source'] = f"[Cache] {item.get('source', '')}"
+                    results.append(DrugInfo(**item))
+                return results
+            
+        except Exception as e:
+            logger.warning(f"Redis 조회 실패 (캐시 무시하고 진행): {e}")
+
+        # Cache Miss -> 기존 파이프라인 실행
+        results_to_return = []
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             
             # =================================================================
@@ -43,38 +69,38 @@ class DrugService:
                     logger.info(f"[Basic API] '{drug_name}' 검색 성공 ({len(items)}건)")
                     results = []
                     for item in items:
-                        results.append(DrugInfo(
+                        results_to_return.append(DrugInfo(
                             item_name=item.get('itemName', '정보 없음'),
                             efficacy=item.get('efcyQesitm', '정보 없음'),
                             use_method=item.get('useMethodQesitm', '정보 없음'),
                             warning_message=item.get('atpnWarnQesitm', '정보 없음'),
                             source="Basic (e약은요)"
                         ))
-                    return results
 
             # =================================================================
             # 2단계: 1단계 실패 시 ADVANCED API (의약품제품허가정보)로 Fallback
             # =================================================================
-            logger.info(f"[Basic API] 결과 없음. Advanced API로 Fallback 시도: '{drug_name}'")
-            
-            advanced_params = {
-                "serviceKey": self.api_key,
-                "item_name": drug_name,
-                "type": "json",
-                "numOfRows": 1 # 가장 정확한 1개만 추출
-            }
-            
-            advanced_response = await client.get(self.advanced_url, params=advanced_params)
-            
-            if advanced_response.status_code != 200:
-                raise HTTPException(status_code=502, detail="공공데이터 API 서버와 통신할 수 없습니다.")
+            if not results_to_return:
+                logger.info(f"[Basic API] 결과 없음. Advanced API로 Fallback 시도: '{drug_name}'")
                 
-            adv_data = advanced_response.json()
-            adv_items = adv_data.get('body', {}).get('items') or []
-            
-            if not adv_items:
-                logger.warning(f"[{drug_name}] 식약처 DB에 등록되지 않은 약품입니다.")
-                return []
+                advanced_params = {
+                    "serviceKey": self.api_key,
+                    "item_name": drug_name,
+                    "type": "json",
+                    "numOfRows": 1 # 가장 정확한 1개만
+                }
+                
+                advanced_response = await client.get(self.advanced_url, params=advanced_params)
+                
+                if advanced_response.status_code != 200:
+                    raise HTTPException(status_code=502, detail="공공데이터 API 서버와 통신할 수 없습니다.")
+                    
+                adv_data = advanced_response.json()
+                adv_items = adv_data.get('body', {}).get('items') or []
+                
+                if not adv_items:
+                    logger.warning(f"[{drug_name}] 식약처 DB에 등록되지 않은 약품입니다.")
+                    return [] # 아예 검색되지 않는 약이면 빈 리스트 반환 (캐싱 생략)
 
             # =================================================================
             # 3단계: 복잡한 원문을 Gemini로 요약
@@ -117,17 +143,32 @@ class DrugService:
                 
                 summary_data = json.loads(ai_response.text)
                 
-                return [
-                    DrugInfo(
-                        item_name=actual_item_name,
-                        efficacy=summary_data.get('efficacy', '요약 실패'),
-                        use_method=summary_data.get('use_method', '요약 실패'),
-                        warning_message=summary_data.get('warning_message', '요약 실패'),
-                        source="Advanced (허가정보) + AI 요약",
-                        ai_guide=summary_data.get('ai_guide', '요약 실패')
-                    )
-                ]
+                results_to_return = [
+                        DrugInfo(
+                            item_name=actual_item_name,
+                            efficacy=summary_data.get('efficacy', '요약 실패'),
+                            use_method=summary_data.get('use_method', '요약 실패'),
+                            warning_message=summary_data.get('warning_message', '요약 실패'),
+                            source="Advanced (허가정보) + AI 요약",
+                            ai_guide=summary_data.get('ai_guide', '요약 실패')
+                        )
+                    ]
                 
             except Exception as e:
                 logger.error(f"Gemini AI 요약 처리 실패: {str(e)}")
                 raise HTTPException(status_code=500, detail="AI 요약 처리 중 오류가 발생했습니다.")
+            
+        # =================================================================
+        # 4단계: 찾은 data를 Redis에 저장
+        # =================================================================
+        if results_to_return:
+            try:
+                dict_list = [drug.model_dump() for drug in results_to_return]
+                # 7일 = 604800초 (한 번 검색된 약 정보는 7일간 유지)
+                await self.redis.setex(cache_key, 604800, json.dumps(dict_list))
+                logger.info(f"[Redis Cache Saved] '{drug_name}' 정보를 캐시에 저장했습니다.")
+            except Exception as e:
+                logger.error(f"Redis 저장 실패: {e}")
+
+        # 최종적으로 찾아낸 결과를 frontend로 return
+        return results_to_return
