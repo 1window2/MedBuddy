@@ -8,12 +8,16 @@ from google import genai
 from google.genai import types
 from utils.image_processing import preprocess_prescription_image
 from schemas.ocr import PrescriptionData
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class OCRService:
     def __init__(self): # 임시 테스트용으로 넣은 모델. 추후 변경
-        self.client = genai.Client(http_options={'api_version': 'v1alpha'})
+        self.client = genai.Client(
+            api_key=settings.GEMINI_API_KEY,
+            http_options={'api_version': 'v1alpha'}
+        )
         self.model_name = 'gemini-3.1-flash-lite-preview'
 
     def process_text(self, raw_text: str) -> str:

@@ -102,61 +102,89 @@ class DrugService:
                     logger.warning(f"[{drug_name}] 식약처 DB에 등록되지 않은 약품입니다.")
                     return [] # 아예 검색되지 않는 약이면 빈 리스트 반환 (캐싱 생략)
 
-            # =================================================================
-            # 3단계: 복잡한 원문을 Gemini로 요약
-            # =================================================================
-            adv_item = adv_items[0]
-            actual_item_name = adv_item.get('ITEM_NAME', drug_name)
-            
-            # text만 추출 요약
-            raw_efficacy = str(adv_item.get('EE_DOC_DATA', '정보 없음'))[:2000] 
-            raw_usage = str(adv_item.get('UD_DOC_DATA', '정보 없음'))[:2000]    
-            raw_warning = str(adv_item.get('NB_DOC_DATA', '정보 없음'))[:2000]
-            
-            prompt = f"""
-            당신은 친절한 약사입니다. 아래는 식약처의 전문가용 의약품 허가 정보 원문입니다.
-            일반 환자가 이해하기 쉽게 각 항목을 2~3문장 이내로 친절하게 요약해 주세요.
-            반드시 아래의 4가지 키 (key)를 가진 JSON 형식으로만 답변해 주세요.
-            
-            {{
-                "efficacy": "요약된 효능",
-                "use_method": "요약된 용법",
-                "warning_message": "요약된 주의사항",
-                "ai_guide": "친한 동네 약사님처럼 따뜻하고 부드러운 말투(~해요, ~하세요)로 전체적인 복약 가이드 2줄 요약"
-            }}
-            
-            [원문 데이터]
-            - 효능: {raw_efficacy}
-            - 용법: {raw_usage}
-            - 주의: {raw_warning}
-            """
-            
-            logger.info(f"[Gemini] '{actual_item_name}' 허가정보 AI 요약 요청 중...")
-            
-            try:
-                # 비동기 AI 호출
-                ai_response = await self.ai_client.aio.models.generate_content(
-                    model='gemini-3.1-flash-lite-preview',
-                    contents=prompt,
-                    config={'response_mime_type': 'application/json'} 
-                )
+                # =================================================================
+                # 3단계: 복잡한 원문을 Gemini로 요약
+                # =================================================================
+                adv_item = adv_items[0]
+                actual_item_name = adv_item.get('ITEM_NAME', drug_name)
                 
-                summary_data = json.loads(ai_response.text)
+                # text만 추출 요약
+                raw_efficacy = str(adv_item.get('EE_DOC_DATA', '정보 없음'))[:2000] 
+                raw_usage = str(adv_item.get('UD_DOC_DATA', '정보 없음'))[:2000]    
+                raw_warning = str(adv_item.get('NB_DOC_DATA', '정보 없음'))[:2000]
                 
-                results_to_return = [
-                        DrugInfo(
-                            item_name=actual_item_name,
-                            efficacy=summary_data.get('efficacy', '요약 실패'),
-                            use_method=summary_data.get('use_method', '요약 실패'),
-                            warning_message=summary_data.get('warning_message', '요약 실패'),
-                            source="Advanced (허가정보) + AI 요약",
-                            ai_guide=summary_data.get('ai_guide', '요약 실패')
+                prompt = f"""
+                당신은 친절한 약사입니다. 아래는 식약처의 전문가용 의약품 허가 정보 원문입니다.
+                일반 환자가 이해하기 쉽게 각 항목을 2~3문장 이내로 친절하게 요약해 주세요.
+                반드시 아래의 4가지 키 (key)를 가진 JSON 형식으로만 답변해 주세요.
+                
+                {{
+                    "efficacy": "요약된 효능",
+                    "use_method": "요약된 용법",
+                    "warning_message": "요약된 주의사항",
+                    "ai_guide": "친한 동네 약사님처럼 따뜻하고 부드러운 말투(~해요, ~하세요)로 전체적인 복약 가이드 2줄 요약"
+                }}
+                
+                [원문 데이터]
+                - 효능: {raw_efficacy}
+                - 용법: {raw_usage}
+                - 주의: {raw_warning}
+                """
+                
+                logger.info(f"[Gemini] '{actual_item_name}' 허가정보 AI 요약 요청 중...")
+                
+                try:
+                    # 비동기 AI 호출
+                    ai_response = await self.ai_client.aio.models.generate_content(
+                        model='gemini-3.1-flash-lite-preview',
+                        contents=prompt,
+                        config={'response_mime_type': 'application/json'} 
+                    )
+                    
+                    summary_data = json.loads(ai_response.text)
+                    
+                    results_to_return = [
+                            DrugInfo(
+                                item_name=actual_item_name,
+                                efficacy=summary_data.get('efficacy', '요약 실패'),
+                                use_method=summary_data.get('use_method', '요약 실패'),
+                                warning_message=summary_data.get('warning_message', '요약 실패'),
+                                source="Advanced (허가정보) + AI 요약",
+                                ai_guide=summary_data.get('ai_guide', '요약 실패')
+                            )
+                        ]
+                    
+                except Exception as e:
+                    logger.error(f"Gemini AI 요약 처리 실패: {str(e)}")
+                    raise HTTPException(status_code=500, detail="AI 요약 처리 중 오류가 발생했습니다.")
+                
+            # =================================================================
+            # 3.5단계: Basic API 결과물에 대한 AI 가이드 추가
+            # =================================================================
+            for drug in results_to_return:
+                if not drug.ai_guide: # Advanced 거친 약은 pass
+                    logger.info(f"[Gemini] '{drug.item_name}' Basic API 데이터 친절한 약사 말투로 변환 중...")
+                    raw_data = f"효능: {drug.efficacy}\n사용법: {drug.use_method}\n주의사항: {drug.warning_message}"
+                    
+                    prompt = f"""
+                    너는 환자의 건강을 챙겨주는 친절하고 다정한 AI 약사야.
+                    다음은 식약처에서 제공하는 어려운 약품 설명서야:
+                    {raw_data}
+
+                    이 내용을 일반인이 이해하기 쉽게 다음 규칙에 따라 설명해줘:
+                    1. 가장 핵심적인 효능과 복용법을 1~2줄로 요약할 것.
+                    2. 주의해야 할 부작용을 친절하게 당부할 것.
+                    3. "친한 동네 약사님"처럼 따뜻하고 부드러운 말투(~해요, ~하세요)를 사용할 것.
+                    """
+                    try:
+                        ai_response = await self.ai_client.aio.models.generate_content(
+                            model='gemini-3.1-flash-lite-preview',
+                            contents=prompt
                         )
-                    ]
-                
-            except Exception as e:
-                logger.error(f"Gemini AI 요약 처리 실패: {str(e)}")
-                raise HTTPException(status_code=500, detail="AI 요약 처리 중 오류가 발생했습니다.")
+                        drug.ai_guide = ai_response.text
+                    except Exception as e:
+                        logger.error(f"Gemini API 호출 에러: {e}")
+                        drug.ai_guide = "AI 요약을 불러오는 중 일시적인 오류가 발생했어요."
             
         # =================================================================
         # 4단계: 찾은 data를 Redis에 저장
