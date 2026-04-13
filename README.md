@@ -177,8 +177,8 @@ classDiagram
             +app : FastAPI
             +include_router() void
         }
-        class MedicationRouter {
-            <<Controller : api/router.py>>
+        class Router {
+            <<router module: api/router.py>> 
             +identify_medication(request, ocr, drug) MedicationResponse
             +save_medication(medication, db) dict
             +get_saved_medications(db) dict
@@ -219,12 +219,12 @@ classDiagram
             +fetch_drug_info(drug_name) List~DrugInfo~
         }
         class PrescriptionParser_Python {
-            <<Utility : utils/prescription_parser.py>>
-            +normalize_text(text) str
-            +normalize_date(text) str
-            +extract_patient_name(line) str
-            +parse_medication_line(line) dict
-            +parse_prescription(lines) dict
+            <<Utility : services/prescription_parser.py>>
+            normalize_text(text) str
+            normalize_date(text) str
+            extract_patient_name(line) str
+            parse_medication_line(line) dict
+            parse_prescription(lines) dict
         }
     }
 
@@ -287,7 +287,7 @@ classDiagram
     MedicationRouter ..> MedicationSchemas : Request/Response
     MedicationRouter ..> OCRSchemas : Request/Response
 
-    OCRService --> PrescriptionParser_Python : Uses
+    OCRService --> PrescriptionParser_Python : calls utility function
     OCRService ..> OCRSchemas : Returns
     OCRService ..> Settings : Reads Config
     DrugService ..> Settings : Reads Config
