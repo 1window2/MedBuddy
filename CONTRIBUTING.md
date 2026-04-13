@@ -39,35 +39,97 @@ Since MedBuddy is a full-stack project, we follow different naming conventions d
 
 ---
 
-## 3. Documentation Standards ⭐
+## 3. Documentation Standards
 
 This is the most important rule of our project. All major functions and methods must have a block comment at the top following the specified format. 
 We support both Korean and English documentation for our global collaborators. Please use the language you are most comfortable with.
 
-### 📝 함수 주석 템플릿 (Korean Template)
+### 📝 English Comment Template
+
+#### File Name
 ```python
-# 함수이름: [함수명]
-# 함수역할:
-# - [역할 상세 설명 1]
-# - [역할 상세 설명 2]
-# 매개변수:
-# - [변수명]: [변수 설명 및 타입]
-# 반환값:
-# - [반환 조건 1에 따른 반환값 설명]
-# - [반환 조건 2에 따른 반환값 설명]
+# File Name: [File Name]
+# Role: [Role Description]
 ```
 
-### 📝 Function Comment Template (English Template)
+#### Class
+```python
+# Class Name: [Class Name]
+# Role: [Role description]
+# Responsibilities:
+#   - Responsibility 1: [Description]
+#   ...
+# Note (Optional): [Remarks]
+class [ClassName]:
+```
+
+#### Function/Method
 ```python
 # Function Name: [Function Name]
 # Description:
-# - [Detailed description 1]
-# - [Detailed description 2]
+# - [Detailed description]
 # Parameters:
 # - [parameter_name]: [Parameter description and type]
+# ...
 # Returns:
-# - [Description of return value based on condition 1]
-# - [Description of return value based on condition 2]
+# - [Description of return value based on condition]
+# ...
+```
+
+#### Complex Process (logic with 3+ steps)
+```python
+# [Step 1]: [One-line explanation of this step]
+# [Step 2]: [One-line explanation of next step]
+# ...
+```
+
+#### Inline Comment
+```python
+[complex code]  # [Explanation of its role and the intent behind it]
+```
+
+### 📝 Korean Comment Template
+
+#### 파일명
+```python
+# 파일명: [파일명]
+# 역할: [역할]
+```
+
+#### 클래스
+```python
+# 클래스명: [클래스명]
+# 역할: [역할]
+# 주요 책임:
+#   - 책임 1: [설명]
+#   ...
+# 비고(선택): [비고]
+class [클래스이름]:
+```
+
+#### 함수/메서드
+```python
+# 함수이름: [함수명]
+# 함수역할:
+# - [역할 상세 설명]
+# 매개변수:
+# - [변수명]: [변수 설명 및 타입]
+# ...
+# 반환값:
+# - [반환 조건에 따른 반환값 설명]
+# ...
+```
+
+#### 복잡한 프로세스 (3단계 이상의 경우)
+```python
+# [1단계]: [이 단계에 대한 간단한 한 줄 설명]
+# [2단계]: [다음 단계에 대한 간단한 한 줄 설명]
+# ...
+```
+
+#### 인라인 주석
+```python
+[복잡한 코드]  # [이 코드의 역할/의도 설명]
 ```
 
 ### 💡 적용 예시 / Applied Examples
@@ -100,6 +162,7 @@ String? normalizeDate(String text) {
   // Implementation...
 }
 ```
+---
 
 ## 4. Commit Message Guidelines
 
