@@ -56,29 +56,31 @@ flowchart TD
         S1(⚙️ Image Preprocessing<br/>OpenCV):::server
         S2(🛡️ PII Masking &<br/>Data Structuring):::server
         S3(🧠 Routing &<br/>Business Logic):::server
+        CACHE[(⚡ Redis<br/>In-Memory Cache)]:::db
         DB[(💾 SQLite<br/>Database)]:::db
     end
 
     subgraph External [🤖 AI & External APIs]
-        AI1{{✨ Fine-Tuned<br/>LLM Vision}}:::ai
+        AI1{{✨ Gemini Vision<br/>Target: Fine-Tuned LLM}}:::ai
         PUB{{🏛️ Public Drug<br/>Safety API}}:::ai
-        AI2{{✨ Fine-Tuned<br/>LLM Text}}:::ai
+        AI2{{✨ Gemini Text<br/>Target: Fine-Tuned LLM}}:::ai
     end
 
-    %% Flow 1: Vision Parsing (Current)
+    %% Flow 1: Vision Parsing
     C1 -->|Multipart Image| S1
     S1 -->|Processed Bytes| AI1
     AI1 -->|Raw JSON| S2
     S2 -->|Response DTO| C2
 
-    %% Flow 2: Detail & Save (Planned)
+    %% Flow 2: Detail & Save (Updated with Caching)
     C2 -.->|User Click| C3
     C3 -->|Drug Name| S3
-    S3 -->|Query| PUB
-    PUB -->|Raw Efficacy Data| AI2
-    AI2 -->|Pharmacist Summary| S3
-    S3 -->|ORM Entity| DB
-    S3 -->|Success Response| C4
+    S3 <-->|1. Check Cache Hit/Miss| CACHE
+    S3 -->|2. Cache Miss: Query| PUB
+    PUB -->|3. Raw Efficacy Data| AI2
+    AI2 -->|4. Pharmacist Summary| S3
+    S3 -->|5. ORM Entity| DB
+    S3 -->|6. Success Response| C4
 ```
 
 <details>
@@ -94,34 +96,28 @@ classDiagram
     %% 📱 1. FRONTEND TIER (Flutter Dart Files)
     %% ==========================================
     namespace Frontend_Application {
-        
         class main_dart {
             <<Entry Point : main.dart>>
             +main() void
         }
-        
         class MedBuddyApp {
             <<Widget : main.dart>>
             +build(context) Widget
         }
-
         class HomeScreen {
             <<View : home_screen.dart>>
             +build(context) Widget
             -_buildInfoBadge(label, value) Widget
         }
-
         class PillboxScreen {
             <<View : pillbox_screen.dart>>
             +createState() _PillboxScreenState
         }
-
         class _PillboxScreenState {
             <<State : pillbox_screen.dart>>
             +initState() void
             +build(context) Widget
         }
-
         class MedicationViewModel {
             <<ViewModel : medication_viewmodel.dart>>
             -_apiService : ApiService
@@ -139,7 +135,6 @@ classDiagram
             +fetchPillbox() void
             +removeDrugFromPillbox(id) void
         }
-
         class ApiService {
             <<Service : api_service.dart>>
             +baseUrl : String
@@ -149,7 +144,6 @@ classDiagram
             +deleteMedication(id) bool
             +parsePrescription(ocrText) Map
         }
-        
         class VisionService {
             <<Service : vision_service.dart>>
             -_picker : ImagePicker
@@ -157,13 +151,11 @@ classDiagram
             +captureAndRecognizeText() String
             +dispose() void
         }
-        
         class PrescriptionParser_Dart {
             <<Utility : prescription_parser.dart>>
             +maskPrivacyInfo(text) String
             +extractDosageInfo(text) Map
         }
-
         class DrugInfo_Dart {
             <<Model : drug_info.dart>>
             +itemName : String
@@ -180,13 +172,11 @@ classDiagram
     %% 🚀 2. BACKEND API & CONTROLLER TIER
     %% ==========================================
     namespace Backend_API {
-        
         class FastAPIApp {
             <<Entry Point : main.py>>
             +app : FastAPI
             +include_router() void
         }
-
         class MedicationRouter {
             <<Controller : api/router.py>>
             +identify_medication(request, ocr, drug) MedicationResponse
@@ -202,32 +192,32 @@ classDiagram
     %% 🧠 3. BACKEND BUSINESS LOGIC TIER
     %% ==========================================
     namespace Backend_Services {
-        
         class Settings {
             <<Config : core/config.py>>
             +GEMINI_API_KEY : str
             +PUBLIC_DATA_API_KEY : str
             +BASIC_DRUG_API_BASE_URL : str
             +ADVANCED_DRUG_API_BASE_URL : str
+            +REDIS_URL : str
         }
-
         class OCRService {
             <<Service : services/ocr_service.py>>
+            +client : genai.Client
             +process_text(raw_text) str
             +split_lines(raw_text) List~str~
             +parse_prescription_text(raw_text) dict
             +extract_prescription_data(image_bytes) PrescriptionData
             -_apply_secondary_masking(data) dict
         }
-
         class DrugService {
             <<Service : services/drug_service.py>>
             +api_key : str
             +basic_url : str
             +advanced_url : str
+            +ai_client : genai.Client
+            +redis : redis.Redis
             +fetch_drug_info(drug_name) List~DrugInfo~
         }
-
         class PrescriptionParser_Python {
             <<Utility : utils/prescription_parser.py>>
             +normalize_text(text) str
@@ -242,7 +232,6 @@ classDiagram
     %% 🗄️ 4. BACKEND DATA TIER (DB & Schemas)
     %% ==========================================
     namespace Backend_Data {
-        
         class DatabaseModule {
             <<Config : core/database.py>>
             +engine : Engine
@@ -250,7 +239,6 @@ classDiagram
             +Base : declarative_base
             +get_db() Iterator~Session~
         }
-
         class SavedMedication {
             <<Entity : models/db_models.py>>
             +id : Integer
@@ -260,7 +248,6 @@ classDiagram
             +warning_message : String
             +ai_guide : String
         }
-
         class MedicationSchemas {
             <<DTO : schemas/medication.py>>
             +class MedicationRequest
@@ -268,7 +255,6 @@ classDiagram
             +class SavedMedicationCreate
             +class MedicationResponse
         }
-
         class OCRSchemas {
             <<DTO : schemas/ocr.py>>
             +class MedicationItem
@@ -277,29 +263,21 @@ classDiagram
     }
 
     %% ==========================================
-    %% 🔗 RELATIONSHIPS (관계망 연결)
+    %% 🔗 RELATIONSHIPS
     %% ==========================================
-    
-    %% Frontend Relationships
     main_dart ..> MedBuddyApp : Runs
     MedBuddyApp ..> HomeScreen : Uses
     MedBuddyApp ..> MedicationViewModel : Provides
-    
     PillboxScreen ..> _PillboxScreenState : Creates
     HomeScreen ..> MedicationViewModel : Observes
     _PillboxScreenState ..> MedicationViewModel : Observes
-    
     MedicationViewModel --> ApiService : Uses
     MedicationViewModel o-- DrugInfo_Dart : Aggregation
     ApiService ..> DrugInfo_Dart : Maps Data
-    
     VisionService ..> PrescriptionParser_Dart : Can Use
-    
-    %% Client-Server Connection
     MedicationViewModel ..> FastAPIApp : HTTP Multipart Request
     ApiService ..> FastAPIApp : HTTP Network Protocol
 
-    %% Backend Controller Relationships
     FastAPIApp --> MedicationRouter : Registers
     FastAPIApp ..> DatabaseModule : Creates Tables
     MedicationRouter ..> DatabaseModule : Uses get_db()
@@ -309,9 +287,9 @@ classDiagram
     MedicationRouter ..> MedicationSchemas : Request/Response
     MedicationRouter ..> OCRSchemas : Request/Response
 
-    %% Backend Service Dependencies
     OCRService --> PrescriptionParser_Python : Uses
     OCRService ..> OCRSchemas : Returns
+    OCRService ..> Settings : Reads Config
     DrugService ..> Settings : Reads Config
     DrugService ..> MedicationSchemas : Returns
 ```
@@ -395,8 +373,8 @@ sequenceDiagram
     participant VM as MedicationViewModel
     participant ApiS as ApiService (Dart)
     participant Router as MedicationRouter
-    participant OCR as OCRService
     participant DrugS as DrugService
+    participant Redis as Redis Cache
     participant PubAPI as 공공데이터 API
     participant AI as Gemini Text API
     participant DB as SQLite DB
@@ -416,21 +394,35 @@ sequenceDiagram
     ApiS->>Router: 약품명(extracted_text) 전송
     activate Router
     
-    Router->>OCR: process_text() 노이즈 제거
-    OCR-->>Router: 정제된 검색어(search_keyword) 반환
-    
     Router->>DrugS: fetch_drug_info(search_keyword)
     activate DrugS
-    DrugS->>PubAPI: HTTP GET e약은요 API 호출
-    PubAPI-->>DrugS: XML/JSON 원본 데이터 반환
-    DrugS-->>Router: List<DrugInfo> 반환 (효능, 주의사항 포함)
-    deactivate DrugS
     
-    Router->>AI: model.generate_content_async(식약처 원본 데이터)
-    activate AI
-    Note over Router, AI: "친절한 약사 말투로 1~2줄 요약해줘" 프롬프트 전송
-    AI-->>Router: 친절한 AI 가이드 텍스트(ai_guide) 반환
-    deactivate AI
+    %% Redis 캐시 확인 로직
+    DrugS->>Redis: get("drug_info:{약품명}")
+    activate Redis
+    Redis-->>DrugS: Cache Hit / Miss 반환
+    deactivate Redis
+
+    alt Cache Miss (캐시에 데이터가 없을 경우)
+        DrugS->>PubAPI: HTTP GET e약은요 / 허가정보 API 호출
+        PubAPI-->>DrugS: XML/JSON 원본 데이터 반환
+        
+        DrugS->>AI: model.generate_content_async(식약처 원본 데이터)
+        activate AI
+        Note over DrugS, AI: "친절한 약사 말투로 1~2줄 요약해줘" 프롬프트 전송
+        AI-->>DrugS: 친절한 AI 가이드 텍스트(ai_guide) 반환
+        deactivate AI
+        
+        DrugS->>Redis: setex(완성된 JSON 데이터, 7일 보관)
+        activate Redis
+        Redis-->>DrugS: 캐시 저장 완료
+        deactivate Redis
+    else Cache Hit (캐시에 데이터가 있을 경우)
+        Note over DrugS, Redis: 즉시 데이터 반환 (PubAPI 및 AI 호출 전면 생략)
+    end
+    
+    DrugS-->>Router: List<DrugInfo> 반환 (ai_guide 포함)
+    deactivate DrugS
     
     Router-->>ApiS: MedicationResponse JSON 반환
     deactivate Router
