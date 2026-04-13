@@ -27,12 +27,14 @@ To ensure smooth collaboration, please make sure to read and follow the contribu
 Since MedBuddy is a full-stack project, we follow different naming conventions depending on the language.
 
 ### 🐍 Backend (Python / FastAPI)
+* **File Names:** `snake_case` (e.g., `db_models.py`, `medication.py`)
 * **Class Names:** `PascalCase` (e.g., `OCRService`, `DrugModel`)
 * **Function & Variable Names:** `snake_case` (e.g., `process_text`, `search_keyword`)
 * **Constants:** `UPPER_SNAKE_CASE` (e.g., `GEMINI_API_KEY`)
 * **Type Hinting:** Type hinting is strictly required for all function parameters and return values.
 
 ### 🦋 Frontend (Dart / Flutter)
+* **File Names:** `snake_case` (e.g., `drug_info.dart`, `api_service.dart`)
 * **Class Names:** `PascalCase` (e.g., `MedicationViewModel`, `DrugInfo`)
 * **Function & Variable Names:** `camelCase` (e.g., `identifyMedication`, `saveDrugToPillbox`)
 * **Private Members:** Start with an underscore (`_`) if used only within a file or class. (e.g., `_isLoading`, `_setLoading()`)
