@@ -61,6 +61,8 @@ We support both Korean and English documentation for our global collaborators. P
 # Responsibilities:
 #   - Responsibility 1: [Description]
 #   ...
+# Attributes:
+#   - attribute_name : [Attribute description and type]
 # Note (Optional): [Remarks]
 class [ClassName]:
 ```
@@ -105,6 +107,8 @@ class [ClassName]:
 # 주요 책임:
 #   - 책임 1: [설명]
 #   ...
+# 속성 :
+#   - 속성이름 : [속성 설명 및 타입]
 # 비고(선택): [비고]
 class [클래스이름]:
 ```
