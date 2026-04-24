@@ -1,23 +1,23 @@
 [![CodeQL](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql) [![FastAPI](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/backend-ci.yml?label=FastAPI&logo=fastapi)](https://github.com/1window2/MedBuddy/actions/workflows/backend-ci.yml) [![Flutter](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/frontend-ci.yml?label=Flutter&logo=flutter)](https://github.com/1window2/MedBuddy/actions/workflows/frontend-ci.yml)
 
-# 💊 MedBuddy
+# MedBuddy
 > **AI-Powered Medication Management System** <br/>
 > An intelligent platform that digitizes prescriptions via OCR and fine-tuned LLMs, providing a personalized AI pharmacist for safe medication management.
 <br/>
 
-## 🌟 Key Features
+## Key Features
 
-* **📸 AI Vision Prescription Parsing**
+* **AI Vision Prescription Parsing**
   * Simply snap a photo of a prescription or pill envelope. Our AI instantly extracts structured data (hospital name, prescription date, medication names, and dosage).
   * Automatically masks Personally Identifiable Information (PII) to ensure data privacy.
-* **👩‍⚕️ Personalized AI Pharmacist**
+* **Personalized AI Pharmacist**
   * Leverages public health data to translate complex medical jargon into friendly, easy-to-understand instructions.
-* **🗂️ Smart Pillbox Management**
+* **Smart Pillbox Management**
   * Easily track and manage your current medications, their efficacy, and important precautions in one place.
 
 <br/>
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Frontend
 ![Flutter](https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white)
@@ -35,7 +35,7 @@
 
 <br/>
 
-## ⚙️ System Architecture
+## System Architecture
 
 ```mermaid
 flowchart TD
@@ -45,25 +45,25 @@ flowchart TD
     classDef ai fill:#8E75B2,stroke:#fff,stroke-width:2px,color:#fff,rx:8px,ry:8px
     classDef db fill:#07405e,stroke:#fff,stroke-width:2px,color:#fff,rx:8px,ry:8px
 
-    subgraph Frontend [📱 Client Tier - Flutter]
-        C1(📸 Capture<br/>Prescription):::client
-        C2(🖥️ Structured<br/>UI Display):::client
-        C3(🔍 Request<br/>Detail & Save):::client
-        C4(🗂️ Update<br/>Pillbox UI):::client
+    subgraph Frontend [Client Tier - Flutter]
+        C1(Capture<br/>Prescription):::client
+        C2(Structured<br/>UI Display):::client
+        C3(Request<br/>Detail & Save):::client
+        C4(Update<br/>Pillbox UI):::client
     end
 
-    subgraph Backend [🚀 Server Tier - FastAPI]
-        S1(⚙️ Image Preprocessing<br/>OpenCV):::server
-        S2(🛡️ PII Masking &<br/>Data Structuring):::server
-        S3(🧠 Routing &<br/>Business Logic):::server
-        CACHE[(⚡ Redis<br/>In-Memory Cache)]:::db
-        DB[(💾 SQLite<br/>Database)]:::db
+    subgraph Backend [Server Tier - FastAPI]
+        S1(Image Preprocessing<br/>OpenCV):::server
+        S2(PII Masking &<br/>Data Structuring):::server
+        S3(Routing &<br/>Business Logic):::server
+        CACHE[(Redis<br/>In-Memory Cache)]:::db
+        DB[(SQLite<br/>Database)]:::db
     end
 
-    subgraph External [🤖 AI & External APIs]
-        AI1{{✨ Gemini Vision<br/>Target: Fine-Tuned LLM}}:::ai
-        PUB{{🏛️ Public Drug<br/>Safety API}}:::ai
-        AI2{{✨ Gemini Text<br/>Target: Fine-Tuned LLM}}:::ai
+    subgraph External [AI & External APIs]
+        AI1{{Gemini Vision<br/>Target: Fine-Tuned LLM}}:::ai
+        PUB{{Public Drug<br/>Safety API}}:::ai
+        AI2{{Gemini Text<br/>Target: Fine-Tuned LLM}}:::ai
     end
 
     %% Flow 1: Vision Parsing
@@ -84,7 +84,7 @@ flowchart TD
 ```
 
 <details>
-<summary><b>📊Class Diagram</b></summary>
+<summary><b>Class Diagram</b></summary>
 
 ## Class Diagram
 ```mermaid
@@ -93,7 +93,7 @@ classDiagram
     skinparam classAttributeIconSize 0
 
     %% ==========================================
-    %% 📱 1. FRONTEND TIER (Flutter Dart Files)
+    %% 1. FRONTEND TIER (Flutter Dart Files)
     %% ==========================================
     namespace Frontend_Application {
         class main_dart {
@@ -169,7 +169,7 @@ classDiagram
     }
 
     %% ==========================================
-    %% 🚀 2. BACKEND API & CONTROLLER TIER
+    %% 2. BACKEND API & CONTROLLER TIER
     %% ==========================================
     namespace Backend_API {
         class FastAPIApp {
@@ -189,7 +189,7 @@ classDiagram
     }
 
     %% ==========================================
-    %% 🧠 3. BACKEND BUSINESS LOGIC TIER
+    %% 3. BACKEND BUSINESS LOGIC TIER
     %% ==========================================
     namespace Backend_Services {
         class Settings {
@@ -229,7 +229,7 @@ classDiagram
     }
 
     %% ==========================================
-    %% 🗄️ 4. BACKEND DATA TIER (DB & Schemas)
+    %% 4. BACKEND DATA TIER (DB & Schemas)
     %% ==========================================
     namespace Backend_Data {
         class DatabaseModule {
@@ -263,7 +263,7 @@ classDiagram
     }
 
     %% ==========================================
-    %% 🔗 RELATIONSHIPS
+    %% RELATIONSHIPS
     %% ==========================================
     main_dart ..> MedBuddyApp : Runs
     MedBuddyApp ..> HomeScreen : Uses
@@ -296,7 +296,7 @@ classDiagram
 </details>
 
 <details>
-<summary><b>📊Sequence Diagram</b></summary>
+<summary><b>Sequence Diagram</b></summary>
 
 ## Phase 1. AI Vision Parsing & Secure Data Extraction
 ```mermaid
@@ -454,7 +454,7 @@ sequenceDiagram
 </details>
 <br/>
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Backend Setup
 ```bash
@@ -472,7 +472,7 @@ $ flutter run
 
 <br/>
 
-## 👥 Contributors
+## Contributors
 
 | Profile | Name | Role | GitHub |
 | :---: | :---: | :---: | :---: |
