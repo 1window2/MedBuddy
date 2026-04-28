@@ -15,7 +15,7 @@ redis>=5.0.0
 
 # 4. Environment & Utils
 python-dotenv==1.2.2
-python-multipart==0.0.24
+python-multipart==0.0.27
 
 # 5. Data & AI Utilities
 numpy==2.4.4   
