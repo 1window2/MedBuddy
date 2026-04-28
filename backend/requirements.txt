@@ -11,7 +11,7 @@ httpx==0.28.1
 
 # 3. Database
 SQLAlchemy==2.0.49
-redis>=5.0.0
+redis>=7.4.0
 
 # 4. Environment & Utils
 python-dotenv==1.2.2
