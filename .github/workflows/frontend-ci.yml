@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Source Code Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Java Setup (for Flutter)
       uses: actions/setup-java@v4
