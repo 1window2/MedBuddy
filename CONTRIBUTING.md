@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the MedBuddy project!
 We welcome all contributions and believe that your participation will make this project even better. 
 To ensure smooth collaboration, please make sure to read and follow the contribution guidelines below.
 
-## 📌 Table of Contents
+## Table of Contents
 1. [How to Contribute](#1-how-to-contribute)
 2. [Coding Conventions](#2-coding-conventions)
 3. [Documentation Standards](#3-documentation-standards)
@@ -26,14 +26,14 @@ To ensure smooth collaboration, please make sure to read and follow the contribu
 
 Since MedBuddy is a full-stack project, we follow different naming conventions depending on the language.
 
-### 🐍 Backend (Python / FastAPI)
+### Backend (Python / FastAPI)
 * **File Names:** `snake_case` (e.g., `db_models.py`, `medication.py`)
 * **Class Names:** `PascalCase` (e.g., `OCRService`, `DrugModel`)
 * **Function & Variable Names:** `snake_case` (e.g., `process_text`, `search_keyword`)
 * **Constants:** `UPPER_SNAKE_CASE` (e.g., `GEMINI_API_KEY`)
 * **Type Hinting:** Type hinting is strictly required for all function parameters and return values.
 
-### 🦋 Frontend (Dart / Flutter)
+### Frontend (Dart / Flutter)
 * **File Names:** `snake_case` (e.g., `drug_info.dart`, `api_service.dart`)
 * **Class Names:** `PascalCase` (e.g., `MedicationViewModel`, `DrugInfo`)
 * **Function & Variable Names:** `camelCase` (e.g., `identifyMedication`, `saveDrugToPillbox`)
@@ -46,7 +46,7 @@ Since MedBuddy is a full-stack project, we follow different naming conventions d
 This is the most important rule of our project. All major functions and methods must have a block comment at the top following the specified format. 
 We support both Korean and English documentation for our global collaborators. Please use the language you are most comfortable with.
 
-### 📝 English Comment Template
+### English Comment Template
 
 #### File Name
 ```python
@@ -92,7 +92,7 @@ class [ClassName]:
 [complex code]  # [Explanation of its role and the intent behind it]
 ```
 
-### 📝 Korean Comment Template
+### Korean Comment Template
 
 #### 파일명
 ```python
@@ -138,7 +138,7 @@ class [클래스이름]:
 [복잡한 코드]  # [이 코드의 역할/의도 설명]
 ```
 
-### 💡 적용 예시 / Applied Examples
+### 적용 예시 / Applied Examples
 **[Python - Korean]**
 ```python
 # 함수이름: normalize_date
