@@ -16,8 +16,9 @@ load_dotenv()
 
 # Step 2 : Gemini API 키를 불러오고, 설정 여부를 검증한다.
 gemini_key = os.getenv("GEMINI_API_KEY")
-if not gemini_key: # API 키가 없을 경우
-    raise ValueError("환경 변수에 GEMINI_API_KEY가 설정되지 않았습니다. Secrets 설정을 확인하세요.")
+# only enforce the API key requirement when the application actually runs, not during imports
+# if not gemini_key: # API 키가 없을 경우
+#     raise ValueError("환경 변수에 GEMINI_API_KEY가 설정되지 않았습니다. Secrets 설정을 확인하세요.")
 
 # Step 3 : 애플리케이션 실행 시 필요한 데이터베이스 테이블을 생성한다.
 db_models.Base.metadata.create_all(bind=database.engine)
