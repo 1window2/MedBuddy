@@ -31,7 +31,18 @@
 ### AI & API
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
-![Public Data](https://img.shields.io/badge/식약처_공공데이터-009900?style=for-the-badge)
+![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
+![Public Data](https://img.shields.io/badge/식약처_공공DB-009900?style=for-the-badge)
+
+### Collaboration
+![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)
+![Figma](https://img.shields.io/badge/figma-%23F24E1E.svg?style=for-the-badge&logo=figma&logoColor=white)
+
+<br/>
+
+## UI / UX Design
+
+### [Figma](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy)
 
 <br/>
 
