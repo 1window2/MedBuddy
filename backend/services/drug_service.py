@@ -136,7 +136,7 @@ class DrugService:
                 try:
                     # 비동기 AI 호출
                     ai_response = await self.ai_client.aio.models.generate_content(
-                        model='gemini-3.1-flash-lite-preview',
+                        model='gemini-3.1-flash-lite',
                         contents=prompt,
                         config={'response_mime_type': 'application/json'} 
                     )
@@ -178,7 +178,7 @@ class DrugService:
                     """
                     try:
                         ai_response = await self.ai_client.aio.models.generate_content(
-                            model='gemini-3.1-flash-lite-preview',
+                            model='gemini-3.1-flash-lite',
                             contents=prompt
                         )
                         drug.ai_guide = ai_response.text

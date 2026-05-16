@@ -18,7 +18,7 @@ class OCRService:
             api_key=settings.GEMINI_API_KEY,
             http_options={'api_version': 'v1alpha'}
         )
-        self.model_name = 'gemini-3.1-flash-lite-preview'
+        self.model_name = 'gemini-3.1-flash-lite'
 
     def process_text(self, raw_text: str) -> str:
         """
