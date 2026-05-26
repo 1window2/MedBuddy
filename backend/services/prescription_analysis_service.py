@@ -68,6 +68,52 @@ class PrescriptionPrivacyMasker:
 #   - client: Gemini client.
 #   - model_name: Gemini model name.
 class GeminiPrescriptionVisionClient:
+    _PRESCRIPTION_RESPONSE_SCHEMA = {
+        "type": "OBJECT",
+        "required": ["hospital_name", "prescription_date", "medications"],
+        "properties": {
+            "hospital_name": {
+                "type": "STRING",
+                "description": "Hospital or pharmacy name. Use '알 수 없음' when unavailable.",
+            },
+            "prescription_date": {
+                "type": "STRING",
+                "description": "Prescription date in YYYY-MM-DD format. Use '알 수 없음' when unavailable.",
+            },
+            "medications": {
+                "type": "ARRAY",
+                "description": "Extracted medication list.",
+                "items": {
+                    "type": "OBJECT",
+                    "required": [
+                        "drug_name",
+                        "dosage_per_time",
+                        "daily_frequency",
+                        "total_days",
+                    ],
+                    "properties": {
+                        "drug_name": {
+                            "type": "STRING",
+                            "description": "Medication name.",
+                        },
+                        "dosage_per_time": {
+                            "type": "STRING",
+                            "description": "Dose per administration, for example '1정'.",
+                        },
+                        "daily_frequency": {
+                            "type": "STRING",
+                            "description": "Daily frequency, for example '3회'.",
+                        },
+                        "total_days": {
+                            "type": "STRING",
+                            "description": "Total duration, for example '7일'.",
+                        },
+                    },
+                },
+            },
+        },
+    }
+
     def __init__(
         self,
         client: Optional[genai.Client] = None,
@@ -111,7 +157,7 @@ class GeminiPrescriptionVisionClient:
             contents=[prompt, image_part],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=PrescriptionData,
+                response_schema=self._PRESCRIPTION_RESPONSE_SCHEMA,
                 temperature=0.0,
             ),
         )

@@ -154,8 +154,15 @@ async def upload_and_parse_prescription(
 ) -> PrescriptionData:
     try:
         image_bytes = await file.read()
+        logger.info(
+            "Prescription image upload received: filename=%s, content_type=%s, bytes=%d",
+            file.filename,
+            file.content_type,
+            len(image_bytes),
+        )
         return await input_prescription.request_prescription_image(image_bytes)
     except ValueError as exc:
+        logger.warning("Prescription image upload rejected: %s", exc, exc_info=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("이미지 파싱 에러: %s", exc, exc_info=True)

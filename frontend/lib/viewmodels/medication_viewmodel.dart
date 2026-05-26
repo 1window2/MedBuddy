@@ -61,7 +61,16 @@ class MedicationViewModel extends ChangeNotifier {
         _statusMessage = '분석 완료. 처방 내역을 확인해 주세요.';
         developer.log('분석 성공: ${data['hospital_name']}', name: 'MedicationViewModel');
       } else {
-        _statusMessage = '분석 실패 (에러코드: ${response.statusCode})';
+        String detail = decodedBody;
+        try {
+          final dynamic errorBody = json.decode(decodedBody);
+          if (errorBody is Map<String, dynamic> && errorBody['detail'] != null) {
+            detail = errorBody['detail'].toString();
+          }
+        } catch (_) {
+          detail = decodedBody;
+        }
+        _statusMessage = '분석 실패 (${response.statusCode}): $detail';
         developer.log('에러 응답: $decodedBody', name: 'MedicationViewModel');
       }
     } catch (e) {
