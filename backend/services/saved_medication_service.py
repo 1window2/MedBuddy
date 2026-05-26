@@ -52,7 +52,27 @@ class CheckSavedMedication:
         return {
             "success": True,
             "message": "약통 목록 조회 성공",
-            "data": saved_medications,
+            "data": [
+                self._to_response_dict(medication)
+                for medication in saved_medications
+            ],
+        }
+
+    # Function Name: _to_response_dict
+    # Description:
+    # - Converts a SavedMedication ORM entity into a JSON-serializable API DTO.
+    # Parameters:
+    # - medication: SavedMedication entity from persistence layer.
+    # Returns:
+    # - JSON-compatible saved medication dictionary.
+    def _to_response_dict(self, medication: SavedMedication) -> dict[str, object]:
+        return {
+            "id": medication.id,
+            "item_name": medication.item_name,
+            "efficacy": medication.efficacy,
+            "use_method": medication.use_method,
+            "warning_message": medication.warning_message,
+            "ai_guide": medication.ai_guide,
         }
 
     # Function Name: request_delete
