@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/drug_info.dart';
 import '../viewmodels/medication_viewmodel.dart';
 
 class PillboxScreen extends StatefulWidget {
-  const PillboxScreen({super.key}); // 파란줄(Lint) 해결
+  const PillboxScreen({super.key});
 
   @override
-  State<PillboxScreen> createState() => _PillboxScreenState(); // 파란줄 해결
+  State<PillboxScreen> createState() => _PillboxScreenState();
 }
 
 class _PillboxScreenState extends State<PillboxScreen> {
+  static const Color _primary = Color(0xFF009966);
+  static const Color _primaryDark = Color(0xFF007A55);
+  static const Color _mint = Color(0xFFD0FAE5);
+  static const Color _textStrong = Color(0xFF101828);
+  static const Color _textMuted = Color(0xFF4A5565);
+
   @override
   void initState() {
     super.initState();
-    // backend에서 pillbox fetch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<MedicationViewModel>(context, listen: false).fetchPillbox();
     });
@@ -25,120 +31,151 @@ class _PillboxScreenState extends State<PillboxScreen> {
     final savedDrugs = viewModel.savedDrugs;
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: Text('내 약통 💊', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blue[50],
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: savedDrugs.isEmpty
-          ? _buildEmptyState() // if pillbox empty
-          : ListView.builder(
-              padding: EdgeInsets.all(16),
-              itemCount: savedDrugs.length,
-              itemBuilder: (context, index) {
-                final drug = savedDrugs[index];
-                return _buildDrugCard(context, viewModel, drug);
-              },
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            _buildHeader(context),
+            if (savedDrugs.isNotEmpty) _buildSummary(savedDrugs.length),
+            Expanded(
+              child: savedDrugs.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(40, 24, 40, 32),
+                      itemCount: savedDrugs.length,
+                      itemBuilder: (context, index) {
+                        final drug = savedDrugs[index];
+                        return _buildDrugCard(context, viewModel, drug);
+                      },
+                    ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
-  // 1. Initial State, Empty State
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      height: 94,
+      width: double.infinity,
+      color: _primary,
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
+      child: Row(
         children: [
-          Icon(Icons.medication_liquid, size: 80, color: Colors.grey[300]),
-          SizedBox(height: 16),
-          Text(
-            '약통이 비어있어요!',
-            style: TextStyle(fontSize: 18, color: Colors.grey[600], fontWeight: FontWeight.bold),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
           ),
-          SizedBox(height: 8),
-          Text(
-            '홈 화면에서 처방전을 분석하고\n나만의 약통에 저장해 보세요.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[500]),
+          const Expanded(
+            child: Text(
+              '저장된 복약 정보',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummary(int count) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.08),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: _mint,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check, color: _primary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '저장 완료',
+                  style: TextStyle(
+                    color: _primaryDark,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '$count개의 복약 정보를 보관 중입니다',
+                  style: const TextStyle(color: _textMuted, fontSize: 14),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  // 2. Saved Medication UI (+ AI 가이드 박스)
-  Widget _buildDrugCard(BuildContext context, MedicationViewModel viewModel, dynamic drug) {
-    return Card(
-      elevation: 2,
-      margin: EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // [상단] 약 이름 / 삭제 버튼
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.blue[100], shape: BoxShape.circle),
-                  child: Icon(Icons.medication, color: Colors.blue[800], size: 24),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    drug.itemName,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.delete_outline, color: Colors.red[300]),
-                  onPressed: () {
-                    if (drug.id != null) {
-                      viewModel.removeDrugFromPillbox(drug.id!);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${drug.itemName}이(가) 삭제되었습니다.'), duration: Duration(seconds: 1)),
-                      );
-                    }
-                  },
-                ),
-              ],
+  Widget _buildEmptyState() {
+    return Center(
+      child: Container(
+        width: 328,
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 42),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _mint, width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.10),
+              blurRadius: 12,
+              offset: Offset(0, 6),
             ),
-            Divider(height: 24, color: Colors.grey[200]),
-
-            // [중단] 공공DB 기반 기본 정보
-            _buildInfoRow('효능', drug.efficacy),
-            SizedBox(height: 8),
-            _buildInfoRow('용법', drug.useMethod),
-            SizedBox(height: 16),
-
-            // [하단] AI 가이드
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green[200]!),
+          ],
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.medication_outlined, size: 54, color: _primary),
+            SizedBox(height: 18),
+            Text(
+              '저장된 약이 없습니다',
+              style: TextStyle(
+                color: _textStrong,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.health_and_safety, color: Colors.green[700], size: 20),
-                      SizedBox(width: 8),
-                      Text('AI 친절한 약사 가이드', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800])),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    drug.aiGuide ?? 'AI 요약 정보가 없습니다.',
-                    style: TextStyle(fontSize: 14, height: 1.5, color: Colors.black87),
-                  ),
-                ],
+            ),
+            SizedBox(height: 8),
+            Text(
+              '홈 화면에서 처방전을 분석하고\n약통에 저장해 보세요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF99A1AF),
+                fontSize: 14,
+                height: 1.45,
               ),
             ),
           ],
@@ -147,23 +184,196 @@ class _PillboxScreenState extends State<PillboxScreen> {
     );
   }
 
-  // 3. 헬퍼 Widget
-  Widget _buildInfoRow(String label, String content) {
+  Widget _buildDrugCard(
+    BuildContext context,
+    MedicationViewModel viewModel,
+    DrugInfo drug,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.12),
+            blurRadius: 14,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+            decoration: const BoxDecoration(
+              color: Color(0xFFECFDF5),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+              border: Border(
+                bottom: BorderSide(color: _mint, width: 2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.medication_outlined,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    drug.itemName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textStrong,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: _primary),
+                  onPressed: () {
+                    if (drug.id != null) {
+                      viewModel.removeDrugFromPillbox(drug.id!);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${drug.itemName}이(가) 삭제되었습니다.'),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              children: [
+                _buildInfoBlock(
+                  icon: Icons.info_outline,
+                  label: '효능',
+                  content: drug.efficacy,
+                ),
+                const SizedBox(height: 14),
+                _buildInfoBlock(
+                  icon: Icons.schedule_outlined,
+                  label: '복용 방법',
+                  content: drug.useMethod,
+                ),
+                const SizedBox(height: 14),
+                _buildInfoBlock(
+                  icon: Icons.warning_amber_outlined,
+                  label: '주의사항',
+                  content: drug.warningMessage,
+                ),
+                const SizedBox(height: 16),
+                _buildAiGuide(drug.aiGuide),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoBlock({
+    required IconData icon,
+    required String label,
+    required String content,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 40,
-          child: Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
-        ),
-        SizedBox(width: 8),
+        Icon(icon, color: _primary, size: 21),
+        const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            content.length > 50 ? '${content.substring(0, 50)}...' : content, // 원본이 너무 길면 후략
-            style: TextStyle(color: Colors.black87),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _textMuted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                _shorten(content),
+                style: const TextStyle(
+                  color: _textStrong,
+                  fontSize: 15,
+                  height: 1.45,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildAiGuide(String? aiGuide) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDBEAFE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.health_and_safety_outlined, color: Color(0xFF1C398E), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'AI 복약 가이드',
+                style: TextStyle(
+                  color: Color(0xFF1C398E),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _shorten(aiGuide ?? 'AI 요약 정보가 없습니다.', maxLength: 90),
+            style: const TextStyle(
+              color: Color(0xFF1C398E),
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shorten(String content, {int maxLength = 72}) {
+    final text = content.trim().isEmpty ? '정보 없음' : content.trim();
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return '${text.substring(0, maxLength)}...';
   }
 }
