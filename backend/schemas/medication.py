@@ -1,22 +1,45 @@
-#데이터 입출력 모델 (Pydantic)
+# File Name: medication.py
+# Role: Defines medication request and response DTOs.
 
-from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 
-# 클라이언트에서 백엔드로 보내는 요청
+from pydantic import BaseModel, Field
+
+
+# Class Name: MedicationRequest
+# Role: Request DTO for medication lookup.
+# Attributes:
+#   - extracted_text: Raw medication text extracted by the frontend or analysis flow.
 class MedicationRequest(BaseModel):
-    extracted_text: Optional[str] = None  # 앱의 ML Kit가 추출한 텍스트
+    extracted_text: Optional[str] = None
 
-# API가 반환할 개별 약 정보 구조
-class DrugInfo(BaseModel):
-    item_name: str         # 제품명
-    efficacy: str          # 효능
-    use_method: str        # 사용법
-    warning_message: str   # 주의사항
-    source: str = "e약은요" # 어떤 API에서 가져왔는지 명시
-    ai_guide: Optional[str] = None  # AI가 생성한 복용안내
 
-# 앱에서 '내 약통에 담기'를 눌렀을 때 백엔드로 보낼 데이터 구조
+# Class Name: MedicationDetail
+# Role: API DTO for public medication information.
+# Attributes:
+#   - item_name: Public medication item name.
+#   - efficacy: Medication efficacy summary.
+#   - use_method: Medication use method summary.
+#   - warning_message: Medication warning summary.
+#   - source: Data source label.
+#   - ai_guide: Optional AI-generated patient guide.
+class MedicationDetail(BaseModel):
+    item_name: str
+    efficacy: str
+    use_method: str
+    warning_message: str
+    source: str = "e약은요"
+    ai_guide: Optional[str] = None
+
+
+# Class Name: SavedMedicationCreate
+# Role: Request DTO for saving a medication snapshot.
+# Attributes:
+#   - item_name: Medication item name.
+#   - efficacy: Medication efficacy summary.
+#   - use_method: Medication use method summary.
+#   - warning_message: Medication warning summary.
+#   - ai_guide: Optional AI-generated patient guide.
 class SavedMedicationCreate(BaseModel):
     item_name: str
     efficacy: str
@@ -24,8 +47,14 @@ class SavedMedicationCreate(BaseModel):
     warning_message: str
     ai_guide: Optional[str] = None
 
-# 최종 응답 모델
+
+# Class Name: MedicationResponse
+# Role: Response DTO for medication lookup results.
+# Attributes:
+#   - success: Whether lookup found data.
+#   - message: User-facing result message.
+#   - data: MedicationDetail result list.
 class MedicationResponse(BaseModel):
     success: bool
     message: str
-    data: List[DrugInfo] = []
+    data: list[MedicationDetail] = Field(default_factory=list)
