@@ -1,5 +1,7 @@
+from collections.abc import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 # 데이터베이스 파일 이름 설정
 SQLALCHEMY_DATABASE_URL = "sqlite:///./medbuddy.db"
@@ -16,7 +18,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # DB 세션을 가져오고 반환하는 의존성 함수
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
