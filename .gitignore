@@ -1,3 +1,14 @@
 # Environments
 .env
 venv/
+**/venv/
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Local database/runtime state
+*.db
+
+# IDE/local workspace files
+.idea/

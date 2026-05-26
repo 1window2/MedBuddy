@@ -332,8 +332,7 @@ class HomeScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(40, 24, 40, 32),
                 itemCount: viewModel.parsedDrugList.length,
                 itemBuilder: (context, index) {
-                  final drug =
-                      viewModel.parsedDrugList[index] as Map<String, dynamic>;
+                  final drug = viewModel.parsedDrugList[index];
                   return _buildParsedDrugCard(context, viewModel, drug);
                 },
               ),

@@ -1,11 +1,7 @@
-import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'dart:developer' as developer;
+
 import '../models/drug_info.dart';
-import '../services/api_config.dart';
 import '../services/api_service.dart';
 
 class MedicationViewModel extends ChangeNotifier {
@@ -23,59 +19,42 @@ class MedicationViewModel extends ChangeNotifier {
   String _prescriptionDate = '';
   String get prescriptionDate => _prescriptionDate;
 
-  List<dynamic> _parsedDrugList = [];
-  List<dynamic> get parsedDrugList => _parsedDrugList;
+  List<Map<String, dynamic>> _parsedDrugList = [];
+  List<Map<String, dynamic>> get parsedDrugList => _parsedDrugList;
 
   final ImagePicker _picker = ImagePicker();
-  final String _apiUrl = ApiConfig.uploadPrescriptionUrl;
 
   Future<void> processMedicationImage() async {
-    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera);
-    
+    final XFile? pickedFile = await _picker.pickImage(
+      source: ImageSource.camera,
+    );
+
     if (pickedFile == null) {
       _statusMessage = '사진 촬영이 취소되었습니다.';
       notifyListeners();
       return;
     }
 
-    File imageFile = File(pickedFile.path);
-
     _statusMessage = '서버에서 AI가 처방전을 분석 중입니다...';
     _setLoading(true);
 
     try {
-      var request = http.MultipartRequest('POST', Uri.parse(_apiUrl));
-      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+      final data = await _apiService.uploadPrescriptionImage(pickedFile.path);
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-      final String decodedBody = utf8.decode(response.bodyBytes);
+      _hospitalName = _textValue(data['hospital_name'], fallback: '알 수 없음');
+      _prescriptionDate = _textValue(
+        data['prescription_date'],
+        fallback: '알 수 없음',
+      );
+      _parsedDrugList = _toMedicationCandidates(data['medications']);
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(decodedBody);
-
-        _hospitalName = data['hospital_name'] ?? '알 수 없음';
-        _prescriptionDate = data['prescription_date'] ?? '알 수 없음';
-        _parsedDrugList = data['medications'] ?? [];
-
-        _statusMessage = '분석 완료. 처방 내역을 확인해 주세요.';
-        developer.log('분석 성공: ${data['hospital_name']}', name: 'MedicationViewModel');
-      } else {
-        String detail = decodedBody;
-        try {
-          final dynamic errorBody = json.decode(decodedBody);
-          if (errorBody is Map<String, dynamic> && errorBody['detail'] != null) {
-            detail = errorBody['detail'].toString();
-          }
-        } catch (_) {
-          detail = decodedBody;
-        }
-        _statusMessage = '분석 실패 (${response.statusCode}): $detail';
-        developer.log('에러 응답: $decodedBody', name: 'MedicationViewModel');
-      }
-    } catch (e) {
+      _statusMessage = _parsedDrugList.isEmpty
+          ? '분석은 완료됐지만 약품 정보를 찾지 못했습니다.'
+          : '분석 완료. 처방 내역을 확인해 주세요.';
+    } on ApiException catch (e) {
+      _statusMessage = e.message;
+    } catch (_) {
       _statusMessage = '서버 연결에 실패했습니다.';
-      developer.log('네트워크 에러: $e', name: 'MedicationViewModel');
     } finally {
       _setLoading(false);
     }
@@ -94,10 +73,10 @@ class MedicationViewModel extends ChangeNotifier {
     notifyListeners();
 
     bool success = await _apiService.saveMedication(drug);
-    
+
     if (success) {
       _statusMessage = '약통에 성공적으로 저장되었습니다.';
-      await fetchPillbox();   
+      await fetchPillbox();
     } else {
       _statusMessage = '저장에 실패했습니다. 다시 시도해주세요.';
     }
@@ -120,10 +99,15 @@ class MedicationViewModel extends ChangeNotifier {
   }
 
   Future<bool> analyzeAndSave(Map<String, dynamic> rawDrug) async {
-    String drugName = rawDrug['drug_name'];
-    
+    final drugName = _textValue(rawDrug['drug_name']).trim();
+    if (drugName.isEmpty) {
+      _statusMessage = '분석할 약품명이 없습니다.';
+      notifyListeners();
+      return false;
+    }
+
     _statusMessage = '$drugName 정보를 공공 API와 AI가 분석 중입니다...';
-    _setLoading(true); 
+    _setLoading(true);
 
     try {
       List<DrugInfo> results = await _apiService.identifyMedication(drugName);
@@ -142,6 +126,26 @@ class MedicationViewModel extends ChangeNotifier {
       return false;
     } finally {
       _setLoading(false);
-    } 
+    }
+  }
+
+  List<Map<String, dynamic>> _toMedicationCandidates(dynamic rawItems) {
+    if (rawItems is! List) {
+      return [];
+    }
+
+    return rawItems
+        .whereType<Map>()
+        .map(
+          (item) => item.map(
+            (key, value) => MapEntry(key.toString(), value),
+          ),
+        )
+        .toList();
+  }
+
+  String _textValue(dynamic value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
   }
 }
