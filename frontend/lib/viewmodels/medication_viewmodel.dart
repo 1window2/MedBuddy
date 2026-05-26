@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
 import '../models/drug_info.dart';
+import '../services/api_config.dart';
 import '../services/api_service.dart';
 
 class MedicationViewModel extends ChangeNotifier {
@@ -26,7 +27,7 @@ class MedicationViewModel extends ChangeNotifier {
   List<dynamic> get parsedDrugList => _parsedDrugList;
 
   final ImagePicker _picker = ImagePicker();
-  final String _apiUrl = 'http://127.0.0.1:8000/api/v1/medication/upload-prescription';
+  final String _apiUrl = ApiConfig.uploadPrescriptionUrl;
 
   Future<void> processMedicationImage() async {
     final XFile? pickedFile = await _picker.pickImage(source: ImageSource.camera);

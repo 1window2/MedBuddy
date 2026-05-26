@@ -173,8 +173,8 @@ class HomeScreen extends StatelessWidget {
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          height: filled ? 176 : 182,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+          constraints: BoxConstraints(minHeight: filled ? 176 : 182),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.4),
             border: filled ? null : Border.all(color: _mint, width: 2.7),
@@ -182,23 +182,28 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: foreground, size: 44),
-              const SizedBox(height: 18),
+              Icon(icon, color: foreground, size: 42),
+              const SizedBox(height: 14),
               Text(
                 title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: foreground,
-                  fontSize: 21.6,
+                  fontSize: 21,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: secondary,
-                  fontSize: 14.4,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
