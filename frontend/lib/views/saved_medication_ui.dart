@@ -1,34 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/drug_info.dart';
-import '../viewmodels/medication_viewmodel.dart';
 
-class PillboxScreen extends StatefulWidget {
-  const PillboxScreen({super.key});
+import '../models/saved_medication_info.dart';
+import '../theme/medbuddy_theme.dart';
+import '../viewmodels/medbuddy_view_model.dart';
+
+class SavedMedicationUI extends StatefulWidget {
+  const SavedMedicationUI({super.key});
 
   @override
-  State<PillboxScreen> createState() => _PillboxScreenState();
+  State<SavedMedicationUI> createState() => _SavedMedicationUIState();
 }
 
-class _PillboxScreenState extends State<PillboxScreen> {
-  static const Color _primary = Color(0xFF009966);
-  static const Color _primaryDark = Color(0xFF007A55);
-  static const Color _mint = Color(0xFFD0FAE5);
-  static const Color _textStrong = Color(0xFF101828);
-  static const Color _textMuted = Color(0xFF4A5565);
-
+class _SavedMedicationUIState extends State<SavedMedicationUI> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<MedicationViewModel>(context, listen: false).fetchPillbox();
+      context.read<MedBuddyViewModel>().fetchSavedMedicationInfo();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = Provider.of<MedicationViewModel>(context);
-    final savedDrugs = viewModel.savedDrugs;
+    final viewModel = context.watch<MedBuddyViewModel>();
+    final savedMedicationInfoList = viewModel.savedMedicationInfoList;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -36,19 +32,12 @@ class _PillboxScreenState extends State<PillboxScreen> {
         top: false,
         child: Column(
           children: [
-            _buildHeader(context),
-            if (savedDrugs.isNotEmpty) _buildSummary(savedDrugs.length),
+            _SavedMedicationHeader(
+                onBackRequested: () => Navigator.pop(context)),
+            if (savedMedicationInfoList.isNotEmpty)
+              _SavedMedicationSummary(count: savedMedicationInfoList.length),
             Expanded(
-              child: savedDrugs.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(40, 24, 40, 32),
-                      itemCount: savedDrugs.length,
-                      itemBuilder: (context, index) {
-                        final drug = savedDrugs[index];
-                        return _buildDrugCard(context, viewModel, drug);
-                      },
-                    ),
+              child: _buildContent(viewModel, savedMedicationInfoList),
             ),
           ],
         ),
@@ -56,16 +45,68 @@ class _PillboxScreenState extends State<PillboxScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildContent(
+    MedBuddyViewModel viewModel,
+    List<SavedMedicationInfo> savedMedicationInfoList,
+  ) {
+    if (viewModel.isSavedMedicationLoading && savedMedicationInfoList.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: MedBuddyColors.primary),
+      );
+    }
+
+    if (savedMedicationInfoList.isEmpty) {
+      return const _SavedMedicationEmptyState();
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(40, 24, 40, 32),
+      itemCount: savedMedicationInfoList.length,
+      itemBuilder: (context, index) {
+        final savedMedicationInfo = savedMedicationInfoList[index];
+        return _SavedMedicationCard(
+          savedMedicationInfo: savedMedicationInfo,
+          onDeleteRequested: () async {
+            final success = await viewModel.requestDeleteSavedMedication(
+              savedMedicationInfo.id!,
+            );
+            if (!context.mounted) {
+              return;
+            }
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  success
+                      ? '${savedMedicationInfo.itemName}이(가) 삭제되었습니다.'
+                      : '삭제에 실패했습니다.',
+                ),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SavedMedicationHeader extends StatelessWidget {
+  final VoidCallback onBackRequested;
+
+  const _SavedMedicationHeader({required this.onBackRequested});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       height: 94,
       width: double.infinity,
-      color: _primary,
+      color: MedBuddyColors.primary,
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: onBackRequested,
             icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
           ),
           const Expanded(
@@ -84,15 +125,22 @@ class _PillboxScreenState extends State<PillboxScreen> {
       ),
     );
   }
+}
 
-  Widget _buildSummary(int count) {
+class _SavedMedicationSummary extends StatelessWidget {
+  final int count;
+
+  const _SavedMedicationSummary({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(22, 20, 22, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: MedBuddyRadii.card,
         border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
         boxShadow: const [
           BoxShadow(
@@ -108,10 +156,14 @@ class _PillboxScreenState extends State<PillboxScreen> {
             width: 38,
             height: 38,
             decoration: const BoxDecoration(
-              color: _mint,
+              color: MedBuddyColors.mint,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check, color: _primary, size: 24),
+            child: const Icon(
+              Icons.check,
+              color: MedBuddyColors.primary,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -121,14 +173,17 @@ class _PillboxScreenState extends State<PillboxScreen> {
                 const Text(
                   '저장 완료',
                   style: TextStyle(
-                    color: _primaryDark,
+                    color: MedBuddyColors.primaryDark,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 Text(
                   '$count개의 복약 정보를 보관 중입니다',
-                  style: const TextStyle(color: _textMuted, fontSize: 14),
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
@@ -137,16 +192,21 @@ class _PillboxScreenState extends State<PillboxScreen> {
       ),
     );
   }
+}
 
-  Widget _buildEmptyState() {
+class _SavedMedicationEmptyState extends StatelessWidget {
+  const _SavedMedicationEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Container(
         width: 328,
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 42),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _mint, width: 2),
+          borderRadius: MedBuddyRadii.largeCard,
+          border: Border.all(color: MedBuddyColors.mint, width: 2),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.10),
@@ -158,12 +218,16 @@ class _PillboxScreenState extends State<PillboxScreen> {
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.medication_outlined, size: 54, color: _primary),
+            Icon(
+              Icons.medication_outlined,
+              size: 54,
+              color: MedBuddyColors.primary,
+            ),
             SizedBox(height: 18),
             Text(
               '저장된 약이 없습니다',
               style: TextStyle(
-                color: _textStrong,
+                color: MedBuddyColors.textStrong,
                 fontSize: 21,
                 fontWeight: FontWeight.w800,
               ),
@@ -173,7 +237,7 @@ class _PillboxScreenState extends State<PillboxScreen> {
               '홈 화면에서 처방전을 분석하고\n약통에 저장해 보세요.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF99A1AF),
+                color: MedBuddyColors.textLight,
                 fontSize: 14,
                 height: 1.45,
               ),
@@ -183,25 +247,26 @@ class _PillboxScreenState extends State<PillboxScreen> {
       ),
     );
   }
+}
 
-  Widget _buildDrugCard(
-    BuildContext context,
-    MedicationViewModel viewModel,
-    DrugInfo drug,
-  ) {
+class _SavedMedicationCard extends StatelessWidget {
+  final SavedMedicationInfo savedMedicationInfo;
+  final Future<void> Function() onDeleteRequested;
+
+  const _SavedMedicationCard({
+    required this.savedMedicationInfo,
+    required this.onDeleteRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: MedBuddyRadii.largeCard,
         border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.12),
-            blurRadius: 14,
-            offset: Offset(0, 8),
-          ),
-        ],
+        boxShadow: MedBuddyShadows.card,
       ),
       child: Column(
         children: [
@@ -212,7 +277,7 @@ class _PillboxScreenState extends State<PillboxScreen> {
               color: Color(0xFFECFDF5),
               borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
               border: Border(
-                bottom: BorderSide(color: _mint, width: 2),
+                bottom: BorderSide(color: MedBuddyColors.mint, width: 2),
               ),
             ),
             child: Row(
@@ -221,7 +286,7 @@ class _PillboxScreenState extends State<PillboxScreen> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: _primary,
+                    color: MedBuddyColors.primary,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
@@ -233,29 +298,22 @@ class _PillboxScreenState extends State<PillboxScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    drug.itemName,
+                    _displayValue(savedMedicationInfo.itemName),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: _textStrong,
+                      color: MedBuddyColors.textStrong,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, color: _primary),
-                  onPressed: () {
-                    if (drug.id != null) {
-                      viewModel.removeDrugFromPillbox(drug.id!);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${drug.itemName}이(가) 삭제되었습니다.'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                    }
-                  },
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: MedBuddyColors.primary,
+                  ),
+                  onPressed: onDeleteRequested,
                 ),
               ],
             ),
@@ -264,25 +322,25 @@ class _PillboxScreenState extends State<PillboxScreen> {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             child: Column(
               children: [
-                _buildInfoBlock(
+                _InfoBlock(
                   icon: Icons.info_outline,
                   label: '효능',
-                  content: drug.efficacy,
+                  content: savedMedicationInfo.efficacy,
                 ),
                 const SizedBox(height: 14),
-                _buildInfoBlock(
+                _InfoBlock(
                   icon: Icons.schedule_outlined,
                   label: '복용 방법',
-                  content: drug.useMethod,
+                  content: savedMedicationInfo.useMethod,
                 ),
                 const SizedBox(height: 14),
-                _buildInfoBlock(
+                _InfoBlock(
                   icon: Icons.warning_amber_outlined,
                   label: '주의사항',
-                  content: drug.warningMessage,
+                  content: savedMedicationInfo.warningMessage,
                 ),
                 const SizedBox(height: 16),
-                _buildAiGuide(drug.aiGuide),
+                _AiGuide(aiGuide: savedMedicationInfo.aiGuide),
               ],
             ),
           ),
@@ -291,15 +349,28 @@ class _PillboxScreenState extends State<PillboxScreen> {
     );
   }
 
-  Widget _buildInfoBlock({
-    required IconData icon,
-    required String label,
-    required String content,
-  }) {
+  String _displayValue(String value) {
+    return value.trim().isEmpty ? '정보 없음' : value.trim();
+  }
+}
+
+class _InfoBlock extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String content;
+
+  const _InfoBlock({
+    required this.icon,
+    required this.label,
+    required this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: _primary, size: 21),
+        Icon(icon, color: MedBuddyColors.primary, size: 21),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -308,7 +379,7 @@ class _PillboxScreenState extends State<PillboxScreen> {
               Text(
                 label,
                 style: const TextStyle(
-                  color: _textMuted,
+                  color: MedBuddyColors.textMuted,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -317,7 +388,7 @@ class _PillboxScreenState extends State<PillboxScreen> {
               Text(
                 _shorten(content),
                 style: const TextStyle(
-                  color: _textStrong,
+                  color: MedBuddyColors.textStrong,
                   fontSize: 15,
                   height: 1.45,
                 ),
@@ -328,14 +399,21 @@ class _PillboxScreenState extends State<PillboxScreen> {
       ],
     );
   }
+}
 
-  Widget _buildAiGuide(String? aiGuide) {
+class _AiGuide extends StatelessWidget {
+  final String aiGuide;
+
+  const _AiGuide({required this.aiGuide});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: MedBuddyRadii.card,
         border: Border.all(color: const Color(0xFFDBEAFE)),
       ),
       child: Column(
@@ -343,12 +421,16 @@ class _PillboxScreenState extends State<PillboxScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.health_and_safety_outlined, color: Color(0xFF1C398E), size: 20),
+              Icon(
+                Icons.health_and_safety_outlined,
+                color: MedBuddyColors.infoBlue,
+                size: 20,
+              ),
               SizedBox(width: 8),
               Text(
                 'AI 복약 가이드',
                 style: TextStyle(
-                  color: Color(0xFF1C398E),
+                  color: MedBuddyColors.infoBlue,
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                 ),
@@ -357,9 +439,9 @@ class _PillboxScreenState extends State<PillboxScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            _shorten(aiGuide ?? 'AI 요약 정보가 없습니다.', maxLength: 90),
+            _shorten(aiGuide, maxLength: 90),
             style: const TextStyle(
-              color: Color(0xFF1C398E),
+              color: MedBuddyColors.infoBlue,
               fontSize: 14,
               height: 1.45,
             ),
@@ -368,12 +450,12 @@ class _PillboxScreenState extends State<PillboxScreen> {
       ),
     );
   }
+}
 
-  String _shorten(String content, {int maxLength = 72}) {
-    final text = content.trim().isEmpty ? '정보 없음' : content.trim();
-    if (text.length <= maxLength) {
-      return text;
-    }
-    return '${text.substring(0, maxLength)}...';
+String _shorten(String content, {int maxLength = 72}) {
+  final text = content.trim().isEmpty ? '정보 없음' : content.trim();
+  if (text.length <= maxLength) {
+    return text;
   }
+  return '${text.substring(0, maxLength)}...';
 }

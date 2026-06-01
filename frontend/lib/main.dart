@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'viewmodels/medication_viewmodel.dart';
+import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
 
 void main() {
@@ -15,7 +15,7 @@ class MedBuddyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => MedicationViewModel()),
+        ChangeNotifierProvider(create: (_) => MedBuddyViewModel()),
       ],
       child: MaterialApp(
         title: 'MedBuddy',
