@@ -12,3 +12,7 @@ __pycache__/
 
 # IDE/local workspace files
 .idea/
+
+# Outputs
+*.apk
+*.aab
