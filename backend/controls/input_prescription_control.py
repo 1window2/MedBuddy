@@ -104,7 +104,9 @@ class InputPrescription:
 
         safe_data = self._apply_secondary_masking(raw_data)
         medication_schedules = [
-            MedicationSchedule(**item).getAnalysisResult().model_dump(by_alias=True)
+            self._to_prescription_medication_payload(
+                MedicationSchedule(**item).getAnalysisResult()
+            )
             for item in safe_data.get("medications", [])
         ]
         return {
@@ -182,3 +184,22 @@ class InputPrescription:
         data_str = json.dumps(data, ensure_ascii=False)
         data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
         return json.loads(data_str)
+
+    # Function Name: _to_prescription_medication_payload
+    # Description:
+    # - Converts a MedicationSchedule entity into the API payload expected by
+    #   the current Flutter analysis-result flow.
+    # Parameters:
+    # - medication_schedule: Validated MedicationSchedule entity.
+    # Returns:
+    # - Dictionary containing only prescription-analysis response fields.
+    def _to_prescription_medication_payload(
+        self,
+        medication_schedule: MedicationSchedule,
+    ) -> dict[str, str]:
+        return {
+            "drug_name": medication_schedule.medication_name,
+            "dosage_per_time": medication_schedule.dosage,
+            "daily_frequency": medication_schedule.intake_time,
+            "total_days": medication_schedule.medication_time,
+        }

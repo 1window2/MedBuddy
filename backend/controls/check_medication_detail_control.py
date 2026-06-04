@@ -17,178 +17,153 @@ from schemas.medication import MedicationResponse
 logger = logging.getLogger(__name__)
 
 
-# Class Name: CheckMedicationDetail
-# Role: Coordinates medication keyword normalization and detail lookup.
+# Class Name: _MedicationTextNormalizer
+# Role: Internal helper for medication search keyword normalization.
 # Responsibilities:
-#   - Validate and normalize user-provided medication text.
-#   - Check Redis cache before public data lookup.
-#   - Query e약은요 first and the drug approval API as fallback.
-#   - Generate patient-facing guidance through Gemini.
-#   - Build the API response DTO.
-# Attributes:
-#   - ai_client: Gemini client used for medication guidance generation.
-#   - redis_client: Async Redis client used as an optional cache.
-#   - model_name: Gemini model name.
-class CheckMedicationDetail:
-    MAX_KEYWORD_LENGTH = 100
-    CACHE_TTL_SECONDS = 604800
+#   - Normalize OCR or UI-provided medication text.
+#   - Strip dosage and dosage-form suffixes from search keywords.
+class _MedicationTextNormalizer:
     _DOSAGE_PATTERN = re.compile(
         r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml)",
         flags=re.IGNORECASE,
     )
 
-    def __init__(
-        self,
-        ai_client: genai.Client | None = None,
-        redis_client: redis.Redis | None = None,
-        model_name: str = "gemini-3.1-flash-lite",
-        timeout_seconds: float = 15.0,
-    ) -> None:
-        self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.redis_client = redis_client or redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-        )
-        self.model_name = model_name
-        self.timeout_seconds = timeout_seconds
-
-    # Function Name: request_medication_detail
-    # Description:
-    # - Normalizes medication text and fetches detailed drug information.
-    # Parameters:
-    # - raw_text: Raw medication text supplied by the frontend.
-    # Returns:
-    # - MedicationResponse with success flag and MedicationDetail list.
-    async def request_medication_detail(self, raw_text: str) -> MedicationResponse:
-        normalized_text = self._normalize_raw_text(raw_text)
-        self._validate_lookup_text(normalized_text)
-
-        search_keyword = self._build_search_keyword(normalized_text)
-        if not search_keyword:
-            raise ValueError("Extracted medication text is empty.")
-
-        medication_details = await self._fetch_drug_info(search_keyword)
-        if not medication_details:
-            return MedicationResponse(
-                success=False,
-                message=f"No medication information found for '{search_keyword}'.",
-                data=[],
-            )
-
-        return MedicationResponse(
-            success=True,
-            message="Medication information lookup succeeded.",
-            data=medication_details,
-        )
-
-    # Function Name: requestMedicationDetail
-    # Description:
-    # - Class diagram compatible wrapper for request_medication_detail.
-    # Parameters:
-    # - raw_text: Raw medication text supplied by the frontend.
-    # Returns:
-    # - MedicationResponse with success flag and MedicationDetail list.
-    async def requestMedicationDetail(self, raw_text: str) -> MedicationResponse:
-        return await self.request_medication_detail(raw_text)
-
-    # Function Name: _validate_lookup_text
-    # Description:
-    # - Validates normalized medication text before dosage suffix stripping.
-    # Parameters:
-    # - text: Normalized medication lookup text.
-    # Returns:
-    # - None.
-    def _validate_lookup_text(self, text: str) -> None:
-        if not text:
-            raise ValueError("Extracted medication text is empty.")
-        if len(text) > self.MAX_KEYWORD_LENGTH:
-            raise ValueError("Medication lookup text is too long.")
-
-    # Function Name: _normalize_raw_text
+    # Function Name: normalize_raw_text
     # Description:
     # - Collapses raw OCR text into a single searchable line.
     # Parameters:
-    # - raw_text: Raw text extracted from prescription or medication candidates.
+    # - raw_text: Raw medication text from the frontend.
     # Returns:
     # - Whitespace-normalized text.
-    def _normalize_raw_text(self, raw_text: str) -> str:
+    def normalize_raw_text(self, raw_text: str) -> str:
         return " ".join(raw_text.replace("\n", " ").split()).strip()
 
-    # Function Name: _build_search_keyword
+    # Function Name: build_search_keyword
     # Description:
     # - Builds the drug search keyword currently expected by public drug data.
     # Parameters:
-    # - raw_text: Raw medication text from frontend.
+    # - raw_text: Normalized or raw medication text.
     # Returns:
     # - Search keyword for public drug APIs.
-    def _build_search_keyword(self, raw_text: str) -> str:
-        normalized_text = self._normalize_raw_text(raw_text)
+    def build_search_keyword(self, raw_text: str) -> str:
+        normalized_text = self.normalize_raw_text(raw_text)
         parts = self._DOSAGE_PATTERN.split(normalized_text)
         keyword = parts[0] if parts else normalized_text
         return keyword.replace("정", "").replace("캡슐", "").strip()
 
-    # Function Name: _fetch_drug_info
-    # Description:
-    # - Fetches enriched drug information for a normalized medication name.
-    # Parameters:
-    # - drug_name: Normalized medication search keyword.
-    # Returns:
-    # - List of MedicationDetail DTOs. Empty list when no public data exists.
-    async def _fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
-        cached_drugs = await self._get_cached_medication_detail(drug_name)
-        if cached_drugs is not None:
-            return cached_drugs
 
-        medication_details = await self._fetch_uncached_drug_info(drug_name)
-        await self._save_cached_medication_detail(drug_name, medication_details)
-        return medication_details
+# Class Name: _MedicationDetailCache
+# Role: Internal Redis cache boundary for medication detail lookup.
+# Responsibilities:
+#   - Read cached MedicationDetail lists.
+#   - Save MedicationDetail lists without failing the main use case on Redis errors.
+# Attributes:
+#   - redis_client: Async Redis client used as optional cache storage.
+class _MedicationDetailCache:
+    CACHE_TTL_SECONDS = 604800
 
-    # Function Name: _fetch_uncached_drug_info
+    def __init__(self, redis_client: redis.Redis | None = None) -> None:
+        self.redis_client = redis_client or redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+        )
+
+    # Function Name: get
     # Description:
-    # - Runs the public API and AI pipeline after cache miss.
+    # - Attempts to load MedicationDetail values from Redis.
+    # - Cache failures are treated as misses to preserve service availability.
     # Parameters:
-    # - drug_name: Normalized medication search keyword.
+    # - drug_name: Search keyword used as cache key suffix.
     # Returns:
-    # - List of MedicationDetail DTOs.
-    async def _fetch_uncached_drug_info(
+    # - Cached MedicationDetail list, or None when missing/unavailable.
+    async def get(self, drug_name: str) -> list[MedicationDetail] | None:
+        try:
+            cached_data = await self.redis_client.get(self._cache_key(drug_name))
+            if not cached_data:
+                return None
+
+            logger.info(
+                "[Redis Cache Hit] '%s' information loaded from cache.",
+                drug_name,
+            )
+            cached_items = json.loads(cached_data)
+            return [
+                MedicationDetail(
+                    **{
+                        **item,
+                        "source": f"[Cache] {item.get('source', '')}",
+                    }
+                )
+                for item in cached_items
+            ]
+        except Exception as exc:
+            logger.warning("Redis lookup failed; proceeding without cache: %s", exc)
+            return None
+
+    # Function Name: set
+    # Description:
+    # - Stores MedicationDetail values in Redis.
+    # - Cache failures are logged but do not fail the use case.
+    # Parameters:
+    # - drug_name: Search keyword used as cache key suffix.
+    # - medication_details: MedicationDetail list to cache.
+    # Returns:
+    # - None.
+    async def set(
         self,
         drug_name: str,
-    ) -> list[MedicationDetail]:
-        basic_items = await self._search_basic_drug_info(drug_name)
-        if basic_items:
-            logger.info(
-                "[Basic API] '%s' search succeeded (%s items)",
-                drug_name,
-                len(basic_items),
+        medication_details: list[MedicationDetail],
+    ) -> None:
+        if not medication_details:
+            return
+
+        try:
+            payload = [
+                detail.model_dump(by_alias=True)
+                for detail in medication_details
+            ]
+            await self.redis_client.setex(
+                self._cache_key(drug_name),
+                self.CACHE_TTL_SECONDS,
+                json.dumps(payload, ensure_ascii=False),
             )
-            return await self._build_basic_drug_infos(basic_items)
+            logger.info("[Redis Cache Saved] '%s' information cached.", drug_name)
+        except Exception as exc:
+            logger.error("Redis save failed: %s", exc)
 
-        logger.info(
-            "[Basic API] no result. Trying Advanced API fallback: '%s'",
-            drug_name,
-        )
-        advanced_items = await self._search_advanced_drug_info(drug_name)
-        if not advanced_items:
-            logger.warning(
-                "[%s] no drug information found in public drug databases.",
-                drug_name,
-            )
-            return []
+    # Function Name: _cache_key
+    # Description:
+    # - Builds the Redis cache key for a medication search keyword.
+    # Parameters:
+    # - drug_name: Search keyword.
+    # Returns:
+    # - Redis key string.
+    def _cache_key(self, drug_name: str) -> str:
+        return f"drug_info:{drug_name}"
 
-        advanced_drug = await self._summarize_advanced_item(
-            drug_name,
-            advanced_items[0],
-        )
-        return [advanced_drug]
 
-    # Function Name: _search_basic_drug_info
+# Class Name: _PublicDrugDataPortal
+# Role: Internal boundary for public medication data APIs.
+# Responsibilities:
+#   - Query e약은요 as the primary public data source.
+#   - Query drug approval information as fallback.
+# Attributes:
+#   - timeout_seconds: HTTP timeout value for public API requests.
+class _PublicDrugDataPortal:
+    def __init__(self, timeout_seconds: float = 15.0) -> None:
+        self.timeout_seconds = timeout_seconds
+
+    # Function Name: search_basic_drug_info
     # Description:
     # - Searches the easy public drug API by item name.
     # Parameters:
     # - drug_name: Search keyword.
     # Returns:
     # - Raw API item list. Empty list on no result or non-200 response.
-    async def _search_basic_drug_info(self, drug_name: str) -> list[dict[str, Any]]:
+    async def search_basic_drug_info(
+        self,
+        drug_name: str,
+    ) -> list[dict[str, Any]]:
         params = {
             "serviceKey": settings.PUBLIC_DATA_API_KEY,
             "itemName": drug_name,
@@ -205,14 +180,14 @@ class CheckMedicationDetail:
         data = response.json()
         return data.get("body", {}).get("items") or []
 
-    # Function Name: _search_advanced_drug_info
+    # Function Name: search_advanced_drug_info
     # Description:
     # - Searches the advanced drug approval API by item name.
     # Parameters:
     # - drug_name: Search keyword.
     # Returns:
     # - Raw API item list.
-    async def _search_advanced_drug_info(
+    async def search_advanced_drug_info(
         self,
         drug_name: str,
     ) -> list[dict[str, Any]]:
@@ -235,41 +210,25 @@ class CheckMedicationDetail:
         data = response.json()
         return data.get("body", {}).get("items") or []
 
-    # Function Name: _build_basic_drug_infos
-    # Description:
-    # - Converts Basic API items into MedicationDetail DTOs and adds AI guide text.
-    # Parameters:
-    # - basic_items: Raw Basic API items.
-    # Returns:
-    # - List of MedicationDetail DTOs.
-    async def _build_basic_drug_infos(
+
+# Class Name: _MedicationGuideGenerator
+# Role: Internal AI boundary for patient-facing medication guide generation.
+# Responsibilities:
+#   - Add plain-language guide text to Basic API results.
+#   - Summarize advanced approval documents into MedicationDetail fields.
+# Attributes:
+#   - ai_client: Gemini client used for medication guidance generation.
+#   - model_name: Gemini model name.
+class _MedicationGuideGenerator:
+    def __init__(
         self,
-        basic_items: list[dict[str, Any]],
-    ) -> list[MedicationDetail]:
-        medication_details = [
-            MedicationDetail(
-                item_name=item.get("itemName", "정보 없음"),
-                efficacy=item.get("efcyQesitm", "정보 없음"),
-                usage_method=item.get("useMethodQesitm", "정보 없음"),
-                warning=item.get("atpnWarnQesitm", "정보 없음"),
-                source="Basic (e약은요)",
-            )
-            for item in basic_items
-        ]
+        ai_client: genai.Client | None = None,
+        model_name: str = "gemini-3.1-flash-lite",
+    ) -> None:
+        self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model_name = model_name
 
-        enriched_details = []
-        for medication_detail in medication_details:
-            logger.info(
-                "[Gemini] generating basic patient guide for '%s'.",
-                medication_detail.item_name,
-            )
-            enriched_details.append(
-                await self._add_basic_guide(medication_detail)
-            )
-
-        return enriched_details
-
-    # Function Name: _add_basic_guide
+    # Function Name: add_basic_guide
     # Description:
     # - Adds an AI guide to a MedicationDetail built from the basic public API.
     # - On Gemini failure, keeps the medication result and inserts a fallback message.
@@ -277,7 +236,7 @@ class CheckMedicationDetail:
     # - medication_detail: MedicationDetail that needs an ai_guide.
     # Returns:
     # - MedicationDetail with ai_guide populated.
-    async def _add_basic_guide(
+    async def add_basic_guide(
         self,
         medication_detail: MedicationDetail,
     ) -> MedicationDetail:
@@ -314,7 +273,7 @@ class CheckMedicationDetail:
                 update={"ai_guide": "AI 요약을 불러오는 중 일시적인 오류가 발생했습니다."}
             )
 
-    # Function Name: _summarize_advanced_item
+    # Function Name: summarize_advanced_item
     # Description:
     # - Converts advanced approval API raw documents into patient-facing MedicationDetail.
     # Parameters:
@@ -322,7 +281,7 @@ class CheckMedicationDetail:
     # - advanced_item: Raw item from the advanced public API.
     # Returns:
     # - MedicationDetail generated from Gemini summary output.
-    async def _summarize_advanced_item(
+    async def summarize_advanced_item(
         self,
         drug_name: str,
         advanced_item: dict[str, Any],
@@ -376,80 +335,175 @@ class CheckMedicationDetail:
             ai_guide=summary_data.get("ai_guide", "요약 실패"),
         )
 
-    # Function Name: _get_cached_medication_detail
-    # Description:
-    # - Attempts to load a MedicationDetail list from Redis.
-    # - Cache failures are treated as misses to preserve service availability.
-    # Parameters:
-    # - drug_name: Search keyword used as cache key suffix.
-    # Returns:
-    # - Cached MedicationDetail list, or None when missing/unavailable.
-    async def _get_cached_medication_detail(
+
+# Class Name: CheckMedicationDetail
+# Role: Coordinates medication keyword normalization and detail lookup.
+# Responsibilities:
+#   - Validate medication lookup text.
+#   - Coordinate cache, public data lookup, and patient-facing guide generation.
+#   - Build the API response DTO.
+# Attributes:
+#   - text_normalizer: Internal helper for search keyword generation.
+#   - medication_cache: Internal cache helper.
+#   - public_drug_data_portal: Internal public API boundary.
+#   - guide_generator: Internal AI guide generator.
+class CheckMedicationDetail:
+    MAX_KEYWORD_LENGTH = 100
+
+    def __init__(
         self,
-        drug_name: str,
-    ) -> list[MedicationDetail] | None:
-        cache_key = self._cache_key(drug_name)
-        try:
-            cached_data = await self.redis_client.get(cache_key)
-            if not cached_data:
-                return None
+        text_normalizer: _MedicationTextNormalizer | None = None,
+        medication_cache: _MedicationDetailCache | None = None,
+        public_drug_data_portal: _PublicDrugDataPortal | None = None,
+        guide_generator: _MedicationGuideGenerator | None = None,
+    ) -> None:
+        self.text_normalizer = text_normalizer or _MedicationTextNormalizer()
+        self.medication_cache = medication_cache or _MedicationDetailCache()
+        self.public_drug_data_portal = (
+            public_drug_data_portal or _PublicDrugDataPortal()
+        )
+        self.guide_generator = guide_generator or _MedicationGuideGenerator()
 
-            logger.info(
-                "[Redis Cache Hit] '%s' information loaded from cache.",
-                drug_name,
-            )
-            items = json.loads(cached_data)
-            return [
-                MedicationDetail(
-                    **{
-                        **item,
-                        "source": f"[Cache] {item.get('source', '')}",
-                    }
-                )
-                for item in items
-            ]
-        except Exception as exc:
-            logger.warning("Redis lookup failed; proceeding without cache: %s", exc)
-            return None
-
-    # Function Name: _save_cached_medication_detail
+    # Function Name: request_medication_detail
     # Description:
-    # - Stores a MedicationDetail list in Redis.
-    # - Cache failures are logged but do not fail the use case.
+    # - Normalizes medication text and fetches detailed drug information.
     # Parameters:
-    # - drug_name: Search keyword used as cache key suffix.
-    # - medication_details: MedicationDetail list to cache.
+    # - raw_text: Raw medication text supplied by the frontend.
+    # Returns:
+    # - MedicationResponse with success flag and MedicationDetail list.
+    async def request_medication_detail(self, raw_text: str) -> MedicationResponse:
+        normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
+        self._validate_lookup_text(normalized_text)
+
+        search_keyword = self.text_normalizer.build_search_keyword(normalized_text)
+        if not search_keyword:
+            raise ValueError("Extracted medication text is empty.")
+
+        medication_details = await self._fetch_drug_info(search_keyword)
+        if not medication_details:
+            return MedicationResponse(
+                success=False,
+                message=f"No medication information found for '{search_keyword}'.",
+                data=[],
+            )
+
+        return MedicationResponse(
+            success=True,
+            message="Medication information lookup succeeded.",
+            data=medication_details,
+        )
+
+    # Function Name: requestMedicationDetail
+    # Description:
+    # - Class diagram compatible wrapper for request_medication_detail.
+    # Parameters:
+    # - raw_text: Raw medication text supplied by the frontend.
+    # Returns:
+    # - MedicationResponse with success flag and MedicationDetail list.
+    async def requestMedicationDetail(self, raw_text: str) -> MedicationResponse:
+        return await self.request_medication_detail(raw_text)
+
+    # Function Name: _validate_lookup_text
+    # Description:
+    # - Validates normalized medication text before dosage suffix stripping.
+    # Parameters:
+    # - text: Normalized medication lookup text.
     # Returns:
     # - None.
-    async def _save_cached_medication_detail(
+    def _validate_lookup_text(self, text: str) -> None:
+        if not text:
+            raise ValueError("Extracted medication text is empty.")
+        if len(text) > self.MAX_KEYWORD_LENGTH:
+            raise ValueError("Medication lookup text is too long.")
+
+    # Function Name: _fetch_drug_info
+    # Description:
+    # - Fetches enriched drug information for a normalized medication name.
+    # Parameters:
+    # - drug_name: Normalized medication search keyword.
+    # Returns:
+    # - List of MedicationDetail DTOs. Empty list when no public data exists.
+    async def _fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
+        cached_drugs = await self.medication_cache.get(drug_name)
+        if cached_drugs is not None:
+            return cached_drugs
+
+        medication_details = await self._fetch_uncached_drug_info(drug_name)
+        await self.medication_cache.set(drug_name, medication_details)
+        return medication_details
+
+    # Function Name: _fetch_uncached_drug_info
+    # Description:
+    # - Runs the public API and AI pipeline after cache miss.
+    # Parameters:
+    # - drug_name: Normalized medication search keyword.
+    # Returns:
+    # - List of MedicationDetail DTOs.
+    async def _fetch_uncached_drug_info(
         self,
         drug_name: str,
-        medication_details: list[MedicationDetail],
-    ) -> None:
-        if not medication_details:
-            return
-
-        cache_key = self._cache_key(drug_name)
-        try:
-            payload = [
-                detail.model_dump(by_alias=True)
-                for detail in medication_details
-            ]
-            await self.redis_client.setex(
-                cache_key,
-                self.CACHE_TTL_SECONDS,
-                json.dumps(payload, ensure_ascii=False),
+    ) -> list[MedicationDetail]:
+        basic_items = await self.public_drug_data_portal.search_basic_drug_info(
+            drug_name
+        )
+        if basic_items:
+            logger.info(
+                "[Basic API] '%s' search succeeded (%s items)",
+                drug_name,
+                len(basic_items),
             )
-            logger.info("[Redis Cache Saved] '%s' information cached.", drug_name)
-        except Exception as exc:
-            logger.error("Redis save failed: %s", exc)
+            return await self._build_basic_drug_infos(basic_items)
 
-    # Function Name: _cache_key
+        logger.info(
+            "[Basic API] no result. Trying Advanced API fallback: '%s'",
+            drug_name,
+        )
+        advanced_items = await self.public_drug_data_portal.search_advanced_drug_info(
+            drug_name
+        )
+        if not advanced_items:
+            logger.warning(
+                "[%s] no drug information found in public drug databases.",
+                drug_name,
+            )
+            return []
+
+        advanced_drug = await self.guide_generator.summarize_advanced_item(
+            drug_name,
+            advanced_items[0],
+        )
+        return [advanced_drug]
+
+    # Function Name: _build_basic_drug_infos
     # Description:
-    # - Builds the Redis cache key for a medication search keyword.
+    # - Converts Basic API items into MedicationDetail DTOs and adds AI guide text.
     # Parameters:
-    # - drug_name: Search keyword.
+    # - basic_items: Raw Basic API items.
     # Returns:
-    # - Redis key string.
-    def _cache_key(self, drug_name: str) -> str:
-        return f"drug_info:{drug_name}"
+    # - List of MedicationDetail DTOs.
+    async def _build_basic_drug_infos(
+        self,
+        basic_items: list[dict[str, Any]],
+    ) -> list[MedicationDetail]:
+        medication_details = [
+            MedicationDetail(
+                item_name=item.get("itemName", "정보 없음"),
+                efficacy=item.get("efcyQesitm", "정보 없음"),
+                usage_method=item.get("useMethodQesitm", "정보 없음"),
+                warning=item.get("atpnWarnQesitm", "정보 없음"),
+                source="Basic (e약은요)",
+            )
+            for item in basic_items
+        ]
+
+        enriched_details = []
+        for medication_detail in medication_details:
+            logger.info(
+                "[Gemini] generating basic patient guide for '%s'.",
+                medication_detail.item_name,
+            )
+            enriched_details.append(
+                await self.guide_generator.add_basic_guide(medication_detail)
+            )
+
+        return enriched_details
