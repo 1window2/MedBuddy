@@ -23,9 +23,23 @@ class InputPrescription {
         _ownsClient = client == null;
 
   Future<List<MedicationSchedule>?> requestPrescriptionImage() async {
+    return _requestPrescriptionImage(ImageSource.camera);
+  }
+
+  Future<List<MedicationSchedule>?>
+      requestPrescriptionImageFromGallery() async {
+    return _requestPrescriptionImage(ImageSource.gallery);
+  }
+
+  Future<List<MedicationSchedule>?> _requestPrescriptionImage(
+    ImageSource imageSource,
+  ) async {
     final image = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
+      source: imageSource,
+      imageQuality: 82,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      requestFullMetadata: false,
     );
     if (image == null) {
       return null;
@@ -76,7 +90,7 @@ class InputPrescription {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('촬영한 이미지 파일을 읽을 수 없습니다.');
+      throw StateError(_imageFileAccessErrorMessage(imageSource));
     } catch (error, stackTrace) {
       developer.log(
         'Prescription image upload failed.',
@@ -106,6 +120,12 @@ class InputPrescription {
       return responseBody;
     }
     return responseBody;
+  }
+
+  String _imageFileAccessErrorMessage(ImageSource imageSource) {
+    return imageSource == ImageSource.gallery
+        ? '선택한 이미지 파일을 읽을 수 없습니다.'
+        : '촬영한 이미지 파일을 읽을 수 없습니다.';
   }
 
   void dispose() {

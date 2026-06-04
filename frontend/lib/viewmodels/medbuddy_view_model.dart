@@ -15,8 +15,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get isPrescriptionAnalyzing => _isPrescriptionAnalyzing;
   bool get isLoading => _isPrescriptionAnalyzing;
 
-  bool _isMedicationSaving = false;
-  bool get isMedicationSaving => _isMedicationSaving;
+  int? _savingMedicationIndex;
+  int? get savingMedicationIndex => _savingMedicationIndex;
+  bool get isMedicationSaving => _savingMedicationIndex != null;
 
   bool _isSavedMedicationLoading = false;
   bool get isSavedMedicationLoading => _isSavedMedicationLoading;
@@ -42,13 +43,33 @@ class MedBuddyViewModel extends ChangeNotifier {
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication();
 
   Future<void> requestPrescriptionImage() async {
-    _statusMessage = '서버에서 AI가 처방전을 분석 중입니다...';
+    await _requestPrescriptionAnalysis(
+      imageRequest: inputPrescription.requestPrescriptionImage,
+      analyzingMessage: '서버에서 AI가 처방전을 분석 중입니다...',
+      cancelledMessage: '사진 촬영이 취소되었습니다.',
+    );
+  }
+
+  Future<void> requestPrescriptionImageFromGallery() async {
+    await _requestPrescriptionAnalysis(
+      imageRequest: inputPrescription.requestPrescriptionImageFromGallery,
+      analyzingMessage: '서버에서 AI가 선택한 이미지를 분석 중입니다...',
+      cancelledMessage: '이미지 선택이 취소되었습니다.',
+    );
+  }
+
+  Future<void> _requestPrescriptionAnalysis({
+    required Future<List<MedicationSchedule>?> Function() imageRequest,
+    required String analyzingMessage,
+    required String cancelledMessage,
+  }) async {
+    _statusMessage = analyzingMessage;
     _setPrescriptionAnalyzing(true);
 
     try {
-      final result = await inputPrescription.requestPrescriptionImage();
+      final result = await imageRequest();
       if (result == null) {
-        _statusMessage = '사진 촬영이 취소되었습니다.';
+        _statusMessage = cancelledMessage;
         return;
       }
 
@@ -67,13 +88,15 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   Future<bool> requestMedicationSave(
     MedicationSchedule medicationSchedule,
+    int medicationIndex,
   ) async {
     final drugName = medicationSchedule.displayName;
     _statusMessage = '$drugName 정보를 공공 API와 AI가 분석 중입니다...';
-    _setMedicationSaving(true);
+    _setSavingMedicationIndex(medicationIndex);
 
     try {
-      final medicationInfo = await checkMedicationDetail.requestMedicationDetail(
+      final medicationInfo =
+          await checkMedicationDetail.requestMedicationDetail(
         medicationSchedule,
       );
       if (medicationInfo == null) {
@@ -89,7 +112,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       _statusMessage = '약품 분석 중 오류가 발생했습니다.';
       return false;
     } finally {
-      _setMedicationSaving(false);
+      _setSavingMedicationIndex(null);
     }
   }
 
@@ -154,8 +177,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _setMedicationSaving(bool value) {
-    _isMedicationSaving = value;
+  void _setSavingMedicationIndex(int? value) {
+    _savingMedicationIndex = value;
     notifyListeners();
   }
 

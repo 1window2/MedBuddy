@@ -5,6 +5,7 @@ import '../theme/medbuddy_theme.dart';
 class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final VoidCallback? onPrescriptionScanRequested;
+  final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onSavedMedicationRequested;
   final bool isAnalyzing;
 
@@ -12,6 +13,7 @@ class InputPrescriptionUI extends StatelessWidget {
     super.key,
     required this.statusMessage,
     required this.onPrescriptionScanRequested,
+    required this.onPrescriptionGalleryRequested,
     required this.onSavedMedicationRequested,
   }) : isAnalyzing = false;
 
@@ -19,6 +21,7 @@ class InputPrescriptionUI extends StatelessWidget {
     super.key,
     required this.statusMessage,
   })  : onPrescriptionScanRequested = null,
+        onPrescriptionGalleryRequested = null,
         onSavedMedicationRequested = null,
         isAnalyzing = true;
 
@@ -47,7 +50,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       title: '처방전 촬영하기',
                       subtitle: '카메라로 처방전을 찍어주세요',
                       filled: true,
-                      onTap: onPrescriptionScanRequested!,
+                      onTap: () => _showPrescriptionInputOptions(context),
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
@@ -73,8 +76,62 @@ class InputPrescriptionUI extends StatelessWidget {
     onPrescriptionScanRequested?.call();
   }
 
+  void clickPrescriptionImageSelect() {
+    onPrescriptionGalleryRequested?.call();
+  }
+
   String showMaskedInfrmation() {
     return statusMessage;
+  }
+
+  void _showPrescriptionInputOptions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1D5DC),
+                    borderRadius: MedBuddyRadii.pill,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _PrescriptionInputOption(
+                  icon: Icons.camera_alt_outlined,
+                  title: '카메라로 촬영',
+                  subtitle: '약봉투나 처방전을 바로 촬영합니다.',
+                  onTap: () {
+                    Navigator.pop(context);
+                    onPrescriptionScanRequested?.call();
+                  },
+                ),
+                const SizedBox(height: 10),
+                _PrescriptionInputOption(
+                  icon: Icons.photo_library_outlined,
+                  title: '갤러리에서 선택',
+                  subtitle: '저장된 약봉투 이미지를 불러옵니다.',
+                  onTap: () {
+                    Navigator.pop(context);
+                    onPrescriptionGalleryRequested?.call();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildAnalyzingScreen() {
@@ -145,6 +202,80 @@ class InputPrescriptionUI extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PrescriptionInputOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _PrescriptionInputOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF4FFF4),
+      borderRadius: MedBuddyRadii.card,
+      child: InkWell(
+        borderRadius: MedBuddyRadii.card,
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: MedBuddyRadii.card,
+            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: MedBuddyColors.primary,
+                size: 30,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textMuted,
+                        fontSize: 13,
+                        height: 1.25,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                color: MedBuddyColors.primary,
+                size: 24,
+              ),
+            ],
           ),
         ),
       ),

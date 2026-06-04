@@ -6,16 +6,18 @@ import '../theme/medbuddy_theme.dart';
 class CheckResultUI extends StatelessWidget {
   final List<MedicationSchedule> medicationScheduleList;
   final String Function() statusMessageProvider;
-  final bool isMedicationSaving;
+  final int? savingMedicationIndex;
   final VoidCallback onCloseRequested;
-  final Future<bool> Function(MedicationSchedule medicationSchedule)
-      onMedicationSaveRequested;
+  final Future<bool> Function(
+    MedicationSchedule medicationSchedule,
+    int medicationIndex,
+  ) onMedicationSaveRequested;
 
   const CheckResultUI({
     super.key,
     required this.medicationScheduleList,
     required this.statusMessageProvider,
-    required this.isMedicationSaving,
+    required this.savingMedicationIndex,
     required this.onCloseRequested,
     required this.onMedicationSaveRequested,
   });
@@ -38,10 +40,11 @@ class CheckResultUI extends StatelessWidget {
                   final medicationSchedule = medicationScheduleList[index];
                   return _MedicationScheduleCard(
                     medicationSchedule: medicationSchedule,
-                    isMedicationSaving: isMedicationSaving,
+                    isMedicationSaving: savingMedicationIndex == index,
                     onMedicationSaveRequested: () async {
                       final success = await onMedicationSaveRequested(
                         medicationSchedule,
+                        index,
                       );
                       if (!context.mounted) {
                         return;

@@ -23,7 +23,7 @@ class HomeScreen extends StatelessWidget {
       return CheckResultUI(
         medicationScheduleList: viewModel.medicationScheduleList,
         statusMessageProvider: () => viewModel.statusMessage,
-        isMedicationSaving: viewModel.isMedicationSaving,
+        savingMedicationIndex: viewModel.savingMedicationIndex,
         onCloseRequested: viewModel.clearAnalysisResult,
         onMedicationSaveRequested: viewModel.requestMedicationSave,
       );
@@ -32,6 +32,8 @@ class HomeScreen extends StatelessWidget {
     return InputPrescriptionUI(
       statusMessage: viewModel.statusMessage,
       onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
+      onPrescriptionGalleryRequested:
+          viewModel.requestPrescriptionImageFromGallery,
       onSavedMedicationRequested: () {
         Navigator.push(
           context,
