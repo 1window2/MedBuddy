@@ -2,18 +2,23 @@
 
 # MedBuddy
 > **AI-Powered Medication Management System** <br/>
-> An intelligent platform that digitizes prescriptions via OCR and fine-tuned LLMs, providing a personalized AI pharmacist for safe medication management.
+> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches extracted medication names with public drug data, and stores selected medications in a personal pillbox.
 <br/>
 
 ## Key Features
 
-* **AI Vision Prescription Parsing**
-  * Simply snap a photo of a prescription or pill envelope. Our AI instantly extracts structured data (hospital name, prescription date, medication names, and dosage).
-  * Automatically masks Personally Identifiable Information (PII) to ensure data privacy.
-* **Personalized AI Pharmacist**
-  * Leverages public health data to translate complex medical jargon into friendly, easy-to-understand instructions.
-* **Smart Pillbox Management**
-  * Easily track and manage your current medications, their efficacy, and important precautions in one place.
+* **Prescription and Pill-Envelope Image Analysis**
+  * The Flutter app captures a prescription or pill-envelope image and sends it to the FastAPI backend as multipart data.
+  * The backend performs image preprocessing, requests structured extraction from Gemini Vision, and applies secondary masking before returning medication candidates.
+* **Medication Detail Enrichment**
+  * Extracted medication names are normalized and looked up through the public drug data pipeline.
+  * Redis is used as an optional cache, with the e약은요 API as the primary source and the drug approval information API as a fallback.
+  * Gemini Text generates patient-friendly guidance from the retrieved public drug information.
+* **Saved Medication Management**
+  * Users can save selected medication details to SQLite and reload or delete saved medication records from the pillbox screen.
+* **Refactored Flutter Presentation Layer**
+  * The frontend separates UI, state coordination, API boundary calls, control classes, and data models.
+  * Current screens follow the Figma-based visual direction for prescription input, analysis progress, analysis results, and saved medication views.
 
 <br/>
 
@@ -48,18 +53,70 @@
 
 ## Getting Started
 
+### Prerequisites
+
+* Python 3.11
+* Flutter SDK and Android Studio
+* A running Android emulator or physical Android device
+* Gemini API key
+* Korean public data portal API key for the drug APIs
+* Redis server, optional but recommended for faster repeated drug lookups
+
 ### 1. Backend Setup
-```bash
-$ cd backend
-$ pip install -r requirements.txt
-$ uvicorn main:app --reload
+
+From the repository root:
+
+```powershell
+cd backend
+py -3.11 -m venv ..\.venv
+..\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
+Open `backend/.env` and set at least the following values:
+
+```dotenv
+GEMINI_API_KEY=your_gemini_api_key
+PUBLIC_DATA_API_KEY=your_public_data_api_key
+```
+
+Start the API server:
+
+```powershell
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The API documentation should be available at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Use `0.0.0.0` when testing with an Android emulator, because the Flutter app reaches the host machine through `10.0.2.2`.
+
 ### 2. Frontend Setup
-```bash
-$ cd frontend
-$ flutter pub get
-$ flutter run
+
+Open another terminal from the repository root:
+
+```powershell
+cd frontend
+flutter pub get
+flutter devices
+flutter run -d emulator-5554
+```
+
+By default, the Android emulator build calls:
+
+```text
+http://10.0.2.2:8000/api/v1/medication
+```
+
+If you need a different backend address, override it at run time:
+
+```powershell
+flutter run -d emulator-5554 --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
 ```
 
 <br/>

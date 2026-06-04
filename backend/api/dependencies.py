@@ -1,26 +1,13 @@
 # File Name: dependencies.py
-# Role: Provides FastAPI dependency factories for backend boundary classes.
+# Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from repositories.saved_medication_repository import SavedMedicationRepository
-from services.drug_service import DrugService
-from services.medication_identification_service import CheckMedicationDetail
-from services.medication_text_service import MedicationTextService
-from services.ocr_service import OCRService
-from services.prescription_analysis_service import InputPrescription
-from services.saved_medication_service import CheckSavedMedication
-
-
-# Function Name: get_ocr_service
-# Description:
-# - Builds the OCR facade used by text parsing compatibility endpoints.
-# Returns:
-# - OCRService instance.
-def get_ocr_service() -> OCRService:
-    return OCRService()
+from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_saved_medication_control import CheckSavedMedication
+from controls.input_prescription_control import InputPrescription
 
 
 # Function Name: get_input_prescription
@@ -38,10 +25,7 @@ def get_input_prescription() -> InputPrescription:
 # Returns:
 # - CheckMedicationDetail instance.
 def get_check_medication_detail() -> CheckMedicationDetail:
-    return CheckMedicationDetail(
-        text_service=MedicationTextService(),
-        drug_service=DrugService(),
-    )
+    return CheckMedicationDetail()
 
 
 # Function Name: get_check_saved_medication
@@ -54,6 +38,4 @@ def get_check_medication_detail() -> CheckMedicationDetail:
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
-    return CheckSavedMedication(
-        repository=SavedMedicationRepository(db),
-    )
+    return CheckSavedMedication(db=db)

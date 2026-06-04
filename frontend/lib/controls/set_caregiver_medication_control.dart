@@ -1,0 +1,5 @@
+class SetCaregiverMedication {
+  void requestCaregiverMedication() {
+    throw UnsupportedError('보호자 복약 정보 설정 기능은 아직 구현되지 않았습니다.');
+  }
+}
