@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../viewmodels/medbuddy_view_model.dart';
-import 'prescription_input_ui.dart';
-import 'prescription_loading_ui.dart';
-import 'prescription_result_ui.dart';
-import 'saved_medication_ui.dart';
+import '../boundaries/check_result_ui_boundary.dart';
+import '../boundaries/check_saved_medication_ui_boundary.dart';
+import '../boundaries/input_prescription_ui_boundary.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,27 +14,29 @@ class HomeScreen extends StatelessWidget {
     final viewModel = context.watch<MedBuddyViewModel>();
 
     if (viewModel.isPrescriptionAnalyzing) {
-      return PrescriptionLoadingUI(statusMessage: viewModel.statusMessage);
+      return InputPrescriptionUI.analyzing(
+        statusMessage: viewModel.statusMessage,
+      );
     }
 
-    if (viewModel.medicationCandidates.isNotEmpty) {
-      return PrescriptionResultUI(
-        medicationCandidates: viewModel.medicationCandidates,
+    if (viewModel.medicationScheduleList.isNotEmpty) {
+      return CheckResultUI(
+        medicationScheduleList: viewModel.medicationScheduleList,
         statusMessageProvider: () => viewModel.statusMessage,
         isMedicationSaving: viewModel.isMedicationSaving,
-        onCloseRequested: viewModel.clearPrescriptionAnalysisResult,
+        onCloseRequested: viewModel.clearAnalysisResult,
         onMedicationSaveRequested: viewModel.requestMedicationSave,
       );
     }
 
-    return PrescriptionInputUI(
+    return InputPrescriptionUI(
       statusMessage: viewModel.statusMessage,
       onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
       onSavedMedicationRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const SavedMedicationUI(),
+            builder: (context) => const CheckSavedMedicationUI(),
           ),
         );
       },

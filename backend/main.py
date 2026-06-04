@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 
 from api.router import router as medication_router
-from core.database import engine
-from models.db_models import Base
+from core.database import Base, engine
+from entities import saved_medication_entity  # noqa: F401
 
 
 # Function Name: configure_logging

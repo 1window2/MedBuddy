@@ -10,14 +10,12 @@ from api.dependencies import (
     get_check_medication_detail,
     get_check_saved_medication,
     get_input_prescription,
-    get_ocr_service,
 )
+from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_saved_medication_control import CheckSavedMedication
+from controls.input_prescription_control import InputPrescription
 from schemas.medication import MedicationRequest, MedicationResponse, SavedMedicationCreate
-from schemas.ocr import PrescriptionData
-from services.medication_identification_service import CheckMedicationDetail
-from services.ocr_service import OCRService
-from services.prescription_analysis_service import InputPrescription
-from services.saved_medication_service import CheckSavedMedication
+from services.prescription_parser import parse_prescription
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -58,7 +56,7 @@ async def identify_medication(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("Identify API 내부 에러 발생: %s", exc, exc_info=True)
+        logger.error("Identify API internal error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"서버 내부 오류: {exc}") from exc
 
 
@@ -92,7 +90,7 @@ async def get_saved_medications(
     try:
         return check_saved_medication.request_saved_medication_info()
     except Exception as exc:
-        logger.error("DB 불러오기 에러: %s", exc, exc_info=True)
+        logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
 
 
@@ -117,19 +115,17 @@ async def delete_medication(
 # - Parses OCR text into a structured prescription dictionary.
 # Parameters:
 # - request: OCRParseRequest containing raw OCR text.
-# - ocr_service: OCRService facade injected by FastAPI.
 # Returns:
 # - API-compatible parse result dictionary.
 @router.post("/parse-prescription")
 async def parse_prescription_endpoint(
     request: OCRParseRequest,
-    ocr_service: OCRService = Depends(get_ocr_service),
 ) -> dict[str, object]:
     if not request.text:
         raise HTTPException(status_code=400, detail="OCR 텍스트가 없습니다.")
 
     try:
-        parsed_data = ocr_service.parse_prescription_text(request.text)
+        parsed_data = parse_prescription(request.text.splitlines())
         return {
             "success": True,
             "message": "처방전 파싱 성공",
@@ -146,12 +142,12 @@ async def parse_prescription_endpoint(
 # - file: Uploaded image file.
 # - input_prescription: InputPrescription injected by FastAPI.
 # Returns:
-# - PrescriptionData DTO.
-@router.post("/upload-prescription", response_model=PrescriptionData)
+# - API-compatible prescription analysis dictionary.
+@router.post("/upload-prescription")
 async def upload_and_parse_prescription(
     file: UploadFile = File(...),
     input_prescription: InputPrescription = Depends(get_input_prescription),
-) -> PrescriptionData:
+) -> dict[str, object]:
     try:
         image_bytes = await file.read()
         logger.info(
@@ -165,7 +161,7 @@ async def upload_and_parse_prescription(
         logger.warning("Prescription image upload rejected: %s", exc, exc_info=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("이미지 파싱 에러: %s", exc, exc_info=True)
+        logger.error("Prescription image parsing failed: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="데이터 추출 중 서버 오류가 발생했습니다.",
