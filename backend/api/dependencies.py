@@ -21,11 +21,15 @@ def get_input_prescription() -> InputPrescription:
 
 # Function Name: get_check_medication_detail
 # Description:
-# - Builds the medication detail lookup control service.
+# - Builds the medication detail lookup control service with optional local DB access.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
 # Returns:
 # - CheckMedicationDetail instance.
-def get_check_medication_detail() -> CheckMedicationDetail:
-    return CheckMedicationDetail()
+def get_check_medication_detail(
+    db: Session = Depends(get_db),
+) -> CheckMedicationDetail:
+    return CheckMedicationDetail(db=db)
 
 
 # Function Name: get_check_saved_medication

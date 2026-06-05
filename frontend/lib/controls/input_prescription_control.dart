@@ -26,8 +26,7 @@ class InputPrescription {
     return _requestPrescriptionImage(ImageSource.camera);
   }
 
-  Future<List<MedicationSchedule>?>
-      requestPrescriptionImageFromGallery() async {
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery() async {
     return _requestPrescriptionImage(ImageSource.gallery);
   }
 
