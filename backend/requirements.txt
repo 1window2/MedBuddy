@@ -20,5 +20,5 @@ python-multipart==0.0.30
 # 5. Data & AI Utilities
 numpy==2.4.6   
 opencv-python==4.13.0.92 
-tqdm==4.67.3 
+tqdm==4.68.2 
 PyYAML==6.0.3 
