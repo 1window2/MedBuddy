@@ -1,5 +1,6 @@
 class MedicationDetail {
   final int? id;
+  final String patientHash;
   final String itemName;
   final String efficacy;
   final String usageMethod;
@@ -15,6 +16,7 @@ class MedicationDetail {
 
   const MedicationDetail({
     this.id,
+    this.patientHash = '',
     required this.itemName,
     required this.efficacy,
     required this.usageMethod,
@@ -32,6 +34,7 @@ class MedicationDetail {
   factory MedicationDetail.fromJson(Map<String, dynamic> json) {
     return MedicationDetail(
       id: _readInt(json['id']),
+      patientHash: _readString(json['patient_hash']),
       itemName: _readString(json['item_name']),
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['usage_method'] ?? json['use_method']),
@@ -49,6 +52,7 @@ class MedicationDetail {
 
   Map<String, dynamic> toSaveJson() {
     return {
+      'patient_hash': patientHash,
       'item_name': itemName,
       'efficacy': efficacy,
       'use_method': usageMethod,

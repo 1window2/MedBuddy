@@ -5,15 +5,18 @@ import 'package:http/http.dart' as http;
 
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 
 class CheckSavedMedication {
   final String baseUrl;
+  final String patientHash;
   final http.Client _client;
   final bool _ownsClient;
 
   CheckSavedMedication({
     this.baseUrl = ApiConfig.baseUrl,
+    this.patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -62,6 +65,7 @@ class CheckSavedMedication {
     MedicationSchedule? medicationSchedule,
   ) {
     final savePayload = medicationDetail.toSaveJson();
+    savePayload['patient_hash'] = patientHash;
     savePayload['dosage_per_time'] = _readScheduleValue(
       medicationSchedule?.dosage,
       medicationDetail.dosagePerTime,
@@ -96,7 +100,7 @@ class CheckSavedMedication {
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     try {
       final response = await _client
-          .get(Uri.parse('$baseUrl/list'))
+          .get(_buildMedicationUri('list'))
           .timeout(const Duration(seconds: 30));
 
       final responseBody = utf8.decode(response.bodyBytes);
@@ -129,7 +133,7 @@ class CheckSavedMedication {
   Future<bool> requestDelete(int savedMedicationId) async {
     try {
       final response = await _client
-          .delete(Uri.parse('$baseUrl/delete/$savedMedicationId'))
+          .delete(_buildMedicationUri('delete/$savedMedicationId'))
           .timeout(const Duration(seconds: 30));
       return response.statusCode == 200;
     } catch (error, stackTrace) {
@@ -174,6 +178,19 @@ class CheckSavedMedication {
       return responseBody;
     }
     return responseBody;
+  }
+
+  // Function Name: _buildMedicationUri
+  // Description:
+  // - Builds a medication API URI with the current patient ownership key.
+  // Parameters:
+  // - path: API path segment under the medication base URL.
+  // Returns:
+  // - URI scoped with patient_hash query parameter.
+  Uri _buildMedicationUri(String path) {
+    return Uri.parse('$baseUrl/$path').replace(
+      queryParameters: {'patient_hash': patientHash},
+    );
   }
 
   void dispose() {

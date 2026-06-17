@@ -4,6 +4,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
 
@@ -12,7 +13,7 @@ from schemas.medication import SavedMedicationCreate
 # Role: Coordinates saved medication CRUD use cases.
 # Responsibilities:
 #   - Save medication snapshots.
-#   - List saved medications.
+#   - List saved medications for the requested patient hash.
 #   - Delete saved medications with not-found handling.
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
@@ -32,7 +33,9 @@ class CheckSavedMedication:
         medication: SavedMedicationCreate,
     ) -> dict[str, object]:
         try:
+            patient_hash = self._normalize_patient_hash(medication.patient_hash)
             db_medication = _SavedMedication(
+                patient_hash=patient_hash,
                 item_name=medication.item_name,
                 efficacy=medication.efficacy,
                 use_method=medication.use_method,
@@ -69,11 +72,21 @@ class CheckSavedMedication:
 
     # Function Name: request_saved_medication_info
     # Description:
-    # - Reads all saved medications.
+    # - Reads saved medications owned by one patient hash.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope saved medication lookup.
     # Returns:
     # - API-compatible list response dictionary.
-    def request_saved_medication_info(self) -> dict[str, object]:
-        saved_medications = self.db.query(_SavedMedication).all()
+    def request_saved_medication_info(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
+        normalized_patient_hash = self._normalize_patient_hash(patient_hash)
+        saved_medications = (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == normalized_patient_hash)
+            .all()
+        )
         return {
             "success": True,
             "message": "Saved medication lookup succeeded.",
@@ -86,21 +99,31 @@ class CheckSavedMedication:
     # Function Name: requestSavedMedicationInfo
     # Description:
     # - Class diagram compatible wrapper for request_saved_medication_info.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope saved medication lookup.
     # Returns:
     # - API-compatible list response dictionary.
-    def requestSavedMedicationInfo(self) -> dict[str, object]:
-        return self.request_saved_medication_info()
+    def requestSavedMedicationInfo(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
+        return self.request_saved_medication_info(patient_hash)
 
     # Function Name: request_delete
     # Description:
     # - Deletes a saved medication by id.
     # Parameters:
     # - medication_id: Saved medication primary key.
+    # - patient_hash: Patient ownership key used to scope deletion.
     # Returns:
     # - API-compatible success response dictionary.
-    def request_delete(self, medication_id: int) -> dict[str, object]:
+    def request_delete(
+        self,
+        medication_id: int,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
         try:
-            medication = self._get_existing_medication(medication_id)
+            medication = self._get_existing_medication(medication_id, patient_hash)
             self.db.delete(medication)
             self.db.commit()
             return {"success": True, "message": "Medication was deleted from pillbox."}
@@ -115,10 +138,15 @@ class CheckSavedMedication:
     # - Class diagram compatible wrapper for request_delete.
     # Parameters:
     # - medication_id: Saved medication primary key.
+    # - patient_hash: Patient ownership key used to scope deletion.
     # Returns:
     # - API-compatible delete success dictionary.
-    def requestDelete(self, medication_id: int) -> dict[str, object]:
-        return self.request_delete(medication_id)
+    def requestDelete(
+        self,
+        medication_id: int,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
+        return self.request_delete(medication_id, patient_hash)
 
     # Function Name: _to_response_dict
     # Description:
@@ -130,6 +158,7 @@ class CheckSavedMedication:
     def _to_response_dict(self, medication: _SavedMedication) -> dict[str, object]:
         return {
             "id": medication.id,
+            "patient_hash": medication.patient_hash,
             "item_name": medication.item_name,
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
@@ -145,10 +174,36 @@ class CheckSavedMedication:
     # - Finds an existing saved medication or raises a 404 error.
     # Parameters:
     # - medication_id: Saved medication primary key.
+    # - patient_hash: Patient ownership key used to scope lookup.
     # Returns:
     # - Existing _SavedMedication row.
-    def _get_existing_medication(self, medication_id: int) -> _SavedMedication:
-        medication = self.db.get(_SavedMedication, medication_id)
+    def _get_existing_medication(
+        self,
+        medication_id: int,
+        patient_hash: str,
+    ) -> _SavedMedication:
+        normalized_patient_hash = self._normalize_patient_hash(patient_hash)
+        medication = (
+            self.db.query(_SavedMedication)
+            .filter(
+                _SavedMedication.id == medication_id,
+                _SavedMedication.patient_hash == normalized_patient_hash,
+            )
+            .first()
+        )
         if medication is None:
             raise HTTPException(status_code=404, detail="Medication was not found.")
         return medication
+
+    # Function Name: _normalize_patient_hash
+    # Description:
+    # - Normalizes empty patient hashes to the local default until UC-6/7 provides real links.
+    # Parameters:
+    # - patient_hash: Raw patient hash from API request or internal call.
+    # Returns:
+    # - Non-empty patient hash string.
+    def _normalize_patient_hash(self, patient_hash: str | None) -> str:
+        normalized_patient_hash = (patient_hash or "").strip()
+        if normalized_patient_hash:
+            return normalized_patient_hash
+        return DEFAULT_PATIENT_HASH

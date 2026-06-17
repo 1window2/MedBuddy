@@ -14,6 +14,7 @@ from api.dependencies import (
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
+from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import MedicationRequest, MedicationResponse, SavedMedicationCreate
 from services.prescription_parser import parse_prescription
 
@@ -78,17 +79,19 @@ async def save_medication(
 
 # Function Name: get_saved_medications
 # Description:
-# - Returns all saved medication rows.
+# - Returns saved medication rows scoped to a patient hash.
 # Parameters:
+# - patient_hash: Patient ownership key used to scope saved medication lookup.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return check_saved_medication.request_saved_medication_info()
+        return check_saved_medication.request_saved_medication_info(patient_hash)
     except Exception as exc:
         logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
@@ -99,15 +102,17 @@ async def get_saved_medications(
 # - Deletes a saved medication by id.
 # Parameters:
 # - drug_id: Saved medication primary key from route path.
+# - patient_hash: Patient ownership key used to scope deletion.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible delete success dictionary.
 @router.delete("/delete/{drug_id}")
 async def delete_medication(
     drug_id: int,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.request_delete(drug_id)
+    return check_saved_medication.request_delete(drug_id, patient_hash)
 
 
 # Function Name: parse_prescription_endpoint

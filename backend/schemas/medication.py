@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from entities.medication_detail_entity import MedicationDetail
+from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
 
 # Class Name: MedicationRequest
@@ -19,6 +20,7 @@ class MedicationRequest(BaseModel):
 # Class Name: SavedMedicationCreate
 # Role: Request DTO for saving a medication snapshot.
 # Attributes:
+#   - patient_hash: Patient ownership key used for saved medication scoping.
 #   - item_name: Medication item name.
 #   - efficacy: Medication efficacy summary.
 #   - use_method: Medication use method summary.
@@ -28,6 +30,7 @@ class MedicationRequest(BaseModel):
 #   - total_days: Optional total medication days from prescription analysis.
 #   - ai_guide: Optional AI-generated patient guide.
 class SavedMedicationCreate(BaseModel):
+    patient_hash: str = DEFAULT_PATIENT_HASH
     item_name: str
     efficacy: str
     use_method: str

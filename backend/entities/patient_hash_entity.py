@@ -3,11 +3,13 @@
 
 from pydantic import BaseModel
 
+DEFAULT_PATIENT_HASH = "local_patient"
+
 
 # Class Name: PatientHash
 # Role: Represents a shareable patient hash or link code.
 class PatientHash(BaseModel):
-    patient_hash: str = ""
+    patient_hash: str = DEFAULT_PATIENT_HASH
 
     def generatePatientHash(self) -> str:
         raise NotImplementedError("Patient hash generation is not implemented yet.")
