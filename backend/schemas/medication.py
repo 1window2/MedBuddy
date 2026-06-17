@@ -23,12 +23,18 @@ class MedicationRequest(BaseModel):
 #   - efficacy: Medication efficacy summary.
 #   - use_method: Medication use method summary.
 #   - warning_message: Medication warning summary.
+#   - dosage_per_time: Optional dose per administration from prescription analysis.
+#   - daily_frequency: Optional daily frequency from prescription analysis.
+#   - total_days: Optional total medication days from prescription analysis.
 #   - ai_guide: Optional AI-generated patient guide.
 class SavedMedicationCreate(BaseModel):
     item_name: str
     efficacy: str
     use_method: str
     warning_message: str
+    dosage_per_time: Optional[str] = None
+    daily_frequency: Optional[str] = None
+    total_days: Optional[str] = None
     ai_guide: Optional[str] = None
 
 

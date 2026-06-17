@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 
 class CheckSavedMedication {
@@ -17,13 +18,21 @@ class CheckSavedMedication {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
-  Future<bool> saveMedicationDetail(MedicationDetail medicationDetail) async {
+  Future<bool> saveMedicationDetail(
+    MedicationDetail medicationDetail, {
+    MedicationSchedule? medicationSchedule,
+  }) async {
+    final savePayload = _buildSaveRequest(
+      medicationDetail,
+      medicationSchedule,
+    );
+
     try {
       final response = await _client
           .post(
             Uri.parse('$baseUrl/save'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(medicationDetail.toSaveJson()),
+            body: jsonEncode(savePayload),
           )
           .timeout(const Duration(seconds: 30));
 
@@ -37,6 +46,51 @@ class CheckSavedMedication {
       );
       return false;
     }
+  }
+
+  // Function Name: _buildSaveRequest
+  // Description:
+  // - Builds the JSON request body for the saved medication API.
+  // - Preserves prescription-derived schedule fields when a schedule is present.
+  // Parameters:
+  // - medicationDetail: Medication detail selected for saving.
+  // - medicationSchedule: Optional prescription-analysis schedule for the same item.
+  // Returns:
+  // - JSON-ready save request map.
+  Map<String, dynamic> _buildSaveRequest(
+    MedicationDetail medicationDetail,
+    MedicationSchedule? medicationSchedule,
+  ) {
+    final savePayload = medicationDetail.toSaveJson();
+    savePayload['dosage_per_time'] = _readScheduleValue(
+      medicationSchedule?.dosage,
+      medicationDetail.dosagePerTime,
+    );
+    savePayload['daily_frequency'] = _readScheduleValue(
+      medicationSchedule?.intakeTime,
+      medicationDetail.dailyFrequency,
+    );
+    savePayload['total_days'] = _readScheduleValue(
+      medicationSchedule?.medicationTimeLabel,
+      medicationDetail.totalDays,
+    );
+    return savePayload;
+  }
+
+  // Function Name: _readScheduleValue
+  // Description:
+  // - Prefers prescription schedule text and falls back to existing saved detail text.
+  // Parameters:
+  // - scheduleValue: Value extracted from prescription analysis.
+  // - fallbackValue: Value already present on the medication detail.
+  // Returns:
+  // - Trimmed non-empty schedule value, fallback value, or an empty string.
+  String _readScheduleValue(String? scheduleValue, String fallbackValue) {
+    final normalizedScheduleValue = scheduleValue?.trim() ?? '';
+    if (normalizedScheduleValue.isNotEmpty) {
+      return normalizedScheduleValue;
+    }
+    return fallbackValue.trim();
   }
 
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
@@ -104,7 +158,8 @@ class CheckSavedMedication {
 
     return rawItems
         .whereType<Map>()
-        .map((item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
+        .map((item) =>
+            MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
         .where((item) => item.id != null && item.id! > 0)
         .toList(growable: false);
   }

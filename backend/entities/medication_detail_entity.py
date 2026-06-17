@@ -18,6 +18,9 @@ from core.database import Base
 #   - efficacy: Medication efficacy summary.
 #   - usage_method: Medication use method summary.
 #   - warning: Medication warning summary.
+#   - dosage_per_time: Optional dose per administration from prescription analysis.
+#   - daily_frequency: Optional daily frequency from prescription analysis.
+#   - total_days: Optional total medication days from prescription analysis.
 #   - source: Data source label.
 #   - ai_guide: Optional AI-generated patient guide.
 class MedicationDetail(BaseModel):
@@ -31,6 +34,9 @@ class MedicationDetail(BaseModel):
     interaction: str = ""
     side_effect: str = ""
     storage_method: str = ""
+    dosage_per_time: str = ""
+    daily_frequency: str = ""
+    total_days: str = ""
     source: str = "e약은요"
     ai_guide: Optional[str] = None
 
@@ -83,6 +89,9 @@ class MedicationDetail(BaseModel):
                 self.item_name,
                 self.efficacy,
                 self.usage_method,
+                self.dosage_per_time,
+                self.daily_frequency,
+                self.total_days,
                 self.warning,
                 self.ai_guide or "",
             ]

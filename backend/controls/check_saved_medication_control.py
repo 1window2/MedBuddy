@@ -37,6 +37,9 @@ class CheckSavedMedication:
                 efficacy=medication.efficacy,
                 use_method=medication.use_method,
                 warning_message=medication.warning_message,
+                dosage_per_time=medication.dosage_per_time,
+                daily_frequency=medication.daily_frequency,
+                total_days=medication.total_days,
                 ai_guide=medication.ai_guide,
             )
             self.db.add(db_medication)
@@ -131,6 +134,9 @@ class CheckSavedMedication:
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
             "warning_message": medication.warning_message,
+            "dosage_per_time": medication.dosage_per_time,
+            "daily_frequency": medication.daily_frequency,
+            "total_days": medication.total_days,
             "ai_guide": medication.ai_guide,
         }
 

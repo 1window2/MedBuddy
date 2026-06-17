@@ -8,6 +8,9 @@ class MedicationDetail {
   final String interaction;
   final String sideEffect;
   final String storageMethod;
+  final String dosagePerTime;
+  final String dailyFrequency;
+  final String totalDays;
   final String aiGuide;
 
   const MedicationDetail({
@@ -20,6 +23,9 @@ class MedicationDetail {
     this.interaction = '',
     this.sideEffect = '',
     this.storageMethod = '',
+    this.dosagePerTime = '',
+    this.dailyFrequency = '',
+    this.totalDays = '',
     this.aiGuide = '',
   });
 
@@ -34,6 +40,9 @@ class MedicationDetail {
       interaction: _readString(json['interaction']),
       sideEffect: _readString(json['side_effect']),
       storageMethod: _readString(json['storage_method']),
+      dosagePerTime: _readString(json['dosage_per_time']),
+      dailyFrequency: _readString(json['daily_frequency']),
+      totalDays: _readString(json['total_days']),
       aiGuide: _readString(json['ai_guide']),
     );
   }
@@ -44,8 +53,17 @@ class MedicationDetail {
       'efficacy': efficacy,
       'use_method': usageMethod,
       'warning_message': warning,
+      'dosage_per_time': dosagePerTime,
+      'daily_frequency': dailyFrequency,
+      'total_days': totalDays,
       'ai_guide': aiGuide,
     };
+  }
+
+  bool get hasScheduleInfo {
+    return dosagePerTime.trim().isNotEmpty ||
+        dailyFrequency.trim().isNotEmpty ||
+        totalDays.trim().isNotEmpty;
   }
 
   void saveMedicationDetail() {
@@ -65,6 +83,9 @@ class MedicationDetail {
       itemName,
       efficacy,
       usageMethod,
+      dosagePerTime,
+      dailyFrequency,
+      totalDays,
       warning,
       aiGuide,
     ].where((text) => text.trim().isNotEmpty).join('\n');

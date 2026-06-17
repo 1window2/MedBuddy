@@ -104,7 +104,10 @@ class MedBuddyViewModel extends ChangeNotifier {
         return false;
       }
 
-      return await saveMedicationInfo(medicationInfo);
+      return await saveMedicationInfo(
+        medicationInfo,
+        medicationSchedule: medicationSchedule,
+      );
     } on StateError catch (error) {
       _statusMessage = error.message;
       return false;
@@ -116,12 +119,16 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveMedicationInfo(MedicationDetail medicationInfo) async {
+  Future<bool> saveMedicationInfo(
+    MedicationDetail medicationInfo, {
+    MedicationSchedule? medicationSchedule,
+  }) async {
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
     notifyListeners();
 
     final success = await checkSavedMedication.saveMedicationDetail(
       medicationInfo,
+      medicationSchedule: medicationSchedule,
     );
     if (!success) {
       _statusMessage = '저장에 실패했습니다. 다시 시도해 주세요.';
