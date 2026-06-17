@@ -1,7 +1,9 @@
 # File Name: saved_medication_entity.py
 # Role: SQLAlchemy entity for saved medication snapshots.
 
-from sqlalchemy import Column, Integer, String, inspect, text
+from datetime import date
+
+from sqlalchemy import Boolean, Column, Date, Integer, String, inspect, text
 from sqlalchemy.engine import Engine
 
 from core.database import Base
@@ -14,6 +16,7 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 #   - Map saved medication fields to the saved_medications table.
 #   - Keep saved medication snapshots scoped to a patient hash.
 #   - Preserve prescription-derived dosage schedule fields for later schedule features.
+#   - Persist the current medication schedule status for CheckSchedule use cases.
 class _SavedMedication(Base):
     __tablename__ = "saved_medications"
 
@@ -25,6 +28,7 @@ class _SavedMedication(Base):
         default=DEFAULT_PATIENT_HASH,
         server_default=DEFAULT_PATIENT_HASH,
     )
+    created_date = Column(Date, nullable=True, default=date.today)
     item_name = Column(String, index=True)
     efficacy = Column(String)
     use_method = Column(String)
@@ -32,6 +36,12 @@ class _SavedMedication(Base):
     dosage_per_time = Column(String, nullable=True)
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
+    medication_status = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
     ai_guide = Column(String, nullable=True)
 
 
@@ -53,10 +63,13 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
     }
     optional_columns = {
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
+        "created_date": "DATE",
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",
+        "medication_status": "BOOLEAN DEFAULT 0",
     }
+    today = date.today().isoformat()
 
     with db_engine.begin() as connection:
         for column_name, column_type in optional_columns.items():
@@ -68,6 +81,14 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
                     )
                 )
 
+        connection.execute(
+            text(
+                f"UPDATE {_SavedMedication.__tablename__} "
+                "SET created_date = :today "
+                "WHERE created_date IS NULL OR created_date = ''"
+            ),
+            {"today": today},
+        )
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS "

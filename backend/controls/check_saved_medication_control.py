@@ -4,7 +4,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
 
@@ -33,7 +33,7 @@ class CheckSavedMedication:
         medication: SavedMedicationCreate,
     ) -> dict[str, object]:
         try:
-            patient_hash = self._normalize_patient_hash(medication.patient_hash)
+            patient_hash = normalize_patient_hash(medication.patient_hash)
             db_medication = _SavedMedication(
                 patient_hash=patient_hash,
                 item_name=medication.item_name,
@@ -81,7 +81,7 @@ class CheckSavedMedication:
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
-        normalized_patient_hash = self._normalize_patient_hash(patient_hash)
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         saved_medications = (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == normalized_patient_hash)
@@ -182,7 +182,7 @@ class CheckSavedMedication:
         medication_id: int,
         patient_hash: str,
     ) -> _SavedMedication:
-        normalized_patient_hash = self._normalize_patient_hash(patient_hash)
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         medication = (
             self.db.query(_SavedMedication)
             .filter(
@@ -194,16 +194,3 @@ class CheckSavedMedication:
         if medication is None:
             raise HTTPException(status_code=404, detail="Medication was not found.")
         return medication
-
-    # Function Name: _normalize_patient_hash
-    # Description:
-    # - Normalizes empty patient hashes to the local default until UC-6/7 provides real links.
-    # Parameters:
-    # - patient_hash: Raw patient hash from API request or internal call.
-    # Returns:
-    # - Non-empty patient hash string.
-    def _normalize_patient_hash(self, patient_hash: str | None) -> str:
-        normalized_patient_hash = (patient_hash or "").strip()
-        if normalized_patient_hash:
-            return normalized_patient_hash
-        return DEFAULT_PATIENT_HASH

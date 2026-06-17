@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controls/check_medication_detail_control.dart';
+import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../entities/medication_detail_entity.dart';
@@ -10,6 +11,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final InputPrescription inputPrescription;
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
+  final CheckSchedule checkSchedule;
 
   bool _isPrescriptionAnalyzing = false;
   bool get isPrescriptionAnalyzing => _isPrescriptionAnalyzing;
@@ -22,6 +24,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool _isSavedMedicationLoading = false;
   bool get isSavedMedicationLoading => _isSavedMedicationLoading;
 
+  bool _isTodayScheduleLoading = false;
+  bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+
   String _statusMessage = '처방전이나 약봉투를 촬영해 주세요.';
   String get statusMessage => _statusMessage;
 
@@ -33,14 +38,20 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationDetail> get savedMedicationInfoList =>
       List.unmodifiable(_savedMedicationInfoList);
 
+  List<MedicationSchedule> _todayMedicationScheduleList = [];
+  List<MedicationSchedule> get todayMedicationScheduleList =>
+      List.unmodifiable(_todayMedicationScheduleList);
+
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
+    CheckSchedule? checkSchedule,
   })  : inputPrescription = inputPrescription ?? InputPrescription(),
         checkMedicationDetail =
             checkMedicationDetail ?? CheckMedicationDetail(),
-        checkSavedMedication = checkSavedMedication ?? CheckSavedMedication();
+        checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
+        checkSchedule = checkSchedule ?? CheckSchedule();
 
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionAnalysis(
@@ -173,6 +184,56 @@ class MedBuddyViewModel extends ChangeNotifier {
     return success;
   }
 
+  Future<void> fetchTodayMedicationSchedule() async {
+    _isTodayScheduleLoading = true;
+    notifyListeners();
+
+    try {
+      _todayMedicationScheduleList =
+          await checkSchedule.requestTodayMedicationSchedule();
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+    } catch (_) {
+      _statusMessage = 'Schedule lookup failed.';
+    } finally {
+      _isTodayScheduleLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> requestMedicationStatusUpdate(
+    MedicationSchedule medicationSchedule,
+    bool medicationStatus,
+  ) async {
+    if (medicationSchedule.medicationID.trim().isEmpty) {
+      return false;
+    }
+
+    try {
+      final updatedSchedule = await checkSchedule.updateMedicationStatus(
+        medicationSchedule.medicationID,
+        medicationStatus,
+      );
+      _todayMedicationScheduleList = _todayMedicationScheduleList
+          .map(
+            (item) => item.medicationID == updatedSchedule.medicationID
+                ? updatedSchedule
+                : item,
+          )
+          .toList(growable: false);
+      notifyListeners();
+      return true;
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      _statusMessage = 'Status update failed.';
+      notifyListeners();
+      return false;
+    }
+  }
+
   void clearAnalysisResult() {
     _medicationScheduleList = [];
     _statusMessage = '처방전이나 약봉투를 촬영해 주세요.';
@@ -194,6 +255,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
+    checkSchedule.dispose();
     super.dispose();
   }
 }

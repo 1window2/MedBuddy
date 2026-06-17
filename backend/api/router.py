@@ -8,14 +8,21 @@ from pydantic import BaseModel
 
 from api.dependencies import (
     get_check_medication_detail,
+    get_check_schedule,
     get_check_saved_medication,
     get_input_prescription,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from schemas.medication import MedicationRequest, MedicationResponse, SavedMedicationCreate
+from schemas.medication import (
+    MedicationRequest,
+    MedicationResponse,
+    MedicationStatusUpdate,
+    SavedMedicationCreate,
+)
 from services.prescription_parser import parse_prescription
 
 router = APIRouter()
@@ -95,6 +102,53 @@ async def get_saved_medications(
     except Exception as exc:
         logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
+
+
+# Function Name: get_today_medication_schedule
+# Description:
+# - Returns today's active medication schedule scoped to a patient hash.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope schedule lookup.
+# - check_schedule: CheckSchedule injected by FastAPI.
+# Returns:
+# - API-compatible schedule list dictionary.
+@router.get("/schedule/today")
+async def get_today_medication_schedule(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    try:
+        return check_schedule.request_today_medication_schedule(patient_hash)
+    except Exception as exc:
+        logger.error("Today medication schedule lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Schedule lookup failed: {exc}",
+        ) from exc
+
+
+# Function Name: update_medication_status
+# Description:
+# - Updates today's medication completion status for one saved medication.
+# Parameters:
+# - medication_id: Saved medication primary key from route path.
+# - request: MedicationStatusUpdate request DTO.
+# - patient_hash: Patient ownership key used to scope status update.
+# - check_schedule: CheckSchedule injected by FastAPI.
+# Returns:
+# - API-compatible status update dictionary.
+@router.patch("/schedule/{medication_id}/status")
+async def update_medication_status(
+    medication_id: int,
+    request: MedicationStatusUpdate,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    return check_schedule.update_medication_status(
+        medication_id,
+        request.medication_status,
+        patient_hash,
+    )
 
 
 # Function Name: delete_medication

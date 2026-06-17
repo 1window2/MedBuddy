@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../viewmodels/medbuddy_view_model.dart';
 import '../boundaries/check_result_ui_boundary.dart';
+import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 
@@ -34,6 +35,14 @@ class HomeScreen extends StatelessWidget {
       onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
+      onTodayScheduleRequested: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const CheckScheduleUI(),
+          ),
+        );
+      },
       onSavedMedicationRequested: () {
         Navigator.push(
           context,

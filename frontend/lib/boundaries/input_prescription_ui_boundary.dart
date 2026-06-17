@@ -6,6 +6,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
+  final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
   final bool isAnalyzing;
 
@@ -14,6 +15,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
+    required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
   }) : isAnalyzing = false;
 
@@ -22,6 +24,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
   })  : onPrescriptionScanRequested = null,
         onPrescriptionGalleryRequested = null,
+        onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
         isAnalyzing = true;
 
@@ -43,7 +46,10 @@ class InputPrescriptionUI extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
                 child: Column(
                   children: [
-                    _ScheduleCard(statusMessage: statusMessage),
+                    _ScheduleCard(
+                      statusMessage: statusMessage,
+                      onTap: onTodayScheduleRequested!,
+                    ),
                     const SizedBox(height: 20),
                     _HomeActionCard(
                       icon: Icons.camera_alt_outlined,
@@ -321,49 +327,56 @@ class _HomeHeader extends StatelessWidget {
 
 class _ScheduleCard extends StatelessWidget {
   final String statusMessage;
+  final VoidCallback onTap;
 
-  const _ScheduleCard({required this.statusMessage});
+  const _ScheduleCard({
+    required this.statusMessage,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 171),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.mint, width: 2.7),
-        boxShadow: MedBuddyShadows.soft,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.schedule_outlined,
-            color: MedBuddyColors.primary,
-            size: 46,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            '오늘의 복약 일정',
-            style: TextStyle(
-              color: Color(0xFF0A0A0A),
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 171),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: MedBuddyRadii.card,
+          border: Border.all(color: MedBuddyColors.mint, width: 2.7),
+          boxShadow: MedBuddyShadows.soft,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.schedule_outlined,
+              color: MedBuddyColors.primary,
+              size: 46,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            statusMessage,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: MedBuddyColors.textLight,
-              fontSize: 14,
-              height: 1.35,
+            const SizedBox(height: 10),
+            const Text(
+              '오늘의 복약 일정',
+              style: TextStyle(
+                color: Color(0xFF0A0A0A),
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              statusMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: MedBuddyColors.textLight,
+                fontSize: 14,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

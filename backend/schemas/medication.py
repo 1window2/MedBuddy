@@ -41,6 +41,14 @@ class SavedMedicationCreate(BaseModel):
     ai_guide: Optional[str] = None
 
 
+# Class Name: MedicationStatusUpdate
+# Role: Request DTO for updating today's medication completion status.
+# Attributes:
+#   - medication_status: Whether the medication is completed.
+class MedicationStatusUpdate(BaseModel):
+    medication_status: bool
+
+
 # Class Name: MedicationResponse
 # Role: Response DTO for medication lookup results.
 # Attributes:

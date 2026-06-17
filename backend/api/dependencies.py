@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 
@@ -43,3 +44,16 @@ def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
     return CheckSavedMedication(db=db)
+
+
+# Function Name: get_check_schedule
+# Description:
+# - Builds the medication schedule control service with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - CheckSchedule instance.
+def get_check_schedule(
+    db: Session = Depends(get_db),
+) -> CheckSchedule:
+    return CheckSchedule(db=db)
