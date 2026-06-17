@@ -9,6 +9,7 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 
 
 # Function Name: get_input_prescription
@@ -57,3 +58,16 @@ def get_check_schedule(
     db: Session = Depends(get_db),
 ) -> CheckSchedule:
     return CheckSchedule(db=db)
+
+
+# Function Name: get_link_patient_caregiver
+# Description:
+# - Builds the patient-caregiver link control service with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - LinkPatientCaregiver instance.
+def get_link_patient_caregiver(
+    db: Session = Depends(get_db),
+) -> LinkPatientCaregiver:
+    return LinkPatientCaregiver(db=db)

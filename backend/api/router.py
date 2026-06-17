@@ -11,16 +11,20 @@ from api.dependencies import (
     get_check_schedule,
     get_check_saved_medication,
     get_input_prescription,
+    get_link_patient_caregiver,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
     MedicationStatusUpdate,
+    PatientCodeCreate,
+    PatientCodeRegister,
     SavedMedicationCreate,
 )
 from services.prescription_parser import parse_prescription
@@ -149,6 +153,83 @@ async def update_medication_status(
         request.medication_status,
         patient_hash,
     )
+
+
+# Function Name: get_patient_caregiver_links
+# Description:
+# - Returns active patient-caregiver links for a patient or caregiver hash.
+# Parameters:
+# - user_hash: Patient or caregiver ownership key.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible link list dictionary.
+@router.get("/link/list")
+async def get_patient_caregiver_links(
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_link_page(user_hash)
+
+
+# Function Name: create_patient_link_code
+# Description:
+# - Creates a temporary patient code for UC-6 caregiver registration.
+# Parameters:
+# - request: PatientCodeCreate request DTO.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible patient code dictionary.
+@router.post("/link/code")
+async def create_patient_link_code(
+    request: PatientCodeCreate,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_patient_code(request.patient_hash)
+
+
+# Function Name: register_patient_link_code
+# Description:
+# - Registers a caregiver with a valid temporary patient code.
+# Parameters:
+# - request: PatientCodeRegister request DTO.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible link dictionary.
+@router.post("/link/register")
+async def register_patient_link_code(
+    request: PatientCodeRegister,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.register_patient_code(
+        request.caregiver_hash,
+        request.patient_code,
+    )
+
+
+# Function Name: unlink_patient_caregiver
+# Description:
+# - Removes one active patient-caregiver link for a participating user hash.
+# Parameters:
+# - link_id: Patient-caregiver link primary key from route path.
+# - user_hash: Patient or caregiver ownership key allowed to unlink.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible unlink dictionary.
+@router.delete("/link/{link_id}")
+async def unlink_patient_caregiver(
+    link_id: int,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_unlink(link_id, user_hash)
 
 
 # Function Name: delete_medication
