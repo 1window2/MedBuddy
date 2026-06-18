@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
 
-class LinkPatientCaregiverUI extends StatelessWidget {
-  const LinkPatientCaregiverUI({super.key});
+import '../controls/link_patient_caregiver_control.dart';
+import '../entities/patient_caregiver_link_entity.dart';
+import '../entities/patient_hash_entity.dart';
+import '../theme/medbuddy_theme.dart';
+
+class LinkPatientCaregiverUI extends StatefulWidget {
+  final String initialUserHash;
+
+  const LinkPatientCaregiverUI({
+    super.key,
+    this.initialUserHash = PatientHash.defaultPatientHash,
+  });
 
   void clickPatientCaregiverLink() {}
 
@@ -10,7 +20,662 @@ class LinkPatientCaregiverUI extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const SizedBox.shrink();
+  State<LinkPatientCaregiverUI> createState() => _LinkPatientCaregiverUIState();
+}
+
+class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
+  late final TextEditingController _userHashController;
+  late final TextEditingController _patientCodeController;
+
+  List<PatientCaregiverLink> _links = const [];
+  String? _patientCode;
+  String _statusMessage =
+      '\uD604\uC7AC \uC0AC\uC6A9\uC790 \uD574\uC2DC\uB85C \uC5F0\uB3D9 \uC0C1\uD0DC\uB97C \uD655\uC778\uD569\uB2C8\uB2E4.';
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _userHashController = TextEditingController(text: widget.initialUserHash);
+    _patientCodeController = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshLinks();
+    });
   }
+
+  @override
+  void dispose() {
+    _userHashController.dispose();
+    _patientCodeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MedBuddyColors.pageBackground,
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            _LinkHeader(onBackRequested: () => Navigator.pop(context)),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 32),
+                children: [
+                  _StatusCard(
+                    statusMessage: _statusMessage,
+                    isLoading: _isLoading,
+                  ),
+                  const SizedBox(height: 16),
+                  _CurrentUserCard(
+                    controller: _userHashController,
+                    onRefreshRequested: _refreshLinks,
+                    onGeneratePatientCodeRequested: _requestPatientCode,
+                  ),
+                  if (_patientCode != null) ...[
+                    const SizedBox(height: 16),
+                    _PatientCodeCard(patientCode: _patientCode!),
+                  ],
+                  const SizedBox(height: 16),
+                  _RegisterPatientCard(
+                    controller: _patientCodeController,
+                    onRegisterRequested: _registerPatientCode,
+                  ),
+                  const SizedBox(height: 16),
+                  _LinkListCard(
+                    links: _links,
+                    onUnlinkRequested: _requestUnlink,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _refreshLinks() async {
+    await _runLinkAction(() async {
+      final control = _buildControl();
+      try {
+        final links = await control.requestPatientCaregiverLink();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _links = links;
+          _statusMessage = links.isEmpty
+              ? '\uC544\uC9C1 \uC5F0\uB3D9\uB41C \uD658\uC790/\uBCF4\uD638\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
+              : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
+        });
+      } finally {
+        control.dispose();
+      }
+    });
+  }
+
+  Future<void> _requestPatientCode() async {
+    await _runLinkAction(() async {
+      final control = _buildControl();
+      try {
+        final patientCode = await control.requestPatientCode();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _patientCode = patientCode;
+          _statusMessage =
+              '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
+        });
+      } finally {
+        control.dispose();
+      }
+    });
+  }
+
+  Future<void> _registerPatientCode() async {
+    final patientCode = _patientCodeController.text.trim();
+    if (patientCode.isEmpty) {
+      setState(() {
+        _statusMessage =
+            '\uB4F1\uB85D\uD560 \uD658\uC790 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.';
+      });
+      return;
+    }
+
+    await _runLinkAction(() async {
+      final control = _buildControl();
+      try {
+        await control.registerPatientCode(patientCode);
+        final links = await control.requestLinkPage();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _links = links;
+          _patientCodeController.clear();
+          _statusMessage =
+              '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
+        });
+      } finally {
+        control.dispose();
+      }
+    });
+  }
+
+  Future<void> _requestUnlink(PatientCaregiverLink link) async {
+    final linkID = link.linkID;
+    if (linkID == null) {
+      setState(() {
+        _statusMessage =
+            '\uC5F0\uB3D9 \uC2DD\uBCC4\uC790\uAC00 \uC5C6\uC5B4 \uD574\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
+      });
+      return;
+    }
+
+    await _runLinkAction(() async {
+      final control = _buildControl();
+      try {
+        await control.requestUnlink(linkID);
+        final links = await control.requestLinkPage();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _links = links;
+          _statusMessage =
+              '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
+        });
+      } finally {
+        control.dispose();
+      }
+    });
+  }
+
+  Future<void> _runLinkAction(Future<void> Function() action) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _statusMessage = error.toString().replaceFirst('Bad state: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  LinkPatientCaregiver _buildControl() {
+    return LinkPatientCaregiver(userHash: _currentUserHash);
+  }
+
+  String get _currentUserHash {
+    return PatientHash.normalizePatientHash(_userHashController.text);
+  }
+}
+
+class _LinkHeader extends StatelessWidget {
+  final VoidCallback onBackRequested;
+
+  const _LinkHeader({required this.onBackRequested});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 94,
+      width: double.infinity,
+      color: MedBuddyColors.primary,
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            onPressed: onBackRequested,
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
+          ),
+          const Expanded(
+            child: Text(
+              '\uD658\uC790/\uBCF4\uD638\uC790 \uC5F0\uB3D9',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  final String statusMessage;
+  final bool isLoading;
+
+  const _StatusCard({
+    required this.statusMessage,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
+        boxShadow: MedBuddyShadows.soft,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: MedBuddyColors.mint,
+              shape: BoxShape.circle,
+            ),
+            child: isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(9),
+                    child: CircularProgressIndicator(
+                      color: MedBuddyColors.primary,
+                      strokeWidth: 3,
+                    ),
+                  )
+                : const Icon(
+                    Icons.link_outlined,
+                    color: MedBuddyColors.primary,
+                    size: 24,
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              statusMessage,
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 14,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentUserCard extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onRefreshRequested;
+  final VoidCallback onGeneratePatientCodeRequested;
+
+  const _CurrentUserCard({
+    required this.controller,
+    required this.onRefreshRequested,
+    required this.onGeneratePatientCodeRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      icon: Icons.person_outline,
+      title: '\uD604\uC7AC \uC0AC\uC6A9\uC790',
+      child: Column(
+        children: [
+          TextField(
+            controller: controller,
+            decoration: _inputDecoration(
+              '\uC0AC\uC6A9\uC790 \uD574\uC2DC',
+              PatientHash.defaultPatientHash,
+            ),
+            textInputAction: TextInputAction.done,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onRefreshRequested,
+                  icon: const Icon(Icons.refresh_outlined),
+                  label: const Text('\uC0C8\uB85C\uACE0\uCE68'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onGeneratePatientCodeRequested,
+                  icon: const Icon(Icons.qr_code_2_outlined),
+                  label: const Text('\uCF54\uB4DC \uC0DD\uC131'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatientCodeCard extends StatelessWidget {
+  final String patientCode;
+
+  const _PatientCodeCard({required this.patientCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: MedBuddyColors.mint, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '\uACF5\uC720 \uCF54\uB4DC',
+            style: TextStyle(
+              color: MedBuddyColors.primaryDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            patientCode,
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 30,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '\uBCF4\uD638\uC790\uAC00 \uC774 \uCF54\uB4DC\uB97C \uB4F1\uB85D\uD558\uBA74 \uD658\uC790 \uBCF5\uC57D \uC815\uBCF4\uB97C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegisterPatientCard extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onRegisterRequested;
+
+  const _RegisterPatientCard({
+    required this.controller,
+    required this.onRegisterRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      icon: Icons.group_add_outlined,
+      title: '\uD658\uC790 \uCF54\uB4DC \uB4F1\uB85D',
+      child: Column(
+        children: [
+          TextField(
+            controller: controller,
+            decoration: _inputDecoration(
+              '\uC5F0\uB3D9 \uCF54\uB4DC',
+              'ABCD1234',
+            ),
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.done,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onRegisterRequested,
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('\uD658\uC790 \uC5F0\uB3D9'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LinkListCard extends StatelessWidget {
+  final List<PatientCaregiverLink> links;
+  final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
+
+  const _LinkListCard({
+    required this.links,
+    required this.onUnlinkRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      icon: Icons.supervisor_account_outlined,
+      title: '\uC5F0\uB3D9 \uBAA9\uB85D',
+      child: links.isEmpty
+          ? const _EmptyLinkList()
+          : Column(
+              children: [
+                for (final link in links) ...[
+                  _LinkedUserTile(
+                    link: link,
+                    onUnlinkRequested: () => onUnlinkRequested(link),
+                  ),
+                  if (link != links.last) const SizedBox(height: 10),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _LinkedUserTile extends StatelessWidget {
+  final PatientCaregiverLink link;
+  final VoidCallback onUnlinkRequested;
+
+  const _LinkedUserTile({
+    required this.link,
+    required this.onUnlinkRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: link.linked
+                  ? MedBuddyColors.primary
+                  : MedBuddyColors.textLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              link.linked ? Icons.link : Icons.link_off_outlined,
+              color: Colors.white,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _displayHash(link.patientID),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '\uBCF4\uD638\uC790 ${_displayHash(link.caregiverID)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Unlink',
+            icon: const Icon(
+              Icons.delete_outline,
+              color: MedBuddyColors.primary,
+            ),
+            onPressed: onUnlinkRequested,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyLinkList extends StatelessWidget {
+  const _EmptyLinkList();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 18),
+      child: Column(
+        children: [
+          Icon(
+            Icons.link_off_outlined,
+            color: MedBuddyColors.textLight,
+            size: 42,
+          ),
+          SizedBox(height: 10),
+          Text(
+            '\uC5F0\uB3D9\uB41C \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  const _SectionCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: MedBuddyRadii.largeCard,
+        border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
+        boxShadow: MedBuddyShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: MedBuddyColors.primary, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+InputDecoration _inputDecoration(String labelText, String hintText) {
+  return InputDecoration(
+    labelText: labelText,
+    hintText: hintText,
+    filled: true,
+    fillColor: const Color(0xFFFAFAFA),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: MedBuddyColors.primary, width: 2),
+    ),
+  );
+}
+
+String _displayHash(String value) {
+  final displayValue = value.trim();
+  if (displayValue.isEmpty) {
+    return '\uC815\uBCF4 \uC5C6\uC74C';
+  }
+  return displayValue;
 }

@@ -6,6 +6,7 @@ import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
+import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -48,6 +49,14 @@ class HomeScreen extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (context) => const CheckSavedMedicationUI(),
+          ),
+        );
+      },
+      onPatientCaregiverLinkRequested: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LinkPatientCaregiverUI(),
           ),
         );
       },

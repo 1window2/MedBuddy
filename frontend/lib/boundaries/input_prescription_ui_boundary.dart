@@ -8,6 +8,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
+  final VoidCallback? onPatientCaregiverLinkRequested;
   final bool isAnalyzing;
 
   const InputPrescriptionUI({
@@ -17,6 +18,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPrescriptionGalleryRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
+    required this.onPatientCaregiverLinkRequested,
   }) : isAnalyzing = false;
 
   const InputPrescriptionUI.analyzing({
@@ -26,6 +28,7 @@ class InputPrescriptionUI extends StatelessWidget {
         onPrescriptionGalleryRequested = null,
         onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
+        onPatientCaregiverLinkRequested = null,
         isAnalyzing = true;
 
   @override
@@ -65,6 +68,15 @@ class InputPrescriptionUI extends StatelessWidget {
                       subtitle: '저장된 복약 정보 확인',
                       filled: false,
                       onTap: onSavedMedicationRequested!,
+                    ),
+                    const SizedBox(height: 22),
+                    _HomeActionCard(
+                      icon: Icons.link_outlined,
+                      title: '\uD658\uC790/\uBCF4\uD638\uC790 \uC5F0\uB3D9',
+                      subtitle:
+                          '\uC5F0\uB3D9 \uCF54\uB4DC \uC0DD\uC131 \uBC0F \uB4F1\uB85D',
+                      filled: false,
+                      onTap: onPatientCaregiverLinkRequested!,
                     ),
                     const SizedBox(height: 42),
                     const _PageIndicator(),
@@ -474,7 +486,7 @@ class _PageIndicator extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 7.2),
-        for (int index = 0; index < 2; index++)
+        for (int index = 0; index < 3; index++)
           Container(
             width: 7.2,
             height: 7.2,
