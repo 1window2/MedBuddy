@@ -7,16 +7,18 @@ import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from entities.medication_schedule_entity import MedicationSchedule
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
+_GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 # Class Name: CheckSchedule
 # Role: Requests and updates medication schedules.
 # Responsibilities:
-#   - Read today's medication schedule for one patient hash.
+#   - Read today's medication schedule for one patient or linked guardian scope.
 #   - Persist a medication completion status for one saved medication row.
 # Attributes:
 #   - db: SQLAlchemy session used for schedule persistence operations.
@@ -29,39 +31,55 @@ class CheckSchedule:
     # - Class diagram compatible wrapper for today's medication schedule lookup.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible schedule list response dictionary.
     def requestMedicationSchedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_today_medication_schedule(patient_hash)
+        return self.request_today_medication_schedule(patient_hash, user_hash, role)
 
     # Function Name: requestTodayMedicationSchedule
     # Description:
     # - Class diagram compatible wrapper for today's medication schedule lookup.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible schedule list response dictionary.
     def requestTodayMedicationSchedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_today_medication_schedule(patient_hash)
+        return self.request_today_medication_schedule(patient_hash, user_hash, role)
 
     # Function Name: request_today_medication_schedule
     # Description:
     # - Reads active medication schedules for today's date.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible schedule list response dictionary.
     def request_today_medication_schedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        normalized_patient_hash = self._resolve_patient_hash(
+            patient_hash,
+            user_hash,
+            role,
+        )
         today = date.today()
         medications = (
             self.db.query(_SavedMedication)
@@ -190,6 +208,36 @@ class CheckSchedule:
                 else ""
             ),
         }
+
+    # Function Name: resolvePatientHash
+    # Description:
+    # - Class diagram compatible wrapper for patient/guardian scope resolution.
+    # Parameters:
+    # - patient_hash: Direct patient hash for patient requests.
+    # - user_hash: Requesting user hash for guardian requests.
+    # - role: Requesting user role.
+    # Returns:
+    # - Patient hash authorized for this request.
+    def resolvePatientHash(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
+    ) -> str:
+        return self._resolve_patient_hash(patient_hash, user_hash, role)
+
+    def _resolve_patient_hash(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
+    ) -> str:
+        normalized_role = (role or "patient").strip().lower()
+        if normalized_role in _GUARDIAN_ROLES:
+            return LinkPatientCaregiver(self.db).get_linked_patient_hash(
+                user_hash or patient_hash
+            )
+        return normalize_patient_hash(user_hash or patient_hash)
 
     # Function Name: _to_schedule
     # Description:

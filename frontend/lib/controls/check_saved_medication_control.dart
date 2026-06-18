@@ -11,12 +11,16 @@ import '../services/api_config.dart';
 class CheckSavedMedication {
   final String baseUrl;
   final String patientHash;
+  final String? userHash;
+  final String role;
   final http.Client _client;
   final bool _ownsClient;
 
   CheckSavedMedication({
     this.baseUrl = ApiConfig.baseUrl,
     this.patientHash = PatientHash.defaultPatientHash,
+    this.userHash,
+    this.role = 'patient',
     http.Client? client,
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -189,7 +193,12 @@ class CheckSavedMedication {
   // - URI scoped with patient_hash query parameter.
   Uri _buildMedicationUri(String path) {
     return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {'patient_hash': patientHash},
+      queryParameters: {
+        'patient_hash': patientHash,
+        'role': role,
+        if (userHash != null && userHash!.trim().isNotEmpty)
+          'user_hash': userHash!.trim(),
+      },
     );
   }
 

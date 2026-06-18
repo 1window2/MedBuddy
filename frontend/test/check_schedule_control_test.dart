@@ -50,12 +50,54 @@ void main() {
     expect(schedules.first.patientID, 'patient-a');
   });
 
+  test('requestTodayMedicationSchedule can request guardian linked scope',
+      () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/schedule/today');
+      expect(request.url.queryParameters['patient_hash'], 'local_patient');
+      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['role'], 'guardian');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': [
+            {
+              'medication_id': '7',
+              'drug_name': 'guardian-tablet',
+              'dosage_per_time': '1 tablet',
+              'daily_frequency': '3 times',
+              'total_days': '7 days',
+              'medication_status': false,
+              'patient_hash': 'patient-a',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckSchedule(
+      baseUrl: 'http://localhost',
+      userHash: 'guardian-a',
+      role: 'guardian',
+      client: client,
+    );
+
+    final schedules = await control.requestTodayMedicationSchedule();
+
+    expect(schedules, hasLength(1));
+    expect(schedules.first.patientID, 'patient-a');
+    expect(schedules.first.medicationName, 'guardian-tablet');
+  });
+
   test('updateMedicationStatus sends scoped status patch', () async {
     late Map<String, dynamic> requestBody;
     final client = MockClient((http.Request request) async {
       expect(request.method, 'PATCH');
       expect(request.url.path, '/schedule/7/status');
       expect(request.url.queryParameters['patient_hash'], 'patient-a');
+      expect(request.url.queryParameters['role'], 'patient');
       requestBody = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response(
         jsonEncode({

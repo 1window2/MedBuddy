@@ -90,19 +90,27 @@ async def save_medication(
 
 # Function Name: get_saved_medications
 # Description:
-# - Returns saved medication rows scoped to a patient hash.
+# - Returns saved medication rows scoped to patient or linked guardian access.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope saved medication lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
     patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return check_saved_medication.request_saved_medication_info(patient_hash)
+        return check_saved_medication.request_saved_medication_info(
+            patient_hash,
+            user_hash,
+            role,
+        )
     except Exception as exc:
         logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
@@ -110,19 +118,27 @@ async def get_saved_medications(
 
 # Function Name: get_today_medication_schedule
 # Description:
-# - Returns today's active medication schedule scoped to a patient hash.
+# - Returns today's active medication schedule scoped to patient or linked guardian access.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope schedule lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
 # - check_schedule: CheckSchedule injected by FastAPI.
 # Returns:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
 async def get_today_medication_schedule(
     patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
     try:
-        return check_schedule.request_today_medication_schedule(patient_hash)
+        return check_schedule.request_today_medication_schedule(
+            patient_hash,
+            user_hash,
+            role,
+        )
     except Exception as exc:
         logger.error("Today medication schedule lookup failed: %s", exc, exc_info=True)
         raise HTTPException(

@@ -4,16 +4,19 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
+
+_GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
 # Class Name: CheckSavedMedication
 # Role: Coordinates saved medication CRUD use cases.
 # Responsibilities:
 #   - Save medication snapshots.
-#   - List saved medications for the requested patient hash.
+#   - List saved medications for the requested patient or linked guardian scope.
 #   - Delete saved medications with not-found handling.
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
@@ -72,16 +75,24 @@ class CheckSavedMedication:
 
     # Function Name: request_saved_medication_info
     # Description:
-    # - Reads saved medications owned by one patient hash.
+    # - Reads saved medications owned by one patient hash or linked guardian scope.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope saved medication lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible list response dictionary.
     def request_saved_medication_info(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        normalized_patient_hash = self._resolve_patient_hash(
+            patient_hash,
+            user_hash,
+            role,
+        )
         saved_medications = (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == normalized_patient_hash)
@@ -101,13 +112,17 @@ class CheckSavedMedication:
     # - Class diagram compatible wrapper for request_saved_medication_info.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope saved medication lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible list response dictionary.
     def requestSavedMedicationInfo(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_saved_medication_info(patient_hash)
+        return self.request_saved_medication_info(patient_hash, user_hash, role)
 
     # Function Name: request_delete
     # Description:
@@ -168,6 +183,36 @@ class CheckSavedMedication:
             "total_days": medication.total_days,
             "ai_guide": medication.ai_guide,
         }
+
+    # Function Name: resolvePatientHash
+    # Description:
+    # - Class diagram compatible wrapper for patient/guardian scope resolution.
+    # Parameters:
+    # - patient_hash: Direct patient hash for patient requests.
+    # - user_hash: Requesting user hash for guardian requests.
+    # - role: Requesting user role.
+    # Returns:
+    # - Patient hash authorized for this request.
+    def resolvePatientHash(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
+    ) -> str:
+        return self._resolve_patient_hash(patient_hash, user_hash, role)
+
+    def _resolve_patient_hash(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
+    ) -> str:
+        normalized_role = (role or "patient").strip().lower()
+        if normalized_role in _GUARDIAN_ROLES:
+            return LinkPatientCaregiver(self.db).get_linked_patient_hash(
+                user_hash or patient_hash
+            )
+        return normalize_patient_hash(user_hash or patient_hash)
 
     # Function Name: _get_existing_medication
     # Description:

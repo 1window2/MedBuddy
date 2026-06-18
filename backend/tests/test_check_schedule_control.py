@@ -12,6 +12,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
@@ -35,6 +36,7 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = CheckSchedule(self.db)
+        self.link_control = LinkPatientCaregiver(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -126,6 +128,40 @@ class CheckScheduleTest(unittest.TestCase):
 
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
+
+    def test_guardian_today_schedule_resolves_linked_patient_hash(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="guardian-visible-tablet",
+        )
+        self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-tablet",
+        )
+        code_response = self.link_control.request_patient_code("patient-a")
+        self.link_control.register_patient_code(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+
+        response = self.control.request_today_medication_schedule(
+            user_hash="guardian-a",
+            role="guardian",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
+        self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
+
+    def test_guardian_today_schedule_without_link_stops_with_not_found(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.control.request_today_medication_schedule(
+                user_hash="guardian-missing",
+                role="guardian",
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
 
 
 if __name__ == "__main__":

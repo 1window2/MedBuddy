@@ -11,6 +11,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_saved_medication_control import CheckSavedMedication  # noqa: E402
+from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
@@ -35,6 +36,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = CheckSavedMedication(self.db)
+        self.link_control = LinkPatientCaregiver(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -114,6 +116,38 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_row = self.db.get(_SavedMedication, response["id"])
         self.assertIsNotNone(saved_row)
         self.assertEqual(saved_row.patient_hash, DEFAULT_PATIENT_HASH)
+
+    def test_guardian_list_resolves_linked_patient_hash(self) -> None:
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-b", item_name="B tablet")
+        )
+        code_response = self.link_control.request_patient_code("patient-a")
+        self.link_control.register_patient_code(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+
+        response = self.control.request_saved_medication_info(
+            user_hash="guardian-a",
+            role="guardian",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
+        self.assertEqual(response["data"][0]["item_name"], "A tablet")
+
+    def test_guardian_list_without_link_stops_with_not_found(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.control.request_saved_medication_info(
+                user_hash="guardian-missing",
+                role="guardian",
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
 
 
 if __name__ == "__main__":

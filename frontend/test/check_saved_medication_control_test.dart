@@ -86,11 +86,52 @@ void main() {
     expect(medications.first.dosagePerTime, '1 tablet');
   });
 
+  test('requestSavedMedicationInfo can request guardian linked scope',
+      () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/list');
+      expect(request.url.queryParameters['patient_hash'], 'local_patient');
+      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['role'], 'guardian');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': [
+            {
+              'id': 1,
+              'patient_hash': 'patient-a',
+              'item_name': 'guardian-tablet',
+              'efficacy': 'effect',
+              'use_method': 'usage',
+              'warning_message': 'warning',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      userHash: 'guardian-a',
+      role: 'guardian',
+      client: client,
+    );
+
+    final medications = await control.requestSavedMedicationInfo();
+
+    expect(medications, hasLength(1));
+    expect(medications.first.patientHash, 'patient-a');
+    expect(medications.first.itemName, 'guardian-tablet');
+  });
+
   test('requestDelete scopes delete request by patient hash', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'DELETE');
       expect(request.url.path, '/delete/3');
       expect(request.url.queryParameters['patient_hash'], 'patient-a');
+      expect(request.url.queryParameters['role'], 'patient');
       return http.Response('{"success":true}', 200);
     });
     final control = CheckSavedMedication(
