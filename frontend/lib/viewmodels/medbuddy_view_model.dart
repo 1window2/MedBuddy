@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_medication_detail_control.dart';
 import '../controls/check_schedule_control.dart';
@@ -7,8 +10,10 @@ import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/medication_notification_service.dart';
 
 // 열거형명: PrescriptionFlowState
 // 역할: 처방전 촬영부터 결과 확인까지의 화면 상태를 표현한다.
@@ -30,6 +35,16 @@ enum AnalysisProgressStep {
   scheduleGeneration,
 }
 
+class TodayMedicationProgress {
+  final int completedCount;
+  final int totalCount;
+
+  const TodayMedicationProgress({
+    required this.completedCount,
+    required this.totalCount,
+  });
+}
+
 // 파일명: medbuddy_view_model.dart
 // 역할: 화면 상태와 컨트롤 계층을 연결하는 앱 전역 ViewModel을 정의한다.
 
@@ -46,6 +61,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
   final ManageUserSetting manageUserSetting;
+  final MedicationNotificationService notificationService;
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
@@ -111,22 +127,59 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> get todayMedicationScheduleList =>
       List.unmodifiable(_todayMedicationScheduleList);
 
+  TodayMedicationProgress get todayMedicationProgress {
+    final slotKeys = ['morning', 'lunch', 'evening', 'bedtime'];
+    var totalCount = 0;
+    var completedCount = 0;
+
+    for (final schedule in _todayMedicationScheduleList) {
+      final scheduleSlotKeys = _slotKeysForSchedule(schedule);
+      for (final slotKey in slotKeys) {
+        if (!scheduleSlotKeys.contains(slotKey)) {
+          continue;
+        }
+        totalCount += 1;
+        if (isMedicationDoseCompleted(slotKey, schedule)) {
+          completedCount += 1;
+        }
+      }
+    }
+
+    return TodayMedicationProgress(
+      completedCount: completedCount,
+      totalCount: totalCount,
+    );
+  }
+
+  final Map<String, MedicationReminderSetting> _medicationReminderSettings = {};
+  Map<String, MedicationReminderSetting> get medicationReminderSettings =>
+      Map.unmodifiable(_medicationReminderSettings);
+
+  final Set<String> _completedMedicationDoseKeys = {};
+
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
     ManageUserSetting? manageUserSetting,
+    MedicationNotificationService? notificationService,
   })  : inputPrescription = inputPrescription ?? InputPrescription(),
         checkMedicationDetail =
             checkMedicationDetail ?? CheckMedicationDetail(),
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
         checkSchedule = checkSchedule ?? CheckSchedule(),
-        manageUserSetting = manageUserSetting ?? ManageUserSetting();
+        manageUserSetting = manageUserSetting ?? ManageUserSetting(),
+        notificationService =
+            notificationService ?? MedicationNotificationService.instance;
 
   // 함수명: loadUserSetting
   // 함수역할:
   // - 앱 시작 시 로컬 저장소에 보관된 사용자 설정을 불러온다.
+  // 반환값:
+  // 함수명: loadUserSetting
+  // 함수역할:
+  // - 앱 시작 시 로컬 사용자 설정, 알림 설정, 오늘 복약 일정을 함께 불러온다.
   // 반환값:
   // - 없음
   Future<void> loadUserSetting() async {
@@ -135,16 +188,15 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _userSetting = await manageUserSetting.requestStoredUserSetting();
+      await loadMedicationReminderSettings(notifyAfterLoad: false);
+      await loadTodayMedicationDoseStatuses(notifyAfterLoad: false);
+      await fetchTodayMedicationSchedule();
     } finally {
       _isUserSettingLoading = false;
       notifyListeners();
     }
   }
 
-  // 함수명: requestPrescriptionImage
-  // 함수역할:
-  // - 카메라 촬영 기반 처방전 OCR 흐름을 시작한다.
-  // 반환값:
   // - 없음
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
@@ -317,6 +369,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       }
 
       await fetchSavedMedicationInfo();
+      await fetchTodayMedicationSchedule();
       _statusMessage = _buildBulkSaveMessage(
         savedCount: savedCount,
         duplicateCount: duplicateCount,
@@ -395,6 +448,7 @@ class MedBuddyViewModel extends ChangeNotifier {
         : '복약 정보가 성공적으로 저장되었습니다.';
     if (refreshAfterSave) {
       await fetchSavedMedicationInfo();
+      await fetchTodayMedicationSchedule();
     }
     notifyListeners();
     return result;
@@ -448,6 +502,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       _todayMedicationScheduleList =
           await checkSchedule.requestTodayMedicationSchedule();
+      await loadTodayMedicationDoseStatuses(notifyAfterLoad: false);
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -456,6 +511,280 @@ class MedBuddyViewModel extends ChangeNotifier {
       _isTodayScheduleLoading = false;
       notifyListeners();
     }
+  }
+
+  // 함수명: loadMedicationReminderSettings
+  // 함수역할:
+  // - 로컬 저장소에서 시간대별 복약 알림 설정을 불러온다.
+  // 매개변수:
+  // - notifyAfterLoad: 불러온 뒤 화면 갱신 여부
+  // 반환값:
+  // - 없음
+  Future<void> loadMedicationReminderSettings({
+    bool notifyAfterLoad = true,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    for (final slotKey in ['morning', 'lunch', 'evening', 'bedtime']) {
+      final rawSetting = preferences.getString(_reminderStorageKey(slotKey));
+      if (rawSetting == null || rawSetting.trim().isEmpty) {
+        _medicationReminderSettings[slotKey] =
+            MedicationReminderSetting.defaults(slotKey);
+        continue;
+      }
+
+      try {
+        final decodedSetting = jsonDecode(rawSetting);
+        if (decodedSetting is Map<String, dynamic>) {
+          _medicationReminderSettings[slotKey] =
+              MedicationReminderSetting.fromJson(decodedSetting);
+        }
+      } catch (_) {
+        _medicationReminderSettings[slotKey] =
+            MedicationReminderSetting.defaults(slotKey);
+      }
+    }
+
+    if (notifyAfterLoad) {
+      notifyListeners();
+    }
+  }
+
+  // 함수명: requestMedicationReminderSave
+  // 함수역할:
+  // - 사용자가 설정한 시간대별 복약 알림을 휴대폰 로컬 알림으로 예약한다.
+  // 매개변수:
+  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - slotTitle: 사용자에게 보여줄 시간대명
+  // - hour: 24시간 기준 시
+  // - minute: 분
+  // - schedules: 해당 시간대에 복용할 약 목록
+  // 반환값:
+  // - 알림 예약 성공 여부
+  Future<bool> requestMedicationReminderSave({
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<MedicationSchedule> schedules,
+  }) async {
+    final setting = MedicationReminderSetting(
+      slotKey: slotKey,
+      hour: hour,
+      minute: minute,
+      isEnabled: true,
+    );
+
+    final hasPermission = await notificationService.requestPermission();
+    if (!hasPermission) {
+      _statusMessage = '알림 권한이 허용되지 않았습니다.';
+      notifyListeners();
+      return false;
+    }
+
+    await notificationService.scheduleDailyReminder(
+      id: setting.notificationId,
+      slotTitle: slotTitle,
+      hour: hour,
+      minute: minute,
+      medicationNames:
+          schedules.map((schedule) => schedule.displayName).toList(),
+    );
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _reminderStorageKey(slotKey),
+      jsonEncode(setting.toJson()),
+    );
+    _medicationReminderSettings[slotKey] = setting;
+    _statusMessage = '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
+    notifyListeners();
+    return true;
+  }
+
+  // 함수명: requestMedicationReminderCancel
+  // 함수역할:
+  // - 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다.
+  // 매개변수:
+  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - slotTitle: 사용자에게 보여줄 시간대명
+  // 반환값:
+  // - 알림 취소 성공 여부
+  Future<bool> requestMedicationReminderCancel({
+    required String slotKey,
+    required String slotTitle,
+  }) async {
+    final currentSetting = _medicationReminderSettings[slotKey] ??
+        MedicationReminderSetting.defaults(slotKey);
+    final disabledSetting = currentSetting.copyWith(isEnabled: false);
+
+    try {
+      await notificationService.cancelReminder(currentSetting.notificationId);
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _reminderStorageKey(slotKey),
+        jsonEncode(disabledSetting.toJson()),
+      );
+      _medicationReminderSettings[slotKey] = disabledSetting;
+      _statusMessage = '$slotTitle 알림을 해제했습니다.';
+      notifyListeners();
+      return true;
+    } catch (_) {
+      _statusMessage = '$slotTitle 알림을 해제하지 못했습니다.';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  String _reminderStorageKey(String slotKey) {
+    return 'medbuddy_medication_reminder_$slotKey';
+  }
+
+  // 함수명: loadTodayMedicationDoseStatuses
+  // 함수역할:
+  // - 오늘 날짜의 시간대별 복약 완료 상태를 로컬 저장소에서 불러온다.
+  // 매개변수:
+  // - notifyAfterLoad: 불러온 뒤 화면 갱신을 알릴지 여부
+  // 반환값:
+  // - 없음
+  Future<void> loadTodayMedicationDoseStatuses({
+    bool notifyAfterLoad = true,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final storedKeys =
+        preferences.getStringList(_todayDoseStatusStorageKey()) ?? const [];
+    _completedMedicationDoseKeys
+      ..clear()
+      ..addAll(storedKeys);
+
+    if (notifyAfterLoad) {
+      notifyListeners();
+    }
+  }
+
+  // 함수명: isMedicationDoseCompleted
+  // 함수역할:
+  // - 특정 시간대에 표시된 약 한 줄이 오늘 완료 처리되었는지 확인한다.
+  // 매개변수:
+  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - schedule: 확인할 복약 일정
+  // 반환값:
+  // - 완료 처리되어 있으면 True
+  bool isMedicationDoseCompleted(
+    String slotKey,
+    MedicationSchedule schedule,
+  ) {
+    return _completedMedicationDoseKeys.contains(
+      _doseStatusKey(slotKey, schedule),
+    );
+  }
+
+  List<String> slotKeysForSchedule(MedicationSchedule schedule) {
+    return _slotKeysForSchedule(schedule);
+  }
+
+  // 함수명: requestMedicationDoseStatusUpdate
+  // 함수역할:
+  // - 특정 시간대의 복약 완료 상태를 오늘 날짜 기준 로컬 저장소에 저장한다.
+  // 매개변수:
+  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - schedule: 상태를 변경할 복약 일정
+  // - medicationStatus: 새 완료 상태
+  // 반환값:
+  // - 저장 성공 여부
+  Future<bool> requestMedicationDoseStatusUpdate(
+    String slotKey,
+    MedicationSchedule schedule,
+    bool medicationStatus,
+  ) async {
+    final doseKey = _doseStatusKey(slotKey, schedule);
+    if (medicationStatus) {
+      _completedMedicationDoseKeys.add(doseKey);
+    } else {
+      _completedMedicationDoseKeys.remove(doseKey);
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        _todayDoseStatusStorageKey(),
+        _completedMedicationDoseKeys.toList(growable: false),
+      );
+      notifyListeners();
+      return true;
+    } catch (_) {
+      _statusMessage = '복약 완료 상태를 저장하지 못했습니다.';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  String _todayDoseStatusStorageKey() {
+    final now = DateTime.now();
+    return 'medbuddy_medication_dose_status_${now.year.toString().padLeft(4, '0')}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}_${_todayScheduleStorageSignature()}';
+  }
+
+  String _doseStatusKey(String slotKey, MedicationSchedule schedule) {
+    final medicationKey = [
+      schedule.medicationID.trim(),
+      _formatDateKey(schedule.scheduleStartDate),
+      schedule.displayName,
+      schedule.dosage,
+      schedule.intakeTime,
+      schedule.medicationTime.toString(),
+    ].where((value) => value.trim().isNotEmpty).join('::');
+    return '$slotKey::$medicationKey';
+  }
+
+  String _todayScheduleStorageSignature() {
+    if (_todayMedicationScheduleList.isEmpty) {
+      return 'empty';
+    }
+
+    final signatureSource = _todayMedicationScheduleList.map((schedule) {
+      return [
+        schedule.medicationID.trim(),
+        _formatDateKey(schedule.scheduleStartDate),
+        schedule.displayName,
+        schedule.dosage,
+        schedule.intakeTime,
+        schedule.medicationTime.toString(),
+      ].where((value) => value.trim().isNotEmpty).join('|');
+    }).join('||');
+
+    return _stableTextHash(signatureSource).toString();
+  }
+
+  String _formatDateKey(DateTime? value) {
+    if (value == null) {
+      return '';
+    }
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+  }
+
+  int _stableTextHash(String text) {
+    var hash = 5381;
+    for (final codeUnit in text.codeUnits) {
+      hash = ((hash << 5) + hash + codeUnit) & 0x7fffffff;
+    }
+    return hash;
+  }
+
+  List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
+    final frequencyCount = schedule.dailyFrequencyCount;
+    if (frequencyCount >= 4) {
+      return const ['morning', 'lunch', 'evening', 'bedtime'];
+    }
+    if (frequencyCount == 3) {
+      return const ['morning', 'lunch', 'evening'];
+    }
+    if (frequencyCount == 2) {
+      return const ['morning', 'evening'];
+    }
+    return const ['morning'];
   }
 
   Future<bool> requestMedicationStatusUpdate(

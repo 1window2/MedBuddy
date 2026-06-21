@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../boundaries/medication_detail_ui_boundary.dart';
+import '../entities/medication_guide_entity.dart';
+import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
-// 역할: 오늘의 복약 일정과 복약 완료 상태를 보여주는 화면을 구성한다.
+// 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
 
 // 클래스명: CheckScheduleUI
-// 역할: 저장된 복약 정보 중 오늘 복용할 약을 조회하고 체크할 수 있게 한다.
+// 역할: 오늘 복용해야 하는 약을 시간대별로 보여주고 복약 상태와 알림을 관리한다.
 // 주요 책임:
-// - 화면 진입 시 오늘의 복약 일정을 불러온다.
-// - 복약 완료 여부를 토글하면 ViewModel을 통해 서버에 반영한다.
-// - 일정이 없을 때 빈 상태 화면을 보여준다.
+// - 화면 진입 시 오늘 복약 일정과 알림 설정을 불러온다.
+// - 1일 복용 횟수를 기준으로 아침/점심/저녁/취침 전 슬롯에 약을 배치한다.
+// - 시간대별 알림 설정 팝업을 열고 로컬 알림 예약을 요청한다.
 class CheckScheduleUI extends StatefulWidget {
   const CheckScheduleUI({super.key});
 
@@ -22,185 +25,769 @@ class CheckScheduleUI extends StatefulWidget {
 }
 
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
+  static const List<_ScheduleSlotDefinition> _slotDefinitions = [
+    _ScheduleSlotDefinition(
+      key: 'morning',
+      title: '아침',
+      hour: 8,
+      color: Color(0xFFFF9800),
+      icon: Icons.wb_sunny_outlined,
+    ),
+    _ScheduleSlotDefinition(
+      key: 'lunch',
+      title: '점심',
+      hour: 12,
+      color: Color(0xFFFF5A00),
+      icon: Icons.local_cafe_outlined,
+    ),
+    _ScheduleSlotDefinition(
+      key: 'evening',
+      title: '저녁',
+      hour: 18,
+      color: Color(0xFFFF1E62),
+      icon: Icons.wb_twilight_outlined,
+    ),
+    _ScheduleSlotDefinition(
+      key: 'bedtime',
+      title: '취침 전',
+      hour: 22,
+      color: Color(0xFF625BFF),
+      icon: Icons.nightlight_round,
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MedBuddyViewModel>().fetchTodayMedicationSchedule();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final viewModel = context.read<MedBuddyViewModel>();
+      await viewModel.loadMedicationReminderSettings();
+      await viewModel.loadTodayMedicationDoseStatuses();
+      await viewModel.fetchTodayMedicationSchedule();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MedBuddyViewModel>();
-    final schedules = viewModel.todayMedicationScheduleList;
+    final slots = _buildSlots(viewModel);
+    final progress = viewModel.todayMedicationProgress;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        top: false,
+      body: Column(
+        children: [
+          _ScheduleHeader(
+            completedCount: progress.completedCount,
+            totalCount: progress.totalCount,
+            onBackRequested: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: _buildContent(viewModel, slots),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(
+    MedBuddyViewModel viewModel,
+    List<_ScheduleSlot> slots,
+  ) {
+    if (viewModel.isTodayScheduleLoading &&
+        viewModel.todayMedicationScheduleList.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: MedBuddyColors.primary),
+      );
+    }
+
+    if (viewModel.todayMedicationScheduleList.isEmpty) {
+      return const _ScheduleEmptyState();
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(34, 14, 34, 28),
+      children: [
+        for (final slot in slots) ...[
+          _TimeSlotCard(
+            slot: slot,
+            reminderSetting: viewModel.medicationReminderSettings[slot.key] ??
+                MedicationReminderSetting.defaults(slot.key),
+            isCompletedProvider: (schedule) {
+              return viewModel.isMedicationDoseCompleted(slot.key, schedule);
+            },
+            onReminderRequested: () => _handleReminderToggle(viewModel, slot),
+            onGuideRequested: (schedule) {
+              _showMedicationGuide(viewModel, schedule);
+            },
+            onStatusChanged: (schedule, medicationStatus) async {
+              final success = await viewModel.requestMedicationDoseStatusUpdate(
+                slot.key,
+                schedule,
+                medicationStatus,
+              );
+              if (!mounted || success) {
+                return;
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('복약 상태를 변경하지 못했습니다.'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+        const Divider(height: 24, color: Color(0xFFD1D5DC)),
+        OutlinedButton(
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('건강 관리 추천은 준비 중입니다.')),
+            );
+          },
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(64),
+            side: const BorderSide(color: MedBuddyColors.primary, width: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            foregroundColor: MedBuddyColors.primaryDark,
+          ),
+          child: const Text(
+            '건강 관리 추천 보기',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<_ScheduleSlot> _buildSlots(MedBuddyViewModel viewModel) {
+    return _slotDefinitions.map((definition) {
+      final medications =
+          viewModel.todayMedicationScheduleList.where((schedule) {
+        return viewModel.slotKeysForSchedule(schedule).contains(definition.key);
+      }).toList(growable: false);
+      return _ScheduleSlot(definition: definition, medications: medications);
+    }).toList(growable: false);
+  }
+
+  Future<void> _showReminderDialog(
+    MedBuddyViewModel viewModel,
+    _ScheduleSlot slot,
+  ) async {
+    final setting = viewModel.medicationReminderSettings[slot.key] ??
+        MedicationReminderSetting.defaults(slot.key);
+    final selectedTime = await showDialog<_ReminderTime>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _ReminderDialog(
+        slotTitle: slot.title,
+        initialHour: setting.hour,
+        initialMinute: setting.minute,
+      ),
+    );
+    if (selectedTime == null) {
+      return;
+    }
+
+    final success = await viewModel.requestMedicationReminderSave(
+      slotKey: slot.key,
+      slotTitle: slot.title,
+      hour: selectedTime.hour,
+      minute: selectedTime.minute,
+      schedules: slot.medications,
+    );
+    if (!mounted || success) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(viewModel.statusMessage)),
+    );
+  }
+
+  Future<void> _handleReminderToggle(
+    MedBuddyViewModel viewModel,
+    _ScheduleSlot slot,
+  ) async {
+    final setting = viewModel.medicationReminderSettings[slot.key] ??
+        MedicationReminderSetting.defaults(slot.key);
+    if (!setting.isEnabled) {
+      await _showReminderDialog(viewModel, slot);
+      return;
+    }
+
+    final success = await viewModel.requestMedicationReminderCancel(
+      slotKey: slot.key,
+      slotTitle: slot.title,
+    );
+    if (!mounted || success) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(viewModel.statusMessage)),
+    );
+  }
+
+  void _showMedicationGuide(
+    MedBuddyViewModel viewModel,
+    MedicationSchedule schedule,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MedicationDetailUI(
+          medicationGuide: MedicationGuide.fromMedicationSchedule(schedule),
+          userSetting: viewModel.userSetting,
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleHeader extends StatelessWidget {
+  final int completedCount;
+  final int totalCount;
+  final VoidCallback onBackRequested;
+
+  const _ScheduleHeader({
+    required this.completedCount,
+    required this.totalCount,
+    required this.onBackRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
+
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFF16934F),
+      padding: EdgeInsets.fromLTRB(
+        18,
+        MediaQuery.of(context).padding.top + 12,
+        28,
+        18,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: '뒤로가기',
+                onPressed: onBackRequested,
+                icon:
+                    const Icon(Icons.arrow_back, color: Colors.white, size: 30),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                '오늘의 복약 일정',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            margin: const EdgeInsets.only(left: 26),
+            padding: const EdgeInsets.fromLTRB(15, 12, 15, 15),
+            decoration: BoxDecoration(
+              color: const Color(0xFF057D55),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '복용 진행률',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$completedCount/$totalCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 10,
+                    color: Colors.white,
+                    backgroundColor: const Color(0xFF006B4E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeSlotCard extends StatelessWidget {
+  final _ScheduleSlot slot;
+  final MedicationReminderSetting reminderSetting;
+  final bool Function(MedicationSchedule schedule) isCompletedProvider;
+  final VoidCallback onReminderRequested;
+  final void Function(MedicationSchedule schedule) onGuideRequested;
+  final Future<void> Function(
+    MedicationSchedule schedule,
+    bool medicationStatus,
+  ) onStatusChanged;
+
+  const _TimeSlotCard({
+    required this.slot,
+    required this.reminderSetting,
+    required this.isCompletedProvider,
+    required this.onReminderRequested,
+    required this.onGuideRequested,
+    required this.onStatusChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      elevation: 5,
+      shadowColor: const Color.fromRGBO(0, 0, 0, 0.12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
         child: Column(
           children: [
-            _ScheduleHeader(onBackRequested: () => Navigator.pop(context)),
-            if (schedules.isNotEmpty) _ScheduleProgress(schedules: schedules),
-            Expanded(child: _buildContent(viewModel, schedules)),
+            Container(
+              color: slot.color,
+              padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(slot.icon, color: Colors.white, size: 26),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          slot.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          reminderSetting.isEnabled
+                              ? reminderSetting.timeLabel
+                              : slot.timeLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _ReminderIconButton(
+                    slotTitle: slot.title,
+                    isEnabled: reminderSetting.isEnabled,
+                    onPressed: onReminderRequested,
+                  ),
+                ],
+              ),
+            ),
+            if (slot.medications.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Text(
+                  '복용할 약이 없습니다',
+                  style: TextStyle(
+                    color: MedBuddyColors.textLight,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else
+              for (final schedule in slot.medications)
+                _MedicationScheduleRow(
+                  schedule: schedule,
+                  isCompleted: isCompletedProvider(schedule),
+                  onGuideRequested: () => onGuideRequested(schedule),
+                  onStatusChanged: (value) => onStatusChanged(schedule, value),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MedicationScheduleRow extends StatelessWidget {
+  final MedicationSchedule schedule;
+  final bool isCompleted;
+  final VoidCallback onGuideRequested;
+  final Future<void> Function(bool medicationStatus) onStatusChanged;
+
+  const _MedicationScheduleRow({
+    required this.schedule,
+    required this.isCompleted,
+    required this.onGuideRequested,
+    required this.onStatusChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: Row(
+        children: [
+          Tooltip(
+            message: isCompleted ? '복용 완료 취소' : '복용 완료',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => onStatusChanged(!isCompleted),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isCompleted
+                      ? Icons.check_circle_outline
+                      : Icons.circle_outlined,
+                  color: isCompleted
+                      ? MedBuddyColors.primary
+                      : const Color(0xFFD1D5DC),
+                  size: 28,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onGuideRequested,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      schedule.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isCompleted
+                            ? MedBuddyColors.textLight
+                            : MedBuddyColors.textStrong,
+                        decoration:
+                            isCompleted ? TextDecoration.lineThrough : null,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      schedule.dosageLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF667085),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReminderIconButton extends StatelessWidget {
+  final String slotTitle;
+  final bool isEnabled;
+  final VoidCallback onPressed;
+
+  const _ReminderIconButton({
+    required this.slotTitle,
+    required this.isEnabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = isEnabled ? const Color(0xFFFF1744) : Colors.white;
+    final backgroundColor =
+        isEnabled ? Colors.white : Colors.white.withValues(alpha: 0.0);
+
+    return Tooltip(
+      message: '$slotTitle 알림 설정',
+      child: Material(
+        color: backgroundColor,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              isEnabled
+                  ? Icons.notifications_active_outlined
+                  : Icons.notifications_none_outlined,
+              color: iconColor,
+              size: 29,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReminderDialog extends StatefulWidget {
+  final String slotTitle;
+  final int initialHour;
+  final int initialMinute;
+
+  const _ReminderDialog({
+    required this.slotTitle,
+    required this.initialHour,
+    required this.initialMinute,
+  });
+
+  @override
+  State<_ReminderDialog> createState() => _ReminderDialogState();
+}
+
+class _ReminderDialogState extends State<_ReminderDialog> {
+  late bool _isAm;
+  late int _hour12;
+  late int _minute;
+
+  @override
+  void initState() {
+    super.initState();
+    _isAm = widget.initialHour < 12;
+    final normalizedHour = widget.initialHour % 12;
+    _hour12 = normalizedHour == 0 ? 12 : normalizedHour;
+    _minute = widget.initialMinute;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF344054), width: 1.6),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.18),
+              blurRadius: 16,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: '닫기',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, size: 25),
+                ),
+                Expanded(
+                  child: Text(
+                    '${widget.slotTitle} 알림',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 48),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _AmPmToggle(
+                  isAm: _isAm,
+                  onChanged: (value) => setState(() => _isAm = value),
+                ),
+                const SizedBox(width: 10),
+                _TimeStepper(
+                  value: _hour12,
+                  min: 1,
+                  max: 12,
+                  onChanged: (value) => setState(() => _hour12 = value),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 9),
+                  child: Text(
+                    ':',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                _TimeStepper(
+                  value: _minute,
+                  min: 0,
+                  max: 59,
+                  onChanged: (value) => setState(() => _minute = value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  _ReminderTime(hour: _to24Hour(), minute: _minute),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: MedBuddyColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                '확인',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // 함수명: _buildContent
-  // 함수역할:
-  // - 오늘 일정의 로딩, 빈 상태, 목록 상태를 분기해 본문 화면을 만든다.
-  // 매개변수:
-  // - viewModel: 일정 조회와 상태 변경을 담당하는 ViewModel
-  // - schedules: 화면에 표시할 오늘의 복약 일정 목록
-  // 반환값:
-  // - 오늘의 복약 일정 본문 Widget
-  Widget _buildContent(
-    MedBuddyViewModel viewModel,
-    List<MedicationSchedule> schedules,
-  ) {
-    if (viewModel.isTodayScheduleLoading && schedules.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: MedBuddyColors.primary),
-      );
+  int _to24Hour() {
+    if (_isAm) {
+      return _hour12 == 12 ? 0 : _hour12;
     }
-
-    if (schedules.isEmpty) {
-      return const _ScheduleEmptyState();
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(28, 22, 28, 32),
-      itemCount: schedules.length,
-      itemBuilder: (context, index) {
-        final schedule = schedules[index];
-        return _ScheduleCard(
-          schedule: schedule,
-          onStatusChanged: (medicationStatus) async {
-            final success = await viewModel.requestMedicationStatusUpdate(
-              schedule,
-              medicationStatus,
-            );
-            if (!context.mounted || success) {
-              return;
-            }
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Status update failed.'),
-                duration: Duration(seconds: 1),
-              ),
-            );
-          },
-        );
-      },
-    );
+    return _hour12 == 12 ? 12 : _hour12 + 12;
   }
 }
 
-class _ScheduleHeader extends StatelessWidget {
-  final VoidCallback onBackRequested;
+class _AmPmToggle extends StatelessWidget {
+  final bool isAm;
+  final ValueChanged<bool> onChanged;
 
-  const _ScheduleHeader({required this.onBackRequested});
+  const _AmPmToggle({required this.isAm, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 94,
-      width: double.infinity,
-      color: MedBuddyColors.primary,
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Back',
-            onPressed: onBackRequested,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
-          ),
-          const Expanded(
-            child: Text(
-              '\uC624\uB298 \uBCF5\uC57D \uC77C\uC815',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 48),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScheduleProgress extends StatelessWidget {
-  final List<MedicationSchedule> schedules;
-
-  const _ScheduleProgress({required this.schedules});
-
-  @override
-  Widget build(BuildContext context) {
-    final completedCount =
-        schedules.where((schedule) => schedule.medicationStatus).length;
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(22, 20, 22, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      width: 78,
+      height: 50,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.08),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: const Color(0xFFD1D5DC), width: 2),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      child: TextButton(
+        onPressed: () => onChanged(!isAm),
+        child: Text(
+          isAm ? '오전' : '오후',
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeStepper extends StatelessWidget {
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const _TimeStepper({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      height: 104,
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFD1D5DC), width: 2),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: MedBuddyColors.mint,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check,
-              color: MedBuddyColors.primary,
-              size: 24,
+          Expanded(
+            child: IconButton(
+              onPressed: () => onChanged(value == max ? min : value + 1),
+              icon: const Icon(Icons.keyboard_arrow_up,
+                  color: MedBuddyColors.primary),
             ),
           ),
-          const SizedBox(width: 12),
+          Text(
+            value.toString().padLeft(2, '0'),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '\uBCF5\uC57D \uC644\uB8CC',
-                  style: TextStyle(
-                    color: MedBuddyColors.primaryDark,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  '$completedCount / ${schedules.length}',
-                  style: const TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            child: IconButton(
+              onPressed: () => onChanged(value == min ? max : value - 1),
+              icon: const Icon(Icons.keyboard_arrow_down,
+                  color: MedBuddyColors.primary),
             ),
           ),
         ],
@@ -216,34 +803,25 @@ class _ScheduleEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 328,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 42),
+        width: 320,
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: MedBuddyRadii.largeCard,
-          border: Border.all(color: MedBuddyColors.mint, width: 2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color.fromRGBO(0, 0, 0, 0.10),
-              blurRadius: 12,
-              offset: Offset(0, 6),
-            ),
-          ],
+          boxShadow: MedBuddyShadows.card,
         ),
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.schedule_outlined,
-              size: 54,
-              color: MedBuddyColors.primary,
-            ),
-            SizedBox(height: 18),
+            Icon(Icons.schedule_outlined,
+                size: 52, color: MedBuddyColors.primary),
+            SizedBox(height: 16),
             Text(
-              '\uC624\uB298 \uC77C\uC815 \uC5C6\uC74C',
+              '오늘 복용할 약이 없습니다',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: MedBuddyColors.textStrong,
-                fontSize: 21,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -254,152 +832,39 @@ class _ScheduleEmptyState extends StatelessWidget {
   }
 }
 
-class _ScheduleCard extends StatelessWidget {
-  final MedicationSchedule schedule;
-  final Future<void> Function(bool medicationStatus) onStatusChanged;
+class _ScheduleSlotDefinition {
+  final String key;
+  final String title;
+  final int hour;
+  final Color color;
+  final IconData icon;
 
-  const _ScheduleCard({
-    required this.schedule,
-    required this.onStatusChanged,
+  const _ScheduleSlotDefinition({
+    required this.key,
+    required this.title,
+    required this.hour,
+    required this.color,
+    required this.icon,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompleted = schedule.medicationStatus;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
-        boxShadow: MedBuddyShadows.card,
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
-            decoration: BoxDecoration(
-              color: isCompleted ? const Color(0xFFECFDF5) : Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(14),
-              ),
-              border: const Border(
-                bottom: BorderSide(color: MedBuddyColors.mint, width: 2),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: isCompleted
-                        ? MedBuddyColors.primary
-                        : MedBuddyColors.textLight,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    isCompleted
-                        ? Icons.check_circle_outline
-                        : Icons.schedule_outlined,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    schedule.displayName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 21,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: isCompleted ? 'Undo' : 'Complete',
-                  icon: Icon(
-                    isCompleted
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: MedBuddyColors.primary,
-                  ),
-                  onPressed: () => onStatusChanged(!isCompleted),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-            child: Row(
-              children: [
-                _ScheduleChip(
-                  icon: Icons.medical_information_outlined,
-                  label: '\uC6A9\uB7C9',
-                  value: schedule.dosage,
-                ),
-                const SizedBox(width: 8),
-                _ScheduleChip(
-                  icon: Icons.access_time_outlined,
-                  label: '\uD69F\uC218',
-                  value: schedule.intakeTime,
-                ),
-                const SizedBox(width: 8),
-                _ScheduleChip(
-                  icon: Icons.calendar_today_outlined,
-                  label: '\uAE30\uAC04',
-                  value: schedule.medicationTimeLabel,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _ScheduleChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
+class _ScheduleSlot {
+  final _ScheduleSlotDefinition definition;
+  final List<MedicationSchedule> medications;
 
-  const _ScheduleChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _ScheduleSlot({required this.definition, required this.medications});
 
-  @override
-  Widget build(BuildContext context) {
-    final displayValue =
-        value.trim().isEmpty ? '\uC815\uBCF4 \uC5C6\uC74C' : value.trim();
+  String get key => definition.key;
+  String get title => definition.title;
+  int get hour => definition.hour;
+  Color get color => definition.color;
+  IconData get icon => definition.icon;
+  String get timeLabel => '${hour.toString().padLeft(2, '0')}:00';
+}
 
-    return Expanded(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: MedBuddyColors.primary, size: 18),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              '$label $displayValue',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: MedBuddyColors.primaryDark,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _ReminderTime {
+  final int hour;
+  final int minute;
+
+  const _ReminderTime({required this.hour, required this.minute});
 }
