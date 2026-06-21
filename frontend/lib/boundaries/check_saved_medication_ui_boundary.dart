@@ -788,18 +788,12 @@ class _SavedMedicationNameRow extends StatelessWidget {
               const SizedBox(width: 4),
             ],
             Expanded(
-              child: Text(
-                medication.itemName.trim().isEmpty
-                    ? text.noInformation
-                    : medication.itemName.trim(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: const Color(0xFF0A0A0A),
-                  fontSize: 16 * scale,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0,
-                ),
+              child: _MedicationNameButton(
+                medication: medication,
+                text: text,
+                scale: scale,
+                isEnabled: !isSelectionMode,
+                onPressed: onGuideRequested,
               ),
             ),
             const SizedBox(width: 12),
@@ -811,6 +805,56 @@ class _SavedMedicationNameRow extends StatelessWidget {
               onImageRequested: onImageRequested,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// 클래스명: _MedicationNameButton
+// 역할: 저장 목록의 약품명을 가이드 화면 진입 버튼으로 표시한다.
+// 주요 책임:
+// - 약품명을 두 줄까지 보여주고 길면 말줄임 처리한다.
+// - 선택 삭제 모드가 아닐 때 약품명 탭으로 가이드 팝업을 연다.
+class _MedicationNameButton extends StatelessWidget {
+  final MedicationDetail medication;
+  final _SavedMedicationText text;
+  final double scale;
+  final bool isEnabled;
+  final VoidCallback onPressed;
+
+  const _MedicationNameButton({
+    required this.medication,
+    required this.text,
+    required this.scale,
+    required this.isEnabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = medication.itemName.trim().isEmpty
+        ? text.noInformation
+        : medication.itemName.trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: isEnabled ? onPressed : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            displayName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: const Color(0xFF0A0A0A),
+              fontSize: 16 * scale,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
         ),
       ),
     );
@@ -892,6 +936,11 @@ class _MedicationGuideButton extends StatelessWidget {
   }
 }
 
+// 클래스명: _MedicationImageButton
+// 역할: 저장된 약품 이미지가 있으면 썸네일을, 없으면 이미지 없음 표시를 보여준다.
+// 주요 책임:
+// - 이미지 URL이 있으면 약 사진 팝업을 열 수 있는 썸네일을 표시한다.
+// - 이미지 URL이 없으면 텍스트 대신 X 아이콘으로 비어 있음을 표현한다.
 class _MedicationImageButton extends StatelessWidget {
   final MedicationDetail medication;
   final _SavedMedicationText text;
@@ -909,22 +958,21 @@ class _MedicationImageButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl = medication.imageUrl.trim();
     if (imageUrl.isEmpty) {
-      return TextButton(
-        style: TextButton.styleFrom(
-          fixedSize: const Size(48, 36),
-          minimumSize: const Size(48, 36),
-          padding: EdgeInsets.zero,
-          foregroundColor: MedBuddyColors.textMuted,
-          backgroundColor: const Color(0xFFF3F4F6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: TextStyle(
-            fontSize: 11 * scale,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0,
+      return Tooltip(
+        message: text.noImage,
+        child: Container(
+          width: 48,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.close_rounded,
+            color: MedBuddyColors.textLight,
+            size: 22,
           ),
         ),
-        onPressed: onPressed,
-        child: Text(text.photo),
       );
     }
 
