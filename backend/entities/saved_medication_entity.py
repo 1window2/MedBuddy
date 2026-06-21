@@ -29,6 +29,7 @@ class _SavedMedication(Base):
         server_default=DEFAULT_PATIENT_HASH,
     )
     created_date = Column(Date, nullable=True, default=date.today)
+    prescription_date = Column(Date, nullable=True)
     item_name = Column(String, index=True)
     efficacy = Column(String)
     use_method = Column(String)
@@ -65,6 +66,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
     optional_columns = {
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
         "created_date": "DATE",
+        "prescription_date": "DATE",
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",

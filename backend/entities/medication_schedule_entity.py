@@ -7,20 +7,20 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 # 클래스명: MedicationSchedule
-# 역할: one medication schedule or one extracted medication candidate을 표현한다.
+# 역할: 저장된 복약 일정 또는 OCR에서 추출한 약 후보 하나를 표현한다.
 # 주요 책임:
-#   - Carry medication schedule fields defined in the class diagram.
-#   - Provide operation names that preserve UML-to-code traceability.
+#   - 클래스 다이어그램에서 정의한 복약 일정 필드를 보관한다.
+#   - UML과 코드의 추적성을 유지하는 메서드 이름을 제공한다.
 # 속성:
-#   - masked_prescription_text: Masked prescription text.
-#   - created_date: Date when the medication schedule was created.
+#   - masked_prescription_text: 마스킹된 처방전 텍스트
+#   - created_date: 복약 일정이 생성된 날짜
 #   - medication_id: 약 식별자
 #   - medication_name: 약품명
-#   - dosage: Dose per administration.
-#   - intake_time: Intake frequency or time label.
+#   - dosage: 1회 복용량
+#   - intake_time: 1일 복용 횟수 또는 복용 시간 라벨
 #   - medcation_status: 복약 완료 상태. 오탈자는 기존 다이어그램 명칭을 따른다.
 #   - patient_id: 환자 식별자
-#   - medication_time: Total medication duration or time count.
+#   - medication_time: 총 복용 일수 또는 복용 시간 수
 class MedicationSchedule(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -77,8 +77,8 @@ class MedicationSchedule(BaseModel):
 
     # 함수명: saveAnalysisResult
     # 함수역할:
-    # - 분석 결과 저장을 위한 placeholder이다. 현재 구현은
-    #   selected medication details through CheckSavedMedication instead.
+    # - 분석 결과 저장을 위한 placeholder이다. 현재 저장 흐름은
+    #   CheckSavedMedication을 통해 선택된 약 상세 정보를 저장한다.
     # 반환값:
     # - None.
     def saveAnalysisResult(self) -> None:
@@ -126,9 +126,9 @@ class MedicationSchedule(BaseModel):
 
     # 함수명: saveMedicationStatus
     # 함수역할:
-    # - Applies a completion status to this schedule DTO.
+    # - 이 복약 일정 DTO에 완료 상태를 적용한다.
     # 매개변수:
-    # - medication_status: New completion status.
+    # - medication_status: 새 복약 완료 상태
     # 반환값:
     # - 복약 상태가 변경된 MedicationSchedule 인스턴스
     def saveMedicationStatus(

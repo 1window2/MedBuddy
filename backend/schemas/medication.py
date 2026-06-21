@@ -1,6 +1,7 @@
 # 파일명: medication.py
 # 역할: 약품 관련 요청/응답 DTO를 정의한다.
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -32,6 +33,7 @@ class MedicationRequest(BaseModel):
 #   - ai_guide: 선택적으로 생성되는 환자 안내 문구
 class SavedMedicationCreate(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
+    prescription_date: Optional[date] = None
     item_name: str
     efficacy: str
     use_method: str
