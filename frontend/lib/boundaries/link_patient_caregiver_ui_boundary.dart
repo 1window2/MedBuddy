@@ -5,6 +5,15 @@ import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
+// 파일명: link_patient_caregiver_ui_boundary.dart
+// 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
+
+// 클래스명: LinkPatientCaregiverUI
+// 역할: 환자 코드 생성, 보호자 코드 등록, 연동 목록 조회/해제를 한 화면에서 처리한다.
+// 주요 책임:
+// - 현재 사용자 해시 기준 연동 목록을 조회한다.
+// - 환자용 임시 코드를 생성해 보호자에게 전달할 수 있게 한다.
+// - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
 class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
 
@@ -12,12 +21,6 @@ class LinkPatientCaregiverUI extends StatefulWidget {
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
   });
-
-  void clickPatientCaregiverLink() {}
-
-  Widget showPatientCaregiverLink() {
-    return this;
-  }
 
   @override
   State<LinkPatientCaregiverUI> createState() => _LinkPatientCaregiverUIState();

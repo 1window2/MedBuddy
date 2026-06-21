@@ -1,3 +1,6 @@
+﻿// 파일명: check_schedule_control_test.dart
+// 역할: 프론트 복약 일정 control의 조회 범위와 상태 변경 요청을 검증한다.
+
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';

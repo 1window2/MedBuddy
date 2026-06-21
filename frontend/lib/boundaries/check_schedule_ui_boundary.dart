@@ -5,14 +5,17 @@ import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 
+// 파일명: check_schedule_ui_boundary.dart
+// 역할: 오늘의 복약 일정과 복약 완료 상태를 보여주는 화면을 구성한다.
+
+// 클래스명: CheckScheduleUI
+// 역할: 저장된 복약 정보 중 오늘 복용할 약을 조회하고 체크할 수 있게 한다.
+// 주요 책임:
+// - 화면 진입 시 오늘의 복약 일정을 불러온다.
+// - 복약 완료 여부를 토글하면 ViewModel을 통해 서버에 반영한다.
+// - 일정이 없을 때 빈 상태 화면을 보여준다.
 class CheckScheduleUI extends StatefulWidget {
   const CheckScheduleUI({super.key});
-
-  void clickSchedule() {}
-
-  Widget showSchedule() {
-    return this;
-  }
 
   @override
   State<CheckScheduleUI> createState() => _CheckScheduleUIState();
@@ -47,6 +50,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
+  // 함수명: _buildContent
+  // 함수역할:
+  // - 오늘 일정의 로딩, 빈 상태, 목록 상태를 분기해 본문 화면을 만든다.
+  // 매개변수:
+  // - viewModel: 일정 조회와 상태 변경을 담당하는 ViewModel
+  // - schedules: 화면에 표시할 오늘의 복약 일정 목록
+  // 반환값:
+  // - 오늘의 복약 일정 본문 Widget
   Widget _buildContent(
     MedBuddyViewModel viewModel,
     List<MedicationSchedule> schedules,

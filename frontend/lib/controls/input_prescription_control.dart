@@ -8,6 +8,17 @@ import 'package:image_picker/image_picker.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 
+typedef PrescriptionImageSelectedCallback = void Function();
+
+// 파일명: input_prescription_control.dart
+// 역할: 카메라/갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
+
+// 클래스명: InputPrescription
+// 역할: 처방전 이미지 선택, 업로드, OCR 결과 변환을 담당한다.
+// 주요 책임:
+// - 카메라 또는 갤러리에서 이미지를 선택한다.
+// - 이미지가 실제 선택된 뒤에만 진행 상태 콜백을 호출한다.
+// - 백엔드 OCR 응답을 MedicationSchedule 목록으로 변환한다.
 class InputPrescription {
   final String baseUrl;
   final ImagePicker _imagePicker;
@@ -22,17 +33,53 @@ class InputPrescription {
         _client = client ?? http.Client(),
         _ownsClient = client == null;
 
-  Future<List<MedicationSchedule>?> requestPrescriptionImage() async {
-    return _requestPrescriptionImage(ImageSource.camera);
+  // 함수명: requestPrescriptionImage
+  // 함수역할:
+  // - 카메라로 처방전 이미지를 촬영하고 OCR 분석을 요청한다.
+  // 매개변수:
+  // - onImageSelected: 이미지 선택이 완료된 직후 실행할 진행 상태 콜백
+  // 반환값:
+  // - OCR에서 추출된 복약 일정 목록
+  // - 사용자가 촬영을 취소하면 null
+  Future<List<MedicationSchedule>?> requestPrescriptionImage({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    return _requestPrescriptionImage(
+      ImageSource.camera,
+      onImageSelected: onImageSelected,
+    );
   }
 
-  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery() async {
-    return _requestPrescriptionImage(ImageSource.gallery);
+  // 함수명: requestPrescriptionImageFromGallery
+  // 함수역할:
+  // - 갤러리에서 처방전 이미지를 선택하고 OCR 분석을 요청한다.
+  // 매개변수:
+  // - onImageSelected: 이미지 선택이 완료된 직후 실행할 진행 상태 콜백
+  // 반환값:
+  // - OCR에서 추출된 복약 일정 목록
+  // - 사용자가 선택을 취소하면 null
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    return _requestPrescriptionImage(
+      ImageSource.gallery,
+      onImageSelected: onImageSelected,
+    );
   }
 
+  // 함수명: _requestPrescriptionImage
+  // 함수역할:
+  // - 이미지 소스별 공통 OCR 업로드 흐름을 처리한다.
+  // - 파일 접근 오류와 서버 오류를 사용자에게 보여줄 수 있는 메시지로 변환한다.
+  // 매개변수:
+  // - imageSource: 카메라 또는 갤러리 이미지 소스
+  // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
+  // 반환값:
+  // - OCR에서 추출된 복약 일정 목록 또는 취소 시 null
   Future<List<MedicationSchedule>?> _requestPrescriptionImage(
-    ImageSource imageSource,
-  ) async {
+    ImageSource imageSource, {
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
     final image = await _imagePicker.pickImage(
       source: imageSource,
       imageQuality: 82,
@@ -43,6 +90,7 @@ class InputPrescription {
     if (image == null) {
       return null;
     }
+    onImageSelected?.call();
 
     try {
       final request = http.MultipartRequest(
