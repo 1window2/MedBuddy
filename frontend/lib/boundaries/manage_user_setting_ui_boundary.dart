@@ -57,120 +57,118 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _CloseButton(
-                        tooltip: text.close,
-                        onTap: () => Navigator.maybePop(context),
-                      ),
-                      const Spacer(),
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _CloseButton(
+                              tooltip: text.close,
+                              onTap: () => Navigator.maybePop(context),
+                            ),
+                            const Spacer(),
+                            Container(
+                              width: 54,
+                              height: 54,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  _SettingTitle(text.fontSizeTitle),
-                  const SizedBox(height: 22),
-                  _OptionRow(
-                    options: [
-                      _SettingOption(value: 'small', label: text.small),
-                      _SettingOption(value: 'medium', label: text.medium),
-                      _SettingOption(value: 'large', label: text.large),
-                    ],
-                    selectedValue: _fontSize,
-                    contentScale: contentScale,
-                    onSelected: (value) => setState(() => _fontSize = value),
-                  ),
-                  const SizedBox(height: 45),
-                  _SettingTitle(text.readingSpeedTitle),
-                  const SizedBox(height: 22),
-                  _OptionRow(
-                    options: [
-                      _SettingOption(value: 'slow', label: text.slow),
-                      _SettingOption(value: 'medium', label: text.medium),
-                      _SettingOption(value: 'fast', label: text.fast),
-                    ],
-                    selectedValue: _readingSpeed,
-                    contentScale: contentScale,
-                    onSelected: (value) =>
-                        setState(() => _readingSpeed = value),
-                  ),
-                  const SizedBox(height: 45),
-                  _SettingTitle(text.languageTitle),
-                  const SizedBox(height: 22),
-                  _OptionRow(
-                    options: const [
-                      _SettingOption(value: 'ko', label: '한국어'),
-                      _SettingOption(value: 'en', label: 'English'),
-                    ],
-                    selectedValue: _language,
-                    contentScale: contentScale,
-                    onSelected: (value) => setState(() => _language = value),
-                  ),
-                  const SizedBox(height: 42),
-                  _PreviewPanel(
-                    text: text,
-                    fontSize: _fontSize,
-                    readingSpeed: _readingSpeed,
-                    language: _language,
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 64,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: MedBuddyColors.primary,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            MedBuddyColors.primary.withAlpha(150),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: MedBuddyRadii.card,
+                        const SizedBox(height: 22),
+                        _SettingTitle(text.fontSizeTitle),
+                        const SizedBox(height: 22),
+                        _OptionRow(
+                          options: [
+                            _SettingOption(value: 'small', label: text.small),
+                            _SettingOption(
+                              value: 'medium',
+                              label: text.medium,
+                            ),
+                            _SettingOption(value: 'large', label: text.large),
+                          ],
+                          selectedValue: _fontSize,
+                          contentScale: contentScale,
+                          onSelected: (value) =>
+                              setState(() => _fontSize = value),
                         ),
-                        textStyle: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
+                        const SizedBox(height: 45),
+                        _SettingTitle(text.readingSpeedTitle),
+                        const SizedBox(height: 22),
+                        _OptionRow(
+                          options: [
+                            _SettingOption(value: 'slow', label: text.slow),
+                            _SettingOption(
+                              value: 'medium',
+                              label: text.medium,
+                            ),
+                            _SettingOption(value: 'fast', label: text.fast),
+                          ],
+                          selectedValue: _readingSpeed,
+                          contentScale: contentScale,
+                          onSelected: (value) =>
+                              setState(() => _readingSpeed = value),
                         ),
-                      ),
-                      onPressed: _isSaving
-                          ? null
-                          : () async {
-                              setState(() => _isSaving = true);
-                              await widget.onSettingSaveRequested(
-                                fontSizeOption: _fontSize,
-                                readingSpeedOption: _readingSpeed,
-                                language: _language,
-                              );
-                              if (!context.mounted) {
-                                return;
-                              }
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(text.saved)),
-                              );
-                              Navigator.maybePop(context);
-                            },
-                      child: Text(_isSaving ? text.saving : text.save),
+                        const SizedBox(height: 45),
+                        _SettingTitle(text.languageTitle),
+                        const SizedBox(height: 22),
+                        _OptionRow(
+                          options: const [
+                            _SettingOption(value: 'ko', label: '한국어'),
+                            _SettingOption(value: 'en', label: 'English'),
+                          ],
+                          selectedValue: _language,
+                          contentScale: contentScale,
+                          onSelected: (value) =>
+                              setState(() => _language = value),
+                        ),
+                        const SizedBox(height: 42),
+                        _PreviewPanel(
+                          text: text,
+                          fontSize: _fontSize,
+                          readingSpeed: _readingSpeed,
+                          language: _language,
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                _SettingSaveFooter(
+                  text: text,
+                  isSaving: _isSaving,
+                  onSaveRequested: _handleSaveRequested,
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _handleSaveRequested() async {
+    setState(() => _isSaving = true);
+    await widget.onSettingSaveRequested(
+      fontSizeOption: _fontSize,
+      readingSpeedOption: _readingSpeed,
+      language: _language,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    final text = _SettingText(_language);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.saved)),
+    );
+    Navigator.maybePop(context);
   }
 }
 
@@ -195,6 +193,51 @@ class _CloseButton extends StatelessWidget {
         Icons.close,
         color: Color(0xFF4A5565),
         size: 31,
+      ),
+    );
+  }
+}
+
+class _SettingSaveFooter extends StatelessWidget {
+  final _SettingText text;
+  final bool isSaving;
+  final Future<void> Function() onSaveRequested;
+
+  const _SettingSaveFooter({
+    required this.text,
+    required this.isSaving,
+    required this.onSaveRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(40, 14, 40, 20),
+      decoration: const BoxDecoration(
+        color: MedBuddyColors.pageBackground,
+        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 64,
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: MedBuddyColors.primary,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: MedBuddyColors.primary.withAlpha(150),
+            shape: RoundedRectangleBorder(
+              borderRadius: MedBuddyRadii.card,
+            ),
+            textStyle: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          onPressed: isSaving ? null : onSaveRequested,
+          child: Text(isSaving ? text.saving : text.save),
+        ),
       ),
     );
   }
