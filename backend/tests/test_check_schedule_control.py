@@ -1,3 +1,6 @@
+# 파일명: test_check_schedule_control.py
+# 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 control을 검증한다.
+
 import sys
 import unittest
 from datetime import date, timedelta

@@ -1,5 +1,5 @@
-# File Name: link_patient_caregiver_control.py
-# Role: Control mapped from the LinkPatientCaregiver box in ClassDiagram2.
+# 파일명: link_patient_caregiver_control.py
+# 역할: Control mapped from the LinkPatientCaregiver box in ClassDiagram2.
 
 from datetime import datetime, timedelta
 
@@ -22,24 +22,24 @@ _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
 
 
-# Class Name: LinkPatientCaregiver
-# Role: Coordinates patient-caregiver linking and unlinking.
-# Responsibilities:
+# 클래스명: LinkPatientCaregiver
+# 역할: patient-caregiver linking and unlinking 흐름을 조정한다.
+# 주요 책임:
 #   - Create temporary patient link codes.
 #   - Register a caregiver with a valid patient code.
 #   - List or unlink existing patient-caregiver links.
-# Attributes:
-#   - db: SQLAlchemy session used for link persistence operations.
+# 속성:
+#   - db: 연동 정보 저장 작업에 사용하는 SQLAlchemy 세션
 class LinkPatientCaregiver:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # Function Name: requestPatientCaregiverLink
-    # Description:
-    # - Class diagram compatible wrapper for the link page lookup.
-    # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
-    # Returns:
+    # 함수명: requestPatientCaregiverLink
+    # 함수역할:
+    # - 클래스 다이어그램과의 호환을 위한 연동 페이지 조회 wrapper이다.
+    # 매개변수:
+    # - user_hash: 환자 또는 보호자 권한을 구분하는 해시
+    # 반환값:
     # - API-compatible link list response dictionary.
     def requestPatientCaregiverLink(
         self,
@@ -47,12 +47,12 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         return self.request_link_page(user_hash)
 
-    # Function Name: requestLinkPage
-    # Description:
-    # - Class diagram compatible wrapper for reading link rows.
-    # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
-    # Returns:
+    # 함수명: requestLinkPage
+    # 함수역할:
+    # - 클래스 다이어그램과의 호환을 위한 연동 row 조회 wrapper이다.
+    # 매개변수:
+    # - user_hash: 환자 또는 보호자 권한을 구분하는 해시
+    # 반환값:
     # - API-compatible link list response dictionary.
     def requestLinkPage(
         self,
@@ -60,12 +60,12 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         return self.request_link_page(user_hash)
 
-    # Function Name: request_link_page
-    # Description:
+    # 함수명: request_link_page
+    # 함수역할:
     # - Lists active links that include the current patient or caregiver.
-    # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
-    # Returns:
+    # 매개변수:
+    # - user_hash: 환자 또는 보호자 권한을 구분하는 해시
+    # 반환값:
     # - API-compatible link list response dictionary.
     def request_link_page(
         self,
@@ -90,12 +90,12 @@ class LinkPatientCaregiver:
             "data": [self._to_response_dict(link) for link in links],
         }
 
-    # Function Name: request_patient_code
-    # Description:
-    # - Creates a temporary patient link code for caregiver registration.
-    # Parameters:
-    # - patient_hash: Patient ownership key encoded in the generated code.
-    # Returns:
+    # 함수명: request_patient_code
+    # 함수역할:
+    # - 보호자 등록에 사용할 임시 환자 연동 코드를 생성한다.
+    # 매개변수:
+    # - patient_hash: 생성된 코드에 담길 환자 해시
+    # 반환값:
     # - API-compatible code response dictionary.
     def request_patient_code(
         self,
@@ -131,13 +131,13 @@ class LinkPatientCaregiver:
             },
         }
 
-    # Function Name: registerPatientCode
-    # Description:
-    # - Class diagram compatible wrapper for caregiver registration.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # 함수명: registerPatientCode
+    # 함수역할:
+    # - 클래스 다이어그램과의 호환을 위한 보호자 등록 wrapper이다.
+    # 매개변수:
+    # - caregiver_hash: 보호자 권한을 구분하는 해시
     # - patient_code: Temporary patient code.
-    # Returns:
+    # 반환값:
     # - API-compatible link response dictionary.
     def registerPatientCode(
         self,
@@ -146,13 +146,13 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         return self.register_patient_code(caregiver_hash, patient_code)
 
-    # Function Name: register_patient_code
-    # Description:
+    # 함수명: register_patient_code
+    # 함수역할:
     # - Validates a patient code and creates or restores the caregiver link.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # 매개변수:
+    # - caregiver_hash: 보호자 권한을 구분하는 해시
     # - patient_code: Temporary patient code.
-    # Returns:
+    # 반환값:
     # - API-compatible link response dictionary.
     def register_patient_code(
         self,
@@ -211,13 +211,13 @@ class LinkPatientCaregiver:
             "data": self._to_response_dict(link),
         }
 
-    # Function Name: requestUnlink
-    # Description:
-    # - Class diagram compatible wrapper for unlinking.
-    # Parameters:
+    # 함수명: requestUnlink
+    # 함수역할:
+    # - 클래스 다이어그램과의 호환을 위한 연동 해제 wrapper이다.
+    # 매개변수:
     # - link_id: Link row identifier.
-    # - user_hash: Patient or caregiver ownership key allowed to unlink.
-    # Returns:
+    # - user_hash: 연동 해제를 요청할 수 있는 환자 또는 보호자 해시
+    # 반환값:
     # - API-compatible unlink response dictionary.
     def requestUnlink(
         self,
@@ -226,13 +226,13 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         return self.request_unlink(link_id, user_hash)
 
-    # Function Name: request_unlink
-    # Description:
+    # 함수명: request_unlink
+    # 함수역할:
     # - Soft-deletes a link when the requester participates in that link.
-    # Parameters:
+    # 매개변수:
     # - link_id: Link row identifier.
-    # - user_hash: Patient or caregiver ownership key allowed to unlink.
-    # Returns:
+    # - user_hash: 연동 해제를 요청할 수 있는 환자 또는 보호자 해시
+    # 반환값:
     # - API-compatible unlink response dictionary.
     def request_unlink(
         self,
@@ -281,22 +281,22 @@ class LinkPatientCaregiver:
             "data": self._to_response_dict(link),
         }
 
-    # Function Name: getLinkedPatientHash
-    # Description:
+    # 함수명: getLinkedPatientHash
+    # 함수역할:
     # - Reads the first linked patient hash for a caregiver.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
-    # Returns:
+    # 매개변수:
+    # - caregiver_hash: 보호자 권한을 구분하는 해시
+    # 반환값:
     # - Linked patient hash.
     def getLinkedPatientHash(self, caregiver_hash: str) -> str:
         return self.get_linked_patient_hash(caregiver_hash)
 
-    # Function Name: get_linked_patient_hash
-    # Description:
+    # 함수명: get_linked_patient_hash
+    # 함수역할:
     # - Reads the first linked patient hash for a caregiver.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
-    # Returns:
+    # 매개변수:
+    # - caregiver_hash: 보호자 권한을 구분하는 해시
+    # 반환값:
     # - Linked patient hash.
     def get_linked_patient_hash(self, caregiver_hash: str) -> str:
         normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)

@@ -1,5 +1,5 @@
-# File Name: router.py
-# Role: Defines medication-related HTTP endpoints for the MedBuddy backend.
+# 파일명: router.py
+# 역할: MedBuddy 백엔드의 약품 관련 HTTP endpoint를 정의한다.
 
 import logging
 
@@ -33,21 +33,21 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# Class Name: OCRParseRequest
-# Role: Request DTO for legacy OCR text parsing endpoint.
-# Attributes:
-#   - text: Raw OCR text from the frontend.
+# 클래스명: OCRParseRequest
+# 역할: 기존 OCR 텍스트 파싱 endpoint용 요청 DTO이다.
+# 속성:
+#   - text: 프론트엔드에서 전달한 OCR 원본 텍스트
 class OCRParseRequest(BaseModel):
     text: str
 
 
-# Function Name: identify_medication
-# Description:
+# 함수명: identify_medication
+# 함수역할:
 # - Receives raw medication text and returns public drug information with AI guide.
-# Parameters:
+# 매개변수:
 # - request: MedicationRequest containing extracted text.
 # - check_medication_detail: CheckMedicationDetail injected by FastAPI.
-# Returns:
+# 반환값:
 # - MedicationResponse DTO.
 @router.post("/identify", response_model=MedicationResponse)
 async def identify_medication(
@@ -72,13 +72,13 @@ async def identify_medication(
         raise HTTPException(status_code=500, detail=f"서버 내부 오류: {exc}") from exc
 
 
-# Function Name: save_medication
-# Description:
+# 함수명: save_medication
+# 함수역할:
 # - Saves selected medication information into the user's pillbox.
-# Parameters:
+# 매개변수:
 # - medication: SavedMedicationCreate request DTO.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible success dictionary.
 @router.post("/save")
 async def save_medication(
@@ -88,15 +88,15 @@ async def save_medication(
     return check_saved_medication.save_medication_detail(medication)
 
 
-# Function Name: get_saved_medications
-# Description:
-# - Returns saved medication rows scoped to patient or linked guardian access.
-# Parameters:
-# - patient_hash: Patient ownership key used to scope saved medication lookup.
+# 함수명: get_saved_medications
+# 함수역할:
+# - 환자 또는 연동 보호자 권한 범위의 저장 복약 정보를 반환한다.
+# 매개변수:
+# - patient_hash: 저장 복약 정보 조회 범위를 구분하는 환자 해시
 # - user_hash: Requesting user hash. Used for guardian role resolution.
 # - role: Requesting user role such as patient or guardian.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
@@ -116,15 +116,15 @@ async def get_saved_medications(
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
 
 
-# Function Name: get_today_medication_schedule
-# Description:
-# - Returns today's active medication schedule scoped to patient or linked guardian access.
-# Parameters:
-# - patient_hash: Patient ownership key used to scope schedule lookup.
+# 함수명: get_today_medication_schedule
+# 함수역할:
+# - 환자 또는 연동 보호자 권한 범위의 오늘 활성 복약 일정을 반환한다.
+# 매개변수:
+# - patient_hash: 복약 일정 조회 범위를 구분하는 환자 해시
 # - user_hash: Requesting user hash. Used for guardian role resolution.
 # - role: Requesting user role such as patient or guardian.
 # - check_schedule: CheckSchedule injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
 async def get_today_medication_schedule(
@@ -147,15 +147,15 @@ async def get_today_medication_schedule(
         ) from exc
 
 
-# Function Name: update_medication_status
-# Description:
-# - Updates today's medication completion status for one saved medication.
-# Parameters:
+# 함수명: update_medication_status
+# 함수역할:
+# - 저장된 약 하나의 오늘 복약 완료 상태를 변경한다.
+# 매개변수:
 # - medication_id: Saved medication primary key from route path.
 # - request: MedicationStatusUpdate request DTO.
-# - patient_hash: Patient ownership key used to scope status update.
+# - patient_hash: 복약 상태 변경 범위를 구분하는 환자 해시
 # - check_schedule: CheckSchedule injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible status update dictionary.
 @router.patch("/schedule/{medication_id}/status")
 async def update_medication_status(
@@ -171,13 +171,13 @@ async def update_medication_status(
     )
 
 
-# Function Name: get_patient_caregiver_links
-# Description:
-# - Returns active patient-caregiver links for a patient or caregiver hash.
-# Parameters:
-# - user_hash: Patient or caregiver ownership key.
+# 함수명: get_patient_caregiver_links
+# 함수역할:
+# - 환자 또는 보호자 해시 기준의 활성 연동 목록을 반환한다.
+# 매개변수:
+# - user_hash: 환자 또는 보호자 권한을 구분하는 해시
 # - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible link list dictionary.
 @router.get("/link/list")
 async def get_patient_caregiver_links(
@@ -189,13 +189,13 @@ async def get_patient_caregiver_links(
     return link_patient_caregiver.request_link_page(user_hash)
 
 
-# Function Name: create_patient_link_code
-# Description:
-# - Creates a temporary patient code for UC-6 caregiver registration.
-# Parameters:
+# 함수명: create_patient_link_code
+# 함수역할:
+# - UC-6 보호자 등록에 사용할 임시 환자 코드를 생성한다.
+# 매개변수:
 # - request: PatientCodeCreate request DTO.
 # - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible patient code dictionary.
 @router.post("/link/code")
 async def create_patient_link_code(
@@ -207,13 +207,13 @@ async def create_patient_link_code(
     return link_patient_caregiver.request_patient_code(request.patient_hash)
 
 
-# Function Name: register_patient_link_code
-# Description:
+# 함수명: register_patient_link_code
+# 함수역할:
 # - Registers a caregiver with a valid temporary patient code.
-# Parameters:
+# 매개변수:
 # - request: PatientCodeRegister request DTO.
 # - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible link dictionary.
 @router.post("/link/register")
 async def register_patient_link_code(
@@ -228,14 +228,14 @@ async def register_patient_link_code(
     )
 
 
-# Function Name: unlink_patient_caregiver
-# Description:
+# 함수명: unlink_patient_caregiver
+# 함수역할:
 # - Removes one active patient-caregiver link for a participating user hash.
-# Parameters:
-# - link_id: Patient-caregiver link primary key from route path.
-# - user_hash: Patient or caregiver ownership key allowed to unlink.
+# 매개변수:
+# - link_id: 경로에서 받은 환자-보호자 연동 기본키
+# - user_hash: 연동 해제를 요청할 수 있는 환자 또는 보호자 해시
 # - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible unlink dictionary.
 @router.delete("/link/{link_id}")
 async def unlink_patient_caregiver(
@@ -248,14 +248,14 @@ async def unlink_patient_caregiver(
     return link_patient_caregiver.request_unlink(link_id, user_hash)
 
 
-# Function Name: delete_medication
-# Description:
+# 함수명: delete_medication
+# 함수역할:
 # - Deletes a saved medication by id.
-# Parameters:
+# 매개변수:
 # - drug_id: Saved medication primary key from route path.
-# - patient_hash: Patient ownership key used to scope deletion.
+# - patient_hash: 삭제 범위를 구분하는 환자 해시
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible delete success dictionary.
 @router.delete("/delete/{drug_id}")
 async def delete_medication(
@@ -266,12 +266,12 @@ async def delete_medication(
     return check_saved_medication.request_delete(drug_id, patient_hash)
 
 
-# Function Name: parse_prescription_endpoint
-# Description:
+# 함수명: parse_prescription_endpoint
+# 함수역할:
 # - Parses OCR text into a structured prescription dictionary.
-# Parameters:
+# 매개변수:
 # - request: OCRParseRequest containing raw OCR text.
-# Returns:
+# 반환값:
 # - API-compatible parse result dictionary.
 @router.post("/parse-prescription")
 async def parse_prescription_endpoint(
@@ -291,13 +291,13 @@ async def parse_prescription_endpoint(
         raise HTTPException(status_code=500, detail=f"처방전 파싱 실패: {exc}") from exc
 
 
-# Function Name: upload_and_parse_prescription
-# Description:
+# 함수명: upload_and_parse_prescription
+# 함수역할:
 # - Receives a prescription image and returns structured medication candidates.
-# Parameters:
+# 매개변수:
 # - file: Uploaded image file.
 # - input_prescription: InputPrescription injected by FastAPI.
-# Returns:
+# 반환값:
 # - API-compatible prescription analysis dictionary.
 @router.post("/upload-prescription")
 async def upload_and_parse_prescription(

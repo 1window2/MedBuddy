@@ -1,5 +1,5 @@
-# File Name: main.py
-# Role: Creates and configures the MedBuddy FastAPI application.
+# 파일명: main.py
+# 역할: MedBuddy FastAPI 애플리케이션을 생성하고 설정한다.
 
 import logging
 
@@ -14,10 +14,10 @@ from entities import saved_medication_entity  # noqa: F401
 from entities.saved_medication_entity import ensure_saved_medication_schema
 
 
-# Function Name: configure_logging
-# Description:
+# 함수명: configure_logging
+# 함수역할:
 # - Configures application logging in the bootstrap layer.
-# Returns:
+# 반환값:
 # - None.
 def configure_logging() -> None:
     logging.basicConfig(
@@ -26,12 +26,12 @@ def configure_logging() -> None:
     )
 
 
-# Function Name: create_app
-# Description:
-# - Loads environment variables.
-# - Creates database tables for currently implemented models.
+# 함수명: create_app
+# 함수역할:
+# - 환경변수를 로드한다.
+# - 현재 구현된 모델의 데이터베이스 테이블을 생성한다.
 # - Registers medication API routes.
-# Returns:
+# 반환값:
 # - Configured FastAPI application.
 def create_app() -> FastAPI:
     load_dotenv()

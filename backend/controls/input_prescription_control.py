@@ -1,5 +1,5 @@
-# File Name: input_prescription_control.py
-# Role: Control class for prescription image analysis.
+# 파일명: input_prescription_control.py
+# 역할: Control class for prescription image analysis.
 
 import json
 import logging
@@ -16,15 +16,15 @@ from utils.image_processing import preprocess_prescription_image
 logger = logging.getLogger(__name__)
 
 
-# Class Name: InputPrescription
-# Role: Coordinates prescription image preprocessing and structured extraction.
-# Responsibilities:
+# 클래스명: InputPrescription
+# 역할: prescription image preprocessing and structured extraction 흐름을 조정한다.
+# 주요 책임:
 #   - Preprocess prescription image bytes.
-#   - Request structured prescription extraction from Gemini Vision.
+#   - Gemini Vision으로 구조화된 처방전 추출을 요청한다.
 #   - Clean, decode, mask, and validate extracted prescription data.
-# Attributes:
-#   - client: Gemini client used for prescription image analysis.
-#   - model_name: Gemini model name.
+# 속성:
+#   - client: 처방전 이미지 분석에 사용하는 Gemini 클라이언트
+#   - model_name: Gemini 모델명
 class InputPrescription:
     _RRN_PATTERN = re.compile(r"(\d{6})[-]\d{7}")
     _PRESCRIPTION_RESPONSE_SCHEMA = {
@@ -53,7 +53,7 @@ class InputPrescription:
                     "properties": {
                         "drug_name": {
                             "type": "STRING",
-                            "description": "Medication name.",
+                            "description": "약품명",
                         },
                         "dosage_per_time": {
                             "type": "STRING",
@@ -84,12 +84,12 @@ class InputPrescription:
         )
         self.model_name = model_name
 
-    # Function Name: request_prescription_image
-    # Description:
+    # 함수명: request_prescription_image
+    # 함수역할:
     # - Runs the full prescription image analysis pipeline.
-    # Parameters:
-    # - image_bytes: Raw image bytes uploaded by the frontend.
-    # Returns:
+    # 매개변수:
+    # - image_bytes: 프론트엔드에서 업로드한 원본 이미지 bytes
+    # 반환값:
     # - API-compatible dictionary containing medication schedule data.
     async def request_prescription_image(self, image_bytes: bytes) -> dict[str, object]:
         processed_image = preprocess_prescription_image(image_bytes)
@@ -115,23 +115,23 @@ class InputPrescription:
             "medications": medication_schedules,
         }
 
-    # Function Name: requestPrescriptionImage
-    # Description:
-    # - Class diagram compatible wrapper for request_prescription_image.
-    # Parameters:
-    # - image_bytes: Raw image bytes uploaded by the frontend.
-    # Returns:
+    # 함수명: requestPrescriptionImage
+    # 함수역할:
+    # - 클래스 다이어그램과의 호환을 위한 request_prescription_image wrapper이다.
+    # 매개변수:
+    # - image_bytes: 프론트엔드에서 업로드한 원본 이미지 bytes
+    # 반환값:
     # - API-compatible prescription analysis dictionary.
     async def requestPrescriptionImage(self, image_bytes: bytes) -> dict[str, object]:
         return await self.request_prescription_image(image_bytes)
 
-    # Function Name: _extract_prescription_text
-    # Description:
-    # - Calls Gemini Vision with an image and strict JSON extraction prompt.
-    # Parameters:
+    # 함수명: _extract_prescription_text
+    # 함수역할:
+    # - 이미지와 엄격한 JSON 추출 프롬프트로 Gemini Vision을 호출한다.
+    # 매개변수:
     # - processed_image: Preprocessed image bytes.
-    # Returns:
-    # - Raw Gemini text response.
+    # 반환값:
+    # - Gemini 원본 텍스트 응답
     async def _extract_prescription_text(self, processed_image: bytes) -> str:
         image_part = types.Part.from_bytes(
             data=processed_image,
@@ -142,9 +142,17 @@ class InputPrescription:
         첨부된 약봉투 또는 처방전 이미지에서 약품명, 1회 복용량,
         1일 복용 횟수, 총 복용 일수를 정확히 추출하세요.
 
+        추출 규칙:
+        1. 표 또는 목록에 있는 약품 행을 위에서 아래로 모두 읽고 생략하지 마세요.
+        2. 약품명 열의 텍스트만 drug_name에 넣고, 효능/제조원/복약 안내 문구는 제외하세요.
+        3. 약품명이 여러 줄로 보이면 하나의 약품명으로 이어 붙이세요.
+        4. 괄호 안 성분명이 보이면 제품명 뒤에 그대로 포함하세요.
+        5. 1회 투약량, 1일 횟수, 총 일수는 같은 행의 숫자 열과 정확히 매칭하세요.
+        6. 에/애, 레/래처럼 헷갈리는 한글은 임의로 삭제하지 말고 보이는 글자를 보존하세요.
+        7. 읽기 어려운 약품도 누락하지 말고 보이는 범위에서 최대한 drug_name을 채우세요.
+
         개인정보는 마스킹하고 반드시 JSON 형식만 반환하세요.
         """
-
         response = await self.client.aio.models.generate_content(
             model=self.model_name,
             contents=[prompt, image_part],
@@ -156,12 +164,12 @@ class InputPrescription:
         )
         return response.text
 
-    # Function Name: _clean_response_text
-    # Description:
+    # 함수명: _clean_response_text
+    # 함수역할:
     # - Removes markdown fences and surrounding whitespace from model output.
-    # Parameters:
-    # - response_text: Raw Gemini response text.
-    # Returns:
+    # 매개변수:
+    # - response_text: Gemini 원본 응답 텍스트
+    # 반환값:
     # - JSON-only string.
     def _clean_response_text(self, response_text: str) -> str:
         cleaned_text = response_text.strip()
@@ -173,25 +181,25 @@ class InputPrescription:
             cleaned_text = cleaned_text[:-3]
         return cleaned_text.strip()
 
-    # Function Name: _apply_secondary_masking
-    # Description:
+    # 함수명: _apply_secondary_masking
+    # 함수역할:
     # - Applies regex-based secondary masking to structured prescription data.
-    # Parameters:
+    # 매개변수:
     # - data: Decoded prescription dictionary.
-    # Returns:
+    # 반환값:
     # - Masked prescription dictionary.
     def _apply_secondary_masking(self, data: dict[str, Any]) -> dict[str, Any]:
         data_str = json.dumps(data, ensure_ascii=False)
         data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
         return json.loads(data_str)
 
-    # Function Name: _to_prescription_medication_payload
-    # Description:
-    # - Converts a MedicationSchedule entity into the API payload expected by
+    # 함수명: _to_prescription_medication_payload
+    # 함수역할:
+    # - MedicationSchedule 엔티티를 API가 기대하는 payload로 변환한다
     #   the current Flutter analysis-result flow.
-    # Parameters:
-    # - medication_schedule: Validated MedicationSchedule entity.
-    # Returns:
+    # 매개변수:
+    # - medication_schedule: 검증된 MedicationSchedule 엔티티
+    # 반환값:
     # - Dictionary containing only prescription-analysis response fields.
     def _to_prescription_medication_payload(
         self,

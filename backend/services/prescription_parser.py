@@ -1,6 +1,9 @@
 import re
 from typing import List, Dict, Any, Optional
 
+# 파일명: prescription_parser.py
+# 역할: OCR 텍스트 줄에서 처방전 날짜, 환자명, 약품 복용 정보를 추출한다.
+
 
 # 변수이름: DATE_PATTERN
 # 변수역할:

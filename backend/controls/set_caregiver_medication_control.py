@@ -1,14 +1,14 @@
-# File Name: set_caregiver_medication_control.py
-# Role: Skeleton control mapped from the SetCaregiverMedication box in ClassDiagram2.
+# 파일명: set_caregiver_medication_control.py
+# 역할: ClassDiagram2의 SetCaregiverMedication에 대응하는 미구현 control이다.
 
 
-# Class Name: SetCaregiverMedication
-# Role: Coordinates caregiver medication visibility or selection.
+# 클래스명: SetCaregiverMedication
+# 역할: 보호자 복약 정보 표시 또는 선택 흐름을 조정한다.
 class SetCaregiverMedication:
-    # Function Name: requestCaregiverMedication
-    # Description:
-    # - Placeholder for caregiver medication setting.
-    # Returns:
+    # 함수명: requestCaregiverMedication
+    # 함수역할:
+    # - 보호자 복약 정보 설정을 위한 placeholder이다.
+    # 반환값:
     # - None.
     def requestCaregiverMedication(self) -> None:
         raise NotImplementedError("Caregiver medication setting is not implemented yet.")

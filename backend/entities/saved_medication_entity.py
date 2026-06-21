@@ -1,5 +1,5 @@
-# File Name: saved_medication_entity.py
-# Role: SQLAlchemy entity for saved medication snapshots.
+# 파일명: saved_medication_entity.py
+# 역할: 저장된 복약 정보 snapshot을 저장하는 SQLAlchemy 엔티티이다.
 
 from datetime import date
 
@@ -10,9 +10,9 @@ from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
 
-# Class Name: _SavedMedication
-# Role: Internal SQLAlchemy row for saved medication detail snapshots.
-# Responsibilities:
+# 클래스명: _SavedMedication
+# 역할: 저장된 약 상세 정보 snapshot을 보관하는 내부 SQLAlchemy row이다.
+# 주요 책임:
 #   - Map saved medication fields to the saved_medications table.
 #   - Keep saved medication snapshots scoped to a patient hash.
 #   - Preserve prescription-derived dosage schedule fields for later schedule features.
@@ -36,6 +36,7 @@ class _SavedMedication(Base):
     dosage_per_time = Column(String, nullable=True)
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
     medication_status = Column(
         Boolean,
         nullable=False,
@@ -45,13 +46,13 @@ class _SavedMedication(Base):
     ai_guide = Column(String, nullable=True)
 
 
-# Function Name: ensure_saved_medication_schema
-# Description:
+# 함수명: ensure_saved_medication_schema
+# 함수역할:
 # - Adds newly introduced saved medication columns to an existing SQLite table.
-# - SQLAlchemy create_all creates missing tables but does not alter existing tables.
-# Parameters:
-# - db_engine: SQLAlchemy engine bound to the application database.
-# Returns:
+# - SQLAlchemy create_all은 누락된 테이블만 생성하고 기존 테이블 구조는 변경하지 않는다.
+# 매개변수:
+# - db_engine: 애플리케이션 데이터베이스에 연결된 SQLAlchemy engine
+# 반환값:
 # - None.
 def ensure_saved_medication_schema(db_engine: Engine) -> None:
     inspector = inspect(db_engine)
@@ -67,6 +68,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",
+        "image_url": "VARCHAR",
         "medication_status": "BOOLEAN DEFAULT 0",
     }
     today = date.today().isoformat()

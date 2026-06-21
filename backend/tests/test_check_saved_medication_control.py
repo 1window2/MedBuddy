@@ -1,3 +1,6 @@
+# 파일명: test_check_saved_medication_control.py
+# 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
+
 import sys
 import unittest
 from pathlib import Path
@@ -57,6 +60,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             dosage_per_time="1 tablet",
             daily_frequency="3 times",
             total_days="7 days",
+            image_url="https://example.com/medicine.jpg",
             ai_guide="guide",
         )
 
@@ -64,12 +68,28 @@ class CheckSavedMedicationTest(unittest.TestCase):
         response = self.control.save_medication_detail(self._saved_medication())
 
         self.assertTrue(response["success"])
+        self.assertFalse(response["duplicate"])
         saved_row = self.db.get(_SavedMedication, response["id"])
         self.assertIsNotNone(saved_row)
         self.assertEqual(saved_row.patient_hash, "patient-a")
         self.assertEqual(saved_row.dosage_per_time, "1 tablet")
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
+        self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
+
+    def test_save_rejects_same_day_duplicate_medication(self) -> None:
+        first_response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        duplicate_response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="  A   tablet  ")
+        )
+
+        self.assertTrue(first_response["success"])
+        self.assertFalse(duplicate_response["success"])
+        self.assertTrue(duplicate_response["duplicate"])
+        saved_rows = self.db.query(_SavedMedication).all()
+        self.assertEqual(len(saved_rows), 1)
 
     def test_list_is_scoped_by_patient_hash(self) -> None:
         self.control.save_medication_detail(
@@ -85,6 +105,10 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
         self.assertEqual(response["data"][0]["item_name"], "A tablet")
+        self.assertEqual(
+            response["data"][0]["image_url"],
+            "https://example.com/medicine.jpg",
+        )
 
     def test_delete_is_scoped_by_patient_hash(self) -> None:
         patient_a_response = self.control.save_medication_detail(
