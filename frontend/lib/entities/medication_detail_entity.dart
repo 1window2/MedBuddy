@@ -2,7 +2,7 @@
 // 역할: 서버와 화면 사이에서 사용하는 약 상세 정보 모델을 정의한다.
 
 // 클래스명: MedicationDetail
-// 역할: 공공데이터 API 및 저장된 복약 정보 API에서 받은 약 상세 정보를 앱 내부 형식으로 보관한다.
+// 역할: 공공데이터 API 및 저장된 복약 정보 API에서 받은 약 상세 정보를 보관한다.
 // 주요 책임:
 // - API 응답 JSON을 안전하게 변환한다.
 // - 저장 요청에 필요한 JSON payload를 생성한다.
@@ -11,6 +11,7 @@ class MedicationDetail {
   final int? id;
   final String patientHash;
   final DateTime? createdDate;
+  final DateTime? prescriptionDate;
   final String itemName;
   final String efficacy;
   final String usageMethod;
@@ -29,6 +30,7 @@ class MedicationDetail {
     this.id,
     this.patientHash = '',
     this.createdDate,
+    this.prescriptionDate,
     required this.itemName,
     required this.efficacy,
     required this.usageMethod,
@@ -57,6 +59,9 @@ class MedicationDetail {
       id: _readInt(json['id']),
       patientHash: _readString(json['patient_hash']),
       createdDate: _readDate(json['created_date'] ?? json['createdDate']),
+      prescriptionDate: _readDate(
+        json['prescription_date'] ?? json['prescriptionDate'],
+      ),
       itemName: _readString(json['item_name']),
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['usage_method'] ?? json['use_method']),
@@ -81,6 +86,7 @@ class MedicationDetail {
   Map<String, dynamic> toSaveJson() {
     return {
       'patient_hash': patientHash,
+      'prescription_date': _formatDate(prescriptionDate),
       'item_name': itemName,
       'efficacy': efficacy,
       'use_method': usageMethod,
@@ -115,7 +121,7 @@ class MedicationDetail {
   // 함수역할:
   // - 사용자가 들을 수 있는 약 안내 문장을 주요 필드 순서대로 합친다.
   // 반환값:
-  // - 빈 값이 제거된 음성 안내용 문자열
+  // - 빈 값이 제거된 음성 안내 문자열
   String getVoiceGuideText() {
     return [
       itemName,
@@ -148,9 +154,18 @@ class MedicationDetail {
 
   static DateTime? _readDate(dynamic value) {
     final text = _readString(value);
-    if (text.isEmpty) {
+    if (text.isEmpty || text == '정보 없음') {
       return null;
     }
     return DateTime.tryParse(text);
+  }
+
+  static String? _formatDate(DateTime? value) {
+    if (value == null) {
+      return null;
+    }
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
   }
 }

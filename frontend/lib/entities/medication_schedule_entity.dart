@@ -1,15 +1,16 @@
 // 파일명: medication_schedule_entity.dart
-// 역할: 처방전 OCR 결과와 저장된 복약 일정 정보를 표현하는 모델을 정의한다.
+// 역할: 처방전 OCR 결과와 저장된 오늘 복약 일정 정보를 표현하는 모델을 정의한다.
 
 // 클래스명: MedicationSchedule
-// 역할: 약 이름, 1회 투약량, 1일 횟수, 총 투약일 등 복약 일정 필드를 보관한다.
+// 역할: 약 이름, 조제일자, 1회 투약량, 1일 횟수, 총 투약일, 복약 상태를 보관한다.
 // 주요 책임:
-// - 처방전 분석 API 응답을 앱 내부 모델로 변환한다.
-// - 오늘의 복약 일정 API 응답을 앱 내부 모델로 변환한다.
-// - 복약 상태 변경 시 불변 객체 형태로 새 값을 생성한다.
+// - 처방전 분석 API 응답을 화면 모델로 변환한다.
+// - 오늘 복약 일정 API 응답을 화면 모델로 변환한다.
+// - 일정 계산과 화면 표시에서 공통으로 쓰는 파생 값을 제공한다.
 class MedicationSchedule {
   final String maskedPrescriptionText;
   final DateTime? createdDate;
+  final DateTime? prescriptionDate;
   final String medicationID;
   final String medicationName;
   final String dosage;
@@ -17,10 +18,15 @@ class MedicationSchedule {
   final bool medicationStatus;
   final String patientID;
   final int medicationTime;
+  final String? efficacy;
+  final String? usageMethod;
+  final String? warning;
+  final String? imageUrl;
 
   const MedicationSchedule({
     this.maskedPrescriptionText = '',
     this.createdDate,
+    this.prescriptionDate,
     this.medicationID = '',
     required this.medicationName,
     this.dosage = '',
@@ -28,28 +34,38 @@ class MedicationSchedule {
     this.medicationStatus = false,
     this.patientID = '',
     this.medicationTime = 0,
+    this.efficacy = '',
+    this.usageMethod = '',
+    this.warning = '',
+    this.imageUrl = '',
   });
 
   // 함수명: fromAnalysisJson
   // 함수역할:
-  // - 처방전 OCR 분석 API가 반환한 약 정보를 복약 일정 모델로 변환한다.
+  // - 처방전 OCR 분석 API 응답을 복약 일정 모델로 변환한다.
   // 매개변수:
-  // - json: 처방전 분석 API의 약 정보 JSON
+  // - json: 처방전 분석 API의 약별 JSON
   // 반환값:
   // - MedicationSchedule 인스턴스
   factory MedicationSchedule.fromAnalysisJson(Map<String, dynamic> json) {
     return MedicationSchedule(
       medicationName: _readString(json['drug_name']),
+      prescriptionDate: _readDate(json['prescription_date']),
       dosage: _readString(json['dosage_per_time']),
       intakeTime: _readString(json['daily_frequency']),
       medicationTime: _readInt(json['total_days']),
+      efficacy: _readString(json['efficacy']),
+      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
+      warning: _readString(json['warning_message'] ?? json['warning']),
+      imageUrl: _readString(
+          json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
     );
   }
 
   // 함수명: fromScheduleJson
   // 함수역할:
-  // - 저장된 복약 일정 API 응답을 화면에서 사용할 모델로 변환한다.
-  // - 과거 오타 필드명도 함께 읽어 기존 데이터와의 호환성을 유지한다.
+  // - 저장된 오늘 복약 일정 API 응답을 화면 모델로 변환한다.
+  // - 과거 필드명도 함께 읽어 기존 응답과의 호환성을 유지한다.
   // 매개변수:
   // - json: 복약 일정 API 응답 JSON
   // 반환값:
@@ -60,6 +76,9 @@ class MedicationSchedule {
         json['maskedPrescriptionText'] ?? json['masked_prescription_text'],
       ),
       createdDate: _readDate(json['created_date'] ?? json['createdDate']),
+      prescriptionDate: _readDate(
+        json['prescription_date'] ?? json['prescriptionDate'],
+      ),
       medicationID: _readString(
         json['medication_id'] ?? json['medicationID'] ?? json['id'],
       ),
@@ -78,25 +97,40 @@ class MedicationSchedule {
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
       medicationTime: _readInt(json['total_days'] ?? json['medication_time']),
+      efficacy: _readString(json['efficacy']),
+      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
+      warning: _readString(json['warning_message'] ?? json['warning']),
+      imageUrl: _readString(
+          json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
     );
   }
 
   String get displayName {
-    return medicationName.isEmpty
-        ? '\uC57D\uD488\uBA85 \uD655\uC778 \uD544\uC694'
-        : medicationName;
+    return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
+  }
+
+  DateTime? get scheduleStartDate {
+    return prescriptionDate ?? createdDate;
+  }
+
+  int get dailyFrequencyCount {
+    return _readInt(intakeTime);
   }
 
   String get medicationTimeLabel {
     if (medicationTime <= 0) {
       return '';
     }
-    return '$medicationTime\uC77C';
+    return '$medicationTime일';
+  }
+
+  String get dosageLabel {
+    return dosage.trim().isEmpty ? '용량 정보 없음' : dosage.trim();
   }
 
   // 함수명: toJson
   // 함수역할:
-  // - 테스트와 저장 흐름에서 사용할 수 있도록 복약 일정을 JSON 형태로 변환한다.
+  // - 테스트와 저장 흐름에서 사용할 수 있도록 복약 일정을 JSON으로 변환한다.
   // 반환값:
   // - API 필드명을 기준으로 한 JSON Map
   Map<String, dynamic> toJson() {
@@ -107,19 +141,25 @@ class MedicationSchedule {
       'daily_frequency': intakeTime,
       'medication_status': medicationStatus,
       'patient_id': patientID,
-      'created_date': createdDate?.toIso8601String(),
+      'created_date': _formatDate(createdDate),
+      'prescription_date': _formatDate(prescriptionDate),
       'total_days': medicationTimeLabel,
+      'efficacy': efficacy ?? '',
+      'use_method': usageMethod ?? '',
+      'warning_message': warning ?? '',
+      'image_url': imageUrl ?? '',
     };
   }
 
   // 함수명: copyWith
   // 함수역할:
-  // - 기존 복약 일정 값을 유지하면서 일부 필드만 변경한 새 객체를 만든다.
+  // - 기존 복약 일정 값을 유지하면서 일부 필드만 바꾼 새 객체를 만든다.
   // 반환값:
   // - 변경값이 반영된 MedicationSchedule 인스턴스
   MedicationSchedule copyWith({
     String? maskedPrescriptionText,
     DateTime? createdDate,
+    DateTime? prescriptionDate,
     String? medicationID,
     String? medicationName,
     String? dosage,
@@ -127,11 +167,16 @@ class MedicationSchedule {
     bool? medicationStatus,
     String? patientID,
     int? medicationTime,
+    String? efficacy,
+    String? usageMethod,
+    String? warning,
+    String? imageUrl,
   }) {
     return MedicationSchedule(
       maskedPrescriptionText:
           maskedPrescriptionText ?? this.maskedPrescriptionText,
       createdDate: createdDate ?? this.createdDate,
+      prescriptionDate: prescriptionDate ?? this.prescriptionDate,
       medicationID: medicationID ?? this.medicationID,
       medicationName: medicationName ?? this.medicationName,
       dosage: dosage ?? this.dosage,
@@ -139,6 +184,10 @@ class MedicationSchedule {
       medicationStatus: medicationStatus ?? this.medicationStatus,
       patientID: patientID ?? this.patientID,
       medicationTime: medicationTime ?? this.medicationTime,
+      efficacy: efficacy ?? this.efficacy,
+      usageMethod: usageMethod ?? this.usageMethod,
+      warning: warning ?? this.warning,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 
@@ -160,7 +209,8 @@ class MedicationSchedule {
 
   MedicationSchedule updateMedicationInfo() {
     throw UnsupportedError(
-        'Medication schedule editing is not implemented yet.');
+      'Medication schedule editing is not implemented yet.',
+    );
   }
 
   MedicationSchedule getTodayMedicationSchedule() {
@@ -205,9 +255,18 @@ class MedicationSchedule {
 
   static DateTime? _readDate(dynamic value) {
     final text = _readString(value);
-    if (text.isEmpty) {
+    if (text.isEmpty || text == '정보 없음') {
       return null;
     }
     return DateTime.tryParse(text);
+  }
+
+  static String? _formatDate(DateTime? value) {
+    if (value == null) {
+      return null;
+    }
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
   }
 }
