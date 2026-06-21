@@ -30,12 +30,12 @@ class MedicationSaveResult {
 }
 
 // 파일명: check_saved_medication_control.dart
-// 역할: 저장된 복약 정보의 생성, 조회, 삭제 API를 담당한다.
+// 역할: 저장된 복약 정보 생성, 조회, 삭제 API를 담당한다.
 
 // 클래스명: CheckSavedMedication
-// 역할: 분석 완료된 약 상세 정보와 복약 일정을 사용자의 저장 목록에 반영한다.
+// 역할: 분석된 약 상세 정보와 OCR 복약 일정을 저장 목록에 반영한다.
 // 주요 책임:
-// - 약 상세 정보와 OCR 복약 스케줄을 합쳐 저장 요청을 만든다.
+// - 약 상세 정보와 OCR 일정 정보를 합쳐 저장 요청을 만든다.
 // - 저장된 복약 정보 목록을 조회한다.
 // - 사용자가 선택한 저장 항목을 삭제한다.
 class CheckSavedMedication {
@@ -57,10 +57,10 @@ class CheckSavedMedication {
 
   // 함수명: saveMedicationDetail
   // 함수역할:
-  // - 분석된 약 상세 정보와 처방전 스케줄 정보를 저장 API로 보낸다.
+  // - 분석된 약 상세 정보와 처방전 일정 정보를 저장 API로 보낸다.
   // 매개변수:
   // - medicationDetail: 저장할 약 상세 정보
-  // - medicationSchedule: OCR에서 추출한 선택적 복약 일정
+  // - medicationSchedule: 같은 약에 대응하는 처방전 분석 일정
   // 반환값:
   // - 저장, 중복, 실패 상태를 담은 MedicationSaveResult
   Future<MedicationSaveResult> saveMedicationDetail(
@@ -125,18 +125,21 @@ class CheckSavedMedication {
   // 함수명: _buildSaveRequest
   // 함수역할:
   // - 저장 API가 요구하는 JSON 요청 본문을 만든다.
-  // - 처방전에서 추출된 스케줄 값이 있으면 약 상세 정보보다 우선 사용한다.
+  // - 처방전에서 추출한 일정 값이 있으면 약 상세 정보보다 우선 사용한다.
   // 매개변수:
   // - medicationDetail: 저장할 약 상세 정보
-  // - medicationSchedule: 같은 약에 대응하는 선택적 처방전 분석 스케줄
+  // - medicationSchedule: 같은 약에 대응하는 처방전 분석 일정
   // 반환값:
-  // - 저장 API 요청용 JSON Map
+  // - 저장 API 요청 JSON Map
   Map<String, dynamic> _buildSaveRequest(
     MedicationDetail medicationDetail,
     MedicationSchedule? medicationSchedule,
   ) {
     final savePayload = medicationDetail.toSaveJson();
+    final prescriptionDate =
+        medicationSchedule?.prescriptionDate ?? medicationDetail.prescriptionDate;
     savePayload['patient_hash'] = patientHash;
+    savePayload['prescription_date'] = _formatDate(prescriptionDate);
     savePayload['dosage_per_time'] = _readScheduleValue(
       medicationSchedule?.dosage,
       medicationDetail.dosagePerTime,
@@ -152,14 +155,25 @@ class CheckSavedMedication {
     return savePayload;
   }
 
+  // 함수명: _formatDate
+  // 함수역할:
+  // - 날짜를 백엔드가 받을 수 있는 YYYY-MM-DD 문자열로 바꾼다.
+  // 반환값:
+  // - 날짜 문자열 또는 null
+  String? _formatDate(DateTime? value) {
+    if (value == null) {
+      return null;
+    }
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+  }
+
   // 함수명: _readScheduleValue
   // 함수역할:
-  // - 처방전 스케줄 값을 우선 사용하고, 비어 있으면 상세 정보 값을 사용한다.
-  // 매개변수:
-  // - scheduleValue: 처방전 분석에서 추출한 값
-  // - fallbackValue: 약 상세 정보에 이미 들어 있는 대체 값
+  // - OCR 일정 값을 우선 사용하고 비어 있으면 약 상세 정보 값을 사용한다.
   // 반환값:
-  // - 공백 제거 후 선택된 스케줄 문자열
+  // - 공백이 제거된 일정 문자열
   String _readScheduleValue(String? scheduleValue, String fallbackValue) {
     final normalizedScheduleValue = scheduleValue?.trim() ?? '';
     if (normalizedScheduleValue.isNotEmpty) {
@@ -168,6 +182,11 @@ class CheckSavedMedication {
     return fallbackValue.trim();
   }
 
+  // 함수명: requestSavedMedicationInfo
+  // 함수역할:
+  // - 저장된 복약 정보 목록을 서버에서 가져온다.
+  // 반환값:
+  // - 저장된 약 상세 정보 목록
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     try {
       final response = await _client

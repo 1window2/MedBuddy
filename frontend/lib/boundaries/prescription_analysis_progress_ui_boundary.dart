@@ -105,13 +105,6 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                               AnalysisProgressStep.medicationAnalysis,
                           scale: scale,
                         ),
-                        const SizedBox(height: 14),
-                        _ProgressStepLabel(
-                          label: text.generatingSchedule,
-                          active: activeStep ==
-                              AnalysisProgressStep.scheduleGeneration,
-                          scale: scale,
-                        ),
                         const SizedBox(height: 30),
                         ClipRRect(
                           borderRadius: MedBuddyRadii.pill,
@@ -147,8 +140,9 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
   double get _progressValue {
     return switch (activeStep) {
       AnalysisProgressStep.prescriptionRecognition => 0.33,
-      AnalysisProgressStep.medicationAnalysis => 0.62,
-      AnalysisProgressStep.scheduleGeneration => 0.88,
+      AnalysisProgressStep.medicationAnalysis ||
+      AnalysisProgressStep.scheduleGeneration =>
+        0.82,
     };
   }
 }
@@ -192,7 +186,5 @@ class _ProgressText {
       isEnglish ? 'Recognizing prescription...' : '처방전 인식 중...';
   String get analyzingMedication =>
       isEnglish ? 'Analyzing medication info...' : '약물 정보 분석 중...';
-  String get generatingSchedule =>
-      isEnglish ? 'Generating schedule...' : '복용 일정 생성 중...';
   String get wait => isEnglish ? 'Please wait a moment' : '잠시만 기다려주세요';
 }

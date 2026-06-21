@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -15,6 +16,10 @@ import '../theme/medbuddy_theme.dart';
 class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
+  final List<MedicationSchedule> todayMedicationScheduleList;
+  final int todayMedicationCompletedCount;
+  final int todayMedicationTotalCount;
+  final bool isTodayScheduleLoading;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onTodayScheduleRequested;
@@ -27,6 +32,10 @@ class InputPrescriptionUI extends StatelessWidget {
     super.key,
     required this.statusMessage,
     required this.userSetting,
+    this.todayMedicationScheduleList = const [],
+    this.todayMedicationCompletedCount = 0,
+    this.todayMedicationTotalCount = 0,
+    this.isTodayScheduleLoading = false,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
     required this.onTodayScheduleRequested,
@@ -39,6 +48,10 @@ class InputPrescriptionUI extends StatelessWidget {
     super.key,
     required this.statusMessage,
   })  : userSetting = const UserSetting(),
+        todayMedicationScheduleList = const [],
+        todayMedicationCompletedCount = 0,
+        todayMedicationTotalCount = 0,
+        isTodayScheduleLoading = false,
         onPrescriptionScanRequested = null,
         onPrescriptionGalleryRequested = null,
         onTodayScheduleRequested = null,
@@ -72,6 +85,10 @@ class InputPrescriptionUI extends StatelessWidget {
                     _ScheduleCard(
                       text: text,
                       userSetting: userSetting,
+                      schedules: todayMedicationScheduleList,
+                      completedCount: todayMedicationCompletedCount,
+                      totalCount: todayMedicationTotalCount,
+                      isLoading: isTodayScheduleLoading,
                       onTap: onTodayScheduleRequested,
                     ),
                     const SizedBox(height: 20),
@@ -345,13 +362,39 @@ class _HomeHeader extends StatelessWidget {
 class _ScheduleCard extends StatelessWidget {
   final _HomeText text;
   final UserSetting userSetting;
+  final List<MedicationSchedule> schedules;
+  final int completedCount;
+  final int totalCount;
+  final bool isLoading;
   final VoidCallback? onTap;
 
   const _ScheduleCard({
     required this.text,
     required this.userSetting,
+    required this.schedules,
+    required this.completedCount,
+    required this.totalCount,
+    required this.isLoading,
     required this.onTap,
   });
+
+  String _buildScheduleSummary() {
+    if (isLoading) {
+      return text.isEnglish ? 'Loading schedule...' : '일정을 불러오는 중입니다';
+    }
+    if (schedules.isEmpty) {
+      return text.noMedication;
+    }
+
+    final firstNames =
+        schedules.take(2).map((schedule) => schedule.displayName).join(', ');
+    final remainingCount = schedules.length - 2;
+    final suffix = remainingCount > 0 ? ' 외 $remainingCount개' : '';
+    final displayTotalCount = totalCount == 0 ? schedules.length : totalCount;
+    return text.isEnglish
+        ? '$completedCount/$displayTotalCount completed\n$firstNames$suffix'
+        : '$completedCount/$displayTotalCount 복용 완료\n$firstNames$suffix';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -381,7 +424,9 @@ class _ScheduleCard extends StatelessWidget {
           ),
           const SizedBox(height: 9),
           Text(
-            text.noMedication,
+            _buildScheduleSummary(),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: MedBuddyColors.textLight,

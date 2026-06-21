@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../boundaries/medication_detail_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -366,17 +368,14 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     required _SavedMedicationText text,
     required UserSetting userSetting,
   }) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return _MedicationGuideSheet(
-          medication: medication,
-          text: text,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MedicationDetailUI(
+          medicationGuide: MedicationGuide.fromMedicationDetail(medication),
           userSetting: userSetting,
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -432,33 +431,49 @@ class _SavedMedicationEmptyState extends StatelessWidget {
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 29),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFAFAFA),
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: const Color(0xFFD1D5DC), width: 1.5),
-          ),
-          child: Text(
-            text.emptyMessage,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 16 * scale,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
+        Expanded(
+          child: Center(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(22, 34, 22, 32),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFAFAFA),
+                borderRadius: MedBuddyRadii.card,
+                border: Border.all(color: const Color(0xFFD1D5DC), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.medication_outlined,
+                    color: MedBuddyColors.textLight,
+                    size: 42,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    text.emptyMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: MedBuddyColors.textMuted,
+                      fontSize: 16 * scale,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        const Spacer(),
+        const SizedBox(height: 28),
         SizedBox(
           width: double.infinity,
-          height: 165,
+          height: 178,
           child: FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: MedBuddyColors.primary,
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               shape: RoundedRectangleBorder(
                 borderRadius: MedBuddyRadii.card,
               ),
@@ -474,13 +489,20 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               children: [
                 const Icon(Icons.photo_camera_outlined, size: 40),
                 const SizedBox(height: 18),
-                Text(text.scanPrescription),
+                Text(
+                  text.scanPrescription,
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 10),
                 Text(
                   text.scanSubtitle,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: MedBuddyColors.mint,
                     fontSize: 14 * scale,
+                    height: 1.35,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -770,39 +792,66 @@ class _SavedMedicationNameRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
+    final dateLineLeftPadding = isSelectionMode ? 52.0 : 0.0;
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 86),
+      constraints: const BoxConstraints(minHeight: 124),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (isSelectionMode) ...[
-              Checkbox(
-                value: isSelected,
-                activeColor: MedBuddyColors.primary,
-                onChanged: medication.id == null
-                    ? null
-                    : (value) => onSelectionChanged(value ?? false),
-              ),
-              const SizedBox(width: 4),
-            ],
-            Expanded(
-              child: _MedicationNameButton(
-                medication: medication,
-                text: text,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isSelectionMode) ...[
+                  Checkbox(
+                    value: isSelected,
+                    activeColor: MedBuddyColors.primary,
+                    onChanged: medication.id == null
+                        ? null
+                        : (value) => onSelectionChanged(value ?? false),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: _MedicationNameButton(
+                    medication: medication,
+                    text: text,
+                    scale: scale,
+                    isEnabled: !isSelectionMode,
+                    onPressed: onGuideRequested,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _MedicationRowActions(
+                  medication: medication,
+                  text: text,
+                  userSetting: userSetting,
+                  onGuideRequested: onGuideRequested,
+                  onImageRequested: onImageRequested,
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Padding(
+              padding: EdgeInsets.only(left: dateLineLeftPadding),
+              child: _MedicationDateLine(
+                label: text.registeredDate,
+                value: _formatMedicationDate(medication.createdDate),
+                fallback: text.noInformation,
                 scale: scale,
-                isEnabled: !isSelectionMode,
-                onPressed: onGuideRequested,
               ),
             ),
-            const SizedBox(width: 12),
-            _MedicationRowActions(
-              medication: medication,
-              text: text,
-              userSetting: userSetting,
-              onGuideRequested: onGuideRequested,
-              onImageRequested: onImageRequested,
+            const SizedBox(height: 4),
+            Padding(
+              padding: EdgeInsets.only(left: dateLineLeftPadding),
+              child: _MedicationDateLine(
+                label: text.medicationPeriod,
+                value: _formatMedicationPeriod(medication),
+                fallback: text.noInformation,
+                scale: scale,
+              ),
             ),
           ],
         ),
@@ -844,21 +893,91 @@ class _MedicationNameButton extends StatelessWidget {
         onTap: isEnabled ? onPressed : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(
-            displayName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: const Color(0xFF0A0A0A),
-              fontSize: 16 * scale,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: const Color(0xFF0A0A0A),
+                  fontSize: 16 * scale,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class _MedicationDateLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final String fallback;
+  final double scale;
+
+  const _MedicationDateLine({
+    required this.label,
+    required this.value,
+    required this.fallback,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.trim().isEmpty ? fallback : value.trim();
+
+    return Text(
+      '$label: $displayValue',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: MedBuddyColors.textLight,
+        fontSize: 11 * scale,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+      ),
+    );
+  }
+}
+
+String _formatMedicationDate(DateTime? value) {
+  if (value == null) {
+    return '';
+  }
+  return '${value.year}/${_formatTwoDigits(value.month)}/${_formatTwoDigits(value.day)}';
+}
+
+String _formatMedicationPeriod(MedicationDetail medication) {
+  final startDate = medication.prescriptionDate;
+  if (startDate == null) {
+    return '';
+  }
+
+  final totalDays = _readTotalDays(medication.totalDays);
+  if (totalDays <= 1) {
+    return _formatMedicationDate(startDate);
+  }
+
+  final endDate = startDate.add(Duration(days: totalDays - 1));
+  return '${_formatMedicationDate(startDate)} ~ ${_formatMedicationDate(endDate)}';
+}
+
+int _readTotalDays(String totalDays) {
+  final match = RegExp(r'\d+').firstMatch(totalDays);
+  if (match == null) {
+    return 0;
+  }
+  return int.tryParse(match.group(0) ?? '') ?? 0;
+}
+
+String _formatTwoDigits(int value) {
+  return value.toString().padLeft(2, '0');
 }
 
 class _MedicationRowActions extends StatelessWidget {
@@ -1001,146 +1120,6 @@ class _MedicationImageButton extends StatelessWidget {
             },
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _MedicationGuideSheet extends StatelessWidget {
-  final MedicationDetail medication;
-  final _SavedMedicationText text;
-  final UserSetting userSetting;
-
-  const _MedicationGuideSheet({
-    required this.medication,
-    required this.text,
-    required this.userSetting,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return SafeArea(
-      child: Container(
-        margin: const EdgeInsets.all(18),
-        padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      medication.itemName.trim().isEmpty
-                          ? text.noInformation
-                          : medication.itemName.trim(),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 20 * scale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: text.close,
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _GuideSection(
-                icon: Icons.info_outline,
-                title: text.efficacy,
-                body: medication.efficacy,
-                fallback: text.noInformation,
-                scale: scale,
-              ),
-              _GuideSection(
-                icon: Icons.schedule_outlined,
-                title: text.usageMethod,
-                body: medication.usageMethod,
-                fallback: text.noInformation,
-                scale: scale,
-              ),
-              _GuideSection(
-                icon: Icons.warning_amber_outlined,
-                title: text.warning,
-                body: medication.warning,
-                fallback: text.noInformation,
-                scale: scale,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GuideSection extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String body;
-  final String fallback;
-  final double scale;
-
-  const _GuideSection({
-    required this.icon,
-    required this.title,
-    required this.body,
-    required this.fallback,
-    required this.scale,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final normalizedBody = body.trim().isEmpty ? fallback : body.trim();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 18),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: MedBuddyColors.primary, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 15 * scale,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  normalizedBody,
-                  style: TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 14 * scale,
-                    height: 1.5,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1381,6 +1360,8 @@ class _SavedMedicationText {
   String get notificationComingSoon =>
       isEnglish ? 'Notifications are coming soon.' : '알림 설정은 준비 중입니다.';
   String get noInformation => isEnglish ? 'No information' : '정보 없음';
+  String get registeredDate => isEnglish ? 'Registered' : '등록일자';
+  String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';
   String get photo => isEnglish ? 'Photo' : '사진';
   String get noImage =>
       isEnglish ? 'No medication image is available.' : '제공된 약 사진이 없습니다.';

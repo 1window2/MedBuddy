@@ -11,7 +11,7 @@ import '../services/api_config.dart';
 typedef PrescriptionImageSelectedCallback = void Function();
 
 // 파일명: input_prescription_control.dart
-// 역할: 카메라/갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
+// 역할: 카메라와 갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
 
 // 클래스명: InputPrescription
 // 역할: 처방전 이미지 선택, 업로드, OCR 결과 변환을 담당한다.
@@ -37,10 +37,9 @@ class InputPrescription {
   // 함수역할:
   // - 카메라로 처방전 이미지를 촬영하고 OCR 분석을 요청한다.
   // 매개변수:
-  // - onImageSelected: 이미지 선택이 완료된 직후 실행할 진행 상태 콜백
+  // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
   // 반환값:
-  // - OCR에서 추출된 복약 일정 목록
-  // - 사용자가 촬영을 취소하면 null
+  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   Future<List<MedicationSchedule>?> requestPrescriptionImage({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
@@ -54,10 +53,9 @@ class InputPrescription {
   // 함수역할:
   // - 갤러리에서 처방전 이미지를 선택하고 OCR 분석을 요청한다.
   // 매개변수:
-  // - onImageSelected: 이미지 선택이 완료된 직후 실행할 진행 상태 콜백
+  // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
   // 반환값:
-  // - OCR에서 추출된 복약 일정 목록
-  // - 사용자가 선택을 취소하면 null
+  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
@@ -70,12 +68,12 @@ class InputPrescription {
   // 함수명: _requestPrescriptionImage
   // 함수역할:
   // - 이미지 소스별 공통 OCR 업로드 흐름을 처리한다.
-  // - 파일 접근 오류와 서버 오류를 사용자에게 보여줄 수 있는 메시지로 변환한다.
+  // - 백엔드가 반환한 조제일자를 각 약 일정에 함께 실어 보존한다.
   // 매개변수:
   // - imageSource: 카메라 또는 갤러리 이미지 소스
   // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
   // 반환값:
-  // - OCR에서 추출된 복약 일정 목록 또는 취소 시 null
+  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   Future<List<MedicationSchedule>?> _requestPrescriptionImage(
     ImageSource imageSource, {
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -115,6 +113,8 @@ class InputPrescription {
       }
 
       final decodedData = _decodeMap(responseBody);
+      final prescriptionDate =
+          decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
       if (rawMedications is! List) {
         return [];
@@ -122,11 +122,11 @@ class InputPrescription {
 
       return rawMedications
           .whereType<Map>()
-          .map(
-            (item) => MedicationSchedule.fromAnalysisJson(
-              Map<String, dynamic>.from(item),
-            ),
-          )
+          .map((item) {
+            final itemJson = Map<String, dynamic>.from(item);
+            itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
+            return MedicationSchedule.fromAnalysisJson(itemJson);
+          })
           .toList(growable: false);
     } on StateError {
       rethrow;
