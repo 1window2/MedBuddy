@@ -14,6 +14,14 @@ __pycache__/
 # IDE/local workspace files
 .idea/
 
+# Flutter local generated files
+frontend/.dart_tool/
+frontend/build/
+frontend/android/local.properties
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Flutter/ephemeral/
+
 # Outputs
 *.apk
 *.aab
