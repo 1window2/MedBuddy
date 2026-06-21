@@ -291,7 +291,7 @@ class _HomeHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MEDbuddy',
+                  'MedBuddy',
                   maxLines: 1,
                   overflow: TextOverflow.visible,
                   style: TextStyle(
