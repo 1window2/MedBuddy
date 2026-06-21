@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/medication_detail_ui_boundary.dart';
 import '../entities/medication_guide_entity.dart';
 import '../entities/medication_reminder_entity.dart';
@@ -70,21 +71,29 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MedBuddyViewModel>();
+    final text = _ScheduleText(viewModel.userSetting.language);
     final slots = _buildSlots(viewModel);
     final progress = viewModel.todayMedicationProgress;
+    final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: Column(
         children: [
           _ScheduleHeader(
+            text: text,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
             onBackRequested: () => Navigator.pop(context),
           ),
           Expanded(
-            child: _buildContent(viewModel, slots),
+            child: _buildContent(viewModel, slots, text),
           ),
+          if (hasTodaySchedule)
+            _HealthRecommendationFooter(
+              text: text,
+              onPressed: _openHealthRecommendation,
+            ),
         ],
       ),
     );
@@ -93,6 +102,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   Widget _buildContent(
     MedBuddyViewModel viewModel,
     List<_ScheduleSlot> slots,
+    _ScheduleText text,
   ) {
     if (viewModel.isTodayScheduleLoading &&
         viewModel.todayMedicationScheduleList.isEmpty) {
@@ -102,21 +112,24 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     }
 
     if (viewModel.todayMedicationScheduleList.isEmpty) {
-      return const _ScheduleEmptyState();
+      return _ScheduleEmptyState(text: text);
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(34, 14, 34, 28),
+      padding: const EdgeInsets.fromLTRB(34, 14, 34, 12),
       children: [
         for (final slot in slots) ...[
           _TimeSlotCard(
+            text: text,
             slot: slot,
             reminderSetting: viewModel.medicationReminderSettings[slot.key] ??
                 MedicationReminderSetting.defaults(slot.key),
             isCompletedProvider: (schedule) {
               return viewModel.isMedicationDoseCompleted(slot.key, schedule);
             },
-            onReminderRequested: () => _handleReminderToggle(viewModel, slot),
+            onReminderRequested: () {
+              _handleReminderToggle(viewModel, slot, text);
+            },
             onGuideRequested: (schedule) {
               _showMedicationGuide(viewModel, schedule);
             },
@@ -130,36 +143,25 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                 return;
               }
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('복약 상태를 변경하지 못했습니다.'),
-                  duration: Duration(seconds: 1),
+                SnackBar(
+                  content: Text(text.statusUpdateFailed),
+                  duration: const Duration(seconds: 1),
                 ),
               );
             },
           ),
           const SizedBox(height: 16),
         ],
-        const Divider(height: 24, color: Color(0xFFD1D5DC)),
-        OutlinedButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('건강 관리 추천은 준비 중입니다.')),
-            );
-          },
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(64),
-            side: const BorderSide(color: MedBuddyColors.primary, width: 2),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            foregroundColor: MedBuddyColors.primaryDark,
-          ),
-          child: const Text(
-            '건강 관리 추천 보기',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-        ),
       ],
+    );
+  }
+
+  void _openHealthRecommendation() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const HealthRecommendationUI(),
+      ),
     );
   }
 
@@ -176,14 +178,17 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   Future<void> _showReminderDialog(
     MedBuddyViewModel viewModel,
     _ScheduleSlot slot,
+    _ScheduleText text,
   ) async {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
         MedicationReminderSetting.defaults(slot.key);
+    final slotTitle = text.slotTitle(slot.key);
     final selectedTime = await showDialog<_ReminderTime>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _ReminderDialog(
-        slotTitle: slot.title,
+        text: text,
+        slotTitle: slotTitle,
         initialHour: setting.hour,
         initialMinute: setting.minute,
       ),
@@ -194,7 +199,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
     final success = await viewModel.requestMedicationReminderSave(
       slotKey: slot.key,
-      slotTitle: slot.title,
+      slotTitle: slotTitle,
       hour: selectedTime.hour,
       minute: selectedTime.minute,
       schedules: slot.medications,
@@ -210,17 +215,18 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   Future<void> _handleReminderToggle(
     MedBuddyViewModel viewModel,
     _ScheduleSlot slot,
+    _ScheduleText text,
   ) async {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
         MedicationReminderSetting.defaults(slot.key);
     if (!setting.isEnabled) {
-      await _showReminderDialog(viewModel, slot);
+      await _showReminderDialog(viewModel, slot, text);
       return;
     }
 
     final success = await viewModel.requestMedicationReminderCancel(
       slotKey: slot.key,
-      slotTitle: slot.title,
+      slotTitle: text.slotTitle(slot.key),
     );
     if (!mounted || success) {
       return;
@@ -246,12 +252,57 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   }
 }
 
+class _HealthRecommendationFooter extends StatelessWidget {
+  final _ScheduleText text;
+  final VoidCallback onPressed;
+
+  const _HealthRecommendationFooter({
+    required this.text,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        34,
+        12,
+        34,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
+      decoration: const BoxDecoration(
+        color: MedBuddyColors.pageBackground,
+        border: Border(top: BorderSide(color: Color(0xFFD1D5DC))),
+      ),
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(64),
+          side: const BorderSide(color: MedBuddyColors.primary, width: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          foregroundColor: MedBuddyColors.primaryDark,
+          backgroundColor: Colors.white,
+        ),
+        child: Text(
+          text.healthRecommendation,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+}
+
 class _ScheduleHeader extends StatelessWidget {
+  final _ScheduleText text;
   final int completedCount;
   final int totalCount;
   final VoidCallback onBackRequested;
 
   const _ScheduleHeader({
+    required this.text,
     required this.completedCount,
     required this.totalCount,
     required this.onBackRequested,
@@ -276,15 +327,15 @@ class _ScheduleHeader extends StatelessWidget {
           Row(
             children: [
               IconButton(
-                tooltip: '뒤로가기',
+                tooltip: text.back,
                 onPressed: onBackRequested,
                 icon:
                     const Icon(Icons.arrow_back, color: Colors.white, size: 30),
               ),
               const SizedBox(width: 8),
-              const Text(
-                '오늘의 복약 일정',
-                style: TextStyle(
+              Text(
+                text.title,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -304,10 +355,10 @@ class _ScheduleHeader extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '복용 진행률',
-                        style: TextStyle(
+                        text.progress,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -344,6 +395,7 @@ class _ScheduleHeader extends StatelessWidget {
 }
 
 class _TimeSlotCard extends StatelessWidget {
+  final _ScheduleText text;
   final _ScheduleSlot slot;
   final MedicationReminderSetting reminderSetting;
   final bool Function(MedicationSchedule schedule) isCompletedProvider;
@@ -355,6 +407,7 @@ class _TimeSlotCard extends StatelessWidget {
   ) onStatusChanged;
 
   const _TimeSlotCard({
+    required this.text,
     required this.slot,
     required this.reminderSetting,
     required this.isCompletedProvider,
@@ -365,6 +418,8 @@ class _TimeSlotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final slotTitle = text.slotTitle(slot.key);
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(10),
@@ -394,7 +449,7 @@ class _TimeSlotCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          slot.title,
+                          slotTitle,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
@@ -415,7 +470,8 @@ class _TimeSlotCard extends StatelessWidget {
                     ),
                   ),
                   _ReminderIconButton(
-                    slotTitle: slot.title,
+                    text: text,
+                    slotTitle: slotTitle,
                     isEnabled: reminderSetting.isEnabled,
                     onPressed: onReminderRequested,
                   ),
@@ -423,11 +479,11 @@ class _TimeSlotCard extends StatelessWidget {
               ),
             ),
             if (slot.medications.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 28),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Text(
-                  '복용할 약이 없습니다',
-                  style: TextStyle(
+                  text.emptySlot,
+                  style: const TextStyle(
                     color: MedBuddyColors.textLight,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -437,6 +493,7 @@ class _TimeSlotCard extends StatelessWidget {
             else
               for (final schedule in slot.medications)
                 _MedicationScheduleRow(
+                  text: text,
                   schedule: schedule,
                   isCompleted: isCompletedProvider(schedule),
                   onGuideRequested: () => onGuideRequested(schedule),
@@ -450,12 +507,14 @@ class _TimeSlotCard extends StatelessWidget {
 }
 
 class _MedicationScheduleRow extends StatelessWidget {
+  final _ScheduleText text;
   final MedicationSchedule schedule;
   final bool isCompleted;
   final VoidCallback onGuideRequested;
   final Future<void> Function(bool medicationStatus) onStatusChanged;
 
   const _MedicationScheduleRow({
+    required this.text,
     required this.schedule,
     required this.isCompleted,
     required this.onGuideRequested,
@@ -472,7 +531,7 @@ class _MedicationScheduleRow extends StatelessWidget {
       child: Row(
         children: [
           Tooltip(
-            message: isCompleted ? '복용 완료 취소' : '복용 완료',
+            message: isCompleted ? text.undoComplete : text.complete,
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: () => onStatusChanged(!isCompleted),
@@ -537,11 +596,13 @@ class _MedicationScheduleRow extends StatelessWidget {
 }
 
 class _ReminderIconButton extends StatelessWidget {
+  final _ScheduleText text;
   final String slotTitle;
   final bool isEnabled;
   final VoidCallback onPressed;
 
   const _ReminderIconButton({
+    required this.text,
     required this.slotTitle,
     required this.isEnabled,
     required this.onPressed,
@@ -554,7 +615,7 @@ class _ReminderIconButton extends StatelessWidget {
         isEnabled ? Colors.white : Colors.white.withValues(alpha: 0.0);
 
     return Tooltip(
-      message: '$slotTitle 알림 설정',
+      message: text.reminderTooltip(slotTitle),
       child: Material(
         color: backgroundColor,
         shape: const CircleBorder(),
@@ -579,11 +640,13 @@ class _ReminderIconButton extends StatelessWidget {
 }
 
 class _ReminderDialog extends StatefulWidget {
+  final _ScheduleText text;
   final String slotTitle;
   final int initialHour;
   final int initialMinute;
 
   const _ReminderDialog({
+    required this.text,
     required this.slotTitle,
     required this.initialHour,
     required this.initialMinute,
@@ -632,13 +695,13 @@ class _ReminderDialogState extends State<_ReminderDialog> {
             Row(
               children: [
                 IconButton(
-                  tooltip: '닫기',
+                  tooltip: widget.text.close,
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close, size: 25),
                 ),
                 Expanded(
                   child: Text(
-                    '${widget.slotTitle} 알림',
+                    widget.text.reminderDialogTitle(widget.slotTitle),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
@@ -655,6 +718,7 @@ class _ReminderDialogState extends State<_ReminderDialog> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _AmPmToggle(
+                  text: widget.text,
                   isAm: _isAm,
                   onChanged: (value) => setState(() => _isAm = value),
                 ),
@@ -699,9 +763,12 @@ class _ReminderDialogState extends State<_ReminderDialog> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: const Text(
-                '확인',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              child: Text(
+                widget.text.confirm,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -719,10 +786,15 @@ class _ReminderDialogState extends State<_ReminderDialog> {
 }
 
 class _AmPmToggle extends StatelessWidget {
+  final _ScheduleText text;
   final bool isAm;
   final ValueChanged<bool> onChanged;
 
-  const _AmPmToggle({required this.isAm, required this.onChanged});
+  const _AmPmToggle({
+    required this.text,
+    required this.isAm,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -736,7 +808,7 @@ class _AmPmToggle extends StatelessWidget {
       child: TextButton(
         onPressed: () => onChanged(!isAm),
         child: Text(
-          isAm ? '오전' : '오후',
+          isAm ? text.am : text.pm,
           style: const TextStyle(
             color: MedBuddyColors.textStrong,
             fontSize: 17,
@@ -797,7 +869,9 @@ class _TimeStepper extends StatelessWidget {
 }
 
 class _ScheduleEmptyState extends StatelessWidget {
-  const _ScheduleEmptyState();
+  final _ScheduleText text;
+
+  const _ScheduleEmptyState({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -810,16 +884,19 @@ class _ScheduleEmptyState extends StatelessWidget {
           borderRadius: MedBuddyRadii.largeCard,
           boxShadow: MedBuddyShadows.card,
         ),
-        child: const Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.schedule_outlined,
-                size: 52, color: MedBuddyColors.primary),
-            SizedBox(height: 16),
+            const Icon(
+              Icons.schedule_outlined,
+              size: 52,
+              color: MedBuddyColors.primary,
+            ),
+            const SizedBox(height: 16),
             Text(
-              '오늘 복용할 약이 없습니다',
+              text.emptySchedule,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -867,4 +944,48 @@ class _ReminderTime {
   final int minute;
 
   const _ReminderTime({required this.hour, required this.minute});
+}
+
+class _ScheduleText {
+  final String language;
+
+  const _ScheduleText(this.language);
+
+  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+
+  String get back => isEnglish ? 'Back' : '뒤로가기';
+  String get title => isEnglish ? "Today's Medication Schedule" : '오늘의 복약 일정';
+  String get progress => isEnglish ? 'Progress' : '복용 진행률';
+  String get healthRecommendation =>
+      isEnglish ? 'View Health Recommendations' : '건강 관리 추천 보기';
+  String get emptySlot =>
+      isEnglish ? 'No medication for this time' : '복용할 약이 없습니다';
+  String get emptySchedule =>
+      isEnglish ? 'No medication scheduled for today' : '오늘 복용할 약이 없습니다';
+  String get complete => isEnglish ? 'Mark as taken' : '복용 완료';
+  String get undoComplete => isEnglish ? 'Undo taken' : '복용 완료 취소';
+  String get close => isEnglish ? 'Close' : '닫기';
+  String get confirm => isEnglish ? 'Confirm' : '확인';
+  String get am => isEnglish ? 'AM' : '오전';
+  String get pm => isEnglish ? 'PM' : '오후';
+  String get statusUpdateFailed =>
+      isEnglish ? 'Could not update medication status.' : '복약 상태를 변경하지 못했습니다.';
+
+  String reminderTooltip(String slotTitle) {
+    return isEnglish ? 'Set $slotTitle reminder' : '$slotTitle 알림 설정';
+  }
+
+  String reminderDialogTitle(String slotTitle) {
+    return isEnglish ? '$slotTitle Reminder' : '$slotTitle 알림';
+  }
+
+  String slotTitle(String slotKey) {
+    return switch (slotKey) {
+      'morning' => isEnglish ? 'Morning' : '아침',
+      'lunch' => isEnglish ? 'Lunch' : '점심',
+      'evening' => isEnglish ? 'Evening' : '저녁',
+      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
+      _ => isEnglish ? 'Schedule' : '일정',
+    };
+  }
 }

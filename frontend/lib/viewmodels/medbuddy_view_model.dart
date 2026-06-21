@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../controls/check_health_recommendation_control.dart';
 import '../controls/check_medication_detail_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/health_recommendation_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -60,6 +62,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
+  final CheckHealthRecommendation checkHealthRecommendation;
   final ManageUserSetting manageUserSetting;
   final MedicationNotificationService notificationService;
 
@@ -95,6 +98,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool _isTodayScheduleLoading = false;
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
 
+  bool _isHealthRecommendationLoading = false;
+  bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
+
   bool _isUserSettingLoading = false;
   bool get isUserSettingLoading => _isUserSettingLoading;
 
@@ -107,6 +113,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   UserSetting _userSetting = const UserSetting();
   UserSetting get userSetting =>
       manageUserSetting.requestUserSetting(_userSetting);
+  bool get _isEnglishSetting =>
+      userSetting.language.trim().toLowerCase().startsWith('en');
 
   List<MedicationSchedule> _recognizedMedicationScheduleList = [];
   List<MedicationSchedule> get recognizedMedicationScheduleList =>
@@ -126,6 +134,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> _todayMedicationScheduleList = [];
   List<MedicationSchedule> get todayMedicationScheduleList =>
       List.unmodifiable(_todayMedicationScheduleList);
+
+  HealthRecommendation? _healthRecommendation;
+  HealthRecommendation? get healthRecommendation => _healthRecommendation;
 
   TodayMedicationProgress get todayMedicationProgress {
     final slotKeys = ['morning', 'lunch', 'evening', 'bedtime'];
@@ -162,6 +173,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
+    CheckHealthRecommendation? checkHealthRecommendation,
     ManageUserSetting? manageUserSetting,
     MedicationNotificationService? notificationService,
   })  : inputPrescription = inputPrescription ?? InputPrescription(),
@@ -169,6 +181,8 @@ class MedBuddyViewModel extends ChangeNotifier {
             checkMedicationDetail ?? CheckMedicationDetail(),
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
         checkSchedule = checkSchedule ?? CheckSchedule(),
+        checkHealthRecommendation =
+            checkHealthRecommendation ?? CheckHealthRecommendation(),
         manageUserSetting = manageUserSetting ?? ManageUserSetting(),
         notificationService =
             notificationService ?? MedicationNotificationService.instance;
@@ -513,6 +527,39 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
   }
 
+  // 함수명: fetchHealthRecommendation
+  // 함수역할:
+  // - 현재 복용 중인 약 조합을 바탕으로 건강 관리 추천을 서버에서 가져온다.
+  // 반환값:
+  // - 없음
+  Future<void> fetchHealthRecommendation() async {
+    _isHealthRecommendationLoading = true;
+    _healthRecommendation = null;
+    _statusMessage = _isEnglishSetting
+        ? 'Loading health recommendations.'
+        : '건강 관리 추천을 불러오는 중입니다.';
+    notifyListeners();
+
+    try {
+      _healthRecommendation =
+          await checkHealthRecommendation.requestHealthRecommendation(
+        language: userSetting.language,
+      );
+      _statusMessage = _isEnglishSetting
+          ? 'Health recommendations loaded.'
+          : '건강 관리 추천을 불러왔습니다.';
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+    } catch (_) {
+      _statusMessage = _isEnglishSetting
+          ? 'Could not load health recommendations.'
+          : '건강 관리 추천을 불러오지 못했습니다.';
+    } finally {
+      _isHealthRecommendationLoading = false;
+      notifyListeners();
+    }
+  }
+
   // 함수명: loadMedicationReminderSettings
   // 함수역할:
   // - 로컬 저장소에서 시간대별 복약 알림 설정을 불러온다.
@@ -576,7 +623,9 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     final hasPermission = await notificationService.requestPermission();
     if (!hasPermission) {
-      _statusMessage = '알림 권한이 허용되지 않았습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'Notification permission was not allowed.'
+          : '알림 권한이 허용되지 않았습니다.';
       notifyListeners();
       return false;
     }
@@ -588,6 +637,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       minute: minute,
       medicationNames:
           schedules.map((schedule) => schedule.displayName).toList(),
+      language: userSetting.language,
     );
 
     final preferences = await SharedPreferences.getInstance();
@@ -596,7 +646,9 @@ class MedBuddyViewModel extends ChangeNotifier {
       jsonEncode(setting.toJson()),
     );
     _medicationReminderSettings[slotKey] = setting;
-    _statusMessage = '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
+    _statusMessage = _isEnglishSetting
+        ? '$slotTitle reminder is set for ${setting.timeLabel}.'
+        : '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
     notifyListeners();
     return true;
   }
@@ -625,11 +677,15 @@ class MedBuddyViewModel extends ChangeNotifier {
         jsonEncode(disabledSetting.toJson()),
       );
       _medicationReminderSettings[slotKey] = disabledSetting;
-      _statusMessage = '$slotTitle 알림을 해제했습니다.';
+      _statusMessage = _isEnglishSetting
+          ? '$slotTitle reminder has been turned off.'
+          : '$slotTitle 알림을 해제했습니다.';
       notifyListeners();
       return true;
     } catch (_) {
-      _statusMessage = '$slotTitle 알림을 해제하지 못했습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'Could not turn off the $slotTitle reminder.'
+          : '$slotTitle 알림을 해제하지 못했습니다.';
       notifyListeners();
       return false;
     }

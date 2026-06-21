@@ -12,12 +12,14 @@ from api.dependencies import (
     get_check_saved_medication,
     get_input_prescription,
     get_link_patient_caregiver,
+    get_request_health_recommendation,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from controls.request_health_recommendation_control import RequestHealthRecommendation
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
     MedicationRequest,
@@ -169,6 +171,43 @@ async def update_medication_status(
         request.medication_status,
         patient_hash,
     )
+
+
+# 함수명: get_health_recommendation
+# 함수역할:
+# - 현재 복용 중인 약 조합을 바탕으로 AI 건강 관리 추천을 반환한다.
+# 매개변수:
+# - patient_hash: 추천 조회 범위를 구분하는 환자 해시
+# - user_hash: 보호자 요청자의 사용자 해시
+# - role: 요청자 역할
+# - request_health_recommendation: RequestHealthRecommendation injected by FastAPI.
+# 반환값:
+# - API-compatible health recommendation dictionary.
+@router.get("/health/recommendation")
+async def get_health_recommendation(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    language: str = "ko",
+    request_health_recommendation: RequestHealthRecommendation = Depends(
+        get_request_health_recommendation
+    ),
+) -> dict[str, object]:
+    try:
+        return await request_health_recommendation.request_health_recommendation(
+            patient_hash,
+            user_hash,
+            role,
+            language,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Health recommendation failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"건강 관리 추천 생성 실패: {exc}",
+        ) from exc
 
 
 # 함수명: get_patient_caregiver_links

@@ -86,6 +86,7 @@ class MedicationNotificationService {
   // - hour: 24시간 기준 시
   // - minute: 분
   // - medicationNames: 알림 본문에 보여줄 약 이름 목록
+  // - language: 알림 제목과 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 없음
   Future<void> scheduleDailyReminder({
@@ -94,6 +95,7 @@ class MedicationNotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    String language = 'ko',
   }) async {
     await initialize();
     await _plugin.cancel(id: id);
@@ -111,12 +113,13 @@ class MedicationNotificationService {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
 
-    final body = _buildReminderBody(medicationNames);
+    final body = _buildReminderBody(medicationNames, language);
 
     try {
       await _scheduleWithMode(
         id: id,
         slotTitle: slotTitle,
+        language: language,
         body: body,
         scheduledDate: scheduledDate,
         scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -125,6 +128,7 @@ class MedicationNotificationService {
       await _scheduleWithMode(
         id: id,
         slotTitle: slotTitle,
+        language: language,
         body: body,
         scheduledDate: scheduledDate,
         scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -137,22 +141,32 @@ class MedicationNotificationService {
   // - 알림 본문을 긴 약품명 나열 대신 사용자가 바로 이해할 수 있는 문장으로 만든다.
   // 매개변수:
   // - medicationNames: 해당 시간대에 복용할 약 이름 목록
+  // - language: 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 알림 본문 문자열
-  String _buildReminderBody(List<String> medicationNames) {
+  String _buildReminderBody(List<String> medicationNames, String language) {
+    final isEnglish = _isEnglish(language);
     final names = medicationNames
         .map((name) => name.trim())
         .where((name) => name.isNotEmpty)
         .toList(growable: false);
     if (names.isEmpty) {
-      return '복용할 약을 확인해 주세요.';
+      return isEnglish ? 'Please check your medication.' : '복용할 약을 확인해 주세요.';
     }
 
     final representativeName = _shortenMedicationName(names.first);
     if (names.length == 1) {
-      return '$representativeName 복용 시간입니다.';
+      return isEnglish
+          ? 'Time to take $representativeName.'
+          : '$representativeName 복용 시간입니다.';
     }
-    return '$representativeName 외 ${names.length - 1}개 약을 복용할 시간입니다.';
+    return isEnglish
+        ? 'Time to take $representativeName and ${names.length - 1} more.'
+        : '$representativeName 외 ${names.length - 1}개 약을 복용할 시간입니다.';
+  }
+
+  bool _isEnglish(String language) {
+    return language.trim().toLowerCase().startsWith('en');
   }
 
   // 함수명: _shortenMedicationName
@@ -176,6 +190,7 @@ class MedicationNotificationService {
   // 매개변수:
   // - id: 시간대별 고정 알림 id
   // - slotTitle: 알림 제목에 들어갈 시간대명
+  // - language: 알림 제목에 사용할 언어 코드
   // - body: 알림 본문
   // - scheduledDate: 예약 기준 시각
   // - scheduleMode: Android 알림 예약 방식
@@ -184,13 +199,18 @@ class MedicationNotificationService {
   Future<void> _scheduleWithMode({
     required int id,
     required String slotTitle,
+    required String language,
     required String body,
     required timezone.TZDateTime scheduledDate,
     required AndroidScheduleMode scheduleMode,
   }) async {
+    final title = _isEnglish(language)
+        ? '$slotTitle medication time'
+        : '$slotTitle 복약 시간입니다';
+
     await _plugin.zonedSchedule(
       id: id,
-      title: '$slotTitle 복약 시간입니다',
+      title: title,
       body: body,
       scheduledDate: scheduledDate,
       notificationDetails: const NotificationDetails(
