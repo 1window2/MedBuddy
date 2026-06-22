@@ -5,6 +5,7 @@ import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
+import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
@@ -85,7 +86,6 @@ class HomeScreen extends StatelessWidget {
     BuildContext context,
     MedBuddyViewModel viewModel,
   ) {
-    final isEnglish = viewModel.userSetting.language == 'en';
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
     return InputPrescriptionUI(
@@ -105,7 +105,7 @@ class HomeScreen extends StatelessWidget {
             builder: (context) => const CheckScheduleUI(),
           ),
         ).then(
-          (_) => viewModel.loadTodayMedicationDoseStatuses(),
+          (_) => viewModel.fetchTodayMedicationSchedule(),
         );
       },
       onSavedMedicationRequested: () {
@@ -117,13 +117,10 @@ class HomeScreen extends StatelessWidget {
         );
       },
       onPatientCaregiverLinkRequested: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isEnglish
-                  ? 'Patient/caregiver linking is coming soon.'
-                  : '환자/보호자 연동은 준비 중입니다.',
-            ),
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LinkPatientCaregiverUI(),
           ),
         );
       },

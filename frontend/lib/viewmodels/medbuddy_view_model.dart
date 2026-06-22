@@ -150,7 +150,7 @@ class MedBuddyViewModel extends ChangeNotifier {
           continue;
         }
         totalCount += 1;
-        if (isMedicationDoseCompleted(slotKey, schedule)) {
+        if (schedule.medicationStatus) {
           completedCount += 1;
         }
       }
@@ -165,8 +165,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   final Map<String, MedicationReminderSetting> _medicationReminderSettings = {};
   Map<String, MedicationReminderSetting> get medicationReminderSettings =>
       Map.unmodifiable(_medicationReminderSettings);
-
-  final Set<String> _completedMedicationDoseKeys = {};
 
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
@@ -203,7 +201,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       _userSetting = await manageUserSetting.requestStoredUserSetting();
       await loadMedicationReminderSettings(notifyAfterLoad: false);
-      await loadTodayMedicationDoseStatuses(notifyAfterLoad: false);
       await fetchTodayMedicationSchedule();
     } finally {
       _isUserSettingLoading = false;
@@ -516,7 +513,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       _todayMedicationScheduleList =
           await checkSchedule.requestTodayMedicationSchedule();
-      await loadTodayMedicationDoseStatuses(notifyAfterLoad: false);
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -695,43 +691,20 @@ class MedBuddyViewModel extends ChangeNotifier {
     return 'medbuddy_medication_reminder_$slotKey';
   }
 
-  // 함수명: loadTodayMedicationDoseStatuses
-  // 함수역할:
-  // - 오늘 날짜의 시간대별 복약 완료 상태를 로컬 저장소에서 불러온다.
-  // 매개변수:
-  // - notifyAfterLoad: 불러온 뒤 화면 갱신을 알릴지 여부
-  // 반환값:
-  // - 없음
-  Future<void> loadTodayMedicationDoseStatuses({
-    bool notifyAfterLoad = true,
-  }) async {
-    final preferences = await SharedPreferences.getInstance();
-    final storedKeys =
-        preferences.getStringList(_todayDoseStatusStorageKey()) ?? const [];
-    _completedMedicationDoseKeys
-      ..clear()
-      ..addAll(storedKeys);
-
-    if (notifyAfterLoad) {
-      notifyListeners();
-    }
-  }
-
   // 함수명: isMedicationDoseCompleted
   // 함수역할:
-  // - 특정 시간대에 표시된 약 한 줄이 오늘 완료 처리되었는지 확인한다.
+  // - 현재 서버가 보존하는 복약 일정 완료 상태를 반환한다.
+  // - 시간대별 완료 상태는 MedicationCompletion 엔티티가 도입된 뒤 분리한다.
   // 매개변수:
-  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - slotKey: 시간대별 UI 호출 호환성을 위해 유지하는 키
   // - schedule: 확인할 복약 일정
   // 반환값:
-  // - 완료 처리되어 있으면 True
+  // - 서버 일정이 완료 처리되어 있으면 True
   bool isMedicationDoseCompleted(
     String slotKey,
     MedicationSchedule schedule,
   ) {
-    return _completedMedicationDoseKeys.contains(
-      _doseStatusKey(slotKey, schedule),
-    );
+    return schedule.medicationStatus;
   }
 
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
@@ -740,93 +713,20 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   // 함수명: requestMedicationDoseStatusUpdate
   // 함수역할:
-  // - 특정 시간대의 복약 완료 상태를 오늘 날짜 기준 로컬 저장소에 저장한다.
+  // - 복약 완료 상태를 백엔드 일정 상태 변경 API로 저장한다.
+  // - 시간대별 UI 호출 형태를 유지하되 UC-8의 DB 기반 일정 갱신 흐름을 따른다.
   // 매개변수:
-  // - slotKey: morning, lunch, evening, bedtime 중 하나
+  // - slotKey: 시간대별 UI 호출 호환성을 위해 유지하는 키
   // - schedule: 상태를 변경할 복약 일정
   // - medicationStatus: 새 완료 상태
   // 반환값:
-  // - 저장 성공 여부
+  // - 백엔드 갱신에 성공하면 True
   Future<bool> requestMedicationDoseStatusUpdate(
     String slotKey,
     MedicationSchedule schedule,
     bool medicationStatus,
   ) async {
-    final doseKey = _doseStatusKey(slotKey, schedule);
-    if (medicationStatus) {
-      _completedMedicationDoseKeys.add(doseKey);
-    } else {
-      _completedMedicationDoseKeys.remove(doseKey);
-    }
-
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setStringList(
-        _todayDoseStatusStorageKey(),
-        _completedMedicationDoseKeys.toList(growable: false),
-      );
-      notifyListeners();
-      return true;
-    } catch (_) {
-      _statusMessage = '복약 완료 상태를 저장하지 못했습니다.';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  String _todayDoseStatusStorageKey() {
-    final now = DateTime.now();
-    return 'medbuddy_medication_dose_status_${now.year.toString().padLeft(4, '0')}'
-        '${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}_${_todayScheduleStorageSignature()}';
-  }
-
-  String _doseStatusKey(String slotKey, MedicationSchedule schedule) {
-    final medicationKey = [
-      schedule.medicationID.trim(),
-      _formatDateKey(schedule.scheduleStartDate),
-      schedule.displayName,
-      schedule.dosage,
-      schedule.intakeTime,
-      schedule.medicationTime.toString(),
-    ].where((value) => value.trim().isNotEmpty).join('::');
-    return '$slotKey::$medicationKey';
-  }
-
-  String _todayScheduleStorageSignature() {
-    if (_todayMedicationScheduleList.isEmpty) {
-      return 'empty';
-    }
-
-    final signatureSource = _todayMedicationScheduleList.map((schedule) {
-      return [
-        schedule.medicationID.trim(),
-        _formatDateKey(schedule.scheduleStartDate),
-        schedule.displayName,
-        schedule.dosage,
-        schedule.intakeTime,
-        schedule.medicationTime.toString(),
-      ].where((value) => value.trim().isNotEmpty).join('|');
-    }).join('||');
-
-    return _stableTextHash(signatureSource).toString();
-  }
-
-  String _formatDateKey(DateTime? value) {
-    if (value == null) {
-      return '';
-    }
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-  }
-
-  int _stableTextHash(String text) {
-    var hash = 5381;
-    for (final codeUnit in text.codeUnits) {
-      hash = ((hash << 5) + hash + codeUnit) & 0x7fffffff;
-    }
-    return hash;
+    return requestMedicationStatusUpdate(schedule, medicationStatus);
   }
 
   List<String> _slotKeysForSchedule(MedicationSchedule schedule) {

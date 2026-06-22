@@ -63,7 +63,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
       await viewModel.loadMedicationReminderSettings();
-      await viewModel.loadTodayMedicationDoseStatuses();
       await viewModel.fetchTodayMedicationSchedule();
     });
   }
