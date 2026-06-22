@@ -1,5 +1,5 @@
-# 파일명: dependencies.py
-# 역할: 백엔드 유스케이스 협력 객체를 생성하는 FastAPI 의존성 factory를 제공한다.
+# File Name: dependencies.py
+# Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -13,21 +13,21 @@ from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.request_health_recommendation_control import RequestHealthRecommendation
 
 
-# 함수명: get_input_prescription
-# 함수역할:
-# - 처방전 이미지 분석 control 서비스를 생성한다.
-# 반환값:
+# Function Name: get_input_prescription
+# Description:
+# - Builds the image prescription analysis control service.
+# Returns:
 # - InputPrescription instance.
 def get_input_prescription() -> InputPrescription:
     return InputPrescription()
 
 
-# 함수명: get_check_medication_detail
-# 함수역할:
-# - 선택적 로컬 DB 접근을 포함한 약 상세 조회 control 서비스를 생성한다.
-# 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
-# 반환값:
+# Function Name: get_check_medication_detail
+# Description:
+# - Builds the medication detail lookup control service with optional local DB access.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
 # - CheckMedicationDetail instance.
 def get_check_medication_detail(
     db: Session = Depends(get_db),
@@ -35,12 +35,12 @@ def get_check_medication_detail(
     return CheckMedicationDetail(db=db)
 
 
-# 함수명: get_check_saved_medication
-# 함수역할:
-# - 요청 단위 DB 세션을 포함한 저장 복약 control 서비스를 생성한다.
-# 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
-# 반환값:
+# Function Name: get_check_saved_medication
+# Description:
+# - Builds the saved medication control service with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
 # - CheckSavedMedication instance.
 def get_check_saved_medication(
     db: Session = Depends(get_db),
@@ -48,12 +48,12 @@ def get_check_saved_medication(
     return CheckSavedMedication(db=db)
 
 
-# 함수명: get_check_schedule
-# 함수역할:
-# - 요청 단위 DB 세션을 포함한 복약 일정 control 서비스를 생성한다.
-# 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
-# 반환값:
+# Function Name: get_check_schedule
+# Description:
+# - Builds the medication schedule control service with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
 # - CheckSchedule instance.
 def get_check_schedule(
     db: Session = Depends(get_db),
@@ -74,12 +74,12 @@ def get_request_health_recommendation(
     return RequestHealthRecommendation(db=db)
 
 
-# 함수명: get_link_patient_caregiver
-# 함수역할:
-# - 요청 단위 DB 세션을 포함한 환자-보호자 연동 control 서비스를 생성한다.
-# 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
-# 반환값:
+# Function Name: get_link_patient_caregiver
+# Description:
+# - Builds the patient-caregiver link control service with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
 # - LinkPatientCaregiver instance.
 def get_link_patient_caregiver(
     db: Session = Depends(get_db),

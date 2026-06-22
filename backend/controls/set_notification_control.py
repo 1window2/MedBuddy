@@ -1,14 +1,14 @@
-# 파일명: set_notification_control.py
-# 역할: ClassDiagram2의 SetNotification에 대응하는 미구현 control이다.
+# File Name: set_notification_control.py
+# Role: Skeleton control mapped from the SetNotification box in ClassDiagram2.
 
 
-# 클래스명: SetNotification
-# 역할: 환자 알림 설정 흐름을 조정한다.
+# Class Name: SetNotification
+# Role: Coordinates patient notification settings.
 class SetNotification:
-    # 함수명: requestNotificationSetting
-    # 함수역할:
-    # - 환자 알림 설정 변경을 위한 placeholder이다.
-    # 반환값:
+    # Function Name: requestNotificationSetting
+    # Description:
+    # - Placeholder for patient notification setting updates.
+    # Returns:
     # - None.
     def requestNotificationSetting(self) -> None:
         raise NotImplementedError("Patient notification setting is not implemented yet.")

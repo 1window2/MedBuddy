@@ -1,5 +1,5 @@
-# 파일명: check_schedule_control.py
-# 역할: ClassDiagram2의 CheckSchedule 박스에 대응하는 제어 클래스이다.
+# File Name: check_schedule_control.py
+# Role: Control class mapped from the CheckSchedule box in ClassDiagram2.
 
 from datetime import date, timedelta
 import re
@@ -17,27 +17,26 @@ _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
-# 클래스명: CheckSchedule
-# 역할: 복약 일정을 조회하고 복약 완료 상태를 변경한다.
-# 주요 책임:
-#   - 환자 또는 연동 보호자 권한 범위의 오늘 복약 일정을 읽는다.
-#   - 조제일자와 총 복용 일수를 기준으로 오늘 복용 대상만 걸러낸다.
-#   - 저장된 복약 정보의 완료 상태를 갱신한다.
-# 속성:
-#   - db: 복약 일정 조회와 변경 작업에 사용하는 SQLAlchemy 세션
+# Class Name: CheckSchedule
+# Role: Requests and updates medication schedules.
+# Responsibilities:
+#   - Read today's medication schedule for one patient or linked guardian scope.
+#   - Persist a medication completion status for one saved medication row.
+# Attributes:
+#   - db: SQLAlchemy session used for schedule persistence operations.
 class CheckSchedule:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # 함수명: requestMedicationSchedule
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 오늘 복약 일정 조회 wrapper이다.
-    # 매개변수:
-    # - patient_hash: 복약 일정 조회 범위를 구분하는 환자 해시
-    # - user_hash: 보호자 요청자의 사용자 해시
-    # - role: 요청자 역할
-    # 반환값:
-    # - API 응답 형식의 오늘 복약 일정 목록
+    # Function Name: requestMedicationSchedule
+    # Description:
+    # - Class diagram compatible wrapper for today's medication schedule lookup.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
+    # Returns:
+    # - API-compatible schedule list response dictionary.
     def requestMedicationSchedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -46,15 +45,15 @@ class CheckSchedule:
     ) -> dict[str, object]:
         return self.request_today_medication_schedule(patient_hash, user_hash, role)
 
-    # 함수명: requestTodayMedicationSchedule
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 오늘 복약 일정 조회 wrapper이다.
-    # 매개변수:
-    # - patient_hash: 복약 일정 조회 범위를 구분하는 환자 해시
-    # - user_hash: 보호자 요청자의 사용자 해시
-    # - role: 요청자 역할
-    # 반환값:
-    # - API 응답 형식의 오늘 복약 일정 목록
+    # Function Name: requestTodayMedicationSchedule
+    # Description:
+    # - Class diagram compatible wrapper for today's medication schedule lookup.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
+    # Returns:
+    # - API-compatible schedule list response dictionary.
     def requestTodayMedicationSchedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -63,15 +62,15 @@ class CheckSchedule:
     ) -> dict[str, object]:
         return self.request_today_medication_schedule(patient_hash, user_hash, role)
 
-    # 함수명: request_today_medication_schedule
-    # 함수역할:
-    # - 오늘 기준으로 복용 기간 안에 있는 저장 약 목록을 조회한다.
-    # 매개변수:
-    # - patient_hash: 복약 일정 조회 범위를 구분하는 환자 해시
-    # - user_hash: 보호자 요청자의 사용자 해시
-    # - role: 요청자 역할
-    # 반환값:
-    # - API 응답 형식의 오늘 복약 일정 목록
+    # Function Name: request_today_medication_schedule
+    # Description:
+    # - Reads active medication schedules for today's date.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - user_hash: Requesting user hash. Used for guardian role resolution.
+    # - role: Requesting user role such as patient or guardian.
+    # Returns:
+    # - API-compatible schedule list response dictionary.
     def request_today_medication_schedule(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -105,15 +104,15 @@ class CheckSchedule:
             "data": active_schedules,
         }
 
-    # 함수명: updateMedicationStatus
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 복약 상태 저장 wrapper이다.
-    # 매개변수:
-    # - medication_id: 저장된 복약 정보 기본키
-    # - medication_status: 변경할 복약 완료 여부
-    # - patient_hash: 변경 범위를 구분하는 환자 해시
-    # 반환값:
-    # - API 응답 형식의 상태 변경 결과
+    # Function Name: updateMedicationStatus
+    # Description:
+    # - Class diagram compatible wrapper for medication status persistence.
+    # Parameters:
+    # - medication_id: Saved medication primary key.
+    # - medication_status: New medication completion status.
+    # - patient_hash: Patient ownership key used to scope update.
+    # Returns:
+    # - API-compatible status update response dictionary.
     def updateMedicationStatus(
         self,
         medication_id: int,
@@ -126,15 +125,15 @@ class CheckSchedule:
             patient_hash,
         )
 
-    # 함수명: update_medication_status
-    # 함수역할:
-    # - 저장된 약 하나의 복약 완료 상태를 저장한다.
-    # 매개변수:
-    # - medication_id: 저장된 복약 정보 기본키
-    # - medication_status: 변경할 복약 완료 여부
-    # - patient_hash: 변경 범위를 구분하는 환자 해시
-    # 반환값:
-    # - API 응답 형식의 상태 변경 결과
+    # Function Name: update_medication_status
+    # Description:
+    # - Persists the medication completion status for one saved medication row.
+    # Parameters:
+    # - medication_id: Saved medication primary key.
+    # - medication_status: New medication completion status.
+    # - patient_hash: Patient ownership key used to scope update.
+    # Returns:
+    # - API-compatible status update response dictionary.
     def update_medication_status(
         self,
         medication_id: int,
@@ -162,14 +161,14 @@ class CheckSchedule:
             "data": self._to_schedule_dict(medication),
         }
 
-    # 함수명: _get_existing_medication
-    # 함수역할:
-    # - 환자 범위 안에서 기존 저장 약을 찾고 없으면 404를 발생시킨다.
-    # 매개변수:
-    # - medication_id: 저장된 복약 정보 기본키
-    # - patient_hash: 조회 범위를 구분하는 환자 해시
-    # 반환값:
-    # - 기존 저장 복약 정보 row
+    # Function Name: _get_existing_medication
+    # Description:
+    # - Finds an existing saved medication in a patient scope or raises 404.
+    # Parameters:
+    # - medication_id: Saved medication primary key.
+    # - patient_hash: Patient ownership key used to scope lookup.
+    # Returns:
+    # - Existing saved medication row.
     def _get_existing_medication(
         self,
         medication_id: int,
@@ -191,13 +190,13 @@ class CheckSchedule:
             )
         return medication
 
-    # 함수명: _to_schedule_dict
-    # 함수역할:
-    # - 저장 복약 row를 JSON 호환 복약 일정 DTO로 변환한다.
-    # 매개변수:
-    # - medication: 저장된 복약 정보 row
-    # 반환값:
-    # - JSON 호환 복약 일정 dictionary
+    # Function Name: _to_schedule_dict
+    # Description:
+    # - Converts a saved medication row into a JSON-compatible schedule DTO.
+    # Parameters:
+    # - medication: Saved medication row.
+    # Returns:
+    # - JSON-compatible medication schedule dictionary.
     def _to_schedule_dict(self, medication: _SavedMedication) -> dict[str, object]:
         schedule = self._to_schedule(medication).getTodayMedicationSchedule()
         return {
@@ -221,15 +220,15 @@ class CheckSchedule:
             "prescription_date": schedule.created_date.isoformat(),
         }
 
-    # 함수명: resolvePatientHash
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 환자/보호자 권한 범위 확인 wrapper이다.
-    # 매개변수:
-    # - patient_hash: 환자 요청자가 전달한 환자 해시
-    # - user_hash: 보호자 요청자가 전달한 사용자 해시
-    # - role: 요청자 역할
-    # 반환값:
-    # - 이 요청에 대해 권한이 확인된 환자 해시
+    # Function Name: resolvePatientHash
+    # Description:
+    # - Class diagram compatible wrapper for patient/guardian scope resolution.
+    # Parameters:
+    # - patient_hash: Direct patient hash for patient requests.
+    # - user_hash: Requesting user hash for guardian requests.
+    # - role: Requesting user role.
+    # Returns:
+    # - Patient hash authorized for this request.
     def resolvePatientHash(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -260,13 +259,13 @@ class CheckSchedule:
             )
         return normalize_patient_hash(user_hash or patient_hash)
 
-    # 함수명: _to_schedule
-    # 함수역할:
-    # - 저장 복약 row를 MedicationSchedule 엔티티로 변환한다.
-    # 매개변수:
-    # - medication: 저장된 복약 정보 row
-    # 반환값:
-    # - MedicationSchedule 엔티티
+    # Function Name: _to_schedule
+    # Description:
+    # - Converts a saved medication row into the MedicationSchedule entity.
+    # Parameters:
+    # - medication: Saved medication row.
+    # Returns:
+    # - MedicationSchedule entity.
     def _to_schedule(self, medication: _SavedMedication) -> MedicationSchedule:
         return MedicationSchedule(
             created_date=self._read_schedule_start_date(
@@ -282,14 +281,14 @@ class CheckSchedule:
             medication_time=medication.total_days or "",
         )
 
-    # 함수명: _is_active_today
-    # 함수역할:
-    # - 저장된 복약 정보가 오늘 복용 기간에 포함되는지 확인한다.
-    # 매개변수:
-    # - medication: 저장된 복약 정보 row
-    # - today: 판정 기준 날짜
-    # 반환값:
-    # - 오늘 복용 대상이면 True
+    # Function Name: _is_active_today
+    # Description:
+    # - Checks whether a saved medication is active for today's schedule window.
+    # Parameters:
+    # - medication: Saved medication row.
+    # - today: Date used for deterministic evaluation.
+    # Returns:
+    # - True when the medication should be shown in today's schedule.
     def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
         start_date = self._read_schedule_start_date(medication, today)
         total_days = self._read_total_days(medication.total_days)
@@ -318,14 +317,14 @@ class CheckSchedule:
             return self._read_created_date(prescription_date, fallback_date)
         return self._read_created_date(medication.created_date, fallback_date)
 
-    # 함수명: _read_created_date
-    # 함수역할:
-    # - 날짜 객체나 ISO 문자열을 안전하게 date 값으로 변환한다.
-    # 매개변수:
-    # - raw_date: 원본 날짜 값
-    # - fallback_date: 변환할 수 없을 때 사용할 기준일
-    # 반환값:
-    # - 파싱된 날짜
+    # Function Name: _read_created_date
+    # Description:
+    # - Reads a saved medication created date with a safe fallback.
+    # Parameters:
+    # - raw_date: Raw created_date value from SQLAlchemy.
+    # - fallback_date: Date used when raw_date is empty or invalid.
+    # Returns:
+    # - Parsed date.
     def _read_created_date(
         self,
         raw_date: object,
@@ -340,13 +339,13 @@ class CheckSchedule:
                 return fallback_date
         return fallback_date
 
-    # 함수명: _read_total_days
-    # 함수역할:
-    # - "7일"처럼 섞여 들어온 복용 기간 문자열에서 일수를 추출한다.
-    # 매개변수:
-    # - raw_total_days: 원본 복용 기간 문자열
-    # 반환값:
-    # - 추출된 일수, 없으면 0
+    # Function Name: _read_total_days
+    # Description:
+    # - Extracts a numeric medication duration from a schedule label.
+    # Parameters:
+    # - raw_total_days: Raw total_days value such as "7 days" or "7일".
+    # Returns:
+    # - Parsed duration in days, or 0 when unavailable.
     def _read_total_days(self, raw_total_days: str | None) -> int:
         if not raw_total_days:
             return 0

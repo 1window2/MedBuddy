@@ -1,5 +1,5 @@
-# 파일명: input_prescription_control.py
-# 역할: 처방전 이미지에서 복약 일정의 원천 데이터를 추출하는 제어 클래스이다.
+# File Name: input_prescription_control.py
+# Role: Control class for prescription image analysis.
 
 import json
 import logging
@@ -16,15 +16,15 @@ from utils.image_processing import preprocess_prescription_image
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: InputPrescription
-# 역할: 처방전 이미지 전처리와 구조화된 데이터 추출 흐름을 조정한다.
-# 주요 책임:
-#   - 처방전 이미지 bytes를 OCR에 적합하게 전처리한다.
-#   - Gemini Vision으로 구조화된 처방전 추출을 요청한다.
-#   - 추출된 처방전 데이터를 정리, 복호화, 마스킹, 검증한다.
-# 속성:
-#   - client: 처방전 이미지 분석에 사용하는 Gemini 클라이언트
-#   - model_name: Gemini 모델명
+# Class Name: InputPrescription
+# Role: Coordinates prescription image preprocessing and structured extraction.
+# Responsibilities:
+#   - Preprocess prescription image bytes.
+#   - Request structured prescription extraction from Gemini Vision.
+#   - Clean, decode, mask, and validate extracted prescription data.
+# Attributes:
+#   - client: Gemini client used for prescription image analysis.
+#   - model_name: Gemini model name.
 class InputPrescription:
     _RRN_PATTERN = re.compile(r"(\d{6})[-]\d{7}")
     _PRESCRIPTION_RESPONSE_SCHEMA = {
@@ -84,13 +84,13 @@ class InputPrescription:
         )
         self.model_name = model_name
 
-    # 함수명: request_prescription_image
-    # 함수역할:
+    # Function Name: request_prescription_image
+    # Description:
     # - Runs the full prescription image analysis pipeline.
-    # 매개변수:
-    # - image_bytes: 프론트엔드에서 업로드한 원본 이미지 bytes
-    # 반환값:
-    # - 복약 일정 데이터를 담은 API 응답용 dictionary
+    # Parameters:
+    # - image_bytes: Raw image bytes uploaded by the frontend.
+    # Returns:
+    # - API-compatible dictionary containing medication schedule data.
     async def request_prescription_image(self, image_bytes: bytes) -> dict[str, object]:
         processed_image = preprocess_prescription_image(image_bytes)
         response_text = await self._extract_prescription_text(processed_image)
@@ -117,23 +117,23 @@ class InputPrescription:
             "medications": medication_schedules,
         }
 
-    # 함수명: requestPrescriptionImage
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 request_prescription_image 래퍼이다.
-    # 매개변수:
-    # - image_bytes: 프론트엔드에서 업로드한 원본 이미지 bytes
-    # 반환값:
-    # - 처방전 분석 결과 API 응답 dictionary
+    # Function Name: requestPrescriptionImage
+    # Description:
+    # - Class diagram compatible wrapper for request_prescription_image.
+    # Parameters:
+    # - image_bytes: Raw image bytes uploaded by the frontend.
+    # Returns:
+    # - API-compatible prescription analysis dictionary.
     async def requestPrescriptionImage(self, image_bytes: bytes) -> dict[str, object]:
         return await self.request_prescription_image(image_bytes)
 
-    # 함수명: _extract_prescription_text
-    # 함수역할:
-    # - 이미지와 엄격한 JSON 추출 프롬프트로 Gemini Vision을 호출한다.
-    # 매개변수:
-    # - processed_image: 전처리된 이미지 bytes
-    # 반환값:
-    # - Gemini 원본 텍스트 응답
+    # Function Name: _extract_prescription_text
+    # Description:
+    # - Calls Gemini Vision with an image and strict JSON extraction prompt.
+    # Parameters:
+    # - processed_image: Preprocessed image bytes.
+    # Returns:
+    # - Raw Gemini text response.
     async def _extract_prescription_text(self, processed_image: bytes) -> str:
         image_part = types.Part.from_bytes(
             data=processed_image,
@@ -167,13 +167,13 @@ class InputPrescription:
         )
         return response.text
 
-    # 함수명: _clean_response_text
-    # 함수역할:
-    # - 모델 응답에서 markdown fence와 앞뒤 공백을 제거한다.
-    # 매개변수:
-    # - response_text: Gemini 원본 응답 텍스트
-    # 반환값:
-    # - JSON 문자열
+    # Function Name: _clean_response_text
+    # Description:
+    # - Removes markdown fences and surrounding whitespace from model output.
+    # Parameters:
+    # - response_text: Raw Gemini response text.
+    # Returns:
+    # - JSON-only string.
     def _clean_response_text(self, response_text: str) -> str:
         cleaned_text = response_text.strip()
         if cleaned_text.startswith("```json"):
@@ -184,26 +184,26 @@ class InputPrescription:
             cleaned_text = cleaned_text[:-3]
         return cleaned_text.strip()
 
-    # 함수명: _apply_secondary_masking
-    # 함수역할:
-    # - 구조화된 처방전 데이터에 정규식 기반 2차 마스킹을 적용한다.
-    # 매개변수:
-    # - data: 디코딩된 처방전 dictionary
-    # 반환값:
-    # - 마스킹된 처방전 dictionary
+    # Function Name: _apply_secondary_masking
+    # Description:
+    # - Applies regex-based secondary masking to structured prescription data.
+    # Parameters:
+    # - data: Decoded prescription dictionary.
+    # Returns:
+    # - Masked prescription dictionary.
     def _apply_secondary_masking(self, data: dict[str, Any]) -> dict[str, Any]:
         data_str = json.dumps(data, ensure_ascii=False)
         data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
         return json.loads(data_str)
 
-    # 함수명: _to_prescription_medication_payload
-    # 함수역할:
-    # - MedicationSchedule 엔티티를 Flutter 분석 결과 흐름이 기대하는
-    #   API payload로 변환한다.
-    # 매개변수:
-    # - medication_schedule: 검증된 MedicationSchedule 엔티티
-    # 반환값:
-    # - 처방전 분석 응답 필드만 담은 dictionary
+    # Function Name: _to_prescription_medication_payload
+    # Description:
+    # - Converts a MedicationSchedule entity into the API payload expected by
+    #   the current Flutter analysis-result flow.
+    # Parameters:
+    # - medication_schedule: Validated MedicationSchedule entity.
+    # Returns:
+    # - Dictionary containing only prescription-analysis response fields.
     def _to_prescription_medication_payload(
         self,
         medication_schedule: MedicationSchedule,

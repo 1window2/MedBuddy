@@ -1,5 +1,5 @@
-# 파일명: saved_medication_entity.py
-# 역할: 저장된 복약 정보 snapshot을 저장하는 SQLAlchemy 엔티티이다.
+# File Name: saved_medication_entity.py
+# Role: SQLAlchemy entity for saved medication snapshots.
 
 from datetime import date
 
@@ -10,9 +10,9 @@ from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
 
-# 클래스명: _SavedMedication
-# 역할: 저장된 약 상세 정보 snapshot을 보관하는 내부 SQLAlchemy row이다.
-# 주요 책임:
+# Class Name: _SavedMedication
+# Role: Internal SQLAlchemy row for saved medication detail snapshots.
+# Responsibilities:
 #   - Map saved medication fields to the saved_medications table.
 #   - Keep saved medication snapshots scoped to a patient hash.
 #   - Preserve prescription-derived dosage schedule fields for later schedule features.
@@ -47,13 +47,13 @@ class _SavedMedication(Base):
     ai_guide = Column(String, nullable=True)
 
 
-# 함수명: ensure_saved_medication_schema
-# 함수역할:
+# Function Name: ensure_saved_medication_schema
+# Description:
 # - Adds newly introduced saved medication columns to an existing SQLite table.
-# - SQLAlchemy create_all은 누락된 테이블만 생성하고 기존 테이블 구조는 변경하지 않는다.
-# 매개변수:
-# - db_engine: 애플리케이션 데이터베이스에 연결된 SQLAlchemy engine
-# 반환값:
+# - SQLAlchemy create_all creates missing tables but does not alter existing tables.
+# Parameters:
+# - db_engine: SQLAlchemy engine bound to the application database.
+# Returns:
 # - None.
 def ensure_saved_medication_schema(db_engine: Engine) -> None:
     inspector = inspect(db_engine)

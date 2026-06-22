@@ -122,15 +122,15 @@ class CheckSavedMedication {
     }
   }
 
-  // 함수명: _buildSaveRequest
-  // 함수역할:
-  // - 저장 API가 요구하는 JSON 요청 본문을 만든다.
-  // - 처방전에서 추출한 일정 값이 있으면 약 상세 정보보다 우선 사용한다.
-  // 매개변수:
-  // - medicationDetail: 저장할 약 상세 정보
-  // - medicationSchedule: 같은 약에 대응하는 처방전 분석 일정
-  // 반환값:
-  // - 저장 API 요청 JSON Map
+  // Function Name: _buildSaveRequest
+  // Description:
+  // - Builds the JSON request body for the saved medication API.
+  // - Preserves prescription-derived schedule fields when a schedule is present.
+  // Parameters:
+  // - medicationDetail: Medication detail selected for saving.
+  // - medicationSchedule: Optional prescription-analysis schedule for the same item.
+  // Returns:
+  // - JSON-ready save request map.
   Map<String, dynamic> _buildSaveRequest(
     MedicationDetail medicationDetail,
     MedicationSchedule? medicationSchedule,
@@ -169,11 +169,14 @@ class CheckSavedMedication {
         '${value.day.toString().padLeft(2, '0')}';
   }
 
-  // 함수명: _readScheduleValue
-  // 함수역할:
-  // - OCR 일정 값을 우선 사용하고 비어 있으면 약 상세 정보 값을 사용한다.
-  // 반환값:
-  // - 공백이 제거된 일정 문자열
+  // Function Name: _readScheduleValue
+  // Description:
+  // - Prefers prescription schedule text and falls back to existing saved detail text.
+  // Parameters:
+  // - scheduleValue: Value extracted from prescription analysis.
+  // - fallbackValue: Value already present on the medication detail.
+  // Returns:
+  // - Trimmed non-empty schedule value, fallback value, or an empty string.
   String _readScheduleValue(String? scheduleValue, String fallbackValue) {
     final normalizedScheduleValue = scheduleValue?.trim() ?? '';
     if (normalizedScheduleValue.isNotEmpty) {

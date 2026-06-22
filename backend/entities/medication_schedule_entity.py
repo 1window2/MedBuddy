@@ -1,26 +1,26 @@
-# 파일명: medication_schedule_entity.py
-# 역할: ClassDiagram2의 MedicationSchedule 박스에 대응하는 엔티티 클래스이다.
+# File Name: medication_schedule_entity.py
+# Role: Entity class mapped from the MedicationSchedule box in ClassDiagram2.
 
 from datetime import date
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
-# 클래스명: MedicationSchedule
-# 역할: 저장된 복약 일정 또는 OCR에서 추출한 약 후보 하나를 표현한다.
-# 주요 책임:
-#   - 클래스 다이어그램에서 정의한 복약 일정 필드를 보관한다.
-#   - UML과 코드의 추적성을 유지하는 메서드 이름을 제공한다.
-# 속성:
-#   - masked_prescription_text: 마스킹된 처방전 텍스트
-#   - created_date: 복약 일정이 생성된 날짜
-#   - medication_id: 약 식별자
-#   - medication_name: 약품명
-#   - dosage: 1회 복용량
-#   - intake_time: 1일 복용 횟수 또는 복용 시간 라벨
-#   - medcation_status: 복약 완료 상태. 오탈자는 기존 다이어그램 명칭을 따른다.
-#   - patient_id: 환자 식별자
-#   - medication_time: 총 복용 일수 또는 복용 시간 수
+# Class Name: MedicationSchedule
+# Role: Represents one medication schedule or one extracted medication candidate.
+# Responsibilities:
+#   - Carry medication schedule fields defined in the class diagram.
+#   - Provide operation names that preserve UML-to-code traceability.
+# Attributes:
+#   - masked_prescription_text: Masked prescription text.
+#   - created_date: Date when the medication schedule was created.
+#   - medication_id: Medication identifier.
+#   - medication_name: Medication name.
+#   - dosage: Dose per administration.
+#   - intake_time: Intake frequency or time label.
+#   - medcation_status: Medication completion status. The misspelling follows the diagram.
+#   - patient_id: Patient identifier.
+#   - medication_time: Total medication duration or time count.
 class MedicationSchedule(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -75,62 +75,62 @@ class MedicationSchedule(BaseModel):
         serialization_alias="total_days",
     )
 
-    # 함수명: saveAnalysisResult
-    # 함수역할:
-    # - 분석 결과 저장을 위한 placeholder이다. 현재 저장 흐름은
-    #   CheckSavedMedication을 통해 선택된 약 상세 정보를 저장한다.
-    # 반환값:
+    # Function Name: saveAnalysisResult
+    # Description:
+    # - Placeholder for persisting analysis results. Current implementation saves
+    #   selected medication details through CheckSavedMedication instead.
+    # Returns:
     # - None.
     def saveAnalysisResult(self) -> None:
         raise NotImplementedError("Analysis result persistence is not implemented yet.")
 
-    # 함수명: getTodayMedicationInfo
-    # 함수역할:
-    # - 오늘의 복약 요약 조회를 위한 placeholder이다.
-    # 반환값:
+    # Function Name: getTodayMedicationInfo
+    # Description:
+    # - Placeholder for today's medication summary lookup.
+    # Returns:
     # - None.
     def getTodayMedicationInfo(self) -> None:
         raise NotImplementedError("Today's medication info is not implemented yet.")
 
-    # 함수명: getAnalysisResult
-    # 함수역할:
-    # - 현재 구현된 분석 흐름에서 추출된 일정을 그대로 반환한다.
-    # 반환값:
-    # - 현재 MedicationSchedule 인스턴스
+    # Function Name: getAnalysisResult
+    # Description:
+    # - Returns this extracted schedule for the currently implemented analysis flow.
+    # Returns:
+    # - Current MedicationSchedule instance.
     def getAnalysisResult(self) -> "MedicationSchedule":
         return self
 
-    # 함수명: getSavedMedicationInfo
-    # 함수역할:
-    # - 이 엔티티를 통한 저장 복약 조회를 위한 placeholder이다.
-    # 반환값:
+    # Function Name: getSavedMedicationInfo
+    # Description:
+    # - Placeholder for saved medication lookup through this entity.
+    # Returns:
     # - None.
     def getSavedMedicationInfo(self) -> None:
         raise NotImplementedError("Saved medication info is handled by CheckSavedMedication.")
 
-    # 함수명: updateMedicationInfo
-    # 함수역할:
-    # - 복약 일정 수정을 위한 placeholder이다.
-    # 반환값:
+    # Function Name: updateMedicationInfo
+    # Description:
+    # - Placeholder for medication schedule editing.
+    # Returns:
     # - None.
     def updateMedicationInfo(self) -> None:
         raise NotImplementedError("Medication schedule editing is not implemented yet.")
 
-    # 함수명: getTodayMedicationSchedule
-    # 함수역할:
-    # - 현재 인스턴스를 오늘 복약 일정 DTO로 반환한다.
-    # 반환값:
-    # - 현재 MedicationSchedule 인스턴스
+    # Function Name: getTodayMedicationSchedule
+    # Description:
+    # - Returns this instance as today's medication schedule DTO.
+    # Returns:
+    # - Current MedicationSchedule instance.
     def getTodayMedicationSchedule(self) -> "MedicationSchedule":
         return self
 
-    # 함수명: saveMedicationStatus
-    # 함수역할:
-    # - 이 복약 일정 DTO에 완료 상태를 적용한다.
-    # 매개변수:
-    # - medication_status: 새 복약 완료 상태
-    # 반환값:
-    # - 복약 상태가 변경된 MedicationSchedule 인스턴스
+    # Function Name: saveMedicationStatus
+    # Description:
+    # - Applies a completion status to this schedule DTO.
+    # Parameters:
+    # - medication_status: New completion status.
+    # Returns:
+    # - Current MedicationSchedule instance with updated status.
     def saveMedicationStatus(
         self,
         medication_status: bool | None = None,

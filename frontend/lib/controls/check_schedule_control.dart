@@ -33,20 +33,20 @@ class CheckSchedule {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
-  // 함수명: requestMedicationSchedule
-  // 함수역할:
-  // - 클래스 다이어그램의 기존 메서드명을 유지하기 위한 오늘 일정 조회 wrapper이다.
-  // 반환값:
-  // - 오늘의 복약 일정 목록
+  // Function Name: requestMedicationSchedule
+  // Description:
+  // - Class diagram compatible wrapper for today's medication schedule lookup.
+  // Returns:
+  // - Today's medication schedule list.
   Future<List<MedicationSchedule>> requestMedicationSchedule() {
     return requestTodayMedicationSchedule();
   }
 
-  // 함수명: requestTodayMedicationSchedule
-  // 함수역할:
-  // - 현재 환자 해시 기준으로 오늘 복약 일정을 요청한다.
-  // 반환값:
-  // - 오늘의 복약 일정 목록
+  // Function Name: requestTodayMedicationSchedule
+  // Description:
+  // - Requests today's medication schedule scoped to this patient hash.
+  // Returns:
+  // - Today's medication schedule list.
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     try {
       final response = await _client
@@ -76,14 +76,14 @@ class CheckSchedule {
     }
   }
 
-  // 함수명: updateMedicationStatus
-  // 함수역할:
-  // - 저장된 약 하나의 복약 완료 상태를 서버에 반영한다.
-  // 매개변수:
-  // - medicationId: 저장된 복약 정보 식별자
-  // - medicationStatus: 새 복약 완료 상태
-  // 반환값:
-  // - 서버가 반환한 업데이트된 복약 일정
+  // Function Name: updateMedicationStatus
+  // Description:
+  // - Persists one medication completion status.
+  // Parameters:
+  // - medicationId: Saved medication identifier.
+  // - medicationStatus: New completion status.
+  // Returns:
+  // - Updated MedicationSchedule.
   Future<MedicationSchedule> updateMedicationStatus(
     String medicationId,
     bool medicationStatus,

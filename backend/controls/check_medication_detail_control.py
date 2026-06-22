@@ -1,5 +1,5 @@
-# 파일명: check_medication_detail_control.py
-# 역할: Control class for requesting medication detail information.
+# File Name: check_medication_detail_control.py
+# Role: Control class for requesting medication detail information.
 
 import json
 import logging
@@ -31,12 +31,11 @@ def _read_text(value: Any, default: str = "정보 없음") -> str:
     return text if text else default
 
 
-# 클래스명: _MedicationTextNormalizer
-# 역할: 약품명 검색 전에 OCR 흔들림과 제형/용량 표기를 보정하는 내부 helper이다.
-# 주요 책임:
-#   - OCR 또는 화면에서 전달된 약품명을 검색하기 좋은 형태로 정리한다.
-#   - 용량, 제형, 제조사 접두어를 단계적으로 제거한 대체 검색어를 만든다.
-#   - 한글 OCR에서 자주 흔들리는 모음 후보를 함께 생성한다.
+# Class Name: _MedicationTextNormalizer
+# Role: Internal helper for medication search keyword normalization.
+# Responsibilities:
+#   - Normalize OCR or UI-provided medication text.
+#   - Strip dosage and dosage-form suffixes from search keywords.
 class _MedicationTextNormalizer:
     _DOSAGE_PATTERN = re.compile(
         r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
@@ -90,13 +89,13 @@ class _MedicationTextNormalizer:
         ("케", "캐"),
     )
 
-    # 함수명: normalize_raw_text
-    # 함수역할:
-    # - OCR 결과의 줄바꿈, 전각 괄호, 중복 공백을 검색 가능한 한 줄로 정리한다.
-    # 매개변수:
-    # - raw_text: 프론트엔드에서 전달한 원본 약품 텍스트
-    # 반환값:
-    # - 공백과 괄호 표기가 정리된 문자열
+    # Function Name: normalize_raw_text
+    # Description:
+    # - Collapses raw OCR text into a single searchable line.
+    # Parameters:
+    # - raw_text: Raw medication text from the frontend.
+    # Returns:
+    # - Whitespace-normalized text.
     def normalize_raw_text(self, raw_text: str) -> str:
         normalized_text = (
             raw_text.replace("\n", " ")
@@ -107,13 +106,13 @@ class _MedicationTextNormalizer:
         )
         return " ".join(normalized_text.split()).strip()
 
-    # 함수명: build_search_keyword
-    # 함수역할:
-    # - 호환성을 위해 첫 번째 공공데이터 검색어를 만든다.
-    # 매개변수:
-    # - raw_text: 정규화 전후의 약품명 텍스트
-    # 반환값:
-    # - 로컬 DB와 공공데이터 API 조회에 사용할 대표 검색어
+    # Function Name: build_search_keyword
+    # Description:
+    # - Builds the drug search keyword currently expected by public drug data.
+    # Parameters:
+    # - raw_text: Normalized or raw medication text.
+    # Returns:
+    # - Search keyword for local DB and public drug APIs.
     def build_search_keyword(self, raw_text: str) -> str:
         search_keywords = self.build_search_keywords(raw_text)
         return search_keywords[0] if search_keywords else ""
@@ -249,12 +248,12 @@ class _MedicationTextNormalizer:
         return deduplicated_keywords
 
 
-# 클래스명: _MedicationDetailCache
-# 역할: 내부 Redis cache boundary for medication detail lookup이다.
-# 주요 책임:
+# Class Name: _MedicationDetailCache
+# Role: Internal Redis cache boundary for medication detail lookup.
+# Responsibilities:
 #   - Read cached MedicationDetail lists.
 #   - Save MedicationDetail lists without failing the main use case on Redis errors.
-# 속성:
+# Attributes:
 #   - redis_client: Async Redis client used as optional cache storage.
 class _MedicationDetailCache:
     CACHE_TTL_SECONDS = 604800
@@ -266,13 +265,13 @@ class _MedicationDetailCache:
         )
         self._is_available = True
 
-    # 함수명: get
-    # 함수역할:
+    # Function Name: get
+    # Description:
     # - Attempts to load MedicationDetail values from Redis.
     # - Cache failures are treated as misses to preserve service availability.
-    # 매개변수:
+    # Parameters:
     # - drug_name: Search keyword used as cache key suffix.
-    # 반환값:
+    # Returns:
     # - Cached MedicationDetail list, or None when missing/unavailable.
     async def get(self, drug_name: str) -> list[MedicationDetail] | None:
         if not self._is_available:
@@ -302,14 +301,14 @@ class _MedicationDetailCache:
             self._disable_cache("lookup", exc)
             return None
 
-    # 함수명: set
-    # 함수역할:
+    # Function Name: set
+    # Description:
     # - Stores MedicationDetail values in Redis.
     # - Cache failures are logged but do not fail the use case.
-    # 매개변수:
+    # Parameters:
     # - drug_name: Search keyword used as cache key suffix.
     # - medication_details: MedicationDetail list to cache.
-    # 반환값:
+    # Returns:
     # - None.
     async def set(
         self,
@@ -345,24 +344,24 @@ class _MedicationDetailCache:
         )
 
 
-# 클래스명: _PublicDrugDataPortal
-# 역할: 내부 boundary for public medication data APIs이다.
-# 주요 책임:
+# Class Name: _PublicDrugDataPortal
+# Role: Internal boundary for public medication data APIs.
+# Responsibilities:
 #   - Query e약은요 as the primary public data source.
 #   - Query drug approval information as fallback.
-# 속성:
+# Attributes:
 #   - timeout_seconds: HTTP timeout value for public API requests.
 class _PublicDrugDataPortal:
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
 
-    # 함수명: search_basic_drug_info
-    # 함수역할:
+    # Function Name: search_basic_drug_info
+    # Description:
     # - Searches the e약은요 API by item name.
-    # 매개변수:
+    # Parameters:
     # - drug_name: Search keyword.
-    # 반환값:
-    # - API 원본 item 목록. 결과가 없거나 200 응답이 아니면 빈 목록을 반환한다.
+    # Returns:
+    # - Raw API item list. Empty list on no result or non-200 response.
     async def search_basic_drug_info(
         self,
         drug_name: str,
@@ -384,13 +383,13 @@ class _PublicDrugDataPortal:
             logger.warning("Basic public drug API lookup failed: %s", exc)
             return []
 
-    # 함수명: search_advanced_drug_info
-    # 함수역할:
+    # Function Name: search_advanced_drug_info
+    # Description:
     # - Searches the advanced drug approval API by item name.
-    # 매개변수:
+    # Parameters:
     # - drug_name: Search keyword.
-    # 반환값:
-    # - API 원본 item 목록
+    # Returns:
+    # - Raw API item list.
     async def search_advanced_drug_info(
         self,
         drug_name: str,
@@ -408,13 +407,13 @@ class _PublicDrugDataPortal:
         )
         return items
 
-    # 함수명: fetch_basic_drug_info_page
-    # 함수역할:
+    # Function Name: fetch_basic_drug_info_page
+    # Description:
     # - Fetches one unfiltered page from the e약은요 API for local DB sync.
-    # 매개변수:
+    # Parameters:
     # - page_no: Page number to fetch.
     # - num_of_rows: Number of rows per page.
-    # 반환값:
+    # Returns:
     # - Tuple of raw item list and totalCount.
     async def fetch_basic_drug_info_page(
         self,
@@ -429,13 +428,13 @@ class _PublicDrugDataPortal:
         }
         return await self._request_items(settings.BASIC_DRUG_API_BASE_URL, params)
 
-    # 함수명: fetch_approval_drug_info_page
-    # 함수역할:
+    # Function Name: fetch_approval_drug_info_page
+    # Description:
     # - Fetches one unfiltered page from the approval detail API for local DB sync.
-    # 매개변수:
+    # Parameters:
     # - page_no: Page number to fetch.
     # - num_of_rows: Number of rows per page.
-    # 반환값:
+    # Returns:
     # - Tuple of raw item list and totalCount.
     async def fetch_approval_drug_info_page(
         self,
@@ -518,14 +517,14 @@ class _MedicationSummaryGenerator:
         self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model_name = model_name
 
-    # 함수명: summarize_advanced_item
-    # 함수역할:
-    # - 허가 상세 API 원문을 환자에게 보여줄 MedicationDetail로 변환한다.
-    # 매개변수:
+    # Function Name: summarize_advanced_item
+    # Description:
+    # - Converts advanced approval API raw documents into patient-facing MedicationDetail.
+    # Parameters:
     # - drug_name: Original search keyword.
-    # - advanced_item: 고급 공공 API 또는 로컬 허가 DB에서 읽은 원본 item
-    # 반환값:
-    # - Gemini 요약 결과로 생성한 MedicationDetail 객체
+    # - advanced_item: Raw item from the advanced public API or local approval DB.
+    # Returns:
+    # - MedicationDetail generated from Gemini summary output.
     async def summarize_advanced_item(
         self,
         drug_name: str,
@@ -587,15 +586,15 @@ class _MedicationSummaryGenerator:
         )
 
 
-# 클래스명: _LocalMedicationCatalog
-# 역할: 동기화된 공공 의약품 데이터를 로컬 SQLite에서 조회하는 내부 helper이다.
-# 주요 책임:
+# Class Name: _LocalMedicationCatalog
+# Role: Internal local SQLite lookup helper for mirrored public medication data.
+# Responsibilities:
 #   - Search locally mirrored e약은요 rows before approval rows.
 #   - Convert local records into MedicationDetail DTOs.
-#   - 로컬 DB 첫 사용 시 생성한 AI 요약문을 저장한다.
-# 속성:
-#   - db: 선택적 SQLAlchemy 세션. None이면 로컬 DB 조회를 비활성화한다.
-#   - summary_generator: AI summary generator for missing local summaries.
+#   - Persist AI summaries generated on first local DB use.
+# Attributes:
+#   - db: Optional SQLAlchemy session. None disables local DB lookup.
+#   - guide_generator: AI guide generator for missing local summaries.
 class _LocalMedicationCatalog:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
 
@@ -607,12 +606,12 @@ class _LocalMedicationCatalog:
         self.db = db
         self.summary_generator = summary_generator
 
-    # 함수명: fetch_drug_info
-    # 함수역할:
+    # Function Name: fetch_drug_info
+    # Description:
     # - Searches local e약은요 rows first, then local approval rows.
-    # 매개변수:
+    # Parameters:
     # - drug_name: Normalized medication search keyword.
-    # 반환값:
+    # Returns:
     # - List of MedicationDetail DTOs, or an empty list when local DB has no match.
     async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
         if self.db is None:
@@ -832,19 +831,19 @@ class _LocalMedicationCatalog:
         return f"{prefix}{escaped_keyword}{suffix}"
 
 
-# 클래스명: CheckMedicationDetail
-# 역할: 약품명 정규화와 상세 정보 조회 흐름을 조정한다.
-# 주요 책임:
-#   - 약품 조회 텍스트를 검증한다.
+# Class Name: CheckMedicationDetail
+# Role: Coordinates medication keyword normalization and detail lookup.
+# Responsibilities:
+#   - Validate medication lookup text.
 #   - Query the local medication catalog before Redis or runtime public APIs.
-#   - Coordinate cache, public data fallback, and approval summary generation.
+#   - Coordinate cache, public data fallback, and patient-facing guide generation.
 #   - Build the API response DTO.
-# 속성:
-#   - text_normalizer: 검색어 생성을 담당하는 내부 helper
-#   - medication_cache: 내부 캐시 helper
-#   - public_drug_data_portal: 공공데이터 API 내부 boundary
-#   - summary_generator: 내부 AI 요약 생성기
-#   - local_medication_catalog: 로컬 SQLite 조회 helper
+# Attributes:
+#   - text_normalizer: Internal helper for search keyword generation.
+#   - medication_cache: Internal cache helper.
+#   - public_drug_data_portal: Internal public API boundary.
+#   - guide_generator: Internal AI guide generator.
+#   - local_medication_catalog: Internal local SQLite lookup helper.
 class CheckMedicationDetail:
     MAX_KEYWORD_LENGTH = 100
 
@@ -868,12 +867,12 @@ class CheckMedicationDetail:
             summary_generator=self.summary_generator,
         )
 
-    # 함수명: request_medication_detail
-    # 함수역할:
+    # Function Name: request_medication_detail
+    # Description:
     # - Normalizes medication text and fetches detailed drug information.
-    # 매개변수:
-    # - raw_text: 프론트엔드가 전달한 원본 약품 텍스트
-    # 반환값:
+    # Parameters:
+    # - raw_text: Raw medication text supplied by the frontend.
+    # Returns:
     # - MedicationResponse with success flag and MedicationDetail list.
     async def request_medication_detail(self, raw_text: str) -> MedicationResponse:
         normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
@@ -908,12 +907,12 @@ class CheckMedicationDetail:
             data=medication_details,
         )
 
-    # 함수명: requestMedicationDetail
-    # 함수역할:
-    # - 클래스 다이어그램과의 호환을 위한 request_medication_detail wrapper이다.
-    # 매개변수:
-    # - raw_text: 프론트엔드가 전달한 원본 약품 텍스트
-    # 반환값:
+    # Function Name: requestMedicationDetail
+    # Description:
+    # - Class diagram compatible wrapper for request_medication_detail.
+    # Parameters:
+    # - raw_text: Raw medication text supplied by the frontend.
+    # Returns:
     # - MedicationResponse with success flag and MedicationDetail list.
     async def requestMedicationDetail(self, raw_text: str) -> MedicationResponse:
         return await self.request_medication_detail(raw_text)

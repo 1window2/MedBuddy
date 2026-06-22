@@ -1,5 +1,5 @@
-# 파일명: patient_caregiver_link_entity.py
-# 역할: ClassDiagram2의 PatientCaregiverLink에 대응하는 엔티티와 저장 모델을 정의한다.
+# File Name: patient_caregiver_link_entity.py
+# Role: Entity and persistence models mapped from PatientCaregiverLink in ClassDiagram2.
 
 from datetime import datetime
 
@@ -38,8 +38,8 @@ class _PatientLinkCode(Base):
     caregiver_hash = Column(String, nullable=True, index=True)
 
 
-# 클래스명: PatientCaregiverLink
-# 역할: a patient-caregiver relationship을 표현한다.
+# Class Name: PatientCaregiverLink
+# Role: Represents a patient-caregiver relationship.
 class PatientCaregiverLink(BaseModel):
     link_id: int | None = None
     patient_id: str = ""

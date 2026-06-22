@@ -1,5 +1,5 @@
-# 파일명: sync_drug_catalog.py
-# 역할: 국내 공공 의약품 API 데이터를 로컬 SQLite 카탈로그로 동기화한다.
+# File Name: sync_drug_catalog.py
+# Role: Synchronizes Korean public medication APIs into the local SQLite catalog.
 
 import argparse
 import asyncio
@@ -26,26 +26,26 @@ from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: _DrugCatalogStore
-# 역할: 로컬 의약품 카탈로그 동기화를 위한 내부 저장소 helper이다.
-# 주요 책임:
+# Class Name: _DrugCatalogStore
+# Role: Internal persistence helper for local drug catalog synchronization.
+# Responsibilities:
 #   - Upsert e약은요 and approval API records into SQLite.
 #   - Preserve raw API payloads for traceability.
 #   - Keep table-specific normalization in one sync-only helper.
-# 속성:
-#   - db: 저장 작업에 사용하는 SQLAlchemy 세션
+# Attributes:
+#   - db: SQLAlchemy Session used for persistence operations.
 class _DrugCatalogStore:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
 
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # 함수명: upsert_basic_items
-    # 함수역할:
+    # Function Name: upsert_basic_items
+    # Description:
     # - Inserts or updates e약은요 records from public API payloads.
-    # 매개변수:
-    # - items: 공공 API에서 받은 원본 item dictionary 목록
-    # 반환값:
+    # Parameters:
+    # - items: Raw public API item dictionaries.
+    # Returns:
     # - Number of rows processed.
     def upsert_basic_items(self, items: list[dict[str, Any]]) -> int:
         processed_count = 0
@@ -95,12 +95,12 @@ class _DrugCatalogStore:
         self.db.commit()
         return processed_count
 
-    # 함수명: upsert_approval_items
-    # 함수역할:
+    # Function Name: upsert_approval_items
+    # Description:
     # - Inserts or updates detailed approval records from public API payloads.
-    # 매개변수:
-    # - items: 공공 API에서 받은 원본 item dictionary 목록
-    # 반환값:
+    # Parameters:
+    # - items: Raw public API item dictionaries.
+    # Returns:
     # - Number of rows processed.
     def upsert_approval_items(self, items: list[dict[str, Any]]) -> int:
         processed_count = 0
@@ -162,28 +162,28 @@ class _DrugCatalogStore:
         self.db.commit()
         return processed_count
 
-    # 함수명: count_basic
-    # 함수역할:
+    # Function Name: count_basic
+    # Description:
     # - Counts locally stored e약은요 rows.
-    # 반환값:
+    # Returns:
     # - Row count.
     def count_basic(self) -> int:
         return self.db.query(_DrugBasicInfo).count()
 
-    # 함수명: count_approval
-    # 함수역할:
+    # Function Name: count_approval
+    # Description:
     # - Counts locally stored approval detail rows.
-    # 반환값:
+    # Returns:
     # - Row count.
     def count_approval(self) -> int:
         return self.db.query(_DrugApprovalInfo).count()
 
-    # 함수명: normalize_name
-    # 함수역할:
-    # - 안정적인 로컬 조회를 위해 약품명을 정규화한다.
-    # 매개변수:
-    # - name: 원본 약품명
-    # 반환값:
+    # Function Name: normalize_name
+    # Description:
+    # - Normalizes medication names for stable local lookup.
+    # Parameters:
+    # - name: Raw medication name.
+    # Returns:
     # - Normalized lowercase name without whitespace.
     @classmethod
     def normalize_name(cls, name: str) -> str:
@@ -267,18 +267,18 @@ class _DrugCatalogStore:
         return json.dumps(item, ensure_ascii=False, separators=(",", ":"))
 
 
-# 클래스명: DrugCatalogSyncJob
-# 역할: Control class for public drug API to local DB synchronization.
-# 주요 책임:
+# Class Name: DrugCatalogSyncJob
+# Role: Control class for public drug API to local DB synchronization.
+# Responsibilities:
 #   - Fetch paginated e약은요 records.
 #   - Fetch paginated approval detail records.
 #   - Upsert fetched records into the local catalog tables.
-# 속성:
+# Attributes:
 #   - store: _DrugCatalogStore used for local persistence.
 #   - public_drug_data_portal: API boundary used for pagination.
 #   - page_size: Number of API rows fetched per request.
 #   - start_page: First API page to request.
-#   - max_pages: 스모크 테스트나 부분 동기화를 위한 선택적 최대 페이지 수
+#   - max_pages: Optional page cap for smoke tests or partial syncs.
 #   - max_retries: Number of retry attempts for transient public API failures.
 #   - retry_delay_seconds: Delay between retry attempts.
 class DrugCatalogSyncJob:
@@ -300,10 +300,10 @@ class DrugCatalogSyncJob:
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
 
-    # 함수명: sync_basic
-    # 함수역할:
-    # - e약은요 API 전체 데이터를 drug_basic_infos 테이블로 동기화한다.
-    # 반환값:
+    # Function Name: sync_basic
+    # Description:
+    # - Synchronizes the full e약은요 API dataset into drug_basic_infos.
+    # Returns:
     # - Number of rows processed.
     async def sync_basic(self) -> int:
         return await self._sync_pages(
@@ -312,10 +312,10 @@ class DrugCatalogSyncJob:
             upsert_items=self.store.upsert_basic_items,
         )
 
-    # 함수명: sync_approval
-    # 함수역할:
-    # - 의약품 허가 상세 API 전체 데이터를 drug_approval_infos 테이블로 동기화한다.
-    # 반환값:
+    # Function Name: sync_approval
+    # Description:
+    # - Synchronizes the full approval detail API dataset into drug_approval_infos.
+    # Returns:
     # - Number of rows processed.
     async def sync_approval(self) -> int:
         return await self._sync_pages(

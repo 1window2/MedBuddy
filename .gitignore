@@ -13,6 +13,7 @@ __pycache__/
 
 # IDE/local workspace files
 .idea/
+.codex/
 
 # Flutter local generated files
 frontend/.dart_tool/

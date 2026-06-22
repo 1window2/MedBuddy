@@ -1,11 +1,11 @@
-# 파일명: user_setting_entity.py
-# 역할: ClassDiagram2의 UserSetting에 대응하는 미구현 엔티티이다.
+# File Name: user_setting_entity.py
+# Role: Skeleton entity mapped from the UserSetting box in ClassDiagram2.
 
 from pydantic import BaseModel
 
 
-# 클래스명: UserSetting
-# 역할: 로컬 사용자 표시/읽기 설정을 표현한다.
+# Class Name: UserSetting
+# Role: Represents local user display and reading settings.
 class UserSetting(BaseModel):
     font_size: int = 16
     reading_speed: float = 1.0
