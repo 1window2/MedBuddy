@@ -7,6 +7,15 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 
+// 파일명: check_schedule_control.dart
+// 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 API를 담당한다.
+
+// 클래스명: CheckSchedule
+// 역할: 저장된 복약 정보를 오늘 기준 일정으로 조회하고 상태 변경을 서버에 반영한다.
+// 주요 책임:
+// - 환자 해시와 역할 정보를 포함해 일정 API를 호출한다.
+// - 서버 응답을 MedicationSchedule 목록으로 변환한다.
+// - 복약 완료 여부를 업데이트한다.
 class CheckSchedule {
   final String baseUrl;
   final String patientHash;

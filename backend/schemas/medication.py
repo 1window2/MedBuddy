@@ -1,6 +1,7 @@
 # File Name: medication.py
 # Role: Defines medication request and response DTOs.
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -31,6 +32,7 @@ class MedicationRequest(BaseModel):
 #   - ai_guide: Optional AI-generated patient guide.
 class SavedMedicationCreate(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
+    prescription_date: Optional[date] = None
     item_name: str
     efficacy: str
     use_method: str
@@ -38,6 +40,7 @@ class SavedMedicationCreate(BaseModel):
     dosage_per_time: Optional[str] = None
     daily_frequency: Optional[str] = None
     total_days: Optional[str] = None
+    image_url: Optional[str] = None
     ai_guide: Optional[str] = None
 
 

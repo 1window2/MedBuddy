@@ -7,6 +7,15 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 
+// 파일명: check_medication_detail_control.dart
+// 역할: OCR로 추출한 약 이름을 백엔드 약품 상세 조회 API와 연결한다.
+
+// 클래스명: CheckMedicationDetail
+// 역할: 처방전에서 인식된 약 이름으로 공공데이터 기반 상세 정보를 요청한다.
+// 주요 책임:
+// - 약 이름이 비어 있는 경우 불필요한 API 호출을 막는다.
+// - 서버 응답을 MedicationDetail 목록으로 변환한다.
+// - 네트워크/서버 오류를 화면에서 처리 가능한 StateError로 바꾼다.
 class CheckMedicationDetail {
   final String baseUrl;
   final http.Client _client;
@@ -18,6 +27,15 @@ class CheckMedicationDetail {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
+  // 함수명: requestMedicationDetail
+  // 함수역할:
+  // - 처방전 OCR 결과의 약 이름으로 백엔드 상세 조회 API를 호출한다.
+  // - 여러 후보가 반환되면 현재 화면 흐름에서는 첫 번째 후보를 사용한다.
+  // 매개변수:
+  // - medicationSchedule: OCR에서 인식한 약 이름과 복약 일정 정보
+  // 반환값:
+  // - 조회 성공 시 첫 번째 MedicationDetail
+  // - 약 이름이 없거나 조회 결과가 없으면 null
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule medicationSchedule,
   ) async {
@@ -80,7 +98,8 @@ class CheckMedicationDetail {
 
     return rawItems
         .whereType<Map>()
-        .map((item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
+        .map((item) =>
+            MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
   }
 

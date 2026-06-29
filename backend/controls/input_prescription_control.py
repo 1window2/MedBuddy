@@ -37,7 +37,7 @@ class InputPrescription:
             },
             "prescription_date": {
                 "type": "STRING",
-                "description": "Prescription date in YYYY-MM-DD format. Use '정보 없음' when unavailable.",
+                "description": "약봉투나 처방전에 적힌 조제일자 또는 처방일자를 YYYY-MM-DD 형식으로 추출한다. 없으면 '정보 없음'을 사용한다.",
             },
             "medications": {
                 "type": "ARRAY",
@@ -53,7 +53,7 @@ class InputPrescription:
                     "properties": {
                         "drug_name": {
                             "type": "STRING",
-                            "description": "Medication name.",
+                            "description": "약품명",
                         },
                         "dosage_per_time": {
                             "type": "STRING",
@@ -103,15 +103,17 @@ class InputPrescription:
             raise ValueError("AI returned an invalid JSON response.") from exc
 
         safe_data = self._apply_secondary_masking(raw_data)
+        prescription_date = safe_data.get("prescription_date", "정보 없음")
         medication_schedules = [
             self._to_prescription_medication_payload(
-                MedicationSchedule(**item).getAnalysisResult()
+                MedicationSchedule(**item).getAnalysisResult(),
+                prescription_date,
             )
             for item in safe_data.get("medications", [])
         ]
         return {
             "hospital_name": safe_data.get("hospital_name", "정보 없음"),
-            "prescription_date": safe_data.get("prescription_date", "정보 없음"),
+            "prescription_date": prescription_date,
             "medications": medication_schedules,
         }
 
@@ -139,12 +141,21 @@ class InputPrescription:
         )
         prompt = """
         당신은 한국어 의료 데이터 추출 전문가입니다.
-        첨부된 약봉투 또는 처방전 이미지에서 약품명, 1회 복용량,
+        첨부된 약봉투 또는 처방전 이미지에서 조제일자, 약품명, 1회 복용량,
         1일 복용 횟수, 총 복용 일수를 정확히 추출하세요.
+
+        추출 규칙:
+        1. 조제일자, 조제일, 처방일자, 처방일처럼 표시된 날짜를 prescription_date에 넣으세요.
+        2. 표 또는 목록에 있는 약품 행을 위에서 아래로 모두 읽고 생략하지 마세요.
+        3. 약품명 열의 텍스트만 drug_name에 넣고, 효능/제조원/복약 안내 문구는 제외하세요.
+        4. 약품명이 여러 줄로 보이면 하나의 약품명으로 이어 붙이세요.
+        5. 괄호 안 성분명이 보이면 제품명 뒤에 그대로 포함하세요.
+        6. 1회 투약량, 1일 횟수, 총 일수는 같은 행의 숫자 열과 정확히 매칭하세요.
+        7. 에/애, 레/래처럼 헷갈리는 한글은 임의로 삭제하지 말고 보이는 글자를 보존하세요.
+        8. 읽기 어려운 약품도 누락하지 말고 보이는 범위에서 최대한 drug_name을 채우세요.
 
         개인정보는 마스킹하고 반드시 JSON 형식만 반환하세요.
         """
-
         response = await self.client.aio.models.generate_content(
             model=self.model_name,
             contents=[prompt, image_part],
@@ -196,8 +207,10 @@ class InputPrescription:
     def _to_prescription_medication_payload(
         self,
         medication_schedule: MedicationSchedule,
+        prescription_date: str,
     ) -> dict[str, str]:
         return {
+            "prescription_date": prescription_date,
             "drug_name": medication_schedule.medication_name,
             "dosage_per_time": medication_schedule.dosage,
             "daily_frequency": medication_schedule.intake_time,

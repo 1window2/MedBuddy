@@ -37,6 +37,7 @@ class MedicationDetail(BaseModel):
     dosage_per_time: str = ""
     daily_frequency: str = ""
     total_days: str = ""
+    image_url: str = ""
     source: str = "e약은요"
     ai_guide: Optional[str] = None
 

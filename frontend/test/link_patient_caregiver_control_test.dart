@@ -1,3 +1,6 @@
+﻿// 파일명: link_patient_caregiver_control_test.dart
+// 역할: 프론트 환자-보호자 연동 control의 조회, 코드 생성, 등록, 해제 요청을 검증한다.
+
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';

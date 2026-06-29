@@ -1,7 +1,7 @@
 # File Name: config.py
 # Role: Loads backend environment variables and external service settings.
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # Class Name: Settings
@@ -17,6 +17,8 @@ from pydantic_settings import BaseSettings
 #   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
 #   - REDIS_URL: Optional Redis cache URL.
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
     GEMINI_API_KEY: str
     PUBLIC_DATA_API_KEY: str
     BASIC_DRUG_API_BASE_URL: str = (
@@ -27,9 +29,6 @@ class Settings(BaseSettings):
         "DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnDtlInq06"
     )
     REDIS_URL: str = "redis://localhost:6379"
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

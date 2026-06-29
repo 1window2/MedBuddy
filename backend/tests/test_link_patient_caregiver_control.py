@@ -1,3 +1,6 @@
+# 파일명: test_link_patient_caregiver_control.py
+# 역할: 환자-보호자 연동 코드 생성, 등록, 해제 control을 검증한다.
+
 import sys
 import unittest
 from datetime import datetime, timedelta

@@ -17,7 +17,7 @@ from entities.medication_detail_entity import _DrugApprovalInfo  # noqa: E402
 
 class MedicationDetailLocalCatalogTest(unittest.TestCase):
     def test_raw_approval_item_with_alternate_keys_is_normalized(self) -> None:
-        catalog = _LocalMedicationCatalog(db=None, guide_generator=object())
+        catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
         approval_item = _DrugApprovalInfo(
             item_name="same-tablet",
             efficacy_doc="stored effect",

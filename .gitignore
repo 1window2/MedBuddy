@@ -1,5 +1,6 @@
 # Environments
 .env
+.venv/
 venv/
 **/venv/
 
@@ -12,6 +13,15 @@ __pycache__/
 
 # IDE/local workspace files
 .idea/
+.codex/
+
+# Flutter local generated files
+frontend/.dart_tool/
+frontend/build/
+frontend/android/local.properties
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Flutter/ephemeral/
 
 # Outputs
 *.apk

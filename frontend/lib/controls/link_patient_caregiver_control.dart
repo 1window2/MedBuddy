@@ -7,6 +7,15 @@ import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 
+// 파일명: link_patient_caregiver_control.dart
+// 역할: 환자-보호자 연동 API와 프론트 화면을 연결한다.
+
+// 클래스명: LinkPatientCaregiver
+// 역할: 환자 코드 생성, 보호자 등록, 연동 해제를 처리한다.
+// 주요 책임:
+// - 현재 사용자 해시 기준의 연동 목록을 조회한다.
+// - 환자 측 임시 연동 코드를 생성한다.
+// - 보호자 측에서 환자 코드를 등록하거나 기존 연동을 해제한다.
 class LinkPatientCaregiver {
   final String baseUrl;
   final String userHash;

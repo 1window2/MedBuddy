@@ -1,3 +1,6 @@
+# 파일명: test_check_schedule_control.py
+# 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 control을 검증한다.
+
 import sys
 import unittest
 from datetime import date, timedelta
@@ -48,6 +51,7 @@ class CheckScheduleTest(unittest.TestCase):
         patient_hash: str = "patient-a",
         item_name: str = "test-tablet",
         created_date: date | None = None,
+        prescription_date: date | None = None,
         total_days: str | None = "7 days",
         medication_status: bool = False,
         medication_status_date: date | None = None,
@@ -55,6 +59,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = _SavedMedication(
             patient_hash=patient_hash,
             created_date=created_date or date.today(),
+            prescription_date=prescription_date,
             item_name=item_name,
             efficacy="effect",
             use_method="usage",
@@ -65,6 +70,7 @@ class CheckScheduleTest(unittest.TestCase):
             medication_status=medication_status,
             medication_status_date=medication_status_date,
             ai_guide="guide",
+            image_url="https://example.com/medicine.jpg",
         )
         self.db.add(medication)
         self.db.commit()
@@ -73,15 +79,18 @@ class CheckScheduleTest(unittest.TestCase):
 
     def test_today_schedule_is_scoped_and_filters_expired_medications(self) -> None:
         today = date.today()
+        old_saved_date = today - timedelta(days=20)
         active_medication = self._saved_medication(
             patient_hash="patient-a",
             item_name="active-tablet",
-            created_date=today,
+            created_date=old_saved_date,
+            prescription_date=today,
         )
         self._saved_medication(
             patient_hash="patient-a",
             item_name="expired-tablet",
-            created_date=today - timedelta(days=8),
+            created_date=today,
+            prescription_date=today - timedelta(days=8),
             total_days="7 days",
         )
         self._saved_medication(
@@ -99,7 +108,9 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["drug_name"], "active-tablet")
         self.assertEqual(schedule["patient_hash"], "patient-a")
         self.assertFalse(schedule["medication_status"])
-        self.assertEqual(schedule["created_date"], today.isoformat())
+        self.assertEqual(schedule["image_url"], "https://example.com/medicine.jpg")
+        self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
+        self.assertEqual(schedule["prescription_date"], today.isoformat())
 
     def test_status_update_is_scoped_by_patient_hash(self) -> None:
         medication = self._saved_medication(patient_hash="patient-b")

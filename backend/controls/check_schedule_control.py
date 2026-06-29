@@ -11,9 +11,11 @@ from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from entities.medication_schedule_entity import MedicationSchedule
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
+from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
+
 
 # Class Name: CheckSchedule
 # Role: Requests and updates medication schedules.
@@ -79,6 +81,10 @@ class CheckSchedule:
             patient_hash,
             user_hash,
             role,
+        )
+        SavedMedicationRetentionPolicy().cleanup_expired_medications(
+            self.db,
+            normalized_patient_hash,
         )
         today = date.today()
         medications = (
@@ -225,11 +231,16 @@ class CheckSchedule:
             "patient_hash": schedule.patient_id,
             "patient_id": schedule.patient_id,
             "total_days": schedule.medication_time,
+            "efficacy": medication.efficacy,
+            "use_method": medication.use_method,
+            "warning_message": medication.warning_message,
+            "image_url": medication.image_url,
             "created_date": (
-                schedule.created_date.isoformat()
-                if schedule.created_date is not None
+                medication.created_date.isoformat()
+                if medication.created_date is not None
                 else ""
             ),
+            "prescription_date": schedule.created_date.isoformat(),
         }
 
     # Function Name: resolvePatientHash
@@ -249,6 +260,15 @@ class CheckSchedule:
     ) -> str:
         return self._resolve_patient_hash(patient_hash, user_hash, role)
 
+    # 함수명: _resolve_patient_hash
+    # 함수역할:
+    # - 요청자 역할에 따라 직접 환자 해시 또는 보호자 연동 환자 해시를 계산한다.
+    # 매개변수:
+    # - patient_hash: 환자 해시 후보
+    # - user_hash: 사용자 해시 후보
+    # - role: 요청자 역할
+    # 반환값:
+    # - 권한 범위가 확인된 환자 해시
     def _resolve_patient_hash(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -283,8 +303,8 @@ class CheckSchedule:
             and status_date == target_date
         )
         return MedicationSchedule(
-            created_date=self._read_created_date(
-                medication.created_date,
+            created_date=self._read_schedule_start_date(
+                medication,
                 target_date,
             ),
             medication_id=str(medication.id),
@@ -305,13 +325,32 @@ class CheckSchedule:
     # Returns:
     # - True when the medication should be shown in today's schedule.
     def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
-        start_date = self._read_created_date(medication.created_date, today)
+        start_date = self._read_schedule_start_date(medication, today)
         total_days = self._read_total_days(medication.total_days)
         if total_days <= 0:
             return start_date <= today
 
         end_date = start_date + timedelta(days=total_days - 1)
         return start_date <= today <= end_date
+
+    # 함수명: _read_schedule_start_date
+    # 함수역할:
+    # - 오늘 복약 일정 계산에 사용할 시작일을 조제일자 우선으로 읽는다.
+    # - 조제일자가 비어 있는 기존 데이터는 저장일을 대체값으로 사용한다.
+    # 매개변수:
+    # - medication: 저장된 복약 정보 row
+    # - fallback_date: 날짜 정보가 없을 때 사용할 기준일
+    # 반환값:
+    # - 일정 계산에 사용할 시작 날짜
+    def _read_schedule_start_date(
+        self,
+        medication: _SavedMedication,
+        fallback_date: date,
+    ) -> date:
+        prescription_date = getattr(medication, "prescription_date", None)
+        if prescription_date:
+            return self._read_created_date(prescription_date, fallback_date)
+        return self._read_created_date(medication.created_date, fallback_date)
 
     # Function Name: _read_created_date
     # Description:

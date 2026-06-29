@@ -23,6 +23,14 @@ from schemas.medication import MedicationResponse
 logger = logging.getLogger(__name__)
 
 
+def _read_text(value: Any, default: str = "정보 없음") -> str:
+    if value is None:
+        return default
+
+    text = str(value).strip()
+    return text if text else default
+
+
 # Class Name: _MedicationTextNormalizer
 # Role: Internal helper for medication search keyword normalization.
 # Responsibilities:
@@ -30,8 +38,55 @@ logger = logging.getLogger(__name__)
 #   - Strip dosage and dosage-form suffixes from search keywords.
 class _MedicationTextNormalizer:
     _DOSAGE_PATTERN = re.compile(
-        r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml)",
+        r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
         flags=re.IGNORECASE,
+    )
+    _DOSAGE_FORM_SUFFIX_PATTERN = re.compile(
+        r"(?:구강붕해정|필름코팅정|연질캡슐|서방정|장용정|츄어블정|현탁액|점안액|주사액|캡슐|캅셀|크림|시럽|과립|연고|패취|패치|정|액|산|겔|주)$"
+    )
+    _MANUFACTURER_PREFIXES = (
+        "대웅바이오",
+        "대웅",
+        "종근당",
+        "유한",
+        "한미",
+        "동아",
+        "일동",
+        "삼진",
+        "신풍",
+        "휴온스",
+        "보령",
+        "광동",
+        "동화",
+        "삼일",
+        "명문",
+        "한국",
+        "국제",
+        "환인",
+        "대원",
+        "중외",
+        "일양",
+        "경동",
+        "영진",
+        "하나",
+        "알리코",
+        "마더스",
+        "넥스팜",
+    )
+    _HANGUL_OCR_VARIANT_PAIRS = (
+        ("에", "애"),
+        ("레", "래"),
+        ("네", "내"),
+        ("데", "대"),
+        ("게", "개"),
+        ("베", "배"),
+        ("세", "새"),
+        ("메", "매"),
+        ("제", "재"),
+        ("체", "채"),
+        ("페", "패"),
+        ("헤", "해"),
+        ("케", "캐"),
     )
 
     # Function Name: normalize_raw_text
@@ -42,7 +97,14 @@ class _MedicationTextNormalizer:
     # Returns:
     # - Whitespace-normalized text.
     def normalize_raw_text(self, raw_text: str) -> str:
-        return " ".join(raw_text.replace("\n", " ").split()).strip()
+        normalized_text = (
+            raw_text.replace("\n", " ")
+            .replace("（", "(")
+            .replace("）", ")")
+            .replace("[", "(")
+            .replace("]", ")")
+        )
+        return " ".join(normalized_text.split()).strip()
 
     # Function Name: build_search_keyword
     # Description:
@@ -52,10 +114,138 @@ class _MedicationTextNormalizer:
     # Returns:
     # - Search keyword for local DB and public drug APIs.
     def build_search_keyword(self, raw_text: str) -> str:
+        search_keywords = self.build_search_keywords(raw_text)
+        return search_keywords[0] if search_keywords else ""
+
+    # 함수명: build_search_keywords
+    # 함수역할:
+    # - 공공 의약품 API 조회 실패에 대비한 대체 검색어들을 만든다.
+    # - 제품명, 원문, 괄호 안 성분명, OCR 보정 후보를 순서대로 생성한다.
+    # 매개변수:
+    # - raw_text: 정규화 전후의 약품명 텍스트
+    # 반환값:
+    # - 중복을 제거한 검색어 후보 목록
+    def build_search_keywords(self, raw_text: str) -> list[str]:
         normalized_text = self.normalize_raw_text(raw_text)
-        parts = self._DOSAGE_PATTERN.split(normalized_text)
-        keyword = parts[0] if parts else normalized_text
-        return keyword.replace("정", "").replace("캡슐", "").strip()
+        if not normalized_text:
+            return []
+
+        parenthesis_matches = list(re.finditer(r"\(([^)]{1,80})\)", normalized_text))
+        outside_parentheses = re.sub(r"\s*\([^)]*\)", "", normalized_text).strip()
+        raw_candidates = [outside_parentheses, normalized_text]
+        raw_candidates.extend(match.group(1).strip() for match in parenthesis_matches)
+
+        search_keywords: list[str] = []
+        for candidate in raw_candidates:
+            search_keywords.extend(self._candidate_variants(candidate))
+
+        return self._deduplicate_keywords(search_keywords)
+
+    # 함수명: _candidate_variants
+    # 함수역할:
+    # - 한 약품명 후보에서 용량 제거, 제형 제거, 제조사 제거, OCR 보정 후보를 만든다.
+    # 매개변수:
+    # - candidate: 원본에서 추출한 약품명 후보
+    # 반환값:
+    # - 검색 시도 순서를 보존한 약품명 후보 목록
+    def _candidate_variants(self, candidate: str) -> list[str]:
+        normalized_candidate = self.normalize_raw_text(candidate)
+        if not normalized_candidate:
+            return []
+
+        parts = self._DOSAGE_PATTERN.split(normalized_candidate)
+        dosage_trimmed_candidate = parts[0].strip() if parts else normalized_candidate
+        structural_keywords: list[str] = []
+        for base_keyword in [dosage_trimmed_candidate, normalized_candidate]:
+            structural_keywords.extend(self._structural_variants(base_keyword))
+
+        ocr_keywords: list[str] = []
+        for keyword in structural_keywords:
+            ocr_keywords.extend(self._hangul_ocr_variants(keyword))
+
+        return self._deduplicate_keywords([*structural_keywords, *ocr_keywords])
+
+    # 함수명: _structural_variants
+    # 함수역할:
+    # - 공백 제거, 제형 제거, 제조사 접두어 제거를 적용한 구조적 검색 후보를 만든다.
+    # 매개변수:
+    # - keyword: 보정 전 검색어
+    # 반환값:
+    # - 구조적으로 단순화된 검색어 후보 목록
+    def _structural_variants(self, keyword: str) -> list[str]:
+        spacing_keywords = [keyword]
+        compact_keyword = keyword.replace(" ", "")
+        if compact_keyword != keyword:
+            spacing_keywords.append(compact_keyword)
+
+        structural_keywords: list[str] = []
+        for spacing_keyword in spacing_keywords:
+            structural_keywords.append(spacing_keyword)
+            dosage_form_stripped = self._strip_dosage_form(spacing_keyword)
+            structural_keywords.append(dosage_form_stripped)
+            structural_keywords.append(self._strip_manufacturer_prefix(spacing_keyword))
+            structural_keywords.append(
+                self._strip_manufacturer_prefix(dosage_form_stripped)
+            )
+
+        return self._deduplicate_keywords(structural_keywords)
+
+    # 함수명: _strip_dosage_form
+    # 함수역할:
+    # - 검색 폭을 넓히기 위해 약품명 끝의 정/캡슐 같은 제형 표기를 제거한다.
+    # 매개변수:
+    # - keyword: 제형 표기가 포함될 수 있는 검색어
+    # 반환값:
+    # - 제형 표기를 제거한 검색어
+    def _strip_dosage_form(self, keyword: str) -> str:
+        return self._DOSAGE_FORM_SUFFIX_PATTERN.sub("", keyword).strip()
+
+    # 함수명: _strip_manufacturer_prefix
+    # 함수역할:
+    # - 제조사명이 앞에 붙은 제품명에서 성분명 중심 후보를 만든다.
+    # 매개변수:
+    # - keyword: 제조사 접두어가 포함될 수 있는 검색어
+    # 반환값:
+    # - 알려진 제조사 접두어를 제거한 검색어
+    def _strip_manufacturer_prefix(self, keyword: str) -> str:
+        for prefix in self._MANUFACTURER_PREFIXES:
+            if keyword.startswith(prefix) and len(keyword) > len(prefix) + 1:
+                return keyword[len(prefix) :].strip()
+        return keyword
+
+    # 함수명: _hangul_ocr_variants
+    # 함수역할:
+    # - 에/애, 레/래처럼 OCR에서 자주 뒤바뀌는 한글 모음 후보를 추가한다.
+    # 매개변수:
+    # - keyword: 원본 검색어 후보
+    # 반환값:
+    # - 한글 OCR 보정 검색어 후보 목록
+    def _hangul_ocr_variants(self, keyword: str) -> list[str]:
+        variants: list[str] = []
+        for source, target in self._HANGUL_OCR_VARIANT_PAIRS:
+            if source in keyword:
+                variants.append(keyword.replace(source, target))
+            if target in keyword:
+                variants.append(keyword.replace(target, source))
+        return variants
+
+    # 함수명: _deduplicate_keywords
+    # 함수역할:
+    # - 검색어 후보의 순서를 유지하면서 중복과 빈 문자열을 제거한다.
+    # 매개변수:
+    # - keywords: 정리 전 검색어 후보 목록
+    # 반환값:
+    # - 중복이 제거된 검색어 후보 목록
+    def _deduplicate_keywords(self, keywords: list[str]) -> list[str]:
+        seen_keywords = set()
+        deduplicated_keywords: list[str] = []
+        for keyword in keywords:
+            normalized_keyword = keyword.strip()
+            if not normalized_keyword or normalized_keyword in seen_keywords:
+                continue
+            seen_keywords.add(normalized_keyword)
+            deduplicated_keywords.append(normalized_keyword)
+        return deduplicated_keywords
 
 
 # Class Name: _MedicationDetailCache
@@ -73,6 +263,7 @@ class _MedicationDetailCache:
             settings.REDIS_URL,
             decode_responses=True,
         )
+        self._is_available = True
 
     # Function Name: get
     # Description:
@@ -83,6 +274,9 @@ class _MedicationDetailCache:
     # Returns:
     # - Cached MedicationDetail list, or None when missing/unavailable.
     async def get(self, drug_name: str) -> list[MedicationDetail] | None:
+        if not self._is_available:
+            return None
+
         try:
             cached_data = await self.redis_client.get(self._cache_key(drug_name))
             if not cached_data:
@@ -104,7 +298,7 @@ class _MedicationDetailCache:
                 if isinstance(item, dict)
             ]
         except Exception as exc:
-            logger.warning("Redis lookup failed; proceeding without cache: %s", exc)
+            self._disable_cache("lookup", exc)
             return None
 
     # Function Name: set
@@ -121,7 +315,7 @@ class _MedicationDetailCache:
         drug_name: str,
         medication_details: list[MedicationDetail],
     ) -> None:
-        if not medication_details:
+        if not self._is_available or not medication_details:
             return
 
         try:
@@ -136,10 +330,18 @@ class _MedicationDetailCache:
             )
             logger.info("[Redis] cached medication detail for '%s'.", drug_name)
         except Exception as exc:
-            logger.error("Redis save failed: %s", exc)
+            self._disable_cache("save", exc)
 
     def _cache_key(self, drug_name: str) -> str:
         return f"drug_info:{drug_name}"
+
+    def _disable_cache(self, operation: str, exc: Exception) -> None:
+        self._is_available = False
+        logger.warning(
+            "Redis %s failed; disabling medication cache for this process: %s",
+            operation,
+            exc,
+        )
 
 
 # Class Name: _PublicDrugDataPortal
@@ -299,15 +501,14 @@ class _PublicDrugDataPortal:
             return 0
 
 
-# Class Name: _MedicationGuideGenerator
-# Role: Internal AI boundary for patient-facing medication guide generation.
-# Responsibilities:
-#   - Add plain-language guide text to Basic API results.
+# 클래스명: _MedicationSummaryGenerator
+# 역할: 내부 AI boundary for public approval document summarization이다.
+# 주요 책임:
 #   - Summarize advanced approval documents into MedicationDetail fields.
-# Attributes:
-#   - ai_client: Gemini client used for medication guidance generation.
-#   - model_name: Gemini model name.
-class _MedicationGuideGenerator:
+# 속성:
+#   - ai_client: 허가 문서 요약에 사용하는 Gemini 클라이언트
+#   - model_name: Gemini 모델명
+class _MedicationSummaryGenerator:
     def __init__(
         self,
         ai_client: genai.Client | None = None,
@@ -315,51 +516,6 @@ class _MedicationGuideGenerator:
     ) -> None:
         self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model_name = model_name
-
-    # Function Name: add_basic_guide
-    # Description:
-    # - Adds an AI guide to a MedicationDetail built from e약은요 data.
-    # - On Gemini failure, keeps the medication result and inserts a fallback message.
-    # Parameters:
-    # - medication_detail: MedicationDetail that needs an ai_guide.
-    # Returns:
-    # - MedicationDetail with ai_guide populated.
-    async def add_basic_guide(
-        self,
-        medication_detail: MedicationDetail,
-    ) -> MedicationDetail:
-        if medication_detail.ai_guide:
-            return medication_detail
-
-        raw_data = (
-            f"효능: {medication_detail.efficacy}\n"
-            f"사용법: {medication_detail.usage_method}\n"
-            f"주의사항: {medication_detail.warning}"
-        )
-        prompt = f"""
-        당신은 환자가 이해하기 쉬운 복약 정보를 제공하는 AI 약사입니다.
-        다음 식약처 약품 설명서를 일반 사용자가 이해할 수 있도록 정리해 주세요.
-        {raw_data}
-
-        작성 규칙:
-        1. 핵심 효능과 복용법을 1~2줄로 요약합니다.
-        2. 주의해야 할 부작용 또는 복약 주의사항을 명확히 안내합니다.
-        3. 전문성을 유지하되 부드러운 존댓말을 사용합니다.
-        """
-
-        try:
-            ai_response = await self.ai_client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            return medication_detail.model_copy(
-                update={"ai_guide": ai_response.text}
-            )
-        except Exception as exc:
-            logger.error("Gemini API call failed: %s", exc)
-            return medication_detail.model_copy(
-                update={"ai_guide": "AI 요약을 불러오는 중 일시적인 오류가 발생했습니다."}
-            )
 
     # Function Name: summarize_advanced_item
     # Description:
@@ -374,22 +530,21 @@ class _MedicationGuideGenerator:
         drug_name: str,
         advanced_item: dict[str, Any],
     ) -> MedicationDetail:
-        actual_item_name = str(advanced_item.get("ITEM_NAME") or drug_name)
-        raw_efficacy = str(advanced_item.get("EE_DOC_DATA") or "정보 없음")[:2000]
-        raw_usage = str(advanced_item.get("UD_DOC_DATA") or "정보 없음")[:2000]
-        raw_warning = str(advanced_item.get("NB_DOC_DATA") or "정보 없음")[:2000]
+        actual_item_name = _read_text(advanced_item.get("ITEM_NAME"), drug_name)
+        raw_efficacy = _read_text(advanced_item.get("EE_DOC_DATA"))[:2000]
+        raw_usage = _read_text(advanced_item.get("UD_DOC_DATA"))[:2000]
+        raw_warning = _read_text(advanced_item.get("NB_DOC_DATA"))[:2000]
 
         prompt = f"""
         당신은 복약 정보를 환자에게 설명하는 AI 약사입니다.
         아래는 식약처 허가 정보 원문입니다.
         일반 환자가 이해하기 쉽게 각 항목을 2~3문장 이내로 명확하게 요약해 주세요.
-        반드시 아래 4가지 키를 가진 JSON 형식으로만 응답해 주세요.
+        반드시 아래 3가지 키를 가진 JSON 형식으로만 응답해 주세요.
 
         {{
             "efficacy": "요약된 효능",
             "use_method": "요약된 용법",
-            "warning_message": "요약된 주의사항",
-            "ai_guide": "전문성을 유지하되 부드러운 존댓말로 작성한 전체 복약 가이드 2줄 요약"
+            "warning_message": "요약된 주의사항"
         }}
 
         [원문 데이터]
@@ -416,11 +571,18 @@ class _MedicationGuideGenerator:
 
         return MedicationDetail(
             item_name=actual_item_name,
-            efficacy=summary_data.get("efficacy", "요약 실패"),
-            usage_method=summary_data.get("use_method", "요약 실패"),
-            warning=summary_data.get("warning_message", "요약 실패"),
+            efficacy=_read_text(summary_data.get("efficacy"), "요약 실패"),
+            usage_method=_read_text(summary_data.get("use_method"), "요약 실패"),
+            warning=_read_text(summary_data.get("warning_message"), "요약 실패"),
+            image_url=_read_text(
+                advanced_item.get("ITEM_IMAGE")
+                or advanced_item.get("itemImage")
+                or advanced_item.get("imageUrl")
+                or "",
+                "",
+            ),
             source="Advanced (허가정보) + AI 요약",
-            ai_guide=summary_data.get("ai_guide", "요약 실패"),
+            ai_guide="",
         )
 
 
@@ -439,10 +601,10 @@ class _LocalMedicationCatalog:
     def __init__(
         self,
         db: Session | None,
-        guide_generator: _MedicationGuideGenerator,
+        summary_generator: _MedicationSummaryGenerator,
     ) -> None:
         self.db = db
-        self.guide_generator = guide_generator
+        self.summary_generator = summary_generator
 
     # Function Name: fetch_drug_info
     # Description:
@@ -553,14 +715,9 @@ class _LocalMedicationCatalog:
                 interaction=item.interaction or "",
                 side_effect=item.side_effect or "",
                 storage_method=item.deposit_method or "",
+                image_url=self._read_basic_image_url(item),
                 source="Local DB (e약은요)",
-                ai_guide=item.ai_guide,
             )
-            if not medication_detail.ai_guide:
-                medication_detail = await self.guide_generator.add_basic_guide(
-                    medication_detail
-                )
-                self._save_basic_ai_guide(item, medication_detail.ai_guide)
 
             enriched_details.append(medication_detail)
 
@@ -576,7 +733,7 @@ class _LocalMedicationCatalog:
             return cached_summary
 
         raw_item = self._load_raw_approval_item(approval_item)
-        medication_detail = await self.guide_generator.summarize_advanced_item(
+        medication_detail = await self.summary_generator.summarize_advanced_item(
             drug_name,
             raw_item,
         )
@@ -689,6 +846,22 @@ class _LocalMedicationCatalog:
                 return str(value).strip()
         return ""
 
+    def _read_basic_image_url(self, basic_info: _DrugBasicInfo) -> str:
+        try:
+            raw_item = json.loads(basic_info.raw_json)
+        except json.JSONDecodeError:
+            return ""
+
+        if not isinstance(raw_item, dict):
+            return ""
+
+        return str(
+            raw_item.get("itemImage")
+            or raw_item.get("ITEM_IMAGE")
+            or raw_item.get("imageUrl")
+            or ""
+        ).strip()
+
     def _save_basic_ai_guide(
         self,
         basic_info: _DrugBasicInfo,
@@ -757,7 +930,7 @@ class CheckMedicationDetail:
         text_normalizer: _MedicationTextNormalizer | None = None,
         medication_cache: _MedicationDetailCache | None = None,
         public_drug_data_portal: _PublicDrugDataPortal | None = None,
-        guide_generator: _MedicationGuideGenerator | None = None,
+        summary_generator: _MedicationSummaryGenerator | None = None,
         local_medication_catalog: _LocalMedicationCatalog | None = None,
     ) -> None:
         self.text_normalizer = text_normalizer or _MedicationTextNormalizer()
@@ -765,10 +938,10 @@ class CheckMedicationDetail:
         self.public_drug_data_portal = (
             public_drug_data_portal or _PublicDrugDataPortal()
         )
-        self.guide_generator = guide_generator or _MedicationGuideGenerator()
+        self.summary_generator = summary_generator or _MedicationSummaryGenerator()
         self.local_medication_catalog = local_medication_catalog or _LocalMedicationCatalog(
             db=db,
-            guide_generator=self.guide_generator,
+            summary_generator=self.summary_generator,
         )
 
     # Function Name: request_medication_detail
@@ -782,15 +955,26 @@ class CheckMedicationDetail:
         normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
         self._validate_lookup_text(normalized_text)
 
-        search_keyword = self.text_normalizer.build_search_keyword(normalized_text)
-        if not search_keyword:
+        search_keywords = self.text_normalizer.build_search_keywords(normalized_text)
+        if not search_keywords:
             raise ValueError("Extracted medication text is empty.")
 
-        medication_details = await self._fetch_drug_info(search_keyword)
+        logger.info(
+            "Medication lookup keywords for '%s': %s",
+            normalized_text,
+            search_keywords,
+        )
+
+        medication_details: list[MedicationDetail] = []
+        for search_keyword in search_keywords:
+            medication_details = await self._fetch_drug_info(search_keyword)
+            if medication_details:
+                break
+
         if not medication_details:
             return MedicationResponse(
                 success=False,
-                message=f"No medication information found for '{search_keyword}'.",
+                message=f"No medication information found for '{search_keywords[0]}'.",
                 data=[],
             )
 
@@ -858,7 +1042,7 @@ class CheckMedicationDetail:
             )
             return []
 
-        advanced_drug = await self.guide_generator.summarize_advanced_item(
+        advanced_drug = await self.summary_generator.summarize_advanced_item(
             drug_name,
             advanced_items[0],
         )
@@ -870,23 +1054,14 @@ class CheckMedicationDetail:
     ) -> list[MedicationDetail]:
         medication_details = [
             MedicationDetail(
-                item_name=item.get("itemName", "정보 없음"),
-                efficacy=item.get("efcyQesitm", "정보 없음"),
-                usage_method=item.get("useMethodQesitm", "정보 없음"),
-                warning=item.get("atpnWarnQesitm", "정보 없음"),
+                item_name=_read_text(item.get("itemName")),
+                efficacy=_read_text(item.get("efcyQesitm")),
+                usage_method=_read_text(item.get("useMethodQesitm")),
+                warning=_read_text(item.get("atpnWarnQesitm")),
+                image_url=_read_text(item.get("itemImage"), ""),
                 source="Basic (e약은요)",
             )
             for item in basic_items
         ]
 
-        enriched_details = []
-        for medication_detail in medication_details:
-            logger.info(
-                "[Gemini] generating basic patient guide for '%s'.",
-                medication_detail.item_name,
-            )
-            enriched_details.append(
-                await self.guide_generator.add_basic_guide(medication_detail)
-            )
-
-        return enriched_details
+        return medication_details

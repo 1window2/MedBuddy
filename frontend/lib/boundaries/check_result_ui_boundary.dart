@@ -1,49 +1,105 @@
 import 'package:flutter/material.dart';
 
-import '../entities/medication_schedule_entity.dart';
+import '../entities/analyzed_medication_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
+// 파일명: check_result_ui_boundary.dart
+// 역할: 공공데이터 분석이 끝난 처방전 결과 목록 화면을 구성한다.
+
+// 클래스명: CheckResultUI
+// 역할: 분석된 약 목록과 복약 일정 정보를 보여주고 사용자가 항목별 저장을 실행하게 한다.
+// 주요 책임:
+// - 분석된 약 개수와 각 약의 복약 스케줄을 표시한다.
+// - 저장 버튼의 개별 로딩 상태를 보여준다.
+// - 전체 저장과 저장 완료 항목 비활성화 상태를 제공한다.
+// - 저장 결과를 Snackbar로 사용자에게 알린다.
 class CheckResultUI extends StatelessWidget {
-  final List<MedicationSchedule> medicationScheduleList;
+  final List<AnalyzedMedication> analyzedMedicationList;
+  final UserSetting userSetting;
   final String Function() statusMessageProvider;
   final int? savingMedicationIndex;
+  final Set<int> completedMedicationSaveIndexes;
+  final bool isAllMedicationSaving;
   final VoidCallback onCloseRequested;
+  final Future<bool> Function() onAllMedicationSaveRequested;
   final Future<bool> Function(
-    MedicationSchedule medicationSchedule,
+    AnalyzedMedication analyzedMedication,
     int medicationIndex,
   ) onMedicationSaveRequested;
 
   const CheckResultUI({
     super.key,
-    required this.medicationScheduleList,
+    required this.analyzedMedicationList,
+    required this.userSetting,
     required this.statusMessageProvider,
     required this.savingMedicationIndex,
+    required this.completedMedicationSaveIndexes,
+    required this.isAllMedicationSaving,
     required this.onCloseRequested,
+    required this.onAllMedicationSaveRequested,
     required this.onMedicationSaveRequested,
   });
 
   @override
   Widget build(BuildContext context) {
+    final text = _ResultText(userSetting.language);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         top: false,
         child: Column(
           children: [
-            _ResultHeader(onCloseRequested: onCloseRequested),
-            _AnalysisSummary(count: medicationScheduleList.length),
+            _ResultHeader(
+              title: text.title,
+              backTooltip: text.back,
+              onCloseRequested: onCloseRequested,
+            ),
+            _AnalysisSummary(
+              count: analyzedMedicationList.length,
+              text: text,
+              userSetting: userSetting,
+            ),
+            _BulkSaveButton(
+              text: text,
+              userSetting: userSetting,
+              isSaving: isAllMedicationSaving,
+              isCompleted: completedMedicationSaveIndexes.length >=
+                  analyzedMedicationList.length,
+              onPressed: () async {
+                final success = await onAllMedicationSaveRequested();
+                if (!context.mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(statusMessageProvider()),
+                    backgroundColor: success
+                        ? const Color(0xFF059669)
+                        : const Color(0xFFDC2626),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(40, 24, 40, 32),
-                itemCount: medicationScheduleList.length,
+                padding: const EdgeInsets.fromLTRB(40, 10, 40, 32),
+                itemCount: analyzedMedicationList.length,
                 itemBuilder: (context, index) {
-                  final medicationSchedule = medicationScheduleList[index];
-                  return _MedicationScheduleCard(
-                    medicationSchedule: medicationSchedule,
+                  final analyzedMedication = analyzedMedicationList[index];
+                  return _MedicationResultCard(
+                    analyzedMedication: analyzedMedication,
+                    text: text,
+                    userSetting: userSetting,
                     isMedicationSaving: savingMedicationIndex == index,
+                    isMedicationSaved:
+                        completedMedicationSaveIndexes.contains(index),
+                    isAllMedicationSaving: isAllMedicationSaving,
                     onMedicationSaveRequested: () async {
                       final success = await onMedicationSaveRequested(
-                        medicationSchedule,
+                        analyzedMedication,
                         index,
                       );
                       if (!context.mounted) {
@@ -69,20 +125,18 @@ class CheckResultUI extends StatelessWidget {
       ),
     );
   }
-
-  List<MedicationSchedule> clickAnalysisResult() {
-    return showAnalysisResult();
-  }
-
-  List<MedicationSchedule> showAnalysisResult() {
-    return medicationScheduleList;
-  }
 }
 
 class _ResultHeader extends StatelessWidget {
+  final String title;
+  final String backTooltip;
   final VoidCallback onCloseRequested;
 
-  const _ResultHeader({required this.onCloseRequested});
+  const _ResultHeader({
+    required this.title,
+    required this.backTooltip,
+    required this.onCloseRequested,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -94,17 +148,19 @@ class _ResultHeader extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
+            tooltip: backTooltip,
             onPressed: onCloseRequested,
             icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              '처방전 분석 결과',
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
+                letterSpacing: 0,
               ),
             ),
           ),
@@ -117,11 +173,19 @@ class _ResultHeader extends StatelessWidget {
 
 class _AnalysisSummary extends StatelessWidget {
   final int count;
+  final _ResultText text;
+  final UserSetting userSetting;
 
-  const _AnalysisSummary({required this.count});
+  const _AnalysisSummary({
+    required this.count,
+    required this.text,
+    required this.userSetting,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final scale = userSetting.contentTextScale;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(22, 20, 22, 16),
@@ -158,19 +222,21 @@ class _AnalysisSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '분석 완료',
+                Text(
+                  text.complete,
                   style: TextStyle(
                     color: MedBuddyColors.primaryDark,
-                    fontSize: 18,
+                    fontSize: 18 * scale,
                     fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
                   ),
                 ),
                 Text(
-                  '$count개의 약물 정보를 찾았습니다',
-                  style: const TextStyle(
+                  text.summary(count),
+                  style: TextStyle(
                     color: MedBuddyColors.textMuted,
-                    fontSize: 14,
+                    fontSize: 14 * scale,
+                    letterSpacing: 0,
                   ),
                 ),
               ],
@@ -182,19 +248,94 @@ class _AnalysisSummary extends StatelessWidget {
   }
 }
 
-class _MedicationScheduleCard extends StatelessWidget {
-  final MedicationSchedule medicationSchedule;
+class _BulkSaveButton extends StatelessWidget {
+  final _ResultText text;
+  final UserSetting userSetting;
+  final bool isSaving;
+  final bool isCompleted;
+  final Future<void> Function() onPressed;
+
+  const _BulkSaveButton({
+    required this.text,
+    required this.userSetting,
+    required this.isSaving,
+    required this.isCompleted,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = userSetting.contentTextScale;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 0, 40, 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: isSaving || isCompleted ? null : () async => onPressed(),
+          icon: isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                )
+              : Icon(
+                  isCompleted ? Icons.check_circle_outline : Icons.done_all,
+                  size: 22,
+                ),
+          label: Text(
+            isCompleted
+                ? text.allSaved
+                : isSaving
+                    ? text.savingAll
+                    : text.saveAll,
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: MedBuddyColors.primary,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFF9CA3AF),
+            disabledForegroundColor: Colors.white,
+            minimumSize: const Size.fromHeight(54),
+            shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+            textStyle: TextStyle(
+              fontSize: 17 * scale,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MedicationResultCard extends StatelessWidget {
+  final AnalyzedMedication analyzedMedication;
+  final _ResultText text;
+  final UserSetting userSetting;
   final bool isMedicationSaving;
+  final bool isMedicationSaved;
+  final bool isAllMedicationSaving;
   final Future<void> Function() onMedicationSaveRequested;
 
-  const _MedicationScheduleCard({
-    required this.medicationSchedule,
+  const _MedicationResultCard({
+    required this.analyzedMedication,
+    required this.text,
+    required this.userSetting,
     required this.isMedicationSaving,
+    required this.isMedicationSaved,
+    required this.isAllMedicationSaving,
     required this.onMedicationSaveRequested,
   });
 
   @override
   Widget build(BuildContext context) {
+    final schedule = analyzedMedication.schedule;
+    final scale = userSetting.contentTextScale;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -233,13 +374,14 @@ class _MedicationScheduleCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    medicationSchedule.displayName,
+                    analyzedMedication.displayName,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: MedBuddyColors.textStrong,
-                      fontSize: 22,
+                      fontSize: 22 * scale,
                       fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
                     ),
                   ),
                 ),
@@ -252,26 +394,31 @@ class _MedicationScheduleCard extends StatelessWidget {
               children: [
                 _DoseInfoRow(
                   icon: Icons.medication_liquid_outlined,
-                  label: '1회 투약량',
-                  value: _displayValue(medicationSchedule.dosage),
+                  label: text.dose,
+                  value: _displayValue(schedule.dosage),
+                  userSetting: userSetting,
                 ),
                 const SizedBox(height: 14),
                 _DoseInfoRow(
                   icon: Icons.schedule_outlined,
-                  label: '1일 횟수',
-                  value: _displayValue(medicationSchedule.intakeTime),
+                  label: text.frequency,
+                  value: _displayValue(schedule.intakeTime),
+                  userSetting: userSetting,
                 ),
                 const SizedBox(height: 14),
                 _DoseInfoRow(
                   icon: Icons.calendar_today_outlined,
-                  label: '총 투약일',
-                  value: _displayValue(medicationSchedule.medicationTimeLabel),
+                  label: text.duration,
+                  value: _displayValue(schedule.medicationTimeLabel),
+                  userSetting: userSetting,
                 ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: isMedicationSaving
+                    onPressed: isMedicationSaving ||
+                            isMedicationSaved ||
+                            isAllMedicationSaving
                         ? null
                         : () async => onMedicationSaveRequested(),
                     icon: isMedicationSaving
@@ -283,23 +430,34 @@ class _MedicationScheduleCard extends StatelessWidget {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.analytics_outlined, size: 20),
+                        : Icon(
+                            isMedicationSaved
+                                ? Icons.check_circle_outline
+                                : Icons.save_alt_outlined,
+                            size: 20,
+                          ),
                     label: Text(
-                      isMedicationSaving ? '분석 및 저장 중' : '상세 분석 & 약통에 저장',
+                      isMedicationSaved
+                          ? text.saved
+                          : isMedicationSaving
+                              ? text.saving
+                              : text.saveSchedule,
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: MedBuddyColors.primary,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                          MedBuddyColors.primary.withValues(alpha: 0.65),
+                      disabledBackgroundColor: isMedicationSaved
+                          ? const Color(0xFF9CA3AF)
+                          : MedBuddyColors.primary.withAlpha(165),
                       disabledForegroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(54),
                       shape: RoundedRectangleBorder(
                         borderRadius: MedBuddyRadii.card,
                       ),
-                      textStyle: const TextStyle(
-                        fontSize: 16,
+                      textStyle: TextStyle(
+                        fontSize: 16 * scale,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
                       ),
                     ),
                   ),
@@ -312,8 +470,12 @@ class _MedicationScheduleCard extends StatelessWidget {
     );
   }
 
-  String _displayValue(String value) {
-    return value.trim().isEmpty ? '정보 없음' : value.trim();
+  String _displayValue(String value, {int? maxLength}) {
+    final textValue = value.trim().isEmpty ? text.noInformation : value.trim();
+    if (maxLength == null || textValue.length <= maxLength) {
+      return textValue;
+    }
+    return '${textValue.substring(0, maxLength)}...';
   }
 }
 
@@ -321,15 +483,19 @@ class _DoseInfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final UserSetting userSetting;
 
   const _DoseInfoRow({
     required this.icon,
     required this.label,
     required this.value,
+    required this.userSetting,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scale = userSetting.contentTextScale;
+
     return Row(
       children: [
         Icon(icon, color: MedBuddyColors.primary, size: 21),
@@ -337,10 +503,11 @@ class _DoseInfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 15,
+              fontSize: 15 * scale,
               fontWeight: FontWeight.w600,
+              letterSpacing: 0,
             ),
           ),
         ),
@@ -352,14 +519,41 @@ class _DoseInfoRow extends StatelessWidget {
           ),
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: MedBuddyColors.primaryDark,
-              fontSize: 15,
+              fontSize: 15 * scale,
               fontWeight: FontWeight.w800,
+              letterSpacing: 0,
             ),
           ),
         ),
       ],
     );
   }
+}
+
+class _ResultText {
+  final String language;
+
+  const _ResultText(this.language);
+
+  bool get isEnglish => language == 'en';
+
+  String get title => isEnglish ? 'Prescription Analysis Result' : '처방전 분석 결과';
+  String get back => isEnglish ? 'Back' : '뒤로가기';
+  String get complete => isEnglish ? 'Analysis Complete' : '분석 완료';
+  String summary(int count) => isEnglish
+      ? '$count medication item${count == 1 ? '' : 's'} ready to save'
+      : '$count개의 복약 일정을 저장할 수 있습니다';
+  String get dose => isEnglish ? 'Dose' : '1회 투약량';
+  String get frequency => isEnglish ? 'Frequency' : '1일 횟수';
+  String get duration => isEnglish ? 'Duration' : '총 투약일';
+  String get noInformation => isEnglish ? 'No information' : '정보 없음';
+  String get saveAll => isEnglish ? 'Save All' : '전체 저장하기';
+  String get savingAll => isEnglish ? 'Saving all...' : '전체 저장 중...';
+  String get allSaved => isEnglish ? 'All Saved' : '전체 저장 완료';
+  String get saveSchedule =>
+      isEnglish ? 'Save Medication Schedule' : '복약 일정 저장하기';
+  String get saved => isEnglish ? 'Saved' : '저장 완료';
+  String get saving => isEnglish ? 'Saving...' : '저장 중...';
 }

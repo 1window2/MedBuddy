@@ -8,6 +8,9 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 
+// 파일명: check_saved_medication_control_test.dart
+// 역할: 저장 복약 control의 요청 payload, 조회 범위, 삭제 API 호출을 검증한다.
+
 void main() {
   test('saveMedicationDetail sends patient hash and schedule fields', () async {
     late Map<String, dynamic> requestBody;
@@ -23,12 +26,13 @@ void main() {
       client: client,
     );
 
-    final success = await control.saveMedicationDetail(
+    final result = await control.saveMedicationDetail(
       const MedicationDetail(
         itemName: 'test-tablet',
         efficacy: 'effect',
         usageMethod: 'usage',
         warning: 'warning',
+        imageUrl: 'https://example.com/medicine.jpg',
       ),
       medicationSchedule: const MedicationSchedule(
         medicationName: 'test-tablet',
@@ -38,11 +42,41 @@ void main() {
       ),
     );
 
-    expect(success, isTrue);
+    expect(result.status, MedicationSaveStatus.saved);
+    expect(result.isCompleted, isTrue);
     expect(requestBody['patient_hash'], 'patient-a');
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');
+    expect(requestBody['image_url'], 'https://example.com/medicine.jpg');
+  });
+
+  test('saveMedicationDetail reports duplicate result', () async {
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        '{"success":false,"duplicate":true,"message":"이미 추가된 약입니다."}',
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    final result = await control.saveMedicationDetail(
+      const MedicationDetail(
+        itemName: 'test-tablet',
+        efficacy: 'effect',
+        usageMethod: 'usage',
+        warning: 'warning',
+      ),
+    );
+
+    expect(result.status, MedicationSaveStatus.duplicate);
+    expect(result.isCompleted, isTrue);
+    expect(result.message, '이미 추가된 약입니다.');
   });
 
   test('requestSavedMedicationInfo scopes list request by patient hash',
@@ -65,6 +99,7 @@ void main() {
               'dosage_per_time': '1 tablet',
               'daily_frequency': '3 times',
               'total_days': '7 days',
+              'image_url': 'https://example.com/medicine.jpg',
               'ai_guide': 'guide',
             },
           ],
@@ -84,6 +119,7 @@ void main() {
     expect(medications, hasLength(1));
     expect(medications.first.patientHash, 'patient-a');
     expect(medications.first.dosagePerTime, '1 tablet');
+    expect(medications.first.imageUrl, 'https://example.com/medicine.jpg');
   });
 
   test('requestSavedMedicationInfo can request guardian linked scope',

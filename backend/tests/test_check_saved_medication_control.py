@@ -1,5 +1,9 @@
-import sys
+# 파일명: test_check_saved_medication_control.py
+# 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
+
 import unittest
+import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -37,6 +41,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.db = session_factory()
         self.control = CheckSavedMedication(self.db)
         self.link_control = LinkPatientCaregiver(self.db)
+        self.active_prescription_date = date.today()
 
     def tearDown(self) -> None:
         self.db.close()
@@ -50,6 +55,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
     ) -> SavedMedicationCreate:
         return SavedMedicationCreate(
             patient_hash=patient_hash,
+            prescription_date=self.active_prescription_date,
             item_name=item_name,
             efficacy="effect",
             use_method="usage",
@@ -57,6 +63,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             dosage_per_time="1 tablet",
             daily_frequency="3 times",
             total_days="7 days",
+            image_url="https://example.com/medicine.jpg",
             ai_guide="guide",
         )
 
@@ -64,12 +71,46 @@ class CheckSavedMedicationTest(unittest.TestCase):
         response = self.control.save_medication_detail(self._saved_medication())
 
         self.assertTrue(response["success"])
+        self.assertFalse(response["duplicate"])
         saved_row = self.db.get(_SavedMedication, response["id"])
         self.assertIsNotNone(saved_row)
         self.assertEqual(saved_row.patient_hash, "patient-a")
         self.assertEqual(saved_row.dosage_per_time, "1 tablet")
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
+        self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
+        self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
+
+    def test_save_rejects_same_day_duplicate_medication(self) -> None:
+        first_response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        duplicate_response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="  A   tablet  ")
+        )
+
+        self.assertTrue(first_response["success"])
+        self.assertFalse(duplicate_response["success"])
+        self.assertTrue(duplicate_response["duplicate"])
+        saved_rows = self.db.query(_SavedMedication).all()
+        self.assertEqual(len(saved_rows), 1)
+
+    def test_save_allows_same_medication_with_different_period(self) -> None:
+        first_response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="A tablet",
+        )
+        second_medication.prescription_date = self.active_prescription_date + timedelta(days=10)
+        second_response = self.control.save_medication_detail(second_medication)
+
+        self.assertTrue(first_response["success"])
+        self.assertTrue(second_response["success"])
+        self.assertFalse(second_response["duplicate"])
+        saved_rows = self.db.query(_SavedMedication).all()
+        self.assertEqual(len(saved_rows), 2)
 
     def test_list_is_scoped_by_patient_hash(self) -> None:
         self.control.save_medication_detail(
@@ -85,6 +126,54 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
         self.assertEqual(response["data"][0]["item_name"], "A tablet")
+        self.assertEqual(
+            response["data"][0]["prescription_date"],
+            self.active_prescription_date.isoformat(),
+        )
+        self.assertEqual(
+            response["data"][0]["image_url"],
+            "https://example.com/medicine.jpg",
+        )
+
+    def test_list_removes_medications_ended_more_than_retention_period(self) -> None:
+        expired_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="expired-tablet",
+        )
+        expired_medication.prescription_date = date.today() - timedelta(days=40)
+        expired_medication.total_days = "7 days"
+        active_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="active-tablet",
+        )
+        active_medication.prescription_date = date.today() - timedelta(days=10)
+        active_medication.total_days = "7 days"
+        self.control.save_medication_detail(expired_medication)
+        self.control.save_medication_detail(active_medication)
+
+        response = self.control.request_saved_medication_info("patient-a")
+
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["item_name"], "active-tablet")
+        saved_names = [
+            medication.item_name
+            for medication in self.db.query(_SavedMedication).all()
+        ]
+        self.assertEqual(saved_names, ["active-tablet"])
+
+    def test_list_keeps_medications_without_total_days(self) -> None:
+        unknown_period_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="unknown-period-tablet",
+        )
+        unknown_period_medication.prescription_date = date.today() - timedelta(days=90)
+        unknown_period_medication.total_days = ""
+        self.control.save_medication_detail(unknown_period_medication)
+
+        response = self.control.request_saved_medication_info("patient-a")
+
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["item_name"], "unknown-period-tablet")
 
     def test_delete_is_scoped_by_patient_hash(self) -> None:
         patient_a_response = self.control.save_medication_detail(
