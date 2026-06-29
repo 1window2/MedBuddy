@@ -8,13 +8,25 @@ from pydantic import BaseModel
 
 from api.dependencies import (
     get_check_medication_detail,
+    get_check_schedule,
     get_check_saved_medication,
     get_input_prescription,
+    get_link_patient_caregiver,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
-from schemas.medication import MedicationRequest, MedicationResponse, SavedMedicationCreate
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from schemas.medication import (
+    MedicationRequest,
+    MedicationResponse,
+    MedicationStatusUpdate,
+    PatientCodeCreate,
+    PatientCodeRegister,
+    SavedMedicationCreate,
+)
 from services.prescription_parser import parse_prescription
 
 router = APIRouter()
@@ -78,20 +90,170 @@ async def save_medication(
 
 # Function Name: get_saved_medications
 # Description:
-# - Returns all saved medication rows.
+# - Returns saved medication rows scoped to patient or linked guardian access.
 # Parameters:
+# - patient_hash: Patient ownership key used to scope saved medication lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return check_saved_medication.request_saved_medication_info()
+        return check_saved_medication.request_saved_medication_info(
+            patient_hash,
+            user_hash,
+            role,
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
+
+
+# Function Name: get_today_medication_schedule
+# Description:
+# - Returns today's active medication schedule scoped to patient or linked guardian access.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope schedule lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - check_schedule: CheckSchedule injected by FastAPI.
+# Returns:
+# - API-compatible schedule list dictionary.
+@router.get("/schedule/today")
+async def get_today_medication_schedule(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    try:
+        return check_schedule.request_today_medication_schedule(
+            patient_hash,
+            user_hash,
+            role,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Today medication schedule lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Schedule lookup failed: {exc}",
+        ) from exc
+
+
+# Function Name: update_medication_status
+# Description:
+# - Updates today's medication completion status for one saved medication.
+# Parameters:
+# - medication_id: Saved medication primary key from route path.
+# - request: MedicationStatusUpdate request DTO.
+# - patient_hash: Patient ownership key used to scope status update.
+# - check_schedule: CheckSchedule injected by FastAPI.
+# Returns:
+# - API-compatible status update dictionary.
+@router.patch("/schedule/{medication_id}/status")
+async def update_medication_status(
+    medication_id: int,
+    request: MedicationStatusUpdate,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    return check_schedule.update_medication_status(
+        medication_id,
+        request.medication_status,
+        patient_hash,
+        user_hash,
+        role,
+    )
+
+
+# Function Name: get_patient_caregiver_links
+# Description:
+# - Returns active patient-caregiver links for a patient or caregiver hash.
+# Parameters:
+# - user_hash: Patient or caregiver ownership key.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible link list dictionary.
+@router.get("/link/list")
+async def get_patient_caregiver_links(
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_link_page(user_hash)
+
+
+# Function Name: create_patient_link_code
+# Description:
+# - Creates a temporary patient code for UC-6 caregiver registration.
+# Parameters:
+# - request: PatientCodeCreate request DTO.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible patient code dictionary.
+@router.post("/link/code")
+async def create_patient_link_code(
+    request: PatientCodeCreate,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_patient_code(request.patient_hash)
+
+
+# Function Name: register_patient_link_code
+# Description:
+# - Registers a caregiver with a valid temporary patient code.
+# Parameters:
+# - request: PatientCodeRegister request DTO.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible link dictionary.
+@router.post("/link/register")
+async def register_patient_link_code(
+    request: PatientCodeRegister,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.register_patient_code(
+        request.caregiver_hash,
+        request.patient_code,
+    )
+
+
+# Function Name: unlink_patient_caregiver
+# Description:
+# - Removes one active patient-caregiver link for a participating user hash.
+# Parameters:
+# - link_id: Patient-caregiver link primary key from route path.
+# - user_hash: Patient or caregiver ownership key allowed to unlink.
+# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# Returns:
+# - API-compatible unlink dictionary.
+@router.delete("/link/{link_id}")
+async def unlink_patient_caregiver(
+    link_id: int,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    link_patient_caregiver: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver
+    ),
+) -> dict[str, object]:
+    return link_patient_caregiver.request_unlink(link_id, user_hash)
 
 
 # Function Name: delete_medication
@@ -99,15 +261,17 @@ async def get_saved_medications(
 # - Deletes a saved medication by id.
 # Parameters:
 # - drug_id: Saved medication primary key from route path.
+# - patient_hash: Patient ownership key used to scope deletion.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible delete success dictionary.
 @router.delete("/delete/{drug_id}")
 async def delete_medication(
     drug_id: int,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.request_delete(drug_id)
+    return check_saved_medication.request_delete(drug_id, patient_hash)
 
 
 # Function Name: parse_prescription_endpoint

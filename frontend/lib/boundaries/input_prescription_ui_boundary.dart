@@ -6,7 +6,9 @@ class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
+  final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
+  final VoidCallback? onPatientCaregiverLinkRequested;
   final bool isAnalyzing;
 
   const InputPrescriptionUI({
@@ -14,7 +16,9 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
+    required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
+    required this.onPatientCaregiverLinkRequested,
   }) : isAnalyzing = false;
 
   const InputPrescriptionUI.analyzing({
@@ -22,7 +26,9 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
   })  : onPrescriptionScanRequested = null,
         onPrescriptionGalleryRequested = null,
+        onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
+        onPatientCaregiverLinkRequested = null,
         isAnalyzing = true;
 
   @override
@@ -43,7 +49,10 @@ class InputPrescriptionUI extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
                 child: Column(
                   children: [
-                    _ScheduleCard(statusMessage: statusMessage),
+                    _ScheduleCard(
+                      statusMessage: statusMessage,
+                      onTap: onTodayScheduleRequested!,
+                    ),
                     const SizedBox(height: 20),
                     _HomeActionCard(
                       icon: Icons.camera_alt_outlined,
@@ -59,6 +68,15 @@ class InputPrescriptionUI extends StatelessWidget {
                       subtitle: '저장된 복약 정보 확인',
                       filled: false,
                       onTap: onSavedMedicationRequested!,
+                    ),
+                    const SizedBox(height: 22),
+                    _HomeActionCard(
+                      icon: Icons.link_outlined,
+                      title: '\uD658\uC790/\uBCF4\uD638\uC790 \uC5F0\uB3D9',
+                      subtitle:
+                          '\uC5F0\uB3D9 \uCF54\uB4DC \uC0DD\uC131 \uBC0F \uB4F1\uB85D',
+                      filled: false,
+                      onTap: onPatientCaregiverLinkRequested!,
                     ),
                     const SizedBox(height: 42),
                     const _PageIndicator(),
@@ -321,49 +339,56 @@ class _HomeHeader extends StatelessWidget {
 
 class _ScheduleCard extends StatelessWidget {
   final String statusMessage;
+  final VoidCallback onTap;
 
-  const _ScheduleCard({required this.statusMessage});
+  const _ScheduleCard({
+    required this.statusMessage,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 171),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.mint, width: 2.7),
-        boxShadow: MedBuddyShadows.soft,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.schedule_outlined,
-            color: MedBuddyColors.primary,
-            size: 46,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            '오늘의 복약 일정',
-            style: TextStyle(
-              color: Color(0xFF0A0A0A),
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 171),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: MedBuddyRadii.card,
+          border: Border.all(color: MedBuddyColors.mint, width: 2.7),
+          boxShadow: MedBuddyShadows.soft,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.schedule_outlined,
+              color: MedBuddyColors.primary,
+              size: 46,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            statusMessage,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: MedBuddyColors.textLight,
-              fontSize: 14,
-              height: 1.35,
+            const SizedBox(height: 10),
+            const Text(
+              '오늘의 복약 일정',
+              style: TextStyle(
+                color: Color(0xFF0A0A0A),
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              statusMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: MedBuddyColors.textLight,
+                fontSize: 14,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -461,7 +486,7 @@ class _PageIndicator extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 7.2),
-        for (int index = 0; index < 2; index++)
+        for (int index = 0; index < 3; index++)
           Container(
             width: 7.2,
             height: 7.2,

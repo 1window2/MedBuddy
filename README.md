@@ -11,9 +11,10 @@
   * The Flutter app captures a prescription or pill-envelope image and sends it to the FastAPI backend as multipart data.
   * The backend performs image preprocessing, requests structured extraction from Gemini Vision, and applies secondary masking before returning medication candidates.
 * **Medication Detail Enrichment**
-  * Extracted medication names are normalized and looked up through the public drug data pipeline.
-  * Redis is used as an optional cache, with the e약은요 API as the primary source and the drug approval information API as a fallback.
-  * Gemini Text generates patient-friendly guidance from the retrieved public drug information.
+  * Extracted medication names are normalized and looked up through the backend medication detail pipeline.
+  * When `backend/medbuddy.db` contains the mirrored public drug catalog, SQLite is used as the primary source before Redis or runtime public API fallback.
+  * The e약은요 API and drug approval information API remain fallback sources for missing local records.
+  * Gemini Text generates patient-friendly guidance from the retrieved drug information.
 * **Saved Medication Management**
   * Users can save selected medication details to SQLite and reload or delete saved medication records from the pillbox screen.
 * **Refactored Flutter Presentation Layer**
@@ -37,7 +38,7 @@
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/식약처_공공DB-009900?style=for-the-badge)
+![Public Data](https://img.shields.io/badge/Korean%20Public%20Drug%20Data-009900?style=for-the-badge)
 
 ### Collaboration
 ![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)
@@ -61,6 +62,7 @@
 * Gemini API key
 * Korean public data portal API key for the drug APIs
 * Redis server, optional but recommended for faster repeated drug lookups
+* Optional local medication catalog database at `backend/medbuddy.db`
 
 ### 1. Backend Setup
 
@@ -95,6 +97,20 @@ http://127.0.0.1:8000/docs
 ```
 
 Use `0.0.0.0` when testing with an Android emulator, because the Flutter app reaches the host machine through `10.0.2.2`.
+
+If a local medication catalog database exists at `backend/medbuddy.db`, the backend uses it before Redis and public API fallback. Generated `.db` files are intentionally ignored by Git.
+
+To build or refresh the optional local medication catalog from the public drug APIs:
+
+```powershell
+python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
+```
+
+For an interrupted long-running sync, resume from a known API page:
+
+```powershell
+python scripts/sync_drug_catalog.py --dataset approval --page-size 500 --start-page 120 --max-retries 5
+```
 
 ### 2. Frontend Setup
 

@@ -1,15 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../controls/check_medication_detail_control.dart';
+import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/patient_hash_entity.dart';
 
 class MedBuddyViewModel extends ChangeNotifier {
   final InputPrescription inputPrescription;
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
+  final CheckSchedule checkSchedule;
+  CheckSavedMedication? _scopedCheckSavedMedication;
+  CheckSchedule? _scopedCheckSchedule;
+
+  String _medicationPatientHash = PatientHash.defaultPatientHash;
+  String? _medicationUserHash;
+  String _medicationRole = 'patient';
+  String get medicationPatientHash => _medicationPatientHash;
+  String? get medicationUserHash => _medicationUserHash;
+  String get medicationRole => _medicationRole;
 
   bool _isPrescriptionAnalyzing = false;
   bool get isPrescriptionAnalyzing => _isPrescriptionAnalyzing;
@@ -22,6 +34,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool _isSavedMedicationLoading = false;
   bool get isSavedMedicationLoading => _isSavedMedicationLoading;
 
+  bool _isTodayScheduleLoading = false;
+  bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+
   String _statusMessage = '처방전이나 약봉투를 촬영해 주세요.';
   String get statusMessage => _statusMessage;
 
@@ -33,14 +48,45 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationDetail> get savedMedicationInfoList =>
       List.unmodifiable(_savedMedicationInfoList);
 
+  List<MedicationSchedule> _todayMedicationScheduleList = [];
+  List<MedicationSchedule> get todayMedicationScheduleList =>
+      List.unmodifiable(_todayMedicationScheduleList);
+
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
+    CheckSchedule? checkSchedule,
   })  : inputPrescription = inputPrescription ?? InputPrescription(),
         checkMedicationDetail =
             checkMedicationDetail ?? CheckMedicationDetail(),
-        checkSavedMedication = checkSavedMedication ?? CheckSavedMedication();
+        checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
+        checkSchedule = checkSchedule ?? CheckSchedule();
+
+  void setMedicationAccessScope({
+    required String patientHash,
+    String? userHash,
+    String role = 'patient',
+  }) {
+    final normalizedPatientHash = PatientHash.normalizePatientHash(patientHash);
+    final normalizedUserHash = userHash == null || userHash.trim().isEmpty
+        ? null
+        : PatientHash.normalizePatientHash(userHash);
+    final normalizedRole =
+        role.trim().isEmpty ? 'patient' : role.trim().toLowerCase();
+
+    if (_medicationPatientHash == normalizedPatientHash &&
+        _medicationUserHash == normalizedUserHash &&
+        _medicationRole == normalizedRole) {
+      return;
+    }
+
+    _medicationPatientHash = normalizedPatientHash;
+    _medicationUserHash = normalizedUserHash;
+    _medicationRole = normalizedRole;
+    _rebuildMedicationScopeControls();
+    notifyListeners();
+  }
 
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionAnalysis(
@@ -104,7 +150,10 @@ class MedBuddyViewModel extends ChangeNotifier {
         return false;
       }
 
-      return await saveMedicationInfo(medicationInfo);
+      return await saveMedicationInfo(
+        medicationInfo,
+        medicationSchedule: medicationSchedule,
+      );
     } on StateError catch (error) {
       _statusMessage = error.message;
       return false;
@@ -116,12 +165,16 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveMedicationInfo(MedicationDetail medicationInfo) async {
+  Future<bool> saveMedicationInfo(
+    MedicationDetail medicationInfo, {
+    MedicationSchedule? medicationSchedule,
+  }) async {
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
     notifyListeners();
 
-    final success = await checkSavedMedication.saveMedicationDetail(
+    final success = await _activeCheckSavedMedication.saveMedicationDetail(
       medicationInfo,
+      medicationSchedule: medicationSchedule,
     );
     if (!success) {
       _statusMessage = '저장에 실패했습니다. 다시 시도해 주세요.';
@@ -141,7 +194,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _savedMedicationInfoList =
-          await checkSavedMedication.requestSavedMedicationInfo();
+          await _activeCheckSavedMedication.requestSavedMedicationInfo();
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -153,7 +206,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   Future<bool> requestDeleteSavedMedication(int savedMedicationId) async {
-    final success = await checkSavedMedication.requestDelete(
+    final success = await _activeCheckSavedMedication.requestDelete(
       savedMedicationId,
     );
 
@@ -164,6 +217,56 @@ class MedBuddyViewModel extends ChangeNotifier {
       notifyListeners();
     }
     return success;
+  }
+
+  Future<void> fetchTodayMedicationSchedule() async {
+    _isTodayScheduleLoading = true;
+    notifyListeners();
+
+    try {
+      _todayMedicationScheduleList =
+          await _activeCheckSchedule.requestTodayMedicationSchedule();
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+    } catch (_) {
+      _statusMessage = 'Schedule lookup failed.';
+    } finally {
+      _isTodayScheduleLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> requestMedicationStatusUpdate(
+    MedicationSchedule medicationSchedule,
+    bool medicationStatus,
+  ) async {
+    if (medicationSchedule.medicationID.trim().isEmpty) {
+      return false;
+    }
+
+    try {
+      final updatedSchedule = await _activeCheckSchedule.updateMedicationStatus(
+        medicationSchedule.medicationID,
+        medicationStatus,
+      );
+      _todayMedicationScheduleList = _todayMedicationScheduleList
+          .map(
+            (item) => item.medicationID == updatedSchedule.medicationID
+                ? updatedSchedule
+                : item,
+          )
+          .toList(growable: false);
+      notifyListeners();
+      return true;
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      _statusMessage = 'Status update failed.';
+      notifyListeners();
+      return false;
+    }
   }
 
   void clearAnalysisResult() {
@@ -182,11 +285,37 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  CheckSavedMedication get _activeCheckSavedMedication =>
+      _scopedCheckSavedMedication ?? checkSavedMedication;
+
+  CheckSchedule get _activeCheckSchedule =>
+      _scopedCheckSchedule ?? checkSchedule;
+
+  void _rebuildMedicationScopeControls() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
+    _scopedCheckSavedMedication = CheckSavedMedication(
+      baseUrl: checkSavedMedication.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+    _scopedCheckSchedule = CheckSchedule(
+      baseUrl: checkSchedule.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+  }
+
   @override
   void dispose() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
+    checkSchedule.dispose();
     super.dispose();
   }
 }

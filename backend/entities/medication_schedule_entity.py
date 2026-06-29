@@ -56,8 +56,13 @@ class MedicationSchedule(BaseModel):
     )
     medcation_status: bool = Field(
         default=False,
-        validation_alias=AliasChoices("medcationStatus", "medcation_status"),
-        serialization_alias="medcationStatus",
+        validation_alias=AliasChoices(
+            "medcationStatus",
+            "medcation_status",
+            "medicationStatus",
+            "medication_status",
+        ),
+        serialization_alias="medication_status",
     )
     patient_id: str = Field(
         default="",
@@ -113,16 +118,23 @@ class MedicationSchedule(BaseModel):
 
     # Function Name: getTodayMedicationSchedule
     # Description:
-    # - Placeholder for today's medication schedule lookup.
+    # - Returns this instance as today's medication schedule DTO.
     # Returns:
-    # - None.
-    def getTodayMedicationSchedule(self) -> None:
-        raise NotImplementedError("Today's medication schedule is not implemented yet.")
+    # - Current MedicationSchedule instance.
+    def getTodayMedicationSchedule(self) -> "MedicationSchedule":
+        return self
 
     # Function Name: saveMedicationStatus
     # Description:
-    # - Placeholder for medication completion status persistence.
+    # - Applies a completion status to this schedule DTO.
+    # Parameters:
+    # - medication_status: New completion status.
     # Returns:
-    # - None.
-    def saveMedicationStatus(self) -> None:
-        raise NotImplementedError("Medication status saving is not implemented yet.")
+    # - Current MedicationSchedule instance with updated status.
+    def saveMedicationStatus(
+        self,
+        medication_status: bool | None = None,
+    ) -> "MedicationSchedule":
+        if medication_status is not None:
+            self.medcation_status = medication_status
+        return self

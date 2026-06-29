@@ -330,6 +330,10 @@ class _SavedMedicationCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             child: Column(
               children: [
+                if (savedMedicationInfo.hasScheduleInfo) ...[
+                  _ScheduleSummary(savedMedicationInfo: savedMedicationInfo),
+                  const SizedBox(height: 16),
+                ],
                 _InfoBlock(
                   icon: Icons.info_outline,
                   label: '효능',
@@ -359,6 +363,85 @@ class _SavedMedicationCard extends StatelessWidget {
 
   String _displayValue(String value) {
     return value.trim().isEmpty ? '정보 없음' : value.trim();
+  }
+}
+
+class _ScheduleSummary extends StatelessWidget {
+  final MedicationDetail savedMedicationInfo;
+
+  const _ScheduleSummary({required this.savedMedicationInfo});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF5),
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: MedBuddyColors.mint),
+      ),
+      child: Row(
+        children: [
+          _ScheduleChip(
+            icon: Icons.medical_information_outlined,
+            label: '1회',
+            value: savedMedicationInfo.dosagePerTime,
+          ),
+          const SizedBox(width: 8),
+          _ScheduleChip(
+            icon: Icons.access_time_outlined,
+            label: '1일',
+            value: savedMedicationInfo.dailyFrequency,
+          ),
+          const SizedBox(width: 8),
+          _ScheduleChip(
+            icon: Icons.calendar_today_outlined,
+            label: '기간',
+            value: savedMedicationInfo.totalDays,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _ScheduleChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.trim().isEmpty ? '정보 없음' : value.trim();
+
+    return Expanded(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: MedBuddyColors.primary, size: 18),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              '$label $displayValue',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: MedBuddyColors.primaryDark,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

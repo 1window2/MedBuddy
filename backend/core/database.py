@@ -1,23 +1,28 @@
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-# 데이터베이스 파일 이름 설정
-SQLALCHEMY_DATABASE_URL = "sqlite:///./medbuddy.db"
+DATABASE_PATH = Path(__file__).resolve().parents[1] / "medbuddy.db"
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
-# SQLite 연결 엔진 생성
+# Create the SQLite connection engine.
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 
-# 세션 생성기
+# Create request-scoped SQLAlchemy sessions.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# DB 모델들이 상속받을 기본 클래스
+# Base class inherited by SQLAlchemy ORM entities.
 Base = declarative_base()
 
-# DB 세션을 가져오고 반환하는 의존성 함수
+# Function Name: get_db
+# Description:
+# - Yields a SQLAlchemy session and closes it after request handling.
+# Returns:
+# - Generator yielding one Session.
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
