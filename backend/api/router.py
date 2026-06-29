@@ -19,7 +19,7 @@ from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
-from controls.request_health_recommendation_control import RequestHealthRecommendation
+from controls.check_health_recommendation_control import CheckHealthRecommendation
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
     MedicationRequest,
@@ -188,7 +188,7 @@ async def update_medication_status(
 # - patient_hash: 추천 조회 범위를 구분하는 환자 해시
 # - user_hash: 보호자 요청자의 사용자 해시
 # - role: 요청자 역할
-# - request_health_recommendation: RequestHealthRecommendation injected by FastAPI.
+# - request_health_recommendation: CheckHealthRecommendation injected by FastAPI.
 # 반환값:
 # - API-compatible health recommendation dictionary.
 @router.get("/health/recommendation")
@@ -197,7 +197,7 @@ async def get_health_recommendation(
     user_hash: str | None = None,
     role: str = "patient",
     language: str = "ko",
-    request_health_recommendation: RequestHealthRecommendation = Depends(
+    request_health_recommendation: CheckHealthRecommendation = Depends(
         get_request_health_recommendation
     ),
 ) -> dict[str, object]:

@@ -18,6 +18,9 @@ from controls.request_health_recommendation_control import (  # noqa: E402
     HealthRecommendationGenerator,
     RequestHealthRecommendation,
 )
+from controls.check_health_recommendation_control import (  # noqa: E402
+    CheckHealthRecommendation,
+)
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
@@ -212,6 +215,49 @@ class HealthRecommendationGeneratorTest(unittest.TestCase):
         self.assertEqual(normalized_response["diet_recommendation"], "식사")
         self.assertEqual(normalized_response["exercise_recommendation"], "운동")
         self.assertEqual(normalized_response["caution_items"], ["1", "2", "3", "4", "5"])
+
+
+class CheckHealthRecommendationWrapperTest(unittest.IsolatedAsyncioTestCase):
+    async def test_wrapper_preserves_diagram_method_name(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(bind=engine)
+        ensure_saved_medication_schema(engine)
+        session_factory = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=engine,
+        )
+        db = session_factory()
+        generator = _FakeRecommendationGenerator()
+        try:
+            medication = _SavedMedication(
+                patient_hash="patient-a",
+                prescription_date=date.today(),
+                item_name="active-tablet",
+                efficacy="effect",
+                use_method="usage",
+                warning_message="warning",
+                dosage_per_time="1 tablet",
+                daily_frequency="3 times",
+                total_days="7 days",
+            )
+            db.add(medication)
+            db.commit()
+            control = CheckHealthRecommendation(
+                db,
+                recommendation_generator=generator,
+            )
+
+            response = await control.requestHealthRecommendation("patient-a")
+
+            self.assertTrue(response["success"])
+            self.assertEqual(response["data"]["medication_names"], ["active-tablet"])
+        finally:
+            db.close()
+            engine.dispose()
 
 
 if __name__ == "__main__":

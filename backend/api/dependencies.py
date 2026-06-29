@@ -10,7 +10,7 @@ from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
-from controls.request_health_recommendation_control import RequestHealthRecommendation
+from controls.check_health_recommendation_control import CheckHealthRecommendation
 
 
 # Function Name: get_input_prescription
@@ -67,11 +67,11 @@ def get_check_schedule(
 # 매개변수:
 # - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
 # 반환값:
-# - RequestHealthRecommendation instance.
+# - CheckHealthRecommendation instance.
 def get_request_health_recommendation(
     db: Session = Depends(get_db),
-) -> RequestHealthRecommendation:
-    return RequestHealthRecommendation(db=db)
+) -> CheckHealthRecommendation:
+    return CheckHealthRecommendation(db=db)
 
 
 # Function Name: get_link_patient_caregiver
