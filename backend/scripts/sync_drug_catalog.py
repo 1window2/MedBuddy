@@ -198,7 +198,7 @@ class _DrugCatalogStore:
     ) -> _DrugBasicInfo | None:
         if item_seq and item_seq in batch_targets_by_seq:
             return batch_targets_by_seq[item_seq]
-        if normalized_item_name in batch_targets_by_name:
+        if not item_seq and normalized_item_name in batch_targets_by_name:
             return batch_targets_by_name[normalized_item_name]
 
         if item_seq:
@@ -210,11 +210,13 @@ class _DrugCatalogStore:
             if existing_item is not None:
                 return existing_item
 
-        return (
-            self.db.query(_DrugBasicInfo)
-            .filter(_DrugBasicInfo.normalized_item_name == normalized_item_name)
-            .first()
-        )
+        if not item_seq:
+            return (
+                self.db.query(_DrugBasicInfo)
+                .filter(_DrugBasicInfo.normalized_item_name == normalized_item_name)
+                .first()
+            )
+        return None
 
     def _resolve_approval_target(
         self,
@@ -225,7 +227,7 @@ class _DrugCatalogStore:
     ) -> _DrugApprovalInfo | None:
         if item_seq and item_seq in batch_targets_by_seq:
             return batch_targets_by_seq[item_seq]
-        if normalized_item_name in batch_targets_by_name:
+        if not item_seq and normalized_item_name in batch_targets_by_name:
             return batch_targets_by_name[normalized_item_name]
 
         if item_seq:
@@ -237,11 +239,13 @@ class _DrugCatalogStore:
             if existing_item is not None:
                 return existing_item
 
-        return (
-            self.db.query(_DrugApprovalInfo)
-            .filter(_DrugApprovalInfo.normalized_item_name == normalized_item_name)
-            .first()
-        )
+        if not item_seq:
+            return (
+                self.db.query(_DrugApprovalInfo)
+                .filter(_DrugApprovalInfo.normalized_item_name == normalized_item_name)
+                .first()
+            )
+        return None
 
     def _read_text(self, item: dict[str, Any], key: str) -> str:
         value = item.get(key)

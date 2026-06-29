@@ -87,6 +87,36 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertTrue(used_code.used)
         self.assertEqual(used_code.caregiver_hash, "caregiver-a")
 
+    def test_linked_patient_hash_honors_requested_patient(self) -> None:
+        patient_a_code = self.control.request_patient_code("patient-a")
+        patient_b_code = self.control.request_patient_code("patient-b")
+        self.control.register_patient_code(
+            "caregiver-a",
+            patient_a_code["data"]["patient_code"],
+        )
+        self.control.register_patient_code(
+            "caregiver-a",
+            patient_b_code["data"]["patient_code"],
+        )
+
+        linked_patient_hash = self.control.get_linked_patient_hash(
+            "caregiver-a",
+            "patient-b",
+        )
+
+        self.assertEqual(linked_patient_hash, "patient-b")
+
+    def test_patient_code_cannot_be_registered_twice(self) -> None:
+        code_response = self.control.request_patient_code("patient-a")
+        patient_code = code_response["data"]["patient_code"]
+
+        self.control.register_patient_code("caregiver-a", patient_code)
+
+        with self.assertRaises(HTTPException) as context:
+            self.control.register_patient_code("caregiver-b", patient_code)
+
+        self.assertIn(context.exception.status_code, {404, 409})
+
     def test_invalid_or_expired_patient_code_is_rejected(self) -> None:
         expired_code = _PatientLinkCode(
             patient_hash="patient-a",

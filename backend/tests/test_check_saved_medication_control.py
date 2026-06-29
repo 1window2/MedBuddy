@@ -41,6 +41,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.db = session_factory()
         self.control = CheckSavedMedication(self.db)
         self.link_control = LinkPatientCaregiver(self.db)
+        self.active_prescription_date = date.today()
 
     def tearDown(self) -> None:
         self.db.close()
@@ -54,7 +55,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
     ) -> SavedMedicationCreate:
         return SavedMedicationCreate(
             patient_hash=patient_hash,
-            prescription_date=date(2026, 5, 22),
+            prescription_date=self.active_prescription_date,
             item_name=item_name,
             efficacy="effect",
             use_method="usage",
@@ -77,7 +78,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(saved_row.dosage_per_time, "1 tablet")
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
-        self.assertEqual(saved_row.prescription_date, date(2026, 5, 22))
+        self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
         self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
 
     def test_save_rejects_same_day_duplicate_medication(self) -> None:
@@ -102,7 +103,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             patient_hash="patient-a",
             item_name="A tablet",
         )
-        second_medication.prescription_date = date(2026, 6, 1)
+        second_medication.prescription_date = self.active_prescription_date + timedelta(days=10)
         second_response = self.control.save_medication_detail(second_medication)
 
         self.assertTrue(first_response["success"])
@@ -125,7 +126,10 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
         self.assertEqual(response["data"][0]["item_name"], "A tablet")
-        self.assertEqual(response["data"][0]["prescription_date"], "2026-05-22")
+        self.assertEqual(
+            response["data"][0]["prescription_date"],
+            self.active_prescription_date.isoformat(),
+        )
         self.assertEqual(
             response["data"][0]["image_url"],
             "https://example.com/medicine.jpg",
@@ -224,6 +228,35 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
         self.assertEqual(response["data"][0]["item_name"], "A tablet")
+
+    def test_guardian_list_honors_requested_linked_patient_hash(self) -> None:
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-b", item_name="B tablet")
+        )
+        patient_a_code = self.link_control.request_patient_code("patient-a")
+        patient_b_code = self.link_control.request_patient_code("patient-b")
+        self.link_control.register_patient_code(
+            "guardian-a",
+            patient_a_code["data"]["patient_code"],
+        )
+        self.link_control.register_patient_code(
+            "guardian-a",
+            patient_b_code["data"]["patient_code"],
+        )
+
+        response = self.control.request_saved_medication_info(
+            patient_hash="patient-b",
+            user_hash="guardian-a",
+            role="guardian",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["patient_hash"], "patient-b")
+        self.assertEqual(response["data"][0]["item_name"], "B tablet")
 
     def test_guardian_list_without_link_stops_with_not_found(self) -> None:
         with self.assertRaises(HTTPException) as context:

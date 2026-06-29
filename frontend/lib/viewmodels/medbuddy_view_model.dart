@@ -14,6 +14,7 @@ import '../entities/health_recommendation_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/medication_notification_service.dart';
 
@@ -65,6 +66,15 @@ class MedBuddyViewModel extends ChangeNotifier {
   final CheckHealthRecommendation checkHealthRecommendation;
   final ManageUserSetting manageUserSetting;
   final MedicationNotificationService notificationService;
+  CheckSavedMedication? _scopedCheckSavedMedication;
+  CheckSchedule? _scopedCheckSchedule;
+
+  String _medicationPatientHash = PatientHash.defaultPatientHash;
+  String? _medicationUserHash;
+  String _medicationRole = 'patient';
+  String get medicationPatientHash => _medicationPatientHash;
+  String? get medicationUserHash => _medicationUserHash;
+  String get medicationRole => _medicationRole;
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
@@ -184,6 +194,31 @@ class MedBuddyViewModel extends ChangeNotifier {
         manageUserSetting = manageUserSetting ?? ManageUserSetting(),
         notificationService =
             notificationService ?? MedicationNotificationService.instance;
+
+  void setMedicationAccessScope({
+    required String patientHash,
+    String? userHash,
+    String role = 'patient',
+  }) {
+    final normalizedPatientHash = PatientHash.normalizePatientHash(patientHash);
+    final normalizedUserHash = userHash == null || userHash.trim().isEmpty
+        ? null
+        : PatientHash.normalizePatientHash(userHash);
+    final normalizedRole =
+        role.trim().isEmpty ? 'patient' : role.trim().toLowerCase();
+
+    if (_medicationPatientHash == normalizedPatientHash &&
+        _medicationUserHash == normalizedUserHash &&
+        _medicationRole == normalizedRole) {
+      return;
+    }
+
+    _medicationPatientHash = normalizedPatientHash;
+    _medicationUserHash = normalizedUserHash;
+    _medicationRole = normalizedRole;
+    _rebuildMedicationScopeControls();
+    notifyListeners();
+  }
 
   // 함수명: loadUserSetting
   // 함수역할:
@@ -444,7 +479,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
     notifyListeners();
 
-    final result = await checkSavedMedication.saveMedicationDetail(
+    final result = await _activeCheckSavedMedication.saveMedicationDetail(
       medicationInfo,
       medicationSchedule: medicationSchedule,
     );
@@ -476,7 +511,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _savedMedicationInfoList =
-          await checkSavedMedication.requestSavedMedicationInfo();
+          await _activeCheckSavedMedication.requestSavedMedicationInfo();
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -488,7 +523,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   Future<bool> requestDeleteSavedMedication(int savedMedicationId) async {
-    final success = await checkSavedMedication.requestDelete(
+    final success = await _activeCheckSavedMedication.requestDelete(
       savedMedicationId,
     );
 
@@ -512,7 +547,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _todayMedicationScheduleList =
-          await checkSchedule.requestTodayMedicationSchedule();
+          await _activeCheckSchedule.requestTodayMedicationSchedule();
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -752,7 +787,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
 
     try {
-      final updatedSchedule = await checkSchedule.updateMedicationStatus(
+      final updatedSchedule = await _activeCheckSchedule.updateMedicationStatus(
         medicationSchedule.medicationID,
         medicationStatus,
       );
@@ -890,8 +925,33 @@ class MedBuddyViewModel extends ChangeNotifier {
     return '전체 저장 완료: ${parts.join(', ')}';
   }
 
+  CheckSavedMedication get _activeCheckSavedMedication =>
+      _scopedCheckSavedMedication ?? checkSavedMedication;
+
+  CheckSchedule get _activeCheckSchedule =>
+      _scopedCheckSchedule ?? checkSchedule;
+
+  void _rebuildMedicationScopeControls() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
+    _scopedCheckSavedMedication = CheckSavedMedication(
+      baseUrl: checkSavedMedication.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+    _scopedCheckSchedule = CheckSchedule(
+      baseUrl: checkSchedule.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+  }
+
   @override
   void dispose() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
