@@ -42,6 +42,7 @@ class _SavedMedication(Base):
         default=False,
         server_default="0",
     )
+    medication_status_date = Column(Date, nullable=True)
     ai_guide = Column(String, nullable=True)
 
 
@@ -68,6 +69,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",
         "medication_status": "BOOLEAN DEFAULT 0",
+        "medication_status_date": "DATE",
     }
     today = date.today().isoformat()
 

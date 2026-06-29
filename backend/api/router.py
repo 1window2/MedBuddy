@@ -111,6 +111,8 @@ async def get_saved_medications(
             user_hash,
             role,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
@@ -139,6 +141,8 @@ async def get_today_medication_schedule(
             user_hash,
             role,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("Today medication schedule lookup failed: %s", exc, exc_info=True)
         raise HTTPException(
@@ -162,12 +166,16 @@ async def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
     patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
     return check_schedule.update_medication_status(
         medication_id,
         request.medication_status,
         patient_hash,
+        user_hash,
+        role,
     )
 
 

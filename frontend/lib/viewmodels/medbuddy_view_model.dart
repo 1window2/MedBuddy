@@ -6,12 +6,22 @@ import '../controls/check_saved_medication_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/patient_hash_entity.dart';
 
 class MedBuddyViewModel extends ChangeNotifier {
   final InputPrescription inputPrescription;
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
+  CheckSavedMedication? _scopedCheckSavedMedication;
+  CheckSchedule? _scopedCheckSchedule;
+
+  String _medicationPatientHash = PatientHash.defaultPatientHash;
+  String? _medicationUserHash;
+  String _medicationRole = 'patient';
+  String get medicationPatientHash => _medicationPatientHash;
+  String? get medicationUserHash => _medicationUserHash;
+  String get medicationRole => _medicationRole;
 
   bool _isPrescriptionAnalyzing = false;
   bool get isPrescriptionAnalyzing => _isPrescriptionAnalyzing;
@@ -52,6 +62,31 @@ class MedBuddyViewModel extends ChangeNotifier {
             checkMedicationDetail ?? CheckMedicationDetail(),
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
         checkSchedule = checkSchedule ?? CheckSchedule();
+
+  void setMedicationAccessScope({
+    required String patientHash,
+    String? userHash,
+    String role = 'patient',
+  }) {
+    final normalizedPatientHash = PatientHash.normalizePatientHash(patientHash);
+    final normalizedUserHash = userHash == null || userHash.trim().isEmpty
+        ? null
+        : PatientHash.normalizePatientHash(userHash);
+    final normalizedRole =
+        role.trim().isEmpty ? 'patient' : role.trim().toLowerCase();
+
+    if (_medicationPatientHash == normalizedPatientHash &&
+        _medicationUserHash == normalizedUserHash &&
+        _medicationRole == normalizedRole) {
+      return;
+    }
+
+    _medicationPatientHash = normalizedPatientHash;
+    _medicationUserHash = normalizedUserHash;
+    _medicationRole = normalizedRole;
+    _rebuildMedicationScopeControls();
+    notifyListeners();
+  }
 
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionAnalysis(
@@ -137,7 +172,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
     notifyListeners();
 
-    final success = await checkSavedMedication.saveMedicationDetail(
+    final success = await _activeCheckSavedMedication.saveMedicationDetail(
       medicationInfo,
       medicationSchedule: medicationSchedule,
     );
@@ -159,7 +194,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _savedMedicationInfoList =
-          await checkSavedMedication.requestSavedMedicationInfo();
+          await _activeCheckSavedMedication.requestSavedMedicationInfo();
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -171,7 +206,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   Future<bool> requestDeleteSavedMedication(int savedMedicationId) async {
-    final success = await checkSavedMedication.requestDelete(
+    final success = await _activeCheckSavedMedication.requestDelete(
       savedMedicationId,
     );
 
@@ -190,7 +225,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _todayMedicationScheduleList =
-          await checkSchedule.requestTodayMedicationSchedule();
+          await _activeCheckSchedule.requestTodayMedicationSchedule();
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -210,7 +245,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
 
     try {
-      final updatedSchedule = await checkSchedule.updateMedicationStatus(
+      final updatedSchedule = await _activeCheckSchedule.updateMedicationStatus(
         medicationSchedule.medicationID,
         medicationStatus,
       );
@@ -250,8 +285,33 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  CheckSavedMedication get _activeCheckSavedMedication =>
+      _scopedCheckSavedMedication ?? checkSavedMedication;
+
+  CheckSchedule get _activeCheckSchedule =>
+      _scopedCheckSchedule ?? checkSchedule;
+
+  void _rebuildMedicationScopeControls() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
+    _scopedCheckSavedMedication = CheckSavedMedication(
+      baseUrl: checkSavedMedication.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+    _scopedCheckSchedule = CheckSchedule(
+      baseUrl: checkSchedule.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+  }
+
   @override
   void dispose() {
+    _scopedCheckSavedMedication?.dispose();
+    _scopedCheckSchedule?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();

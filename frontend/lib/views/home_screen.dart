@@ -56,7 +56,11 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const LinkPatientCaregiverUI(),
+            builder: (context) => LinkPatientCaregiverUI(
+              initialUserHash: viewModel.medicationUserHash ??
+                  viewModel.medicationPatientHash,
+              onMedicationScopeSelected: viewModel.setMedicationAccessScope,
+            ),
           ),
         );
       },

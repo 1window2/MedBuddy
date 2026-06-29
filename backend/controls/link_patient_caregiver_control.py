@@ -160,7 +160,8 @@ class LinkPatientCaregiver:
         patient_code: str,
     ) -> dict[str, object]:
         normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
-        link_code = self._get_valid_link_code(patient_code)
+        normalized_patient_code = self._normalize_patient_code(patient_code)
+        link_code = self._get_valid_link_code(normalized_patient_code)
 
         if link_code.patient_hash == normalized_caregiver_hash:
             raise HTTPException(
@@ -169,6 +170,26 @@ class LinkPatientCaregiver:
             )
 
         try:
+            reserved_count = (
+                self.db.query(_PatientLinkCode)
+                .filter(
+                    _PatientLinkCode.id == link_code.id,
+                    _PatientLinkCode.used.is_(False),
+                )
+                .update(
+                    {
+                        "used": True,
+                        "caregiver_hash": normalized_caregiver_hash,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            if reserved_count != 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Patient code was already used.",
+                )
+
             link = self._get_existing_pair(
                 link_code.patient_hash,
                 normalized_caregiver_hash,
@@ -194,10 +215,11 @@ class LinkPatientCaregiver:
                 ).createPatientCaregiverLink()
                 link.linked = link_state.linked
 
-            link_code.used = True
-            link_code.caregiver_hash = normalized_caregiver_hash
             self.db.commit()
             self.db.refresh(link)
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
@@ -288,8 +310,12 @@ class LinkPatientCaregiver:
     # - caregiver_hash: Caregiver ownership key.
     # Returns:
     # - Linked patient hash.
-    def getLinkedPatientHash(self, caregiver_hash: str) -> str:
-        return self.get_linked_patient_hash(caregiver_hash)
+    def getLinkedPatientHash(
+        self,
+        caregiver_hash: str,
+        patient_hash: str | None = None,
+    ) -> str:
+        return self.get_linked_patient_hash(caregiver_hash, patient_hash)
 
     # Function Name: get_linked_patient_hash
     # Description:
@@ -298,23 +324,35 @@ class LinkPatientCaregiver:
     # - caregiver_hash: Caregiver ownership key.
     # Returns:
     # - Linked patient hash.
-    def get_linked_patient_hash(self, caregiver_hash: str) -> str:
+    def get_linked_patient_hash(
+        self,
+        caregiver_hash: str,
+        patient_hash: str | None = None,
+    ) -> str:
         normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
-        link = (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                _PatientCaregiverLink.caregiver_hash == normalized_caregiver_hash,
-                _PatientCaregiverLink.linked.is_(True),
-            )
-            .order_by(_PatientCaregiverLink.id.asc())
-            .first()
+        query = self.db.query(_PatientCaregiverLink).filter(
+            _PatientCaregiverLink.caregiver_hash == normalized_caregiver_hash,
+            _PatientCaregiverLink.linked.is_(True),
         )
+        normalized_patient_hash = normalize_patient_hash(patient_hash or "")
+        if normalized_patient_hash != DEFAULT_PATIENT_HASH:
+            query = query.filter(
+                _PatientCaregiverLink.patient_hash == normalized_patient_hash
+            )
+
+        link = query.order_by(_PatientCaregiverLink.id.asc()).first()
         if link is None:
             raise HTTPException(
                 status_code=404,
                 detail="Linked patient was not found.",
             )
         return str(link.patient_hash)
+
+    def _normalize_patient_code(self, patient_code: str) -> str:
+        normalized_patient_code = (patient_code or "").strip().upper()
+        if not normalized_patient_code:
+            raise HTTPException(status_code=400, detail="Patient code is required.")
+        return normalized_patient_code
 
     def _generate_unique_patient_code(self, patient_hash: str) -> str:
         for _ in range(_MAX_CODE_GENERATION_ATTEMPTS):
@@ -329,9 +367,7 @@ class LinkPatientCaregiver:
         raise RuntimeError("Unable to generate a unique patient link code.")
 
     def _get_valid_link_code(self, patient_code: str) -> _PatientLinkCode:
-        normalized_patient_code = (patient_code or "").strip().upper()
-        if not normalized_patient_code:
-            raise HTTPException(status_code=400, detail="Patient code is required.")
+        normalized_patient_code = self._normalize_patient_code(patient_code)
 
         link_code = (
             self.db.query(_PatientLinkCode)

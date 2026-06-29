@@ -140,6 +140,35 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
         self.assertEqual(response["data"][0]["item_name"], "A tablet")
 
+    def test_guardian_list_honors_requested_linked_patient_hash(self) -> None:
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-b", item_name="B tablet")
+        )
+        patient_a_code = self.link_control.request_patient_code("patient-a")
+        patient_b_code = self.link_control.request_patient_code("patient-b")
+        self.link_control.register_patient_code(
+            "guardian-a",
+            patient_a_code["data"]["patient_code"],
+        )
+        self.link_control.register_patient_code(
+            "guardian-a",
+            patient_b_code["data"]["patient_code"],
+        )
+
+        response = self.control.request_saved_medication_info(
+            patient_hash="patient-b",
+            user_hash="guardian-a",
+            role="guardian",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(response["data"][0]["patient_hash"], "patient-b")
+        self.assertEqual(response["data"][0]["item_name"], "B tablet")
+
     def test_guardian_list_without_link_stops_with_not_found(self) -> None:
         with self.assertRaises(HTTPException) as context:
             self.control.request_saved_medication_info(

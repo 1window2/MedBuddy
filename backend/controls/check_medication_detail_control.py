@@ -613,19 +613,81 @@ class _LocalMedicationCatalog:
         try:
             raw_item = json.loads(approval_item.raw_json)
             if isinstance(raw_item, dict):
-                return raw_item
+                normalized_item = self._normalize_raw_approval_item(
+                    raw_item,
+                    approval_item,
+                )
+                if normalized_item is not None:
+                    return normalized_item
         except json.JSONDecodeError:
             logger.warning(
                 "Local approval raw_json decode failed: item_name=%s",
                 approval_item.item_name,
             )
 
+        return self._approval_columns_to_raw_item(approval_item)
+
+    def _normalize_raw_approval_item(
+        self,
+        raw_item: dict[str, Any],
+        approval_item: _DrugApprovalInfo,
+    ) -> dict[str, Any] | None:
+        normalized_item = {
+            "ITEM_NAME": self._read_first_raw_text(
+                raw_item,
+                ["ITEM_NAME", "itemName", "item_name"],
+            )
+            or approval_item.item_name,
+            "EE_DOC_DATA": self._read_first_raw_text(
+                raw_item,
+                ["EE_DOC_DATA", "efcyQesitm"],
+            )
+            or approval_item.efficacy_doc,
+            "UD_DOC_DATA": self._read_first_raw_text(
+                raw_item,
+                ["UD_DOC_DATA", "useMethodQesitm"],
+            )
+            or approval_item.use_method_doc,
+            "NB_DOC_DATA": self._read_first_raw_text(
+                raw_item,
+                ["NB_DOC_DATA", "atpnWarnQesitm"],
+            )
+            or approval_item.warning_doc,
+        }
+        if any(
+            normalized_item[key]
+            for key in ("EE_DOC_DATA", "UD_DOC_DATA", "NB_DOC_DATA")
+        ):
+            return normalized_item
+        return None
+
+    def _approval_columns_to_raw_item(
+        self,
+        approval_item: _DrugApprovalInfo,
+    ) -> dict[str, Any]:
         return {
             "ITEM_NAME": approval_item.item_name,
             "EE_DOC_DATA": approval_item.efficacy_doc or "정보 없음",
             "UD_DOC_DATA": approval_item.use_method_doc or "정보 없음",
             "NB_DOC_DATA": approval_item.warning_doc or "정보 없음",
         }
+
+    def _read_first_raw_text(
+        self,
+        raw_item: dict[str, Any],
+        keys: list[str],
+    ) -> str:
+        lowered_items = {
+            str(existing_key).lower(): existing_value
+            for existing_key, existing_value in raw_item.items()
+        }
+        for key in keys:
+            value = raw_item.get(key)
+            if value is None:
+                value = lowered_items.get(key.lower())
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
 
     def _save_basic_ai_guide(
         self,

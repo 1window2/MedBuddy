@@ -88,7 +88,7 @@ class CheckSchedule:
             .all()
         )
         active_schedules = [
-            self._to_schedule_dict(medication)
+            self._to_schedule_dict(medication, today)
             for medication in medications
             if self._is_active_today(medication, today)
         ]
@@ -112,11 +112,15 @@ class CheckSchedule:
         medication_id: int,
         medication_status: bool,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
         return self.update_medication_status(
             medication_id,
             medication_status,
             patient_hash,
+            user_hash,
+            role,
         )
 
     # Function Name: update_medication_status
@@ -133,13 +137,25 @@ class CheckSchedule:
         medication_id: int,
         medication_status: bool,
         patient_hash: str = DEFAULT_PATIENT_HASH,
+        user_hash: str | None = None,
+        role: str = "patient",
     ) -> dict[str, object]:
-        medication = self._get_existing_medication(medication_id, patient_hash)
+        normalized_patient_hash = self._resolve_patient_hash(
+            patient_hash,
+            user_hash,
+            role,
+        )
+        medication = self._get_existing_medication(
+            medication_id,
+            normalized_patient_hash,
+        )
         schedule = self._to_schedule(medication)
         schedule.saveMedicationStatus(medication_status)
+        today = date.today()
 
         try:
             medication.medication_status = schedule.medcation_status
+            medication.medication_status_date = today
             self.db.commit()
             self.db.refresh(medication)
         except Exception as exc:
@@ -152,7 +168,7 @@ class CheckSchedule:
         return {
             "success": True,
             "message": "Medication status was updated.",
-            "data": self._to_schedule_dict(medication),
+            "data": self._to_schedule_dict(medication, today),
         }
 
     # Function Name: _get_existing_medication
@@ -191,8 +207,15 @@ class CheckSchedule:
     # - medication: Saved medication row.
     # Returns:
     # - JSON-compatible medication schedule dictionary.
-    def _to_schedule_dict(self, medication: _SavedMedication) -> dict[str, object]:
-        schedule = self._to_schedule(medication).getTodayMedicationSchedule()
+    def _to_schedule_dict(
+        self,
+        medication: _SavedMedication,
+        schedule_date: date | None = None,
+    ) -> dict[str, object]:
+        schedule = self._to_schedule(
+            medication,
+            schedule_date or date.today(),
+        ).getTodayMedicationSchedule()
         return {
             "medication_id": schedule.medication_id,
             "drug_name": schedule.medication_name,
@@ -235,7 +258,8 @@ class CheckSchedule:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
             return LinkPatientCaregiver(self.db).get_linked_patient_hash(
-                user_hash or patient_hash
+                user_hash or patient_hash,
+                patient_hash,
             )
         return normalize_patient_hash(user_hash or patient_hash)
 
@@ -246,17 +270,28 @@ class CheckSchedule:
     # - medication: Saved medication row.
     # Returns:
     # - MedicationSchedule entity.
-    def _to_schedule(self, medication: _SavedMedication) -> MedicationSchedule:
+    def _to_schedule(
+        self,
+        medication: _SavedMedication,
+        schedule_date: date | None = None,
+    ) -> MedicationSchedule:
+        target_date = schedule_date or date.today()
+        status_date = self._read_status_date(medication.medication_status_date)
+        is_completed_today = (
+            bool(medication.medication_status)
+            and status_date is not None
+            and status_date == target_date
+        )
         return MedicationSchedule(
             created_date=self._read_created_date(
                 medication.created_date,
-                date.today(),
+                target_date,
             ),
             medication_id=str(medication.id),
             medication_name=medication.item_name or "",
             dosage=medication.dosage_per_time or "",
             intake_time=medication.daily_frequency or "",
-            medcation_status=bool(medication.medication_status),
+            medcation_status=is_completed_today,
             patient_id=medication.patient_hash or DEFAULT_PATIENT_HASH,
             medication_time=medication.total_days or "",
         )
@@ -299,6 +334,16 @@ class CheckSchedule:
             except ValueError:
                 return fallback_date
         return fallback_date
+
+    def _read_status_date(self, raw_date: object) -> date | None:
+        if isinstance(raw_date, date):
+            return raw_date
+        if isinstance(raw_date, str) and raw_date.strip():
+            try:
+                return date.fromisoformat(raw_date.strip())
+            except ValueError:
+                return None
+        return None
 
     # Function Name: _read_total_days
     # Description:

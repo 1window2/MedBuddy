@@ -7,10 +7,16 @@ import '../theme/medbuddy_theme.dart';
 
 class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
+  final void Function({
+    required String patientHash,
+    String? userHash,
+    required String role,
+  })? onMedicationScopeSelected;
 
   const LinkPatientCaregiverUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
+    this.onMedicationScopeSelected,
   });
 
   void clickPatientCaregiverLink() {}
@@ -110,6 +116,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               ? '\uC544\uC9C1 \uC5F0\uB3D9\uB41C \uD658\uC790/\uBCF4\uD638\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
               : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
         });
+        _applyMedicationScope(links);
       } finally {
         control.dispose();
       }
@@ -159,6 +166,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           _statusMessage =
               '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
         });
+        _applyMedicationScope(links);
       } finally {
         control.dispose();
       }
@@ -223,6 +231,32 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
   String get _currentUserHash {
     return PatientHash.normalizePatientHash(_userHashController.text);
+  }
+
+  void _applyMedicationScope(List<PatientCaregiverLink> links) {
+    final scopeCallback = widget.onMedicationScopeSelected;
+    if (scopeCallback == null) {
+      return;
+    }
+
+    final currentUserHash = _currentUserHash;
+    for (final link in links) {
+      if (link.linked &&
+          link.caregiverID == currentUserHash &&
+          link.patientID.trim().isNotEmpty) {
+        scopeCallback(
+          patientHash: link.patientID,
+          userHash: currentUserHash,
+          role: 'guardian',
+        );
+        return;
+      }
+    }
+
+    scopeCallback(
+      patientHash: currentUserHash,
+      role: 'patient',
+    );
   }
 }
 

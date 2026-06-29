@@ -210,7 +210,8 @@ class CheckSavedMedication:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
             return LinkPatientCaregiver(self.db).get_linked_patient_hash(
-                user_hash or patient_hash
+                user_hash or patient_hash,
+                patient_hash,
             )
         return normalize_patient_hash(user_hash or patient_hash)
 

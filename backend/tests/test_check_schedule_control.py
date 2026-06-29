@@ -50,6 +50,7 @@ class CheckScheduleTest(unittest.TestCase):
         created_date: date | None = None,
         total_days: str | None = "7 days",
         medication_status: bool = False,
+        medication_status_date: date | None = None,
     ) -> _SavedMedication:
         medication = _SavedMedication(
             patient_hash=patient_hash,
@@ -62,6 +63,7 @@ class CheckScheduleTest(unittest.TestCase):
             daily_frequency="3 times",
             total_days=total_days,
             medication_status=medication_status,
+            medication_status_date=medication_status_date,
             ai_guide="guide",
         )
         self.db.add(medication)
@@ -120,6 +122,20 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["data"]["medication_status"])
         self.db.refresh(medication)
         self.assertTrue(medication.medication_status)
+        self.assertEqual(medication.medication_status_date, date.today())
+
+    def test_previous_day_completion_does_not_mark_today_complete(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            medication_status=True,
+            medication_status_date=date.today() - timedelta(days=1),
+        )
+
+        response = self.control.request_today_medication_schedule("patient-a")
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
+        self.assertFalse(response["data"][0]["medication_status"])
 
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         medication = self._saved_medication(patient_hash=DEFAULT_PATIENT_HASH)
@@ -153,6 +169,33 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
         self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
+
+    def test_guardian_status_update_resolves_linked_patient_hash(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="guardian-updated-tablet",
+        )
+        self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-tablet",
+        )
+        code_response = self.link_control.request_patient_code("patient-a")
+        self.link_control.register_patient_code(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+
+        response = self.control.update_medication_status(
+            medication.id,
+            True,
+            "patient-a",
+            "guardian-a",
+            "guardian",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"]["patient_hash"], "patient-a")
+        self.assertTrue(response["data"]["medication_status"])
 
     def test_guardian_today_schedule_without_link_stops_with_not_found(self) -> None:
         with self.assertRaises(HTTPException) as context:

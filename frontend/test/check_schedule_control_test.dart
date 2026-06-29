@@ -129,6 +129,41 @@ void main() {
     expect(updatedSchedule.medicationStatus, isTrue);
   });
 
+  test('updateMedicationStatus can patch guardian linked scope', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/schedule/7/status');
+      expect(request.url.queryParameters['patient_hash'], 'patient-a');
+      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['role'], 'guardian');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'medication_id': '7',
+            'drug_name': 'guardian-tablet',
+            'medication_status': true,
+            'patient_hash': 'patient-a',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckSchedule(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      userHash: 'guardian-a',
+      role: 'guardian',
+      client: client,
+    );
+
+    final updatedSchedule = await control.updateMedicationStatus('7', true);
+
+    expect(updatedSchedule.patientID, 'patient-a');
+    expect(updatedSchedule.medicationStatus, isTrue);
+  });
+
   test('MedicationSchedule accepts diagram typo status alias', () {
     final schedule = MedicationSchedule.fromScheduleJson({
       'medicationID': '9',
