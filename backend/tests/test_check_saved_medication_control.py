@@ -17,6 +17,10 @@ if str(BACKEND_DIR) not in sys.path:
 from controls.check_saved_medication_control import CheckSavedMedication  # noqa: E402
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
+from entities.medication_completion_entity import (  # noqa: E402
+    _MedicationCompletion,
+    ensure_medication_completion_schema,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
@@ -33,6 +37,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         )
         Base.metadata.create_all(bind=self.engine)
         ensure_saved_medication_schema(self.engine)
+        ensure_medication_completion_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -148,8 +153,27 @@ class CheckSavedMedicationTest(unittest.TestCase):
         )
         active_medication.prescription_date = date.today() - timedelta(days=10)
         active_medication.total_days = "7 days"
-        self.control.save_medication_detail(expired_medication)
-        self.control.save_medication_detail(active_medication)
+        expired_response = self.control.save_medication_detail(expired_medication)
+        active_response = self.control.save_medication_detail(active_medication)
+        self.db.add_all(
+            [
+                _MedicationCompletion(
+                    saved_medication_id=expired_response["id"],
+                    patient_hash="patient-a",
+                    schedule_date=date.today() - timedelta(days=33),
+                    slot_key="morning",
+                    completed=True,
+                ),
+                _MedicationCompletion(
+                    saved_medication_id=active_response["id"],
+                    patient_hash="patient-a",
+                    schedule_date=date.today(),
+                    slot_key="morning",
+                    completed=True,
+                ),
+            ]
+        )
+        self.db.commit()
 
         response = self.control.request_saved_medication_info("patient-a")
 
@@ -160,6 +184,11 @@ class CheckSavedMedicationTest(unittest.TestCase):
             for medication in self.db.query(_SavedMedication).all()
         ]
         self.assertEqual(saved_names, ["active-tablet"])
+        remaining_completion_medication_ids = sorted(
+            completion.saved_medication_id
+            for completion in self.db.query(_MedicationCompletion).all()
+        )
+        self.assertEqual(remaining_completion_medication_ids, [active_response["id"]])
 
     def test_list_keeps_medications_without_total_days(self) -> None:
         unknown_period_medication = self._saved_medication(
@@ -196,6 +225,27 @@ class CheckSavedMedicationTest(unittest.TestCase):
         patient_a_list = self.control.request_saved_medication_info("patient-a")
         self.assertEqual(len(patient_a_list["data"]), 1)
         self.assertEqual(patient_a_list["data"][0]["id"], patient_a_response["id"])
+
+    def test_delete_removes_owned_completion_rows(self) -> None:
+        response = self.control.save_medication_detail(
+            self._saved_medication(patient_hash="patient-a", item_name="A tablet")
+        )
+        self.db.add(
+            _MedicationCompletion(
+                saved_medication_id=response["id"],
+                patient_hash="patient-a",
+                schedule_date=date.today(),
+                slot_key="morning",
+                completed=True,
+            )
+        )
+        self.db.commit()
+
+        delete_response = self.control.request_delete(response["id"], "patient-a")
+
+        self.assertTrue(delete_response["success"])
+        self.assertIsNone(self.db.get(_SavedMedication, response["id"]))
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
 
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         response = self.control.save_medication_detail(

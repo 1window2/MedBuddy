@@ -6,6 +6,7 @@ import re
 
 from sqlalchemy.orm import Session
 
+from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
@@ -47,6 +48,10 @@ class SavedMedicationRetentionPolicy:
         ]
 
         for medication in expired_medications:
+            db.query(_MedicationCompletion).filter(
+                _MedicationCompletion.saved_medication_id == medication.id,
+                _MedicationCompletion.patient_hash == patient_hash,
+            ).delete(synchronize_session=False)
             db.delete(medication)
 
         if expired_medications:

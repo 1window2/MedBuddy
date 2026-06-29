@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
@@ -162,6 +163,7 @@ class CheckSavedMedication:
     ) -> dict[str, object]:
         try:
             medication = self._get_existing_medication(medication_id, patient_hash)
+            self._delete_medication_completions(medication)
             self.db.delete(medication)
             self.db.commit()
             return {"success": True, "message": "Medication was deleted from pillbox."}
@@ -274,6 +276,22 @@ class CheckSavedMedication:
         if medication is None:
             raise HTTPException(status_code=404, detail="Medication was not found.")
         return medication
+
+    # Function Name: _delete_medication_completions
+    # Description:
+    # - Removes per-slot completion rows owned by a saved medication.
+    # Parameters:
+    # - medication: Saved medication row being deleted.
+    # Returns:
+    # - None.
+    def _delete_medication_completions(self, medication: _SavedMedication) -> None:
+        self.db.query(_MedicationCompletion).filter(
+            _MedicationCompletion.saved_medication_id == medication.id,
+            _MedicationCompletion.patient_hash
+            == normalize_patient_hash(
+                medication.patient_hash or DEFAULT_PATIENT_HASH
+            ),
+        ).delete(synchronize_session=False)
 
     # 함수명: _find_today_duplicate
     # 함수역할:

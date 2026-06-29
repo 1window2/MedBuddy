@@ -207,6 +207,28 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         self.assertFalse(medication.medication_status)
 
+    def test_slot_update_preserves_other_legacy_completed_slots(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            medication_status=True,
+            medication_status_date=date.today(),
+        )
+
+        response = self.control.update_medication_status(
+            medication.id,
+            False,
+            "patient-a",
+            slot_key="lunch",
+        )
+
+        self.assertFalse(response["data"]["medication_status"])
+        self.assertEqual(
+            response["data"]["slot_statuses"],
+            {"morning": True, "lunch": False, "evening": True},
+        )
+        self.db.refresh(medication)
+        self.assertFalse(medication.medication_status)
+
     def test_invalid_slot_key_is_rejected(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
 
