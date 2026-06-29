@@ -2,12 +2,20 @@
 
 ## Project Status
 
-MedBuddy is currently in active pre-release development. We have not published a
-stable tagged version yet, so there is no versioned support matrix at this time.
+MedBuddy is in active alpha demo development. Current demo releases are
+pre-release builds, not production-ready stable releases.
 
-Security fixes are applied to the active development branch that is being used
-for the next release. After the project publishes its first stable version, this
-file should be updated with a clear supported-version table.
+## Supported Versions
+
+| Version | Status | Security Handling |
+| --- | --- | --- |
+| `v0.0.3-alpha` | Current alpha demo target | Security fixes should be applied here first. |
+| `v0.0.2-alpha` | Superseded alpha demo | Update to `v0.0.3-alpha` unless a targeted backport is explicitly needed. |
+| `v0.0.1-alpha` | Superseded alpha demo | No routine security backports. |
+
+The `main` branch is the source of truth for the next alpha release. When a
+security fix lands on `main`, the next alpha tag should be cut from a commit
+that includes the fix.
 
 ## Reporting a Vulnerability
 
@@ -16,7 +24,9 @@ pull requests, discussions, or screenshots.
 
 If you believe you have found a vulnerability, report it by email:
 
+```text
 pretax.rescues.8n@icloud.com
+```
 
 Please include:
 
@@ -39,9 +49,36 @@ If a secret is accidentally exposed in a commit, issue, pull request, terminal
 log, or screenshot, rotate or revoke the credential immediately. Removing the
 text from the repository after exposure is not sufficient by itself.
 
-## Local Data Files
+## Local Data and Generated Files
 
 The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
-`backend/medbuddy.db`. Keep generated data files local, and document any
-required rebuild or refresh process before relying on it in a release branch.
+`backend/medbuddy.db`.
+
+Do not commit local SDK paths, generated Flutter build files, emulator-specific
+configuration, Python virtual environments, pytest caches, or Android/iOS build
+outputs. These files reduce portability and can expose private local paths.
+
+## Dependency Security
+
+Backend runtime dependencies are tracked in `backend/requirements.txt`.
+Development and test dependencies are tracked in `backend/requirements-dev.txt`.
+
+Security updates should be evaluated by impact:
+
+- Runtime dependency fixes should be prioritized before a demo release.
+- Development/test dependency fixes should be applied when they are compatible
+  with the CI Python version.
+- Python version compatibility must be checked before accepting dependency
+  upgrades. For example, do not merge a package release that requires a newer
+  Python version than the backend CI target.
+
+## External Services
+
+MedBuddy uses Gemini and Korean public drug data APIs. Treat all API responses
+as untrusted input:
+
+- Validate structured model/API responses before using them.
+- Do not log secrets or raw personal medical data.
+- Keep user-facing guidance clearly informational and avoid presenting it as a
+  substitute for professional medical advice.
