@@ -1,17 +1,44 @@
-# medbuddy_frontend
+# MedBuddy Frontend
 
-A new Flutter project.
+Flutter client for the MedBuddy alpha demo.
 
-## Getting Started
+Current app version: **0.0.4+4**.
 
-This project is a starting point for a Flutter application.
+## Role
 
-A few resources to get you started if this is your first Flutter project:
+The frontend follows the same Boundary-Control-Entity structure as the project
+UML diagrams:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- `lib/boundaries`: UI screens and user interaction boundaries.
+- `lib/controls`: API and use-case controls.
+- `lib/entities`: Flutter-side data contracts.
+- `lib/viewmodels`: app state coordination for the screens.
+- `lib/services`: local services such as notifications and TTS.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Demo Scope
+
+The v0.0.4-alpha frontend supports prescription analysis, saved medication
+management, patient/caregiver scoped medication views, patient-scoped health
+recommendations, local reminders, and slot-level medication completion for
+multi-dose schedules.
+
+## Common Commands
+
+```powershell
+flutter pub get
+flutter analyze --no-pub
+flutter test --no-pub
+flutter build apk --release
+```
+
+For Android emulator testing, the default API base URL points to:
+
+```text
+http://10.0.2.2:8000/api/v1/medication
+```
+
+Override it when needed:
+
+```powershell
+flutter run --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
+```

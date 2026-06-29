@@ -6,7 +6,7 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and caregiver-linked views.
 
-Current demo target: **v0.0.3-alpha** (`frontend` app version `0.0.3+3`).
+Current demo target: **v0.0.4-alpha** (`frontend` app version `0.0.4+4`).
 
 ## Key Features
 
@@ -28,7 +28,9 @@ Current demo target: **v0.0.3-alpha** (`frontend` app version `0.0.3+3`).
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
 - Saved medications retain dosage schedule fields for today's medication schedule.
-- Today's schedule supports status updates scoped to the current patient or linked caregiver view.
+- Today's schedule supports patient-scoped and caregiver-scoped status updates.
+- Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
+- Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
 - Saved medication records are retained through their medication period and cleaned up after the configured retention window.
 
 ### Patient and Caregiver Link Flow
@@ -41,7 +43,7 @@ Current demo target: **v0.0.3-alpha** (`frontend` app version `0.0.3+3`).
 
 - The backend can generate patient-scoped health recommendations using saved medication context.
 - The frontend includes health recommendation UI state and API controls.
-- Local notification support provides medication reminder scheduling for demo use.
+- Local notification support provides per-slot medication reminder scheduling for demo use.
 
 ## Architecture Discipline
 
@@ -177,7 +179,7 @@ flutter run -d emulator-5554 --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2
 
 ### Release Build
 
-For the v0.0.3-alpha Android demo APK:
+For the v0.0.4-alpha Android demo APK:
 
 ```powershell
 cd frontend
