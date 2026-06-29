@@ -32,6 +32,29 @@ class CheckHealthRecommendation {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
+  // Function Name: forScope
+  // Description:
+  // - Creates a scoped health recommendation control that reuses this control's HTTP client.
+  // Parameters:
+  // - patientHash: Patient scope for the recommendation request.
+  // - userHash: Optional caregiver user scope.
+  // - role: Requesting user role.
+  // Returns:
+  // - CheckHealthRecommendation configured for the selected medication access scope.
+  CheckHealthRecommendation forScope({
+    required String patientHash,
+    String? userHash,
+    required String role,
+  }) {
+    return CheckHealthRecommendation(
+      baseUrl: baseUrl,
+      patientHash: patientHash,
+      userHash: userHash,
+      role: role,
+      client: _client,
+    );
+  }
+
   // 함수명: requestHealthRecommendation
   // 함수역할:
   // - 현재 복용 중인 약 조합을 바탕으로 건강 관리 추천을 요청한다.

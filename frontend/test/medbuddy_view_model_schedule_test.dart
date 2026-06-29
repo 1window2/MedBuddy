@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 void main() {
@@ -77,5 +78,46 @@ void main() {
     expect(patchCalled, isTrue);
     expect(
         viewModel.todayMedicationScheduleList.first.medicationStatus, isTrue);
+  });
+
+  test('deleting saved medication refreshes today schedule cache', () async {
+    final savedMedicationClient = MockClient((http.Request request) async {
+      expect(request.method, 'DELETE');
+      expect(request.url.path, '/delete/3');
+      return http.Response('{"success":true}', 200);
+    });
+    var scheduleFetchCount = 0;
+    final scheduleClient = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/schedule/today');
+      scheduleFetchCount += 1;
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': <Map<String, dynamic>>[],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: savedMedicationClient,
+      ),
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: scheduleClient,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    final success = await viewModel.requestDeleteSavedMedication(3);
+
+    expect(success, isTrue);
+    expect(scheduleFetchCount, 1);
+    expect(viewModel.todayMedicationScheduleList, isEmpty);
   });
 }

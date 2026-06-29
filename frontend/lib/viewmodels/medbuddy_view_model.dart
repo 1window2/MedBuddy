@@ -68,6 +68,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final MedicationNotificationService notificationService;
   CheckSavedMedication? _scopedCheckSavedMedication;
   CheckSchedule? _scopedCheckSchedule;
+  CheckHealthRecommendation? _scopedCheckHealthRecommendation;
 
   String _medicationPatientHash = PatientHash.defaultPatientHash;
   String? _medicationUserHash;
@@ -301,6 +302,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       final analyzedMedicationList = analysisResults
           .whereType<AnalyzedMedication>()
           .toList(growable: false);
+      final failedAnalysisCount =
+          analysisResults.length - analyzedMedicationList.length;
 
       _analysisProgressStep = AnalysisProgressStep.scheduleGeneration;
       notifyListeners();
@@ -312,7 +315,9 @@ class MedBuddyViewModel extends ChangeNotifier {
 
       _analyzedMedicationList = analyzedMedicationList;
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
-      _statusMessage = '처방전 분석이 완료되었습니다.';
+      _statusMessage = failedAnalysisCount > 0
+          ? '처방전 분석은 완료되었지만 $failedAnalysisCount개 약 정보는 확인하지 못했습니다.'
+          : '처방전 분석이 완료되었습니다.';
       notifyListeners();
     } on StateError catch (error) {
       _showAnalysisFailure(error.message);
@@ -531,7 +536,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       _savedMedicationInfoList = _savedMedicationInfoList
           .where((item) => item.id != savedMedicationId)
           .toList(growable: false);
-      notifyListeners();
+      await fetchTodayMedicationSchedule();
     }
     return success;
   }
@@ -573,7 +578,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _healthRecommendation =
-          await checkHealthRecommendation.requestHealthRecommendation(
+          await _activeCheckHealthRecommendation.requestHealthRecommendation(
         language: userSetting.language,
       );
       _statusMessage = _isEnglishSetting
@@ -931,9 +936,13 @@ class MedBuddyViewModel extends ChangeNotifier {
   CheckSchedule get _activeCheckSchedule =>
       _scopedCheckSchedule ?? checkSchedule;
 
+  CheckHealthRecommendation get _activeCheckHealthRecommendation =>
+      _scopedCheckHealthRecommendation ?? checkHealthRecommendation;
+
   void _rebuildMedicationScopeControls() {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
+    _scopedCheckHealthRecommendation?.dispose();
     _scopedCheckSavedMedication = CheckSavedMedication(
       baseUrl: checkSavedMedication.baseUrl,
       patientHash: _medicationPatientHash,
@@ -946,16 +955,23 @@ class MedBuddyViewModel extends ChangeNotifier {
       userHash: _medicationUserHash,
       role: _medicationRole,
     );
+    _scopedCheckHealthRecommendation = checkHealthRecommendation.forScope(
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
   }
 
   @override
   void dispose() {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
+    _scopedCheckHealthRecommendation?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
+    checkHealthRecommendation.dispose();
     super.dispose();
   }
 }
