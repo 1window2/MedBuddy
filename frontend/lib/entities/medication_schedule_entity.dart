@@ -16,6 +16,7 @@ class MedicationSchedule {
   final String dosage;
   final String intakeTime;
   final bool medicationStatus;
+  final Map<String, bool> slotStatuses;
   final String patientID;
   final int medicationTime;
   final String? efficacy;
@@ -32,6 +33,7 @@ class MedicationSchedule {
     this.dosage = '',
     this.intakeTime = '',
     this.medicationStatus = false,
+    this.slotStatuses = const {},
     this.patientID = '',
     this.medicationTime = 0,
     this.efficacy = '',
@@ -93,6 +95,10 @@ class MedicationSchedule {
             json['medcationStatus'] ??
             json['medcation_status'],
       ),
+      slotStatuses: _readSlotStatuses(
+        json['slot_statuses'] ?? json['slotStatuses'],
+        json['completed_slot_keys'] ?? json['completedSlotKeys'],
+      ),
       patientID: _readString(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
@@ -140,6 +146,11 @@ class MedicationSchedule {
       'dosage_per_time': dosage,
       'daily_frequency': intakeTime,
       'medication_status': medicationStatus,
+      'slot_statuses': slotStatuses,
+      'completed_slot_keys': slotStatuses.entries
+          .where((entry) => entry.value)
+          .map((entry) => entry.key)
+          .toList(growable: false),
       'patient_id': patientID,
       'created_date': _formatDate(createdDate),
       'prescription_date': _formatDate(prescriptionDate),
@@ -165,6 +176,7 @@ class MedicationSchedule {
     String? dosage,
     String? intakeTime,
     bool? medicationStatus,
+    Map<String, bool>? slotStatuses,
     String? patientID,
     int? medicationTime,
     String? efficacy,
@@ -182,6 +194,7 @@ class MedicationSchedule {
       dosage: dosage ?? this.dosage,
       intakeTime: intakeTime ?? this.intakeTime,
       medicationStatus: medicationStatus ?? this.medicationStatus,
+      slotStatuses: slotStatuses ?? this.slotStatuses,
       patientID: patientID ?? this.patientID,
       medicationTime: medicationTime ?? this.medicationTime,
       efficacy: efficacy ?? this.efficacy,
@@ -217,8 +230,34 @@ class MedicationSchedule {
     return this;
   }
 
-  MedicationSchedule saveMedicationStatus({bool medicationStatus = true}) {
-    return copyWith(medicationStatus: medicationStatus);
+  MedicationSchedule saveMedicationStatus({
+    bool medicationStatus = true,
+    String? slotKey,
+  }) {
+    final normalizedSlotKey = slotKey?.trim().toLowerCase() ?? '';
+    if (normalizedSlotKey.isEmpty) {
+      return copyWith(
+        medicationStatus: medicationStatus,
+        slotStatuses: slotStatuses.map(
+          (key, _) => MapEntry(key, medicationStatus),
+        ),
+      );
+    }
+
+    final updatedSlotStatuses = Map<String, bool>.from(slotStatuses);
+    updatedSlotStatuses[normalizedSlotKey] = medicationStatus;
+    return copyWith(
+      medicationStatus: updatedSlotStatuses.isNotEmpty &&
+          updatedSlotStatuses.values.every((completed) => completed),
+      slotStatuses: Map.unmodifiable(updatedSlotStatuses),
+    );
+  }
+
+  bool isSlotCompleted(String slotKey) {
+    if (slotStatuses.isEmpty) {
+      return medicationStatus;
+    }
+    return slotStatuses[slotKey.trim().toLowerCase()] ?? false;
   }
 
   static String _readString(dynamic value) {
@@ -251,6 +290,31 @@ class MedicationSchedule {
 
     final text = _readString(value).toLowerCase();
     return text == 'true' || text == '1' || text == 'yes';
+  }
+
+  static Map<String, bool> _readSlotStatuses(
+    dynamic rawStatuses,
+    dynamic rawCompletedSlotKeys,
+  ) {
+    final statuses = <String, bool>{};
+    if (rawStatuses is Map) {
+      rawStatuses.forEach((key, value) {
+        final slotKey = _readString(key).toLowerCase();
+        if (slotKey.isNotEmpty) {
+          statuses[slotKey] = _readBool(value);
+        }
+      });
+    }
+
+    if (rawCompletedSlotKeys is List) {
+      for (final rawSlotKey in rawCompletedSlotKeys) {
+        final slotKey = _readString(rawSlotKey).toLowerCase();
+        if (slotKey.isNotEmpty) {
+          statuses[slotKey] = true;
+        }
+      }
+    }
+    return Map.unmodifiable(statuses);
   }
 
   static DateTime? _readDate(dynamic value) {

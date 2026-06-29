@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from entities.medication_completion_entity import _MedicationCompletion, utc_now
 from entities.medication_schedule_entity import MedicationSchedule
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
@@ -15,6 +16,7 @@ from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
+_SLOT_KEYS = ("morning", "lunch", "evening", "bedtime")
 
 
 # Class Name: CheckSchedule
@@ -111,6 +113,7 @@ class CheckSchedule:
     # - medication_id: Saved medication primary key.
     # - medication_status: New medication completion status.
     # - patient_hash: Patient ownership key used to scope update.
+    # - slot_key: Optional time-slot key. Empty means all schedule slots.
     # Returns:
     # - API-compatible status update response dictionary.
     def updateMedicationStatus(
@@ -120,6 +123,7 @@ class CheckSchedule:
         patient_hash: str = DEFAULT_PATIENT_HASH,
         user_hash: str | None = None,
         role: str = "patient",
+        slot_key: str | None = None,
     ) -> dict[str, object]:
         return self.update_medication_status(
             medication_id,
@@ -127,6 +131,7 @@ class CheckSchedule:
             patient_hash,
             user_hash,
             role,
+            slot_key,
         )
 
     # Function Name: update_medication_status
@@ -136,6 +141,7 @@ class CheckSchedule:
     # - medication_id: Saved medication primary key.
     # - medication_status: New medication completion status.
     # - patient_hash: Patient ownership key used to scope update.
+    # - slot_key: Optional time-slot key. Empty means all schedule slots.
     # Returns:
     # - API-compatible status update response dictionary.
     def update_medication_status(
@@ -145,6 +151,7 @@ class CheckSchedule:
         patient_hash: str = DEFAULT_PATIENT_HASH,
         user_hash: str | None = None,
         role: str = "patient",
+        slot_key: str | None = None,
     ) -> dict[str, object]:
         normalized_patient_hash = self._resolve_patient_hash(
             patient_hash,
@@ -155,12 +162,22 @@ class CheckSchedule:
             medication_id,
             normalized_patient_hash,
         )
-        schedule = self._to_schedule(medication)
-        schedule.saveMedicationStatus(medication_status)
         today = date.today()
+        slot_keys = self._slot_keys_for_medication(medication)
+        target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
 
         try:
-            medication.medication_status = schedule.medcation_status
+            for target_slot_key in target_slot_keys:
+                self._upsert_completion(
+                    medication,
+                    normalized_patient_hash,
+                    today,
+                    target_slot_key,
+                    medication_status,
+                )
+            self.db.flush()
+            slot_statuses = self._slot_statuses_for_medication(medication, today)
+            medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
             self.db.commit()
             self.db.refresh(medication)
@@ -218,9 +235,10 @@ class CheckSchedule:
         medication: _SavedMedication,
         schedule_date: date | None = None,
     ) -> dict[str, object]:
+        target_date = schedule_date or date.today()
         schedule = self._to_schedule(
             medication,
-            schedule_date or date.today(),
+            target_date,
         ).getTodayMedicationSchedule()
         return {
             "medication_id": schedule.medication_id,
@@ -228,6 +246,9 @@ class CheckSchedule:
             "dosage_per_time": schedule.dosage,
             "daily_frequency": schedule.intake_time,
             "medication_status": schedule.medcation_status,
+            "slot_statuses": schedule.slot_statuses,
+            "completed_slot_keys": schedule.completed_slot_keys,
+            "schedule_date": target_date.isoformat(),
             "patient_hash": schedule.patient_id,
             "patient_id": schedule.patient_id,
             "total_days": schedule.medication_time,
@@ -296,12 +317,11 @@ class CheckSchedule:
         schedule_date: date | None = None,
     ) -> MedicationSchedule:
         target_date = schedule_date or date.today()
-        status_date = self._read_status_date(medication.medication_status_date)
-        is_completed_today = (
-            bool(medication.medication_status)
-            and status_date is not None
-            and status_date == target_date
+        slot_statuses = self._slot_statuses_for_medication(
+            medication,
+            target_date,
         )
+        is_completed_today = self._all_slots_completed(slot_statuses)
         return MedicationSchedule(
             created_date=self._read_schedule_start_date(
                 medication,
@@ -314,7 +334,145 @@ class CheckSchedule:
             medcation_status=is_completed_today,
             patient_id=medication.patient_hash or DEFAULT_PATIENT_HASH,
             medication_time=medication.total_days or "",
+            slot_statuses=slot_statuses,
+            completed_slot_keys=[
+                key for key, completed in slot_statuses.items() if completed
+            ],
         )
+
+    # Function Name: _slot_keys_for_medication
+    # Description:
+    # - Derives the active time slots from the daily frequency label.
+    # Parameters:
+    # - medication: Saved medication row.
+    # Returns:
+    # - Ordered slot keys used by backend and Flutter schedule UI.
+    def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
+        frequency_count = self._read_total_days(medication.daily_frequency)
+        if frequency_count >= 4:
+            return list(_SLOT_KEYS)
+        if frequency_count == 3:
+            return ["morning", "lunch", "evening"]
+        if frequency_count == 2:
+            return ["morning", "evening"]
+        return ["morning"]
+
+    # Function Name: _slot_keys_for_update
+    # Description:
+    # - Resolves a requested slot key, or all slots for legacy row-level updates.
+    # Parameters:
+    # - slot_key: Optional requested slot key.
+    # - valid_slot_keys: Slots allowed for the medication schedule.
+    # Returns:
+    # - Slot keys that should be updated.
+    def _slot_keys_for_update(
+        self,
+        slot_key: str | None,
+        valid_slot_keys: list[str],
+    ) -> list[str]:
+        normalized_slot_key = (slot_key or "").strip().lower()
+        if not normalized_slot_key:
+            return valid_slot_keys
+        if normalized_slot_key not in valid_slot_keys:
+            raise HTTPException(
+                status_code=400,
+                detail="Requested slot is not part of this medication schedule.",
+            )
+        return [normalized_slot_key]
+
+    # Function Name: _slot_statuses_for_medication
+    # Description:
+    # - Reads per-slot completion state with legacy row-level status fallback.
+    # Parameters:
+    # - medication: Saved medication row.
+    # - schedule_date: Date used for completion lookup.
+    # Returns:
+    # - Slot completion map keyed by slot name.
+    def _slot_statuses_for_medication(
+        self,
+        medication: _SavedMedication,
+        schedule_date: date,
+    ) -> dict[str, bool]:
+        patient_hash = normalize_patient_hash(
+            medication.patient_hash or DEFAULT_PATIENT_HASH
+        )
+        slot_statuses = {
+            slot_key: False for slot_key in self._slot_keys_for_medication(medication)
+        }
+        completions = (
+            self.db.query(_MedicationCompletion)
+            .filter(
+                _MedicationCompletion.saved_medication_id == medication.id,
+                _MedicationCompletion.patient_hash == patient_hash,
+                _MedicationCompletion.schedule_date == schedule_date,
+            )
+            .all()
+        )
+        if completions:
+            for completion in completions:
+                if completion.slot_key in slot_statuses:
+                    slot_statuses[completion.slot_key] = bool(completion.completed)
+            return slot_statuses
+
+        status_date = self._read_status_date(medication.medication_status_date)
+        if (
+            bool(medication.medication_status)
+            and status_date is not None
+            and status_date == schedule_date
+        ):
+            return {slot_key: True for slot_key in slot_statuses}
+        return slot_statuses
+
+    # Function Name: _upsert_completion
+    # Description:
+    # - Inserts or updates one MedicationCompletion row for a schedule slot.
+    # Parameters:
+    # - medication: Saved medication row.
+    # - patient_hash: Normalized patient ownership key.
+    # - schedule_date: Date of the updated schedule slot.
+    # - slot_key: Time-slot key to update.
+    # - completed: New completion state.
+    # Returns:
+    # - None.
+    def _upsert_completion(
+        self,
+        medication: _SavedMedication,
+        patient_hash: str,
+        schedule_date: date,
+        slot_key: str,
+        completed: bool,
+    ) -> None:
+        completion = (
+            self.db.query(_MedicationCompletion)
+            .filter(
+                _MedicationCompletion.saved_medication_id == medication.id,
+                _MedicationCompletion.patient_hash == patient_hash,
+                _MedicationCompletion.schedule_date == schedule_date,
+                _MedicationCompletion.slot_key == slot_key,
+            )
+            .first()
+        )
+        if completion is None:
+            completion = _MedicationCompletion(
+                saved_medication_id=medication.id,
+                patient_hash=patient_hash,
+                schedule_date=schedule_date,
+                slot_key=slot_key,
+            )
+            self.db.add(completion)
+
+        completion.completed = completed
+        completion.completed_at = utc_now() if completed else None
+
+    # Function Name: _all_slots_completed
+    # Description:
+    # - Computes the row-level compatibility status from slot completion state.
+    # Parameters:
+    # - slot_statuses: Slot completion map.
+    # Returns:
+    # - True when every required slot is completed.
+    def _all_slots_completed(self, slot_statuses: dict[str, bool]) -> bool:
+        return bool(slot_statuses) and all(slot_statuses.values())
 
     # Function Name: _is_active_today
     # Description:

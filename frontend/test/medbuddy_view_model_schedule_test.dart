@@ -11,8 +11,9 @@ import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 void main() {
-  test('dose status update uses backend schedule status flow', () async {
+  test('dose status update uses slot-scoped backend status flow', () async {
     var patchCalled = false;
+    late Map<String, dynamic> patchBody;
     final client = MockClient((http.Request request) async {
       if (request.method == 'GET') {
         expect(request.url.path, '/schedule/today');
@@ -27,6 +28,11 @@ void main() {
                 'daily_frequency': '3 times',
                 'total_days': '7 days',
                 'medication_status': false,
+                'slot_statuses': {
+                  'morning': false,
+                  'lunch': false,
+                  'evening': false,
+                },
                 'patient_hash': 'patient-a',
               },
             ],
@@ -38,6 +44,7 @@ void main() {
 
       expect(request.method, 'PATCH');
       expect(request.url.path, '/schedule/7/status');
+      patchBody = jsonDecode(request.body) as Map<String, dynamic>;
       patchCalled = true;
       return http.Response(
         jsonEncode({
@@ -48,7 +55,12 @@ void main() {
             'dosage_per_time': '1 tablet',
             'daily_frequency': '3 times',
             'total_days': '7 days',
-            'medication_status': true,
+            'medication_status': false,
+            'slot_statuses': {
+              'morning': true,
+              'lunch': false,
+              'evening': false,
+            },
             'patient_hash': 'patient-a',
           },
         }),
@@ -76,8 +88,25 @@ void main() {
 
     expect(success, isTrue);
     expect(patchCalled, isTrue);
+    expect(patchBody['slot_key'], 'morning');
     expect(
-        viewModel.todayMedicationScheduleList.first.medicationStatus, isTrue);
+        viewModel.todayMedicationScheduleList.first.medicationStatus, isFalse);
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.first,
+      ),
+      isTrue,
+    );
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'lunch',
+        viewModel.todayMedicationScheduleList.first,
+      ),
+      isFalse,
+    );
+    expect(viewModel.todayMedicationProgress.completedCount, 1);
+    expect(viewModel.todayMedicationProgress.totalCount, 3);
   });
 
   test('deleting saved medication refreshes today schedule cache', () async {

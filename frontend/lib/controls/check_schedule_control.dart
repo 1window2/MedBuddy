@@ -86,14 +86,19 @@ class CheckSchedule {
   // - Updated MedicationSchedule.
   Future<MedicationSchedule> updateMedicationStatus(
     String medicationId,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? slotKey,
+  }) async {
     try {
       final response = await _client
           .patch(
             _buildScheduleUri('schedule/$medicationId/status'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'medication_status': medicationStatus}),
+            body: jsonEncode({
+              'medication_status': medicationStatus,
+              if (slotKey != null && slotKey.trim().isNotEmpty)
+                'slot_key': slotKey.trim().toLowerCase(),
+            }),
           )
           .timeout(const Duration(seconds: 30));
       final responseBody = utf8.decode(response.bodyBytes);

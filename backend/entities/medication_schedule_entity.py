@@ -21,6 +21,8 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 #   - medcation_status: Medication completion status. The misspelling follows the diagram.
 #   - patient_id: Patient identifier.
 #   - medication_time: Total medication duration or time count.
+#   - slot_statuses: Completion state keyed by time slot for today's schedule.
+#   - completed_slot_keys: Completed time-slot keys for client compatibility.
 class MedicationSchedule(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -73,6 +75,16 @@ class MedicationSchedule(BaseModel):
         default="",
         validation_alias=AliasChoices("medicationTime", "medication_time", "total_days"),
         serialization_alias="total_days",
+    )
+    slot_statuses: dict[str, bool] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("slotStatuses", "slot_statuses"),
+        serialization_alias="slot_statuses",
+    )
+    completed_slot_keys: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("completedSlotKeys", "completed_slot_keys"),
+        serialization_alias="completed_slot_keys",
     )
 
     # Function Name: saveAnalysisResult

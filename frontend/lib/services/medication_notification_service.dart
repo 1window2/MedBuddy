@@ -91,6 +91,7 @@ class MedicationNotificationService {
   // - 없음
   Future<void> scheduleDailyReminder({
     required int id,
+    required String slotKey,
     required String slotTitle,
     required int hour,
     required int minute,
@@ -118,6 +119,7 @@ class MedicationNotificationService {
     try {
       await _scheduleWithMode(
         id: id,
+        slotKey: slotKey,
         slotTitle: slotTitle,
         language: language,
         body: body,
@@ -127,6 +129,7 @@ class MedicationNotificationService {
     } on PlatformException {
       await _scheduleWithMode(
         id: id,
+        slotKey: slotKey,
         slotTitle: slotTitle,
         language: language,
         body: body,
@@ -198,6 +201,7 @@ class MedicationNotificationService {
   // - 없음
   Future<void> _scheduleWithMode({
     required int id,
+    required String slotKey,
     required String slotTitle,
     required String language,
     required String body,
@@ -225,7 +229,7 @@ class MedicationNotificationService {
       ),
       androidScheduleMode: scheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
-      payload: 'schedule:$id',
+      payload: 'schedule:$slotKey:$id',
     );
   }
 

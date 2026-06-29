@@ -17,6 +17,10 @@ if str(BACKEND_DIR) not in sys.path:
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
+from entities.medication_completion_entity import (  # noqa: E402
+    _MedicationCompletion,
+    ensure_medication_completion_schema,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
@@ -32,6 +36,7 @@ class CheckScheduleTest(unittest.TestCase):
         )
         Base.metadata.create_all(bind=self.engine)
         ensure_saved_medication_schema(self.engine)
+        ensure_medication_completion_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -134,6 +139,86 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         self.assertTrue(medication.medication_status)
         self.assertEqual(medication.medication_status_date, date.today())
+
+    def test_slot_status_update_only_marks_requested_dose(self) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+
+        response = self.control.update_medication_status(
+            medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+
+        self.assertTrue(response["success"])
+        self.assertFalse(response["data"]["medication_status"])
+        self.assertEqual(
+            response["data"]["slot_statuses"],
+            {"morning": True, "lunch": False, "evening": False},
+        )
+        self.assertEqual(response["data"]["completed_slot_keys"], ["morning"])
+        self.db.refresh(medication)
+        self.assertFalse(medication.medication_status)
+
+        completions = (
+            self.db.query(_MedicationCompletion)
+            .filter(_MedicationCompletion.saved_medication_id == medication.id)
+            .all()
+        )
+        self.assertEqual(len(completions), 1)
+        self.assertEqual(completions[0].slot_key, "morning")
+        self.assertTrue(completions[0].completed)
+
+    def test_all_slots_complete_sets_legacy_row_status(self) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+
+        for slot_key in ["morning", "lunch", "evening"]:
+            response = self.control.update_medication_status(
+                medication.id,
+                True,
+                "patient-a",
+                slot_key=slot_key,
+            )
+
+        self.assertTrue(response["data"]["medication_status"])
+        self.assertEqual(
+            response["data"]["slot_statuses"],
+            {"morning": True, "lunch": True, "evening": True},
+        )
+        self.db.refresh(medication)
+        self.assertTrue(medication.medication_status)
+
+    def test_unchecking_one_slot_clears_legacy_row_status(self) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+        self.control.update_medication_status(medication.id, True, "patient-a")
+
+        response = self.control.update_medication_status(
+            medication.id,
+            False,
+            "patient-a",
+            slot_key="lunch",
+        )
+
+        self.assertFalse(response["data"]["medication_status"])
+        self.assertEqual(
+            response["data"]["slot_statuses"],
+            {"morning": True, "lunch": False, "evening": True},
+        )
+        self.db.refresh(medication)
+        self.assertFalse(medication.medication_status)
+
+    def test_invalid_slot_key_is_rejected(self) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+
+        with self.assertRaises(HTTPException) as context:
+            self.control.update_medication_status(
+                medication.id,
+                True,
+                "patient-a",
+                slot_key="bedtime",
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
 
     def test_previous_day_completion_does_not_mark_today_complete(self) -> None:
         medication = self._saved_medication(

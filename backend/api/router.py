@@ -178,6 +178,7 @@ async def update_medication_status(
         patient_hash,
         user_hash,
         role,
+        request.slot_key,
     )
 
 

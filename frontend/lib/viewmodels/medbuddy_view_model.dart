@@ -161,7 +161,7 @@ class MedBuddyViewModel extends ChangeNotifier {
           continue;
         }
         totalCount += 1;
-        if (schedule.medicationStatus) {
+        if (schedule.isSlotCompleted(slotKey)) {
           completedCount += 1;
         }
       }
@@ -668,6 +668,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     await notificationService.scheduleDailyReminder(
       id: setting.notificationId,
+      slotKey: slotKey,
       slotTitle: slotTitle,
       hour: hour,
       minute: minute,
@@ -733,18 +734,18 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   // 함수명: isMedicationDoseCompleted
   // 함수역할:
-  // - 현재 서버가 보존하는 복약 일정 완료 상태를 반환한다.
-  // - 시간대별 완료 상태는 MedicationCompletion 엔티티가 도입된 뒤 분리한다.
+  // - MedicationCompletion 기반 시간대별 복약 완료 상태를 반환한다.
+  // - slot 상태가 없는 이전 응답은 기존 medicationStatus 값으로 처리한다.
   // 매개변수:
-  // - slotKey: 시간대별 UI 호출 호환성을 위해 유지하는 키
+  // - slotKey: 확인할 시간대 키
   // - schedule: 확인할 복약 일정
   // 반환값:
-  // - 서버 일정이 완료 처리되어 있으면 True
+  // - 해당 시간대가 완료 처리되어 있으면 True
   bool isMedicationDoseCompleted(
     String slotKey,
     MedicationSchedule schedule,
   ) {
-    return schedule.medicationStatus;
+    return schedule.isSlotCompleted(slotKey);
   }
 
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
@@ -754,9 +755,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 함수명: requestMedicationDoseStatusUpdate
   // 함수역할:
   // - 복약 완료 상태를 백엔드 일정 상태 변경 API로 저장한다.
-  // - 시간대별 UI 호출 형태를 유지하되 UC-8의 DB 기반 일정 갱신 흐름을 따른다.
+  // - slotKey를 함께 전달해 하루 여러 번 복용하는 약의 완료 상태를 분리한다.
   // 매개변수:
-  // - slotKey: 시간대별 UI 호출 호환성을 위해 유지하는 키
+  // - slotKey: 상태를 변경할 시간대 키
   // - schedule: 상태를 변경할 복약 일정
   // - medicationStatus: 새 완료 상태
   // 반환값:
@@ -766,7 +767,11 @@ class MedBuddyViewModel extends ChangeNotifier {
     MedicationSchedule schedule,
     bool medicationStatus,
   ) async {
-    return requestMedicationStatusUpdate(schedule, medicationStatus);
+    return requestMedicationStatusUpdate(
+      schedule,
+      medicationStatus,
+      slotKey: slotKey,
+    );
   }
 
   List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
@@ -785,8 +790,9 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   Future<bool> requestMedicationStatusUpdate(
     MedicationSchedule medicationSchedule,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? slotKey,
+  }) async {
     if (medicationSchedule.medicationID.trim().isEmpty) {
       return false;
     }
@@ -795,6 +801,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       final updatedSchedule = await _activeCheckSchedule.updateMedicationStatus(
         medicationSchedule.medicationID,
         medicationStatus,
+        slotKey: slotKey,
       );
       _todayMedicationScheduleList = _todayMedicationScheduleList
           .map(

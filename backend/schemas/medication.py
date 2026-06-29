@@ -48,8 +48,10 @@ class SavedMedicationCreate(BaseModel):
 # Role: Request DTO for updating today's medication completion status.
 # Attributes:
 #   - medication_status: Whether the medication is completed.
+#   - slot_key: Optional time-slot key for per-dose completion updates.
 class MedicationStatusUpdate(BaseModel):
     medication_status: bool
+    slot_key: Optional[str] = None
 
 
 # Class Name: PatientCodeCreate
