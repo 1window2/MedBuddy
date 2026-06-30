@@ -1,4 +1,4 @@
-# 파일명: test_link_patient_caregiver_control.py
+# 파일명: test_patient_guardian_link_control.py
 # 역할: 환자-보호자 연동 코드 생성, 등록, 해제 control을 검증한다.
 
 import sys
@@ -14,10 +14,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.patient_caregiver_link_entity import (  # noqa: E402
-    _PatientCaregiverLink,
+from entities.patient_guardian_link_entity import (  # noqa: E402
+    _PatientGuardianLink,
     _PatientLinkCode,
 )
 from entities.patient_hash_entity import PATIENT_LINK_CODE_LENGTH  # noqa: E402
@@ -27,7 +27,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class LinkPatientCaregiverTest(unittest.TestCase):
+class PatientGuardianLinkControlTest(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -40,7 +40,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
             bind=self.engine,
         )
         self.db = session_factory()
-        self.control = LinkPatientCaregiver(self.db)
+        self.control = PatientGuardianLinkControl(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -66,22 +66,22 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         code_response = self.control.request_patient_code("patient-a")
         patient_code = code_response["data"]["patient_code"]
 
-        link_response = self.control.register_patient_code("caregiver-a", patient_code)
+        link_response = self.control.register_patient_code("guardian-a", patient_code)
 
         self.assertTrue(link_response["success"])
         link_data = link_response["data"]
         self.assertEqual(link_data["patient_hash"], "patient-a")
-        self.assertEqual(link_data["caregiver_hash"], "caregiver-a")
+        self.assertEqual(link_data["guardian_hash"], "guardian-a")
         self.assertTrue(link_data["linked"])
         self.assertEqual(
-            self.control.get_linked_patient_hash("caregiver-a"),
+            self.control.get_linked_patient_hash("guardian-a"),
             "patient-a",
         )
 
         patient_links = self.control.request_link_page("patient-a")
-        caregiver_links = self.control.request_link_page("caregiver-a")
+        guardian_links = self.control.request_link_page("guardian-a")
         self.assertEqual(len(patient_links["data"]), 1)
-        self.assertEqual(len(caregiver_links["data"]), 1)
+        self.assertEqual(len(guardian_links["data"]), 1)
 
         used_code = (
             self.db.query(_PatientLinkCode)
@@ -89,22 +89,22 @@ class LinkPatientCaregiverTest(unittest.TestCase):
             .first()
         )
         self.assertTrue(used_code.used)
-        self.assertEqual(used_code.caregiver_hash, "caregiver-a")
+        self.assertEqual(used_code.guardian_hash, "guardian-a")
 
     def test_linked_patient_hash_honors_requested_patient(self) -> None:
         patient_a_code = self.control.request_patient_code("patient-a")
         patient_b_code = self.control.request_patient_code("patient-b")
         self.control.register_patient_code(
-            "caregiver-a",
+            "guardian-a",
             patient_a_code["data"]["patient_code"],
         )
         self.control.register_patient_code(
-            "caregiver-a",
+            "guardian-a",
             patient_b_code["data"]["patient_code"],
         )
 
         linked_patient_hash = self.control.get_linked_patient_hash(
-            "caregiver-a",
+            "guardian-a",
             "patient-b",
         )
 
@@ -114,10 +114,10 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         code_response = self.control.request_patient_code("patient-a")
         patient_code = code_response["data"]["patient_code"]
 
-        self.control.register_patient_code("caregiver-a", patient_code)
+        self.control.register_patient_code("guardian-a", patient_code)
 
         with self.assertRaises(HTTPException) as context:
-            self.control.register_patient_code("caregiver-b", patient_code)
+            self.control.register_patient_code("guardian-b", patient_code)
 
         self.assertIn(context.exception.status_code, {404, 409})
 
@@ -131,14 +131,14 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.db.commit()
 
         with self.assertRaises(HTTPException) as context:
-            self.control.register_patient_code("caregiver-a", "EXPIRED1")
+            self.control.register_patient_code("guardian-a", "EXPIRED1")
 
         self.assertEqual(context.exception.status_code, 404)
 
     def test_unlink_requires_participating_user_hash(self) -> None:
         code_response = self.control.request_patient_code("patient-a")
         link_response = self.control.register_patient_code(
-            "caregiver-a",
+            "guardian-a",
             code_response["data"]["patient_code"],
         )
         link_id = link_response["data"]["id"]
@@ -147,15 +147,15 @@ class LinkPatientCaregiverTest(unittest.TestCase):
             self.control.request_unlink(link_id, "stranger")
         self.assertEqual(context.exception.status_code, 404)
 
-        unlink_response = self.control.request_unlink(link_id, "caregiver-a")
+        unlink_response = self.control.request_unlink(link_id, "guardian-a")
 
         self.assertTrue(unlink_response["success"])
         self.assertFalse(unlink_response["data"]["linked"])
-        link_row = self.db.get(_PatientCaregiverLink, link_id)
+        link_row = self.db.get(_PatientGuardianLink, link_id)
         self.assertFalse(link_row.linked)
 
         with self.assertRaises(HTTPException) as missing_context:
-            self.control.get_linked_patient_hash("caregiver-a")
+            self.control.get_linked_patient_hash("guardian-a")
         self.assertEqual(missing_context.exception.status_code, 404)
 
 

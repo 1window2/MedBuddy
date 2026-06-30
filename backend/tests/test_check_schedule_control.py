@@ -15,7 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
-from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
@@ -44,7 +44,7 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = CheckSchedule(self.db)
-        self.link_control = LinkPatientCaregiver(self.db)
+        self.link_control = PatientGuardianLinkControl(self.db)
 
     def tearDown(self) -> None:
         self.db.close()

@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from google import genai
 from sqlalchemy.orm import Session
 
-from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from core.config import settings
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
@@ -22,6 +22,7 @@ from services.saved_medication_retention import SavedMedicationRetentionPolicy
 logger = logging.getLogger(__name__)
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
+# "caregiver" is accepted only as a legacy API role alias.
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
@@ -360,7 +361,7 @@ class RequestHealthRecommendation:
     ) -> str:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
-            return LinkPatientCaregiver(self.db).get_linked_patient_hash(
+            return PatientGuardianLinkControl(self.db).get_linked_patient_hash(
                 user_hash or patient_hash,
                 patient_hash,
             )

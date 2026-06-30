@@ -5,21 +5,22 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from controls.link_patient_caregiver_control import LinkPatientCaregiver
-from entities.notification_setting_entity import (
-    NotificationSetting,
-    _NotificationSetting,
-    default_notification_hour,
-    valid_notification_slot_keys,
+from controls.patient_guardian_link_control import PatientGuardianLinkControl
+from entities.medication_alarm_entity import (
+    MedicationAlarm,
+    _MedicationAlarm,
+    default_alarm_hour,
+    valid_alarm_slot_keys,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 
 
+# "caregiver" is accepted only as a legacy API role alias.
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
 # Class Name: SetNotification
-# Role: Coordinates patient notification settings.
+# Role: Coordinates patient medication alarms.
 # Responsibilities:
 #   - Read medication alarm state by patient and schedule slot.
 #   - Persist enabled medication alarms with selected local times.
@@ -30,24 +31,24 @@ class SetNotification:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # Function Name: requestNotificationSetting
+    # Function Name: requestMedicationAlarm
     # Description:
-    # - Class diagram compatible wrapper for notification setting lookup.
+    # - Class diagram compatible wrapper for medication alarm lookup.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope alarm settings.
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible notification setting list dictionary.
-    def requestNotificationSetting(
+    # - API-compatible medication alarm list dictionary.
+    def requestMedicationAlarm(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_notification_setting(patient_hash, user_hash, role)
+        return self.request_medication_alarm(patient_hash, user_hash, role)
 
-    # Function Name: request_notification_setting
+    # Function Name: request_medication_alarm
     # Description:
     # - Reads all slot alarm settings for one patient scope.
     # Parameters:
@@ -55,8 +56,8 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible notification setting list dictionary.
-    def request_notification_setting(
+    # - API-compatible medication alarm list dictionary.
+    def request_medication_alarm(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
         user_hash: str | None = None,
@@ -70,20 +71,20 @@ class SetNotification:
         rows = {
             row.slot_key: row
             for row in (
-                self.db.query(_NotificationSetting)
-                .filter(_NotificationSetting.patient_hash == normalized_patient_hash)
+                self.db.query(_MedicationAlarm)
+                .filter(_MedicationAlarm.patient_hash == normalized_patient_hash)
                 .all()
             )
         }
         return {
             "success": True,
-            "message": "Notification settings lookup succeeded.",
+            "message": "Medication alarms lookup succeeded.",
             "data": [
                 self._to_response_dict(
                     rows.get(slot_key)
                     or self._default_setting_row(normalized_patient_hash, slot_key)
                 )
-                for slot_key in valid_notification_slot_keys()
+                for slot_key in valid_alarm_slot_keys()
             ],
         }
 
@@ -96,7 +97,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible notification setting dictionary.
+    # - API-compatible medication alarm dictionary.
     def requestAlarmToggle(
         self,
         patient_hash: str,
@@ -115,7 +116,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible notification setting dictionary.
+    # - API-compatible medication alarm dictionary.
     def get_alarm_status(
         self,
         patient_hash: str,
@@ -132,7 +133,7 @@ class SetNotification:
         setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
         return {
             "success": True,
-            "message": "Notification setting lookup succeeded.",
+            "message": "Medication alarm lookup succeeded.",
             "data": self._to_response_dict(
                 setting
                 or self._default_setting_row(
@@ -153,7 +154,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible enabled notification setting dictionary.
+    # - API-compatible enabled medication alarm dictionary.
     def setMedicationAlarm(
         self,
         patient_hash: str,
@@ -183,7 +184,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible enabled notification setting dictionary.
+    # - API-compatible enabled medication alarm dictionary.
     def set_medication_alarm(
         self,
         patient_hash: str,
@@ -204,7 +205,7 @@ class SetNotification:
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
             if setting is None:
-                setting = _NotificationSetting(
+                setting = _MedicationAlarm(
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
                 )
@@ -216,7 +217,7 @@ class SetNotification:
             self.db.refresh(setting)
             return {
                 "success": True,
-                "message": "Notification setting was saved.",
+                "message": "Medication alarm was saved.",
                 "data": self._to_response_dict(setting),
             }
         except IntegrityError:
@@ -231,7 +232,7 @@ class SetNotification:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Notification setting save failed: {exc}",
+                detail=f"Medication alarm save failed: {exc}",
             ) from exc
 
     # Function Name: disableAlarmSetting
@@ -243,7 +244,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible disabled notification setting dictionary.
+    # - API-compatible disabled medication alarm dictionary.
     def disableAlarmSetting(
         self,
         patient_hash: str,
@@ -262,7 +263,7 @@ class SetNotification:
     # - user_hash: Requesting user hash. Used for guardian role resolution.
     # - role: Requesting user role such as patient or guardian.
     # Returns:
-    # - API-compatible disabled notification setting dictionary.
+    # - API-compatible disabled medication alarm dictionary.
     def disable_alarm_setting(
         self,
         patient_hash: str,
@@ -280,10 +281,10 @@ class SetNotification:
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
             if setting is None:
-                setting = _NotificationSetting(
+                setting = _MedicationAlarm(
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
-                    hour=default_notification_hour(normalized_slot_key),
+                    hour=default_alarm_hour(normalized_slot_key),
                     minute=0,
                     enabled=False,
                 )
@@ -293,7 +294,7 @@ class SetNotification:
             self.db.refresh(setting)
             return {
                 "success": True,
-                "message": "Notification setting was disabled.",
+                "message": "Medication alarm was disabled.",
                 "data": self._to_response_dict(setting),
             }
         except IntegrityError:
@@ -306,7 +307,7 @@ class SetNotification:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Notification setting disable failed: {exc}",
+                detail=f"Medication alarm disable failed: {exc}",
             ) from exc
 
     def _resolve_patient_hash(
@@ -317,7 +318,7 @@ class SetNotification:
     ) -> str:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
-            return LinkPatientCaregiver(self.db).get_linked_patient_hash(
+            return PatientGuardianLinkControl(self.db).get_linked_patient_hash(
                 user_hash or patient_hash,
                 patient_hash,
             )
@@ -327,19 +328,19 @@ class SetNotification:
         self,
         patient_hash: str,
         slot_key: str,
-    ) -> _NotificationSetting | None:
+    ) -> _MedicationAlarm | None:
         return (
-            self.db.query(_NotificationSetting)
+            self.db.query(_MedicationAlarm)
             .filter(
-                _NotificationSetting.patient_hash == patient_hash,
-                _NotificationSetting.slot_key == slot_key,
+                _MedicationAlarm.patient_hash == patient_hash,
+                _MedicationAlarm.slot_key == slot_key,
             )
             .first()
         )
 
     def _normalize_slot_key(self, slot_key: str) -> str:
         normalized_slot_key = (slot_key or "").strip().lower()
-        if normalized_slot_key not in valid_notification_slot_keys():
+        if normalized_slot_key not in valid_alarm_slot_keys():
             raise HTTPException(
                 status_code=400,
                 detail="Requested alarm slot is not supported.",
@@ -363,7 +364,7 @@ class SetNotification:
         if setting is None:
             raise HTTPException(
                 status_code=409,
-                detail="Notification setting conflict could not be resolved.",
+                detail="Medication alarm conflict could not be resolved.",
             )
         try:
             setting.hour = hour
@@ -373,14 +374,14 @@ class SetNotification:
             self.db.refresh(setting)
             return {
                 "success": True,
-                "message": "Notification setting was saved.",
+                "message": "Medication alarm was saved.",
                 "data": self._to_response_dict(setting),
             }
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Notification setting save failed: {exc}",
+                detail=f"Medication alarm save failed: {exc}",
             ) from exc
 
     def _disable_existing_alarm_after_conflict(
@@ -392,7 +393,7 @@ class SetNotification:
         if setting is None:
             raise HTTPException(
                 status_code=409,
-                detail="Notification setting conflict could not be resolved.",
+                detail="Medication alarm conflict could not be resolved.",
             )
         try:
             setting.enabled = False
@@ -400,36 +401,36 @@ class SetNotification:
             self.db.refresh(setting)
             return {
                 "success": True,
-                "message": "Notification setting was disabled.",
+                "message": "Medication alarm was disabled.",
                 "data": self._to_response_dict(setting),
             }
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Notification setting disable failed: {exc}",
+                detail=f"Medication alarm disable failed: {exc}",
             ) from exc
 
     def _default_setting_row(
         self,
         patient_hash: str,
         slot_key: str,
-    ) -> NotificationSetting:
-        return NotificationSetting(
+    ) -> MedicationAlarm:
+        return MedicationAlarm(
             patient_hash=patient_hash,
             slot_key=slot_key,
-            hour=default_notification_hour(slot_key),
+            hour=default_alarm_hour(slot_key),
             minute=0,
             enabled=False,
         )
 
     def _to_response_dict(
         self,
-        setting: _NotificationSetting | NotificationSetting,
+        setting: _MedicationAlarm | MedicationAlarm,
     ) -> dict[str, object]:
-        if isinstance(setting, NotificationSetting):
+        if isinstance(setting, MedicationAlarm):
             return setting.to_response_dict()
-        return NotificationSetting(
+        return MedicationAlarm(
             patient_hash=setting.patient_hash,
             slot_key=setting.slot_key,
             hour=setting.hour,

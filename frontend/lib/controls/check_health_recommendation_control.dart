@@ -37,7 +37,7 @@ class CheckHealthRecommendation {
   // - Creates a scoped health recommendation control that reuses this control's HTTP client.
   // Parameters:
   // - patientHash: Patient scope for the recommendation request.
-  // - userHash: Optional caregiver user scope.
+  // - userHash: Optional guardian user scope.
   // - role: Requesting user role.
   // Returns:
   // - CheckHealthRecommendation configured for the selected medication access scope.

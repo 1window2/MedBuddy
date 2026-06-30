@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 
-import '../controls/link_patient_caregiver_control.dart';
-import '../entities/patient_caregiver_link_entity.dart';
+import '../controls/patient_guardian_link_control.dart';
+import '../entities/patient_guardian_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
-// 파일명: link_patient_caregiver_ui_boundary.dart
+// 파일명: patient_guardian_link_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
 
-// 클래스명: LinkPatientCaregiverUI
+// 클래스명: PatientGuardianLinkUI
 // 역할: 환자 코드 생성, 보호자 코드 등록, 연동 목록 조회/해제를 한 화면에서 처리한다.
 // 주요 책임:
 // - 현재 사용자 해시 기준 연동 목록을 조회한다.
 // - 환자용 임시 코드를 생성해 보호자에게 전달할 수 있게 한다.
 // - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
-class LinkPatientCaregiverUI extends StatefulWidget {
+class PatientGuardianLinkUI extends StatefulWidget {
   final String initialUserHash;
   final void Function({
     required String patientHash,
@@ -22,21 +22,21 @@ class LinkPatientCaregiverUI extends StatefulWidget {
     required String role,
   })? onMedicationScopeSelected;
 
-  const LinkPatientCaregiverUI({
+  const PatientGuardianLinkUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
     this.onMedicationScopeSelected,
   });
 
   @override
-  State<LinkPatientCaregiverUI> createState() => _LinkPatientCaregiverUIState();
+  State<PatientGuardianLinkUI> createState() => _PatientGuardianLinkUIState();
 }
 
-class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
+class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
   late final TextEditingController _userHashController;
   late final TextEditingController _patientCodeController;
 
-  List<PatientCaregiverLink> _links = const [];
+  List<PatientGuardianLink> _links = const [];
   String? _patientCode;
   String _statusMessage =
       '\uD604\uC7AC \uC0AC\uC6A9\uC790 \uD574\uC2DC\uB85C \uC5F0\uB3D9 \uC0C1\uD0DC\uB97C \uD655\uC778\uD569\uB2C8\uB2E4.';
@@ -109,7 +109,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
-        final links = await control.requestPatientCaregiverLink();
+        final links = await control.requestPatientGuardianLink();
         if (!mounted) {
           return;
         }
@@ -176,7 +176,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     });
   }
 
-  Future<void> _requestUnlink(PatientCaregiverLink link) async {
+  Future<void> _requestUnlink(PatientGuardianLink link) async {
     final linkID = link.linkID;
     if (linkID == null) {
       setState(() {
@@ -228,15 +228,15 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
   }
 
-  LinkPatientCaregiver _buildControl() {
-    return LinkPatientCaregiver(userHash: _currentUserHash);
+  PatientGuardianLinkControl _buildControl() {
+    return PatientGuardianLinkControl(userHash: _currentUserHash);
   }
 
   String get _currentUserHash {
     return PatientHash.normalizePatientHash(_userHashController.text);
   }
 
-  void _applyMedicationScope(List<PatientCaregiverLink> links) {
+  void _applyMedicationScope(List<PatientGuardianLink> links) {
     final scopeCallback = widget.onMedicationScopeSelected;
     if (scopeCallback == null) {
       return;
@@ -245,7 +245,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final currentUserHash = _currentUserHash;
     for (final link in links) {
       if (link.linked &&
-          link.caregiverID == currentUserHash &&
+          link.guardianID == currentUserHash &&
           link.patientID.trim().isNotEmpty) {
         scopeCallback(
           patientHash: link.patientID,
@@ -505,8 +505,8 @@ class _RegisterPatientCard extends StatelessWidget {
 }
 
 class _LinkListCard extends StatelessWidget {
-  final List<PatientCaregiverLink> links;
-  final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
+  final List<PatientGuardianLink> links;
+  final Future<void> Function(PatientGuardianLink link) onUnlinkRequested;
 
   const _LinkListCard({
     required this.links,
@@ -536,7 +536,7 @@ class _LinkListCard extends StatelessWidget {
 }
 
 class _LinkedUserTile extends StatelessWidget {
-  final PatientCaregiverLink link;
+  final PatientGuardianLink link;
   final VoidCallback onUnlinkRequested;
 
   const _LinkedUserTile({
@@ -587,7 +587,7 @@ class _LinkedUserTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '\uBCF4\uD638\uC790 ${_displayHash(link.caregiverID)}',
+                  '\uBCF4\uD638\uC790 ${_displayHash(link.guardianID)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

@@ -6,13 +6,14 @@ import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
+# "caregiver" is accepted only as a legacy API role alias.
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 
@@ -245,7 +246,7 @@ class CheckSavedMedication:
     ) -> str:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
-            return LinkPatientCaregiver(self.db).get_linked_patient_hash(
+            return PatientGuardianLinkControl(self.db).get_linked_patient_hash(
                 user_hash or patient_hash,
                 patient_hash,
             )

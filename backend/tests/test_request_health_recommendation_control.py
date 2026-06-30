@@ -21,7 +21,7 @@ from controls.request_health_recommendation_control import (  # noqa: E402
 from controls.check_health_recommendation_control import (  # noqa: E402
     CheckHealthRecommendation,
 )
-from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
@@ -166,7 +166,7 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         self._save_medication(item_name="patient-a-tablet", patient_hash="patient-a")
         self._save_medication(item_name="patient-b-tablet", patient_hash="patient-b")
-        link_control = LinkPatientCaregiver(self.db)
+        link_control = PatientGuardianLinkControl(self.db)
         patient_a_code = link_control.request_patient_code("patient-a")
         patient_b_code = link_control.request_patient_code("patient-b")
         link_control.register_patient_code(

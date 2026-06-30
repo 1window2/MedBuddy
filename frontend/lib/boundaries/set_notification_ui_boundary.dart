@@ -11,9 +11,9 @@ import 'package:flutter/material.dart';
 class SetNotificationUI extends StatelessWidget {
   const SetNotificationUI({super.key});
 
-  void clickNotificationSetting() {}
+  void clickMedicationAlarm() {}
 
-  Widget showNotificationSetting() {
+  Widget showMedicationAlarm() {
     return this;
   }
 

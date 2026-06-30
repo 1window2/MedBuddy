@@ -27,7 +27,7 @@ def normalize_patient_hash(patient_hash: str | None) -> str:
 
 # Function Name: generate_patient_link_code
 # Description:
-# - Generates a short share code for UC-6 patient-caregiver linking.
+# - Generates a short share code for UC-6 patient-guardian linking.
 # Returns:
 # - Random uppercase alphanumeric patient link code.
 def generate_patient_link_code() -> str:

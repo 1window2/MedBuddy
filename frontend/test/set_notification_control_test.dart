@@ -1,5 +1,5 @@
 // File Name: set_notification_control_test.dart
-// Role: Verifies medication notification setting API requests and decoding.
+// Role: Verifies medication alarm API requests and decoding.
 
 import 'dart:convert';
 
@@ -9,7 +9,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 
 void main() {
-  test('requestNotificationSetting scopes list request and decodes settings',
+  test('requestMedicationAlarm scopes list request and decodes settings',
       () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
@@ -39,7 +39,7 @@ void main() {
       client: client,
     );
 
-    final settings = await control.requestNotificationSetting();
+    final settings = await control.requestMedicationAlarm();
 
     expect(settings, hasLength(1));
     expect(settings.first.slotKey, 'morning');

@@ -1,5 +1,5 @@
-# File Name: link_patient_caregiver_control.py
-# Role: Control mapped from the LinkPatientCaregiver box in ClassDiagram2.
+# File Name: patient_guardian_link_control.py
+# Role: Control mapped from the PatientGuardianLinkControl box in ClassDiagram2.
 
 from datetime import UTC, datetime, timedelta
 
@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from entities.patient_caregiver_link_entity import (
-    PatientCaregiverLink,
-    _PatientCaregiverLink,
+from entities.patient_guardian_link_entity import (
+    PatientGuardianLink,
+    _PatientGuardianLink,
     _PatientLinkCode,
 )
 from entities.patient_hash_entity import (
@@ -26,26 +26,26 @@ def _utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# Class Name: LinkPatientCaregiver
-# Role: Coordinates patient-caregiver linking and unlinking.
+# Class Name: PatientGuardianLinkControl
+# Role: Coordinates patient-guardian linking and unlinking.
 # Responsibilities:
 #   - Create temporary patient link codes.
-#   - Register a caregiver with a valid patient code.
-#   - List or unlink existing patient-caregiver links.
+#   - Register a guardian with a valid patient code.
+#   - List or unlink existing patient-guardian links.
 # Attributes:
 #   - db: SQLAlchemy session used for link persistence operations.
-class LinkPatientCaregiver:
+class PatientGuardianLinkControl:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # Function Name: requestPatientCaregiverLink
+    # Function Name: requestPatientGuardianLink
     # Description:
     # - Class diagram compatible wrapper for the link page lookup.
     # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
+    # - user_hash: Patient or guardian ownership key.
     # Returns:
     # - API-compatible link list response dictionary.
-    def requestPatientCaregiverLink(
+    def requestPatientGuardianLink(
         self,
         user_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
@@ -55,7 +55,7 @@ class LinkPatientCaregiver:
     # Description:
     # - Class diagram compatible wrapper for reading link rows.
     # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
+    # - user_hash: Patient or guardian ownership key.
     # Returns:
     # - API-compatible link list response dictionary.
     def requestLinkPage(
@@ -66,9 +66,9 @@ class LinkPatientCaregiver:
 
     # Function Name: request_link_page
     # Description:
-    # - Lists active links that include the current patient or caregiver.
+    # - Lists active links that include the current patient or guardian.
     # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
+    # - user_hash: Patient or guardian ownership key.
     # Returns:
     # - API-compatible link list response dictionary.
     def request_link_page(
@@ -77,26 +77,26 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         links = (
-            self.db.query(_PatientCaregiverLink)
+            self.db.query(_PatientGuardianLink)
             .filter(
-                _PatientCaregiverLink.linked.is_(True),
+                _PatientGuardianLink.linked.is_(True),
                 or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                    _PatientGuardianLink.patient_hash == normalized_user_hash,
+                    _PatientGuardianLink.guardian_hash == normalized_user_hash,
                 ),
             )
-            .order_by(_PatientCaregiverLink.id.asc())
+            .order_by(_PatientGuardianLink.id.asc())
             .all()
         )
         return {
             "success": True,
-            "message": "Patient-caregiver link lookup succeeded.",
+            "message": "Patient-guardian link lookup succeeded.",
             "data": [self._to_response_dict(link) for link in links],
         }
 
     # Function Name: request_patient_code
     # Description:
-    # - Creates a temporary patient link code for caregiver registration.
+    # - Creates a temporary patient link code for guardian registration.
     # Parameters:
     # - patient_hash: Patient ownership key encoded in the generated code.
     # Returns:
@@ -137,40 +137,40 @@ class LinkPatientCaregiver:
 
     # Function Name: registerPatientCode
     # Description:
-    # - Class diagram compatible wrapper for caregiver registration.
+    # - Class diagram compatible wrapper for guardian registration.
     # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # - guardian_hash: Guardian ownership key.
     # - patient_code: Temporary patient code.
     # Returns:
     # - API-compatible link response dictionary.
     def registerPatientCode(
         self,
-        caregiver_hash: str,
+        guardian_hash: str,
         patient_code: str,
     ) -> dict[str, object]:
-        return self.register_patient_code(caregiver_hash, patient_code)
+        return self.register_patient_code(guardian_hash, patient_code)
 
     # Function Name: register_patient_code
     # Description:
-    # - Validates a patient code and creates or restores the caregiver link.
+    # - Validates a patient code and creates or restores the guardian link.
     # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # - guardian_hash: Guardian ownership key.
     # - patient_code: Temporary patient code.
     # Returns:
     # - API-compatible link response dictionary.
     def register_patient_code(
         self,
-        caregiver_hash: str,
+        guardian_hash: str,
         patient_code: str,
     ) -> dict[str, object]:
-        normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
+        normalized_guardian_hash = normalize_patient_hash(guardian_hash)
         normalized_patient_code = self._normalize_patient_code(patient_code)
         link_code = self._get_valid_link_code(normalized_patient_code)
 
-        if link_code.patient_hash == normalized_caregiver_hash:
+        if link_code.patient_hash == normalized_guardian_hash:
             raise HTTPException(
                 status_code=400,
-                detail="A caregiver cannot link to the same patient hash.",
+                detail="A guardian cannot link to the same patient hash.",
             )
 
         try:
@@ -183,7 +183,7 @@ class LinkPatientCaregiver:
                 .update(
                     {
                         "used": True,
-                        "caregiver_hash": normalized_caregiver_hash,
+                        "guardian_hash": normalized_guardian_hash,
                     },
                     synchronize_session=False,
                 )
@@ -196,27 +196,27 @@ class LinkPatientCaregiver:
 
             link = self._get_existing_pair(
                 link_code.patient_hash,
-                normalized_caregiver_hash,
+                normalized_guardian_hash,
             )
             if link is None:
-                link_state = PatientCaregiverLink(
+                link_state = PatientGuardianLink(
                     patient_id=link_code.patient_hash,
-                    caregiver_id=normalized_caregiver_hash,
-                ).createPatientCaregiverLink()
-                link = _PatientCaregiverLink(
+                    guardian_id=normalized_guardian_hash,
+                ).createPatientGuardianLink()
+                link = _PatientGuardianLink(
                     patient_hash=link_state.patient_id,
-                    caregiver_hash=link_state.caregiver_id,
+                    guardian_hash=link_state.guardian_id,
                     linked=link_state.linked,
                 )
                 self.db.add(link)
                 self.db.flush()
             else:
-                link_state = PatientCaregiverLink(
+                link_state = PatientGuardianLink(
                     link_id=link.id,
                     patient_id=link.patient_hash,
-                    caregiver_id=link.caregiver_hash,
+                    guardian_id=link.guardian_hash,
                     linked=link.linked,
-                ).createPatientCaregiverLink()
+                ).createPatientGuardianLink()
                 link.linked = link_state.linked
 
             self.db.commit()
@@ -228,12 +228,12 @@ class LinkPatientCaregiver:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Patient-caregiver link registration failed: {exc}",
+                detail=f"Patient-guardian link registration failed: {exc}",
             ) from exc
 
         return {
             "success": True,
-            "message": "Patient-caregiver link was created.",
+            "message": "Patient-guardian link was created.",
             "data": self._to_response_dict(link),
         }
 
@@ -242,7 +242,7 @@ class LinkPatientCaregiver:
     # - Class diagram compatible wrapper for unlinking.
     # Parameters:
     # - link_id: Link row identifier.
-    # - user_hash: Patient or caregiver ownership key allowed to unlink.
+    # - user_hash: Patient or guardian ownership key allowed to unlink.
     # Returns:
     # - API-compatible unlink response dictionary.
     def requestUnlink(
@@ -257,7 +257,7 @@ class LinkPatientCaregiver:
     # - Soft-deletes a link when the requester participates in that link.
     # Parameters:
     # - link_id: Link row identifier.
-    # - user_hash: Patient or caregiver ownership key allowed to unlink.
+    # - user_hash: Patient or guardian ownership key allowed to unlink.
     # Returns:
     # - API-compatible unlink response dictionary.
     def request_unlink(
@@ -267,13 +267,13 @@ class LinkPatientCaregiver:
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         link = (
-            self.db.query(_PatientCaregiverLink)
+            self.db.query(_PatientGuardianLink)
             .filter(
-                _PatientCaregiverLink.id == link_id,
-                _PatientCaregiverLink.linked.is_(True),
+                _PatientGuardianLink.id == link_id,
+                _PatientGuardianLink.linked.is_(True),
                 or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                    _PatientGuardianLink.patient_hash == normalized_user_hash,
+                    _PatientGuardianLink.guardian_hash == normalized_user_hash,
                 ),
             )
             .first()
@@ -281,16 +281,16 @@ class LinkPatientCaregiver:
         if link is None:
             raise HTTPException(
                 status_code=404,
-                detail="Patient-caregiver link was not found.",
+                detail="Patient-guardian link was not found.",
             )
 
         try:
-            link_state = PatientCaregiverLink(
+            link_state = PatientGuardianLink(
                 link_id=link.id,
                 patient_id=link.patient_hash,
-                caregiver_id=link.caregiver_hash,
+                guardian_id=link.guardian_hash,
                 linked=link.linked,
-            ).deletePatientCaregiverLink()
+            ).deletePatientGuardianLink()
             link.linked = link_state.linked
             self.db.commit()
             self.db.refresh(link)
@@ -298,53 +298,53 @@ class LinkPatientCaregiver:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail=f"Patient-caregiver unlink failed: {exc}",
+                detail=f"Patient-guardian unlink failed: {exc}",
             ) from exc
 
         return {
             "success": True,
-            "message": "Patient-caregiver link was removed.",
+            "message": "Patient-guardian link was removed.",
             "data": self._to_response_dict(link),
         }
 
     # Function Name: getLinkedPatientHash
     # Description:
-    # - Reads the first linked patient hash for a caregiver.
+    # - Reads the first linked patient hash for a guardian.
     # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # - guardian_hash: Guardian ownership key.
     # Returns:
     # - Linked patient hash.
     def getLinkedPatientHash(
         self,
-        caregiver_hash: str,
+        guardian_hash: str,
         patient_hash: str | None = None,
     ) -> str:
-        return self.get_linked_patient_hash(caregiver_hash, patient_hash)
+        return self.get_linked_patient_hash(guardian_hash, patient_hash)
 
     # Function Name: get_linked_patient_hash
     # Description:
-    # - Reads the first linked patient hash for a caregiver.
+    # - Reads the first linked patient hash for a guardian.
     # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
+    # - guardian_hash: Guardian ownership key.
     # Returns:
     # - Linked patient hash.
     def get_linked_patient_hash(
         self,
-        caregiver_hash: str,
+        guardian_hash: str,
         patient_hash: str | None = None,
     ) -> str:
-        normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
-        query = self.db.query(_PatientCaregiverLink).filter(
-            _PatientCaregiverLink.caregiver_hash == normalized_caregiver_hash,
-            _PatientCaregiverLink.linked.is_(True),
+        normalized_guardian_hash = normalize_patient_hash(guardian_hash)
+        query = self.db.query(_PatientGuardianLink).filter(
+            _PatientGuardianLink.guardian_hash == normalized_guardian_hash,
+            _PatientGuardianLink.linked.is_(True),
         )
         normalized_patient_hash = normalize_patient_hash(patient_hash or "")
         if normalized_patient_hash != DEFAULT_PATIENT_HASH:
             query = query.filter(
-                _PatientCaregiverLink.patient_hash == normalized_patient_hash
+                _PatientGuardianLink.patient_hash == normalized_patient_hash
             )
 
-        link = query.order_by(_PatientCaregiverLink.id.asc()).first()
+        link = query.order_by(_PatientGuardianLink.id.asc()).first()
         if link is None:
             raise HTTPException(
                 status_code=404,
@@ -391,22 +391,23 @@ class LinkPatientCaregiver:
     def _get_existing_pair(
         self,
         patient_hash: str,
-        caregiver_hash: str,
-    ) -> _PatientCaregiverLink | None:
+        guardian_hash: str,
+    ) -> _PatientGuardianLink | None:
         return (
-            self.db.query(_PatientCaregiverLink)
+            self.db.query(_PatientGuardianLink)
             .filter(
-                _PatientCaregiverLink.patient_hash == patient_hash,
-                _PatientCaregiverLink.caregiver_hash == caregiver_hash,
+                _PatientGuardianLink.patient_hash == patient_hash,
+                _PatientGuardianLink.guardian_hash == guardian_hash,
             )
             .first()
         )
 
-    def _to_response_dict(self, link: _PatientCaregiverLink) -> dict[str, object]:
+    def _to_response_dict(self, link: _PatientGuardianLink) -> dict[str, object]:
         return {
             "id": link.id,
             "patient_hash": link.patient_hash,
-            "caregiver_hash": link.caregiver_hash,
+            "guardian_hash": link.guardian_hash,
+            "caregiver_hash": link.guardian_hash,
             "linked": link.linked,
             "created_at": link.created_at.isoformat() if link.created_at else "",
         }

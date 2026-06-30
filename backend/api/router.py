@@ -11,7 +11,7 @@ from api.dependencies import (
     get_check_schedule,
     get_check_saved_medication,
     get_input_prescription,
-    get_link_patient_caregiver,
+    get_patient_guardian_link_control,
     get_request_health_recommendation,
     get_set_notification,
 )
@@ -19,7 +19,7 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
-from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -27,7 +27,7 @@ from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
     MedicationStatusUpdate,
-    NotificationSettingUpdate,
+    MedicationAlarmUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
     SavedMedicationCreate,
@@ -185,7 +185,7 @@ async def update_medication_status(
     )
 
 
-# Function Name: get_notification_settings
+# Function Name: get_medication_alarms
 # Description:
 # - Returns all medication alarm settings scoped to patient or linked guardian access.
 # Parameters:
@@ -194,22 +194,22 @@ async def update_medication_status(
 # - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
-# - API-compatible notification setting list dictionary.
+# - API-compatible medication alarm list dictionary.
 @router.get("/notification/settings")
-async def get_notification_settings(
+async def get_medication_alarms(
     patient_hash: str = DEFAULT_PATIENT_HASH,
     user_hash: str | None = None,
     role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.request_notification_setting(
+    return set_notification.request_medication_alarm(
         patient_hash,
         user_hash,
         role,
     )
 
 
-# Function Name: get_notification_setting
+# Function Name: get_medication_alarm
 # Description:
 # - Returns one medication alarm status for a schedule slot.
 # Parameters:
@@ -219,9 +219,9 @@ async def get_notification_settings(
 # - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
-# - API-compatible notification setting dictionary.
+# - API-compatible medication alarm dictionary.
 @router.get("/notification/settings/{slot_key}")
-async def get_notification_setting(
+async def get_medication_alarm(
     slot_key: str,
     patient_hash: str = DEFAULT_PATIENT_HASH,
     user_hash: str | None = None,
@@ -236,22 +236,22 @@ async def get_notification_setting(
     )
 
 
-# Function Name: save_notification_setting
+# Function Name: save_medication_alarm
 # Description:
 # - Enables or updates one medication alarm setting for a schedule slot.
 # Parameters:
 # - slot_key: Medication schedule time slot from the route path.
-# - request: NotificationSettingUpdate request DTO.
+# - request: MedicationAlarmUpdate request DTO.
 # - patient_hash: Patient ownership key used to scope alarm setting update.
 # - user_hash: Requesting user hash. Used for guardian role resolution.
 # - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
-# - API-compatible notification setting dictionary.
+# - API-compatible medication alarm dictionary.
 @router.put("/notification/settings/{slot_key}")
-async def save_notification_setting(
+async def save_medication_alarm(
     slot_key: str,
-    request: NotificationSettingUpdate,
+    request: MedicationAlarmUpdate,
     patient_hash: str = DEFAULT_PATIENT_HASH,
     user_hash: str | None = None,
     role: str = "patient",
@@ -267,7 +267,7 @@ async def save_notification_setting(
     )
 
 
-# Function Name: disable_notification_setting
+# Function Name: disable_medication_alarm
 # Description:
 # - Disables one medication alarm setting for a schedule slot.
 # Parameters:
@@ -277,9 +277,9 @@ async def save_notification_setting(
 # - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
-# - API-compatible notification setting dictionary.
+# - API-compatible medication alarm dictionary.
 @router.patch("/notification/settings/{slot_key}/disable")
-async def disable_notification_setting(
+async def disable_medication_alarm(
     slot_key: str,
     patient_hash: str = DEFAULT_PATIENT_HASH,
     user_hash: str | None = None,
@@ -331,81 +331,81 @@ async def get_health_recommendation(
         ) from exc
 
 
-# Function Name: get_patient_caregiver_links
+# Function Name: get_patient_guardian_links
 # Description:
-# - Returns active patient-caregiver links for a patient or caregiver hash.
+# - Returns active patient-guardian links for a patient or guardian hash.
 # Parameters:
-# - user_hash: Patient or caregiver ownership key.
-# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# - user_hash: Patient or guardian ownership key.
+# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
 # Returns:
 # - API-compatible link list dictionary.
 @router.get("/link/list")
-async def get_patient_caregiver_links(
+async def get_patient_guardian_links(
     user_hash: str = DEFAULT_PATIENT_HASH,
-    link_patient_caregiver: LinkPatientCaregiver = Depends(
-        get_link_patient_caregiver
+    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
+        get_patient_guardian_link_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver.request_link_page(user_hash)
+    return patient_guardian_link_control.request_link_page(user_hash)
 
 
 # Function Name: create_patient_link_code
 # Description:
-# - Creates a temporary patient code for UC-6 caregiver registration.
+# - Creates a temporary patient code for UC-6 guardian registration.
 # Parameters:
 # - request: PatientCodeCreate request DTO.
-# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
 # Returns:
 # - API-compatible patient code dictionary.
 @router.post("/link/code")
 async def create_patient_link_code(
     request: PatientCodeCreate,
-    link_patient_caregiver: LinkPatientCaregiver = Depends(
-        get_link_patient_caregiver
+    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
+        get_patient_guardian_link_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver.request_patient_code(request.patient_hash)
+    return patient_guardian_link_control.request_patient_code(request.patient_hash)
 
 
 # Function Name: register_patient_link_code
 # Description:
-# - Registers a caregiver with a valid temporary patient code.
+# - Registers a guardian with a valid temporary patient code.
 # Parameters:
 # - request: PatientCodeRegister request DTO.
-# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
 # Returns:
 # - API-compatible link dictionary.
 @router.post("/link/register")
 async def register_patient_link_code(
     request: PatientCodeRegister,
-    link_patient_caregiver: LinkPatientCaregiver = Depends(
-        get_link_patient_caregiver
+    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
+        get_patient_guardian_link_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver.register_patient_code(
-        request.caregiver_hash,
+    return patient_guardian_link_control.register_patient_code(
+        request.guardian_hash,
         request.patient_code,
     )
 
 
-# Function Name: unlink_patient_caregiver
+# Function Name: unlink_patient_guardian
 # Description:
-# - Removes one active patient-caregiver link for a participating user hash.
+# - Removes one active patient-guardian link for a participating user hash.
 # Parameters:
-# - link_id: Patient-caregiver link primary key from route path.
-# - user_hash: Patient or caregiver ownership key allowed to unlink.
-# - link_patient_caregiver: LinkPatientCaregiver injected by FastAPI.
+# - link_id: Patient-guardian link primary key from route path.
+# - user_hash: Patient or guardian ownership key allowed to unlink.
+# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
 # Returns:
 # - API-compatible unlink dictionary.
 @router.delete("/link/{link_id}")
-async def unlink_patient_caregiver(
+async def unlink_patient_guardian(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    link_patient_caregiver: LinkPatientCaregiver = Depends(
-        get_link_patient_caregiver
+    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
+        get_patient_guardian_link_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver.request_unlink(link_id, user_hash)
+    return patient_guardian_link_control.request_unlink(link_id, user_hash)
 
 
 # Function Name: delete_medication

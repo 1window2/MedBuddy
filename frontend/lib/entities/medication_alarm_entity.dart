@@ -1,21 +1,21 @@
 import 'medication_reminder_entity.dart';
 
-// File Name: notification_setting_entity.dart
-// Role: Defines a patient-scoped medication notification setting model.
+// File Name: medication_alarm_entity.dart
+// Role: Defines a patient-scoped medication alarm model.
 
-// Class Name: NotificationSetting
+// Class Name: MedicationAlarm
 // Role: Represents one medication alarm setting for a patient and schedule slot.
 // Responsibilities:
 // - Preserve the patient scope, slot key, local alarm time, and enabled state.
-// - Convert backend notification setting JSON into the reminder model used by UI.
-class NotificationSetting {
+// - Convert backend medication alarm JSON into the reminder model used by UI.
+class MedicationAlarm {
   final String patientHash;
   final String slotKey;
   final int hour;
   final int minute;
   final bool enabled;
 
-  const NotificationSetting({
+  const MedicationAlarm({
     required this.patientHash,
     required this.slotKey,
     required this.hour,
@@ -23,9 +23,9 @@ class NotificationSetting {
     required this.enabled,
   });
 
-  factory NotificationSetting.fromJson(Map<String, dynamic> json) {
+  factory MedicationAlarm.fromJson(Map<String, dynamic> json) {
     final slotKey = json['slot_key']?.toString() ?? 'morning';
-    return NotificationSetting(
+    return MedicationAlarm(
       patientHash: json['patient_hash']?.toString() ?? '',
       slotKey: slotKey,
       hour: _readInt(
@@ -47,12 +47,12 @@ class NotificationSetting {
     };
   }
 
-  // Function Name: saveNotificationSetting
+  // Function Name: saveMedicationAlarm
   // Description:
   // - Class diagram compatible operation that returns the current payload.
   // Returns:
-  // - JSON-compatible notification setting dictionary.
-  Map<String, dynamic> saveNotificationSetting() {
+  // - JSON-compatible medication alarm dictionary.
+  Map<String, dynamic> saveMedicationAlarm() {
     return toJson();
   }
 

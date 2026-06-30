@@ -24,7 +24,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
-  final VoidCallback? onPatientCaregiverLinkRequested;
+  final VoidCallback? onPatientGuardianLinkRequested;
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
@@ -40,7 +40,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPrescriptionGalleryRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
-    required this.onPatientCaregiverLinkRequested,
+    required this.onPatientGuardianLinkRequested,
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
@@ -56,7 +56,7 @@ class InputPrescriptionUI extends StatelessWidget {
         onPrescriptionGalleryRequested = null,
         onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
-        onPatientCaregiverLinkRequested = null,
+        onPatientGuardianLinkRequested = null,
         onUserSettingRequested = null,
         isAnalyzing = true;
 
@@ -111,9 +111,9 @@ class InputPrescriptionUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 22),
                     _LinkCard(
-                      title: text.patientCaregiverLink,
+                      title: text.patientGuardianLink,
                       userSetting: userSetting,
-                      onTap: onPatientCaregiverLinkRequested,
+                      onTap: onPatientGuardianLinkRequested,
                     ),
                   ],
                 ),
@@ -694,8 +694,8 @@ class _HomeText {
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
-  String get patientCaregiverLink =>
-      isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
+  String get patientGuardianLink =>
+      isEnglish ? 'Patient/Guardian Link' : '환자/보호자 연동';
   String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
   String get cameraOptionSubtitle =>
       isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';

@@ -1,23 +1,23 @@
-// 파일명: patient_caregiver_link_entity.dart
+// 파일명: patient_guardian_link_entity.dart
 // 역할: 환자와 보호자 사이의 연동 상태를 표현하는 모델을 정의한다.
 
-// 클래스명: PatientCaregiverLink
+// 클래스명: PatientGuardianLink
 // 역할: 환자 해시, 보호자 해시, 연동 여부, 생성 시각을 앱 내부에서 보관한다.
 // 주요 책임:
 // - 서버 응답 JSON을 Dart 모델로 변환한다.
 // - 연동 생성/삭제 상태를 불변 객체 형태로 표현한다.
 // - API 전송이나 테스트에 사용할 JSON을 생성한다.
-class PatientCaregiverLink {
+class PatientGuardianLink {
   final int? linkID;
   final String patientID;
-  final String caregiverID;
+  final String guardianID;
   final bool linked;
   final DateTime? createdAt;
 
-  const PatientCaregiverLink({
+  const PatientGuardianLink({
     this.linkID,
     this.patientID = '',
-    this.caregiverID = '',
+    this.guardianID = '',
     this.linked = false,
     this.createdAt,
   });
@@ -29,15 +29,20 @@ class PatientCaregiverLink {
   // 매개변수:
   // - json: 환자-보호자 연동 API 응답 JSON
   // 반환값:
-  // - PatientCaregiverLink 인스턴스
-  factory PatientCaregiverLink.fromJson(Map<String, dynamic> json) {
-    return PatientCaregiverLink(
+  // - PatientGuardianLink 인스턴스
+  factory PatientGuardianLink.fromJson(Map<String, dynamic> json) {
+    return PatientGuardianLink(
       linkID: _readInt(json['id'] ?? json['link_id'] ?? json['linkID']),
       patientID: _readString(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      caregiverID: _readString(
-        json['caregiver_hash'] ?? json['caregiver_id'] ?? json['caregiverID'],
+      guardianID: _readString(
+        json['guardian_hash'] ??
+            json['guardian_id'] ??
+            json['guardianID'] ??
+            json['caregiver_hash'] ??
+            json['caregiver_id'] ??
+            json['caregiverID'],
       ),
       linked: _readBool(json['linked']),
       createdAt: _readDate(json['created_at'] ?? json['createdAt']),
@@ -53,17 +58,17 @@ class PatientCaregiverLink {
     return {
       'id': linkID,
       'patient_hash': patientID,
-      'caregiver_hash': caregiverID,
+      'guardian_hash': guardianID,
       'linked': linked,
       'created_at': createdAt?.toIso8601String(),
     };
   }
 
-  PatientCaregiverLink createPatientCaregiverLink() {
+  PatientGuardianLink createPatientGuardianLink() {
     return copyWith(linked: true);
   }
 
-  PatientCaregiverLink deletePatientCaregiverLink() {
+  PatientGuardianLink deletePatientGuardianLink() {
     return copyWith(linked: false);
   }
 
@@ -71,18 +76,18 @@ class PatientCaregiverLink {
   // 함수역할:
   // - 기존 연동 정보를 유지하면서 일부 필드만 변경한 새 객체를 만든다.
   // 반환값:
-  // - 변경값이 반영된 PatientCaregiverLink 인스턴스
-  PatientCaregiverLink copyWith({
+  // - 변경값이 반영된 PatientGuardianLink 인스턴스
+  PatientGuardianLink copyWith({
     int? linkID,
     String? patientID,
-    String? caregiverID,
+    String? guardianID,
     bool? linked,
     DateTime? createdAt,
   }) {
-    return PatientCaregiverLink(
+    return PatientGuardianLink(
       linkID: linkID ?? this.linkID,
       patientID: patientID ?? this.patientID,
-      caregiverID: caregiverID ?? this.caregiverID,
+      guardianID: guardianID ?? this.guardianID,
       linked: linked ?? this.linked,
       createdAt: createdAt ?? this.createdAt,
     );

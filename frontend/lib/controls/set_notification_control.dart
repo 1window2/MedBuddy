@@ -7,7 +7,7 @@ import '../entities/medication_reminder_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 
-const Set<String> _validNotificationSlotKeys = {
+const Set<String> _validAlarmSlotKeys = {
   'morning',
   'lunch',
   'evening',
@@ -15,7 +15,7 @@ const Set<String> _validNotificationSlotKeys = {
 };
 
 // File Name: set_notification_control.dart
-// Role: Handles medication notification setting API calls.
+// Role: Handles medication alarm API calls.
 
 // Class Name: SetNotification
 // Role: Coordinates patient medication alarm setting requests with the backend.
@@ -42,10 +42,10 @@ class SetNotification {
 
   // Function Name: forScope
   // Description:
-  // - Creates a scoped notification control that reuses this control's HTTP client.
+  // - Creates a scoped alarm control that reuses this control's HTTP client.
   // Parameters:
-  // - patientHash: Patient scope for notification settings.
-  // - userHash: Optional caregiver user scope.
+  // - patientHash: Patient scope for medication alarms.
+  // - userHash: Optional guardian user scope.
   // - role: Requesting user role.
   // Returns:
   // - SetNotification configured for the selected medication access scope.
@@ -63,12 +63,12 @@ class SetNotification {
     );
   }
 
-  // Function Name: requestNotificationSetting
+  // Function Name: requestMedicationAlarm
   // Description:
   // - Requests all schedule-slot medication alarm settings.
   // Returns:
   // - MedicationReminderSetting list decoded from the backend response.
-  Future<List<MedicationReminderSetting>> requestNotificationSetting() async {
+  Future<List<MedicationReminderSetting>> requestMedicationAlarm() async {
     try {
       final response = await _client
           .get(_buildNotificationUri('notification/settings'))
@@ -77,7 +77,7 @@ class SetNotification {
 
       if (response.statusCode != 200) {
         throw StateError(
-          'Notification settings lookup failed (${response.statusCode}): '
+          'Medication alarms lookup failed (${response.statusCode}): '
           '${_extractErrorDetail(responseBody)}',
         );
       }
@@ -99,12 +99,12 @@ class SetNotification {
       rethrow;
     } catch (error, stackTrace) {
       developer.log(
-        'Notification settings lookup failed.',
+        'Medication alarms lookup failed.',
         name: 'SetNotification',
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Notification settings lookup failed.');
+      throw StateError('Medication alarms lookup failed.');
     }
   }
 
@@ -138,7 +138,7 @@ class SetNotification {
 
       if (response.statusCode != 200) {
         throw StateError(
-          'Notification setting lookup failed (${response.statusCode}): '
+          'Medication alarm lookup failed (${response.statusCode}): '
           '${_extractErrorDetail(responseBody)}',
         );
       }
@@ -148,12 +148,12 @@ class SetNotification {
       rethrow;
     } catch (error, stackTrace) {
       developer.log(
-        'Notification setting lookup failed.',
+        'Medication alarm lookup failed.',
         name: 'SetNotification',
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Notification setting lookup failed.');
+      throw StateError('Medication alarm lookup failed.');
     }
   }
 
@@ -187,7 +187,7 @@ class SetNotification {
 
       if (response.statusCode != 200) {
         throw StateError(
-          'Notification setting save failed (${response.statusCode}): '
+          'Medication alarm save failed (${response.statusCode}): '
           '${_extractErrorDetail(responseBody)}',
         );
       }
@@ -197,12 +197,12 @@ class SetNotification {
       rethrow;
     } catch (error, stackTrace) {
       developer.log(
-        'Notification setting save failed.',
+        'Medication alarm save failed.',
         name: 'SetNotification',
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Notification setting save failed.');
+      throw StateError('Medication alarm save failed.');
     }
   }
 
@@ -227,7 +227,7 @@ class SetNotification {
 
       if (response.statusCode != 200) {
         throw StateError(
-          'Notification setting disable failed (${response.statusCode}): '
+          'Medication alarm disable failed (${response.statusCode}): '
           '${_extractErrorDetail(responseBody)}',
         );
       }
@@ -237,12 +237,12 @@ class SetNotification {
       rethrow;
     } catch (error, stackTrace) {
       developer.log(
-        'Notification setting disable failed.',
+        'Medication alarm disable failed.',
         name: 'SetNotification',
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Notification setting disable failed.');
+      throw StateError('Medication alarm disable failed.');
     }
   }
 
@@ -254,7 +254,7 @@ class SetNotification {
         Map<String, dynamic>.from(rawSetting),
       );
     }
-    throw StateError('Server response did not include a notification setting.');
+    throw StateError('Server response did not include a medication alarm.');
   }
 
   Map<String, dynamic> _decodeMap(String responseBody) {
@@ -290,8 +290,8 @@ class SetNotification {
 
   String _normalizeSlotKey(String slotKey) {
     final normalizedSlotKey = slotKey.trim().toLowerCase();
-    if (!_validNotificationSlotKeys.contains(normalizedSlotKey)) {
-      throw StateError('Notification slot is not supported.');
+    if (!_validAlarmSlotKeys.contains(normalizedSlotKey)) {
+      throw StateError('Medication alarm slot is not supported.');
     }
     return normalizedSlotKey;
   }

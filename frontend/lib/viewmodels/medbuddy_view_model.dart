@@ -618,8 +618,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     bool notifyAfterLoad = true,
   }) async {
     try {
-      final settings =
-          await _activeSetNotification.requestNotificationSetting();
+      final settings = await _activeSetNotification.requestMedicationAlarm();
       final settingsBySlot = {
         for (final slotKey in _reminderSlotKeys)
           slotKey: MedicationReminderSetting.defaults(slotKey),

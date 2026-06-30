@@ -1,5 +1,5 @@
 # File Name: test_set_notification_control.py
-# Role: Verifies medication notification setting persistence and scoping.
+# Role: Verifies medication alarm persistence and scoping.
 
 import sys
 import unittest
@@ -14,12 +14,12 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from controls.set_notification_control import SetNotification  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.notification_setting_entity import (  # noqa: E402
-    _NotificationSetting,
-    ensure_notification_setting_schema,
+from entities.medication_alarm_entity import (  # noqa: E402
+    _MedicationAlarm,
+    ensure_medication_alarm_schema,
 )
 
 
@@ -30,7 +30,7 @@ class SetNotificationTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_notification_setting_schema(self.engine)
+        ensure_medication_alarm_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -38,14 +38,14 @@ class SetNotificationTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = SetNotification(self.db)
-        self.link_control = LinkPatientCaregiver(self.db)
+        self.link_control = PatientGuardianLinkControl(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
     def test_default_settings_return_every_schedule_slot(self) -> None:
-        response = self.control.request_notification_setting("patient-a")
+        response = self.control.request_medication_alarm("patient-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(
@@ -59,7 +59,7 @@ class SetNotificationTest(unittest.TestCase):
         self.assertTrue(
             all(setting["is_enabled"] is False for setting in response["data"])
         )
-        self.assertEqual(self.db.query(_NotificationSetting).count(), 0)
+        self.assertEqual(self.db.query(_MedicationAlarm).count(), 0)
 
     def test_set_and_disable_alarm_setting_are_persisted(self) -> None:
         save_response = self.control.set_medication_alarm(
@@ -76,7 +76,7 @@ class SetNotificationTest(unittest.TestCase):
         self.assertEqual(save_response["data"]["minute"], 30)
         self.assertTrue(save_response["data"]["is_enabled"])
 
-        row = self.db.query(_NotificationSetting).first()
+        row = self.db.query(_MedicationAlarm).first()
         self.assertIsNotNone(row)
         self.assertEqual(row.patient_hash, "patient-a")
         self.assertEqual(row.slot_key, "morning")
@@ -128,7 +128,7 @@ class SetNotificationTest(unittest.TestCase):
         self.assertEqual(response["data"]["slot_key"], "lunch")
         self.assertTrue(response["data"]["is_enabled"])
 
-        guardian_list = self.control.request_notification_setting(
+        guardian_list = self.control.request_medication_alarm(
             patient_hash="patient-a",
             user_hash="guardian-a",
             role="guardian",
@@ -170,7 +170,7 @@ class SetNotificationTest(unittest.TestCase):
                     )
                 )
 
-            ensure_notification_setting_schema(legacy_engine)
+            ensure_medication_alarm_schema(legacy_engine)
 
             with legacy_engine.connect() as connection:
                 columns = {
