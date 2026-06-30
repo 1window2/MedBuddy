@@ -1,12 +1,16 @@
 # 파일명: health_recommendation_cache_entity.py
 # 역할: 약 조합 기반 건강 관리 추천 결과를 로컬 DB에 캐시한다.
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _HealthRecommendationCache
@@ -27,4 +31,4 @@ class _HealthRecommendationCache(Base):
     )
     recommendation_key = Column(String, index=True, nullable=False)
     payload = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utc_now)

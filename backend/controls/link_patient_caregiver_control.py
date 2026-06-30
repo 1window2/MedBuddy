@@ -1,7 +1,7 @@
 # File Name: link_patient_caregiver_control.py
 # Role: Control mapped from the LinkPatientCaregiver box in ClassDiagram2.
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import or_
@@ -20,6 +20,10 @@ from entities.patient_hash_entity import (
 
 _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # Class Name: LinkPatientCaregiver
@@ -102,7 +106,7 @@ class LinkPatientCaregiver:
         patient_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        expires_at = datetime.utcnow() + timedelta(minutes=_PATIENT_CODE_TTL_MINUTES)
+        expires_at = _utc_now() + timedelta(minutes=_PATIENT_CODE_TTL_MINUTES)
 
         try:
             patient_code = self._generate_unique_patient_code(normalized_patient_hash)
@@ -377,7 +381,7 @@ class LinkPatientCaregiver:
             )
             .first()
         )
-        if link_code is None or link_code.expires_at < datetime.utcnow():
+        if link_code is None or link_code.expires_at < _utc_now():
             raise HTTPException(
                 status_code=404,
                 detail="Patient code was not found or has expired.",

@@ -124,4 +124,28 @@ void main() {
     expect(setting.slotKey, 'evening');
     expect(setting.isEnabled, isFalse);
   });
+
+  test('setMedicationAlarm rejects unsupported slot keys before request',
+      () async {
+    var requestCalled = false;
+    final client = MockClient((http.Request request) async {
+      requestCalled = true;
+      return http.Response('{}', 500);
+    });
+    final control = SetNotification(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    await expectLater(
+      control.setMedicationAlarm(
+        slotKey: '../bad',
+        hour: 9,
+        minute: 0,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(requestCalled, isFalse);
+  });
 }

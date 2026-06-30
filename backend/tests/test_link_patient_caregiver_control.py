@@ -3,7 +3,7 @@
 
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -21,6 +21,10 @@ from entities.patient_caregiver_link_entity import (  # noqa: E402
     _PatientLinkCode,
 )
 from entities.patient_hash_entity import PATIENT_LINK_CODE_LENGTH  # noqa: E402
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class LinkPatientCaregiverTest(unittest.TestCase):
@@ -121,7 +125,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         expired_code = _PatientLinkCode(
             patient_hash="patient-a",
             patient_code="EXPIRED1",
-            expires_at=datetime.utcnow() - timedelta(minutes=1),
+            expires_at=utc_now() - timedelta(minutes=1),
         )
         self.db.add(expired_code)
         self.db.commit()

@@ -4,7 +4,16 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint, inspect, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    String,
+    UniqueConstraint,
+    inspect,
+    text,
+)
 from sqlalchemy.engine import Engine
 
 from core.database import Base
@@ -144,7 +153,8 @@ def valid_notification_slot_keys() -> tuple[str, ...]:
 
 # Function Name: ensure_notification_setting_schema
 # Description:
-# - Creates the notification setting table and indexes for existing SQLite DBs.
+# - Creates or upgrades the notification setting table for existing SQLite DBs.
+# - SQLAlchemy create_all creates missing tables but does not alter existing tables.
 # Parameters:
 # - db_engine: SQLAlchemy engine bound to the application database.
 # Returns:
@@ -157,11 +167,83 @@ def ensure_notification_setting_schema(db_engine: Engine) -> None:
             tables=[_NotificationSetting.__table__],
         )
 
+    inspector = inspect(db_engine)
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns(_NotificationSetting.__tablename__)
+    }
+    optional_columns = {
+        "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
+        "slot_key": "VARCHAR DEFAULT 'morning'",
+        "hour": "INTEGER DEFAULT 8",
+        "minute": "INTEGER DEFAULT 0",
+        "enabled": "BOOLEAN DEFAULT 0",
+        "updated_at": "DATETIME",
+    }
+
     with db_engine.begin() as connection:
+        for column_name, column_type in optional_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {_NotificationSetting.__tablename__} "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+        connection.execute(
+            text(
+                f"UPDATE {_NotificationSetting.__tablename__} "
+                "SET patient_hash = :default_patient_hash "
+                "WHERE patient_hash IS NULL OR patient_hash = ''"
+            ),
+            {"default_patient_hash": DEFAULT_PATIENT_HASH},
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_NotificationSetting.__tablename__} "
+                "SET slot_key = 'morning' WHERE slot_key IS NULL OR slot_key = ''"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_NotificationSetting.__tablename__} "
+                "SET hour = 8 WHERE hour IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_NotificationSetting.__tablename__} "
+                "SET minute = 0 WHERE minute IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_NotificationSetting.__tablename__} "
+                "SET enabled = 0 WHERE enabled IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"DELETE FROM {_NotificationSetting.__tablename__} "
+                "WHERE id NOT IN ("
+                f"SELECT MAX(id) FROM {_NotificationSetting.__tablename__} "
+                "GROUP BY patient_hash, slot_key"
+                ")"
+            )
+        )
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS "
                 f"ix_{_NotificationSetting.__tablename__}_scope "
+                f"ON {_NotificationSetting.__tablename__} "
+                "(patient_hash, slot_key)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                f"uq_{_NotificationSetting.__tablename__}_scope_slot "
                 f"ON {_NotificationSetting.__tablename__} "
                 "(patient_hash, slot_key)"
             )

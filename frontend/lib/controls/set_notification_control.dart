@@ -7,6 +7,13 @@ import '../entities/medication_reminder_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 
+const Set<String> _validNotificationSlotKeys = {
+  'morning',
+  'lunch',
+  'evening',
+  'bedtime',
+};
+
 // File Name: set_notification_control.dart
 // Role: Handles medication notification setting API calls.
 
@@ -120,9 +127,12 @@ class SetNotification {
   // Returns:
   // - MedicationReminderSetting for the requested slot.
   Future<MedicationReminderSetting> getAlarmStatus(String slotKey) async {
+    final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
       final response = await _client
-          .get(_buildNotificationUri('notification/settings/$slotKey'))
+          .get(
+            _buildNotificationUri('notification/settings/$normalizedSlotKey'),
+          )
           .timeout(const Duration(seconds: 30));
       final responseBody = utf8.decode(response.bodyBytes);
 
@@ -161,10 +171,11 @@ class SetNotification {
     required int hour,
     required int minute,
   }) async {
+    final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
       final response = await _client
           .put(
-            _buildNotificationUri('notification/settings/$slotKey'),
+            _buildNotificationUri('notification/settings/$normalizedSlotKey'),
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode({
               'hour': hour,
@@ -203,10 +214,14 @@ class SetNotification {
   // Returns:
   // - Disabled MedicationReminderSetting.
   Future<MedicationReminderSetting> disableAlarmSetting(String slotKey) async {
+    final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
       final response = await _client
           .patch(
-              _buildNotificationUri('notification/settings/$slotKey/disable'))
+            _buildNotificationUri(
+              'notification/settings/$normalizedSlotKey/disable',
+            ),
+          )
           .timeout(const Duration(seconds: 30));
       final responseBody = utf8.decode(response.bodyBytes);
 
@@ -271,6 +286,14 @@ class SetNotification {
           'user_hash': userHash!.trim(),
       },
     );
+  }
+
+  String _normalizeSlotKey(String slotKey) {
+    final normalizedSlotKey = slotKey.trim().toLowerCase();
+    if (!_validNotificationSlotKeys.contains(normalizedSlotKey)) {
+      throw StateError('Notification slot is not supported.');
+    }
+    return normalizedSlotKey;
   }
 
   void dispose() {

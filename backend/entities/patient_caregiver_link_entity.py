@@ -1,12 +1,16 @@
 # File Name: patient_caregiver_link_entity.py
 # Role: Entity and persistence models mapped from PatientCaregiverLink in ClassDiagram2.
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
 
 from core.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class _PatientCaregiverLink(Base):
@@ -23,7 +27,7 @@ class _PatientCaregiverLink(Base):
     patient_hash = Column(String, nullable=False, index=True)
     caregiver_hash = Column(String, nullable=False, index=True)
     linked = Column(Boolean, nullable=False, default=True, server_default="1")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
 
 
 class _PatientLinkCode(Base):
@@ -33,7 +37,7 @@ class _PatientLinkCode(Base):
     patient_hash = Column(String, nullable=False, index=True)
     patient_code = Column(String, nullable=False, unique=True, index=True)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
     used = Column(Boolean, nullable=False, default=False, server_default="0")
     caregiver_hash = Column(String, nullable=True, index=True)
 

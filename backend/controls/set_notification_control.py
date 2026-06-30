@@ -2,6 +2,7 @@
 # Role: Control class for patient medication alarm settings.
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -218,6 +219,14 @@ class SetNotification:
                 "message": "Notification setting was saved.",
                 "data": self._to_response_dict(setting),
             }
+        except IntegrityError:
+            self.db.rollback()
+            return self._update_existing_alarm_after_conflict(
+                normalized_patient_hash,
+                normalized_slot_key,
+                hour,
+                minute,
+            )
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
@@ -287,6 +296,12 @@ class SetNotification:
                 "message": "Notification setting was disabled.",
                 "data": self._to_response_dict(setting),
             }
+        except IntegrityError:
+            self.db.rollback()
+            return self._disable_existing_alarm_after_conflict(
+                normalized_patient_hash,
+                normalized_slot_key,
+            )
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
@@ -336,6 +351,64 @@ class SetNotification:
             raise HTTPException(status_code=400, detail="Alarm hour is invalid.")
         if minute < 0 or minute > 59:
             raise HTTPException(status_code=400, detail="Alarm minute is invalid.")
+
+    def _update_existing_alarm_after_conflict(
+        self,
+        patient_hash: str,
+        slot_key: str,
+        hour: int,
+        minute: int,
+    ) -> dict[str, object]:
+        setting = self._find_setting(patient_hash, slot_key)
+        if setting is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Notification setting conflict could not be resolved.",
+            )
+        try:
+            setting.hour = hour
+            setting.minute = minute
+            setting.enabled = True
+            self.db.commit()
+            self.db.refresh(setting)
+            return {
+                "success": True,
+                "message": "Notification setting was saved.",
+                "data": self._to_response_dict(setting),
+            }
+        except Exception as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Notification setting save failed: {exc}",
+            ) from exc
+
+    def _disable_existing_alarm_after_conflict(
+        self,
+        patient_hash: str,
+        slot_key: str,
+    ) -> dict[str, object]:
+        setting = self._find_setting(patient_hash, slot_key)
+        if setting is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Notification setting conflict could not be resolved.",
+            )
+        try:
+            setting.enabled = False
+            self.db.commit()
+            self.db.refresh(setting)
+            return {
+                "success": True,
+                "message": "Notification setting was disabled.",
+                "data": self._to_response_dict(setting),
+            }
+        except Exception as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Notification setting disable failed: {exc}",
+            ) from exc
 
     def _default_setting_row(
         self,
