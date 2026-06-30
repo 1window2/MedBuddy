@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and caregiver-linked views.
+> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-guardian linked views.
 
 ## Key Features
 
@@ -26,22 +26,22 @@
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
 - Saved medications retain dosage schedule fields for today's medication schedule.
-- Today's schedule supports patient-scoped and caregiver-scoped status updates.
+- Today's schedule supports patient-scoped and guardian-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
 - Saved medication records are retained through their medication period and cleaned up after the configured retention window.
 
-### Patient and Caregiver Link Flow
+### Patient and Guardian Link Flow
 
 - Patients can create a temporary link code.
-- Caregivers can register the code, view linked patient medication data, and unlink when needed.
-- Patient/caregiver scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
+- Guardians can register the code, view linked patient medication data, and unlink when needed.
+- Patient/guardian scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
 
 ### Health Recommendations and Reminders
 
 - The backend can generate patient-scoped health recommendations using saved medication context.
 - The frontend includes health recommendation UI state and API controls.
-- Local notification support provides per-slot medication reminder scheduling for demo use.
+- Local notification support provides persisted per-slot medication reminder scheduling for demo use.
 
 ## Architecture Discipline
 
@@ -49,7 +49,7 @@ MedBuddy is implemented around the project UML diagrams and follows a Boundary-C
 
 - **Boundary/UI** classes render screens and collect user input.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, and external services.
-- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, user settings, and patient-caregiver links.
+- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, user settings, and patient-guardian links.
 - Backend routers remain thin boundary adapters around control classes.
 
 When adding code, prefer extending the existing class skeletons and UML-aligned flow instead of adding ad hoc shortcuts between unrelated layers.

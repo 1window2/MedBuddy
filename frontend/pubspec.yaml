@@ -1,7 +1,7 @@
 name: medbuddy_frontend
 description: A new Flutter project for MedBuddy.
 publish_to: 'none'
-version: 0.0.4+4
+version: 0.0.5+5
 
 environment:
   sdk: '>=3.1.0 <4.0.0'

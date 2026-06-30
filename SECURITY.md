@@ -9,8 +9,9 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.0.4-alpha` | Current alpha demo target | Security fixes should be applied here first. |
-| `v0.0.3-alpha` | Superseded alpha demo | Update to `v0.0.4-alpha` unless a targeted backport is explicitly needed. |
+| `v0.0.5-alpha` | Current alpha demo target | Security fixes should be applied here first. |
+| `v0.0.4-alpha` | Superseded alpha demo | Update to `v0.0.5-alpha` unless a targeted backport is explicitly needed. |
+| `v0.0.3-alpha` | Superseded alpha demo | No routine security backports. |
 | `v0.0.2-alpha` | Superseded alpha demo | No routine security backports. |
 | `v0.0.1-alpha` | Superseded alpha demo | No routine security backports. |
 
