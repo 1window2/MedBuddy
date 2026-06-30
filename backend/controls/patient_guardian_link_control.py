@@ -135,6 +135,19 @@ class PatientGuardianLinkControl:
             },
         }
 
+    # Function Name: createPatientCode
+    # Description:
+    # - Class diagram compatible wrapper for creating a temporary patient code.
+    # Parameters:
+    # - patient_hash: Patient ownership key encoded in the generated code.
+    # Returns:
+    # - API-compatible code response dictionary.
+    def createPatientCode(
+        self,
+        patient_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
+        return self.request_patient_code(patient_hash)
+
     # Function Name: registerPatientCode
     # Description:
     # - Class diagram compatible wrapper for guardian registration.
@@ -246,6 +259,21 @@ class PatientGuardianLinkControl:
     # Returns:
     # - API-compatible unlink response dictionary.
     def requestUnlink(
+        self,
+        link_id: int,
+        user_hash: str = DEFAULT_PATIENT_HASH,
+    ) -> dict[str, object]:
+        return self.request_unlink(link_id, user_hash)
+
+    # Function Name: deletePatientGuardianLink
+    # Description:
+    # - Class diagram compatible wrapper for unlinking one patient-guardian link.
+    # Parameters:
+    # - link_id: Link row identifier.
+    # - user_hash: Patient or guardian ownership key allowed to unlink.
+    # Returns:
+    # - API-compatible unlink response dictionary.
+    def deletePatientGuardianLink(
         self,
         link_id: int,
         user_hash: str = DEFAULT_PATIENT_HASH,

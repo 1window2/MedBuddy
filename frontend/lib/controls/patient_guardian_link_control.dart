@@ -114,6 +114,15 @@ class PatientGuardianLinkControl {
     }
   }
 
+  // Function Name: createPatientCode
+  // Description:
+  // - Class diagram compatible wrapper for creating a patient link code.
+  // Returns:
+  // - Generated patient code.
+  Future<String> createPatientCode() {
+    return requestPatientCode();
+  }
+
   // Function Name: registerPatientCode
   // Description:
   // - Registers the current guardian hash with a patient code.
@@ -189,6 +198,17 @@ class PatientGuardianLinkControl {
       );
       throw StateError('Unlink failed.');
     }
+  }
+
+  // Function Name: deletePatientGuardianLink
+  // Description:
+  // - Class diagram compatible wrapper for deleting a patient-guardian link.
+  // Parameters:
+  // - linkId: Patient-guardian link identifier.
+  // Returns:
+  // - Updated patient-guardian link.
+  Future<PatientGuardianLink> deletePatientGuardianLink(int linkId) {
+    return requestUnlink(linkId);
   }
 
   PatientGuardianLink _decodeSingleLink(dynamic rawItem) {

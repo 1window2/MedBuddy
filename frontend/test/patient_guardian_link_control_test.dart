@@ -79,6 +79,34 @@ void main() {
     expect(patientCode, 'ABCD1234');
   });
 
+  test('createPatientCode preserves the diagram-level control name', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/link/code');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'patient_hash': 'patient-a',
+            'patient_code': 'WXYZ5678',
+            'expires_at': '2026-06-17T00:15:00',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = PatientGuardianLinkControl(
+      baseUrl: 'http://localhost',
+      userHash: 'patient-a',
+      client: client,
+    );
+
+    final patientCode = await control.createPatientCode();
+
+    expect(patientCode, 'WXYZ5678');
+  });
+
   test('registerPatientCode sends guardian hash and patient code', () async {
     late Map<String, dynamic> requestBody;
     final client = MockClient((http.Request request) async {
@@ -139,6 +167,38 @@ void main() {
     );
 
     final link = await control.requestUnlink(7);
+
+    expect(link.linkID, 7);
+    expect(link.linked, isFalse);
+  });
+
+  test('deletePatientGuardianLink preserves the diagram-level control name',
+      () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'DELETE');
+      expect(request.url.path, '/link/7');
+      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'id': 7,
+            'patient_hash': 'patient-a',
+            'guardian_hash': 'guardian-a',
+            'linked': false,
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = PatientGuardianLinkControl(
+      baseUrl: 'http://localhost',
+      userHash: 'guardian-a',
+      client: client,
+    );
+
+    final link = await control.deletePatientGuardianLink(7);
 
     expect(link.linkID, 7);
     expect(link.linked, isFalse);

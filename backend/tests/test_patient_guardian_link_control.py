@@ -62,6 +62,14 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.assertIsNotNone(link_code)
         self.assertFalse(link_code.used)
 
+    def test_diagram_patient_code_wrapper_delegates_to_code_creation(self) -> None:
+        response = self.control.createPatientCode("patient-a")
+
+        self.assertTrue(response["success"])
+        data = response["data"]
+        self.assertEqual(data["patient_hash"], "patient-a")
+        self.assertEqual(len(data["patient_code"]), PATIENT_LINK_CODE_LENGTH)
+
     def test_register_patient_code_creates_scoped_link(self) -> None:
         code_response = self.control.request_patient_code("patient-a")
         patient_code = code_response["data"]["patient_code"]
@@ -147,7 +155,7 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
             self.control.request_unlink(link_id, "stranger")
         self.assertEqual(context.exception.status_code, 404)
 
-        unlink_response = self.control.request_unlink(link_id, "guardian-a")
+        unlink_response = self.control.deletePatientGuardianLink(link_id, "guardian-a")
 
         self.assertTrue(unlink_response["success"])
         self.assertFalse(unlink_response["data"]["linked"])
