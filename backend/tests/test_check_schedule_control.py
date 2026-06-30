@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -254,6 +254,70 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
         self.assertFalse(response["data"][0]["medication_status"])
+
+    def test_today_schedule_batches_completion_lookup(self) -> None:
+        first_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="first-tablet",
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="second-tablet",
+        )
+        self.db.add_all(
+            [
+                _MedicationCompletion(
+                    saved_medication_id=first_medication.id,
+                    patient_hash="patient-a",
+                    schedule_date=date.today(),
+                    slot_key="morning",
+                    completed=True,
+                ),
+                _MedicationCompletion(
+                    saved_medication_id=second_medication.id,
+                    patient_hash="patient-a",
+                    schedule_date=date.today(),
+                    slot_key="lunch",
+                    completed=True,
+                ),
+            ]
+        )
+        self.db.commit()
+        completion_select_count = 0
+
+        def count_completion_select(
+            _connection: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            nonlocal completion_select_count
+            normalized_statement = " ".join(statement.lower().split())
+            if (
+                normalized_statement.startswith("select")
+                and "from medication_completions" in normalized_statement
+            ):
+                completion_select_count += 1
+
+        event.listen(
+            self.engine,
+            "before_cursor_execute",
+            count_completion_select,
+        )
+        try:
+            response = self.control.request_today_medication_schedule("patient-a")
+        finally:
+            event.remove(
+                self.engine,
+                "before_cursor_execute",
+                count_completion_select,
+            )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(response["data"]), 2)
+        self.assertEqual(completion_select_count, 1)
 
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         medication = self._saved_medication(patient_hash=DEFAULT_PATIENT_HASH)

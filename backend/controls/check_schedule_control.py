@@ -96,10 +96,23 @@ class CheckSchedule:
             .order_by(_SavedMedication.id.asc())
             .all()
         )
-        active_schedules = [
-            self._to_schedule_dict(medication, today)
+        active_medications = [
+            medication
             for medication in medications
             if self._is_active_today(medication, today)
+        ]
+        completion_rows_by_medication_id = self._completion_rows_by_medication_id(
+            active_medications,
+            normalized_patient_hash,
+            today,
+        )
+        active_schedules = [
+            self._to_schedule_dict(
+                medication,
+                today,
+                completion_rows_by_medication_id.get(int(medication.id), []),
+            )
+            for medication in active_medications
         ]
         return {
             "success": True,
@@ -246,11 +259,13 @@ class CheckSchedule:
         self,
         medication: _SavedMedication,
         schedule_date: date | None = None,
+        completion_rows: list[_MedicationCompletion] | None = None,
     ) -> dict[str, object]:
         target_date = schedule_date or date.today()
         schedule = self._to_schedule(
             medication,
             target_date,
+            completion_rows,
         ).getTodayMedicationSchedule()
         return {
             "medication_id": schedule.medication_id,
@@ -327,11 +342,13 @@ class CheckSchedule:
         self,
         medication: _SavedMedication,
         schedule_date: date | None = None,
+        completion_rows: list[_MedicationCompletion] | None = None,
     ) -> MedicationSchedule:
         target_date = schedule_date or date.today()
         slot_statuses = self._slot_statuses_for_medication(
             medication,
             target_date,
+            completion_rows,
         )
         is_completed_today = self._all_slots_completed(slot_statuses)
         return MedicationSchedule(
@@ -404,6 +421,7 @@ class CheckSchedule:
         self,
         medication: _SavedMedication,
         schedule_date: date,
+        completion_rows: list[_MedicationCompletion] | None = None,
     ) -> dict[str, bool]:
         patient_hash = normalize_patient_hash(
             medication.patient_hash or DEFAULT_PATIENT_HASH
@@ -412,20 +430,62 @@ class CheckSchedule:
             slot_key: self._is_legacy_completed_on(medication, schedule_date)
             for slot_key in self._slot_keys_for_medication(medication)
         }
-        completions = (
-            self.db.query(_MedicationCompletion)
-            .filter(
-                _MedicationCompletion.saved_medication_id == medication.id,
-                _MedicationCompletion.patient_hash == patient_hash,
-                _MedicationCompletion.schedule_date == schedule_date,
+        completions = completion_rows
+        if completions is None:
+            completions = (
+                self.db.query(_MedicationCompletion)
+                .filter(
+                    _MedicationCompletion.saved_medication_id == medication.id,
+                    _MedicationCompletion.patient_hash == patient_hash,
+                    _MedicationCompletion.schedule_date == schedule_date,
+                )
+                .all()
             )
-            .all()
-        )
         if completions:
             for completion in completions:
                 if completion.slot_key in slot_statuses:
                     slot_statuses[completion.slot_key] = bool(completion.completed)
         return slot_statuses
+
+    # Function Name: _completion_rows_by_medication_id
+    # Description:
+    # - Batch-loads completion rows for active schedules to avoid one query per
+    #   medication during today's schedule lookup.
+    # Parameters:
+    # - medications: Active saved medication rows for the requested date.
+    # - patient_hash: Normalized patient ownership key.
+    # - schedule_date: Date used for completion lookup.
+    # Returns:
+    # - Completion rows grouped by saved medication id.
+    def _completion_rows_by_medication_id(
+        self,
+        medications: list[_SavedMedication],
+        patient_hash: str,
+        schedule_date: date,
+    ) -> dict[int, list[_MedicationCompletion]]:
+        medication_ids = [
+            int(medication.id)
+            for medication in medications
+            if medication.id is not None
+        ]
+        if not medication_ids:
+            return {}
+
+        completion_rows = (
+            self.db.query(_MedicationCompletion)
+            .filter(
+                _MedicationCompletion.saved_medication_id.in_(medication_ids),
+                _MedicationCompletion.patient_hash == patient_hash,
+                _MedicationCompletion.schedule_date == schedule_date,
+            )
+            .all()
+        )
+        grouped_rows: dict[int, list[_MedicationCompletion]] = {}
+        for completion in completion_rows:
+            grouped_rows.setdefault(int(completion.saved_medication_id), []).append(
+                completion
+            )
+        return grouped_rows
 
     # Function Name: _materialize_missing_completion_slots
     # Description:
