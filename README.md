@@ -6,8 +6,6 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and caregiver-linked views.
 
-Current demo target: **v0.0.4-alpha** (`frontend` app version `0.0.4+4`).
-
 ## Key Features
 
 ### Prescription and Pill-Envelope Analysis
@@ -74,7 +72,7 @@ When adding code, prefer extending the existing class skeletons and UML-aligned 
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/Korean%20Public%20Drug%20Data-009900?style=for-the-badge)
+![Public Data](https://img.shields.io/badge/공공데이터포털-009900?style=for-the-badge)
 
 ### Collaboration
 
@@ -83,7 +81,8 @@ When adding code, prefer extending the existing class skeletons and UML-aligned 
 
 ## UI / UX Design
 
-Figma: [MedBuddy Design](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy)
+#### Figma: [MedBuddy Design](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy)
+- Designed by [@onlyone130](https://github.com/onlyone130)
 
 ## Getting Started
 
@@ -219,7 +218,7 @@ Before committing, also check:
 
 | Profile | Name | Role | GitHub |
 | :---: | :---: | :---: | :---: |
-| <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Developer & AI Pipeline Architecture | [@1window2](https://github.com/1window2) |
-| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Backend Developer & AI Logic | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
-| <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | Backend Developer & Compliance Specialist | [@jeeon0318](https://github.com/jeeon0318) |
-| <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | Frontend Designer & UI/UX Lead | [@onlyone130](https://github.com/onlyone130) |
+| <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Architecture & AI Pipeline Lead | [@1window2](https://github.com/1window2) |
+| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Full-Stack Feature Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
+| <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | UML Documentation & Legal Compliance Lead | [@jeeon0318](https://github.com/jeeon0318) |
+| <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | UI/UX Design Lead | [@onlyone130](https://github.com/onlyone130) |
