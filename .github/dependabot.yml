@@ -8,6 +8,11 @@ updates:
     labels:
       - "dependencies"
       - "backend"
+    ignore:
+      # Backend CI currently targets Python 3.11; numpy 2.5+ requires Python 3.12.
+      - dependency-name: "numpy"
+        versions:
+          - ">=2.5.0"
 
   # GitHub Actions update settings
   - package-ecosystem: "github-actions"

@@ -1,0 +1,17 @@
+# Keep source and configuration files stable across Windows and CI.
+* text=auto eol=lf
+
+# Binary assets and build artifacts must never be line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.ttf binary
+*.otf binary
+*.apk binary
+*.aab binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary

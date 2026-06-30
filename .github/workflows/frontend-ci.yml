@@ -2,7 +2,7 @@ name: Flutter CI
 
 on:
   push:
-    branches: [ "main" ] 
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -32,16 +32,16 @@ jobs:
       with:
         flutter-version: '3.41.5'
         channel: 'stable'
+        cache: true
 
     - name: Package Get
       run: flutter pub get
 
     - name: Dart Code Analysis
-      run: flutter analyze
+      run: flutter analyze --no-pub
 
-    # - name: Run Flutter Tests
-    #   run: flutter test
+    - name: Run Flutter Tests
+      run: flutter test --no-pub
 
-      # build까지 필요없을 때 주석처리 요망
     - name: Android APK Build Test
       run: flutter build apk --debug
