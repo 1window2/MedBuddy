@@ -34,7 +34,7 @@ class MedicationReminderSetting {
       slotKey: slotKey,
       hour: _readInt(json['hour'], defaultHourFor(slotKey)),
       minute: _readInt(json['minute'], 0),
-      isEnabled: json['is_enabled'] == true,
+      isEnabled: json['is_enabled'] == true || json['enabled'] == true,
     );
   }
 

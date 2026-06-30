@@ -1,30 +1,77 @@
-// 파일명: notification_setting_entity.dart
-// 역할: 복약 알림 설정 기능을 위한 데이터 모델 placeholder를 정의한다.
+import 'medication_reminder_entity.dart';
 
-// 클래스명: NotificationSetting
-// 역할: 환자, 약, 알림 시간, 활성 상태를 하나의 알림 설정으로 표현한다.
-// 주요 책임:
-// - 후속 복약 알림 기능에서 사용할 필드 구조를 미리 고정한다.
-// - 아직 구현되지 않은 저장 기능 호출을 명확히 차단한다.
+// File Name: notification_setting_entity.dart
+// Role: Defines a patient-scoped medication notification setting model.
+
+// Class Name: NotificationSetting
+// Role: Represents one medication alarm setting for a patient and schedule slot.
+// Responsibilities:
+// - Preserve the patient scope, slot key, local alarm time, and enabled state.
+// - Convert backend notification setting JSON into the reminder model used by UI.
 class NotificationSetting {
-  final String patientID;
-  final String medicationID;
-  final String alarmTime;
+  final String patientHash;
+  final String slotKey;
+  final int hour;
+  final int minute;
   final bool enabled;
 
   const NotificationSetting({
-    this.patientID = '',
-    this.medicationID = '',
-    this.alarmTime = '',
-    this.enabled = false,
+    required this.patientHash,
+    required this.slotKey,
+    required this.hour,
+    required this.minute,
+    required this.enabled,
   });
 
-  // 함수명: saveNotificationSetting
-  // 함수역할:
-  // - 복약 알림 저장 기능이 아직 구현되지 않았음을 명시한다.
-  // 반환값:
-  // - 현재는 항상 UnsupportedError 발생
-  void saveNotificationSetting() {
-    throw UnsupportedError('알림 설정 저장 기능은 아직 구현되지 않았습니다.');
+  factory NotificationSetting.fromJson(Map<String, dynamic> json) {
+    final slotKey = json['slot_key']?.toString() ?? 'morning';
+    return NotificationSetting(
+      patientHash: json['patient_hash']?.toString() ?? '',
+      slotKey: slotKey,
+      hour: _readInt(
+        json['hour'],
+        MedicationReminderSetting.defaultHourFor(slotKey),
+      ),
+      minute: _readInt(json['minute'], 0),
+      enabled: json['is_enabled'] == true || json['enabled'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'patient_hash': patientHash,
+      'slot_key': slotKey,
+      'hour': hour,
+      'minute': minute,
+      'is_enabled': enabled,
+    };
+  }
+
+  // Function Name: saveNotificationSetting
+  // Description:
+  // - Class diagram compatible operation that returns the current payload.
+  // Returns:
+  // - JSON-compatible notification setting dictionary.
+  Map<String, dynamic> saveNotificationSetting() {
+    return toJson();
+  }
+
+  MedicationReminderSetting toMedicationReminderSetting() {
+    return MedicationReminderSetting(
+      slotKey: slotKey,
+      hour: hour,
+      minute: minute,
+      isEnabled: enabled,
+    );
+  }
+
+  static int _readInt(dynamic value, int fallback) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 }

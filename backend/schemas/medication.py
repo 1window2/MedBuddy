@@ -54,6 +54,16 @@ class MedicationStatusUpdate(BaseModel):
     slot_key: Optional[str] = None
 
 
+# Class Name: NotificationSettingUpdate
+# Role: Request DTO for saving one medication alarm setting.
+# Attributes:
+#   - hour: 24-hour local alarm hour.
+#   - minute: Local alarm minute.
+class NotificationSettingUpdate(BaseModel):
+    hour: int
+    minute: int = 0
+
+
 # Class Name: PatientCodeCreate
 # Role: Request DTO for creating a temporary patient link code.
 # Attributes:

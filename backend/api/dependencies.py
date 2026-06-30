@@ -11,6 +11,7 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.set_notification_control import SetNotification
 
 
 # Function Name: get_input_prescription
@@ -85,3 +86,16 @@ def get_link_patient_caregiver(
     db: Session = Depends(get_db),
 ) -> LinkPatientCaregiver:
     return LinkPatientCaregiver(db=db)
+
+
+# Function Name: get_set_notification
+# Description:
+# - Builds the medication notification setting control with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - SetNotification instance.
+def get_set_notification(
+    db: Session = Depends(get_db),
+) -> SetNotification:
+    return SetNotification(db=db)

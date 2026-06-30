@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
+import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('setMedicationAccessScope persists selected guardian medication scope',
@@ -76,5 +78,52 @@ void main() {
     await viewModel.fetchHealthRecommendation();
 
     expect(viewModel.healthRecommendation?.dietRecommendation, 'diet');
+  });
+
+  test('loadMedicationReminderSettings uses selected medication access scope',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/notification/settings');
+      expect(request.url.queryParameters['patient_hash'], 'patient-b');
+      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['role'], 'guardian');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': [
+            {
+              'patient_hash': 'patient-b',
+              'slot_key': 'morning',
+              'hour': 7,
+              'minute': 45,
+              'is_enabled': true,
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      setNotification: SetNotification(
+        baseUrl: 'http://localhost',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-b',
+      userHash: 'guardian-a',
+      role: 'guardian',
+    );
+    await viewModel.loadMedicationReminderSettings();
+
+    final setting = viewModel.medicationReminderSettings['morning'];
+    expect(setting?.hour, 7);
+    expect(setting?.minute, 45);
+    expect(setting?.isEnabled, isTrue);
   });
 }

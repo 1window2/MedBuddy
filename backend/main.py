@@ -11,9 +11,11 @@ from core.database import Base, engine
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
+from entities import notification_setting_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities.medication_completion_entity import ensure_medication_completion_schema
+from entities.notification_setting_entity import ensure_notification_setting_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 
 
@@ -42,6 +44,7 @@ def create_app() -> FastAPI:
     Base.metadata.create_all(bind=engine)
     ensure_saved_medication_schema(engine)
     ensure_medication_completion_schema(engine)
+    ensure_notification_setting_schema(engine)
 
     app = FastAPI(title="MedBuddy API", version="1.0.0")
     app.include_router(

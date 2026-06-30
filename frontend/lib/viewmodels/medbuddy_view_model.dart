@@ -9,6 +9,7 @@ import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
+import '../controls/set_notification_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/health_recommendation_entity.dart';
 import '../entities/medication_detail_entity.dart';
@@ -64,11 +65,13 @@ class MedBuddyViewModel extends ChangeNotifier {
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
   final CheckHealthRecommendation checkHealthRecommendation;
+  final SetNotification setNotification;
   final ManageUserSetting manageUserSetting;
   final MedicationNotificationService notificationService;
   CheckSavedMedication? _scopedCheckSavedMedication;
   CheckSchedule? _scopedCheckSchedule;
   CheckHealthRecommendation? _scopedCheckHealthRecommendation;
+  SetNotification? _scopedSetNotification;
 
   String _medicationPatientHash = PatientHash.defaultPatientHash;
   String? _medicationUserHash;
@@ -176,6 +179,12 @@ class MedBuddyViewModel extends ChangeNotifier {
   final Map<String, MedicationReminderSetting> _medicationReminderSettings = {};
   Map<String, MedicationReminderSetting> get medicationReminderSettings =>
       Map.unmodifiable(_medicationReminderSettings);
+  static const List<String> _reminderSlotKeys = [
+    'morning',
+    'lunch',
+    'evening',
+    'bedtime',
+  ];
 
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
@@ -183,6 +192,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
     CheckHealthRecommendation? checkHealthRecommendation,
+    SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
     MedicationNotificationService? notificationService,
   })  : inputPrescription = inputPrescription ?? InputPrescription(),
@@ -192,6 +202,7 @@ class MedBuddyViewModel extends ChangeNotifier {
         checkSchedule = checkSchedule ?? CheckSchedule(),
         checkHealthRecommendation =
             checkHealthRecommendation ?? CheckHealthRecommendation(),
+        setNotification = setNotification ?? SetNotification(),
         manageUserSetting = manageUserSetting ?? ManageUserSetting(),
         notificationService =
             notificationService ?? MedicationNotificationService.instance;
@@ -606,25 +617,28 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> loadMedicationReminderSettings({
     bool notifyAfterLoad = true,
   }) async {
-    final preferences = await SharedPreferences.getInstance();
-    for (final slotKey in ['morning', 'lunch', 'evening', 'bedtime']) {
-      final rawSetting = preferences.getString(_reminderStorageKey(slotKey));
-      if (rawSetting == null || rawSetting.trim().isEmpty) {
-        _medicationReminderSettings[slotKey] =
-            MedicationReminderSetting.defaults(slotKey);
-        continue;
-      }
-
-      try {
-        final decodedSetting = jsonDecode(rawSetting);
-        if (decodedSetting is Map<String, dynamic>) {
-          _medicationReminderSettings[slotKey] =
-              MedicationReminderSetting.fromJson(decodedSetting);
+    try {
+      final settings =
+          await _activeSetNotification.requestNotificationSetting();
+      final settingsBySlot = {
+        for (final slotKey in _reminderSlotKeys)
+          slotKey: MedicationReminderSetting.defaults(slotKey),
+      };
+      for (final setting in settings) {
+        if (_reminderSlotKeys.contains(setting.slotKey)) {
+          settingsBySlot[setting.slotKey] = setting;
         }
-      } catch (_) {
-        _medicationReminderSettings[slotKey] =
-            MedicationReminderSetting.defaults(slotKey);
       }
+      _medicationReminderSettings
+        ..clear()
+        ..addAll(settingsBySlot);
+
+      final preferences = await SharedPreferences.getInstance();
+      for (final setting in settingsBySlot.values) {
+        await _cacheMedicationReminderSetting(preferences, setting);
+      }
+    } catch (_) {
+      await _loadMedicationReminderSettingsFromCache();
     }
 
     if (notifyAfterLoad) {
@@ -650,13 +664,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     required int minute,
     required List<MedicationSchedule> schedules,
   }) async {
-    final setting = MedicationReminderSetting(
-      slotKey: slotKey,
-      hour: hour,
-      minute: minute,
-      isEnabled: true,
-    );
-
     final hasPermission = await notificationService.requestPermission();
     if (!hasPermission) {
       _statusMessage = _isEnglishSetting
@@ -666,28 +673,48 @@ class MedBuddyViewModel extends ChangeNotifier {
       return false;
     }
 
-    await notificationService.scheduleDailyReminder(
-      id: setting.notificationId,
-      slotKey: slotKey,
-      slotTitle: slotTitle,
-      hour: hour,
-      minute: minute,
-      medicationNames:
-          schedules.map((schedule) => schedule.displayName).toList(),
-      language: userSetting.language,
-    );
+    try {
+      final setting = await _activeSetNotification.setMedicationAlarm(
+        slotKey: slotKey,
+        hour: hour,
+        minute: minute,
+      );
 
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _reminderStorageKey(slotKey),
-      jsonEncode(setting.toJson()),
-    );
-    _medicationReminderSettings[slotKey] = setting;
-    _statusMessage = _isEnglishSetting
-        ? '$slotTitle reminder is set for ${setting.timeLabel}.'
-        : '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
-    notifyListeners();
-    return true;
+      await notificationService.scheduleDailyReminder(
+        id: setting.notificationId,
+        slotKey: setting.slotKey,
+        slotTitle: slotTitle,
+        hour: setting.hour,
+        minute: setting.minute,
+        medicationNames:
+            schedules.map((schedule) => schedule.displayName).toList(),
+        language: userSetting.language,
+      );
+
+      final preferences = await SharedPreferences.getInstance();
+      await _cacheMedicationReminderSetting(preferences, setting);
+      _medicationReminderSettings[setting.slotKey] = setting;
+      _statusMessage = _isEnglishSetting
+          ? '$slotTitle reminder is set for ${setting.timeLabel}.'
+          : '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
+      notifyListeners();
+      return true;
+    } on StateError catch (error) {
+      _statusMessage = error.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      try {
+        await _activeSetNotification.disableAlarmSetting(slotKey);
+      } catch (_) {
+        // Backend rollback is best-effort after local notification registration fails.
+      }
+      _statusMessage = _isEnglishSetting
+          ? 'Could not set the $slotTitle reminder.'
+          : '$slotTitle 알림을 설정하지 못했습니다.';
+      notifyListeners();
+      return false;
+    }
   }
 
   // 함수명: requestMedicationReminderCancel
@@ -702,18 +729,13 @@ class MedBuddyViewModel extends ChangeNotifier {
     required String slotKey,
     required String slotTitle,
   }) async {
-    final currentSetting = _medicationReminderSettings[slotKey] ??
-        MedicationReminderSetting.defaults(slotKey);
-    final disabledSetting = currentSetting.copyWith(isEnabled: false);
-
     try {
-      await notificationService.cancelReminder(currentSetting.notificationId);
+      final disabledSetting =
+          await _activeSetNotification.disableAlarmSetting(slotKey);
+      await notificationService.cancelReminder(disabledSetting.notificationId);
       final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(
-        _reminderStorageKey(slotKey),
-        jsonEncode(disabledSetting.toJson()),
-      );
-      _medicationReminderSettings[slotKey] = disabledSetting;
+      await _cacheMedicationReminderSetting(preferences, disabledSetting);
+      _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
           : '$slotTitle 알림을 해제했습니다.';
@@ -729,7 +751,49 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   String _reminderStorageKey(String slotKey) {
+    final userScope = _medicationUserHash ?? _medicationPatientHash;
+    return 'medbuddy_medication_reminder_'
+        '${_medicationRole}_${userScope}_${_medicationPatientHash}_$slotKey';
+  }
+
+  String _legacyReminderStorageKey(String slotKey) {
     return 'medbuddy_medication_reminder_$slotKey';
+  }
+
+  Future<void> _cacheMedicationReminderSetting(
+    SharedPreferences preferences,
+    MedicationReminderSetting setting,
+  ) async {
+    await preferences.setString(
+      _reminderStorageKey(setting.slotKey),
+      jsonEncode(setting.toJson()),
+    );
+  }
+
+  Future<void> _loadMedicationReminderSettingsFromCache() async {
+    final preferences = await SharedPreferences.getInstance();
+    for (final slotKey in _reminderSlotKeys) {
+      final rawSetting = preferences.getString(_reminderStorageKey(slotKey)) ??
+          preferences.getString(_legacyReminderStorageKey(slotKey));
+      if (rawSetting == null || rawSetting.trim().isEmpty) {
+        _medicationReminderSettings[slotKey] =
+            MedicationReminderSetting.defaults(slotKey);
+        continue;
+      }
+
+      try {
+        final decodedSetting = jsonDecode(rawSetting);
+        if (decodedSetting is Map<String, dynamic>) {
+          _medicationReminderSettings[slotKey] =
+              MedicationReminderSetting.fromJson(decodedSetting);
+          continue;
+        }
+      } catch (_) {
+        // Invalid cache entries are ignored and replaced with defaults.
+      }
+      _medicationReminderSettings[slotKey] =
+          MedicationReminderSetting.defaults(slotKey);
+    }
   }
 
   // 함수명: isMedicationDoseCompleted
@@ -946,10 +1010,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   CheckHealthRecommendation get _activeCheckHealthRecommendation =>
       _scopedCheckHealthRecommendation ?? checkHealthRecommendation;
 
+  SetNotification get _activeSetNotification =>
+      _scopedSetNotification ?? setNotification;
+
   void _rebuildMedicationScopeControls() {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
+    _scopedSetNotification?.dispose();
     _scopedCheckSavedMedication = CheckSavedMedication(
       baseUrl: checkSavedMedication.baseUrl,
       patientHash: _medicationPatientHash,
@@ -967,6 +1035,11 @@ class MedBuddyViewModel extends ChangeNotifier {
       userHash: _medicationUserHash,
       role: _medicationRole,
     );
+    _scopedSetNotification = setNotification.forScope(
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
   }
 
   @override
@@ -974,11 +1047,13 @@ class MedBuddyViewModel extends ChangeNotifier {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
+    _scopedSetNotification?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
     checkHealthRecommendation.dispose();
+    setNotification.dispose();
     super.dispose();
   }
 }

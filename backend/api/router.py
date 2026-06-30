@@ -13,6 +13,7 @@ from api.dependencies import (
     get_input_prescription,
     get_link_patient_caregiver,
     get_request_health_recommendation,
+    get_set_notification,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
@@ -20,11 +21,13 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
     MedicationStatusUpdate,
+    NotificationSettingUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
     SavedMedicationCreate,
@@ -179,6 +182,115 @@ async def update_medication_status(
         user_hash,
         role,
         request.slot_key,
+    )
+
+
+# Function Name: get_notification_settings
+# Description:
+# - Returns all medication alarm settings scoped to patient or linked guardian access.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope alarm setting lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - set_notification: SetNotification injected by FastAPI.
+# Returns:
+# - API-compatible notification setting list dictionary.
+@router.get("/notification/settings")
+async def get_notification_settings(
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    set_notification: SetNotification = Depends(get_set_notification),
+) -> dict[str, object]:
+    return set_notification.request_notification_setting(
+        patient_hash,
+        user_hash,
+        role,
+    )
+
+
+# Function Name: get_notification_setting
+# Description:
+# - Returns one medication alarm status for a schedule slot.
+# Parameters:
+# - slot_key: Medication schedule time slot from the route path.
+# - patient_hash: Patient ownership key used to scope alarm setting lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - set_notification: SetNotification injected by FastAPI.
+# Returns:
+# - API-compatible notification setting dictionary.
+@router.get("/notification/settings/{slot_key}")
+async def get_notification_setting(
+    slot_key: str,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    set_notification: SetNotification = Depends(get_set_notification),
+) -> dict[str, object]:
+    return set_notification.get_alarm_status(
+        patient_hash,
+        slot_key,
+        user_hash,
+        role,
+    )
+
+
+# Function Name: save_notification_setting
+# Description:
+# - Enables or updates one medication alarm setting for a schedule slot.
+# Parameters:
+# - slot_key: Medication schedule time slot from the route path.
+# - request: NotificationSettingUpdate request DTO.
+# - patient_hash: Patient ownership key used to scope alarm setting update.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - set_notification: SetNotification injected by FastAPI.
+# Returns:
+# - API-compatible notification setting dictionary.
+@router.put("/notification/settings/{slot_key}")
+async def save_notification_setting(
+    slot_key: str,
+    request: NotificationSettingUpdate,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    set_notification: SetNotification = Depends(get_set_notification),
+) -> dict[str, object]:
+    return set_notification.set_medication_alarm(
+        patient_hash,
+        slot_key,
+        request.hour,
+        request.minute,
+        user_hash,
+        role,
+    )
+
+
+# Function Name: disable_notification_setting
+# Description:
+# - Disables one medication alarm setting for a schedule slot.
+# Parameters:
+# - slot_key: Medication schedule time slot from the route path.
+# - patient_hash: Patient ownership key used to scope alarm setting update.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - set_notification: SetNotification injected by FastAPI.
+# Returns:
+# - API-compatible notification setting dictionary.
+@router.patch("/notification/settings/{slot_key}/disable")
+async def disable_notification_setting(
+    slot_key: str,
+    patient_hash: str = DEFAULT_PATIENT_HASH,
+    user_hash: str | None = None,
+    role: str = "patient",
+    set_notification: SetNotification = Depends(get_set_notification),
+) -> dict[str, object]:
+    return set_notification.disable_alarm_setting(
+        patient_hash,
+        slot_key,
+        user_hash,
+        role,
     )
 
 
