@@ -161,39 +161,24 @@ Open another terminal from the repository root:
 cd frontend
 flutter pub get
 flutter devices
-flutter run -d emulator-5554
+flutter run -d "[your-device-id]"
 ```
 
-By default, the Android emulator build calls:
+Use the device id shown by `flutter devices`. By default, the Android emulator build calls:
 
 ```text
 http://10.0.2.2:8000/api/v1/medication
 ```
 
-Override the backend URL at run time when needed:
+For a physical Android device, replace the host with your development machine's LAN IP address. Override the backend URL at run time when needed:
 
 ```powershell
-flutter run -d emulator-5554 --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
-```
-
-### Release Build
-
-For the v0.0.4-alpha Android demo APK:
-
-```powershell
-cd frontend
-flutter build apk --release
-```
-
-The APK is written to:
-
-```text
-frontend/build/app/outputs/flutter-apk/app-release.apk
+flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
 ```
 
 ## Verification Checklist
 
-Run these checks before tagging or uploading a demo release:
+Run these checks before opening a pull request or merging feature work:
 
 ```powershell
 cd backend
@@ -205,7 +190,6 @@ python -m pytest
 cd frontend
 flutter analyze --no-pub
 flutter test --no-pub
-flutter build apk --release
 ```
 
 Before committing, also check:
