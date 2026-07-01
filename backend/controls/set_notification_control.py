@@ -12,11 +12,6 @@ from entities.medication_alarm_entity import (
     default_alarm_hour,
     valid_alarm_slot_keys,
 )
-from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
-
-
-# "caregiver" is accepted only as a legacy API role alias.
-_GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
 # Class Name: SetNotification
@@ -316,13 +311,11 @@ class SetNotification:
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:
-        normalized_role = (role or "patient").strip().lower()
-        if normalized_role in _GUARDIAN_ROLES:
-            return PatientGuardianLinkControl(self.db).get_linked_patient_hash(
-                user_hash or patient_hash,
-                patient_hash,
-            )
-        return normalize_patient_hash(user_hash or patient_hash)
+        return PatientGuardianLinkControl(self.db).resolve_patient_scope(
+            patient_hash,
+            user_hash,
+            role,
+        )
 
     def _find_setting(
         self,

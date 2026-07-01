@@ -20,6 +20,8 @@ from entities.patient_hash_entity import (
 
 _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
+# "caregiver" is accepted only as a legacy API role alias.
+_GUARDIAN_ROLES = {"guardian", "caregiver"}
 
 
 def _utc_now() -> datetime:
@@ -348,6 +350,29 @@ class PatientGuardianLinkControl:
         patient_hash: str | None = None,
     ) -> str:
         return self.get_linked_patient_hash(guardian_hash, patient_hash)
+
+    # Function Name: resolve_patient_scope
+    # Description:
+    # - Resolves the patient scope for direct patient and linked guardian requests.
+    # Parameters:
+    # - patient_hash: Optional selected patient hash.
+    # - user_hash: Requesting user hash.
+    # - role: Requesting user role.
+    # Returns:
+    # - Patient hash authorized for this request.
+    def resolve_patient_scope(
+        self,
+        patient_hash: str | None = None,
+        user_hash: str | None = None,
+        role: str = "patient",
+    ) -> str:
+        normalized_role = (role or "patient").strip().lower()
+        if normalized_role in _GUARDIAN_ROLES:
+            return self.get_linked_patient_hash(
+                user_hash or patient_hash,
+                patient_hash,
+            )
+        return normalize_patient_hash(user_hash or patient_hash)
 
     # Function Name: get_linked_patient_hash
     # Description:

@@ -13,8 +13,6 @@ from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
-# "caregiver" is accepted only as a legacy API role alias.
-_GUARDIAN_ROLES = {"guardian", "caregiver"}
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 
 
@@ -244,13 +242,11 @@ class CheckSavedMedication:
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:
-        normalized_role = (role or "patient").strip().lower()
-        if normalized_role in _GUARDIAN_ROLES:
-            return PatientGuardianLinkControl(self.db).get_linked_patient_hash(
-                user_hash or patient_hash,
-                patient_hash,
-            )
-        return normalize_patient_hash(user_hash or patient_hash)
+        return PatientGuardianLinkControl(self.db).resolve_patient_scope(
+            patient_hash,
+            user_hash,
+            role,
+        )
 
     # Function Name: _get_existing_medication
     # Description:
