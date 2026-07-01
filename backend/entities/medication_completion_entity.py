@@ -15,6 +15,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.engine import Engine
+from pydantic import BaseModel
 
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -66,6 +67,71 @@ class _MedicationCompletion(Base):
     slot_key = Column(String, index=True, nullable=False)
     completed = Column(Boolean, nullable=False, default=True, server_default="1")
     completed_at = Column(DateTime, nullable=True, default=utc_now)
+
+
+# Class Name: MedicationCompletion
+# Role: Public UML entity for one medication schedule slot completion.
+# Responsibilities:
+#   - Preserve the patient, medicine, time slot, and completion timestamp names
+#     used by the Class/Sequence Diagrams.
+#   - Build the internal persistence row without exposing SQLAlchemy details to
+#     control code that follows the UML entity name.
+# Attributes:
+#   - completion_id: Persisted completion identifier.
+#   - patient_hash: Patient ownership key.
+#   - medicine_name: Human-readable medication name from the schedule item.
+#   - time_slot: Schedule time slot such as morning or evening.
+#   - completed_at: Timestamp when the slot was marked complete.
+#   - completed: Whether this slot is currently marked complete.
+class MedicationCompletion(BaseModel):
+    completion_id: int | None = None
+    patient_hash: str = DEFAULT_PATIENT_HASH
+    medicine_name: str = ""
+    time_slot: str = "morning"
+    completed_at: datetime | None = None
+    completed: bool = True
+
+    @property
+    def completionId(self) -> int | None:
+        return self.completion_id
+
+    @property
+    def patientHash(self) -> str:
+        return self.patient_hash
+
+    @property
+    def medicineName(self) -> str:
+        return self.medicine_name
+
+    @property
+    def timeSlot(self) -> str:
+        return self.time_slot
+
+    @property
+    def completedAt(self) -> datetime | None:
+        return self.completed_at
+
+    # Function Name: insertMedicationCompletion
+    # Description:
+    # - Creates the internal persistence row for this UML completion entity.
+    # Parameters:
+    # - saved_medication_id: Saved medication row id connected to this schedule slot.
+    # - schedule_date: Date represented by this schedule slot.
+    # Returns:
+    # - SQLAlchemy _MedicationCompletion row ready to be added by a control.
+    def insertMedicationCompletion(
+        self,
+        saved_medication_id: int,
+        schedule_date: date,
+    ) -> _MedicationCompletion:
+        return _MedicationCompletion(
+            saved_medication_id=saved_medication_id,
+            patient_hash=self.patient_hash,
+            schedule_date=schedule_date,
+            slot_key=self.time_slot,
+            completed=self.completed,
+            completed_at=self.completed_at,
+        )
 
 
 # Function Name: ensure_medication_completion_schema

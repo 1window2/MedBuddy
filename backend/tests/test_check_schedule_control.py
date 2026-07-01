@@ -3,7 +3,7 @@
 
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -19,6 +19,7 @@ from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
+    MedicationCompletion,
     _MedicationCompletion,
     ensure_medication_completion_schema,
 )
@@ -169,6 +170,32 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(len(completions), 1)
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
+
+    def test_medication_completion_preserves_uml_entity_names(self) -> None:
+        schedule_date = date.today()
+        completed_at = datetime(2026, 1, 1, 8, 0)
+        completion = MedicationCompletion(
+            patient_hash="patient-a",
+            medicine_name="test-tablet",
+            time_slot="morning",
+            completed_at=completed_at,
+            completed=True,
+        )
+
+        row = completion.insertMedicationCompletion(
+            saved_medication_id=7,
+            schedule_date=schedule_date,
+        )
+
+        self.assertEqual(completion.patientHash, "patient-a")
+        self.assertEqual(completion.medicineName, "test-tablet")
+        self.assertEqual(completion.timeSlot, "morning")
+        self.assertEqual(completion.completedAt, completed_at)
+        self.assertEqual(row.saved_medication_id, 7)
+        self.assertEqual(row.patient_hash, "patient-a")
+        self.assertEqual(row.schedule_date, schedule_date)
+        self.assertEqual(row.slot_key, "morning")
+        self.assertTrue(row.completed)
 
     def test_all_slots_complete_sets_legacy_row_status(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")

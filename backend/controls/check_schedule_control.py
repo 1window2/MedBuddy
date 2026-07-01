@@ -8,7 +8,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
-from entities.medication_completion_entity import _MedicationCompletion, utc_now
+from entities.medication_completion_entity import (
+    MedicationCompletion,
+    _MedicationCompletion,
+    utc_now,
+)
 from entities.medication_schedule_entity import MedicationSchedule
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
@@ -521,13 +525,15 @@ class CheckSchedule:
             if current_slot_key in existing_slot_keys:
                 continue
             self.db.add(
-                _MedicationCompletion(
-                    saved_medication_id=medication.id,
+                MedicationCompletion(
                     patient_hash=patient_hash,
-                    schedule_date=schedule_date,
-                    slot_key=current_slot_key,
+                    medicine_name=medication.item_name or "",
+                    time_slot=current_slot_key,
                     completed=completed,
                     completed_at=utc_now() if completed else None,
+                ).insertMedicationCompletion(
+                    saved_medication_id=int(medication.id),
+                    schedule_date=schedule_date,
                 )
             )
 
@@ -561,11 +567,15 @@ class CheckSchedule:
             .first()
         )
         if completion is None:
-            completion = _MedicationCompletion(
-                saved_medication_id=medication.id,
+            completion = MedicationCompletion(
                 patient_hash=patient_hash,
+                medicine_name=medication.item_name or "",
+                time_slot=slot_key,
+                completed=completed,
+                completed_at=utc_now() if completed else None,
+            ).insertMedicationCompletion(
+                saved_medication_id=int(medication.id),
                 schedule_date=schedule_date,
-                slot_key=slot_key,
             )
             self.db.add(completion)
 
