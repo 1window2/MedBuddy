@@ -13,14 +13,23 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
+coverage.xml
+junit.xml
 htmlcov/
 
 # Local database/runtime state
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.sqlite3
 *.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
 *.log
 *.tmp
 
@@ -31,6 +40,8 @@ htmlcov/
 
 # Flutter local generated files
 frontend/.dart_tool/
+frontend/.dart-tool/
+frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
 frontend/build/
 frontend/coverage/
