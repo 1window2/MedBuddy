@@ -209,7 +209,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
           _links = links;
           _guardianAlertSettings = Map<String, GuardianAlertSetting>.from(
             _guardianAlertSettings,
-          )..remove(_alertSettingKey(link));
+          )..remove(_alertSettingKeyForLink(link));
           _statusMessage =
               '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
         });
@@ -270,7 +270,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
       return;
     }
 
-    final loadingKeys = guardianLinks.map(_alertSettingKey).toSet();
+    final loadingKeys = guardianLinks.map(_alertSettingKeyForLink).toSet();
     if (mounted) {
       setState(() {
         _guardianAlertLoadingKeys = {
@@ -286,7 +286,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     try {
       for (final link in guardianLinks) {
         try {
-          nextSettings[_alertSettingKey(link)] =
+          nextSettings[_alertSettingKeyForLink(link)] =
               await control.requestGuardianAlertSetting(
             patientHash: link.patientID,
           );
@@ -327,7 +327,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
       return;
     }
 
-    final settingKey = _alertSettingKey(link);
+    final settingKey = _alertSettingKeyForLink(link);
     setState(() {
       _guardianAlertLoadingKeys = {
         ..._guardianAlertLoadingKeys,
@@ -369,10 +369,6 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
         });
       }
     }
-  }
-
-  String _alertSettingKey(PatientGuardianLink link) {
-    return '${link.guardianID}|${link.patientID}';
   }
 
   String get _currentUserHash {

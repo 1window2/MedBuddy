@@ -66,11 +66,10 @@ class SetGuardianAlertSetting:
                 normalized_guardian_hash,
                 normalized_patient_hash,
             )
-        return {
-            "success": True,
-            "message": "Guardian alert setting lookup succeeded.",
-            "data": self._to_response_dict(setting),
-        }
+        return self._success_response(
+            "Guardian alert setting lookup succeeded.",
+            setting,
+        )
 
     # Function Name: updateGuardianAlertSetting
     # Description:
@@ -130,15 +129,7 @@ class SetGuardianAlertSetting:
                     patient_hash=normalized_patient_hash,
                 )
                 self.db.add(setting)
-            setting.enabled = requested_enabled
-            setting.alert_option = alert_option_from_enabled(requested_enabled)
-            self.db.commit()
-            self.db.refresh(setting)
-            return {
-                "success": True,
-                "message": "Guardian alert setting was saved.",
-                "data": self._to_response_dict(setting),
-            }
+            return self._persist_setting_state(setting, requested_enabled)
         except IntegrityError:
             self.db.rollback()
             return self._update_existing_setting_after_conflict(
@@ -273,21 +264,27 @@ class SetGuardianAlertSetting:
                 detail="Guardian alert setting conflict could not be resolved.",
             )
         try:
-            setting.enabled = enabled
-            setting.alert_option = alert_option_from_enabled(enabled)
-            self.db.commit()
-            self.db.refresh(setting)
-            return {
-                "success": True,
-                "message": "Guardian alert setting was saved.",
-                "data": self._to_response_dict(setting),
-            }
+            return self._persist_setting_state(setting, enabled)
         except Exception as exc:
             self.db.rollback()
             raise HTTPException(
                 status_code=500,
                 detail=f"Guardian alert setting save failed: {exc}",
             ) from exc
+
+    def _persist_setting_state(
+        self,
+        setting: _GuardianAlertSetting,
+        enabled: bool,
+    ) -> dict[str, object]:
+        setting.enabled = enabled
+        setting.alert_option = alert_option_from_enabled(enabled)
+        self.db.commit()
+        self.db.refresh(setting)
+        return self._success_response(
+            "Guardian alert setting was saved.",
+            setting,
+        )
 
     def _coerce_enabled(
         self,
@@ -325,3 +322,14 @@ class SetGuardianAlertSetting:
             enabled=setting.enabled,
             alert_option=setting.alert_option,
         ).to_response_dict()
+
+    def _success_response(
+        self,
+        message: str,
+        setting: _GuardianAlertSetting | GuardianAlertSetting,
+    ) -> dict[str, object]:
+        return {
+            "success": True,
+            "message": message,
+            "data": self._to_response_dict(setting),
+        }
