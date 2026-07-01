@@ -9,8 +9,9 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.0.5-alpha` | Current alpha demo target | Security fixes should be applied here first. |
-| `v0.0.4-alpha` | Superseded alpha demo | Update to `v0.0.5-alpha` unless a targeted backport is explicitly needed. |
+| `main` / next alpha | Current development target | Security fixes should be applied here first. |
+| `v0.0.5-alpha` | Latest tagged alpha demo | Update to the next alpha when available unless a targeted backport is explicitly needed. |
+| `v0.0.4-alpha` | Superseded alpha demo | Update to `v0.0.5-alpha` or later unless a targeted backport is explicitly needed. |
 | `v0.0.3-alpha` | Superseded alpha demo | No routine security backports. |
 | `v0.0.2-alpha` | Superseded alpha demo | No routine security backports. |
 | `v0.0.1-alpha` | Superseded alpha demo | No routine security backports. |
@@ -57,9 +58,10 @@ The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
 `backend/medbuddy.db`.
 
-Do not commit local SDK paths, generated Flutter build files, emulator-specific
-configuration, Python virtual environments, pytest caches, or Android/iOS build
-outputs. These files reduce portability and can expose private local paths.
+Do not commit local SDK paths, generated Flutter build files, tool telemetry
+state, emulator-specific configuration, Python virtual environments, pytest
+caches, or Android/iOS build outputs. These files reduce portability and can
+expose private local paths or user-specific identifiers.
 
 ## Dependency Security
 

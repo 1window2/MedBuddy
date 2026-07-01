@@ -6,9 +6,11 @@ To ensure smooth collaboration, please make sure to read and follow the contribu
 
 ## Table of Contents
 1. [How to Contribute](#1-how-to-contribute)
-2. [Coding Conventions](#2-coding-conventions)
-3. [Documentation Standards](#3-documentation-standards)
-4. [Commit Message Guidelines](#4-commit-message-guidelines)
+2. [Architecture and UML Discipline](#2-architecture-and-uml-discipline)
+3. [Coding Conventions](#3-coding-conventions)
+4. [Documentation Standards](#4-documentation-standards)
+5. [Verification Checklist](#5-verification-checklist)
+6. [Commit Message Guidelines](#6-commit-message-guidelines)
 
 ---
 
@@ -22,7 +24,25 @@ To ensure smooth collaboration, please make sure to read and follow the contribu
 
 ---
 
-## 2. Coding Conventions
+## 2. Architecture and UML Discipline
+
+MedBuddy follows a Boundary-Control-Entity style structure rooted in the project UML diagrams under [`docs/`](docs/).
+
+- **Boundary/UI** classes render screens, collect user input, and adapt user actions into use-case requests.
+- **Control** classes coordinate use cases, API calls, scope resolution, persistence, and external services.
+- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, notification preferences, user settings, and patient-guardian links.
+- Backend routers should remain thin boundary adapters around control classes.
+
+When adding or changing code:
+
+- Prefer extending the existing class skeletons and UML-aligned flow instead of adding ad hoc shortcuts between unrelated layers.
+- Check the class, sequence, communication, and use-case diagrams before introducing new classes, functions, or cross-layer dependencies.
+- Keep patient/guardian authorization scope in control-layer logic rather than duplicating it inside UI widgets or low-level entity classes.
+- If implementation must differ from the current UML for a practical reason, make the reason explicit in the pull request and update the related diagram or design note when that documentation change is in scope.
+
+---
+
+## 3. Coding Conventions
 
 Since MedBuddy is a full-stack project, we follow different naming conventions depending on the language.
 
@@ -41,7 +61,7 @@ Since MedBuddy is a full-stack project, we follow different naming conventions d
 
 ---
 
-## 3. Documentation Standards
+## 4. Documentation Standards
 
 This is the most important rule of our project. All major functions and methods must have a block comment at the top following the specified format. 
 We support both Korean and English documentation for our global collaborators. Please use the language you are most comfortable with.
@@ -170,7 +190,33 @@ String? normalizeDate(String text) {
 ```
 ---
 
-## 4. Commit Message Guidelines
+## 5. Verification Checklist
+
+Run these checks before opening a pull request or merging feature work:
+
+```powershell
+cd backend
+..\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+```powershell
+cd frontend
+flutter analyze --no-pub
+flutter test --no-pub
+```
+
+Before committing, also check:
+
+- No `.env`, `.db`, local SDK path, telemetry state, generated build output, or emulator-specific file is staged.
+- `frontend/pubspec.yaml` contains the intended app version when preparing a release.
+- UML-aligned boundary, control, and entity responsibilities are preserved for new features.
+- Backend and frontend tests cover changed use-case behavior when the change touches saved medications, schedules, reminders, patient-guardian links, or settings.
+
+---
+
+## 6. Commit Message Guidelines
 
 We follow the Conventional Commits specification to maintain a consistent commit history.
 

@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-guardian linked views.
+> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-guardian linked views with guardian alert preferences.
 
 ## Key Features
 
@@ -35,6 +35,7 @@
 
 - Patients can create a temporary link code.
 - Guardians can register the code, view linked patient medication data, and unlink when needed.
+- Guardians can enable or disable alert preferences for each linked patient through a persisted guardian-patient setting.
 - Patient/guardian scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
 
 ### Health Recommendations and Reminders
@@ -42,17 +43,18 @@
 - The backend can generate patient-scoped health recommendations using saved medication context.
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
+- Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
 
-## Architecture Discipline
+## Architecture
 
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, and external services.
-- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, user settings, and patient-guardian links.
+- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, user settings, notification preferences, and patient-guardian links.
 - Backend routers remain thin boundary adapters around control classes.
 
-When adding code, prefer extending the existing class skeletons and UML-aligned flow instead of adding ad hoc shortcuts between unrelated layers.
+Detailed design references are maintained in [`docs/`](docs/), and contribution rules for preserving the UML-aligned structure are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Tech Stack
 
@@ -107,13 +109,6 @@ py -3.11 -m venv ..\.venv
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-```
-
-To install test dependencies as well:
-
-```powershell
-python -m pip install -r requirements-dev.txt
-python -m pytest
 ```
 
 Open `backend/.env` and set at least:
@@ -176,27 +171,9 @@ For a physical Android device, replace the host with your development machine's 
 flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
 ```
 
-## Verification Checklist
+## Contributing
 
-Run these checks before opening a pull request or merging feature work:
-
-```powershell
-cd backend
-..\.venv\Scripts\Activate.ps1
-python -m pytest
-```
-
-```powershell
-cd frontend
-flutter analyze --no-pub
-flutter test --no-pub
-```
-
-Before committing, also check:
-
-- No `.env`, `.db`, local SDK path, generated build output, or emulator-specific file is staged.
-- `frontend/pubspec.yaml` contains the intended app version.
-- UML-aligned control/entity boundaries are preserved for new features.
+Development workflow, verification commands, UML alignment rules, documentation standards, and commit message conventions are maintained in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Contributors
 
