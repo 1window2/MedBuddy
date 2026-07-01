@@ -294,8 +294,16 @@ class SetGuardianAlertSetting:
         enabled: bool | None,
         alert_option: str | None,
     ) -> bool:
+        if isinstance(enabled, bool):
+            return enabled
         if enabled is not None:
-            return bool(enabled)
+            try:
+                return enabled_from_alert_option(str(enabled))
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Guardian alert option is not supported.",
+                ) from exc
         try:
             return enabled_from_alert_option(alert_option or "")
         except ValueError as exc:

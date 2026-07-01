@@ -128,9 +128,9 @@ def alert_option_from_enabled(enabled: bool) -> str:
 
 def enabled_from_alert_option(alert_option: str) -> bool:
     normalized_option = (alert_option or "").strip().lower()
-    if normalized_option in {"enable", "enabled", "on", "true"}:
+    if normalized_option in {"enable", "enabled", "on", "true", "1"}:
         return True
-    if normalized_option in {"disable", "disabled", "off", "false"}:
+    if normalized_option in {"disable", "disabled", "off", "false", "0"}:
         return False
     raise ValueError("Guardian alert option is not supported.")
 
@@ -177,16 +177,50 @@ def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
         connection.execute(
             text(
                 f"UPDATE {_GuardianAlertSetting.__tablename__} "
-                "SET alert_option = CASE "
-                "WHEN enabled = 1 THEN 'enable' "
-                "ELSE 'disable' END "
-                "WHERE alert_option IS NULL OR alert_option = ''"
+                "SET guardian_hash = '' WHERE guardian_hash IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                "SET patient_hash = '' WHERE patient_hash IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                "SET enabled = CASE "
+                "WHEN LOWER(alert_option) IN ('enable', 'enabled', 'on', 'true', '1') "
+                "THEN 1 ELSE 0 END "
+                "WHERE enabled IS NULL"
             )
         )
         connection.execute(
             text(
                 f"UPDATE {_GuardianAlertSetting.__tablename__} "
                 "SET enabled = 0 WHERE enabled IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                "SET alert_option = CASE "
+                "WHEN enabled = 1 THEN 'enable' "
+                "ELSE 'disable' END "
+                "WHERE alert_option IS NULL "
+                "OR LOWER(alert_option) NOT IN ('enable', 'disable')"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                "SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"
+            )
+        )
+        connection.execute(
+            text(
+                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                "SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"
             )
         )
         connection.execute(

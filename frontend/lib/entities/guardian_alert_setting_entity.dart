@@ -22,7 +22,12 @@ class GuardianAlertSetting {
   });
 
   factory GuardianAlertSetting.fromJson(Map<String, dynamic> json) {
-    final enabled = _readBool(json['is_enabled'] ?? json['enabled']);
+    final rawAlertOption = _readString(
+      json['alert_option'] ?? json['alertOption'],
+    );
+    final rawEnabled = json['is_enabled'] ?? json['enabled'];
+    final enabled =
+        rawEnabled == null ? _readBool(rawAlertOption) : _readBool(rawEnabled);
     return GuardianAlertSetting(
       settingID:
           _readInt(json['setting_id'] ?? json['settingID'] ?? json['id']),
@@ -36,11 +41,9 @@ class GuardianAlertSetting {
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
       enabled: enabled,
-      alertOption: _readString(json['alert_option'] ?? json['alertOption'])
-              .trim()
-              .isEmpty
+      alertOption: rawAlertOption.trim().isEmpty
           ? _alertOptionFromEnabled(enabled)
-          : _readString(json['alert_option'] ?? json['alertOption']),
+          : rawAlertOption,
     );
   }
 

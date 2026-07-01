@@ -122,6 +122,18 @@ class SetGuardianAlertSettingTest(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
 
+    def test_string_enabled_value_is_parsed_without_truthiness_bug(self) -> None:
+        self._link_guardian()
+
+        response = self.control.update_guardian_alert_setting(
+            "guardian-a",
+            "patient-a",
+            enabled="false",  # type: ignore[arg-type]
+        )
+
+        self.assertFalse(response["data"]["is_enabled"])
+        self.assertEqual(response["data"]["alert_option"], "disable")
+
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
         legacy_engine = create_engine(
             "sqlite:///:memory:",
@@ -144,7 +156,8 @@ class SetGuardianAlertSettingTest(unittest.TestCase):
                         "(id, guardian_hash, patient_hash) "
                         "VALUES "
                         "(1, 'guardian-a', 'patient-a'), "
-                        "(2, 'guardian-a', 'patient-a')"
+                        "(2, 'guardian-a', 'patient-a'), "
+                        "(3, NULL, NULL)"
                     )
                 )
 
@@ -160,12 +173,16 @@ class SetGuardianAlertSettingTest(unittest.TestCase):
                 self.assertIn("enabled", columns)
                 self.assertIn("alert_option", columns)
                 row_count = connection.execute(
-                    text("SELECT COUNT(*) FROM guardian_alert_settings")
+                    text(
+                        "SELECT COUNT(*) FROM guardian_alert_settings "
+                        "WHERE guardian_hash = 'guardian-a' "
+                        "AND patient_hash = 'patient-a'"
+                    )
                 ).scalar_one()
                 self.assertEqual(row_count, 1)
                 migrated_row = connection.execute(
                     text(
-                        "SELECT enabled, alert_option "
+                        "SELECT enabled, alert_option, created_at, updated_at "
                         "FROM guardian_alert_settings "
                         "WHERE guardian_hash = 'guardian-a' "
                         "AND patient_hash = 'patient-a'"
@@ -173,6 +190,8 @@ class SetGuardianAlertSettingTest(unittest.TestCase):
                 ).first()
                 self.assertEqual(migrated_row[0], 0)
                 self.assertEqual(migrated_row[1], "disable")
+                self.assertIsNotNone(migrated_row[2])
+                self.assertIsNotNone(migrated_row[3])
         finally:
             legacy_engine.dispose()
 

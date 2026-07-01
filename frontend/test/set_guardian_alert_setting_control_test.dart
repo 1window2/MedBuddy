@@ -102,4 +102,15 @@ void main() {
     expect(payload['is_enabled'], isTrue);
     expect(payload['alert_option'], 'enable');
   });
+
+  test('GuardianAlertSetting can derive enabled state from alert option', () {
+    final setting = GuardianAlertSetting.fromJson({
+      'guardian_hash': 'guardian-a',
+      'patient_hash': 'patient-a',
+      'alert_option': 'enable',
+    });
+
+    expect(setting.enabled, isTrue);
+    expect(setting.alertOption, 'enable');
+  });
 }
