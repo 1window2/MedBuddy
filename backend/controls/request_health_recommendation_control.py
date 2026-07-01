@@ -206,7 +206,7 @@ class RequestHealthRecommendation:
     # - API 호환 건강 관리 추천 dictionary
     async def request_health_recommendation(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
         language: str = "ko",
@@ -355,7 +355,7 @@ class RequestHealthRecommendation:
 
     def _resolve_patient_hash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:

@@ -42,7 +42,7 @@ class SetNotification:
     # - API-compatible medication alarm list dictionary.
     def requestMedicationAlarm(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -59,7 +59,7 @@ class SetNotification:
     # - API-compatible medication alarm list dictionary.
     def request_medication_alarm(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -100,7 +100,7 @@ class SetNotification:
     # - API-compatible medication alarm dictionary.
     def requestAlarmToggle(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         user_hash: str | None = None,
         role: str = "patient",
@@ -119,7 +119,7 @@ class SetNotification:
     # - API-compatible medication alarm dictionary.
     def get_alarm_status(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         user_hash: str | None = None,
         role: str = "patient",
@@ -157,7 +157,7 @@ class SetNotification:
     # - API-compatible enabled medication alarm dictionary.
     def setMedicationAlarm(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         hour: int,
         minute: int,
@@ -187,7 +187,7 @@ class SetNotification:
     # - API-compatible enabled medication alarm dictionary.
     def set_medication_alarm(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         hour: int,
         minute: int,
@@ -247,7 +247,7 @@ class SetNotification:
     # - API-compatible disabled medication alarm dictionary.
     def disableAlarmSetting(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         user_hash: str | None = None,
         role: str = "patient",
@@ -266,7 +266,7 @@ class SetNotification:
     # - API-compatible disabled medication alarm dictionary.
     def disable_alarm_setting(
         self,
-        patient_hash: str,
+        patient_hash: str | None,
         slot_key: str,
         user_hash: str | None = None,
         role: str = "patient",
@@ -312,7 +312,7 @@ class SetNotification:
 
     def _resolve_patient_hash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:

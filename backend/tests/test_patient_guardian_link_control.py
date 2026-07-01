@@ -20,7 +20,10 @@ from entities.patient_guardian_link_entity import (  # noqa: E402
     _PatientGuardianLink,
     _PatientLinkCode,
 )
-from entities.patient_hash_entity import PATIENT_LINK_CODE_LENGTH  # noqa: E402
+from entities.patient_hash_entity import (  # noqa: E402
+    DEFAULT_PATIENT_HASH,
+    PATIENT_LINK_CODE_LENGTH,
+)
 
 
 def utc_now() -> datetime:
@@ -117,6 +120,25 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         )
 
         self.assertEqual(linked_patient_hash, "patient-b")
+
+    def test_linked_patient_hash_honors_requested_default_patient(self) -> None:
+        patient_a_code = self.control.request_patient_code("patient-a")
+        default_patient_code = self.control.request_patient_code(DEFAULT_PATIENT_HASH)
+        self.control.register_patient_code(
+            "guardian-a",
+            patient_a_code["data"]["patient_code"],
+        )
+        self.control.register_patient_code(
+            "guardian-a",
+            default_patient_code["data"]["patient_code"],
+        )
+
+        linked_patient_hash = self.control.get_linked_patient_hash(
+            "guardian-a",
+            DEFAULT_PATIENT_HASH,
+        )
+
+        self.assertEqual(linked_patient_hash, DEFAULT_PATIENT_HASH)
 
     def test_patient_code_cannot_be_registered_twice(self) -> None:
         code_response = self.control.request_patient_code("patient-a")

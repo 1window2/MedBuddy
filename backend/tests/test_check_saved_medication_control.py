@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -85,6 +85,59 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(saved_row.total_days, "7 days")
         self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
         self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
+
+    def test_schema_upgrade_adds_ai_guide_to_legacy_saved_medications(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+        )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE saved_medications (
+                        id INTEGER PRIMARY KEY,
+                        patient_hash VARCHAR DEFAULT 'local_patient',
+                        created_date DATE,
+                        prescription_date DATE,
+                        item_name VARCHAR,
+                        efficacy VARCHAR,
+                        use_method VARCHAR,
+                        warning_message VARCHAR,
+                        dosage_per_time VARCHAR,
+                        daily_frequency VARCHAR,
+                        total_days VARCHAR,
+                        image_url VARCHAR,
+                        medication_status BOOLEAN DEFAULT 0,
+                        medication_status_date DATE
+                    )
+                    """
+                )
+            )
+
+        ensure_saved_medication_schema(engine)
+
+        existing_columns = {
+            column["name"] for column in inspect(engine).get_columns("saved_medications")
+        }
+        self.assertIn("ai_guide", existing_columns)
+
+        session_factory = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=engine,
+        )
+        db = session_factory()
+        try:
+            response = CheckSavedMedication(db).save_medication_detail(
+                self._saved_medication(patient_hash="patient-a", item_name="legacy")
+            )
+            saved_row = db.get(_SavedMedication, response["id"])
+            self.assertIsNotNone(saved_row)
+            self.assertEqual(saved_row.ai_guide, "guide")
+        finally:
+            db.close()
+            engine.dispose()
 
     def test_save_rejects_same_day_duplicate_medication(self) -> None:
         first_response = self.control.save_medication_detail(

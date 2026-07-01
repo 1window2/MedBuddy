@@ -42,7 +42,7 @@ class CheckSchedule:
     # - API-compatible schedule list response dictionary.
     def requestMedicationSchedule(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -59,7 +59,7 @@ class CheckSchedule:
     # - API-compatible schedule list response dictionary.
     def requestTodayMedicationSchedule(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -76,7 +76,7 @@ class CheckSchedule:
     # - API-compatible schedule list response dictionary.
     def request_today_medication_schedule(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -134,7 +134,7 @@ class CheckSchedule:
         self,
         medication_id: int,
         medication_status: bool,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
         slot_key: str | None = None,
@@ -162,7 +162,7 @@ class CheckSchedule:
         self,
         medication_id: int,
         medication_status: bool,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
         slot_key: str | None = None,
@@ -302,7 +302,7 @@ class CheckSchedule:
     # - Patient hash authorized for this request.
     def resolvePatientHash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:
@@ -319,7 +319,7 @@ class CheckSchedule:
     # - 권한 범위가 확인된 환자 해시
     def _resolve_patient_hash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:

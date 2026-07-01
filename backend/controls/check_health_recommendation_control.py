@@ -22,7 +22,7 @@ class CheckHealthRecommendation(RequestHealthRecommendation):
     # - API-compatible health recommendation dictionary.
     async def requestHealthRecommendation(
         self,
-        patient_hash: str,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
         language: str = "ko",

@@ -366,8 +366,9 @@ class PatientGuardianLinkControl:
             _PatientGuardianLink.guardian_hash == normalized_guardian_hash,
             _PatientGuardianLink.linked.is_(True),
         )
-        normalized_patient_hash = normalize_patient_hash(patient_hash or "")
-        if normalized_patient_hash != DEFAULT_PATIENT_HASH:
+        requested_patient_hash = (patient_hash or "").strip()
+        if requested_patient_hash:
+            normalized_patient_hash = normalize_patient_hash(requested_patient_hash)
             query = query.filter(
                 _PatientGuardianLink.patient_hash == normalized_patient_hash
             )

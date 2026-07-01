@@ -108,7 +108,7 @@ async def save_medication(
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
@@ -138,7 +138,7 @@ async def get_saved_medications(
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
 async def get_today_medication_schedule(
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
@@ -173,7 +173,7 @@ async def get_today_medication_schedule(
 async def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
@@ -200,7 +200,7 @@ async def update_medication_status(
 # - API-compatible medication alarm list dictionary.
 @router.get("/notification/settings")
 async def get_medication_alarms(
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
@@ -226,7 +226,7 @@ async def get_medication_alarms(
 @router.get("/notification/settings/{slot_key}")
 async def get_medication_alarm(
     slot_key: str,
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
@@ -255,7 +255,7 @@ async def get_medication_alarm(
 async def save_medication_alarm(
     slot_key: str,
     request: MedicationAlarmUpdate,
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
@@ -284,7 +284,7 @@ async def save_medication_alarm(
 @router.patch("/notification/settings/{slot_key}/disable")
 async def disable_medication_alarm(
     slot_key: str,
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
@@ -309,7 +309,7 @@ async def disable_medication_alarm(
 # - API-compatible health recommendation dictionary.
 @router.get("/health/recommendation")
 async def get_health_recommendation(
-    patient_hash: str = DEFAULT_PATIENT_HASH,
+    patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     language: str = "ko",

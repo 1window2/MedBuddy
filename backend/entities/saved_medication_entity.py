@@ -74,6 +74,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "image_url": "VARCHAR",
         "medication_status": "BOOLEAN DEFAULT 0",
         "medication_status_date": "DATE",
+        "ai_guide": "VARCHAR",
     }
     today = date.today().isoformat()
 

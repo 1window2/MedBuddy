@@ -105,7 +105,7 @@ class CheckSavedMedication:
     # - API-compatible list response dictionary.
     def request_saved_medication_info(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -143,7 +143,7 @@ class CheckSavedMedication:
     # - API-compatible list response dictionary.
     def requestSavedMedicationInfo(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> dict[str, object]:
@@ -232,7 +232,7 @@ class CheckSavedMedication:
     # - Patient hash authorized for this request.
     def resolvePatientHash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:
@@ -240,7 +240,7 @@ class CheckSavedMedication:
 
     def _resolve_patient_hash(
         self,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
+        patient_hash: str | None = None,
         user_hash: str | None = None,
         role: str = "patient",
     ) -> str:
