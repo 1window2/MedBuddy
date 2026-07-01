@@ -13,6 +13,7 @@ from api.dependencies import (
     get_input_prescription,
     get_patient_guardian_link_control,
     get_request_health_recommendation,
+    get_set_guardian_alert_setting,
     get_set_notification,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
@@ -21,6 +22,7 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
@@ -28,6 +30,7 @@ from schemas.medication import (
     MedicationResponse,
     MedicationStatusUpdate,
     MedicationAlarmUpdate,
+    GuardianAlertUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
     SavedMedicationCreate,
@@ -329,6 +332,56 @@ async def get_health_recommendation(
             status_code=500,
             detail=f"건강 관리 추천 생성 실패: {exc}",
         ) from exc
+
+
+# Function Name: get_guardian_alert_setting
+# Description:
+# - Returns the guardian alert setting for one linked guardian-patient pair.
+# Parameters:
+# - patient_hash: Patient ownership key monitored by the guardian.
+# - guardian_hash: Guardian ownership key requesting alert state.
+# - set_guardian_alert_setting: SetGuardianAlertSetting injected by FastAPI.
+# Returns:
+# - API-compatible guardian alert setting dictionary.
+@router.get("/guardian-alert/settings/{patient_hash}")
+async def get_guardian_alert_setting(
+    patient_hash: str,
+    guardian_hash: str,
+    set_guardian_alert_setting: SetGuardianAlertSetting = Depends(
+        get_set_guardian_alert_setting
+    ),
+) -> dict[str, object]:
+    return set_guardian_alert_setting.request_guardian_alert_setting(
+        guardian_hash,
+        patient_hash,
+    )
+
+
+# Function Name: update_guardian_alert_setting
+# Description:
+# - Updates guardian alert enable/disable state for one linked pair.
+# Parameters:
+# - patient_hash: Patient ownership key monitored by the guardian.
+# - guardian_hash: Guardian ownership key requesting alert state update.
+# - request: GuardianAlertUpdate request DTO.
+# - set_guardian_alert_setting: SetGuardianAlertSetting injected by FastAPI.
+# Returns:
+# - API-compatible guardian alert setting dictionary.
+@router.put("/guardian-alert/settings/{patient_hash}")
+async def update_guardian_alert_setting(
+    patient_hash: str,
+    guardian_hash: str,
+    request: GuardianAlertUpdate,
+    set_guardian_alert_setting: SetGuardianAlertSetting = Depends(
+        get_set_guardian_alert_setting
+    ),
+) -> dict[str, object]:
+    return set_guardian_alert_setting.update_guardian_alert_setting(
+        guardian_hash,
+        patient_hash,
+        request.is_enabled,
+        request.alert_option,
+    )
 
 
 # Function Name: get_patient_guardian_links

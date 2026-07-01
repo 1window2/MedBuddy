@@ -12,8 +12,10 @@ from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
+from entities import guardian_alert_setting_entity  # noqa: F401
 from entities import patient_guardian_link_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
+from entities.guardian_alert_setting_entity import ensure_guardian_alert_setting_schema
 from entities.medication_completion_entity import ensure_medication_completion_schema
 from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
@@ -45,6 +47,7 @@ def create_app() -> FastAPI:
     ensure_saved_medication_schema(engine)
     ensure_medication_completion_schema(engine)
     ensure_medication_alarm_schema(engine)
+    ensure_guardian_alert_setting_schema(engine)
 
     app = FastAPI(title="MedBuddy API", version="1.0.0")
     app.include_router(

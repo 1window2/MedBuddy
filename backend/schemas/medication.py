@@ -64,6 +64,22 @@ class MedicationAlarmUpdate(BaseModel):
     minute: int = 0
 
 
+# Class Name: GuardianAlertUpdate
+# Role: Request DTO for updating guardian alert setting state.
+# Attributes:
+#   - is_enabled: Boolean toggle value from the Flutter UI.
+#   - alert_option: UML alert option string such as enable or disable.
+class GuardianAlertUpdate(BaseModel):
+    is_enabled: Optional[bool] = Field(
+        default=None,
+        validation_alias=AliasChoices("is_enabled", "enabled"),
+    )
+    alert_option: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("alert_option", "alertOption", "option"),
+    )
+
+
 # Class Name: PatientCodeCreate
 # Role: Request DTO for creating a temporary patient link code.
 # Attributes:

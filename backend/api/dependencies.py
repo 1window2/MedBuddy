@@ -11,6 +11,7 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_notification_control import SetNotification
 
 
@@ -99,3 +100,16 @@ def get_set_notification(
     db: Session = Depends(get_db),
 ) -> SetNotification:
     return SetNotification(db=db)
+
+
+# Function Name: get_set_guardian_alert_setting
+# Description:
+# - Builds the guardian alert setting control with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - SetGuardianAlertSetting instance.
+def get_set_guardian_alert_setting(
+    db: Session = Depends(get_db),
+) -> SetGuardianAlertSetting:
+    return SetGuardianAlertSetting(db=db)
