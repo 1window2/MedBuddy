@@ -4,15 +4,9 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_reminder_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
-
-const Set<String> _validAlarmSlotKeys = {
-  'morning',
-  'lunch',
-  'evening',
-  'bedtime',
-};
 
 // File Name: set_notification_control.dart
 // Role: Handles medication alarm API calls.
@@ -290,7 +284,7 @@ class SetNotification {
 
   String _normalizeSlotKey(String slotKey) {
     final normalizedSlotKey = slotKey.trim().toLowerCase();
-    if (!_validAlarmSlotKeys.contains(normalizedSlotKey)) {
+    if (!medicationScheduleSlotKeys.contains(normalizedSlotKey)) {
       throw StateError('Medication alarm slot is not supported.');
     }
     return normalizedSlotKey;

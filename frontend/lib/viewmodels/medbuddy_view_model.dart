@@ -153,13 +153,12 @@ class MedBuddyViewModel extends ChangeNotifier {
   HealthRecommendation? get healthRecommendation => _healthRecommendation;
 
   TodayMedicationProgress get todayMedicationProgress {
-    final slotKeys = ['morning', 'lunch', 'evening', 'bedtime'];
     var totalCount = 0;
     var completedCount = 0;
 
     for (final schedule in _todayMedicationScheduleList) {
-      final scheduleSlotKeys = _slotKeysForSchedule(schedule);
-      for (final slotKey in slotKeys) {
+      final scheduleSlotKeys = schedule.slotKeys;
+      for (final slotKey in medicationScheduleSlotKeys) {
         if (!scheduleSlotKeys.contains(slotKey)) {
           continue;
         }
@@ -179,12 +178,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final Map<String, MedicationReminderSetting> _medicationReminderSettings = {};
   Map<String, MedicationReminderSetting> get medicationReminderSettings =>
       Map.unmodifiable(_medicationReminderSettings);
-  static const List<String> _reminderSlotKeys = [
-    'morning',
-    'lunch',
-    'evening',
-    'bedtime',
-  ];
+  static const List<String> _reminderSlotKeys = medicationScheduleSlotKeys;
 
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
@@ -812,7 +806,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
-    return _slotKeysForSchedule(schedule);
+    return schedule.slotKeys;
   }
 
   // 함수명: requestMedicationDoseStatusUpdate
@@ -835,20 +829,6 @@ class MedBuddyViewModel extends ChangeNotifier {
       medicationStatus,
       slotKey: slotKey,
     );
-  }
-
-  List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
-    final frequencyCount = schedule.dailyFrequencyCount;
-    if (frequencyCount >= 4) {
-      return const ['morning', 'lunch', 'evening', 'bedtime'];
-    }
-    if (frequencyCount == 3) {
-      return const ['morning', 'lunch', 'evening'];
-    }
-    if (frequencyCount == 2) {
-      return const ['morning', 'evening'];
-    }
-    return const ['morning'];
   }
 
   Future<bool> requestMedicationStatusUpdate(

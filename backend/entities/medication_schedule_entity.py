@@ -5,6 +5,30 @@ from datetime import date
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+MEDICATION_SCHEDULE_SLOT_KEYS = ("morning", "lunch", "evening", "bedtime")
+DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY = MEDICATION_SCHEDULE_SLOT_KEYS[0]
+
+
+# Function Name: medication_schedule_slot_keys_for_frequency
+# Description:
+# - Maps a daily medication frequency count to the schedule slots used by
+#   MedicationSchedule, MedicationAlarm, and MedicationCompletion.
+# Parameters:
+# - frequency_count: Parsed daily medication frequency count.
+# Returns:
+# - Ordered list of schedule slot keys.
+def medication_schedule_slot_keys_for_frequency(frequency_count: int) -> list[str]:
+    if frequency_count >= 4:
+        return list(MEDICATION_SCHEDULE_SLOT_KEYS)
+    if frequency_count == 3:
+        return list(MEDICATION_SCHEDULE_SLOT_KEYS[:3])
+    if frequency_count == 2:
+        return [
+            MEDICATION_SCHEDULE_SLOT_KEYS[0],
+            MEDICATION_SCHEDULE_SLOT_KEYS[2],
+        ]
+    return [DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY]
+
 
 # Class Name: MedicationSchedule
 # Role: Represents one medication schedule or one extracted medication candidate.

@@ -1,6 +1,37 @@
 // 파일명: medication_schedule_entity.dart
 // 역할: 처방전 OCR 결과와 저장된 오늘 복약 일정 정보를 표현하는 모델을 정의한다.
 
+const List<String> medicationScheduleSlotKeys = [
+  'morning',
+  'lunch',
+  'evening',
+  'bedtime',
+];
+const String defaultMedicationScheduleSlotKey = 'morning';
+
+// 함수명: medicationScheduleSlotKeysForFrequency
+// 함수역할:
+// - 1일 복용 횟수를 오늘의 복약 일정 시간대 키 목록으로 변환한다.
+// 매개변수:
+// - frequencyCount: 1일 복용 횟수
+// 반환값:
+// - 화면과 알림 설정에서 공유하는 시간대 키 목록
+List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
+  if (frequencyCount >= 4) {
+    return medicationScheduleSlotKeys;
+  }
+  if (frequencyCount == 3) {
+    return medicationScheduleSlotKeys.sublist(0, 3);
+  }
+  if (frequencyCount == 2) {
+    return [
+      medicationScheduleSlotKeys[0],
+      medicationScheduleSlotKeys[2],
+    ];
+  }
+  return const [defaultMedicationScheduleSlotKey];
+}
+
 // 클래스명: MedicationSchedule
 // 역할: 약 이름, 조제일자, 1회 투약량, 1일 횟수, 총 투약일, 복약 상태를 보관한다.
 // 주요 책임:
@@ -121,6 +152,10 @@ class MedicationSchedule {
 
   int get dailyFrequencyCount {
     return _readInt(intakeTime);
+  }
+
+  List<String> get slotKeys {
+    return medicationScheduleSlotKeysForFrequency(dailyFrequencyCount);
   }
 
   String get medicationTimeLabel {

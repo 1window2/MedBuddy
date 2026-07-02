@@ -13,13 +13,15 @@ from entities.medication_completion_entity import (
     _MedicationCompletion,
     utc_now,
 )
-from entities.medication_schedule_entity import MedicationSchedule
+from entities.medication_schedule_entity import (
+    MedicationSchedule,
+    medication_schedule_slot_keys_for_frequency,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
-_SLOT_KEYS = ("morning", "lunch", "evening", "bedtime")
 
 
 # Class Name: CheckSchedule
@@ -378,13 +380,7 @@ class CheckSchedule:
     # - Ordered slot keys used by backend and Flutter schedule UI.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
         frequency_count = self._read_total_days(medication.daily_frequency)
-        if frequency_count >= 4:
-            return list(_SLOT_KEYS)
-        if frequency_count == 3:
-            return ["morning", "lunch", "evening"]
-        if frequency_count == 2:
-            return ["morning", "evening"]
-        return ["morning"]
+        return medication_schedule_slot_keys_for_frequency(frequency_count)
 
     # Function Name: _slot_keys_for_update
     # Description:

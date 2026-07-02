@@ -18,6 +18,7 @@ from sqlalchemy.engine import Engine
 from pydantic import BaseModel
 
 from core.database import Base
+from entities.medication_schedule_entity import DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
 
@@ -87,7 +88,7 @@ class MedicationCompletion(BaseModel):
     completion_id: int | None = None
     patient_hash: str = DEFAULT_PATIENT_HASH
     medicine_name: str = ""
-    time_slot: str = "morning"
+    time_slot: str = DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY
     completed_at: datetime | None = None
     completed: bool = True
 
@@ -158,7 +159,7 @@ def ensure_medication_completion_schema(db_engine: Engine) -> None:
         "saved_medication_id": "INTEGER DEFAULT 0",
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
         "schedule_date": "DATE",
-        "slot_key": "VARCHAR DEFAULT 'morning'",
+        "slot_key": f"VARCHAR DEFAULT '{DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY}'",
         "completed": "BOOLEAN DEFAULT 1",
         "completed_at": "DATETIME",
     }
@@ -196,8 +197,10 @@ def ensure_medication_completion_schema(db_engine: Engine) -> None:
         connection.execute(
             text(
                 f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET slot_key = 'morning' WHERE slot_key IS NULL OR slot_key = ''"
-            )
+                "SET slot_key = :default_slot_key "
+                "WHERE slot_key IS NULL OR slot_key = ''"
+            ),
+            {"default_slot_key": DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY},
         )
         connection.execute(
             text(

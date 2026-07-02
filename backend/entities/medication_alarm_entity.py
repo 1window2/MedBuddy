@@ -17,10 +17,11 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 from core.database import Base
+from entities.medication_schedule_entity import (
+    DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY,
+    MEDICATION_SCHEDULE_SLOT_KEYS,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-
-
-_VALID_SLOT_KEYS = ("morning", "lunch", "evening", "bedtime")
 
 
 # Function Name: utc_now
@@ -84,7 +85,7 @@ class _MedicationAlarm(Base):
 #   - enabled: Whether the alarm is active.
 class MedicationAlarm(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
-    slot_key: str = Field(default="morning")
+    slot_key: str = Field(default=DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY)
     hour: int = 8
     minute: int = 0
     enabled: bool = False
@@ -150,7 +151,7 @@ def default_alarm_hour(slot_key: str) -> int:
 # Returns:
 # - Tuple of valid slot keys.
 def valid_alarm_slot_keys() -> tuple[str, ...]:
-    return _VALID_SLOT_KEYS
+    return MEDICATION_SCHEDULE_SLOT_KEYS
 
 
 # Function Name: ensure_medication_alarm_schema
@@ -176,7 +177,7 @@ def ensure_medication_alarm_schema(db_engine: Engine) -> None:
     }
     optional_columns = {
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
-        "slot_key": "VARCHAR DEFAULT 'morning'",
+        "slot_key": f"VARCHAR DEFAULT '{DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY}'",
         "hour": "INTEGER DEFAULT 8",
         "minute": "INTEGER DEFAULT 0",
         "enabled": "BOOLEAN DEFAULT 0",
@@ -204,8 +205,10 @@ def ensure_medication_alarm_schema(db_engine: Engine) -> None:
         connection.execute(
             text(
                 f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET slot_key = 'morning' WHERE slot_key IS NULL OR slot_key = ''"
-            )
+                "SET slot_key = :default_slot_key "
+                "WHERE slot_key IS NULL OR slot_key = ''"
+            ),
+            {"default_slot_key": DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY},
         )
         connection.execute(
             text(
