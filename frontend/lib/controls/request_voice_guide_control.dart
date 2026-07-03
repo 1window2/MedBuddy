@@ -97,6 +97,7 @@ class RequestVoiceGuide {
               'dosage_per_time': medicationGuide.dosagePerTime,
               'daily_frequency': medicationGuide.dailyFrequency,
               'total_days': medicationGuide.totalDays,
+              'ai_guide': medicationGuide.aiGuide,
               'language': language,
             }),
           )

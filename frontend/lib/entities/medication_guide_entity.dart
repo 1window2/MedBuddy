@@ -19,6 +19,7 @@ class MedicationGuide {
   final String dailyFrequency;
   final String totalDays;
   final String imageUrl;
+  final String aiGuide;
 
   const MedicationGuide({
     required this.itemName,
@@ -29,6 +30,7 @@ class MedicationGuide {
     this.dailyFrequency = '',
     this.totalDays = '',
     this.imageUrl = '',
+    this.aiGuide = '',
   });
 
   factory MedicationGuide.fromMedicationDetail(MedicationDetail medication) {
@@ -41,6 +43,7 @@ class MedicationGuide {
       dailyFrequency: medication.dailyFrequency,
       totalDays: medication.totalDays,
       imageUrl: medication.imageUrl,
+      aiGuide: medication.aiGuide,
     );
   }
 
@@ -80,8 +83,11 @@ class MedicationGuide {
   String get voiceGuideText {
     final sections = [
       displayName,
+      if (efficacy.trim().isNotEmpty) '효능. ${efficacy.trim()}',
+      if (usageMethod.trim().isNotEmpty) '복용 방법. ${usageMethod.trim()}',
       '상세 복용 가이드. ${detailedDosageGuideLines.join('. ')}',
       '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
+      if (aiGuide.trim().isNotEmpty) '추가 안내. ${aiGuide.trim()}',
     ];
     return sections.join('\n');
   }

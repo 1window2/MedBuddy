@@ -7,10 +7,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/request_voice_guide_control.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_guide_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 void main() {
+  test('MedicationGuide preserves AI guide from medication detail', () {
+    final medicationGuide = MedicationGuide.fromMedicationDetail(
+      const MedicationDetail(
+        itemName: 'Saved tablet',
+        efficacy: 'Pain relief',
+        usageMethod: 'Take after meals',
+        warning: 'May cause drowsiness',
+        aiGuide: 'Drink enough water.',
+      ),
+    );
+
+    expect(medicationGuide.aiGuide, 'Drink enough water.');
+    expect(medicationGuide.voiceGuideText, contains('Drink enough water.'));
+  });
+
   test('requestVoiceGuide speaks backend voice guide text', () async {
     late Map<String, dynamic> requestBody;
     var spokenText = '';
@@ -49,11 +65,13 @@ void main() {
         efficacy: 'Pain relief',
         usageMethod: 'Take after meals',
         warning: 'May cause drowsiness',
+        aiGuide: 'Drink enough water.',
       ),
       userSetting: const UserSetting(language: 'en'),
     );
 
     expect(requestBody['item_name'], 'Test tablet');
+    expect(requestBody['ai_guide'], 'Drink enough water.');
     expect(requestBody['language'], 'en');
     expect(usedText, 'Medication: Test tablet');
     expect(spokenText, 'Medication: Test tablet');
@@ -87,11 +105,15 @@ void main() {
         dosagePerTime: '1 tablet',
         dailyFrequency: '3 times daily',
         totalDays: '3 days',
+        aiGuide: 'Drink enough water.',
       ),
       userSetting: const UserSetting(language: 'ko'),
     );
 
     expect(usedText, contains('Fallback tablet'));
+    expect(usedText, contains('Pain relief'));
+    expect(usedText, contains('Take after meals'));
+    expect(usedText, contains('Drink enough water.'));
     expect(usedText.trim(), isNotEmpty);
     expect(spokenText, usedText);
     control.dispose();
