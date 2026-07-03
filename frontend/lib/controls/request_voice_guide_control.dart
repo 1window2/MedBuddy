@@ -59,12 +59,17 @@ class RequestVoiceGuide {
       medicationGuide: medicationGuide,
       language: userSetting.language,
     );
+    final normalizedVoiceGuideText = voiceGuideText.trim();
+    if (normalizedVoiceGuideText.isEmpty) {
+      onComplete?.call();
+      throw StateError('Voice guide text is empty.');
+    }
     await (_speaker ?? _ttsService!.speak)(
-      voiceGuideText,
+      normalizedVoiceGuideText,
       userSetting,
       onComplete: onComplete,
     );
-    return voiceGuideText;
+    return normalizedVoiceGuideText;
   }
 
   // 함수명: getVoiceGuideText

@@ -22,7 +22,7 @@ void main() {
         jsonEncode({
           'success': true,
           'data': {
-            'voice_guide_text': 'Medication: Test tablet',
+            'voice_guide_text': '  Medication: Test tablet  ',
             'language': 'en',
           },
         }),

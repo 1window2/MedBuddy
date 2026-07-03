@@ -27,6 +27,7 @@ void main() {
     expect(setting.fontSize, 20);
     expect(setting.readingSpeed, 1.2);
     expect(setting.language, 'en');
+    expect(setting.userHash, 'local_patient');
     expect(setting.fontSizeOption, 'large');
     expect(setting.readingSpeedOption, 'fast');
   });
@@ -43,6 +44,29 @@ void main() {
 
     expect(setting.fontSizeOption, 'small');
     expect(setting.readingSpeedOption, 'slow');
+    expect(setting.language, 'en');
+  });
+
+  test('requestStoredUserSetting prefers scoped cache over legacy keys',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'user_setting_user-a_font_size': 20,
+      'user_setting_user-a_reading_speed': 1.2,
+      'user_setting_user-a_language': 'en',
+      'user_setting_font_size': 14,
+      'user_setting_reading_speed': 0.8,
+      'user_setting_language': 'ko',
+    });
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+
+    final setting = await control.requestStoredUserSetting();
+
+    expect(setting.userHash, 'user-a');
+    expect(setting.fontSizeOption, 'large');
+    expect(setting.readingSpeedOption, 'fast');
     expect(setting.language, 'en');
   });
 
@@ -80,7 +104,7 @@ void main() {
     expect(setting.readingSpeedOption, 'fast');
     expect(setting.language, 'en');
     final preferences = await SharedPreferences.getInstance();
-    expect(preferences.getInt('user_setting_font_size'), 20);
+    expect(preferences.getInt('user_setting_user-a_font_size'), 20);
     control.dispose();
   });
 
@@ -106,8 +130,9 @@ void main() {
     expect(setting.fontSize, 14);
     expect(setting.readingSpeed, 0.8);
     expect(setting.language, 'ko');
+    expect(setting.userHash, 'user-a');
     final preferences = await SharedPreferences.getInstance();
-    expect(preferences.getInt('user_setting_font_size'), 14);
+    expect(preferences.getInt('user_setting_user-a_font_size'), 14);
     control.dispose();
   });
 }

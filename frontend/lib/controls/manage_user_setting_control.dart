@@ -18,9 +18,9 @@ import '../services/api_config.dart';
 // - 설정 화면에서 선택한 값을 UserSetting으로 변환한다.
 // - 앱을 재시작해도 설정이 유지되도록 로컬 저장소에 저장한다.
 class ManageUserSetting {
-  static const String _fontSizeKey = 'user_setting_font_size';
-  static const String _readingSpeedKey = 'user_setting_reading_speed';
-  static const String _languageKey = 'user_setting_language';
+  static const String _legacyFontSizeKey = 'user_setting_font_size';
+  static const String _legacyReadingSpeedKey = 'user_setting_reading_speed';
+  static const String _legacyLanguageKey = 'user_setting_language';
   static const Duration _requestTimeout = Duration(seconds: 5);
 
   final String baseUrl;
@@ -100,6 +100,7 @@ class ManageUserSetting {
     required String language,
   }) async {
     final nextSetting = currentSetting
+        .copyWith(userHash: _normalizedUserHash)
         .changeFontSize(UserSetting.fontSizeFromOption(fontSizeOption))
         .changeReadingSpeed(
           UserSetting.readingSpeedFromOption(readingSpeedOption),
@@ -147,10 +148,16 @@ class ManageUserSetting {
     final preferences = await SharedPreferences.getInstance();
 
     return UserSetting(
-      userHash: userHash,
-      fontSize: preferences.getInt(_fontSizeKey) ?? 16,
-      readingSpeed: preferences.getDouble(_readingSpeedKey) ?? 1.0,
-      language: preferences.getString(_languageKey) ?? 'ko',
+      userHash: _normalizedUserHash,
+      fontSize: preferences.getInt(_fontSizeKey) ??
+          preferences.getInt(_legacyFontSizeKey) ??
+          16,
+      readingSpeed: preferences.getDouble(_readingSpeedKey) ??
+          preferences.getDouble(_legacyReadingSpeedKey) ??
+          1.0,
+      language: preferences.getString(_languageKey) ??
+          preferences.getString(_legacyLanguageKey) ??
+          'ko',
     );
   }
 
@@ -192,9 +199,18 @@ class ManageUserSetting {
 
   Uri _buildUserSettingUri() {
     return Uri.parse('$baseUrl/settings/user').replace(
-      queryParameters: {'user_hash': userHash},
+      queryParameters: {'user_hash': _normalizedUserHash},
     );
   }
+
+  String get _normalizedUserHash => PatientHash.normalizePatientHash(userHash);
+
+  String get _fontSizeKey => 'user_setting_${_normalizedUserHash}_font_size';
+
+  String get _readingSpeedKey =>
+      'user_setting_${_normalizedUserHash}_reading_speed';
+
+  String get _languageKey => 'user_setting_${_normalizedUserHash}_language';
 
   void dispose() {
     if (_ownsClient) {
