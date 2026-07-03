@@ -7,6 +7,7 @@ import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 // File Name: set_notification_control.dart
 // Role: Handles medication alarm API calls.
@@ -67,16 +68,16 @@ class SetNotification {
       final response = await _client
           .get(_buildNotificationUri('notification/settings'))
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Medication alarms lookup failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawSettings = decodedData['data'];
       if (rawSettings is! List) {
         return const [];
@@ -128,12 +129,12 @@ class SetNotification {
             _buildNotificationUri('notification/settings/$normalizedSlotKey'),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Medication alarm lookup failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -177,12 +178,12 @@ class SetNotification {
             }),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Medication alarm save failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -217,12 +218,12 @@ class SetNotification {
             ),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Medication alarm disable failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -241,7 +242,7 @@ class SetNotification {
   }
 
   MedicationReminderSetting _decodeSetting(String responseBody) {
-    final decodedData = _decodeMap(responseBody);
+    final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
     if (rawSetting is Map) {
       return MedicationReminderSetting.fromJson(
@@ -249,26 +250,6 @@ class SetNotification {
       );
     }
     throw StateError('Server response did not include a medication alarm.');
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('Server response format was invalid.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   Uri _buildNotificationUri(String path) {

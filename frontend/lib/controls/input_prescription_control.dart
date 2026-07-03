@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -7,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 typedef PrescriptionImageSelectedCallback = void Function();
 
@@ -104,15 +104,16 @@ class InputPrescription {
         },
       );
       final response = await http.Response.fromStream(streamedResponse);
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
-          '분석 실패 (${response.statusCode}): ${_extractErrorDetail(responseBody)}',
+          '분석 실패 (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
@@ -120,14 +121,11 @@ class InputPrescription {
         return [];
       }
 
-      return rawMedications
-          .whereType<Map>()
-          .map((item) {
-            final itemJson = Map<String, dynamic>.from(item);
-            itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
-            return MedicationSchedule.fromAnalysisJson(itemJson);
-          })
-          .toList(growable: false);
+      return rawMedications.whereType<Map>().map((item) {
+        final itemJson = Map<String, dynamic>.from(item);
+        itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
+        return MedicationSchedule.fromAnalysisJson(itemJson);
+      }).toList(growable: false);
     } on StateError {
       rethrow;
     } on FileSystemException catch (error, stackTrace) {
@@ -147,26 +145,6 @@ class InputPrescription {
       );
       throw StateError('서버 연결에 실패했습니다.');
     }
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('서버 응답 형식이 올바르지 않습니다.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   String _imageFileAccessErrorMessage(ImageSource imageSource) {

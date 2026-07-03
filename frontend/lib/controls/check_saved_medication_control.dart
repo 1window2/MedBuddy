@@ -7,6 +7,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 enum MedicationSaveStatus {
   saved,
@@ -81,15 +82,15 @@ class CheckSavedMedication {
           )
           .timeout(const Duration(seconds: 30));
 
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
         return MedicationSaveResult(
           status: MedicationSaveStatus.failed,
-          message: _extractErrorDetail(responseBody),
+          message: ApiResponseParser.extractErrorDetail(responseBody),
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       final message = _readMessage(decodedData, '저장되었습니다.');
       if (decodedData['duplicate'] == true) {
         return MedicationSaveResult(
@@ -136,8 +137,8 @@ class CheckSavedMedication {
     MedicationSchedule? medicationSchedule,
   ) {
     final savePayload = medicationDetail.toSaveJson();
-    final prescriptionDate =
-        medicationSchedule?.prescriptionDate ?? medicationDetail.prescriptionDate;
+    final prescriptionDate = medicationSchedule?.prescriptionDate ??
+        medicationDetail.prescriptionDate;
     savePayload['patient_hash'] = patientHash;
     savePayload['prescription_date'] = _formatDate(prescriptionDate);
     savePayload['dosage_per_time'] = _readScheduleValue(
@@ -196,15 +197,15 @@ class CheckSavedMedication {
           .get(_buildMedicationUri('list'))
           .timeout(const Duration(seconds: 30));
 
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
         throw StateError(
           '저장된 복약 정보 조회 실패 (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       if (decodedData['success'] != true) {
         return [];
       }
@@ -247,14 +248,6 @@ class CheckSavedMedication {
     }
   }
 
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('서버 응답 형식이 올바르지 않습니다.');
-  }
-
   List<MedicationDetail> _decodeSavedMedicationInfoList(dynamic rawItems) {
     if (rawItems is! List) {
       return [];
@@ -266,18 +259,6 @@ class CheckSavedMedication {
             MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
         .where((item) => item.id != null && item.id! > 0)
         .toList(growable: false);
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   String _readMessage(Map<String, dynamic> decodedData, String fallback) {

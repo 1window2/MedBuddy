@@ -1,8 +1,7 @@
 # File Name: check_schedule_control.py
 # Role: Control class mapped from the CheckSchedule box in ClassDiagram2.
 
-from datetime import date, timedelta
-import re
+from datetime import date
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -19,9 +18,8 @@ from entities.medication_schedule_entity import (
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
+from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
-
-_TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 
 
 # Class Name: CheckSchedule
@@ -32,8 +30,13 @@ _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 # Attributes:
 #   - db: SQLAlchemy session used for schedule persistence operations.
 class CheckSchedule:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        course_policy: MedicationCoursePolicy | None = None,
+    ) -> None:
         self.db = db
+        self.course_policy = course_policy or MedicationCoursePolicy()
 
     # Function Name: requestMedicationSchedule
     # Description:
@@ -354,7 +357,7 @@ class CheckSchedule:
         )
         is_completed_today = self._all_slots_completed(slot_statuses)
         return MedicationSchedule(
-            created_date=self._read_schedule_start_date(
+            created_date=self.course_policy.read_start_date(
                 medication,
                 target_date,
             ),
@@ -379,7 +382,9 @@ class CheckSchedule:
     # Returns:
     # - Ordered slot keys used by backend and Flutter schedule UI.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
-        frequency_count = self._read_total_days(medication.daily_frequency)
+        frequency_count = self.course_policy.read_frequency_count(
+            medication.daily_frequency
+        )
         return medication_schedule_slot_keys_for_frequency(frequency_count)
 
     # Function Name: _slot_keys_for_update
@@ -613,55 +618,11 @@ class CheckSchedule:
     # Returns:
     # - True when the medication should be shown in today's schedule.
     def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
-        start_date = self._read_schedule_start_date(medication, today)
-        total_days = self._read_total_days(medication.total_days)
-        if total_days <= 0:
-            return start_date <= today
+        return self.course_policy.is_active_on(medication, today)
 
-        end_date = start_date + timedelta(days=total_days - 1)
-        return start_date <= today <= end_date
-
-    # 함수명: _read_schedule_start_date
-    # 함수역할:
-    # - 오늘 복약 일정 계산에 사용할 시작일을 조제일자 우선으로 읽는다.
-    # - 조제일자가 비어 있는 기존 데이터는 저장일을 대체값으로 사용한다.
-    # 매개변수:
-    # - medication: 저장된 복약 정보 row
-    # - fallback_date: 날짜 정보가 없을 때 사용할 기준일
-    # 반환값:
-    # - 일정 계산에 사용할 시작 날짜
-    def _read_schedule_start_date(
-        self,
-        medication: _SavedMedication,
-        fallback_date: date,
-    ) -> date:
-        prescription_date = getattr(medication, "prescription_date", None)
-        if prescription_date:
-            return self._read_created_date(prescription_date, fallback_date)
-        return self._read_created_date(medication.created_date, fallback_date)
-
-    # Function Name: _read_created_date
+    # Function Name: _read_status_date
     # Description:
-    # - Reads a saved medication created date with a safe fallback.
-    # Parameters:
-    # - raw_date: Raw created_date value from SQLAlchemy.
-    # - fallback_date: Date used when raw_date is empty or invalid.
-    # Returns:
-    # - Parsed date.
-    def _read_created_date(
-        self,
-        raw_date: object,
-        fallback_date: date,
-    ) -> date:
-        if isinstance(raw_date, date):
-            return raw_date
-        if isinstance(raw_date, str) and raw_date.strip():
-            try:
-                return date.fromisoformat(raw_date.strip())
-            except ValueError:
-                return fallback_date
-        return fallback_date
-
+    # - Reads the per-dose completion date stored for a schedule slot.
     def _read_status_date(self, raw_date: object) -> date | None:
         if isinstance(raw_date, date):
             return raw_date
@@ -671,18 +632,3 @@ class CheckSchedule:
             except ValueError:
                 return None
         return None
-
-    # Function Name: _read_total_days
-    # Description:
-    # - Extracts a numeric medication duration from a schedule label.
-    # Parameters:
-    # - raw_total_days: Raw total_days value such as "7 days" or "7일".
-    # Returns:
-    # - Parsed duration in days, or 0 when unavailable.
-    def _read_total_days(self, raw_total_days: str | None) -> int:
-        if not raw_total_days:
-            return 0
-        match = _TOTAL_DAYS_PATTERN.search(raw_total_days)
-        if match is None:
-            return 0
-        return int(match.group(0))

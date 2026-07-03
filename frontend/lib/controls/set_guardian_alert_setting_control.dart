@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/guardian_alert_setting_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 // 파일명: set_guardian_alert_setting_control.dart
 // 역할: 보호자 알림 설정 API 호출을 담당한다.
@@ -50,12 +51,12 @@ class SetGuardianAlertSetting {
       final response = await _client
           .get(_buildGuardianAlertUri(patientHash))
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Guardian alert setting lookup failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -96,12 +97,12 @@ class SetGuardianAlertSetting {
             }),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Guardian alert setting save failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -132,7 +133,7 @@ class SetGuardianAlertSetting {
   }
 
   GuardianAlertSetting _decodeSetting(String responseBody) {
-    final decodedData = _decodeMap(responseBody);
+    final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
     if (rawSetting is Map) {
       return GuardianAlertSetting.fromJson(
@@ -140,26 +141,6 @@ class SetGuardianAlertSetting {
       );
     }
     throw StateError('Server response did not include guardian alert setting.');
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('Server response format was invalid.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   Uri _buildGuardianAlertUri(String patientHash) {

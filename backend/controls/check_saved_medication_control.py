@@ -2,7 +2,6 @@
 # Role: Control class for saved medication persistence workflows.
 
 from datetime import date, timedelta
-import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -11,9 +10,8 @@ from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
+from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
-
-_TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 
 
 # Class Name: CheckSavedMedication
@@ -25,8 +23,13 @@ _TOTAL_DAYS_PATTERN = re.compile(r"\d+")
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
 class CheckSavedMedication:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        course_policy: MedicationCoursePolicy | None = None,
+    ) -> None:
         self.db = db
+        self.course_policy = course_policy or MedicationCoursePolicy()
 
     # Function Name: save_medication_detail
     # Description:
@@ -381,12 +384,9 @@ class CheckSavedMedication:
         start_date: date,
         total_days: str | None,
     ) -> date:
-        if not total_days:
+        days = self.course_policy.read_total_days(total_days)
+        if days <= 0:
             return start_date
-        match = _TOTAL_DAYS_PATTERN.search(total_days)
-        if match is None:
-            return start_date
-        days = max(int(match.group(0)), 1)
         return start_date + timedelta(days=days - 1)
 
     # 함수명: _normalize_schedule_value

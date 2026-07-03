@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 // 파일명: manage_user_setting_control.dart
 // 역할: 사용자 환경설정을 로컬 저장소에 저장하고 불러온다.
@@ -61,11 +62,11 @@ class ManageUserSetting {
     try {
       final response =
           await _client.get(_buildUserSettingUri()).timeout(_requestTimeout);
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
         throw StateError(
           'User setting lookup failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -121,12 +122,12 @@ class ManageUserSetting {
             body: jsonEncode(nextSetting.toJson()),
           )
           .timeout(_requestTimeout);
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'User setting save failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
@@ -170,32 +171,12 @@ class ManageUserSetting {
   }
 
   UserSetting _decodeUserSetting(String responseBody) {
-    final decodedData = _decodeMap(responseBody);
+    final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
     if (rawSetting is Map) {
       return UserSetting.fromJson(Map<String, dynamic>.from(rawSetting));
     }
     throw StateError('Server response did not include user setting.');
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('Server response format was invalid.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   Uri _buildUserSettingUri() {

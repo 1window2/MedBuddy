@@ -3,9 +3,8 @@
 
 import json
 import logging
-import re
 import hashlib
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from fastapi import HTTPException
@@ -16,12 +15,10 @@ from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from core.config import settings
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.saved_medication_entity import _SavedMedication
+from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
-
-_TOTAL_DAYS_PATTERN = re.compile(r"\d+")
-
 
 # 클래스명: HealthRecommendationGenerator
 # 역할: Gemini를 사용해 복용 약 조합 기반 건강 관리 추천 문장을 생성한다.
@@ -186,11 +183,13 @@ class RequestHealthRecommendation:
         self,
         db: Session,
         recommendation_generator: HealthRecommendationGenerator | None = None,
+        course_policy: MedicationCoursePolicy | None = None,
     ) -> None:
         self.db = db
         self.recommendation_generator = (
             recommendation_generator or HealthRecommendationGenerator()
         )
+        self.course_policy = course_policy or MedicationCoursePolicy()
 
     # 함수명: request_health_recommendation
     # 함수역할:
@@ -394,33 +393,4 @@ class RequestHealthRecommendation:
         }
 
     def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
-        start_date = self._read_schedule_start_date(medication, today)
-        total_days = self._read_total_days(medication.total_days)
-        if total_days <= 0:
-            return start_date <= today
-
-        end_date = start_date + timedelta(days=total_days - 1)
-        return start_date <= today <= end_date
-
-    def _read_schedule_start_date(
-        self,
-        medication: _SavedMedication,
-        fallback_date: date,
-    ) -> date:
-        raw_date = medication.prescription_date or medication.created_date
-        if isinstance(raw_date, date):
-            return raw_date
-        if isinstance(raw_date, str) and raw_date.strip():
-            try:
-                return date.fromisoformat(raw_date.strip())
-            except ValueError:
-                return fallback_date
-        return fallback_date
-
-    def _read_total_days(self, raw_total_days: str | None) -> int:
-        if not raw_total_days:
-            return 0
-        match = _TOTAL_DAYS_PATTERN.search(raw_total_days)
-        if match is None:
-            return 0
-        return int(match.group(0))
+        return self.course_policy.is_active_on(medication, today)

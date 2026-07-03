@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 
 // 파일명: check_schedule_control.dart
 // 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 API를 담당한다.
@@ -52,16 +53,16 @@ class CheckSchedule {
       final response = await _client
           .get(_buildScheduleUri('schedule/today'))
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Schedule lookup failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       return _decodeMedicationScheduleList(decodedData['data']);
     } on StateError {
       rethrow;
@@ -101,16 +102,16 @@ class CheckSchedule {
             }),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Status update failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawSchedule = decodedData['data'];
       if (rawSchedule is Map) {
         return MedicationSchedule.fromScheduleJson(
@@ -144,26 +145,6 @@ class CheckSchedule {
           ).getTodayMedicationSchedule(),
         )
         .toList(growable: false);
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('Server response format was invalid.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   Uri _buildScheduleUri(String path) {

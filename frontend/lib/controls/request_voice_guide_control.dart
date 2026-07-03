@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
+import '../services/api_response_parser.dart';
 import '../services/medication_tts_service.dart';
 
 typedef VoiceGuideSpeaker = Future<void> Function(
@@ -94,16 +95,16 @@ class RequestVoiceGuide {
             ),
           )
           .timeout(const Duration(seconds: 15));
-      final responseBody = utf8.decode(response.bodyBytes);
+      final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
         throw StateError(
           'Voice guide request failed (${response.statusCode}): '
-          '${_extractErrorDetail(responseBody)}',
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
         );
       }
 
-      final decodedData = _decodeMap(responseBody);
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawData = decodedData['data'];
       if (rawData is Map && rawData['voice_guide_text'] != null) {
         final voiceGuideText = rawData['voice_guide_text'].toString().trim();
@@ -142,26 +143,6 @@ class RequestVoiceGuide {
 
   Future<void> stop() async {
     await _ttsService?.stop();
-  }
-
-  Map<String, dynamic> _decodeMap(String responseBody) {
-    final dynamic decodedData = jsonDecode(responseBody);
-    if (decodedData is Map<String, dynamic>) {
-      return decodedData;
-    }
-    throw StateError('Server response format was invalid.');
-  }
-
-  String _extractErrorDetail(String responseBody) {
-    try {
-      final decodedError = _decodeMap(responseBody);
-      if (decodedError['detail'] != null) {
-        return decodedError['detail'].toString();
-      }
-    } catch (_) {
-      return responseBody;
-    }
-    return responseBody;
   }
 
   void dispose() {
