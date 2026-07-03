@@ -21,14 +21,13 @@ class UserSetting {
   });
 
   factory UserSetting.fromJson(Map<String, dynamic> json) {
+    final language = _readString(json['language']);
     return UserSetting(
       userHash: _readString(json['user_hash'] ?? json['userHash']),
       fontSize: _readInt(json['font_size'] ?? json['fontSize']) ?? 16,
       readingSpeed:
           _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
-      language: _readString(json['language']).isEmpty
-          ? 'ko'
-          : _readString(json['language']),
+      language: language.isEmpty ? 'ko' : language,
     );
   }
 

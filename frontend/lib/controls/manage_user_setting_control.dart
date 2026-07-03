@@ -146,18 +146,19 @@ class ManageUserSetting {
 
   Future<UserSetting> _requestCachedUserSetting() async {
     final preferences = await SharedPreferences.getInstance();
+    final fallbackSetting = UserSetting(userHash: _normalizedUserHash);
 
     return UserSetting(
-      userHash: _normalizedUserHash,
+      userHash: fallbackSetting.userHash,
       fontSize: preferences.getInt(_fontSizeKey) ??
           preferences.getInt(_legacyFontSizeKey) ??
-          16,
+          fallbackSetting.fontSize,
       readingSpeed: preferences.getDouble(_readingSpeedKey) ??
           preferences.getDouble(_legacyReadingSpeedKey) ??
-          1.0,
+          fallbackSetting.readingSpeed,
       language: preferences.getString(_languageKey) ??
           preferences.getString(_legacyLanguageKey) ??
-          'ko',
+          fallbackSetting.language,
     );
   }
 

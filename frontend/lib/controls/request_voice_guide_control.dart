@@ -89,17 +89,9 @@ class RequestVoiceGuide {
           .post(
             Uri.parse('$baseUrl/voice-guide'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'item_name': medicationGuide.itemName,
-              'efficacy': medicationGuide.efficacy,
-              'usage_method': medicationGuide.usageMethod,
-              'warning': medicationGuide.warning,
-              'dosage_per_time': medicationGuide.dosagePerTime,
-              'daily_frequency': medicationGuide.dailyFrequency,
-              'total_days': medicationGuide.totalDays,
-              'ai_guide': medicationGuide.aiGuide,
-              'language': language,
-            }),
+            body: jsonEncode(
+              _buildVoiceGuideRequestBody(medicationGuide, language),
+            ),
           )
           .timeout(const Duration(seconds: 15));
       final responseBody = utf8.decode(response.bodyBytes);
@@ -129,6 +121,23 @@ class RequestVoiceGuide {
       );
       return medicationGuide.voiceGuideText;
     }
+  }
+
+  Map<String, dynamic> _buildVoiceGuideRequestBody(
+    MedicationGuide medicationGuide,
+    String language,
+  ) {
+    return {
+      'item_name': medicationGuide.itemName,
+      'efficacy': medicationGuide.efficacy,
+      'usage_method': medicationGuide.usageMethod,
+      'warning': medicationGuide.warning,
+      'dosage_per_time': medicationGuide.dosagePerTime,
+      'daily_frequency': medicationGuide.dailyFrequency,
+      'total_days': medicationGuide.totalDays,
+      'ai_guide': medicationGuide.aiGuide,
+      'language': language,
+    };
   }
 
   Future<void> stop() async {
