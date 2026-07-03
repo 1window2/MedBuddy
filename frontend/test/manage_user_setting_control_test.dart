@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,7 +15,7 @@ void main() {
 
   test('requestSettingSave updates all user setting fields', () async {
     SharedPreferences.setMockInitialValues({});
-    final control = ManageUserSetting();
+    final control = ManageUserSetting(useRemotePersistence: false);
 
     final setting = await control.requestSettingSave(
       currentSetting: const UserSetting(),
@@ -33,12 +37,77 @@ void main() {
       'user_setting_reading_speed': 0.8,
       'user_setting_language': 'en',
     });
-    final control = ManageUserSetting();
+    final control = ManageUserSetting(useRemotePersistence: false);
 
     final setting = await control.requestStoredUserSetting();
 
     expect(setting.fontSizeOption, 'small');
     expect(setting.readingSpeedOption, 'slow');
     expect(setting.language, 'en');
+  });
+
+  test('requestStoredUserSetting prefers backend setting and caches it',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/settings/user');
+      expect(request.url.queryParameters['user_hash'], 'user-a');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'user_hash': 'user-a',
+            'font_size': 20,
+            'reading_speed': 1.2,
+            'language': 'en',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = ManageUserSetting(
+      baseUrl: 'http://localhost',
+      userHash: 'user-a',
+      client: client,
+    );
+
+    final setting = await control.requestStoredUserSetting();
+
+    expect(setting.userHash, 'user-a');
+    expect(setting.fontSizeOption, 'large');
+    expect(setting.readingSpeedOption, 'fast');
+    expect(setting.language, 'en');
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getInt('user_setting_font_size'), 20);
+    control.dispose();
+  });
+
+  test('requestSettingSave falls back to local cache when backend fails',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((http.Request request) async {
+      return http.Response('{"detail":"down"}', 500);
+    });
+    final control = ManageUserSetting(
+      baseUrl: 'http://localhost',
+      userHash: 'user-a',
+      client: client,
+    );
+
+    final setting = await control.requestSettingSave(
+      currentSetting: const UserSetting(),
+      fontSizeOption: 'small',
+      readingSpeedOption: 'slow',
+      language: 'ko',
+    );
+
+    expect(setting.fontSize, 14);
+    expect(setting.readingSpeed, 0.8);
+    expect(setting.language, 'ko');
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getInt('user_setting_font_size'), 14);
+    control.dispose();
   });
 }

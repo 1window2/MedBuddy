@@ -1,0 +1,99 @@
+// File Name: request_voice_guide_control_test.dart
+// Role: Verifies voice guide control API fallback and TTS delegation.
+
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:medbuddy_frontend/controls/request_voice_guide_control.dart';
+import 'package:medbuddy_frontend/entities/medication_guide_entity.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+
+void main() {
+  test('requestVoiceGuide speaks backend voice guide text', () async {
+    late Map<String, dynamic> requestBody;
+    var spokenText = '';
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/voice-guide');
+      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'voice_guide_text': 'Medication: Test tablet',
+            'language': 'en',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = RequestVoiceGuide(
+      baseUrl: 'http://localhost',
+      client: client,
+      speaker: (
+        String text,
+        UserSetting userSetting, {
+        void Function()? onComplete,
+      }) async {
+        spokenText = text;
+        onComplete?.call();
+      },
+    );
+
+    final usedText = await control.requestVoiceGuide(
+      medicationGuide: const MedicationGuide(
+        itemName: 'Test tablet',
+        efficacy: 'Pain relief',
+        usageMethod: 'Take after meals',
+        warning: 'May cause drowsiness',
+      ),
+      userSetting: const UserSetting(language: 'en'),
+    );
+
+    expect(requestBody['item_name'], 'Test tablet');
+    expect(requestBody['language'], 'en');
+    expect(usedText, 'Medication: Test tablet');
+    expect(spokenText, 'Medication: Test tablet');
+    control.dispose();
+  });
+
+  test('requestVoiceGuide falls back to local guide text on backend failure',
+      () async {
+    var spokenText = '';
+    final client = MockClient((http.Request request) async {
+      return http.Response('{"detail":"down"}', 500);
+    });
+    final control = RequestVoiceGuide(
+      baseUrl: 'http://localhost',
+      client: client,
+      speaker: (
+        String text,
+        UserSetting userSetting, {
+        void Function()? onComplete,
+      }) async {
+        spokenText = text;
+      },
+    );
+
+    final usedText = await control.requestVoiceGuide(
+      medicationGuide: const MedicationGuide(
+        itemName: 'Fallback tablet',
+        efficacy: 'Pain relief',
+        usageMethod: 'Take after meals',
+        warning: 'May cause drowsiness',
+        dosagePerTime: '1 tablet',
+        dailyFrequency: '3 times daily',
+        totalDays: '3 days',
+      ),
+      userSetting: const UserSetting(language: 'ko'),
+    );
+
+    expect(usedText, contains('Fallback tablet'));
+    expect(usedText.trim(), isNotEmpty);
+    expect(spokenText, usedText);
+    control.dispose();
+  });
+}

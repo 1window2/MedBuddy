@@ -11,8 +11,10 @@ from api.dependencies import (
     get_check_schedule,
     get_check_saved_medication,
     get_input_prescription,
+    get_manage_user_setting,
     get_patient_guardian_link_control,
     get_request_health_recommendation,
+    get_request_voice_guide,
     get_set_guardian_alert_setting,
     get_set_notification,
 )
@@ -20,8 +22,10 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
+from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -34,6 +38,8 @@ from schemas.medication import (
     PatientCodeCreate,
     PatientCodeRegister,
     SavedMedicationCreate,
+    UserSettingUpdate,
+    VoiceGuideRequest,
 )
 from services.prescription_parser import parse_prescription
 
@@ -294,6 +300,64 @@ async def disable_medication_alarm(
         slot_key,
         user_hash,
         role,
+    )
+
+
+# Function Name: get_user_setting
+# Description:
+# - Returns user display and reading settings.
+# Parameters:
+# - user_hash: User ownership key used to scope settings.
+# - manage_user_setting: ManageUserSetting injected by FastAPI.
+# Returns:
+# - API-compatible user setting dictionary.
+@router.get("/settings/user")
+async def get_user_setting(
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
+) -> dict[str, object]:
+    return manage_user_setting.request_user_setting(user_hash)
+
+
+# Function Name: save_user_setting
+# Description:
+# - Saves user display and reading settings.
+# Parameters:
+# - request: UserSettingUpdate request DTO.
+# - user_hash: User ownership key used to scope settings.
+# - manage_user_setting: ManageUserSetting injected by FastAPI.
+# Returns:
+# - API-compatible user setting dictionary.
+@router.put("/settings/user")
+async def save_user_setting(
+    request: UserSettingUpdate,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
+) -> dict[str, object]:
+    return manage_user_setting.save_user_setting(
+        user_hash,
+        request.font_size,
+        request.reading_speed,
+        request.language,
+    )
+
+
+# Function Name: request_voice_guide
+# Description:
+# - Builds voice guide text from medication detail information.
+# Parameters:
+# - request: VoiceGuideRequest containing medication guide source data.
+# - request_voice_guide_control: RequestVoiceGuide injected by FastAPI.
+# Returns:
+# - API-compatible voice guide dictionary.
+@router.post("/voice-guide")
+async def request_voice_guide(
+    request: VoiceGuideRequest,
+    request_voice_guide_control: RequestVoiceGuide = Depends(get_request_voice_guide),
+) -> dict[str, object]:
+    return request_voice_guide_control.request_voice_guide(
+        request.to_medication_detail(),
+        request.language,
     )
 
 

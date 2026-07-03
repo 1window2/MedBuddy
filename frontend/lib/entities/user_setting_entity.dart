@@ -8,15 +8,29 @@
 // - 화면 텍스트 확대 비율을 계산한다.
 // - 불변 객체 방식으로 변경된 설정 값을 생성한다.
 class UserSetting {
+  final String userHash;
   final int fontSize;
   final double readingSpeed;
   final String language;
 
   const UserSetting({
+    this.userHash = '',
     this.fontSize = 16,
     this.readingSpeed = 1.0,
     this.language = 'ko',
   });
+
+  factory UserSetting.fromJson(Map<String, dynamic> json) {
+    return UserSetting(
+      userHash: _readString(json['user_hash'] ?? json['userHash']),
+      fontSize: _readInt(json['font_size'] ?? json['fontSize']) ?? 16,
+      readingSpeed:
+          _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
+      language: _readString(json['language']).isEmpty
+          ? 'ko'
+          : _readString(json['language']),
+    );
+  }
 
   String get fontSizeOption {
     if (fontSize <= 14) {
@@ -56,11 +70,13 @@ class UserSetting {
   // 반환값:
   // - 변경값이 반영된 UserSetting 인스턴스
   UserSetting copyWith({
+    String? userHash,
     int? fontSize,
     double? readingSpeed,
     String? language,
   }) {
     return UserSetting(
+      userHash: userHash ?? this.userHash,
       fontSize: fontSize ?? this.fontSize,
       readingSpeed: readingSpeed ?? this.readingSpeed,
       language: language ?? this.language,
@@ -77,6 +93,15 @@ class UserSetting {
 
   UserSetting changeLanguage(String language) {
     return copyWith(language: language);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user_hash': userHash,
+      'font_size': fontSize,
+      'reading_speed': readingSpeed,
+      'language': language,
+    };
   }
 
   // 함수명: fontSizeFromOption
@@ -107,5 +132,38 @@ class UserSetting {
       'fast' => 1.2,
       _ => 1.0,
     };
+  }
+
+  static String _readString(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+    return value.toString().trim();
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  static double? _readDouble(dynamic value) {
+    if (value is double) {
+      return value;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value);
+    }
+    return null;
   }
 }

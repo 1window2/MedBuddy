@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../controls/request_voice_guide_control.dart';
 import '../entities/medication_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
-import '../services/medication_tts_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medication_detail_ui_boundary.dart
@@ -28,12 +28,13 @@ class MedicationDetailUI extends StatefulWidget {
 }
 
 class _MedicationDetailUIState extends State<MedicationDetailUI> {
-  final MedicationTtsService _ttsService = MedicationTtsService();
+  final RequestVoiceGuide _requestVoiceGuide = RequestVoiceGuide();
   bool _isSpeaking = false;
 
   @override
   void dispose() {
-    _ttsService.stop();
+    _requestVoiceGuide.stop();
+    _requestVoiceGuide.dispose();
     super.dispose();
   }
 
@@ -101,7 +102,7 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
 
   Future<void> _handleTtsButtonPressed() async {
     if (_isSpeaking) {
-      await _ttsService.stop();
+      await _requestVoiceGuide.stop();
       if (mounted) {
         setState(() => _isSpeaking = false);
       }
@@ -109,15 +110,21 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
     }
 
     setState(() => _isSpeaking = true);
-    await _ttsService.speak(
-      widget.medicationGuide.voiceGuideText,
-      widget.userSetting,
-      onComplete: () {
-        if (mounted) {
-          setState(() => _isSpeaking = false);
-        }
-      },
-    );
+    try {
+      await _requestVoiceGuide.requestVoiceGuide(
+        medicationGuide: widget.medicationGuide,
+        userSetting: widget.userSetting,
+        onComplete: () {
+          if (mounted) {
+            setState(() => _isSpeaking = false);
+          }
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isSpeaking = false);
+      }
+    }
   }
 }
 

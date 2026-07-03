@@ -9,8 +9,10 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
+from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_notification_control import SetNotification
 
@@ -113,3 +115,25 @@ def get_set_guardian_alert_setting(
     db: Session = Depends(get_db),
 ) -> SetGuardianAlertSetting:
     return SetGuardianAlertSetting(db=db)
+
+
+# Function Name: get_manage_user_setting
+# Description:
+# - Builds the user setting control with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - ManageUserSetting instance.
+def get_manage_user_setting(
+    db: Session = Depends(get_db),
+) -> ManageUserSetting:
+    return ManageUserSetting(db=db)
+
+
+# Function Name: get_request_voice_guide
+# Description:
+# - Builds the medication voice guide text control.
+# Returns:
+# - RequestVoiceGuide instance.
+def get_request_voice_guide() -> RequestVoiceGuide:
+    return RequestVoiceGuide()

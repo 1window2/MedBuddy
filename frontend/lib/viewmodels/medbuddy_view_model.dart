@@ -1033,6 +1033,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     checkSchedule.dispose();
     checkHealthRecommendation.dispose();
     setNotification.dispose();
+    manageUserSetting.dispose();
     super.dispose();
   }
 }

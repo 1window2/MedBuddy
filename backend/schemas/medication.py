@@ -4,7 +4,7 @@
 from datetime import date
 from typing import Optional
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from entities.medication_detail_entity import MedicationDetail
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -78,6 +78,62 @@ class GuardianAlertUpdate(BaseModel):
         default=None,
         validation_alias=AliasChoices("alert_option", "alertOption", "option"),
     )
+
+
+# Class Name: UserSettingUpdate
+# Role: Request DTO for saving user display and reading settings.
+# Attributes:
+#   - font_size: Selected display font size.
+#   - reading_speed: Selected voice/reading speed multiplier.
+#   - language: Selected language code.
+class UserSettingUpdate(BaseModel):
+    font_size: int
+    reading_speed: float
+    language: str
+
+
+# Class Name: VoiceGuideRequest
+# Role: Request DTO for medication voice guide generation.
+# Attributes:
+#   - item_name: Medication item name.
+#   - efficacy: Medication efficacy summary.
+#   - usage_method: Medication use method summary.
+#   - warning: Medication warning summary.
+#   - dosage_per_time: Optional dose per administration.
+#   - daily_frequency: Optional daily frequency.
+#   - total_days: Optional total medication days.
+#   - ai_guide: Optional AI-generated patient guide.
+#   - language: Selected language code.
+class VoiceGuideRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    item_name: str = ""
+    efficacy: str = ""
+    usage_method: str = Field(
+        default="",
+        validation_alias=AliasChoices("usage_method", "use_method"),
+    )
+    warning: str = Field(
+        default="",
+        validation_alias=AliasChoices("warning", "warning_message"),
+    )
+    dosage_per_time: str = ""
+    daily_frequency: str = ""
+    total_days: str = ""
+    ai_guide: Optional[str] = None
+    language: str = "ko"
+
+    def to_medication_detail(self) -> MedicationDetail:
+        return MedicationDetail(
+            item_name=self.item_name,
+            efficacy=self.efficacy,
+            use_method=self.usage_method,
+            warning_message=self.warning,
+            dosage_per_time=self.dosage_per_time,
+            daily_frequency=self.daily_frequency,
+            total_days=self.total_days,
+            ai_guide=self.ai_guide,
+        )
 
 
 # Class Name: PatientCodeCreate
