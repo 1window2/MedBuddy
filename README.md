@@ -22,6 +22,12 @@
 - Gemini Text generates patient-friendly medication guidance from the retrieved drug information.
 - The Flutter app can present medication details and voice guidance through the TTS service.
 
+### User Settings and Voice Playback
+
+- Users can save display font size, reading speed, and language settings.
+- User settings are persisted through the backend and cached locally for offline fallback.
+- Medication voice guidance uses the selected language and reading speed, with local guide text fallback when the backend voice-guide endpoint is unavailable.
+
 ### Saved Medication and Schedule Management
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
