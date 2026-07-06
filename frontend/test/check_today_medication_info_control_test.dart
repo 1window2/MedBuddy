@@ -95,4 +95,50 @@ void main() {
     expect(info.patientHash, 'patient-a');
     expect(info.schedules, isEmpty);
   });
+
+  test('requestTodayMedicationInfo derives progress from schedule details',
+      () async {
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'patient_hash': 'patient-a',
+            'medication_count': 99,
+            'total_dose_count': 0,
+            'completed_dose_count': 0,
+            'remaining_dose_count': 0,
+            'progress_ratio': 0,
+            'schedules': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '2 times',
+                'slot_statuses': {
+                  'morning': true,
+                  'evening': false,
+                },
+                'patient_hash': 'patient-a',
+              },
+            ],
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckTodayMedicationInfo(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    final info = await control.requestTodayMedicationInfo();
+
+    expect(info.medicationCount, 1);
+    expect(info.totalDoseCount, 2);
+    expect(info.completedDoseCount, 1);
+    expect(info.remainingDoseCount, 1);
+    expect(info.progressRatio, 0.5);
+  });
 }

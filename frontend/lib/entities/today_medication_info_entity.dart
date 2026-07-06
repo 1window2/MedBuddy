@@ -32,11 +32,21 @@ class TodayMedicationInfo {
     final schedules = _readSchedules(json['schedules']);
     return TodayMedicationInfo(
       patientHash: _readString(json['patient_hash'] ?? json['patientHash']),
-      medicationCount: _readInt(json['medication_count'] ?? schedules.length),
-      totalDoseCount: _readInt(json['total_dose_count']),
-      completedDoseCount: _readInt(json['completed_dose_count']),
-      remainingDoseCount: _readInt(json['remaining_dose_count']),
-      progressRatio: _readDouble(json['progress_ratio']),
+      medicationCount: _readInt(
+        json['medication_count'] ?? json['medicationCount'],
+      ),
+      totalDoseCount: _readInt(
+        json['total_dose_count'] ?? json['totalDoseCount'],
+      ),
+      completedDoseCount: _readInt(
+        json['completed_dose_count'] ?? json['completedDoseCount'],
+      ),
+      remainingDoseCount: _readInt(
+        json['remaining_dose_count'] ?? json['remainingDoseCount'],
+      ),
+      progressRatio: _readDouble(
+        json['progress_ratio'] ?? json['progressRatio'],
+      ),
       schedules: schedules,
     ).normalized();
   }
@@ -49,11 +59,7 @@ class TodayMedicationInfo {
     var completedDoseCount = 0;
 
     for (final schedule in schedules) {
-      final scheduleSlotKeys = schedule.slotKeys;
-      for (final slotKey in medicationScheduleSlotKeys) {
-        if (!scheduleSlotKeys.contains(slotKey)) {
-          continue;
-        }
+      for (final slotKey in _countableSlotKeys(schedule)) {
         totalDoseCount += 1;
         if (schedule.isSlotCompleted(slotKey)) {
           completedDoseCount += 1;
@@ -74,21 +80,25 @@ class TodayMedicationInfo {
   }
 
   TodayMedicationInfo normalized() {
-    final safeTotalDoseCount =
-        totalDoseCount > 0 ? totalDoseCount : _derivedTotalDoseCount(schedules);
-    final safeCompletedDoseCount = completedDoseCount >= 0
-        ? completedDoseCount
-        : _derivedCompletedDoseCount(schedules);
-    final safeRemainingDoseCount = remainingDoseCount >= 0
-        ? remainingDoseCount
-        : safeTotalDoseCount - safeCompletedDoseCount;
+    final hasScheduleDetails = schedules.isNotEmpty;
+    final safeMedicationCount =
+        hasScheduleDetails ? schedules.length : _nonNegative(medicationCount);
+    final safeTotalDoseCount = hasScheduleDetails
+        ? _derivedTotalDoseCount(schedules)
+        : _nonNegative(totalDoseCount);
+    final safeCompletedDoseCount = _clampCount(
+      hasScheduleDetails
+          ? _derivedCompletedDoseCount(schedules)
+          : _nonNegative(completedDoseCount),
+      safeTotalDoseCount,
+    );
+    final safeRemainingDoseCount = safeTotalDoseCount - safeCompletedDoseCount;
     return TodayMedicationInfo(
       patientHash: patientHash,
-      medicationCount: medicationCount > 0 ? medicationCount : schedules.length,
+      medicationCount: safeMedicationCount,
       totalDoseCount: safeTotalDoseCount,
       completedDoseCount: safeCompletedDoseCount,
-      remainingDoseCount:
-          safeRemainingDoseCount < 0 ? 0 : safeRemainingDoseCount,
+      remainingDoseCount: safeRemainingDoseCount,
       progressRatio: safeTotalDoseCount > 0
           ? safeCompletedDoseCount / safeTotalDoseCount
           : 0,
@@ -99,7 +109,7 @@ class TodayMedicationInfo {
   static int _derivedTotalDoseCount(List<MedicationSchedule> schedules) {
     return schedules.fold<int>(
       0,
-      (total, schedule) => total + schedule.slotKeys.length,
+      (total, schedule) => total + _countableSlotKeys(schedule).length,
     );
   }
 
@@ -150,6 +160,32 @@ class TodayMedicationInfo {
       return 0;
     }
     return int.tryParse(match.group(0) ?? '') ?? 0;
+  }
+
+  static int _nonNegative(int value) {
+    return value < 0 ? 0 : value;
+  }
+
+  static int _clampCount(int value, int upperBound) {
+    if (value < 0) {
+      return 0;
+    }
+    if (upperBound >= 0 && value > upperBound) {
+      return upperBound;
+    }
+    return value;
+  }
+
+  static List<String> _countableSlotKeys(MedicationSchedule schedule) {
+    if (schedule.slotStatuses.isNotEmpty) {
+      final statusSlotKeys = schedule.slotStatuses.keys
+          .where((slotKey) => medicationScheduleSlotKeys.contains(slotKey))
+          .toList(growable: false);
+      if (statusSlotKeys.isNotEmpty) {
+        return statusSlotKeys;
+      }
+    }
+    return schedule.slotKeys;
   }
 
   static double _readDouble(dynamic value) {
