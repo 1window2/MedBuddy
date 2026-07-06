@@ -3,8 +3,8 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
-import '../entities/today_medication_info_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 
@@ -17,13 +17,13 @@ class GuardianMedicationInfo {
   final String guardianHash;
   final String patientHash;
   final List<MedicationDetail> savedMedications;
-  final TodayMedicationInfo todayMedicationInfo;
+  final List<MedicationSchedule> todayMedicationScheduleList;
 
   const GuardianMedicationInfo({
     required this.guardianHash,
     required this.patientHash,
     required this.savedMedications,
-    required this.todayMedicationInfo,
+    required this.todayMedicationScheduleList,
   });
 
   factory GuardianMedicationInfo.fromJson(Map<String, dynamic> json) {
@@ -31,23 +31,9 @@ class GuardianMedicationInfo {
       guardianHash: _readString(json['guardian_hash'] ?? json['guardianHash']),
       patientHash: _readString(json['patient_hash'] ?? json['patientHash']),
       savedMedications: _readSavedMedications(json['saved_medications']),
-      todayMedicationInfo: _readTodayMedicationInfo(
+      todayMedicationScheduleList: MedicationSchedule.fromScheduleJsonList(
         json['today_medication_info'],
       ),
-    );
-  }
-
-  static TodayMedicationInfo _readTodayMedicationInfo(dynamic value) {
-    if (value is Map) {
-      return TodayMedicationInfo.fromJson(Map<String, dynamic>.from(value));
-    }
-    return const TodayMedicationInfo(
-      medicationCount: 0,
-      totalDoseCount: 0,
-      completedDoseCount: 0,
-      remainingDoseCount: 0,
-      progressRatio: 0,
-      schedules: [],
     );
   }
 
@@ -101,7 +87,7 @@ class SetGuardianMedication {
   // Parameters:
   // - patientHash: Linked patient ownership key selected by the guardian.
   // Returns:
-  // - GuardianMedicationInfo entity.
+  // - Guardian medication DTO composed of existing medication entities.
   Future<GuardianMedicationInfo> requestGuardianMedication({
     required String patientHash,
   }) async {

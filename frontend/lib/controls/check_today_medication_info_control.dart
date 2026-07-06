@@ -2,8 +2,8 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
+import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
-import '../entities/today_medication_info_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 
@@ -11,10 +11,10 @@ import '../services/api_response_parser.dart';
 // Role: Requests today's medication summary from the backend.
 
 // Class Name: CheckTodayMedicationInfo
-// Role: Connects TodayMedicationInfo UI flows to the backend control.
+// Role: Connects today's medication summary UI flows to the backend control.
 // Responsibilities:
 // - Request today's schedule summary for patient or guardian scope.
-// - Decode the response into a TodayMedicationInfo entity.
+// - Decode the response into existing MedicationSchedule entities.
 // - Keep scope construction aligned with CheckSchedule and CheckSavedMedication.
 class CheckTodayMedicationInfo {
   final String baseUrl;
@@ -53,8 +53,8 @@ class CheckTodayMedicationInfo {
   // Description:
   // - Requests today's medication summary for the current medication scope.
   // Returns:
-  // - TodayMedicationInfo entity.
-  Future<TodayMedicationInfo> requestTodayMedicationInfo() async {
+  // - MedicationSchedule list from the summary payload.
+  Future<List<MedicationSchedule>> requestTodayMedicationInfo() async {
     try {
       final response = await _client
           .get(_buildTodayInfoUri())
@@ -69,14 +69,7 @@ class CheckTodayMedicationInfo {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final rawInfo = decodedData['data'];
-      if (rawInfo is Map) {
-        return TodayMedicationInfo.fromJson(
-          Map<String, dynamic>.from(rawInfo),
-        );
-      }
-      throw StateError(
-          'Server response did not include today medication info.');
+      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {

@@ -6,7 +6,8 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 
 void main() {
-  test('requestTodayMedicationInfo decodes summary and schedules', () async {
+  test('requestTodayMedicationInfo decodes schedules from summary payload',
+      () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
       expect(request.url.path, '/schedule/today/info');
@@ -47,15 +48,12 @@ void main() {
       client: client,
     );
 
-    final info = await control.requestTodayMedicationInfo();
+    final schedules = await control.requestTodayMedicationInfo();
 
-    expect(info.patientHash, 'patient-a');
-    expect(info.medicationCount, 1);
-    expect(info.totalDoseCount, 3);
-    expect(info.completedDoseCount, 1);
-    expect(info.remainingDoseCount, 2);
-    expect(info.schedules, hasLength(1));
-    expect(info.schedules.first.isSlotCompleted('morning'), isTrue);
+    expect(schedules, hasLength(1));
+    expect(schedules.first.patientID, 'patient-a');
+    expect(schedules.first.medicationID, '7');
+    expect(schedules.first.isSlotCompleted('morning'), isTrue);
   });
 
   test('requestTodayMedicationInfo can request guardian linked scope',
@@ -90,55 +88,8 @@ void main() {
       client: client,
     );
 
-    final info = await control.requestTodayMedicationInfo();
+    final schedules = await control.requestTodayMedicationInfo();
 
-    expect(info.patientHash, 'patient-a');
-    expect(info.schedules, isEmpty);
-  });
-
-  test('requestTodayMedicationInfo derives progress from schedule details',
-      () async {
-    final client = MockClient((http.Request request) async {
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'patient_hash': 'patient-a',
-            'medication_count': 99,
-            'total_dose_count': 0,
-            'completed_dose_count': 0,
-            'remaining_dose_count': 0,
-            'progress_ratio': 0,
-            'schedules': [
-              {
-                'medication_id': '7',
-                'drug_name': 'test-tablet',
-                'daily_frequency': '2 times',
-                'slot_statuses': {
-                  'morning': true,
-                  'evening': false,
-                },
-                'patient_hash': 'patient-a',
-              },
-            ],
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
-      );
-    });
-    final control = CheckTodayMedicationInfo(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
-
-    final info = await control.requestTodayMedicationInfo();
-
-    expect(info.medicationCount, 1);
-    expect(info.totalDoseCount, 2);
-    expect(info.completedDoseCount, 1);
-    expect(info.remainingDoseCount, 1);
-    expect(info.progressRatio, 0.5);
+    expect(schedules, isEmpty);
   });
 }

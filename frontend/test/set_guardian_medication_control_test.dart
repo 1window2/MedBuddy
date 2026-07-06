@@ -64,7 +64,8 @@ void main() {
     expect(info.patientHash, 'patient-a');
     expect(info.savedMedications, hasLength(1));
     expect(info.savedMedications.first.itemName, 'test-tablet');
-    expect(info.todayMedicationInfo.totalDoseCount, 2);
-    expect(info.todayMedicationInfo.schedules, hasLength(1));
+    expect(info.todayMedicationScheduleList, hasLength(1));
+    expect(
+        info.todayMedicationScheduleList.first.medicationName, 'test-tablet');
   });
 }

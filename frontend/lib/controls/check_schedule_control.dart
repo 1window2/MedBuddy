@@ -133,18 +133,7 @@ class CheckSchedule {
   }
 
   List<MedicationSchedule> _decodeMedicationScheduleList(dynamic rawItems) {
-    if (rawItems is! List) {
-      return [];
-    }
-
-    return rawItems
-        .whereType<Map>()
-        .map(
-          (item) => MedicationSchedule.fromScheduleJson(
-            Map<String, dynamic>.from(item),
-          ).getTodayMedicationSchedule(),
-        )
-        .toList(growable: false);
+    return MedicationSchedule.fromScheduleJsonList(rawItems);
   }
 
   Uri _buildScheduleUri(String path) {

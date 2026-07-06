@@ -17,7 +17,6 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
-import '../entities/today_medication_info_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/medication_notification_service.dart';
 
@@ -153,26 +152,25 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> get todayMedicationScheduleList =>
       List.unmodifiable(_todayMedicationScheduleList);
 
-  TodayMedicationInfo? _todayMedicationInfo;
-  TodayMedicationInfo? get todayMedicationInfo => _todayMedicationInfo;
-
   HealthRecommendation? _healthRecommendation;
   HealthRecommendation? get healthRecommendation => _healthRecommendation;
 
   TodayMedicationProgress get todayMedicationProgress {
-    final todayInfo = _todayMedicationInfo;
-    if (todayInfo != null) {
-      return TodayMedicationProgress(
-        completedCount: todayInfo.completedDoseCount,
-        totalCount: todayInfo.totalDoseCount,
-      );
+    var totalCount = 0;
+    var completedCount = 0;
+
+    for (final schedule in _todayMedicationScheduleList) {
+      for (final slotKey in _slotKeysForProgress(schedule)) {
+        totalCount += 1;
+        if (schedule.isSlotCompleted(slotKey)) {
+          completedCount += 1;
+        }
+      }
     }
 
-    final fallbackInfo =
-        TodayMedicationInfo.fromSchedules(_todayMedicationScheduleList);
     return TodayMedicationProgress(
-      completedCount: fallbackInfo.completedDoseCount,
-      totalCount: fallbackInfo.totalDoseCount,
+      completedCount: completedCount,
+      totalCount: totalCount,
     );
   }
 
@@ -560,9 +558,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _todayMedicationInfo =
+      _todayMedicationScheduleList =
           await _activeCheckTodayMedicationInfo.requestTodayMedicationInfo();
-      _todayMedicationScheduleList = _todayMedicationInfo!.schedules;
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -858,10 +855,6 @@ class MedBuddyViewModel extends ChangeNotifier {
                 : item,
           )
           .toList(growable: false);
-      _todayMedicationInfo = TodayMedicationInfo.fromSchedules(
-        _todayMedicationScheduleList,
-        patientHash: _medicationPatientHash,
-      );
       notifyListeners();
       return true;
     } on StateError catch (error) {
@@ -1003,6 +996,18 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   SetNotification get _activeSetNotification =>
       _scopedSetNotification ?? setNotification;
+
+  List<String> _slotKeysForProgress(MedicationSchedule schedule) {
+    if (schedule.slotStatuses.isNotEmpty) {
+      final slotKeys = schedule.slotStatuses.keys
+          .where((slotKey) => medicationScheduleSlotKeys.contains(slotKey))
+          .toList(growable: false);
+      if (slotKeys.isNotEmpty) {
+        return slotKeys;
+      }
+    }
+    return schedule.slotKeys;
+  }
 
   void _rebuildMedicationScopeControls() {
     _scopedCheckSavedMedication?.dispose();

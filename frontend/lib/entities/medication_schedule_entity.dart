@@ -142,6 +142,24 @@ class MedicationSchedule {
     );
   }
 
+  static List<MedicationSchedule> fromScheduleJsonList(dynamic rawItems) {
+    final scheduleItems = rawItems is Map
+        ? rawItems['schedules'] ?? rawItems['schedule']
+        : rawItems;
+    if (scheduleItems is! List) {
+      return const [];
+    }
+
+    return scheduleItems
+        .whereType<Map>()
+        .map(
+          (item) => MedicationSchedule.fromScheduleJson(
+            Map<String, dynamic>.from(item),
+          ).getTodayMedicationSchedule(),
+        )
+        .toList(growable: false);
+  }
+
   String get displayName {
     return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
   }
