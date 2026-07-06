@@ -7,6 +7,8 @@
 // - API 응답 JSON을 안전하게 변환한다.
 // - 저장 요청에 필요한 JSON payload를 생성한다.
 // - 음성 안내에 사용할 텍스트를 조합한다.
+import 'medication_schedule_entity.dart';
+
 class MedicationDetail {
   final int? id;
   final String patientHash;
@@ -78,6 +80,19 @@ class MedicationDetail {
     );
   }
 
+  factory MedicationDetail.fromMedicationSchedule(MedicationSchedule schedule) {
+    return MedicationDetail(
+      itemName: schedule.displayName,
+      efficacy: schedule.efficacy ?? '',
+      usageMethod: schedule.usageMethod ?? '',
+      warning: schedule.warning ?? '',
+      dosagePerTime: schedule.dosage,
+      dailyFrequency: schedule.intakeTime,
+      totalDays: schedule.medicationTimeLabel,
+      imageUrl: schedule.imageUrl ?? '',
+    );
+  }
+
   // 함수명: toSaveJson
   // 함수역할:
   // - 저장 API가 기대하는 필드명으로 약 상세 정보를 변환한다.
@@ -105,6 +120,38 @@ class MedicationDetail {
         totalDays.trim().isNotEmpty;
   }
 
+  String get displayName {
+    final normalizedName = itemName.trim();
+    return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
+  }
+
+  List<String> get detailedDosageGuideLines {
+    final dosage = _normalizeOrFallback(dosagePerTime, '복용량 정보 없음');
+    final slotLabels = _slotLabelsFromFrequency(dailyFrequency);
+    final lines = slotLabels.map((slot) => '$slot: $dosage').toList();
+
+    final period = totalDays.trim();
+    if (period.isNotEmpty) {
+      lines.add('$period 복용하세요.');
+    }
+    if (lines.isEmpty) {
+      lines.add('처방전에서 추출된 상세 복용 정보가 없습니다.');
+    }
+    return lines;
+  }
+
+  String get voiceGuideText {
+    final sections = [
+      displayName,
+      if (efficacy.trim().isNotEmpty) '효능. ${efficacy.trim()}',
+      if (usageMethod.trim().isNotEmpty) '복용 방법. ${usageMethod.trim()}',
+      '상세 복용 가이드. ${detailedDosageGuideLines.join('. ')}',
+      '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
+      if (aiGuide.trim().isNotEmpty) '추가 안내. ${aiGuide.trim()}',
+    ];
+    return sections.join('\n');
+  }
+
   void saveMedicationDetail() {
     throw UnsupportedError('약 상세 정보 저장은 CheckSavedMedication에서 처리합니다.');
   }
@@ -123,16 +170,29 @@ class MedicationDetail {
   // 반환값:
   // - 빈 값이 제거된 음성 안내 문자열
   String getVoiceGuideText() {
-    return [
-      itemName,
-      efficacy,
-      usageMethod,
-      dosagePerTime,
-      dailyFrequency,
-      totalDays,
-      warning,
-      aiGuide,
-    ].where((text) => text.trim().isNotEmpty).join('\n');
+    return voiceGuideText;
+  }
+
+  static String _normalizeOrFallback(String value, String fallback) {
+    final normalizedValue = value.trim();
+    return normalizedValue.isEmpty ? fallback : normalizedValue;
+  }
+
+  static List<String> _slotLabelsFromFrequency(String dailyFrequency) {
+    final frequencyCount = _readInt(dailyFrequency) ?? 0;
+    if (frequencyCount >= 4) {
+      return const ['아침', '점심', '저녁', '취침 전'];
+    }
+    if (frequencyCount == 3) {
+      return const ['아침', '점심', '저녁'];
+    }
+    if (frequencyCount == 2) {
+      return const ['아침', '저녁'];
+    }
+    if (frequencyCount == 1) {
+      return const ['아침'];
+    }
+    return const [];
   }
 
   static String _readString(dynamic value) {

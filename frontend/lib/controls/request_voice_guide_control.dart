@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
-import '../entities/medication_guide_entity.dart';
+import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
@@ -22,7 +22,7 @@ typedef VoiceGuideSpeaker = Future<void> Function(
 // 역할: 약 상세 정보 기반 음성 안내 요청을 처리한다.
 // 주요 책임:
 // - backend RequestVoiceGuide control에서 음성 안내 문구를 받아온다.
-// - backend를 사용할 수 없는 경우 MedicationGuide의 로컬 문구로 fallback한다.
+// - backend를 사용할 수 없는 경우 MedicationDetail의 로컬 문구로 fallback한다.
 // - 실제 음성 재생은 TTS Service로 위임한다.
 class RequestVoiceGuide {
   final String baseUrl;
@@ -46,18 +46,18 @@ class RequestVoiceGuide {
   // 함수역할:
   // - 음성 안내 문구를 생성한 뒤 사용자 설정에 맞게 TTS Service로 재생한다.
   // 매개변수:
-  // - medicationGuide: 약 상세 정보와 복용 스케줄을 묶은 안내 모델
+  // - medicationDetail: 약 상세 정보와 복용 스케줄을 묶은 안내 모델
   // - userSetting: 언어와 읽기 속도 설정
   // - onComplete: 음성 안내 종료 시 호출할 콜백
   // 반환값:
   // - 실제 재생 요청에 사용한 음성 안내 문구
   Future<String> requestVoiceGuide({
-    required MedicationGuide medicationGuide,
+    required MedicationDetail medicationDetail,
     required UserSetting userSetting,
     void Function()? onComplete,
   }) async {
     final voiceGuideText = await getVoiceGuideText(
-      medicationGuide: medicationGuide,
+      medicationDetail: medicationDetail,
       language: userSetting.language,
     );
     final normalizedVoiceGuideText = voiceGuideText.trim();
@@ -77,12 +77,12 @@ class RequestVoiceGuide {
   // 함수역할:
   // - backend에서 음성 안내 문구를 가져오고 실패 시 로컬 문구를 반환한다.
   // 매개변수:
-  // - medicationGuide: 약 상세 정보와 복용 스케줄을 묶은 안내 모델
+  // - medicationDetail: 약 상세 정보와 복용 스케줄을 묶은 안내 모델
   // - language: 사용자 언어 설정
   // 반환값:
   // - 음성 안내 문구
   Future<String> getVoiceGuideText({
-    required MedicationGuide medicationGuide,
+    required MedicationDetail medicationDetail,
     required String language,
   }) async {
     try {
@@ -91,7 +91,7 @@ class RequestVoiceGuide {
             Uri.parse('$baseUrl/voice-guide'),
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode(
-              _buildVoiceGuideRequestBody(medicationGuide, language),
+              _buildVoiceGuideRequestBody(medicationDetail, language),
             ),
           )
           .timeout(const Duration(seconds: 15));
@@ -120,23 +120,23 @@ class RequestVoiceGuide {
         error: error,
         stackTrace: stackTrace,
       );
-      return medicationGuide.voiceGuideText;
+      return medicationDetail.voiceGuideText;
     }
   }
 
   Map<String, dynamic> _buildVoiceGuideRequestBody(
-    MedicationGuide medicationGuide,
+    MedicationDetail medicationDetail,
     String language,
   ) {
     return {
-      'item_name': medicationGuide.itemName,
-      'efficacy': medicationGuide.efficacy,
-      'usage_method': medicationGuide.usageMethod,
-      'warning': medicationGuide.warning,
-      'dosage_per_time': medicationGuide.dosagePerTime,
-      'daily_frequency': medicationGuide.dailyFrequency,
-      'total_days': medicationGuide.totalDays,
-      'ai_guide': medicationGuide.aiGuide,
+      'item_name': medicationDetail.itemName,
+      'efficacy': medicationDetail.efficacy,
+      'usage_method': medicationDetail.usageMethod,
+      'warning': medicationDetail.warning,
+      'dosage_per_time': medicationDetail.dosagePerTime,
+      'daily_frequency': medicationDetail.dailyFrequency,
+      'total_days': medicationDetail.totalDays,
+      'ai_guide': medicationDetail.aiGuide,
       'language': language,
     };
   }

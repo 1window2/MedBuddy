@@ -13,8 +13,8 @@ import '../controls/manage_user_setting_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/health_recommendation_entity.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
-import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -174,8 +174,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     );
   }
 
-  final Map<String, MedicationReminderSetting> _medicationReminderSettings = {};
-  Map<String, MedicationReminderSetting> get medicationReminderSettings =>
+  final Map<String, MedicationAlarm> _medicationReminderSettings = {};
+  Map<String, MedicationAlarm> get medicationReminderSettings =>
       Map.unmodifiable(_medicationReminderSettings);
   static const List<String> _reminderSlotKeys = medicationScheduleSlotKeys;
 
@@ -617,7 +617,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       final settings = await _activeSetNotification.requestMedicationAlarm();
       final settingsBySlot = {
         for (final slotKey in _reminderSlotKeys)
-          slotKey: MedicationReminderSetting.defaults(slotKey),
+          slotKey: MedicationAlarm.defaults(slotKey),
       };
       for (final setting in settings) {
         if (_reminderSlotKeys.contains(setting.slotKey)) {
@@ -757,7 +757,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   Future<void> _cacheMedicationReminderSetting(
     SharedPreferences preferences,
-    MedicationReminderSetting setting,
+    MedicationAlarm setting,
   ) async {
     await preferences.setString(
       _reminderStorageKey(setting.slotKey),
@@ -772,7 +772,7 @@ class MedBuddyViewModel extends ChangeNotifier {
           preferences.getString(_legacyReminderStorageKey(slotKey));
       if (rawSetting == null || rawSetting.trim().isEmpty) {
         _medicationReminderSettings[slotKey] =
-            MedicationReminderSetting.defaults(slotKey);
+            MedicationAlarm.defaults(slotKey);
         continue;
       }
 
@@ -780,14 +780,13 @@ class MedBuddyViewModel extends ChangeNotifier {
         final decodedSetting = jsonDecode(rawSetting);
         if (decodedSetting is Map<String, dynamic>) {
           _medicationReminderSettings[slotKey] =
-              MedicationReminderSetting.fromJson(decodedSetting);
+              MedicationAlarm.fromJson(decodedSetting);
           continue;
         }
       } catch (_) {
         // Invalid cache entries are ignored and replaced with defaults.
       }
-      _medicationReminderSettings[slotKey] =
-          MedicationReminderSetting.defaults(slotKey);
+      _medicationReminderSettings[slotKey] = MedicationAlarm.defaults(slotKey);
     }
   }
 

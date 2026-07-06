@@ -8,23 +8,20 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/request_voice_guide_control.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
-import 'package:medbuddy_frontend/entities/medication_guide_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 void main() {
-  test('MedicationGuide preserves AI guide from medication detail', () {
-    final medicationGuide = MedicationGuide.fromMedicationDetail(
-      const MedicationDetail(
-        itemName: 'Saved tablet',
-        efficacy: 'Pain relief',
-        usageMethod: 'Take after meals',
-        warning: 'May cause drowsiness',
-        aiGuide: 'Drink enough water.',
-      ),
+  test('MedicationDetail preserves AI guide for local voice guide text', () {
+    const medicationDetail = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: 'Pain relief',
+      usageMethod: 'Take after meals',
+      warning: 'May cause drowsiness',
+      aiGuide: 'Drink enough water.',
     );
 
-    expect(medicationGuide.aiGuide, 'Drink enough water.');
-    expect(medicationGuide.voiceGuideText, contains('Drink enough water.'));
+    expect(medicationDetail.aiGuide, 'Drink enough water.');
+    expect(medicationDetail.voiceGuideText, contains('Drink enough water.'));
   });
 
   test('requestVoiceGuide speaks backend voice guide text', () async {
@@ -60,7 +57,7 @@ void main() {
     );
 
     final usedText = await control.requestVoiceGuide(
-      medicationGuide: const MedicationGuide(
+      medicationDetail: const MedicationDetail(
         itemName: 'Test tablet',
         efficacy: 'Pain relief',
         usageMethod: 'Take after meals',
@@ -97,7 +94,7 @@ void main() {
     );
 
     final usedText = await control.requestVoiceGuide(
-      medicationGuide: const MedicationGuide(
+      medicationDetail: const MedicationDetail(
         itemName: 'Fallback tablet',
         efficacy: 'Pain relief',
         usageMethod: 'Take after meals',

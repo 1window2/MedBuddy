@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controls/request_voice_guide_control.dart';
-import '../entities/medication_guide_entity.dart';
+import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -14,12 +14,12 @@ import '../theme/medbuddy_theme.dart';
 // - 저장 목록과 오늘 일정에서 공통으로 사용할 상세정보 화면을 제공한다.
 // - 환경설정의 읽기 속도와 언어를 반영해 큰소리 읽기 기능을 실행한다.
 class MedicationDetailUI extends StatefulWidget {
-  final MedicationGuide medicationGuide;
+  final MedicationDetail medicationDetail;
   final UserSetting userSetting;
 
   const MedicationDetailUI({
     super.key,
-    required this.medicationGuide,
+    required this.medicationDetail,
     required this.userSetting,
   });
 
@@ -56,31 +56,31 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
                 ),
                 const SizedBox(height: 28),
                 _MedicationHeroCard(
-                  medicationGuide: widget.medicationGuide,
+                  medicationDetail: widget.medicationDetail,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
                 _DetailSection(
                   icon: Icons.info_outline,
                   title: '효능',
-                  body: widget.medicationGuide.efficacy,
+                  body: widget.medicationDetail.efficacy,
                   scale: scale,
                 ),
                 _DetailSection(
                   icon: Icons.schedule_outlined,
                   title: '복용 방법',
-                  body: widget.medicationGuide.usageMethod,
+                  body: widget.medicationDetail.usageMethod,
                   scale: scale,
                 ),
                 _DetailSection(
                   icon: Icons.warning_amber_outlined,
                   title: '주의사항',
-                  body: widget.medicationGuide.warning,
+                  body: widget.medicationDetail.warning,
                   scale: scale,
                   tone: _DetailSectionTone.warning,
                 ),
                 _DetailedDosageGuideCard(
-                  medicationGuide: widget.medicationGuide,
+                  medicationDetail: widget.medicationDetail,
                   scale: scale,
                 ),
               ],
@@ -112,7 +112,7 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
     setState(() => _isSpeaking = true);
     try {
       await _requestVoiceGuide.requestVoiceGuide(
-        medicationGuide: widget.medicationGuide,
+        medicationDetail: widget.medicationDetail,
         userSetting: widget.userSetting,
         onComplete: () {
           if (mounted) {
@@ -165,11 +165,11 @@ class _DetailHeader extends StatelessWidget {
 }
 
 class _MedicationHeroCard extends StatelessWidget {
-  final MedicationGuide medicationGuide;
+  final MedicationDetail medicationDetail;
   final double scale;
 
   const _MedicationHeroCard({
-    required this.medicationGuide,
+    required this.medicationDetail,
     required this.scale,
   });
 
@@ -184,10 +184,10 @@ class _MedicationHeroCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _MedicationImageBox(imageUrl: medicationGuide.imageUrl),
+          _MedicationImageBox(imageUrl: medicationDetail.imageUrl),
           const SizedBox(height: 20),
           Text(
-            medicationGuide.displayName,
+            medicationDetail.displayName,
             textAlign: TextAlign.center,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
@@ -333,11 +333,11 @@ class _DetailSection extends StatelessWidget {
 }
 
 class _DetailedDosageGuideCard extends StatelessWidget {
-  final MedicationGuide medicationGuide;
+  final MedicationDetail medicationDetail;
   final double scale;
 
   const _DetailedDosageGuideCard({
-    required this.medicationGuide,
+    required this.medicationDetail,
     required this.scale,
   });
 
@@ -363,7 +363,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          for (final line in medicationGuide.detailedDosageGuideLines) ...[
+          for (final line in medicationDetail.detailedDosageGuideLines) ...[
             Text(
               line,
               style: TextStyle(

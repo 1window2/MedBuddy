@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
-import '../entities/medication_reminder_entity.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
@@ -62,8 +62,8 @@ class SetNotification {
   // Description:
   // - Requests all schedule-slot medication alarm settings.
   // Returns:
-  // - MedicationReminderSetting list decoded from the backend response.
-  Future<List<MedicationReminderSetting>> requestMedicationAlarm() async {
+  // - MedicationAlarm list decoded from the backend response.
+  Future<List<MedicationAlarm>> requestMedicationAlarm() async {
     try {
       final response = await _client
           .get(_buildNotificationUri('notification/settings'))
@@ -85,7 +85,7 @@ class SetNotification {
       return rawSettings
           .whereType<Map>()
           .map(
-            (item) => MedicationReminderSetting.fromJson(
+            (item) => MedicationAlarm.fromJson(
               Map<String, dynamic>.from(item),
             ),
           )
@@ -109,8 +109,8 @@ class SetNotification {
   // Parameters:
   // - slotKey: Medication schedule slot key.
   // Returns:
-  // - MedicationReminderSetting for the requested slot.
-  Future<MedicationReminderSetting> requestAlarmToggle(String slotKey) {
+  // - MedicationAlarm for the requested slot.
+  Future<MedicationAlarm> requestAlarmToggle(String slotKey) {
     return getAlarmStatus(slotKey);
   }
 
@@ -120,8 +120,8 @@ class SetNotification {
   // Parameters:
   // - slotKey: Medication schedule slot key.
   // Returns:
-  // - MedicationReminderSetting for the requested slot.
-  Future<MedicationReminderSetting> getAlarmStatus(String slotKey) async {
+  // - MedicationAlarm for the requested slot.
+  Future<MedicationAlarm> getAlarmStatus(String slotKey) async {
     final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
       final response = await _client
@@ -160,8 +160,8 @@ class SetNotification {
   // - hour: 24-hour local alarm hour.
   // - minute: Local alarm minute.
   // Returns:
-  // - Saved MedicationReminderSetting.
-  Future<MedicationReminderSetting> setMedicationAlarm({
+  // - Saved MedicationAlarm.
+  Future<MedicationAlarm> setMedicationAlarm({
     required String slotKey,
     required int hour,
     required int minute,
@@ -207,8 +207,8 @@ class SetNotification {
   // Parameters:
   // - slotKey: Medication schedule slot key.
   // Returns:
-  // - Disabled MedicationReminderSetting.
-  Future<MedicationReminderSetting> disableAlarmSetting(String slotKey) async {
+  // - Disabled MedicationAlarm.
+  Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
     final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
       final response = await _client
@@ -241,11 +241,11 @@ class SetNotification {
     }
   }
 
-  MedicationReminderSetting _decodeSetting(String responseBody) {
+  MedicationAlarm _decodeSetting(String responseBody) {
     final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
     if (rawSetting is Map) {
-      return MedicationReminderSetting.fromJson(
+      return MedicationAlarm.fromJson(
         Map<String, dynamic>.from(rawSetting),
       );
     }

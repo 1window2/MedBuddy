@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../boundaries/medication_detail_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
-import '../entities/medication_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -164,7 +163,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
             });
           },
           onGuideRequested: (medication) {
-            _showMedicationGuide(
+            _showMedicationDetail(
               medication: medication,
               text: text,
               userSetting: viewModel.userSetting,
@@ -354,7 +353,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // 함수명: _showMedicationGuide
+  // 함수명: _showMedicationDetail
   // 함수역할:
   // - 저장된 약의 공공데이터 기반 효능, 복용 방법, 주의사항을 하단 시트로 표시한다.
   // 매개변수:
@@ -363,7 +362,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   // - userSetting: 글자 크기와 언어 설정
   // 반환값:
   // - 없음
-  void _showMedicationGuide({
+  void _showMedicationDetail({
     required MedicationDetail medication,
     required _SavedMedicationText text,
     required UserSetting userSetting,
@@ -372,7 +371,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       context,
       MaterialPageRoute(
         builder: (context) => MedicationDetailUI(
-          medicationGuide: MedicationGuide.fromMedicationDetail(medication),
+          medicationDetail: medication,
           userSetting: userSetting,
         ),
       ),
@@ -1004,7 +1003,7 @@ class _MedicationRowActions extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          _MedicationGuideButton(
+          _MedicationDetailButton(
             label: text.guide,
             scale: scale,
             onPressed: onGuideRequested,
@@ -1022,12 +1021,12 @@ class _MedicationRowActions extends StatelessWidget {
   }
 }
 
-class _MedicationGuideButton extends StatelessWidget {
+class _MedicationDetailButton extends StatelessWidget {
   final String label;
   final double scale;
   final VoidCallback onPressed;
 
-  const _MedicationGuideButton({
+  const _MedicationDetailButton({
     required this.label,
     required this.scale,
     required this.onPressed,

@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/medication_detail_ui_boundary.dart';
-import '../entities/medication_guide_entity.dart';
-import '../entities/medication_reminder_entity.dart';
+import '../entities/medication_alarm_entity.dart';
+import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -122,7 +122,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             text: text,
             slot: slot,
             reminderSetting: viewModel.medicationReminderSettings[slot.key] ??
-                MedicationReminderSetting.defaults(slot.key),
+                MedicationAlarm.defaults(slot.key),
             isCompletedProvider: (schedule) {
               return viewModel.isMedicationDoseCompleted(slot.key, schedule);
             },
@@ -130,7 +130,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               _handleReminderToggle(viewModel, slot, text);
             },
             onGuideRequested: (schedule) {
-              _showMedicationGuide(viewModel, schedule);
+              _showMedicationDetail(viewModel, schedule);
             },
             onStatusChanged: (schedule, medicationStatus) async {
               final success = await viewModel.requestMedicationDoseStatusUpdate(
@@ -180,7 +180,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     _ScheduleText text,
   ) async {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
-        MedicationReminderSetting.defaults(slot.key);
+        MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
     final selectedTime = await showDialog<_ReminderTime>(
       context: context,
@@ -217,7 +217,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     _ScheduleText text,
   ) async {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
-        MedicationReminderSetting.defaults(slot.key);
+        MedicationAlarm.defaults(slot.key);
     if (!setting.isEnabled) {
       await _showReminderDialog(viewModel, slot, text);
       return;
@@ -235,7 +235,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  void _showMedicationGuide(
+  void _showMedicationDetail(
     MedBuddyViewModel viewModel,
     MedicationSchedule schedule,
   ) {
@@ -243,7 +243,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       context,
       MaterialPageRoute(
         builder: (context) => MedicationDetailUI(
-          medicationGuide: MedicationGuide.fromMedicationSchedule(schedule),
+          medicationDetail: MedicationDetail.fromMedicationSchedule(schedule),
           userSetting: viewModel.userSetting,
         ),
       ),
@@ -396,7 +396,7 @@ class _ScheduleHeader extends StatelessWidget {
 class _TimeSlotCard extends StatelessWidget {
   final _ScheduleText text;
   final _ScheduleSlot slot;
-  final MedicationReminderSetting reminderSetting;
+  final MedicationAlarm reminderSetting;
   final bool Function(MedicationSchedule schedule) isCompletedProvider;
   final VoidCallback onReminderRequested;
   final void Function(MedicationSchedule schedule) onGuideRequested;
