@@ -10,23 +10,27 @@ from api.dependencies import (
     get_check_medication_detail,
     get_check_schedule,
     get_check_saved_medication,
+    get_check_today_medication_info,
     get_input_prescription,
     get_manage_user_setting,
     get_patient_guardian_link_control,
     get_request_health_recommendation,
     get_request_voice_guide,
     get_set_guardian_alert_setting,
+    get_set_guardian_medication,
     get_set_notification,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
+from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.input_prescription_control import InputPrescription
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
+from controls.set_guardian_medication_control import SetGuardianMedication
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
@@ -162,6 +166,41 @@ async def get_today_medication_schedule(
         raise HTTPException(
             status_code=500,
             detail=f"Schedule lookup failed: {exc}",
+        ) from exc
+
+
+# Function Name: get_today_medication_info
+# Description:
+# - Returns today's medication summary scoped to patient or linked guardian access.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope summary lookup.
+# - user_hash: Requesting user hash. Used for guardian role resolution.
+# - role: Requesting user role such as patient or guardian.
+# - check_today_medication_info: CheckTodayMedicationInfo injected by FastAPI.
+# Returns:
+# - API-compatible today medication summary dictionary.
+@router.get("/schedule/today/info")
+async def get_today_medication_info(
+    patient_hash: str | None = None,
+    user_hash: str | None = None,
+    role: str = "patient",
+    check_today_medication_info: CheckTodayMedicationInfo = Depends(
+        get_check_today_medication_info
+    ),
+) -> dict[str, object]:
+    try:
+        return check_today_medication_info.request_today_medication_info(
+            patient_hash,
+            user_hash,
+            role,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Today medication info lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Today medication info lookup failed: {exc}",
         ) from exc
 
 
@@ -445,6 +484,29 @@ async def update_guardian_alert_setting(
         patient_hash,
         request.is_enabled,
         request.alert_option,
+    )
+
+
+# Function Name: get_guardian_medication
+# Description:
+# - Returns saved medications and today's summary for one linked guardian-patient pair.
+# Parameters:
+# - patient_hash: Patient ownership key monitored by the guardian.
+# - guardian_hash: Guardian ownership key requesting medication data.
+# - set_guardian_medication: SetGuardianMedication injected by FastAPI.
+# Returns:
+# - API-compatible guardian medication dictionary.
+@router.get("/guardian/medications/{patient_hash}")
+async def get_guardian_medication(
+    patient_hash: str,
+    guardian_hash: str,
+    set_guardian_medication: SetGuardianMedication = Depends(
+        get_set_guardian_medication
+    ),
+) -> dict[str, object]:
+    return set_guardian_medication.request_guardian_medication(
+        guardian_hash,
+        patient_hash,
     )
 
 

@@ -7,6 +7,7 @@ import '../controls/check_health_recommendation_control.dart';
 import '../controls/check_medication_detail_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
+import '../controls/check_today_medication_info_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../controls/set_notification_control.dart';
@@ -16,6 +17,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_reminder_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/today_medication_info_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/medication_notification_service.dart';
 
@@ -64,12 +66,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
+  final CheckTodayMedicationInfo checkTodayMedicationInfo;
   final CheckHealthRecommendation checkHealthRecommendation;
   final SetNotification setNotification;
   final ManageUserSetting manageUserSetting;
   final MedicationNotificationService notificationService;
   CheckSavedMedication? _scopedCheckSavedMedication;
   CheckSchedule? _scopedCheckSchedule;
+  CheckTodayMedicationInfo? _scopedCheckTodayMedicationInfo;
   CheckHealthRecommendation? _scopedCheckHealthRecommendation;
   SetNotification? _scopedSetNotification;
 
@@ -149,29 +153,26 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> get todayMedicationScheduleList =>
       List.unmodifiable(_todayMedicationScheduleList);
 
+  TodayMedicationInfo? _todayMedicationInfo;
+  TodayMedicationInfo? get todayMedicationInfo => _todayMedicationInfo;
+
   HealthRecommendation? _healthRecommendation;
   HealthRecommendation? get healthRecommendation => _healthRecommendation;
 
   TodayMedicationProgress get todayMedicationProgress {
-    var totalCount = 0;
-    var completedCount = 0;
-
-    for (final schedule in _todayMedicationScheduleList) {
-      final scheduleSlotKeys = schedule.slotKeys;
-      for (final slotKey in medicationScheduleSlotKeys) {
-        if (!scheduleSlotKeys.contains(slotKey)) {
-          continue;
-        }
-        totalCount += 1;
-        if (schedule.isSlotCompleted(slotKey)) {
-          completedCount += 1;
-        }
-      }
+    final todayInfo = _todayMedicationInfo;
+    if (todayInfo != null) {
+      return TodayMedicationProgress(
+        completedCount: todayInfo.completedDoseCount,
+        totalCount: todayInfo.totalDoseCount,
+      );
     }
 
+    final fallbackInfo =
+        TodayMedicationInfo.fromSchedules(_todayMedicationScheduleList);
     return TodayMedicationProgress(
-      completedCount: completedCount,
-      totalCount: totalCount,
+      completedCount: fallbackInfo.completedDoseCount,
+      totalCount: fallbackInfo.totalDoseCount,
     );
   }
 
@@ -185,6 +186,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
+    CheckTodayMedicationInfo? checkTodayMedicationInfo,
     CheckHealthRecommendation? checkHealthRecommendation,
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
@@ -194,6 +196,8 @@ class MedBuddyViewModel extends ChangeNotifier {
             checkMedicationDetail ?? CheckMedicationDetail(),
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
         checkSchedule = checkSchedule ?? CheckSchedule(),
+        checkTodayMedicationInfo =
+            checkTodayMedicationInfo ?? CheckTodayMedicationInfo(),
         checkHealthRecommendation =
             checkHealthRecommendation ?? CheckHealthRecommendation(),
         setNotification = setNotification ?? SetNotification(),
@@ -556,8 +560,9 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _todayMedicationScheduleList =
-          await _activeCheckSchedule.requestTodayMedicationSchedule();
+      _todayMedicationInfo =
+          await _activeCheckTodayMedicationInfo.requestTodayMedicationInfo();
+      _todayMedicationScheduleList = _todayMedicationInfo!.schedules;
     } on StateError catch (error) {
       _statusMessage = error.message;
     } catch (_) {
@@ -853,6 +858,10 @@ class MedBuddyViewModel extends ChangeNotifier {
                 : item,
           )
           .toList(growable: false);
+      _todayMedicationInfo = TodayMedicationInfo.fromSchedules(
+        _todayMedicationScheduleList,
+        patientHash: _medicationPatientHash,
+      );
       notifyListeners();
       return true;
     } on StateError catch (error) {
@@ -986,6 +995,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   CheckSchedule get _activeCheckSchedule =>
       _scopedCheckSchedule ?? checkSchedule;
 
+  CheckTodayMedicationInfo get _activeCheckTodayMedicationInfo =>
+      _scopedCheckTodayMedicationInfo ?? checkTodayMedicationInfo;
+
   CheckHealthRecommendation get _activeCheckHealthRecommendation =>
       _scopedCheckHealthRecommendation ?? checkHealthRecommendation;
 
@@ -995,6 +1007,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _rebuildMedicationScopeControls() {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
+    _scopedCheckTodayMedicationInfo?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
     _scopedSetNotification?.dispose();
     _scopedCheckSavedMedication = CheckSavedMedication(
@@ -1005,6 +1018,11 @@ class MedBuddyViewModel extends ChangeNotifier {
     );
     _scopedCheckSchedule = CheckSchedule(
       baseUrl: checkSchedule.baseUrl,
+      patientHash: _medicationPatientHash,
+      userHash: _medicationUserHash,
+      role: _medicationRole,
+    );
+    _scopedCheckTodayMedicationInfo = checkTodayMedicationInfo.forScope(
       patientHash: _medicationPatientHash,
       userHash: _medicationUserHash,
       role: _medicationRole,
@@ -1025,12 +1043,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   void dispose() {
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
+    _scopedCheckTodayMedicationInfo?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
     _scopedSetNotification?.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
+    checkTodayMedicationInfo.dispose();
     checkHealthRecommendation.dispose();
     setNotification.dispose();
     manageUserSetting.dispose();

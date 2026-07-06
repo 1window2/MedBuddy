@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 void main() {
@@ -16,26 +17,34 @@ void main() {
     late Map<String, dynamic> patchBody;
     final client = MockClient((http.Request request) async {
       if (request.method == 'GET') {
-        expect(request.url.path, '/schedule/today');
+        expect(request.url.path, '/schedule/today/info');
         return http.Response(
           jsonEncode({
             'success': true,
-            'data': [
-              {
-                'medication_id': '7',
-                'drug_name': 'test-tablet',
-                'dosage_per_time': '1 tablet',
-                'daily_frequency': '3 times',
-                'total_days': '7 days',
-                'medication_status': false,
-                'slot_statuses': {
-                  'morning': false,
-                  'lunch': false,
-                  'evening': false,
+            'data': {
+              'patient_hash': 'patient-a',
+              'medication_count': 1,
+              'total_dose_count': 3,
+              'completed_dose_count': 0,
+              'remaining_dose_count': 3,
+              'progress_ratio': 0,
+              'schedules': [
+                {
+                  'medication_id': '7',
+                  'drug_name': 'test-tablet',
+                  'dosage_per_time': '1 tablet',
+                  'daily_frequency': '3 times',
+                  'total_days': '7 days',
+                  'medication_status': false,
+                  'slot_statuses': {
+                    'morning': false,
+                    'lunch': false,
+                    'evening': false,
+                  },
+                  'patient_hash': 'patient-a',
                 },
-                'patient_hash': 'patient-a',
-              },
-            ],
+              ],
+            },
           }),
           200,
           headers: {'content-type': 'application/json; charset=utf-8'},
@@ -71,6 +80,11 @@ void main() {
 
     final viewModel = MedBuddyViewModel(
       checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
         baseUrl: 'http://localhost',
         patientHash: 'patient-a',
         client: client,
@@ -118,12 +132,20 @@ void main() {
     var scheduleFetchCount = 0;
     final scheduleClient = MockClient((http.Request request) async {
       expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today');
+      expect(request.url.path, '/schedule/today/info');
       scheduleFetchCount += 1;
       return http.Response(
         jsonEncode({
           'success': true,
-          'data': <Map<String, dynamic>>[],
+          'data': {
+            'patient_hash': 'patient-a',
+            'medication_count': 0,
+            'total_dose_count': 0,
+            'completed_dose_count': 0,
+            'remaining_dose_count': 0,
+            'progress_ratio': 0,
+            'schedules': <Map<String, dynamic>>[],
+          },
         }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
@@ -136,6 +158,11 @@ void main() {
         client: savedMedicationClient,
       ),
       checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: scheduleClient,
+      ),
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
         baseUrl: 'http://localhost',
         patientHash: 'patient-a',
         client: scheduleClient,

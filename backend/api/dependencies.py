@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
@@ -14,6 +15,7 @@ from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
+from controls.set_guardian_medication_control import SetGuardianMedication
 from controls.set_notification_control import SetNotification
 
 
@@ -63,6 +65,19 @@ def get_check_schedule(
     db: Session = Depends(get_db),
 ) -> CheckSchedule:
     return CheckSchedule(db=db)
+
+
+# Function Name: get_check_today_medication_info
+# Description:
+# - Builds the today medication summary control with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - CheckTodayMedicationInfo instance.
+def get_check_today_medication_info(
+    db: Session = Depends(get_db),
+) -> CheckTodayMedicationInfo:
+    return CheckTodayMedicationInfo(db=db)
 
 
 # 함수명: get_request_health_recommendation
@@ -115,6 +130,19 @@ def get_set_guardian_alert_setting(
     db: Session = Depends(get_db),
 ) -> SetGuardianAlertSetting:
     return SetGuardianAlertSetting(db=db)
+
+
+# Function Name: get_set_guardian_medication
+# Description:
+# - Builds the guardian medication lookup control with a request-scoped DB session.
+# Parameters:
+# - db: SQLAlchemy session supplied by FastAPI dependency injection.
+# Returns:
+# - SetGuardianMedication instance.
+def get_set_guardian_medication(
+    db: Session = Depends(get_db),
+) -> SetGuardianMedication:
+    return SetGuardianMedication(db=db)
 
 
 # Function Name: get_manage_user_setting
