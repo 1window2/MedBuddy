@@ -225,4 +225,47 @@ void main() {
     expect(viewModel.todayMedicationProgress.totalCount, 2);
     expect(viewModel.todayMedicationProgress.completedCount, 1);
   });
+
+  test('today progress parses Korean daily frequency labels', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/schedule/today/info');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'patient_hash': 'patient-a',
+            'medication_count': 1,
+            'total_dose_count': 0,
+            'completed_dose_count': 0,
+            'remaining_dose_count': 0,
+            'progress_ratio': 0,
+            'schedules': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '1일 3회',
+                'patient_hash': 'patient-a',
+              },
+            ],
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.fetchTodayMedicationSchedule();
+
+    expect(viewModel.todayMedicationProgress.totalCount, 3);
+    expect(viewModel.todayMedicationProgress.completedCount, 0);
+  });
 }

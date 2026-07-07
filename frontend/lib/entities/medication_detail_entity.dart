@@ -203,13 +203,8 @@ class MedicationDetail {
   }
 
   static int? _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is String) {
-      return int.tryParse(value);
-    }
-    return null;
+    final count = medicationScheduleCountFromText(value);
+    return count == 0 ? null : count;
   }
 
   static DateTime? _readDate(dynamic value) {

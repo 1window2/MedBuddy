@@ -9,6 +9,19 @@ const List<String> medicationScheduleSlotKeys = [
 ];
 const String defaultMedicationScheduleSlotKey = 'morning';
 
+int medicationScheduleCountFromText(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+
+  final text = value?.toString().trim() ?? '';
+  final matches = RegExp(r'\d+').allMatches(text).toList(growable: false);
+  if (matches.isEmpty) {
+    return 0;
+  }
+  return int.tryParse(matches.last.group(0) ?? '') ?? 0;
+}
+
 // 함수명: medicationScheduleSlotKeysForFrequency
 // 함수역할:
 // - 1일 복용 횟수를 오늘의 복약 일정 시간대 키 목록으로 변환한다.
@@ -321,16 +334,7 @@ class MedicationSchedule {
   }
 
   static int _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-
-    final text = _readString(value);
-    final match = RegExp(r'\d+').firstMatch(text);
-    if (match == null) {
-      return 0;
-    }
-    return int.tryParse(match.group(0) ?? '') ?? 0;
+    return medicationScheduleCountFromText(value);
   }
 
   static bool _readBool(dynamic value) {

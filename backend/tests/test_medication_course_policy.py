@@ -54,6 +54,8 @@ class MedicationCoursePolicyTest(unittest.TestCase):
 
     def test_read_frequency_count_parses_daily_frequency_label(self) -> None:
         self.assertEqual(self.policy.read_frequency_count("3 times a day"), 3)
+        self.assertEqual(self.policy.read_frequency_count("1일 3회"), 3)
+        self.assertEqual(self.policy.read_frequency_count("하루 2번"), 2)
 
 
 if __name__ == "__main__":

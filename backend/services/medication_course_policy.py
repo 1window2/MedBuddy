@@ -6,13 +6,14 @@ import re
 from typing import Any
 
 _SCHEDULE_COUNT_PATTERN = re.compile(r"\d+")
+_FREQUENCY_COUNT_PATTERN = re.compile(r"(\d+)\s*(?:회|번|times?|x)", re.IGNORECASE)
 
 
 # Class Name: MedicationCoursePolicy
 # Role: Centralizes active-course and retention date calculations.
 # Responsibilities:
 #   - Read a saved medication start date from prescription or created date.
-    #   - Extract count values from prescription-derived schedule labels.
+#   - Extract count values from prescription-derived schedule labels.
 #   - Decide whether a medication is active on a requested date.
 #   - Decide whether a medication has passed a retention window.
 class MedicationCoursePolicy:
@@ -91,13 +92,22 @@ class MedicationCoursePolicy:
 
     # Function Name: read_frequency_count
     # Description:
-    # - Extracts the first integer from a daily_frequency label.
+    # - Extracts the dose count from a daily_frequency label.
     # Parameters:
-    # - raw_frequency: Raw label such as "3 times".
+    # - raw_frequency: Raw label such as "3 times" or "1일 3회".
     # Returns:
     # - Parsed integer, or 0 when no number is available.
     def read_frequency_count(self, raw_frequency: str | None) -> int:
-        return self._read_schedule_count(raw_frequency)
+        if not raw_frequency:
+            return 0
+        frequency_match = _FREQUENCY_COUNT_PATTERN.search(raw_frequency)
+        if frequency_match is not None:
+            return int(frequency_match.group(1))
+
+        matches = _SCHEDULE_COUNT_PATTERN.findall(raw_frequency)
+        if not matches:
+            return 0
+        return int(matches[-1])
 
     def _read_schedule_count(self, raw_value: str | None) -> int:
         if not raw_value:

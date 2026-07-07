@@ -24,6 +24,28 @@ void main() {
     expect(medicationDetail.voiceGuideText, contains('Drink enough water.'));
   });
 
+  test('MedicationDetail derives dosage guide lines from frequency labels', () {
+    const medicationDetail = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: 'Pain relief',
+      usageMethod: 'Take after meals',
+      warning: 'May cause drowsiness',
+      dosagePerTime: '1 tablet',
+      dailyFrequency: '1일 3회',
+      totalDays: '5 days',
+    );
+
+    expect(
+      medicationDetail.detailedDosageGuideLines
+          .where((line) => line.contains('1 tablet')),
+      hasLength(3),
+    );
+    expect(
+      medicationDetail.voiceGuideText,
+      contains('1 tablet'),
+    );
+  });
+
   test('requestVoiceGuide speaks backend voice guide text', () async {
     late Map<String, dynamic> requestBody;
     var spokenText = '';
