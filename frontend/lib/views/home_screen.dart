@@ -126,7 +126,7 @@ class HomeScreen extends StatelessWidget {
               onMedicationScopeSelected: viewModel.setMedicationAccessScope,
             ),
           ),
-        );
+        ).then((_) => viewModel.refreshMedicationOverview());
       },
       onUserSettingRequested: () {
         Navigator.push(

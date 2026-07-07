@@ -225,6 +225,10 @@ class MedBuddyViewModel extends ChangeNotifier {
     _medicationUserHash = normalizedUserHash;
     _medicationRole = normalizedRole;
     _rebuildMedicationScopeControls();
+    _savedMedicationInfoList = [];
+    _todayMedicationScheduleList = [];
+    _healthRecommendation = null;
+    _medicationReminderSettings.clear();
     notifyListeners();
   }
 
@@ -243,12 +247,18 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       _userSetting = await manageUserSetting.requestStoredUserSetting();
-      await loadMedicationReminderSettings(notifyAfterLoad: false);
-      await fetchTodayMedicationSchedule();
+      await refreshMedicationOverview();
     } finally {
       _isUserSettingLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshMedicationOverview() async {
+    await Future.wait([
+      loadMedicationReminderSettings(notifyAfterLoad: false),
+      fetchTodayMedicationSchedule(),
+    ]);
   }
 
   // - 없음
