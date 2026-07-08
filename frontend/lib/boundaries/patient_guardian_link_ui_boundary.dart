@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../controls/patient_guardian_link_control.dart';
 import '../controls/set_guardian_alert_setting_control.dart';
@@ -42,7 +43,6 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
   List<PatientGuardianLink> _links = const [];
   Map<String, GuardianAlertSetting> _guardianAlertSettings = const {};
   Set<String> _guardianAlertLoadingKeys = const {};
-  String? _patientCode;
   String _statusMessage =
       '\uD604\uC7AC \uC0AC\uC6A9\uC790 \uD574\uC2DC\uB85C \uC5F0\uB3D9 \uC0C1\uD0DC\uB97C \uD655\uC778\uD569\uB2C8\uB2E4.';
   bool _isLoading = false;
@@ -87,10 +87,6 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
                     onRefreshRequested: _refreshLinks,
                     onGeneratePatientCodeRequested: _requestPatientCode,
                   ),
-                  if (_patientCode != null) ...[
-                    const SizedBox(height: 16),
-                    _PatientCodeCard(patientCode: _patientCode!),
-                  ],
                   const SizedBox(height: 16),
                   _RegisterPatientCard(
                     controller: _patientCodeController,
@@ -145,10 +141,10 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
           return;
         }
         setState(() {
-          _patientCode = patientCode;
           _statusMessage =
               '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
         });
+        await _showPatientCodeDialog(patientCode);
       } finally {
         control.dispose();
       }
@@ -400,6 +396,14 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
       role: 'patient',
     );
   }
+
+  Future<void> _showPatientCodeDialog(String patientCode) {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => _PatientCodeDialog(patientCode: patientCode),
+    );
+  }
 }
 
 class _LinkHeader extends StatelessWidget {
@@ -552,52 +556,195 @@ class _CurrentUserCard extends StatelessWidget {
   }
 }
 
-class _PatientCodeCard extends StatelessWidget {
+class _PatientCodeDialog extends StatelessWidget {
   final String patientCode;
 
-  const _PatientCodeCard({required this.patientCode});
+  const _PatientCodeDialog({required this.patientCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 42),
+      child: Container(
+        width: 328,
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 19),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: MedBuddyRadii.card,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: '\uB2EB\uAE30',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.close,
+                    color: Color(0xFF344054),
+                    size: 22,
+                  ),
+                ),
+                const Expanded(
+                  child: Text(
+                    '\uD658\uC790 \uCF54\uB4DC \uC0DD\uC131',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0A0A0A),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 36),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(13),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(13),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: patientCode));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        '\uCF54\uB4DC\uB97C \uBCF5\uC0AC\uD588\uC2B5\uB2C8\uB2E4.',
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  height: 57,
+                  padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(13),
+                    border:
+                        Border.all(color: const Color(0xFFD1D5DC), width: 2),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          patientCode,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF1E2939),
+                            fontSize: 16,
+                            letterSpacing: 0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(
+                        Icons.copy_outlined,
+                        color: Color(0xFF99A1AF),
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 7),
+            const Text(
+              '(\uCF54\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uBCF5\uC0AC\uB429\uB2C8\uB2E4)',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF6A7282),
+                fontSize: 13,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 28),
+            _PatientCodeNotice(
+              backgroundColor: Color(0xFFECFDF5),
+              foregroundColor: Color(0xFF364153),
+              text:
+                  '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
+            ),
+            const SizedBox(height: 15),
+            _PatientCodeNotice(
+              backgroundColor: Color(0xFFFEF2F2),
+              foregroundColor: Color(0xFFE7000B),
+              fontWeight: FontWeight.w700,
+              text:
+                  '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678 \uB2E4\uB978 \uC0AC\uB78C\uACFC\n\uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
+            ),
+            const SizedBox(height: 24),
+            const Text.rich(
+              TextSpan(
+                text: '\uB0A8\uC740 \uC2DC\uAC04: ',
+                children: [
+                  TextSpan(
+                    text: '05:00',
+                    style: TextStyle(
+                      color: MedBuddyColors.primary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF6A7282),
+                fontSize: 13,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PatientCodeNotice extends StatelessWidget {
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final FontWeight fontWeight;
+  final String text;
+
+  const _PatientCodeNotice({
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.text,
+    this.fontWeight = FontWeight.w500,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      height: 78,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
+        color: backgroundColor,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.mint, width: 2),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '\uACF5\uC720 \uCF54\uB4DC',
-            style: TextStyle(
-              color: MedBuddyColors.primaryDark,
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            patientCode,
-            style: const TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 30,
-              letterSpacing: 0,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            '\uBCF4\uD638\uC790\uAC00 \uC774 \uCF54\uB4DC\uB97C \uB4F1\uB85D\uD558\uBA74 \uD658\uC790 \uBCF5\uC57D \uC815\uBCF4\uB97C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
-            style: TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        ],
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: foregroundColor,
+          fontSize: 14,
+          height: 1.45,
+          fontWeight: fontWeight,
+          letterSpacing: 0,
+        ),
       ),
     );
   }

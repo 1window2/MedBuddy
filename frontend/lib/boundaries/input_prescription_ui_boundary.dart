@@ -115,6 +115,8 @@ class InputPrescriptionUI extends StatelessWidget {
                       userSetting: userSetting,
                       onTap: onPatientGuardianLinkRequested,
                     ),
+                    const SizedBox(height: 56),
+                    const _HomePageIndicator(),
                   ],
                 ),
               ),
@@ -308,7 +310,7 @@ class _HomeHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MedBuddy',
+                  'MEDbuddy',
                   maxLines: 1,
                   overflow: TextOverflow.visible,
                   style: TextStyle(
@@ -555,6 +557,39 @@ class _LinkCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HomePageIndicator extends StatelessWidget {
+  const _HomePageIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 29,
+          height: 7,
+          decoration: BoxDecoration(
+            color: MedBuddyColors.primary,
+            borderRadius: MedBuddyRadii.pill,
+          ),
+        ),
+        const SizedBox(width: 7),
+        for (int index = 0; index < 3; index++) ...[
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFFD1D5DC),
+              shape: BoxShape.circle,
+            ),
+          ),
+          if (index != 2) const SizedBox(width: 7),
+        ],
+      ],
     );
   }
 }

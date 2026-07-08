@@ -61,63 +61,70 @@ class CheckResultUI extends StatelessWidget {
               text: text,
               userSetting: userSetting,
             ),
-            _BulkSaveButton(
-              text: text,
-              userSetting: userSetting,
-              isSaving: isAllMedicationSaving,
-              isCompleted: completedMedicationSaveIndexes.length >=
-                  analyzedMedicationList.length,
-              onPressed: () async {
-                final success = await onAllMedicationSaveRequested();
-                if (!context.mounted) {
-                  return;
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(statusMessageProvider()),
-                    backgroundColor: success
-                        ? const Color(0xFF059669)
-                        : const Color(0xFFDC2626),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(40, 10, 40, 32),
-                itemCount: analyzedMedicationList.length,
-                itemBuilder: (context, index) {
-                  final analyzedMedication = analyzedMedicationList[index];
-                  return _MedicationResultCard(
-                    analyzedMedication: analyzedMedication,
-                    text: text,
-                    userSetting: userSetting,
-                    isMedicationSaving: savingMedicationIndex == index,
-                    isMedicationSaved:
-                        completedMedicationSaveIndexes.contains(index),
-                    isAllMedicationSaving: isAllMedicationSaving,
-                    onMedicationSaveRequested: () async {
-                      final success = await onMedicationSaveRequested(
-                        analyzedMedication,
-                        index,
-                      );
-                      if (!context.mounted) {
-                        return;
-                      }
+              child: Stack(
+                children: [
+                  ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(40, 10, 40, 126),
+                    itemCount: analyzedMedicationList.length,
+                    itemBuilder: (context, index) {
+                      final analyzedMedication = analyzedMedicationList[index];
+                      return _MedicationResultCard(
+                        analyzedMedication: analyzedMedication,
+                        text: text,
+                        userSetting: userSetting,
+                        isMedicationSaving: savingMedicationIndex == index,
+                        isMedicationSaved:
+                            completedMedicationSaveIndexes.contains(index),
+                        isAllMedicationSaving: isAllMedicationSaving,
+                        onMedicationSaveRequested: () async {
+                          final success = await onMedicationSaveRequested(
+                            analyzedMedication,
+                            index,
+                          );
+                          if (!context.mounted) {
+                            return;
+                          }
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(statusMessageProvider()),
-                          backgroundColor: success
-                              ? const Color(0xFF059669)
-                              : const Color(0xFFDC2626),
-                          duration: const Duration(seconds: 2),
-                        ),
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(statusMessageProvider()),
+                              backgroundColor: success
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFDC2626),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
                       );
                     },
-                  );
-                },
+                  ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _BulkSaveButton(
+                      text: text,
+                      userSetting: userSetting,
+                      isSaving: isAllMedicationSaving,
+                      isCompleted: completedMedicationSaveIndexes.length >=
+                          analyzedMedicationList.length,
+                      onPressed: () async {
+                        final success = await onAllMedicationSaveRequested();
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(statusMessageProvider()),
+                            backgroundColor: success
+                                ? const Color(0xFF059669)
+                                : const Color(0xFFDC2626),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -267,8 +274,18 @@ class _BulkSaveButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(40, 0, 40, 8),
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        40,
+        22,
+        40,
+        MediaQuery.of(context).padding.bottom + 23,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
       child: SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
@@ -298,10 +315,12 @@ class _BulkSaveButton extends StatelessWidget {
             foregroundColor: Colors.white,
             disabledBackgroundColor: const Color(0xFF9CA3AF),
             disabledForegroundColor: Colors.white,
-            minimumSize: const Size.fromHeight(54),
-            shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+            minimumSize: const Size.fromHeight(66),
+            shape: RoundedRectangleBorder(
+              borderRadius: MedBuddyRadii.largeCard,
+            ),
             textStyle: TextStyle(
-              fontSize: 17 * scale,
+              fontSize: 22 * scale,
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
             ),
@@ -385,6 +404,14 @@ class _MedicationResultCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 10),
+                _MedicationSaveIconButton(
+                  text: text,
+                  isMedicationSaving: isMedicationSaving,
+                  isMedicationSaved: isMedicationSaved,
+                  isAllMedicationSaving: isAllMedicationSaving,
+                  onPressed: onMedicationSaveRequested,
+                ),
               ],
             ),
           ),
@@ -412,56 +439,6 @@ class _MedicationResultCard extends StatelessWidget {
                   value: _displayValue(schedule.medicationTimeLabel),
                   userSetting: userSetting,
                 ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: isMedicationSaving ||
-                            isMedicationSaved ||
-                            isAllMedicationSaving
-                        ? null
-                        : () async => onMedicationSaveRequested(),
-                    icon: isMedicationSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.4,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(
-                            isMedicationSaved
-                                ? Icons.check_circle_outline
-                                : Icons.save_alt_outlined,
-                            size: 20,
-                          ),
-                    label: Text(
-                      isMedicationSaved
-                          ? text.saved
-                          : isMedicationSaving
-                              ? text.saving
-                              : text.saveSchedule,
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: isMedicationSaved
-                          ? const Color(0xFF9CA3AF)
-                          : MedBuddyColors.primary.withAlpha(165),
-                      disabledForegroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.card,
-                      ),
-                      textStyle: TextStyle(
-                        fontSize: 16 * scale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -476,6 +453,58 @@ class _MedicationResultCard extends StatelessWidget {
       return textValue;
     }
     return '${textValue.substring(0, maxLength)}...';
+  }
+}
+
+class _MedicationSaveIconButton extends StatelessWidget {
+  final _ResultText text;
+  final bool isMedicationSaving;
+  final bool isMedicationSaved;
+  final bool isAllMedicationSaving;
+  final Future<void> Function() onPressed;
+
+  const _MedicationSaveIconButton({
+    required this.text,
+    required this.isMedicationSaving,
+    required this.isMedicationSaved,
+    required this.isAllMedicationSaving,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDisabled =
+        isMedicationSaving || isMedicationSaved || isAllMedicationSaving;
+
+    return Tooltip(
+      message: isMedicationSaved ? text.saved : text.saveSchedule,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        style: IconButton.styleFrom(
+          foregroundColor: MedBuddyColors.primary,
+          disabledForegroundColor: MedBuddyColors.textLight,
+          backgroundColor: Colors.transparent,
+          shape: const CircleBorder(),
+        ),
+        onPressed: isDisabled ? null : () async => onPressed(),
+        icon: isMedicationSaving
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.3,
+                  color: MedBuddyColors.primary,
+                ),
+              )
+            : Icon(
+                isMedicationSaved
+                    ? Icons.check_circle_outline
+                    : Icons.edit_outlined,
+                size: 22,
+              ),
+      ),
+    );
   }
 }
 
