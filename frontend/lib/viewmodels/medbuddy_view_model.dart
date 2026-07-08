@@ -161,7 +161,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     var completedCount = 0;
 
     for (final schedule in _todayMedicationScheduleList) {
-      for (final slotKey in _slotKeysForProgress(schedule)) {
+      for (final slotKey in _slotKeysForSchedule(schedule)) {
         totalCount += 1;
         if (schedule.isSlotCompleted(slotKey)) {
           completedCount += 1;
@@ -899,7 +899,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   List<MedicationSchedule> _schedulesForReminderSlot(String slotKey) {
     return _todayMedicationScheduleList.where((schedule) {
-      return schedule.slotKeys.contains(slotKey);
+      return _slotKeysForSchedule(schedule).contains(slotKey);
     }).toList(growable: false);
   }
 
@@ -931,7 +931,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
-    return schedule.slotKeys;
+    return _slotKeysForSchedule(schedule);
   }
 
   // 함수명: requestMedicationDoseStatusUpdate
@@ -1120,10 +1120,10 @@ class MedBuddyViewModel extends ChangeNotifier {
   SetNotification get _activeSetNotification =>
       _scopedSetNotification ?? setNotification;
 
-  List<String> _slotKeysForProgress(MedicationSchedule schedule) {
+  List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
     if (schedule.slotStatuses.isNotEmpty) {
-      final slotKeys = schedule.slotStatuses.keys
-          .where((slotKey) => medicationScheduleSlotKeys.contains(slotKey))
+      final slotKeys = medicationScheduleSlotKeys
+          .where((slotKey) => schedule.slotStatuses.containsKey(slotKey))
           .toList(growable: false);
       if (slotKeys.isNotEmpty) {
         return slotKeys;

@@ -226,6 +226,48 @@ void main() {
     expect(viewModel.todayMedicationProgress.completedCount, 1);
   });
 
+  test('slotKeysForSchedule prefers backend slot status keys', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/schedule/today/info');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'patient_hash': 'patient-a',
+            'schedules': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '1 time',
+                'slot_statuses': {
+                  'lunch': false,
+                },
+                'patient_hash': 'patient-a',
+              },
+            ],
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.fetchTodayMedicationSchedule();
+    final schedule = viewModel.todayMedicationScheduleList.single;
+
+    expect(viewModel.slotKeysForSchedule(schedule), ['lunch']);
+    expect(viewModel.todayMedicationProgress.totalCount, 1);
+  });
+
   test('today progress parses Korean daily frequency labels', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');

@@ -256,6 +256,51 @@ void main() {
         contains('patient-a-tablet'));
     expect(notificationService.canceledIds, contains(1001));
   });
+
+  test('reminder synchronization follows backend slot status keys', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = _FakeMedicationNotificationService();
+    final client = MockClient((http.Request request) async {
+      if (request.url.path == '/notification/settings') {
+        return _jsonResponse(
+          _alarmPayload(
+            'patient-a',
+            slotKey: 'lunch',
+            hour: 12,
+            minute: 30,
+          ),
+        );
+      }
+      if (request.url.path == '/schedule/today/info') {
+        return _jsonResponse(
+          _schedulePayload(
+            'patient-a',
+            dailyFrequency: '1 time',
+            slotStatuses: {'lunch': false},
+          ),
+        );
+      }
+      return _jsonResponse({'success': false});
+    });
+    final viewModel = MedBuddyViewModel(
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+      setNotification: SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.refreshMedicationOverview();
+
+    expect(notificationService.scheduledSlotKeys, ['lunch']);
+  });
 }
 
 http.Response _jsonResponse(Map<String, dynamic> payload) {
@@ -269,6 +314,8 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 Map<String, dynamic> _schedulePayload(
   String patientHash, {
   String medicationId = '7',
+  String dailyFrequency = '1 time',
+  Map<String, bool>? slotStatuses,
 }) {
   return {
     'success': true,
@@ -278,7 +325,8 @@ Map<String, dynamic> _schedulePayload(
         {
           'medication_id': medicationId,
           'drug_name': '$patientHash-tablet',
-          'daily_frequency': '1 time',
+          'daily_frequency': dailyFrequency,
+          if (slotStatuses != null) 'slot_statuses': slotStatuses,
           'patient_hash': patientHash,
         },
       ],
@@ -297,15 +345,20 @@ Map<String, dynamic> _healthRecommendationPayload() {
   };
 }
 
-Map<String, dynamic> _alarmPayload(String patientHash) {
+Map<String, dynamic> _alarmPayload(
+  String patientHash, {
+  String slotKey = 'morning',
+  int hour = 8,
+  int minute = 15,
+}) {
   return {
     'success': true,
     'data': [
       {
         'patient_hash': patientHash,
-        'slot_key': 'morning',
-        'hour': 8,
-        'minute': 15,
+        'slot_key': slotKey,
+        'hour': hour,
+        'minute': minute,
         'is_enabled': true,
       },
     ],
