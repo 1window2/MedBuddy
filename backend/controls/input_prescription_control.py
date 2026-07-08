@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any
 
 from google import genai
@@ -34,15 +35,34 @@ class _MedicationNameVerification:
     source: str
 
 
+@dataclass(frozen=True)
+class _CatalogMedicationName:
+    item_name: str
+    normalized_name: str
+
+
+@dataclass(frozen=True)
+class _MedicationNameFallbackRequest:
+    index: int
+    raw_name: str
+    candidates: list[_CatalogMedicationName]
+
+
 # Class Name: _PrescriptionMedicationNameVerifier
 # Role: Internal collaborator for prescription medication name canonicalization.
 # Responsibilities:
 #   - Verify extracted medication names against the local medication catalog.
-#   - Generate bounded Korean OCR vowel variants before any future AI fallback.
+#   - Generate bounded Korean OCR vowel variants before AI fallback.
+#   - Ask Gemini to choose only from local catalog candidates when needed.
 #   - Return conservative correction metadata for downstream UI decisions.
 class _PrescriptionMedicationNameVerifier:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
+    _MAX_AI_CATALOG_CANDIDATES = 8
+    _MAX_FRAGMENT_QUERY_ROWS = 24
+    _MIN_FUZZY_SCORE = 0.45
+    _AI_CONFIDENCE_THRESHOLD = 0.86
+    _AI_CONFIDENCE_CAP = 0.89
     _HANGUL_BASE = 0xAC00
     _HANGUL_LAST = 0xD7A3
     _HANGUL_MEDIAL_COUNT = 21
@@ -59,6 +79,38 @@ class _PrescriptionMedicationNameVerifier:
 
     def __init__(self, db: Session | None = None) -> None:
         self.db = db
+
+    async def verify_many(
+        self,
+        raw_names: list[str],
+        ai_client: genai.Client,
+        model_name: str,
+    ) -> list[_MedicationNameVerification]:
+        verifications = [self.verify(raw_name) for raw_name in raw_names]
+        fallback_requests = self._build_fallback_requests(raw_names, verifications)
+        if not fallback_requests:
+            return verifications
+
+        corrections = await self._request_ai_catalog_choices(
+            fallback_requests,
+            ai_client,
+            model_name,
+        )
+        if not corrections:
+            return verifications
+
+        corrected_verifications = list(verifications)
+        for index, correction in corrections.items():
+            if index < 0 or index >= len(corrected_verifications):
+                continue
+            catalog_candidate, confidence = correction
+            corrected_verifications[index] = _MedicationNameVerification(
+                raw_name=raw_names[index],
+                canonical_name=catalog_candidate.item_name,
+                confidence=confidence,
+                source="llm_catalog_candidate",
+            )
+        return corrected_verifications
 
     def verify(self, raw_name: str) -> _MedicationNameVerification:
         normalized_raw_name = self._normalize_name(raw_name)
@@ -87,6 +139,120 @@ class _PrescriptionMedicationNameVerifier:
             confidence=candidate.confidence,
             source=candidate.source,
         )
+
+    def _build_fallback_requests(
+        self,
+        raw_names: list[str],
+        verifications: list[_MedicationNameVerification],
+    ) -> list[_MedicationNameFallbackRequest]:
+        if self.db is None:
+            return []
+
+        fallback_requests: list[_MedicationNameFallbackRequest] = []
+        for index, verification in enumerate(verifications):
+            if verification.source != "unverified":
+                continue
+            normalized_name = self._normalize_name(raw_names[index])
+            if not normalized_name:
+                continue
+            candidates = self._find_similar_catalog_names(normalized_name)
+            if not candidates:
+                continue
+            fallback_requests.append(
+                _MedicationNameFallbackRequest(
+                    index=index,
+                    raw_name=raw_names[index],
+                    candidates=candidates,
+                )
+            )
+        return fallback_requests
+
+    async def _request_ai_catalog_choices(
+        self,
+        fallback_requests: list[_MedicationNameFallbackRequest],
+        ai_client: genai.Client,
+        model_name: str,
+    ) -> dict[int, tuple[_CatalogMedicationName, float]]:
+        request_payload = [
+            {
+                "index": request.index,
+                "raw_name": request.raw_name,
+                "candidate_names": [
+                    candidate.item_name for candidate in request.candidates
+                ],
+            }
+            for request in fallback_requests
+        ]
+        prompt = (
+            "You verify OCR-extracted Korean medication names. "
+            "For each item, choose corrected_name only from candidate_names. "
+            "Use an empty corrected_name and confidence 0 when none is a "
+            "high-confidence OCR correction. Do not invent medication names. "
+            "Return JSON only.\n\n"
+            f"items={json.dumps(request_payload, ensure_ascii=False)}"
+        )
+
+        try:
+            response = await ai_client.aio.models.generate_content(
+                model=model_name,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=self._ai_correction_response_schema(),
+                    temperature=0.0,
+                ),
+            )
+            response_data = json.loads(self._clean_json_response(response.text))
+        except Exception as exc:
+            logger.warning("Medication name AI fallback failed: %s", exc)
+            return {}
+
+        if not isinstance(response_data, dict):
+            return {}
+
+        return self._select_ai_verified_corrections(
+            response_data,
+            fallback_requests,
+        )
+
+    def _select_ai_verified_corrections(
+        self,
+        response_data: dict[str, Any],
+        fallback_requests: list[_MedicationNameFallbackRequest],
+    ) -> dict[int, tuple[_CatalogMedicationName, float]]:
+        fallback_requests_by_index = {
+            request.index: request for request in fallback_requests
+        }
+        corrections: dict[int, tuple[_CatalogMedicationName, float]] = {}
+        raw_corrections = response_data.get("corrections")
+        if not isinstance(raw_corrections, list):
+            return corrections
+
+        for raw_correction in raw_corrections:
+            if not isinstance(raw_correction, dict):
+                continue
+            index = self._safe_int(raw_correction.get("index"))
+            request = fallback_requests_by_index.get(index)
+            if request is None:
+                continue
+
+            confidence = self._safe_float(raw_correction.get("confidence"))
+            if confidence < self._AI_CONFIDENCE_THRESHOLD:
+                continue
+
+            selected_name = str(raw_correction.get("corrected_name") or "").strip()
+            selected_candidate = self._find_selected_candidate(
+                selected_name,
+                request.candidates,
+            )
+            if selected_candidate is None:
+                continue
+
+            corrections[index] = (
+                selected_candidate,
+                min(confidence, self._AI_CONFIDENCE_CAP),
+            )
+        return corrections
 
     def _build_candidates(
         self,
@@ -152,6 +318,94 @@ class _PrescriptionMedicationNameVerifier:
                 return candidate, item_name
         return None
 
+    def _find_similar_catalog_names(
+        self,
+        normalized_name: str,
+    ) -> list[_CatalogMedicationName]:
+        catalog_candidates_by_name: dict[str, _CatalogMedicationName] = {}
+        for fragment in self._candidate_fragments(normalized_name):
+            for model in (_DrugBasicInfo, _DrugApprovalInfo):
+                for row in (
+                    self.db.query(model)
+                    .filter(
+                        model.normalized_item_name.like(
+                            self._like_pattern(fragment),
+                            escape="\\",
+                        )
+                    )
+                    .order_by(model.item_name.asc())
+                    .limit(self._MAX_FRAGMENT_QUERY_ROWS)
+                    .all()
+                ):
+                    if not row.item_name or not row.normalized_item_name:
+                        continue
+                    catalog_candidates_by_name.setdefault(
+                        row.normalized_item_name,
+                        _CatalogMedicationName(
+                            item_name=row.item_name,
+                            normalized_name=row.normalized_item_name,
+                        ),
+                    )
+
+        scored_candidates = [
+            (self._name_similarity(normalized_name, candidate.normalized_name), candidate)
+            for candidate in catalog_candidates_by_name.values()
+        ]
+        scored_candidates = [
+            item for item in scored_candidates if item[0] >= self._MIN_FUZZY_SCORE
+        ]
+        scored_candidates.sort(key=lambda item: (-item[0], item[1].item_name))
+        return [
+            candidate
+            for _, candidate in scored_candidates[: self._MAX_AI_CATALOG_CANDIDATES]
+        ]
+
+    def _candidate_fragments(self, normalized_name: str) -> list[str]:
+        if not normalized_name:
+            return []
+
+        window_size = 3 if len(normalized_name) >= 3 else len(normalized_name)
+        fragments = [
+            normalized_name[index : index + window_size]
+            for index in range(0, len(normalized_name) - window_size + 1)
+        ]
+        fragments.sort(key=lambda fragment: (-len(fragment), fragment))
+        deduplicated_fragments: list[str] = []
+        seen_fragments = set()
+        for fragment in fragments:
+            if fragment in seen_fragments:
+                continue
+            seen_fragments.add(fragment)
+            deduplicated_fragments.append(fragment)
+        return deduplicated_fragments
+
+    def _like_pattern(self, fragment: str) -> str:
+        escaped_fragment = (
+            fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        return f"%{escaped_fragment}%"
+
+    def _name_similarity(self, left: str, right: str) -> float:
+        return SequenceMatcher(None, left, right).ratio()
+
+    def _find_selected_candidate(
+        self,
+        selected_name: str,
+        candidates: list[_CatalogMedicationName],
+    ) -> _CatalogMedicationName | None:
+        if not selected_name:
+            return None
+
+        for candidate in candidates:
+            if selected_name == candidate.item_name:
+                return candidate
+
+        normalized_selected_name = self._normalize_name(selected_name)
+        for candidate in candidates:
+            if normalized_selected_name == candidate.normalized_name:
+                return candidate
+        return None
+
     def _hangul_vowel_variants(self, normalized_name: str) -> list[str]:
         variants: list[str] = []
         for index, character in enumerate(normalized_name):
@@ -203,6 +457,48 @@ class _PrescriptionMedicationNameVerifier:
 
     def _normalize_name(self, name: str) -> str:
         return self._WHITESPACE_PATTERN.sub("", name or "").strip().lower()
+
+    def _clean_json_response(self, response_text: str) -> str:
+        cleaned_text = response_text.strip()
+        if cleaned_text.startswith("```json"):
+            cleaned_text = cleaned_text[7:]
+        if cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text[3:]
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3]
+        return cleaned_text.strip()
+
+    def _safe_float(self, value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _safe_int(self, value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return -1
+
+    def _ai_correction_response_schema(self) -> dict[str, Any]:
+        return {
+            "type": "OBJECT",
+            "required": ["corrections"],
+            "properties": {
+                "corrections": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "required": ["index", "corrected_name", "confidence"],
+                        "properties": {
+                            "index": {"type": "INTEGER"},
+                            "corrected_name": {"type": "STRING"},
+                            "confidence": {"type": "NUMBER"},
+                        },
+                    },
+                },
+            },
+        }
 
 
 # Class Name: InputPrescription
@@ -298,12 +594,16 @@ class InputPrescription:
 
         safe_data = self._apply_secondary_masking(raw_data)
         prescription_date = safe_data.get("prescription_date", "정보 없음")
+        verified_medication_schedules = await self._to_verified_medication_schedules(
+            safe_data.get("medications", []),
+        )
         medication_schedules = [
             self._to_prescription_medication_payload(
-                *self._to_verified_medication_schedule(item),
+                medication_schedule,
+                verification,
                 prescription_date,
             )
-            for item in safe_data.get("medications", [])
+            for medication_schedule, verification in verified_medication_schedules
         ]
         return {
             "hospital_name": safe_data.get("hospital_name", "정보 없음"),
@@ -390,19 +690,40 @@ class InputPrescription:
         data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
         return json.loads(data_str)
 
-    def _to_verified_medication_schedule(
+    async def _to_verified_medication_schedules(
+        self,
+        items: list[dict[str, Any]],
+    ) -> list[tuple[MedicationSchedule, _MedicationNameVerification]]:
+        medication_schedules = [
+            MedicationSchedule(**item).getAnalysisResult() for item in items
+        ]
+        verifications = await self.medication_name_verifier.verify_many(
+            [
+                medication_schedule.medication_name
+                for medication_schedule in medication_schedules
+            ],
+            self.client,
+            self.model_name,
+        )
+
+        verified_schedules: list[tuple[MedicationSchedule, _MedicationNameVerification]] = []
+        for medication_schedule, verification in zip(
+            medication_schedules,
+            verifications,
+        ):
+            if verification.canonical_name != medication_schedule.medication_name:
+                medication_schedule = medication_schedule.model_copy(
+                    update={"medication_name": verification.canonical_name},
+                )
+            verified_schedules.append((medication_schedule, verification))
+        return verified_schedules
+
+    async def _to_verified_medication_schedule(
         self,
         item: dict[str, Any],
     ) -> tuple[MedicationSchedule, _MedicationNameVerification]:
-        medication_schedule = MedicationSchedule(**item).getAnalysisResult()
-        verification = self.medication_name_verifier.verify(
-            medication_schedule.medication_name,
-        )
-        if verification.canonical_name != medication_schedule.medication_name:
-            medication_schedule = medication_schedule.model_copy(
-                update={"medication_name": verification.canonical_name},
-            )
-        return medication_schedule, verification
+        verified_schedules = await self._to_verified_medication_schedules([item])
+        return verified_schedules[0]
 
     # Function Name: _to_prescription_medication_payload
     # Description:
