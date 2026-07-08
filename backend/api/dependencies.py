@@ -24,8 +24,10 @@ from controls.set_notification_control import SetNotification
 # - Builds the image prescription analysis control service.
 # Returns:
 # - InputPrescription instance.
-def get_input_prescription() -> InputPrescription:
-    return InputPrescription()
+def get_input_prescription(
+    db: Session = Depends(get_db),
+) -> InputPrescription:
+    return InputPrescription(db=db)
 
 
 # Function Name: get_check_medication_detail

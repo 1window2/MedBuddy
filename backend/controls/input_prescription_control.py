@@ -4,16 +4,205 @@
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from google import genai
 from google.genai import types
+from sqlalchemy.orm import Session
 
 from core.config import settings
+from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.medication_schedule_entity import MedicationSchedule
 from utils.image_processing import preprocess_prescription_image
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _MedicationNameCandidate:
+    normalized_name: str
+    source: str
+    confidence: float
+
+
+@dataclass(frozen=True)
+class _MedicationNameVerification:
+    raw_name: str
+    canonical_name: str
+    confidence: float
+    source: str
+
+
+# Class Name: _PrescriptionMedicationNameVerifier
+# Role: Internal collaborator for prescription medication name canonicalization.
+# Responsibilities:
+#   - Verify extracted medication names against the local medication catalog.
+#   - Generate bounded Korean OCR vowel variants before any future AI fallback.
+#   - Return conservative correction metadata for downstream UI decisions.
+class _PrescriptionMedicationNameVerifier:
+    _WHITESPACE_PATTERN = re.compile(r"\s+")
+    _MAX_CANDIDATES = 48
+    _HANGUL_BASE = 0xAC00
+    _HANGUL_LAST = 0xD7A3
+    _HANGUL_MEDIAL_COUNT = 21
+    _HANGUL_FINAL_COUNT = 28
+    _HANGUL_BLOCK_SIZE = _HANGUL_MEDIAL_COUNT * _HANGUL_FINAL_COUNT
+    _OCR_VOWEL_GROUPS = (
+        (4, 20),  # eo/i: ㅓ, ㅣ
+        (4, 5),  # eo/e: ㅓ, ㅔ
+        (8, 13, 18),  # o/u/eu: ㅗ, ㅜ, ㅡ
+        (0, 4),  # a/eo: ㅏ, ㅓ
+        (8, 12),  # o/yo: ㅗ, ㅛ
+        (13, 17),  # u/yu: ㅜ, ㅠ
+    )
+
+    def __init__(self, db: Session | None = None) -> None:
+        self.db = db
+
+    def verify(self, raw_name: str) -> _MedicationNameVerification:
+        normalized_raw_name = self._normalize_name(raw_name)
+        if self.db is None or not normalized_raw_name:
+            return _MedicationNameVerification(
+                raw_name=raw_name,
+                canonical_name=raw_name,
+                confidence=0.0,
+                source="unverified",
+            )
+
+        candidates = self._build_candidates(normalized_raw_name)
+        catalog_match = self._find_catalog_match(candidates)
+        if catalog_match is None:
+            return _MedicationNameVerification(
+                raw_name=raw_name,
+                canonical_name=raw_name,
+                confidence=0.0,
+                source="unverified",
+            )
+
+        candidate, item_name = catalog_match
+        return _MedicationNameVerification(
+            raw_name=raw_name,
+            canonical_name=item_name,
+            confidence=candidate.confidence,
+            source=candidate.source,
+        )
+
+    def _build_candidates(
+        self,
+        normalized_name: str,
+    ) -> list[_MedicationNameCandidate]:
+        candidates = [
+            _MedicationNameCandidate(
+                normalized_name=normalized_name,
+                source="local_catalog_exact",
+                confidence=1.0,
+            )
+        ]
+        for variant in self._hangul_vowel_variants(normalized_name):
+            candidates.append(
+                _MedicationNameCandidate(
+                    normalized_name=variant,
+                    source="local_catalog_ocr_vowel_variant",
+                    confidence=0.92,
+                )
+            )
+
+        deduplicated_candidates: list[_MedicationNameCandidate] = []
+        seen_names = set()
+        for candidate in candidates:
+            if candidate.normalized_name in seen_names:
+                continue
+            seen_names.add(candidate.normalized_name)
+            deduplicated_candidates.append(candidate)
+            if len(deduplicated_candidates) >= self._MAX_CANDIDATES:
+                break
+        return deduplicated_candidates
+
+    def _find_catalog_match(
+        self,
+        candidates: list[_MedicationNameCandidate],
+    ) -> tuple[_MedicationNameCandidate, str] | None:
+        normalized_names = [candidate.normalized_name for candidate in candidates]
+        basic_matches = {
+            row.normalized_item_name: row.item_name
+            for row in (
+                self.db.query(_DrugBasicInfo)
+                .filter(_DrugBasicInfo.normalized_item_name.in_(normalized_names))
+                .order_by(_DrugBasicInfo.item_name.asc())
+                .all()
+            )
+        }
+        approval_matches = {
+            row.normalized_item_name: row.item_name
+            for row in (
+                self.db.query(_DrugApprovalInfo)
+                .filter(_DrugApprovalInfo.normalized_item_name.in_(normalized_names))
+                .order_by(_DrugApprovalInfo.item_name.asc())
+                .all()
+            )
+        }
+
+        for candidate in candidates:
+            item_name = basic_matches.get(candidate.normalized_name)
+            if item_name:
+                return candidate, item_name
+            item_name = approval_matches.get(candidate.normalized_name)
+            if item_name:
+                return candidate, item_name
+        return None
+
+    def _hangul_vowel_variants(self, normalized_name: str) -> list[str]:
+        variants: list[str] = []
+        for index, character in enumerate(normalized_name):
+            medial_index = self._hangul_medial_index(character)
+            if medial_index is None:
+                continue
+
+            for group in self._OCR_VOWEL_GROUPS:
+                if medial_index not in group:
+                    continue
+                for replacement_medial_index in group:
+                    if replacement_medial_index == medial_index:
+                        continue
+                    variants.append(
+                        normalized_name[:index]
+                        + self._replace_hangul_medial(
+                            character,
+                            replacement_medial_index,
+                        )
+                        + normalized_name[index + 1 :]
+                    )
+        return variants
+
+    def _hangul_medial_index(self, character: str) -> int | None:
+        code_point = ord(character)
+        if code_point < self._HANGUL_BASE or code_point > self._HANGUL_LAST:
+            return None
+
+        syllable_index = code_point - self._HANGUL_BASE
+        return (syllable_index % self._HANGUL_BLOCK_SIZE) // self._HANGUL_FINAL_COUNT
+
+    def _replace_hangul_medial(
+        self,
+        character: str,
+        replacement_medial_index: int,
+    ) -> str:
+        syllable_index = ord(character) - self._HANGUL_BASE
+        initial_index = syllable_index // self._HANGUL_BLOCK_SIZE
+        final_index = syllable_index % self._HANGUL_FINAL_COUNT
+        return chr(
+            self._HANGUL_BASE
+            + (
+                initial_index * self._HANGUL_MEDIAL_COUNT
+                + replacement_medial_index
+            )
+            * self._HANGUL_FINAL_COUNT
+            + final_index
+        )
+
+    def _normalize_name(self, name: str) -> str:
+        return self._WHITESPACE_PATTERN.sub("", name or "").strip().lower()
 
 
 # Class Name: InputPrescription
@@ -77,12 +266,17 @@ class InputPrescription:
         self,
         client: genai.Client | None = None,
         model_name: str = "gemini-3.1-flash-lite",
+        db: Session | None = None,
+        medication_name_verifier: _PrescriptionMedicationNameVerifier | None = None,
     ) -> None:
         self.client = client or genai.Client(
             api_key=settings.GEMINI_API_KEY,
             http_options={"api_version": "v1alpha"},
         )
         self.model_name = model_name
+        self.medication_name_verifier = (
+            medication_name_verifier or _PrescriptionMedicationNameVerifier(db=db)
+        )
 
     # Function Name: request_prescription_image
     # Description:
@@ -106,7 +300,7 @@ class InputPrescription:
         prescription_date = safe_data.get("prescription_date", "정보 없음")
         medication_schedules = [
             self._to_prescription_medication_payload(
-                MedicationSchedule(**item).getAnalysisResult(),
+                *self._to_verified_medication_schedule(item),
                 prescription_date,
             )
             for item in safe_data.get("medications", [])
@@ -196,6 +390,20 @@ class InputPrescription:
         data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
         return json.loads(data_str)
 
+    def _to_verified_medication_schedule(
+        self,
+        item: dict[str, Any],
+    ) -> tuple[MedicationSchedule, _MedicationNameVerification]:
+        medication_schedule = MedicationSchedule(**item).getAnalysisResult()
+        verification = self.medication_name_verifier.verify(
+            medication_schedule.medication_name,
+        )
+        if verification.canonical_name != medication_schedule.medication_name:
+            medication_schedule = medication_schedule.model_copy(
+                update={"medication_name": verification.canonical_name},
+            )
+        return medication_schedule, verification
+
     # Function Name: _to_prescription_medication_payload
     # Description:
     # - Converts a MedicationSchedule entity into the API payload expected by
@@ -207,11 +415,15 @@ class InputPrescription:
     def _to_prescription_medication_payload(
         self,
         medication_schedule: MedicationSchedule,
+        verification: _MedicationNameVerification,
         prescription_date: str,
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         return {
             "prescription_date": prescription_date,
             "drug_name": medication_schedule.medication_name,
+            "raw_drug_name": verification.raw_name,
+            "name_confidence": verification.confidence,
+            "name_correction_source": verification.source,
             "dosage_per_time": medication_schedule.dosage,
             "daily_frequency": medication_schedule.intake_time,
             "total_days": medication_schedule.medication_time,
