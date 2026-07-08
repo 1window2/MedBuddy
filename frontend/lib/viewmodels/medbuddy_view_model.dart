@@ -114,6 +114,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   bool _isTodayScheduleLoading = false;
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+  bool _lastTodayScheduleLoadSucceeded = false;
 
   bool _isHealthRecommendationLoading = false;
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
@@ -229,6 +230,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _todayMedicationScheduleList = [];
     _healthRecommendation = null;
     _medicationReminderSettings.clear();
+    _lastTodayScheduleLoadSucceeded = false;
     notifyListeners();
   }
 
@@ -259,6 +261,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       loadMedicationReminderSettings(notifyAfterLoad: false),
       fetchTodayMedicationSchedule(),
     ]);
+    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
   }
 
   // - 없음
@@ -438,6 +441,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
       await fetchSavedMedicationInfo();
       await fetchTodayMedicationSchedule();
+      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
       _statusMessage = _buildBulkSaveMessage(
         savedCount: savedCount,
         duplicateCount: duplicateCount,
@@ -517,6 +521,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     if (refreshAfterSave) {
       await fetchSavedMedicationInfo();
       await fetchTodayMedicationSchedule();
+      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
     notifyListeners();
     return result;
@@ -554,6 +559,7 @@ class MedBuddyViewModel extends ChangeNotifier {
           .where((item) => item.id != savedMedicationId)
           .toList(growable: false);
       await fetchTodayMedicationSchedule();
+      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
     return success;
   }
@@ -570,9 +576,12 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       _todayMedicationScheduleList =
           await _activeCheckTodayMedicationInfo.requestTodayMedicationInfo();
+      _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
+      _lastTodayScheduleLoadSucceeded = false;
       _statusMessage = error.message;
     } catch (_) {
+      _lastTodayScheduleLoadSucceeded = false;
       _statusMessage = '복약 일정을 불러오지 못했습니다.';
     } finally {
       _isTodayScheduleLoading = false;
@@ -669,6 +678,14 @@ class MedBuddyViewModel extends ChangeNotifier {
     required int minute,
     required List<MedicationSchedule> schedules,
   }) async {
+    if (schedules.isEmpty) {
+      _statusMessage = _isEnglishSetting
+          ? 'There is no medication in this time slot.'
+          : '이 시간대에 복용할 약이 없습니다.';
+      notifyListeners();
+      return false;
+    }
+
     final hasPermission = await notificationService.requestPermission();
     if (!hasPermission) {
       _statusMessage = _isEnglishSetting
@@ -685,15 +702,10 @@ class MedBuddyViewModel extends ChangeNotifier {
         minute: minute,
       );
 
-      await notificationService.scheduleDailyReminder(
-        id: setting.notificationId,
-        slotKey: setting.slotKey,
+      await _scheduleMedicationReminder(
+        setting: setting,
         slotTitle: slotTitle,
-        hour: setting.hour,
-        minute: setting.minute,
-        medicationNames:
-            schedules.map((schedule) => schedule.displayName).toList(),
-        language: userSetting.language,
+        schedules: schedules,
       );
 
       final preferences = await SharedPreferences.getInstance();
@@ -737,7 +749,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       final disabledSetting =
           await _activeSetNotification.disableAlarmSetting(slotKey);
-      await notificationService.cancelReminder(disabledSetting.notificationId);
+      await _cancelMedicationReminder(disabledSetting);
       final preferences = await SharedPreferences.getInstance();
       await _cacheMedicationReminderSetting(preferences, disabledSetting);
       _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
@@ -798,6 +810,108 @@ class MedBuddyViewModel extends ChangeNotifier {
       }
       _medicationReminderSettings[slotKey] = MedicationAlarm.defaults(slotKey);
     }
+  }
+
+  Future<void> _synchronizeMedicationReminderSchedules() async {
+    if (_medicationReminderSettings.isEmpty) {
+      return;
+    }
+
+    final preferences = await SharedPreferences.getInstance();
+    for (final slotKey in _reminderSlotKeys) {
+      final setting = _medicationReminderSettings[slotKey] ??
+          MedicationAlarm.defaults(slotKey);
+      if (!setting.isEnabled) {
+        await _cancelMedicationReminder(setting);
+        continue;
+      }
+
+      final schedules = _schedulesForReminderSlot(slotKey);
+      if (schedules.isEmpty) {
+        final disabledSetting = await _disableReminderSettingForEmptySlot(
+          slotKey,
+          setting,
+        );
+        await _cacheMedicationReminderSetting(preferences, disabledSetting);
+        _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
+        await _cancelMedicationReminder(disabledSetting);
+        continue;
+      }
+
+      await _scheduleMedicationReminder(
+        setting: setting,
+        slotTitle: _reminderSlotTitle(slotKey),
+        schedules: schedules,
+      );
+    }
+  }
+
+  Future<void>
+      _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
+    if (!_lastTodayScheduleLoadSucceeded) {
+      return;
+    }
+    await _synchronizeMedicationReminderSchedules();
+  }
+
+  Future<MedicationAlarm> _disableReminderSettingForEmptySlot(
+    String slotKey,
+    MedicationAlarm fallbackSetting,
+  ) async {
+    try {
+      return await _activeSetNotification.disableAlarmSetting(slotKey);
+    } catch (_) {
+      return fallbackSetting.copyWith(enabled: false);
+    }
+  }
+
+  Future<void> _scheduleMedicationReminder({
+    required MedicationAlarm setting,
+    required String slotTitle,
+    required List<MedicationSchedule> schedules,
+  }) async {
+    await _cancelLegacyMedicationReminder(setting);
+    await notificationService.scheduleDailyReminder(
+      id: setting.notificationId,
+      slotKey: setting.slotKey,
+      slotTitle: slotTitle,
+      hour: setting.hour,
+      minute: setting.minute,
+      medicationNames: schedules
+          .map((schedule) => schedule.displayName)
+          .where((name) => name.trim().isNotEmpty)
+          .toList(growable: false),
+      language: userSetting.language,
+    );
+  }
+
+  Future<void> _cancelMedicationReminder(MedicationAlarm setting) async {
+    await notificationService.cancelReminder(setting.notificationId);
+    await _cancelLegacyMedicationReminder(setting);
+  }
+
+  Future<void> _cancelLegacyMedicationReminder(MedicationAlarm setting) async {
+    final legacyId = setting.legacyNotificationId;
+    if (legacyId != setting.notificationId) {
+      await notificationService.cancelReminder(legacyId);
+    }
+  }
+
+  List<MedicationSchedule> _schedulesForReminderSlot(String slotKey) {
+    return _todayMedicationScheduleList.where((schedule) {
+      return schedule.slotKeys.contains(slotKey);
+    }).toList(growable: false);
+  }
+
+  String _reminderSlotTitle(String slotKey) {
+    final isEnglish = _isEnglishSetting;
+    return switch (slotKey) {
+      'morning' => isEnglish ? 'Morning' : '아침',
+      'lunch' => isEnglish ? 'Lunch' : '점심',
+      'evening' => isEnglish ? 'Evening' : '저녁',
+      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
+      _ => isEnglish ? 'Schedule' : '일정',
+    };
   }
 
   // 함수명: isMedicationDoseCompleted

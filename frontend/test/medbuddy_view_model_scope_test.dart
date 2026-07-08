@@ -7,6 +7,7 @@ import 'package:medbuddy_frontend/controls/check_health_recommendation_control.d
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/medication_notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -204,6 +205,7 @@ void main() {
         baseUrl: 'http://localhost',
         client: client,
       ),
+      notificationService: _FakeMedicationNotificationService(),
     );
     addTearDown(viewModel.dispose);
 
@@ -218,6 +220,41 @@ void main() {
     expect(requestedPaths, contains('/schedule/today/info'));
     expect(viewModel.todayMedicationScheduleList.single.patientID, 'patient-b');
     expect(viewModel.medicationReminderSettings['morning']?.hour, 8);
+  });
+
+  test('refreshMedicationOverview reschedules enabled reminders', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = _FakeMedicationNotificationService();
+    final client = MockClient((http.Request request) async {
+      if (request.url.path == '/notification/settings') {
+        return _jsonResponse(_alarmPayload('patient-a'));
+      }
+      if (request.url.path == '/schedule/today/info') {
+        return _jsonResponse(_schedulePayload('patient-a'));
+      }
+      return _jsonResponse({'success': false});
+    });
+    final viewModel = MedBuddyViewModel(
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+      setNotification: SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.refreshMedicationOverview();
+
+    expect(notificationService.scheduledSlotKeys, contains('morning'));
+    expect(notificationService.scheduledMedicationNames.single,
+        contains('patient-a-tablet'));
+    expect(notificationService.canceledIds, contains(1001));
   });
 }
 
@@ -273,4 +310,36 @@ Map<String, dynamic> _alarmPayload(String patientHash) {
       },
     ],
   };
+}
+
+class _FakeMedicationNotificationService
+    implements MedicationNotificationService {
+  final List<int> canceledIds = [];
+  final List<String> scheduledSlotKeys = [];
+  final List<List<String>> scheduledMedicationNames = [];
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> scheduleDailyReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<String> medicationNames,
+    String language = 'ko',
+  }) async {
+    scheduledSlotKeys.add(slotKey);
+    scheduledMedicationNames.add(medicationNames);
+  }
+
+  @override
+  Future<void> cancelReminder(int id) async {
+    canceledIds.add(id);
+  }
 }

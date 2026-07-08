@@ -54,13 +54,18 @@ class MedicationAlarm {
   bool get isEnabled => enabled;
 
   int get notificationId {
-    return switch (slotKey) {
-      'morning' => 1001,
-      'lunch' => 1002,
-      'evening' => 1003,
-      'bedtime' => 1004,
-      _ => 1099,
-    };
+    final normalizedPatientHash = patientHash.trim();
+    if (normalizedPatientHash.isEmpty) {
+      return legacyNotificationId;
+    }
+
+    return 100000 +
+        (_stablePatientHash(normalizedPatientHash) % 100000) * 10 +
+        _slotNotificationOffset(slotKey);
+  }
+
+  int get legacyNotificationId {
+    return legacyNotificationIdForSlot(slotKey);
   }
 
   String get timeLabel {
@@ -101,6 +106,34 @@ class MedicationAlarm {
       'bedtime' => 22,
       _ => 8,
     };
+  }
+
+  static int legacyNotificationIdForSlot(String slotKey) {
+    return switch (slotKey) {
+      'morning' => 1001,
+      'lunch' => 1002,
+      'evening' => 1003,
+      'bedtime' => 1004,
+      _ => 1099,
+    };
+  }
+
+  static int _slotNotificationOffset(String slotKey) {
+    return switch (slotKey) {
+      'morning' => 1,
+      'lunch' => 2,
+      'evening' => 3,
+      'bedtime' => 4,
+      _ => 9,
+    };
+  }
+
+  static int _stablePatientHash(String value) {
+    var hash = 0;
+    for (final codeUnit in value.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+    return hash;
   }
 
   static int _readInt(dynamic value, int fallback) {

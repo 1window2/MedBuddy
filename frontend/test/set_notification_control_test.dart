@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
+import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 
 void main() {
   test('requestMedicationAlarm scopes list request and decodes settings',
@@ -147,5 +148,28 @@ void main() {
       throwsA(isA<StateError>()),
     );
     expect(requestCalled, isFalse);
+  });
+
+  test('MedicationAlarm notification ids are scoped by patient hash', () {
+    const patientASetting = MedicationAlarm(
+      patientHash: 'patient-a',
+      slotKey: 'morning',
+      hour: 8,
+      minute: 0,
+      enabled: true,
+    );
+    const patientBSetting = MedicationAlarm(
+      patientHash: 'patient-b',
+      slotKey: 'morning',
+      hour: 8,
+      minute: 0,
+      enabled: true,
+    );
+
+    expect(patientASetting.notificationId, isNot(1001));
+    expect(patientBSetting.notificationId, isNot(1001));
+    expect(
+        patientASetting.notificationId, isNot(patientBSetting.notificationId));
+    expect(patientASetting.legacyNotificationId, 1001);
   });
 }
