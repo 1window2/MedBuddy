@@ -1,213 +1,334 @@
+# File Name: prescription_parser.py
+# Role: Deterministic parser and normalizer for prescription OCR output.
+
 import re
-from typing import List, Dict, Any, Optional
-
-# 파일명: prescription_parser.py
-# 역할: OCR 텍스트 줄에서 처방전 날짜, 환자명, 약품 복용 정보를 추출한다.
+from typing import Any
 
 
-# 변수이름: DATE_PATTERN
-# 변수역할:
-# - 날짜 문자열을 찾기 위한 정규표현식 패턴
-# - 예:
-#   2026-03-21
-#   2026.03.21
-#   2026/3/21
+INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
+
 DATE_PATTERN = re.compile(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})")
+MED_LINE_PATTERN = re.compile(r"(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+)$")
+LEADING_MARKER_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*")
 
+UNKNOWN_TEXTS = {
+    "",
+    "-",
+    "--",
+    "?",
+    "none",
+    "null",
+    "n/a",
+    "unknown",
+    INFO_UNAVAILABLE,
+}
 
-# 변수이름: MED_LINE_PATTERN
-# 변수역할:
-# - 약품 정보 한 줄을 파싱하기 위한 정규표현식 패턴
-# - 형식:
-#   [약이름] [1회투약량] [1일복용횟수] [총복용일수]
-# - 예:
-#   타이레놀정500mg 1 3 5
-#   코푸정 0.5 2 7
-MED_LINE_PATTERN = re.compile(
-    r"(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+)$"
+HOSPITAL_NAME_KEYS = (
+    "hospital_name",
+    "hospitalName",
+    "pharmacy_name",
+    "pharmacyName",
+    "clinic_name",
+    "clinicName",
+)
+PRESCRIPTION_DATE_KEYS = (
+    "prescription_date",
+    "prescriptionDate",
+    "dispense_date",
+    "dispenseDate",
+    "date",
+)
+MEDICATION_LIST_KEYS = (
+    "medications",
+    "medicines",
+    "medicine_list",
+    "medicineList",
+    "drugs",
+    "items",
+)
+DRUG_NAME_KEYS = (
+    "drug_name",
+    "drugName",
+    "medication_name",
+    "medicationName",
+    "medicine_name",
+    "medicineName",
+    "item_name",
+    "itemName",
+    "product_name",
+    "productName",
+    "name",
+)
+DOSAGE_KEYS = (
+    "dosage_per_time",
+    "dosagePerTime",
+    "dose_per_time",
+    "dosePerTime",
+    "dosage",
+    "dose",
+)
+DAILY_FREQUENCY_KEYS = (
+    "daily_frequency",
+    "dailyFrequency",
+    "frequency_per_day",
+    "frequencyPerDay",
+    "daily_count",
+    "dailyCount",
+    "intake_time",
+    "intakeTime",
+    "frequency",
+)
+TOTAL_DAYS_KEYS = (
+    "total_days",
+    "totalDays",
+    "duration_days",
+    "durationDays",
+    "medication_time",
+    "medicationTime",
+    "days",
+    "duration",
 )
 
 
-# 함수이름: normalize_text
-# 함수역할:
-# - OCR 결과 한 줄에서 불필요한 공백/콜론 등을 정리한다.
-# - 파싱하기 쉬운 형태로 문자열을 정규화한다.
-# 매개변수:
-# - text: OCR 결과 한 줄 문자열
-# 반환값:
-# - 정리된 문자열
 def normalize_text(text: str) -> str:
-    text = text.strip()
+    text = str(text or "").strip()
     text = text.replace(":", " ")
-    text = " ".join(text.split())
-    return text
+    return " ".join(text.split())
 
 
-# 함수이름: normalize_date
-# 함수역할:
-# - 문자열 안에서 날짜를 찾아 YYYY-MM-DD 형식으로 통일한다.
-# 매개변수:
-# - text: 날짜가 포함될 수 있는 문자열
-# 반환값:
-# - 날짜를 찾으면 YYYY-MM-DD 문자열
-# - 찾지 못하면 None
-def normalize_date(text: str) -> Optional[str]:
-    match = DATE_PATTERN.search(text)
+def normalize_date(text: str) -> str | None:
+    match = DATE_PATTERN.search(str(text or ""))
     if not match:
         return None
 
-    # 변수이름: year, month, day
-    # 변수역할:
-    # - 정규표현식으로 추출한 연/월/일 값
     year, month, day = match.groups()
-
     return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
 
 
-# 함수이름: extract_patient_name
-# 함수역할:
-# - "환자명 홍길동", "환자명: 홍길동" 같은 줄에서 환자 이름을 추출한다.
-# 매개변수:
-# - line: OCR 결과 한 줄
-# 반환값:
-# - 환자명을 찾으면 문자열
-# - 찾지 못하면 None
-def extract_patient_name(line: str) -> Optional[str]:
-    if "환자명" not in line:
+def extract_patient_name(line: str) -> str | None:
+    normalized_line = normalize_text(line)
+    for label in ("\ud658\uc790\uba85", "patient name", "patient"):
+        if label not in normalized_line.lower():
+            continue
+        cleaned = re.sub(label, "", normalized_line, flags=re.IGNORECASE)
+        cleaned = cleaned.strip(": ").strip()
+        return cleaned if cleaned else None
+    return None
+
+
+def extract_prescription_date(line: str) -> str | None:
+    normalized_line = normalize_text(line)
+    lowered_line = normalized_line.lower()
+    if not any(
+        label in lowered_line
+        for label in ("\ucc98\ubc29", "\uc870\uc81c", "prescription", "dispense")
+    ):
+        return None
+    return normalize_date(normalized_line)
+
+
+def parse_medication_line(line: str) -> dict[str, Any] | None:
+    normalized_line = normalize_text(line)
+    match = MED_LINE_PATTERN.match(normalized_line)
+    if not match:
         return None
 
-    # 변수이름: cleaned
-    # 변수역할:
-    # - "환자명" 제거 후 실제 이름 부분만 남긴 문자열
-    cleaned = line.replace("환자명", "").strip()
-    cleaned = cleaned.strip(":").strip()
-
-    return cleaned if cleaned else None
-
-
-# 함수이름: extract_prescription_date
-# 함수역할:
-# - "처방일자 2026-03-21", "처방일 2026.03.21" 같은 줄에서 날짜를 추출한다.
-# 매개변수:
-# - line: OCR 결과 한 줄
-# 반환값:
-# - 날짜를 찾으면 YYYY-MM-DD 문자열
-# - 찾지 못하면 None
-def extract_prescription_date(line: str) -> Optional[str]:
-    if "처방일" not in line and "처방일자" not in line:
+    name, dose_raw, frequency_raw, days_raw = match.groups()
+    cleaned_name = _clean_medication_name(name)
+    if _is_unknown(cleaned_name):
         return None
 
-    return normalize_date(line)
-
-
-# 함수이름: parse_medication_line
-# 함수역할:
-# - 약품 정보 한 줄을 dict 형태로 파싱한다.
-# - 예:
-#   "타이레놀정500mg 1 3 5"
-#   ->
-#   {
-#       "name": "타이레놀정500mg",
-#       "dose_per_time": 1,
-#       "frequency_per_day": 3,
-#       "duration_days": 5
-#   }
-# 매개변수:
-# - line: OCR 결과 한 줄
-# 반환값:
-# - 파싱 성공 시 약품 정보 dict
-# - 실패 시 None
-def parse_medication_line(line: str) -> Optional[Dict[str, Any]]:
-    # 변수이름: parts
-    # 변수역할:
-    # - 문자열을 뒤에서부터 3개 기준으로 나눈 리스트
-    # - [약이름, dose, freq, days]
-    parts = line.rsplit(maxsplit=3)
-
-    if len(parts) != 4:
+    dose = _parse_number(dose_raw)
+    frequency_per_day = _parse_int(frequency_raw)
+    duration_days = _parse_int(days_raw)
+    if dose is None or frequency_per_day is None or duration_days is None:
         return None
 
-    # 변수이름: name, dose_raw, freq_raw, days_raw
-    # 변수역할:
-    # - 각각 약 이름, 1회 투약량, 1일 복용 횟수, 총 복용 일수
-    name, dose_raw, freq_raw, days_raw = parts
-
-    try:
-        # 변수이름: dose
-        # 변수역할:
-        # - 숫자형으로 변환된 1회 투약량
-        dose = float(dose_raw)
-        if dose.is_integer():
-            dose = int(dose)
-
-        # 변수이름: frequency_per_day
-        # 변수역할:
-        # - 하루 복용 횟수
-        frequency_per_day = int(freq_raw)
-
-        # 변수이름: duration_days
-        # 변수역할:
-        # - 총 복용 일수
-        duration_days = int(days_raw)
-
-    except ValueError:
-        return None
-
+    dosage_text = _format_numeric_text(dose_raw)
+    frequency_text = _format_numeric_text(frequency_raw)
+    days_text = _format_numeric_text(days_raw)
     return {
-        "name": name.strip(),
+        "name": cleaned_name,
+        "drug_name": cleaned_name,
         "dose_per_time": dose,
+        "dosage_per_time": dosage_text,
         "frequency_per_day": frequency_per_day,
+        "daily_frequency": frequency_text,
         "duration_days": duration_days,
+        "total_days": days_text,
     }
 
 
-# 함수이름: parse_prescription
-# 함수역할:
-# - OCR 줄 리스트를 받아 처방전 정보를 구조화된 dict(JSON 형태)로 변환한다.
-# 매개변수:
-# - lines: OCR 결과를 줄 단위로 나눈 문자열 리스트
-# 반환값:
-# - 처방전 정보를 담은 dict
-def parse_prescription(lines: List[str]) -> Dict[str, Any]:
-    # 변수이름: result
-    # 변수역할:
-    # - 최종적으로 반환할 구조화 결과 저장
-    result = {
+def parse_prescription(lines: list[str]) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "patient_name": None,
         "prescription_date": None,
         "medicines": [],
+        "medications": [],
     }
 
     for raw_line in lines:
-        # 변수이름: line
-        # 변수역할:
-        # - 정리된 OCR 한 줄 텍스트
         line = normalize_text(raw_line)
-
         if not line:
             continue
 
-        # 변수이름: patient_name
-        # 변수역할:
-        # - 환자명 추출 결과
         patient_name = extract_patient_name(line)
         if patient_name:
             result["patient_name"] = patient_name
             continue
 
-        # 변수이름: prescription_date
-        # 변수역할:
-        # - 처방일자 추출 결과
         prescription_date = extract_prescription_date(line)
         if prescription_date:
             result["prescription_date"] = prescription_date
             continue
 
-        # 변수이름: medicine
-        # 변수역할:
-        # - 약품 한 줄 파싱 결과
-        medicine = parse_medication_line(line)
-        if medicine:
-            result["medicines"].append(medicine)
+        medication = parse_medication_line(line)
+        if medication:
+            result["medicines"].append(medication)
+            result["medications"].append(
+                {
+                    "drug_name": medication["drug_name"],
+                    "dosage_per_time": medication["dosage_per_time"],
+                    "daily_frequency": medication["daily_frequency"],
+                    "total_days": medication["total_days"],
+                }
+            )
 
     return result
+
+
+def normalize_prescription_payload(data: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("Prescription analysis response must be a JSON object.")
+
+    prescription_date = _read_first_text(data, PRESCRIPTION_DATE_KEYS)
+    normalized_date = normalize_date(prescription_date or "")
+    raw_items = _read_first_list(data, MEDICATION_LIST_KEYS)
+    normalized_medications = [
+        medication
+        for raw_item in raw_items
+        if (medication := normalize_prescription_medication(raw_item)) is not None
+    ]
+    deduplicated_medications = _deduplicate_medications(normalized_medications)
+
+    return {
+        "hospital_name": _read_first_text(
+            data,
+            HOSPITAL_NAME_KEYS,
+            default=INFO_UNAVAILABLE,
+        ),
+        "prescription_date": normalized_date
+        or _read_first_text(data, PRESCRIPTION_DATE_KEYS, default=INFO_UNAVAILABLE),
+        "medications": deduplicated_medications,
+        "raw_medication_count": len(raw_items),
+        "parsed_medication_count": len(deduplicated_medications),
+        "skipped_medication_count": len(raw_items) - len(deduplicated_medications),
+    }
+
+
+def normalize_prescription_medication(raw_item: Any) -> dict[str, str] | None:
+    if not isinstance(raw_item, dict):
+        return None
+
+    drug_name = _clean_medication_name(_read_first_text(raw_item, DRUG_NAME_KEYS))
+    if _is_unknown(drug_name):
+        return None
+
+    return {
+        "drug_name": drug_name,
+        "dosage_per_time": _read_first_text(raw_item, DOSAGE_KEYS),
+        "daily_frequency": _read_first_text(raw_item, DAILY_FREQUENCY_KEYS),
+        "total_days": _read_first_text(raw_item, TOTAL_DAYS_KEYS),
+    }
+
+
+def _read_first_list(data: dict[str, Any], keys: tuple[str, ...]) -> list[Any]:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _deduplicate_medications(
+    medications: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    deduplicated_medications: list[dict[str, str]] = []
+    seen_keys = set()
+    for medication in medications:
+        medication_key = (
+            medication["drug_name"],
+            medication["dosage_per_time"],
+            medication["daily_frequency"],
+            medication["total_days"],
+        )
+        if medication_key in seen_keys:
+            continue
+        seen_keys.add(medication_key)
+        deduplicated_medications.append(medication)
+    return deduplicated_medications
+
+
+def _read_first_text(
+    data: dict[str, Any],
+    keys: tuple[str, ...],
+    default: str = "",
+) -> str:
+    for key in keys:
+        value = data.get(key)
+        text = _format_value(value)
+        if not _is_unknown(text):
+            return text
+    return default
+
+
+def _format_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return _format_numeric_text(value)
+    return normalize_text(str(value))
+
+
+def _format_numeric_text(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return normalize_text(str(value or ""))
+    if number.is_integer():
+        return str(int(number))
+    return str(number).rstrip("0").rstrip(".")
+
+
+def _parse_number(value: Any) -> int | float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number.is_integer():
+        return int(number)
+    return number
+
+
+def _parse_int(value: Any) -> int | None:
+    parsed_value = _parse_number(value)
+    if isinstance(parsed_value, int):
+        return parsed_value
+    return None
+
+
+def _clean_medication_name(name: str) -> str:
+    cleaned_name = LEADING_MARKER_PATTERN.sub("", normalize_text(name))
+    for label in (
+        "\uc57d\ud488\uba85",
+        "\uc81c\ud488\uba85",
+        "drug name",
+        "medication name",
+        "medicine name",
+    ):
+        cleaned_name = re.sub(label, "", cleaned_name, flags=re.IGNORECASE)
+    return cleaned_name.strip(": ").strip()
+
+
+def _is_unknown(value: str) -> bool:
+    return normalize_text(value).lower() in UNKNOWN_TEXTS

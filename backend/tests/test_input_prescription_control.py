@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -244,6 +245,52 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             [first_canonical_name, second_canonical_name],
         )
         self.assertEqual(fake_client.models.call_count, 1)
+
+    def test_request_prescription_image_normalizes_alias_payload(self) -> None:
+        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
+        fake_client = _FakeGeminiClient(
+            json.dumps(
+                {
+                    "hospitalName": "\ud14c\uc2a4\ud2b8\uc57d\uad6d",
+                    "prescriptionDate": "2026.7.8",
+                    "medicines": [
+                        {
+                            "name": canonical_name,
+                            "dose_per_time": 1.0,
+                            "frequency_per_day": 3,
+                            "duration_days": 5,
+                        },
+                        {
+                            "drug_name": "\uc815\ubcf4 \uc5c6\uc74c",
+                            "dosage_per_time": "1",
+                            "daily_frequency": "3",
+                            "total_days": "5",
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        )
+        self.control = InputPrescription(client=fake_client)
+
+        with patch(
+            "controls.input_prescription_control.preprocess_prescription_image",
+            return_value=b"processed-image",
+        ):
+            payload = asyncio.run(
+                self.control.request_prescription_image(b"raw-image"),
+            )
+
+        self.assertEqual(payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
+        self.assertEqual(payload["prescription_date"], "2026-07-08")
+        self.assertEqual(len(payload["medications"]), 1)
+        self.assertEqual(payload["raw_medication_count"], 2)
+        self.assertEqual(payload["parsed_medication_count"], 1)
+        self.assertEqual(payload["skipped_medication_count"], 1)
+        self.assertEqual(payload["medications"][0]["drug_name"], canonical_name)
+        self.assertEqual(payload["medications"][0]["dosage_per_time"], "1")
+        self.assertEqual(payload["medications"][0]["daily_frequency"], "3")
+        self.assertEqual(payload["medications"][0]["total_days"], "5")
 
     def _save_basic_drug(self, item_name: str) -> None:
         self.db.add(

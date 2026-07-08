@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.medication_schedule_entity import MedicationSchedule
+from services.prescription_parser import normalize_prescription_payload
 from utils.image_processing import preprocess_prescription_image
 
 logger = logging.getLogger(__name__)
@@ -592,7 +593,9 @@ class InputPrescription:
             logger.error("Prescription analysis JSON decoding failed:\n%s", response_text)
             raise ValueError("AI returned an invalid JSON response.") from exc
 
-        safe_data = self._apply_secondary_masking(raw_data)
+        safe_data = normalize_prescription_payload(
+            self._apply_secondary_masking(raw_data),
+        )
         prescription_date = safe_data.get("prescription_date", "정보 없음")
         verified_medication_schedules = await self._to_verified_medication_schedules(
             safe_data.get("medications", []),
@@ -609,6 +612,12 @@ class InputPrescription:
             "hospital_name": safe_data.get("hospital_name", "정보 없음"),
             "prescription_date": prescription_date,
             "medications": medication_schedules,
+            "raw_medication_count": safe_data.get(
+                "raw_medication_count",
+                len(medication_schedules),
+            ),
+            "parsed_medication_count": len(medication_schedules),
+            "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
         }
 
     # Function Name: requestPrescriptionImage
