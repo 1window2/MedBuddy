@@ -86,6 +86,37 @@ class PrescriptionParserTest(unittest.TestCase):
             ],
         )
 
+    def test_normalize_prescription_payload_skips_non_finite_numeric_aliases(
+        self,
+    ) -> None:
+        raw_payload = {
+            "medications": [
+                {
+                    "drug_name": "\ud504\ub8e8\ucf54\ud504\uc815",
+                    "dosage_per_time": float("nan"),
+                    "dose": "1",
+                    "daily_frequency": "Infinity",
+                    "frequency": "3",
+                    "total_days": "-Infinity",
+                    "days": "5",
+                }
+            ],
+        }
+
+        normalized_payload = normalize_prescription_payload(raw_payload)
+
+        self.assertEqual(
+            normalized_payload["medications"],
+            [
+                {
+                    "drug_name": "\ud504\ub8e8\ucf54\ud504\uc815",
+                    "dosage_per_time": "1",
+                    "daily_frequency": "3",
+                    "total_days": "5",
+                }
+            ],
+        )
+
     def test_normalize_prescription_payload_rejects_non_object_response(self) -> None:
         with self.assertRaises(ValueError):
             normalize_prescription_payload(["not", "an", "object"])

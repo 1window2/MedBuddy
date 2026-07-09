@@ -1,6 +1,7 @@
 # File Name: prescription_parser.py
 # Role: Deterministic parser and normalizer for prescription OCR output.
 
+import math
 import re
 from typing import Any
 
@@ -19,6 +20,13 @@ UNKNOWN_TEXTS = {
     "none",
     "null",
     "n/a",
+    "nan",
+    "inf",
+    "+inf",
+    "-inf",
+    "infinity",
+    "+infinity",
+    "-infinity",
     "unknown",
     INFO_UNAVAILABLE,
 }
@@ -295,6 +303,8 @@ def _format_numeric_text(value: Any) -> str:
         number = float(value)
     except (TypeError, ValueError):
         return normalize_text(str(value or ""))
+    if not math.isfinite(number):
+        return ""
     if number.is_integer():
         return str(int(number))
     return str(number).rstrip("0").rstrip(".")
@@ -304,6 +314,8 @@ def _parse_number(value: Any) -> int | float | None:
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
         return None
     if number.is_integer():
         return int(number)

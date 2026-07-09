@@ -186,6 +186,49 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(first_client.models.call_count, 1)
         self.assertEqual(second_client.models.call_count, 0)
 
+    def test_llm_fallback_cache_is_separated_by_model_name(self) -> None:
+        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
+        ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
+        self._save_basic_drug(canonical_name)
+        first_client = _FakeGeminiClient(
+            json.dumps(
+                {
+                    "corrections": [
+                        {
+                            "index": 0,
+                            "corrected_name": canonical_name,
+                            "confidence": 0.94,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+        self.control = InputPrescription(
+            client=first_client,
+            model_name="gemini-test-a",
+            db=self.db,
+        )
+        _, first_verification = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
+        self.control = InputPrescription(
+            client=second_client,
+            model_name="gemini-test-b",
+            db=self.db,
+        )
+        medication_schedule, second_verification = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        self.assertEqual(first_verification.source, "llm_catalog_candidate")
+        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(second_verification.source, "unverified")
+        self.assertEqual(first_client.models.call_count, 1)
+        self.assertEqual(second_client.models.call_count, 1)
+
     def test_rejects_low_confidence_llm_fallback(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
@@ -212,6 +255,35 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
 
         self.assertEqual(medication_schedule.medication_name, ocr_name)
         self.assertEqual(verification.source, "unverified")
+        self.assertEqual(fake_client.models.call_count, 1)
+
+    def test_rejects_non_finite_llm_fallback_confidence(self) -> None:
+        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
+        ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
+        self._save_basic_drug(canonical_name)
+        fake_client = _FakeGeminiClient(
+            json.dumps(
+                {
+                    "corrections": [
+                        {
+                            "index": 0,
+                            "corrected_name": canonical_name,
+                            "confidence": "NaN",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+        self.control = InputPrescription(client=fake_client, db=self.db)
+
+        medication_schedule, verification = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(verification.source, "unverified")
+        self.assertEqual(verification.confidence, 0.0)
         self.assertEqual(fake_client.models.call_count, 1)
 
     def test_reuses_cached_rejected_llm_fallback(self) -> None:
@@ -267,6 +339,43 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
         malformed_client = _FakeGeminiClient("not-json")
+        self.control = InputPrescription(client=malformed_client, db=self.db)
+        _, first_verification = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        valid_client = _FakeGeminiClient(
+            json.dumps(
+                {
+                    "corrections": [
+                        {
+                            "index": 0,
+                            "corrected_name": canonical_name,
+                            "confidence": 0.95,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+        self.control = InputPrescription(client=valid_client, db=self.db)
+        medication_schedule, second_verification = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        self.assertEqual(first_verification.source, "unverified")
+        self.assertEqual(medication_schedule.medication_name, canonical_name)
+        self.assertEqual(second_verification.source, "llm_catalog_candidate")
+        self.assertEqual(malformed_client.models.call_count, 1)
+        self.assertEqual(valid_client.models.call_count, 1)
+
+    def test_does_not_cache_malformed_llm_fallback_object(self) -> None:
+        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
+        ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
+        self._save_basic_drug(canonical_name)
+        malformed_client = _FakeGeminiClient(
+            json.dumps({"unexpected": []}, ensure_ascii=False)
+        )
         self.control = InputPrescription(client=malformed_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)

@@ -3,6 +3,7 @@
 
 import json
 import logging
+import math
 import re
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -50,6 +51,9 @@ class _MedicationNameFallbackRequest:
     candidates: list[_CatalogMedicationName]
 
 
+_MedicationNameFallbackCacheKey = tuple[str, str, tuple[tuple[str, str], ...]]
+
+
 # Class Name: _PrescriptionMedicationNameVerifier
 # Role: Internal collaborator for prescription medication name canonicalization.
 # Responsibilities:
@@ -82,7 +86,7 @@ class _PrescriptionMedicationNameVerifier:
 
     _AI_FALLBACK_CACHE: ClassVar[
         OrderedDict[
-            tuple[str, tuple[str, ...]],
+            _MedicationNameFallbackCacheKey,
             tuple[_CatalogMedicationName, float] | None,
         ]
     ] = OrderedDict()
@@ -107,6 +111,7 @@ class _PrescriptionMedicationNameVerifier:
 
         corrections, uncached_fallback_requests = self._resolve_cached_fallbacks(
             fallback_requests,
+            model_name,
         )
         if uncached_fallback_requests:
             ai_corrections = await self._request_ai_catalog_choices(
@@ -118,6 +123,7 @@ class _PrescriptionMedicationNameVerifier:
                 self._cache_ai_fallback_results(
                     uncached_fallback_requests,
                     ai_corrections,
+                    model_name,
                 )
                 corrections.update(ai_corrections)
 
@@ -140,6 +146,7 @@ class _PrescriptionMedicationNameVerifier:
     def _resolve_cached_fallbacks(
         self,
         fallback_requests: list[_MedicationNameFallbackRequest],
+        model_name: str,
     ) -> tuple[
         dict[int, tuple[_CatalogMedicationName, float]],
         list[_MedicationNameFallbackRequest],
@@ -149,7 +156,7 @@ class _PrescriptionMedicationNameVerifier:
         cache = type(self)._AI_FALLBACK_CACHE
 
         for request in fallback_requests:
-            cache_key = self._ai_fallback_cache_key(request)
+            cache_key = self._ai_fallback_cache_key(request, model_name)
             if cache_key not in cache:
                 uncached_fallback_requests.append(request)
                 continue
@@ -165,10 +172,11 @@ class _PrescriptionMedicationNameVerifier:
         self,
         fallback_requests: list[_MedicationNameFallbackRequest],
         corrections: dict[int, tuple[_CatalogMedicationName, float]],
+        model_name: str,
     ) -> None:
         cache = type(self)._AI_FALLBACK_CACHE
         for request in fallback_requests:
-            cache_key = self._ai_fallback_cache_key(request)
+            cache_key = self._ai_fallback_cache_key(request, model_name)
             cache[cache_key] = corrections.get(request.index)
             cache.move_to_end(cache_key)
 
@@ -178,10 +186,15 @@ class _PrescriptionMedicationNameVerifier:
     def _ai_fallback_cache_key(
         self,
         request: _MedicationNameFallbackRequest,
-    ) -> tuple[str, tuple[str, ...]]:
+        model_name: str,
+    ) -> _MedicationNameFallbackCacheKey:
         return (
+            model_name,
             self._normalize_name(request.raw_name),
-            tuple(candidate.item_name for candidate in request.candidates),
+            tuple(
+                (candidate.item_name, candidate.normalized_name)
+                for candidate in request.candidates
+            ),
         )
 
     def verify(self, raw_name: str) -> _MedicationNameVerification:
@@ -280,6 +293,8 @@ class _PrescriptionMedicationNameVerifier:
             return None
 
         if not isinstance(response_data, dict):
+            return None
+        if not isinstance(response_data.get("corrections"), list):
             return None
 
         return self._select_ai_verified_corrections(
@@ -542,9 +557,10 @@ class _PrescriptionMedicationNameVerifier:
 
     def _safe_float(self, value: Any) -> float:
         try:
-            return float(value)
+            number = float(value)
         except (TypeError, ValueError):
             return 0.0
+        return number if math.isfinite(number) else 0.0
 
     def _safe_int(self, value: Any) -> int:
         try:
