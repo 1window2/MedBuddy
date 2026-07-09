@@ -128,6 +128,50 @@ class MedBuddyViewModel extends ChangeNotifier {
   String _analysisErrorMessage = '';
   String get analysisErrorMessage => _analysisErrorMessage;
 
+  int _lastPrescriptionRawMedicationCount = 0;
+  int _lastPrescriptionParsedMedicationCount = 0;
+  int _lastPrescriptionSkippedMedicationCount = 0;
+  int get lastPrescriptionRawMedicationCount =>
+      _lastPrescriptionRawMedicationCount;
+  int get lastPrescriptionParsedMedicationCount =>
+      _lastPrescriptionParsedMedicationCount;
+  int get lastPrescriptionSkippedMedicationCount =>
+      _lastPrescriptionSkippedMedicationCount;
+
+  int get correctedPrescriptionMedicationCount {
+    return _recognizedMedicationScheduleList
+        .where((schedule) => schedule.hasNameCorrection)
+        .length;
+  }
+
+  String get prescriptionRecognitionNotice {
+    final correctedCount = correctedPrescriptionMedicationCount;
+    final skippedCount = _lastPrescriptionSkippedMedicationCount;
+    if (correctedCount <= 0 && skippedCount <= 0) {
+      return '';
+    }
+
+    final parts = <String>[];
+    if (correctedCount > 0) {
+      parts.add(
+        _isEnglishSetting
+            ? '$correctedCount name correction'
+            : '$correctedCount개 약명 보정',
+      );
+    }
+    if (skippedCount > 0) {
+      parts.add(
+        _isEnglishSetting
+            ? '$skippedCount OCR item skipped'
+            : '$skippedCount개 OCR 항목 제외',
+      );
+    }
+
+    return _isEnglishSetting
+        ? '${parts.join(' · ')}. Please review before analysis.'
+        : '${parts.join(' · ')} 내역을 분석 전 확인해주세요.';
+  }
+
   UserSetting _userSetting = const UserSetting();
   UserSetting get userSetting =>
       manageUserSetting.requestUserSetting(_userSetting);
@@ -998,6 +1042,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _isAllMedicationSaving = false;
     _savingMedicationIndex = null;
     _analysisErrorMessage = '';
+    _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.idle;
     _statusMessage = '처방전을 촬영하거나 이미지를 선택해주세요.';
@@ -1036,6 +1081,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _recognizedMedicationScheduleList = [];
     _analyzedMedicationList = [];
     _analysisErrorMessage = '';
+    _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
 
     try {
@@ -1055,8 +1101,11 @@ class MedBuddyViewModel extends ChangeNotifier {
       }
 
       _recognizedMedicationScheduleList = result;
+      _recordPrescriptionRecognitionCounts(result);
       _prescriptionFlowState = PrescriptionFlowState.previewReady;
-      _statusMessage = '처방전 인식이 완료되었습니다.';
+      _statusMessage = prescriptionRecognitionNotice.isEmpty
+          ? '처방전 인식이 완료되었습니다.'
+          : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.';
       notifyListeners();
     } on StateError catch (error) {
       _showAnalysisFailure(error.message);
@@ -1070,6 +1119,31 @@ class MedBuddyViewModel extends ChangeNotifier {
     _prescriptionFlowState = PrescriptionFlowState.recognizingPrescription;
     _statusMessage = '처방전을 인식 중입니다...';
     notifyListeners();
+  }
+
+  void _clearPrescriptionRecognitionCounts() {
+    _lastPrescriptionRawMedicationCount = 0;
+    _lastPrescriptionParsedMedicationCount = 0;
+    _lastPrescriptionSkippedMedicationCount = 0;
+  }
+
+  void _recordPrescriptionRecognitionCounts(
+    List<MedicationSchedule> schedules,
+  ) {
+    final parsedCount = inputPrescription.lastParsedMedicationCount > 0
+        ? inputPrescription.lastParsedMedicationCount
+        : schedules.length;
+    final rawCount = inputPrescription.lastRawMedicationCount > 0
+        ? inputPrescription.lastRawMedicationCount
+        : parsedCount;
+    final skippedCount = inputPrescription.lastSkippedMedicationCount > 0
+        ? inputPrescription.lastSkippedMedicationCount
+        : rawCount - parsedCount;
+
+    _lastPrescriptionParsedMedicationCount = parsedCount < 0 ? 0 : parsedCount;
+    _lastPrescriptionRawMedicationCount = rawCount < 0 ? 0 : rawCount;
+    _lastPrescriptionSkippedMedicationCount =
+        skippedCount < 0 ? 0 : skippedCount;
   }
 
   void _showAnalysisFailure(String message) {

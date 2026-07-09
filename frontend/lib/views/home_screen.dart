@@ -36,6 +36,7 @@ class HomeScreen extends StatelessWidget {
         ),
       PrescriptionFlowState.previewReady => PrescriptionAnalysisPreviewUI(
           medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+          recognitionNotice: viewModel.prescriptionRecognitionNotice,
           userSetting: viewModel.userSetting,
           onBackRequested: viewModel.clearAnalysisResult,
           onAnalysisRequested: viewModel.requestMedicationAnalysis,

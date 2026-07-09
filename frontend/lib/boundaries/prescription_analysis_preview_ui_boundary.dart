@@ -15,6 +15,7 @@ import '../theme/medbuddy_theme.dart';
 // - 분석 전에 뒤로가기를 통해 촬영 단계로 돌아갈 수 있게 한다.
 class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final List<MedicationSchedule> medicationScheduleList;
+  final String recognitionNotice;
   final UserSetting userSetting;
   final VoidCallback onBackRequested;
   final VoidCallback onAnalysisRequested;
@@ -22,6 +23,7 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   const PrescriptionAnalysisPreviewUI({
     super.key,
     required this.medicationScheduleList,
+    this.recognitionNotice = '',
     required this.userSetting,
     required this.onBackRequested,
     required this.onAnalysisRequested,
@@ -50,6 +52,10 @@ class _PrescriptionAnalysisPreviewUIState
     final text = _PreviewText(widget.userSetting.language);
     final scale = widget.userSetting.contentTextScale;
     final pageCount = _pageCount;
+    final recognitionNotice = widget.recognitionNotice.trim();
+    final hasNameCorrection = widget.medicationScheduleList.any(
+      (schedule) => schedule.hasNameCorrection,
+    );
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -97,9 +103,17 @@ class _PrescriptionAnalysisPreviewUIState
                             letterSpacing: 0,
                           ),
                         ),
-                        const SizedBox(height: 26),
+                        if (recognitionNotice.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _RecognitionNoticeBanner(
+                            message: recognitionNotice,
+                            scale: scale,
+                          ),
+                          const SizedBox(height: 20),
+                        ] else
+                          const SizedBox(height: 26),
                         SizedBox(
-                          height: 206,
+                          height: hasNameCorrection ? 238 : 206,
                           child: PageView.builder(
                             controller: _pageController,
                             itemCount: pageCount,
@@ -109,7 +123,7 @@ class _PrescriptionAnalysisPreviewUIState
                             itemBuilder: (context, pageIndex) {
                               return _PreviewMedicationPage(
                                 medicationScheduleList: _pageItems(pageIndex),
-                                emptyText: text.noInformation,
+                                previewText: text,
                                 userSetting: widget.userSetting,
                               );
                             },
@@ -203,6 +217,52 @@ class _PrescriptionAnalysisPreviewUIState
   }
 }
 
+class _RecognitionNoticeBanner extends StatelessWidget {
+  final String message;
+  final double scale;
+
+  const _RecognitionNoticeBanner({
+    required this.message,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFAEB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF5D565)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: const Color(0xFFB7791F),
+            size: 16 * scale,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: const Color(0xFF8A5A12),
+                fontSize: 12 * scale,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopBackButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onBackRequested;
@@ -234,12 +294,12 @@ class _TopBackButton extends StatelessWidget {
 
 class _PreviewMedicationPage extends StatelessWidget {
   final List<MedicationSchedule> medicationScheduleList;
-  final String emptyText;
+  final _PreviewText previewText;
   final UserSetting userSetting;
 
   const _PreviewMedicationPage({
     required this.medicationScheduleList,
-    required this.emptyText,
+    required this.previewText,
     required this.userSetting,
   });
 
@@ -250,7 +310,7 @@ class _PreviewMedicationPage extends StatelessWidget {
         for (int index = 0; index < medicationScheduleList.length; index++) ...[
           _PreviewMedicationRow(
             schedule: medicationScheduleList[index],
-            emptyText: emptyText,
+            previewText: previewText,
             userSetting: userSetting,
           ),
           if (index != medicationScheduleList.length - 1)
@@ -263,12 +323,12 @@ class _PreviewMedicationPage extends StatelessWidget {
 
 class _PreviewMedicationRow extends StatelessWidget {
   final MedicationSchedule schedule;
-  final String emptyText;
+  final _PreviewText previewText;
   final UserSetting userSetting;
 
   const _PreviewMedicationRow({
     required this.schedule,
-    required this.emptyText,
+    required this.previewText,
     required this.userSetting,
   });
 
@@ -276,22 +336,56 @@ class _PreviewMedicationRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
     final frequency = schedule.intakeTime.trim().isEmpty
-        ? emptyText
+        ? previewText.noInformation
         : schedule.intakeTime.trim();
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: Text(
-            schedule.displayName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 18 * scale,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      schedule.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 18 * scale,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                  if (schedule.hasNameCorrection) ...[
+                    const SizedBox(width: 6),
+                    _CorrectionBadge(
+                      label: previewText.corrected,
+                      scale: scale,
+                    ),
+                  ],
+                ],
+              ),
+              if (schedule.hasNameCorrection) ...[
+                const SizedBox(height: 3),
+                Text(
+                  previewText.correctedFrom(schedule.rawMedicationName),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: MedBuddyColors.textLight,
+                    fontSize: 12 * scale,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(width: 16),
@@ -305,6 +399,36 @@ class _PreviewMedicationRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CorrectionBadge extends StatelessWidget {
+  final String label;
+  final double scale;
+
+  const _CorrectionBadge({
+    required this.label,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6F7F1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: MedBuddyColors.primaryDark,
+          fontSize: 10 * scale,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
     );
   }
 }
@@ -345,6 +469,11 @@ class _PreviewText {
   String get back => isEnglish ? 'Back' : '뒤로가기';
   String get analyze => isEnglish ? 'Analyze' : '분석하기';
   String get noInformation => isEnglish ? 'No info' : '정보 없음';
+  String get corrected => isEnglish ? 'Corrected' : '보정';
+
+  String correctedFrom(String rawName) {
+    return isEnglish ? 'OCR: $rawName' : 'OCR 원문: $rawName';
+  }
 
   String title(DateTime date) {
     if (isEnglish) {

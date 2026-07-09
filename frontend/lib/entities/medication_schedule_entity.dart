@@ -67,6 +67,9 @@ class MedicationSchedule {
   final String? usageMethod;
   final String? warning;
   final String? imageUrl;
+  final String rawMedicationName;
+  final double nameConfidence;
+  final String nameCorrectionSource;
 
   const MedicationSchedule({
     this.maskedPrescriptionText = '',
@@ -84,6 +87,9 @@ class MedicationSchedule {
     this.usageMethod = '',
     this.warning = '',
     this.imageUrl = '',
+    this.rawMedicationName = '',
+    this.nameConfidence = 0,
+    this.nameCorrectionSource = '',
   });
 
   // 함수명: fromAnalysisJson
@@ -105,6 +111,17 @@ class MedicationSchedule {
       warning: _readString(json['warning_message'] ?? json['warning']),
       imageUrl: _readString(
           json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
+      rawMedicationName: _readString(
+        json['raw_drug_name'] ??
+            json['rawDrugName'] ??
+            json['rawMedicationName'],
+      ),
+      nameConfidence: _readDouble(
+        json['name_confidence'] ?? json['nameConfidence'],
+      ),
+      nameCorrectionSource: _readString(
+        json['name_correction_source'] ?? json['nameCorrectionSource'],
+      ),
     );
   }
 
@@ -152,6 +169,17 @@ class MedicationSchedule {
       warning: _readString(json['warning_message'] ?? json['warning']),
       imageUrl: _readString(
           json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
+      rawMedicationName: _readString(
+        json['raw_drug_name'] ??
+            json['rawDrugName'] ??
+            json['rawMedicationName'],
+      ),
+      nameConfidence: _readDouble(
+        json['name_confidence'] ?? json['nameConfidence'],
+      ),
+      nameCorrectionSource: _readString(
+        json['name_correction_source'] ?? json['nameCorrectionSource'],
+      ),
     );
   }
 
@@ -175,6 +203,16 @@ class MedicationSchedule {
 
   String get displayName {
     return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
+  }
+
+  bool get hasNameCorrection {
+    final rawName = rawMedicationName.trim();
+    if (rawName.isEmpty || rawName == medicationName.trim()) {
+      return false;
+    }
+
+    final correctionSource = nameCorrectionSource.trim();
+    return correctionSource.isNotEmpty && correctionSource != 'unverified';
   }
 
   DateTime? get scheduleStartDate {
@@ -225,6 +263,9 @@ class MedicationSchedule {
       'use_method': usageMethod ?? '',
       'warning_message': warning ?? '',
       'image_url': imageUrl ?? '',
+      'raw_drug_name': rawMedicationName,
+      'name_confidence': nameConfidence,
+      'name_correction_source': nameCorrectionSource,
     };
   }
 
@@ -249,6 +290,9 @@ class MedicationSchedule {
     String? usageMethod,
     String? warning,
     String? imageUrl,
+    String? rawMedicationName,
+    double? nameConfidence,
+    String? nameCorrectionSource,
   }) {
     return MedicationSchedule(
       maskedPrescriptionText:
@@ -267,6 +311,9 @@ class MedicationSchedule {
       usageMethod: usageMethod ?? this.usageMethod,
       warning: warning ?? this.warning,
       imageUrl: imageUrl ?? this.imageUrl,
+      rawMedicationName: rawMedicationName ?? this.rawMedicationName,
+      nameConfidence: nameConfidence ?? this.nameConfidence,
+      nameCorrectionSource: nameCorrectionSource ?? this.nameCorrectionSource,
     );
   }
 
@@ -335,6 +382,16 @@ class MedicationSchedule {
 
   static int _readInt(dynamic value) {
     return medicationScheduleCountFromText(value);
+  }
+
+  static double _readDouble(dynamic value) {
+    if (value is double) {
+      return value;
+    }
+    if (value is int) {
+      return value.toDouble();
+    }
+    return double.tryParse(_readString(value)) ?? 0;
   }
 
   static bool _readBool(dynamic value) {

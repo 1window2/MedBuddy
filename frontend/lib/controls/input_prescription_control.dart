@@ -24,6 +24,13 @@ class InputPrescription {
   final ImagePicker _imagePicker;
   final http.Client _client;
   final bool _ownsClient;
+  int _lastRawMedicationCount = 0;
+  int _lastParsedMedicationCount = 0;
+  int _lastSkippedMedicationCount = 0;
+
+  int get lastRawMedicationCount => _lastRawMedicationCount;
+  int get lastParsedMedicationCount => _lastParsedMedicationCount;
+  int get lastSkippedMedicationCount => _lastSkippedMedicationCount;
 
   InputPrescription({
     this.baseUrl = ApiConfig.baseUrl,
@@ -118,14 +125,17 @@ class InputPrescription {
           decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
       if (rawMedications is! List) {
+        _recordParseCounts(decodedData, 0);
         return [];
       }
 
-      return rawMedications.whereType<Map>().map((item) {
+      final medicationSchedules = rawMedications.whereType<Map>().map((item) {
         final itemJson = Map<String, dynamic>.from(item);
         itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
         return MedicationSchedule.fromAnalysisJson(itemJson);
       }).toList(growable: false);
+      _recordParseCounts(decodedData, medicationSchedules.length);
+      return medicationSchedules;
     } on StateError {
       rethrow;
     } on FileSystemException catch (error, stackTrace) {
@@ -151,6 +161,37 @@ class InputPrescription {
     return imageSource == ImageSource.gallery
         ? '선택한 이미지 파일을 읽을 수 없습니다.'
         : '촬영한 이미지 파일을 읽을 수 없습니다.';
+  }
+
+  void _recordParseCounts(
+    Map<String, dynamic> decodedData,
+    int parsedMedicationCount,
+  ) {
+    _lastRawMedicationCount = _readCount(
+      decodedData['raw_medication_count'] ?? decodedData['rawMedicationCount'],
+      fallback: parsedMedicationCount,
+    );
+    _lastParsedMedicationCount = _readCount(
+      decodedData['parsed_medication_count'] ??
+          decodedData['parsedMedicationCount'],
+      fallback: parsedMedicationCount,
+    );
+    _lastSkippedMedicationCount = _readCount(
+      decodedData['skipped_medication_count'] ??
+          decodedData['skippedMedicationCount'],
+      fallback: _lastRawMedicationCount - _lastParsedMedicationCount,
+    );
+  }
+
+  int _readCount(dynamic value, {required int fallback}) {
+    if (value is int) {
+      return value < 0 ? 0 : value;
+    }
+    final parsedValue = int.tryParse(value?.toString().trim() ?? '');
+    if (parsedValue == null) {
+      return fallback < 0 ? 0 : fallback;
+    }
+    return parsedValue < 0 ? 0 : parsedValue;
   }
 
   void dispose() {

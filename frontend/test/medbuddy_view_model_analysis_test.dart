@@ -10,8 +10,25 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 class _FakeInputPrescription extends InputPrescription {
   final List<MedicationSchedule> schedules;
+  final int rawCount;
+  final int parsedCount;
+  final int skippedCount;
 
-  _FakeInputPrescription(this.schedules);
+  _FakeInputPrescription(
+    this.schedules, {
+    this.rawCount = 0,
+    this.parsedCount = 0,
+    this.skippedCount = 0,
+  });
+
+  @override
+  int get lastRawMedicationCount => rawCount;
+
+  @override
+  int get lastParsedMedicationCount => parsedCount;
+
+  @override
+  int get lastSkippedMedicationCount => skippedCount;
 
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
@@ -40,6 +57,37 @@ class _FakeCheckMedicationDetail extends CheckMedicationDetail {
 }
 
 void main() {
+  test('requestPrescriptionImageFromGallery exposes OCR correction notice',
+      () async {
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(
+        const [
+          MedicationSchedule(
+            medicationName: '프루코프정',
+            rawMedicationName: '포루코프정',
+            nameConfidence: 0.92,
+            nameCorrectionSource: 'local_catalog_ocr_vowel_variant',
+          ),
+        ],
+        rawCount: 2,
+        parsedCount: 1,
+        skippedCount: 1,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.previewReady);
+    expect(viewModel.lastPrescriptionRawMedicationCount, 2);
+    expect(viewModel.lastPrescriptionParsedMedicationCount, 1);
+    expect(viewModel.lastPrescriptionSkippedMedicationCount, 1);
+    expect(viewModel.correctedPrescriptionMedicationCount, 1);
+    expect(viewModel.prescriptionRecognitionNotice, contains('약명 보정'));
+    expect(viewModel.prescriptionRecognitionNotice, contains('OCR 항목 제외'));
+    expect(viewModel.statusMessage, contains('인식 내역'));
+  });
+
   test('requestMedicationAnalysis surfaces partial lookup failures', () async {
     final viewModel = MedBuddyViewModel(
       inputPrescription: _FakeInputPrescription(
