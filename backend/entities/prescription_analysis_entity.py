@@ -150,11 +150,15 @@ class PrescriptionAnalysisResult:
         self.medication_candidates.addCandidate(candidate)
 
     def to_payload(self, raw_medication_count: int) -> dict[str, object]:
+        skipped_medication_count = max(
+            0,
+            raw_medication_count - self.candidateCount,
+        )
         return {
             "hospital_name": self.hospital_name,
             "prescription_date": self.prescription_date,
             "medications": self.medication_candidates.to_payload(),
             "raw_medication_count": raw_medication_count,
             "parsed_medication_count": self.candidateCount,
-            "skipped_medication_count": raw_medication_count - self.candidateCount,
+            "skipped_medication_count": skipped_medication_count,
         }

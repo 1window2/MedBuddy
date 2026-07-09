@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
-import '../viewmodels/medbuddy_view_model.dart';
 
 // 파일명: prescription_analysis_progress_ui_boundary.dart
 // 역할: 처방전 분석 중 현재 처리 단계를 보여주는 화면을 구성한다.

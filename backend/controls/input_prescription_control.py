@@ -762,7 +762,7 @@ class PrescriptionAnalysisControl:
     # Returns:
     # - Raw Gemini text response.
     async def _extract_prescription_text(self, image: bytes) -> str:
-        return await self.ocr_service_boundary.extractText(image)
+        return await self.ocr_service_boundary.extractPrescriptionData(image)
 
     # Function Name: _clean_response_text
     # Description:
@@ -861,7 +861,3 @@ class PrescriptionAnalysisControl:
             "daily_frequency": medication_schedule.intake_time,
             "total_days": medication_schedule.medication_time,
         }
-
-
-# Backward-compatible alias for the original skeleton/module contract.
-InputPrescription = PrescriptionAnalysisControl

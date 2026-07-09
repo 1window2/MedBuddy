@@ -287,9 +287,6 @@ class PrescriptionInputUI extends StatelessWidget {
   }
 }
 
-@Deprecated('Use PrescriptionInputUI.')
-typedef InputPrescriptionUI = PrescriptionInputUI;
-
 class _HomeHeader extends StatelessWidget {
   final VoidCallback? onSettingPressed;
 

@@ -17,28 +17,9 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/medication_notification_service.dart';
-
-// 열거형명: PrescriptionFlowState
-// 역할: 처방전 촬영부터 결과 확인까지의 화면 상태를 표현한다.
-enum PrescriptionFlowState {
-  idle,
-  recognizingPrescription,
-  previewReady,
-  analyzingMedication,
-  analysisSucceeded,
-  analysisFailed,
-  resultReady,
-}
-
-// 열거형명: AnalysisProgressStep
-// 역할: 분석중 화면에서 현재 처리 단계를 사용자에게 보여주기 위한 상태값이다.
-enum AnalysisProgressStep {
-  prescriptionRecognition,
-  medicationAnalysis,
-  scheduleGeneration,
-}
 
 class TodayMedicationProgress {
   final int completedCount;
@@ -312,7 +293,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
-      imageRequest: prescriptionAnalysisControl.requestPrescriptionImage,
+      imageRequest: prescriptionAnalysisControl.startPrescriptionInput,
       cancelledMessage: '사진 촬영이 취소되었습니다.',
     );
   }

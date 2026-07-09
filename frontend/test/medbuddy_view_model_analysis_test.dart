@@ -6,6 +6,7 @@ import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart'
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 class _FakePrescriptionAnalysisControl extends PrescriptionAnalysisControl {

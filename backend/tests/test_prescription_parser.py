@@ -13,6 +13,7 @@ from services.prescription_parser import (  # noqa: E402
 from entities.prescription_analysis_entity import (  # noqa: E402
     MedicationCandidate,
     MedicationCandidateList,
+    PrescriptionAnalysisResult,
     PrescriptionText,
 )
 
@@ -148,6 +149,17 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertEqual(
             PrescriptionText(raw_text="900101-1234567").removeSensitiveInfoByRegex(),
             "900101-*******",
+        )
+        analysis_result = PrescriptionAnalysisResult(
+            hospital_name="\ud14c\uc2a4\ud2b8\uc57d\uad6d",
+            prescription_date="2026-07-09",
+            medication_candidates=candidate_list,
+        )
+        self.assertEqual(
+            analysis_result.to_payload(raw_medication_count=0)[
+                "skipped_medication_count"
+            ],
+            0,
         )
 
     def test_normalize_prescription_payload_rejects_non_object_response(self) -> None:

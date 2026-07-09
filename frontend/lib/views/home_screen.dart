@@ -10,6 +10,7 @@ import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
 import '../boundaries/prescription_analysis_status_ui_boundary.dart';
+import '../entities/prescription_flow_entity.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 
 // 파일명: home_screen.dart

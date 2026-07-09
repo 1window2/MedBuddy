@@ -84,7 +84,10 @@ class PrescriptionAnalysisControl {
   Future<List<MedicationSchedule>?> startPrescriptionInput({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    return requestPrescriptionImage(onImageSelected: onImageSelected);
+    return _requestPrescriptionImage(
+      ImageSource.camera,
+      onImageSelected: onImageSelected,
+    );
   }
 
   Future<List<MedicationSchedule>> analyzePrescriptionImage(
@@ -212,6 +215,3 @@ class PrescriptionAnalysisControl {
     }
   }
 }
-
-@Deprecated('Use PrescriptionAnalysisControl.')
-typedef InputPrescription = PrescriptionAnalysisControl;
