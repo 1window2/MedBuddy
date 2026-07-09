@@ -130,16 +130,40 @@ class _MedicationTextNormalizer:
         if not normalized_text:
             return []
 
-        parenthesis_matches = list(re.finditer(r"\(([^)]{1,80})\)", normalized_text))
-        outside_parentheses = re.sub(r"\s*\([^)]*\)", "", normalized_text).strip()
+        outside_parentheses, parenthesized_candidates = (
+            self._split_parenthesized_text(normalized_text)
+        )
         raw_candidates = [outside_parentheses, normalized_text]
-        raw_candidates.extend(match.group(1).strip() for match in parenthesis_matches)
+        raw_candidates.extend(parenthesized_candidates)
 
         search_keywords: list[str] = []
         for candidate in raw_candidates:
             search_keywords.extend(self._candidate_variants(candidate))
 
         return self._deduplicate_keywords(search_keywords)
+
+    def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
+        outside_chars: list[str] = []
+        parenthesized_candidates: list[str] = []
+        cursor = 0
+        while cursor < len(normalized_text):
+            if normalized_text[cursor] != "(":
+                outside_chars.append(normalized_text[cursor])
+                cursor += 1
+                continue
+
+            closing_index = normalized_text.find(")", cursor + 1)
+            if closing_index == -1:
+                outside_chars.append(normalized_text[cursor])
+                cursor += 1
+                continue
+
+            inner_text = normalized_text[cursor + 1 : closing_index].strip()
+            if 1 <= len(inner_text) <= 80:
+                parenthesized_candidates.append(inner_text)
+            cursor = closing_index + 1
+
+        return self.normalize_raw_text("".join(outside_chars)), parenthesized_candidates
 
     # 함수명: _candidate_variants
     # 함수역할:

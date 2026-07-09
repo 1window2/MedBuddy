@@ -54,6 +54,28 @@ def test_build_search_keywords_splits_product_and_ingredient_names() -> None:
     ]
 
 
+def test_split_parenthesized_text_uses_linear_scan() -> None:
+    normalizer = _MedicationTextNormalizer()
+
+    outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
+        "Alpha(Beta) Gamma"
+    )
+
+    assert outside_text == "Alpha Gamma"
+    assert parenthesized_candidates == ["Beta"]
+
+
+def test_split_parenthesized_text_ignores_oversized_parentheses() -> None:
+    normalizer = _MedicationTextNormalizer()
+
+    outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
+        "Alpha(" + ("B" * 10000) + ") Gamma"
+    )
+
+    assert outside_text == "Alpha Gamma"
+    assert parenthesized_candidates == []
+
+
 def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     normalizer = _MedicationTextNormalizer()
 

@@ -15,7 +15,6 @@ from entities.prescription_analysis_entity import (
 INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
 
 DATE_PATTERN = re.compile(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})")
-MED_LINE_PATTERN = re.compile(r"(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+)$")
 LEADING_MARKER_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*")
 
 UNKNOWN_TEXTS = {
@@ -143,11 +142,11 @@ def extract_prescription_date(line: str) -> str | None:
 
 def parse_medication_line(line: str) -> dict[str, Any] | None:
     normalized_line = normalize_text(line)
-    match = MED_LINE_PATTERN.match(normalized_line)
-    if not match:
+    medication_fields = normalized_line.rsplit(maxsplit=3)
+    if len(medication_fields) != 4:
         return None
 
-    name, dose_raw, frequency_raw, days_raw = match.groups()
+    name, dose_raw, frequency_raw, days_raw = medication_fields
     cleaned_name = _clean_medication_name(name)
     if _is_unknown(cleaned_name):
         return None

@@ -92,6 +92,27 @@ class PrescriptionParserTest(unittest.TestCase):
             ],
         )
 
+    def test_parse_prescription_rejects_unstructured_long_line(self) -> None:
+        parsed_payload = parse_prescription(
+            [
+                ("a" * 10000) + " " + ("." * 10000),
+            ]
+        )
+
+        self.assertEqual(parsed_payload["medicines"], [])
+        self.assertEqual(parsed_payload["medications"], [])
+
+    def test_parse_prescription_keeps_names_with_spaces(self) -> None:
+        parsed_payload = parse_prescription(["compound cold tablet 1 3 5"])
+
+        self.assertEqual(
+            parsed_payload["medications"][0]["drug_name"],
+            "compound cold tablet",
+        )
+        self.assertEqual(parsed_payload["medications"][0]["dosage_per_time"], "1")
+        self.assertEqual(parsed_payload["medications"][0]["daily_frequency"], "3")
+        self.assertEqual(parsed_payload["medications"][0]["total_days"], "5")
+
     def test_normalize_prescription_payload_skips_non_finite_numeric_aliases(
         self,
     ) -> None:
