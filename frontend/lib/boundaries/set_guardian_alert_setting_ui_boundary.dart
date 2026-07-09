@@ -37,9 +37,9 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA),
+        color: MedBuddyColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Row(
         children: [

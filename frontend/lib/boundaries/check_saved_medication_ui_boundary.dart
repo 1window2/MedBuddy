@@ -239,7 +239,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1D5DC),
+                    color: MedBuddyColors.outline,
                     borderRadius: MedBuddyRadii.pill,
                   ),
                 ),
@@ -436,9 +436,9 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(22, 34, 22, 32),
               decoration: BoxDecoration(
-                color: const Color(0xFFFAFAFA),
+                color: MedBuddyColors.surfaceSubtle,
                 borderRadius: MedBuddyRadii.card,
-                border: Border.all(color: const Color(0xFFD1D5DC), width: 1.5),
+                border: Border.all(color: MedBuddyColors.outline, width: 1.5),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -618,7 +618,7 @@ class _SelectionDeleteBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: Row(
         children: [
@@ -638,7 +638,7 @@ class _SelectionDeleteBar extends StatelessWidget {
                 selectedCount == 0 ? null : () async => onDeleteRequested(),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF1F2D),
-              disabledBackgroundColor: const Color(0xFFD1D5DC),
+              disabledBackgroundColor: MedBuddyColors.outline,
               foregroundColor: Colors.white,
               minimumSize: const Size(118, 46),
               shape: RoundedRectangleBorder(
@@ -692,7 +692,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFD1D5DC), width: 1.5),
+        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
       ),
       child: Column(
         children: [
@@ -727,7 +727,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFD1D5DC)),
+          const Divider(height: 1, color: MedBuddyColors.outline),
           for (final medication in group.medications) ...[
             _SavedMedicationNameRow(
               medication: medication,
@@ -743,10 +743,10 @@ class _SavedMedicationDateCard extends StatelessWidget {
               onImageRequested: () => onImageRequested(medication),
             ),
             if (medication != group.medications.last)
-              const Divider(height: 1, color: Color(0xFFD1D5DC)),
+              const Divider(height: 1, color: MedBuddyColors.outline),
           ],
           if (!isSelectionMode) ...[
-            const Divider(height: 1, color: Color(0xFFD1D5DC)),
+            const Divider(height: 1, color: MedBuddyColors.outline),
             TextButton(
               style: TextButton.styleFrom(
                 minimumSize: const Size.fromHeight(70),
@@ -1082,7 +1082,7 @@ class _MedicationImageButton extends StatelessWidget {
           width: 48,
           height: 36,
           decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
+            color: MedBuddyColors.cardBorder,
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(
@@ -1102,7 +1102,7 @@ class _MedicationImageButton extends StatelessWidget {
         height: 48,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFDBEAFE), width: 5),
+          border: Border.all(color: MedBuddyColors.imageAccent, width: 5),
           borderRadius: BorderRadius.circular(12),
         ),
         child: ClipRRect(
@@ -1241,7 +1241,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
                       foregroundColor: const Color(0xFFFF1F2D),
-                      side: const BorderSide(color: Color(0xFFD1D5DC)),
+                      side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1261,7 +1261,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
                       foregroundColor: MedBuddyColors.textMuted,
-                      side: const BorderSide(color: Color(0xFFD1D5DC)),
+                      side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),

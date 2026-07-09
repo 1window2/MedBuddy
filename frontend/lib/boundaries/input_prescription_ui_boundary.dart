@@ -168,7 +168,7 @@ class PrescriptionInputUI extends StatelessWidget {
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1D5DC),
+                    color: MedBuddyColors.outline,
                     borderRadius: MedBuddyRadii.pill,
                   ),
                 ),
@@ -227,7 +227,7 @@ class PrescriptionInputUI extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFD1D5DC), width: 2),
+              border: Border.all(color: MedBuddyColors.outline, width: 2),
               boxShadow: const [
                 BoxShadow(
                   color: Color.fromRGBO(0, 0, 0, 0.15),
@@ -263,7 +263,7 @@ class PrescriptionInputUI extends StatelessWidget {
                   statusMessage,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: Color(0xFF6A7282),
+                    color: MedBuddyColors.textSubtle,
                     fontSize: 15,
                     height: 1.45,
                     letterSpacing: 0,
@@ -275,7 +275,7 @@ class PrescriptionInputUI extends StatelessWidget {
                   child: const LinearProgressIndicator(
                     minHeight: 10,
                     color: MedBuddyColors.primary,
-                    backgroundColor: Color(0xFFE5E7EB),
+                    backgroundColor: MedBuddyColors.divider,
                   ),
                 ),
               ],
@@ -583,7 +583,7 @@ class _HomePageIndicator extends StatelessWidget {
             width: 7,
             height: 7,
             decoration: const BoxDecoration(
-              color: Color(0xFFD1D5DC),
+              color: MedBuddyColors.outline,
               shape: BoxShape.circle,
             ),
           ),

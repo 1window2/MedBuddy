@@ -157,7 +157,7 @@ class _HealthRecommendationHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFF16934F),
+      color: MedBuddyColors.topBar,
       padding: EdgeInsets.fromLTRB(
         18,
         MediaQuery.of(context).padding.top + 12,
@@ -205,7 +205,7 @@ class _HealthRecommendationContent extends StatelessWidget {
           body: recommendation.dietRecommendation,
           icon: Icons.local_dining_outlined,
           iconColor: const Color(0xFFE91E63),
-          headerColor: const Color(0xFFFFEEF2),
+          headerColor: const Color(0xFFFFF1F2),
         ),
         const SizedBox(height: 16),
         _RecommendationCard(
@@ -276,7 +276,7 @@ class _RecommendationCard extends StatelessWidget {
               child: Text(
                 body,
                 style: const TextStyle(
-                  color: MedBuddyColors.textMuted,
+                  color: MedBuddyColors.textBody,
                   fontSize: 17,
                   height: 1.62,
                   fontWeight: FontWeight.w600,

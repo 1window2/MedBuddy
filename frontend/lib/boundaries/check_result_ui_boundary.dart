@@ -150,7 +150,7 @@ class _ResultHeader extends StatelessWidget {
     return Container(
       height: 94,
       width: double.infinity,
-      color: MedBuddyColors.primary,
+      color: MedBuddyColors.topBar,
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
       child: Row(
         children: [
@@ -200,7 +200,7 @@ class _AnalysisSummary extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
         boxShadow: const [
           BoxShadow(
             color: Color.fromRGBO(0, 0, 0, 0.08),
@@ -284,7 +284,7 @@ class _BulkSaveButton extends StatelessWidget {
       ),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: SizedBox(
         width: double.infinity,
@@ -360,7 +360,7 @@ class _MedicationResultCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
+        border: Border.all(color: MedBuddyColors.cardBorder, width: 2),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Column(

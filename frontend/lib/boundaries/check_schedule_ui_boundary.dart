@@ -31,28 +31,28 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       key: 'morning',
       title: '아침',
       hour: 8,
-      color: Color(0xFFFF9800),
+      color: MedBuddyColors.slotMorning,
       icon: Icons.wb_sunny_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'lunch',
       title: '점심',
       hour: 12,
-      color: Color(0xFFFF5A00),
+      color: MedBuddyColors.slotLunch,
       icon: Icons.local_cafe_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'evening',
       title: '저녁',
       hour: 18,
-      color: Color(0xFFFF1E62),
+      color: MedBuddyColors.slotEvening,
       icon: Icons.wb_twilight_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'bedtime',
       title: '취침 전',
       hour: 22,
-      color: Color(0xFF625BFF),
+      color: MedBuddyColors.slotBedtime,
       icon: Icons.nightlight_round,
     ),
   ];
@@ -75,7 +75,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
+      backgroundColor: MedBuddyColors.surface,
       body: Column(
         children: [
           _ScheduleHeader(
@@ -270,8 +270,8 @@ class _HealthRecommendationFooter extends StatelessWidget {
         MediaQuery.of(context).padding.bottom + 16,
       ),
       decoration: const BoxDecoration(
-        color: MedBuddyColors.pageBackground,
-        border: Border(top: BorderSide(color: Color(0xFFD1D5DC))),
+        color: MedBuddyColors.surface,
+        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: OutlinedButton(
         onPressed: onPressed,
@@ -312,7 +312,7 @@ class _ScheduleHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: const Color(0xFF16934F),
+      color: MedBuddyColors.topBar,
       padding: EdgeInsets.fromLTRB(
         18,
         MediaQuery.of(context).padding.top + 12,
@@ -346,7 +346,7 @@ class _ScheduleHeader extends StatelessWidget {
             margin: const EdgeInsets.only(left: 26),
             padding: const EdgeInsets.fromLTRB(15, 12, 15, 15),
             decoration: BoxDecoration(
-              color: const Color(0xFF057D55),
+              color: MedBuddyColors.primaryDark,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
@@ -380,7 +380,7 @@ class _ScheduleHeader extends StatelessWidget {
                     value: progress,
                     minHeight: 10,
                     color: Colors.white,
-                    backgroundColor: const Color(0xFF006B4E),
+                    backgroundColor: MedBuddyColors.progressTrack,
                   ),
                 ),
               ],
@@ -524,7 +524,7 @@ class _MedicationScheduleRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+        border: Border(bottom: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: Row(
         children: [
@@ -541,7 +541,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       : Icons.circle_outlined,
                   color: isCompleted
                       ? MedBuddyColors.primary
-                      : const Color(0xFFD1D5DC),
+                      : MedBuddyColors.outline,
                   size: 28,
                 ),
               ),
@@ -800,7 +800,7 @@ class _AmPmToggle extends StatelessWidget {
       width: 78,
       height: 50,
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFD1D5DC), width: 2),
+        border: Border.all(color: MedBuddyColors.outline, width: 2),
         borderRadius: BorderRadius.circular(10),
       ),
       child: TextButton(
@@ -837,7 +837,7 @@ class _TimeStepper extends StatelessWidget {
       width: 64,
       height: 104,
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFD1D5DC), width: 2),
+        border: Border.all(color: MedBuddyColors.outline, width: 2),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(

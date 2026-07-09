@@ -87,7 +87,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                           height: 112,
                           child: CircularProgressIndicator(
                             color: MedBuddyColors.primary,
-                            backgroundColor: Color(0xFFA4F4CF),
+                            backgroundColor: MedBuddyColors.successBorder,
                             strokeWidth: 8,
                           ),
                         ),
@@ -119,7 +119,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                             minHeight: 12,
                             value: _progressValue,
                             color: MedBuddyColors.primary,
-                            backgroundColor: const Color(0xFFE5E7EB),
+                            backgroundColor: MedBuddyColors.divider,
                           ),
                         ),
                         const SizedBox(height: 24),

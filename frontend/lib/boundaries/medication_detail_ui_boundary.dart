@@ -234,7 +234,7 @@ class _MedicationImageBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: normalizedImageUrl.isEmpty
             ? const ColoredBox(
-                color: Color(0xFFE5E7EB),
+                color: MedBuddyColors.divider,
                 child: Icon(
                   Icons.medication_outlined,
                   color: MedBuddyColors.textLight,
@@ -246,7 +246,7 @@ class _MedicationImageBox extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
                   return const ColoredBox(
-                    color: Color(0xFFE5E7EB),
+                    color: MedBuddyColors.divider,
                     child: Icon(
                       Icons.image_not_supported_outlined,
                       color: MedBuddyColors.textLight,

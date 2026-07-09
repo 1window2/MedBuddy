@@ -8,12 +8,27 @@ import 'package:flutter/material.dart';
 class MedBuddyColors {
   static const Color primary = Color(0xFF009966);
   static const Color primaryDark = Color(0xFF007A55);
+  static const Color topBar = Color(0xFF198C54);
+  static const Color progressTrack = Color(0xFF006045);
   static const Color mint = Color(0xFFD0FAE5);
+  static const Color successBorder = Color(0xFFA4F4CF);
   static const Color pageBackground = Color(0xFFF4FFF4);
+  static const Color surface = Colors.white;
+  static const Color surfaceSubtle = Color(0xFFFAFAFA);
+  static const Color cardBorder = Color(0xFFF3F4F6);
+  static const Color divider = Color(0xFFE5E7EB);
+  static const Color outline = Color(0xFFD1D5DC);
+  static const Color imageAccent = Color(0xFFDBEAFE);
   static const Color textStrong = Color(0xFF101828);
   static const Color textMuted = Color(0xFF4A5565);
+  static const Color textBody = Color(0xFF364153);
+  static const Color textSubtle = Color(0xFF6A7282);
   static const Color textLight = Color(0xFF99A1AF);
   static const Color infoBlue = Color(0xFF1C398E);
+  static const Color slotMorning = Color(0xFFFE9A00);
+  static const Color slotLunch = Color(0xFFFF5A00);
+  static const Color slotEvening = Color(0xFFFF1E62);
+  static const Color slotBedtime = Color(0xFF625BFF);
 }
 
 // 클래스명: MedBuddyRadii

@@ -416,7 +416,7 @@ class _LinkHeader extends StatelessWidget {
     return Container(
       height: 94,
       width: double.infinity,
-      color: MedBuddyColors.primary,
+      color: MedBuddyColors.topBar,
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
       child: Row(
         children: [
@@ -460,7 +460,7 @@ class _StatusCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFA4F4CF), width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
         boxShadow: MedBuddyShadows.soft,
       ),
       child: Row(
@@ -628,8 +628,7 @@ class _PatientCodeDialog extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(13),
-                    border:
-                        Border.all(color: const Color(0xFFD1D5DC), width: 2),
+                    border: Border.all(color: MedBuddyColors.outline, width: 2),
                   ),
                   child: Row(
                     children: [
@@ -662,7 +661,7 @@ class _PatientCodeDialog extends StatelessWidget {
               '(\uCF54\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uBCF5\uC0AC\uB429\uB2C8\uB2E4)',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6A7282),
+                color: MedBuddyColors.textSubtle,
                 fontSize: 13,
                 letterSpacing: 0,
               ),
@@ -670,7 +669,7 @@ class _PatientCodeDialog extends StatelessWidget {
             const SizedBox(height: 28),
             _PatientCodeNotice(
               backgroundColor: Color(0xFFECFDF5),
-              foregroundColor: Color(0xFF364153),
+              foregroundColor: MedBuddyColors.textBody,
               text:
                   '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
             ),
@@ -699,7 +698,7 @@ class _PatientCodeDialog extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF6A7282),
+                color: MedBuddyColors.textSubtle,
                 fontSize: 13,
                 letterSpacing: 0,
               ),
@@ -862,7 +861,7 @@ class _LinkedUserTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Column(
         children: [
@@ -998,7 +997,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: const Color(0xFFF3F4F6), width: 2),
+        border: Border.all(color: MedBuddyColors.cardBorder, width: 2),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Column(
@@ -1033,10 +1032,10 @@ InputDecoration _inputDecoration(String labelText, String hintText) {
     labelText: labelText,
     hintText: hintText,
     filled: true,
-    fillColor: const Color(0xFFFAFAFA),
+    fillColor: MedBuddyColors.surfaceSubtle,
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+      borderSide: const BorderSide(color: MedBuddyColors.divider),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),

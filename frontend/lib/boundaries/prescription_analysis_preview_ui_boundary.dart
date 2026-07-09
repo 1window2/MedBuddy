@@ -85,7 +85,7 @@ class _PrescriptionAnalysisPreviewUIState
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFFD1D5DC),
+                        color: MedBuddyColors.outline,
                         width: 2,
                       ),
                       boxShadow: MedBuddyShadows.card,
@@ -451,7 +451,7 @@ class _PreviewDot extends StatelessWidget {
         height: 8,
         margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
-          color: active ? MedBuddyColors.primary : const Color(0xFFD1D5DC),
+          color: active ? MedBuddyColors.primary : MedBuddyColors.outline,
           shape: BoxShape.circle,
         ),
       ),

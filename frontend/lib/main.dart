@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
 import 'services/medication_notification_service.dart';
@@ -41,10 +42,10 @@ class MedBuddyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF009966),
+            seedColor: MedBuddyColors.primary,
           ),
-          primaryColor: const Color(0xFF009966),
-          scaffoldBackgroundColor: const Color(0xFFF4FFF4),
+          primaryColor: MedBuddyColors.primary,
+          scaffoldBackgroundColor: MedBuddyColors.pageBackground,
           useMaterial3: true,
           fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
         ),

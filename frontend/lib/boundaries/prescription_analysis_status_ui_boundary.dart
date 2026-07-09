@@ -301,7 +301,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: MedBuddyColors.textStrong,
-                          side: const BorderSide(color: Color(0xFFD1D5DC)),
+                          side: const BorderSide(color: MedBuddyColors.outline),
                           shape: RoundedRectangleBorder(
                             borderRadius: MedBuddyRadii.card,
                           ),

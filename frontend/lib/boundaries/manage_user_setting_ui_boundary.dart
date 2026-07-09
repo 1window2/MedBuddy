@@ -216,7 +216,7 @@ class _SettingSaveFooter extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(40, 14, 40, 20),
       decoration: const BoxDecoration(
         color: MedBuddyColors.pageBackground,
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+        border: Border(top: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: SizedBox(
         width: double.infinity,
