@@ -7,13 +7,13 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// 클래스명: InputPrescriptionUI
+// 클래스명: PrescriptionInputUI
 // 역할: 오늘의 복약 일정, 처방전 촬영, 저장된 복약 정보, 환자/보호자 연동으로 이동하는 홈 화면이다.
 // 주요 책임:
 // - 사용자 설정에 맞춘 홈 화면 문구와 글자 크기를 보여준다.
 // - 카메라/갤러리 처방전 입력 방식을 선택할 수 있게 한다.
 // - OCR 진행 중에는 입력 화면 대신 진행 상태를 보여준다.
-class InputPrescriptionUI extends StatelessWidget {
+class PrescriptionInputUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
@@ -28,7 +28,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
-  const InputPrescriptionUI({
+  const PrescriptionInputUI({
     super.key,
     required this.statusMessage,
     required this.userSetting,
@@ -44,7 +44,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
-  const InputPrescriptionUI.analyzing({
+  const PrescriptionInputUI.analyzing({
     super.key,
     required this.statusMessage,
   })  : userSetting = const UserSetting(),
@@ -286,6 +286,9 @@ class InputPrescriptionUI extends StatelessWidget {
     );
   }
 }
+
+@Deprecated('Use PrescriptionInputUI.')
+typedef InputPrescriptionUI = PrescriptionInputUI;
 
 class _HomeHeader extends StatelessWidget {
   final VoidCallback? onSettingPressed;

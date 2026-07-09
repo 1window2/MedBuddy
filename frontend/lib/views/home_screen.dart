@@ -89,7 +89,7 @@ class HomeScreen extends StatelessWidget {
   ) {
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
-    return InputPrescriptionUI(
+    return PrescriptionInputUI(
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,

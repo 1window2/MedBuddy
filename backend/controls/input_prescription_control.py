@@ -14,6 +14,7 @@ from google import genai
 from google.genai import types
 from sqlalchemy.orm import Session
 
+from boundaries.prescription_ocr_boundary import OCRServiceBoundary
 from core.config import settings
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.medication_schedule_entity import MedicationSchedule
@@ -23,7 +24,6 @@ from entities.prescription_analysis_entity import (
     PrescriptionText,
 )
 from services.prescription_parser import normalize_prescription_payload
-from utils.image_processing import preprocess_prescription_image
 
 logger = logging.getLogger(__name__)
 
@@ -656,12 +656,18 @@ class PrescriptionAnalysisControl:
         model_name: str = "gemini-3.1-flash-lite",
         db: Session | None = None,
         medication_name_verifier: _PrescriptionMedicationNameVerifier | None = None,
+        ocr_service_boundary: OCRServiceBoundary | None = None,
     ) -> None:
         self.client = client or genai.Client(
             api_key=settings.GEMINI_API_KEY,
             http_options={"api_version": "v1alpha"},
         )
         self.model_name = model_name
+        self.ocr_service_boundary = ocr_service_boundary or OCRServiceBoundary(
+            client=self.client,
+            model_name=self.model_name,
+            response_schema=self._PRESCRIPTION_RESPONSE_SCHEMA,
+        )
         self.medication_name_verifier = (
             medication_name_verifier or _PrescriptionMedicationNameVerifier(db=db)
         )
@@ -674,8 +680,7 @@ class PrescriptionAnalysisControl:
     # Returns:
     # - API-compatible dictionary containing medication schedule data.
     async def request_prescription_image(self, image_bytes: bytes) -> dict[str, object]:
-        processed_image = preprocess_prescription_image(image_bytes)
-        response_text = await self._extract_prescription_text(processed_image)
+        response_text = await self._extract_prescription_text(image_bytes)
         cleaned_text = self._clean_response_text(response_text)
 
         try:
@@ -751,43 +756,13 @@ class PrescriptionAnalysisControl:
 
     # Function Name: _extract_prescription_text
     # Description:
-    # - Calls Gemini Vision with an image and strict JSON extraction prompt.
+    # - Delegates OCR extraction to OCRServiceBoundary.
     # Parameters:
-    # - processed_image: Preprocessed image bytes.
+    # - image: Raw prescription image bytes.
     # Returns:
     # - Raw Gemini text response.
-    async def _extract_prescription_text(self, processed_image: bytes) -> str:
-        image_part = types.Part.from_bytes(
-            data=processed_image,
-            mime_type="image/jpeg",
-        )
-        prompt = """
-        당신은 한국어 의료 데이터 추출 전문가입니다.
-        첨부된 약봉투 또는 처방전 이미지에서 조제일자, 약품명, 1회 복용량,
-        1일 복용 횟수, 총 복용 일수를 정확히 추출하세요.
-
-        추출 규칙:
-        1. 조제일자, 조제일, 처방일자, 처방일처럼 표시된 날짜를 prescription_date에 넣으세요.
-        2. 표 또는 목록에 있는 약품 행을 위에서 아래로 모두 읽고 생략하지 마세요.
-        3. 약품명 열의 텍스트만 drug_name에 넣고, 효능/제조원/복약 안내 문구는 제외하세요.
-        4. 약품명이 여러 줄로 보이면 하나의 약품명으로 이어 붙이세요.
-        5. 괄호 안 성분명이 보이면 제품명 뒤에 그대로 포함하세요.
-        6. 1회 투약량, 1일 횟수, 총 일수는 같은 행의 숫자 열과 정확히 매칭하세요.
-        7. 에/애, 레/래처럼 헷갈리는 한글은 임의로 삭제하지 말고 보이는 글자를 보존하세요.
-        8. 읽기 어려운 약품도 누락하지 말고 보이는 범위에서 최대한 drug_name을 채우세요.
-
-        개인정보는 마스킹하고 반드시 JSON 형식만 반환하세요.
-        """
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name,
-            contents=[prompt, image_part],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=self._PRESCRIPTION_RESPONSE_SCHEMA,
-                temperature=0.0,
-            ),
-        )
-        return response.text
+    async def _extract_prescription_text(self, image: bytes) -> str:
+        return await self.ocr_service_boundary.extractText(image)
 
     # Function Name: _clean_response_text
     # Description:

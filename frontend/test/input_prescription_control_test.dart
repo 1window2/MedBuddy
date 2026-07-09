@@ -64,7 +64,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = InputPrescription(
+    final control = PrescriptionAnalysisControl(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
@@ -110,7 +110,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = InputPrescription(
+    final control = PrescriptionAnalysisControl(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,

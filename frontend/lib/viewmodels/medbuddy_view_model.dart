@@ -61,7 +61,7 @@ class TodayMedicationProgress {
 // - 저장된 복약 정보와 오늘의 복약 일정을 캐시한다.
 // - 사용자 설정을 불러오고 변경 사항을 화면에 반영한다.
 class MedBuddyViewModel extends ChangeNotifier {
-  final InputPrescription inputPrescription;
+  final PrescriptionAnalysisControl prescriptionAnalysisControl;
   final CheckMedicationDetail checkMedicationDetail;
   final CheckSavedMedication checkSavedMedication;
   final CheckSchedule checkSchedule;
@@ -225,7 +225,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   static const List<String> _reminderSlotKeys = medicationScheduleSlotKeys;
 
   MedBuddyViewModel({
-    InputPrescription? inputPrescription,
+    PrescriptionAnalysisControl? prescriptionAnalysisControl,
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
@@ -234,7 +234,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
     MedicationNotificationService? notificationService,
-  })  : inputPrescription = inputPrescription ?? InputPrescription(),
+  })  : prescriptionAnalysisControl =
+            prescriptionAnalysisControl ?? PrescriptionAnalysisControl(),
         checkMedicationDetail =
             checkMedicationDetail ?? CheckMedicationDetail(),
         checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
@@ -311,7 +312,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
-      imageRequest: inputPrescription.requestPrescriptionImage,
+      imageRequest: prescriptionAnalysisControl.requestPrescriptionImage,
       cancelledMessage: '사진 촬영이 취소되었습니다.',
     );
   }
@@ -323,7 +324,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음
   Future<void> requestPrescriptionImageFromGallery() async {
     await _requestPrescriptionRecognition(
-      imageRequest: inputPrescription.requestPrescriptionImageFromGallery,
+      imageRequest:
+          prescriptionAnalysisControl.requestPrescriptionImageFromGallery,
       cancelledMessage: '이미지 선택이 취소되었습니다.',
     );
   }
@@ -1130,15 +1132,17 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _recordPrescriptionRecognitionCounts(
     List<MedicationSchedule> schedules,
   ) {
-    final parsedCount = inputPrescription.lastParsedMedicationCount > 0
-        ? inputPrescription.lastParsedMedicationCount
-        : schedules.length;
-    final rawCount = inputPrescription.lastRawMedicationCount > 0
-        ? inputPrescription.lastRawMedicationCount
+    final parsedCount =
+        prescriptionAnalysisControl.lastParsedMedicationCount > 0
+            ? prescriptionAnalysisControl.lastParsedMedicationCount
+            : schedules.length;
+    final rawCount = prescriptionAnalysisControl.lastRawMedicationCount > 0
+        ? prescriptionAnalysisControl.lastRawMedicationCount
         : parsedCount;
-    final skippedCount = inputPrescription.lastSkippedMedicationCount > 0
-        ? inputPrescription.lastSkippedMedicationCount
-        : rawCount - parsedCount;
+    final skippedCount =
+        prescriptionAnalysisControl.lastSkippedMedicationCount > 0
+            ? prescriptionAnalysisControl.lastSkippedMedicationCount
+            : rawCount - parsedCount;
 
     _lastPrescriptionParsedMedicationCount = parsedCount < 0 ? 0 : parsedCount;
     _lastPrescriptionRawMedicationCount = rawCount < 0 ? 0 : rawCount;
@@ -1248,7 +1252,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _scopedCheckTodayMedicationInfo?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
     _scopedSetNotification?.dispose();
-    inputPrescription.dispose();
+    prescriptionAnalysisControl.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();

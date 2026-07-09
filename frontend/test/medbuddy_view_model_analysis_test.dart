@@ -8,13 +8,13 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
-class _FakeInputPrescription extends InputPrescription {
+class _FakePrescriptionAnalysisControl extends PrescriptionAnalysisControl {
   final List<MedicationSchedule> schedules;
   final int rawCount;
   final int parsedCount;
   final int skippedCount;
 
-  _FakeInputPrescription(
+  _FakePrescriptionAnalysisControl(
     this.schedules, {
     this.rawCount = 0,
     this.parsedCount = 0,
@@ -60,7 +60,7 @@ void main() {
   test('requestPrescriptionImageFromGallery exposes OCR correction notice',
       () async {
     final viewModel = MedBuddyViewModel(
-      inputPrescription: _FakeInputPrescription(
+      prescriptionAnalysisControl: _FakePrescriptionAnalysisControl(
         const [
           MedicationSchedule(
             medicationName: '프루코프정',
@@ -90,7 +90,7 @@ void main() {
 
   test('requestMedicationAnalysis surfaces partial lookup failures', () async {
     final viewModel = MedBuddyViewModel(
-      inputPrescription: _FakeInputPrescription(
+      prescriptionAnalysisControl: _FakePrescriptionAnalysisControl(
         const [
           MedicationSchedule(medicationName: 'found-tablet'),
           MedicationSchedule(medicationName: 'missing-tablet'),

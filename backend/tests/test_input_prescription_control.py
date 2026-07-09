@@ -517,7 +517,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self.control = PrescriptionAnalysisControl(client=fake_client)
 
         with patch(
-            "controls.input_prescription_control.preprocess_prescription_image",
+            "boundaries.prescription_ocr_boundary.preprocess_prescription_image",
             return_value=b"processed-image",
         ):
             payload = asyncio.run(

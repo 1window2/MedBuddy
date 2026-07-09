@@ -13,13 +13,13 @@ typedef PrescriptionImageSelectedCallback = void Function();
 // 파일명: input_prescription_control.dart
 // 역할: 카메라와 갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
 
-// 클래스명: InputPrescription
+// 클래스명: PrescriptionAnalysisControl
 // 역할: 처방전 이미지 선택, 업로드, OCR 결과 변환을 담당한다.
 // 주요 책임:
 // - 카메라 또는 갤러리에서 이미지를 선택한다.
 // - 이미지가 실제 선택된 뒤에만 진행 상태 콜백을 호출한다.
 // - 백엔드 OCR 응답을 MedicationSchedule 목록으로 변환한다.
-class InputPrescription {
+class PrescriptionAnalysisControl {
   final String baseUrl;
   final ImagePicker _imagePicker;
   final http.Client _client;
@@ -32,7 +32,7 @@ class InputPrescription {
   int get lastParsedMedicationCount => _lastParsedMedicationCount;
   int get lastSkippedMedicationCount => _lastSkippedMedicationCount;
 
-  InputPrescription({
+  PrescriptionAnalysisControl({
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
@@ -81,22 +81,16 @@ class InputPrescription {
   // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
   // 반환값:
   // - OCR에서 추출한 복약 일정 목록, 취소 시 null
-  Future<List<MedicationSchedule>?> _requestPrescriptionImage(
-    ImageSource imageSource, {
+  Future<List<MedicationSchedule>?> startPrescriptionInput({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    final image = await _imagePicker.pickImage(
-      source: imageSource,
-      imageQuality: 82,
-      maxWidth: 1600,
-      maxHeight: 1600,
-      requestFullMetadata: false,
-    );
-    if (image == null) {
-      return null;
-    }
-    onImageSelected?.call();
+    return requestPrescriptionImage(onImageSelected: onImageSelected);
+  }
 
+  Future<List<MedicationSchedule>> analyzePrescriptionImage(
+    XFile image, {
+    ImageSource imageSource = ImageSource.camera,
+  }) async {
     try {
       final request = http.MultipartRequest(
         'POST',
@@ -141,7 +135,7 @@ class InputPrescription {
     } on FileSystemException catch (error, stackTrace) {
       developer.log(
         'Prescription image file access failed.',
-        name: 'InputPrescription',
+        name: 'PrescriptionAnalysisControl',
         error: error,
         stackTrace: stackTrace,
       );
@@ -149,12 +143,30 @@ class InputPrescription {
     } catch (error, stackTrace) {
       developer.log(
         'Prescription image upload failed.',
-        name: 'InputPrescription',
+        name: 'PrescriptionAnalysisControl',
         error: error,
         stackTrace: stackTrace,
       );
       throw StateError('서버 연결에 실패했습니다.');
     }
+  }
+
+  Future<List<MedicationSchedule>?> _requestPrescriptionImage(
+    ImageSource imageSource, {
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    final image = await _imagePicker.pickImage(
+      source: imageSource,
+      imageQuality: 82,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      requestFullMetadata: false,
+    );
+    if (image == null) {
+      return null;
+    }
+    onImageSelected?.call();
+    return analyzePrescriptionImage(image, imageSource: imageSource);
   }
 
   String _imageFileAccessErrorMessage(ImageSource imageSource) {
@@ -200,3 +212,6 @@ class InputPrescription {
     }
   }
 }
+
+@Deprecated('Use PrescriptionAnalysisControl.')
+typedef InputPrescription = PrescriptionAnalysisControl;
