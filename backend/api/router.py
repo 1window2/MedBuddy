@@ -11,9 +11,9 @@ from api.dependencies import (
     get_check_schedule,
     get_check_saved_medication,
     get_check_today_medication_info,
-    get_input_prescription,
     get_manage_user_setting,
     get_patient_guardian_link_control,
+    get_prescription_analysis_control,
     get_request_health_recommendation,
     get_request_voice_guide,
     get_set_guardian_alert_setting,
@@ -24,7 +24,7 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
-from controls.input_prescription_control import InputPrescription
+from controls.input_prescription_control import PrescriptionAnalysisControl
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -635,13 +635,15 @@ async def parse_prescription_endpoint(
 # - Receives a prescription image and returns structured medication candidates.
 # Parameters:
 # - file: Uploaded image file.
-# - input_prescription: InputPrescription injected by FastAPI.
+# - prescription_analysis_control: PrescriptionAnalysisControl injected by FastAPI.
 # Returns:
 # - API-compatible prescription analysis dictionary.
 @router.post("/upload-prescription")
 async def upload_and_parse_prescription(
     file: UploadFile = File(...),
-    input_prescription: InputPrescription = Depends(get_input_prescription),
+    prescription_analysis_control: PrescriptionAnalysisControl = Depends(
+        get_prescription_analysis_control
+    ),
 ) -> dict[str, object]:
     try:
         image_bytes = await file.read()
@@ -651,7 +653,9 @@ async def upload_and_parse_prescription(
             file.content_type,
             len(image_bytes),
         )
-        return await input_prescription.request_prescription_image(image_bytes)
+        return await prescription_analysis_control.request_prescription_image(
+            image_bytes
+        )
     except ValueError as exc:
         logger.warning("Prescription image upload rejected: %s", exc, exc_info=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

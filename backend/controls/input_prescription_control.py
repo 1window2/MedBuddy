@@ -17,6 +17,11 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.medication_schedule_entity import MedicationSchedule
+from entities.prescription_analysis_entity import (
+    MedicationCandidateList,
+    PrescriptionAnalysisResult,
+    PrescriptionText,
+)
 from services.prescription_parser import normalize_prescription_payload
 from utils.image_processing import preprocess_prescription_image
 
@@ -24,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class _MedicationNameCandidate:
+class _MedicationNameVariant:
     normalized_name: str
     source: str
     confidence: float
@@ -344,9 +349,9 @@ class _PrescriptionMedicationNameVerifier:
     def _build_candidates(
         self,
         normalized_name: str,
-    ) -> list[_MedicationNameCandidate]:
+    ) -> list[_MedicationNameVariant]:
         candidates = [
-            _MedicationNameCandidate(
+            _MedicationNameVariant(
                 normalized_name=normalized_name,
                 source="local_catalog_exact",
                 confidence=1.0,
@@ -354,14 +359,14 @@ class _PrescriptionMedicationNameVerifier:
         ]
         for variant in self._hangul_vowel_variants(normalized_name):
             candidates.append(
-                _MedicationNameCandidate(
+                _MedicationNameVariant(
                     normalized_name=variant,
                     source="local_catalog_ocr_vowel_variant",
                     confidence=0.92,
                 )
             )
 
-        deduplicated_candidates: list[_MedicationNameCandidate] = []
+        deduplicated_candidates: list[_MedicationNameVariant] = []
         seen_names = set()
         for candidate in candidates:
             if candidate.normalized_name in seen_names:
@@ -374,8 +379,8 @@ class _PrescriptionMedicationNameVerifier:
 
     def _find_catalog_match(
         self,
-        candidates: list[_MedicationNameCandidate],
-    ) -> tuple[_MedicationNameCandidate, str] | None:
+        candidates: list[_MedicationNameVariant],
+    ) -> tuple[_MedicationNameVariant, str] | None:
         normalized_names = [candidate.normalized_name for candidate in candidates]
         basic_matches = {
             row.normalized_item_name: row.item_name
@@ -589,7 +594,7 @@ class _PrescriptionMedicationNameVerifier:
         }
 
 
-# Class Name: InputPrescription
+# Class Name: PrescriptionAnalysisControl
 # Role: Coordinates prescription image preprocessing and structured extraction.
 # Responsibilities:
 #   - Preprocess prescription image bytes.
@@ -598,8 +603,7 @@ class _PrescriptionMedicationNameVerifier:
 # Attributes:
 #   - client: Gemini client used for prescription image analysis.
 #   - model_name: Gemini model name.
-class InputPrescription:
-    _RRN_PATTERN = re.compile(r"(\d{6})[-]\d{7}")
+class PrescriptionAnalysisControl:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
         "type": "OBJECT",
         "required": ["hospital_name", "prescription_date", "medications"],
@@ -717,6 +721,34 @@ class InputPrescription:
     async def requestPrescriptionImage(self, image_bytes: bytes) -> dict[str, object]:
         return await self.request_prescription_image(image_bytes)
 
+    # Function Name: analyzePrescriptionImage
+    # Description:
+    # - Class diagram compatible operation for prescription image analysis.
+    # Parameters:
+    # - image: Raw image bytes uploaded by the frontend.
+    # Returns:
+    # - API-compatible prescription analysis dictionary.
+    async def analyzePrescriptionImage(self, image: bytes) -> dict[str, object]:
+        return await self.request_prescription_image(image)
+
+    # Function Name: buildAnalysisResult
+    # Description:
+    # - Class diagram compatible operation for promoting candidates into a
+    #   prescription analysis result entity.
+    # Parameters:
+    # - candidates: MedicationCandidateList extracted from a prescription.
+    # Returns:
+    # - PrescriptionAnalysisResult entity.
+    def buildAnalysisResult(
+        self,
+        candidates: MedicationCandidateList,
+    ) -> PrescriptionAnalysisResult:
+        return PrescriptionAnalysisResult(
+            hospital_name="정보 없음",
+            prescription_date="정보 없음",
+            medication_candidates=candidates,
+        )
+
     # Function Name: _extract_prescription_text
     # Description:
     # - Calls Gemini Vision with an image and strict JSON extraction prompt.
@@ -783,8 +815,17 @@ class InputPrescription:
     # - Masked prescription dictionary.
     def _apply_secondary_masking(self, data: dict[str, Any]) -> dict[str, Any]:
         data_str = json.dumps(data, ensure_ascii=False)
-        data_str = self._RRN_PATTERN.sub(r"\1-*******", data_str)
-        return json.loads(data_str)
+        return json.loads(self.maskSensitiveInfo(data_str))
+
+    # Function Name: maskSensitiveInfo
+    # Description:
+    # - Class diagram compatible operation for removing sensitive identifiers.
+    # Parameters:
+    # - rawText: Raw prescription text or serialized extraction payload.
+    # Returns:
+    # - Text with sensitive identifiers masked.
+    def maskSensitiveInfo(self, rawText: str) -> str:
+        return PrescriptionText(raw_text=rawText).removeSensitiveInfoByRegex()
 
     async def _to_verified_medication_schedules(
         self,
@@ -845,3 +886,7 @@ class InputPrescription:
             "daily_frequency": medication_schedule.intake_time,
             "total_days": medication_schedule.medication_time,
         }
+
+
+# Backward-compatible alias for the original skeleton/module contract.
+InputPrescription = PrescriptionAnalysisControl

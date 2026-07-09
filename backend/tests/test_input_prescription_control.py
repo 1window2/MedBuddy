@@ -17,11 +17,16 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from controls.input_prescription_control import (  # noqa: E402
-    InputPrescription,
+    PrescriptionAnalysisControl,
     _PrescriptionMedicationNameVerifier,
 )
 from core.database import Base  # noqa: E402
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo  # noqa: E402
+from entities.prescription_analysis_entity import (  # noqa: E402
+    MedicationCandidate,
+    MedicationCandidateList,
+    PrescriptionAnalysisResult,
+)
 
 
 class _FakeGeminiResponse:
@@ -52,7 +57,7 @@ class _FakeGeminiClient:
         self.aio = _FakeGeminiAio(self.models)
 
 
-class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
+class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCase):
     def setUp(self) -> None:
         _PrescriptionMedicationNameVerifier.clear_ai_fallback_cache()
         self.engine = create_engine(
@@ -66,7 +71,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             bind=self.engine,
         )
         self.db = session_factory()
-        self.control = InputPrescription(client=object(), db=self.db)
+        self.control = PrescriptionAnalysisControl(client=object(), db=self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -139,7 +144,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -169,13 +174,13 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=first_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=first_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
 
         second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        self.control = InputPrescription(client=second_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=second_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -204,7 +209,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(
+        self.control = PrescriptionAnalysisControl(
             client=first_client,
             model_name="gemini-test-a",
             db=self.db,
@@ -214,7 +219,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
 
         second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        self.control = InputPrescription(
+        self.control = PrescriptionAnalysisControl(
             client=second_client,
             model_name="gemini-test-b",
             db=self.db,
@@ -247,7 +252,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -275,7 +280,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -304,7 +309,10 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=low_confidence_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(
+            client=low_confidence_client,
+            db=self.db,
+        )
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -323,7 +331,10 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=high_confidence_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(
+            client=high_confidence_client,
+            db=self.db,
+        )
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -339,7 +350,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
         malformed_client = _FakeGeminiClient("not-json")
-        self.control = InputPrescription(client=malformed_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=malformed_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -358,7 +369,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=valid_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=valid_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -376,7 +387,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         malformed_client = _FakeGeminiClient(
             json.dumps({"unexpected": []}, ensure_ascii=False)
         )
-        self.control = InputPrescription(client=malformed_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=malformed_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -395,7 +406,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=valid_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=valid_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -425,7 +436,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -461,7 +472,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client, db=self.db)
+        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
 
         verified_schedules = asyncio.run(
             self.control._to_verified_medication_schedules(
@@ -503,7 +514,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client)
+        self.control = PrescriptionAnalysisControl(client=fake_client)
 
         with patch(
             "controls.input_prescription_control.preprocess_prescription_image",
@@ -523,6 +534,30 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(payload["medications"][0]["total_days"], "5")
+
+    def test_build_analysis_result_returns_diagram_entity(self) -> None:
+        medication_candidate_list = MedicationCandidateList()
+        medication_candidate_list.addCandidate(
+            MedicationCandidate(
+                drug_name="\ud504\ub8e8\ucf54\ud504\uc815",
+                dosage_per_time="1",
+                daily_frequency="3",
+                total_days="5",
+            )
+        )
+
+        analysis_result = self.control.buildAnalysisResult(
+            medication_candidate_list
+        )
+
+        self.assertIsInstance(analysis_result, PrescriptionAnalysisResult)
+        self.assertEqual(analysis_result.candidateCount, 1)
+        self.assertEqual(
+            analysis_result.medication_candidates.findByName(
+                "\ud504\ub8e8\ucf54\ud504\uc815"
+            ),
+            medication_candidate_list.candidates[0],
+        )
 
     def _save_basic_drug(self, item_name: str) -> None:
         self.db.add(

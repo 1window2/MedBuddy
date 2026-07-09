@@ -5,6 +5,12 @@ import math
 import re
 from typing import Any
 
+from entities.prescription_analysis_entity import (
+    MedicationCandidate,
+    MedicationCandidateList,
+    PrescriptionAnalysisResult,
+)
+
 
 INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
 
@@ -212,29 +218,26 @@ def normalize_prescription_payload(data: dict[str, Any]) -> dict[str, Any]:
     prescription_date = _read_first_text(data, PRESCRIPTION_DATE_KEYS)
     normalized_date = normalize_date(prescription_date or "")
     raw_items = _read_first_list(data, MEDICATION_LIST_KEYS)
-    normalized_medications = [
-        medication
-        for raw_item in raw_items
-        if (medication := normalize_prescription_medication(raw_item)) is not None
-    ]
-    deduplicated_medications = _deduplicate_medications(normalized_medications)
+    medication_candidate_list = MedicationCandidateList()
+    for raw_item in raw_items:
+        medication_candidate = normalize_prescription_medication(raw_item)
+        if medication_candidate is not None:
+            medication_candidate_list.addCandidate(medication_candidate)
 
-    return {
-        "hospital_name": _read_first_text(
+    analysis_result = PrescriptionAnalysisResult(
+        hospital_name=_read_first_text(
             data,
             HOSPITAL_NAME_KEYS,
             default=INFO_UNAVAILABLE,
         ),
-        "prescription_date": normalized_date
+        prescription_date=normalized_date
         or _read_first_text(data, PRESCRIPTION_DATE_KEYS, default=INFO_UNAVAILABLE),
-        "medications": deduplicated_medications,
-        "raw_medication_count": len(raw_items),
-        "parsed_medication_count": len(deduplicated_medications),
-        "skipped_medication_count": len(raw_items) - len(deduplicated_medications),
-    }
+        medication_candidates=medication_candidate_list.deduplicated(),
+    )
+    return analysis_result.to_payload(raw_medication_count=len(raw_items))
 
 
-def normalize_prescription_medication(raw_item: Any) -> dict[str, str] | None:
+def normalize_prescription_medication(raw_item: Any) -> MedicationCandidate | None:
     if not isinstance(raw_item, dict):
         return None
 
@@ -242,12 +245,12 @@ def normalize_prescription_medication(raw_item: Any) -> dict[str, str] | None:
     if _is_unknown(drug_name):
         return None
 
-    return {
-        "drug_name": drug_name,
-        "dosage_per_time": _read_first_text(raw_item, DOSAGE_KEYS),
-        "daily_frequency": _read_first_text(raw_item, DAILY_FREQUENCY_KEYS),
-        "total_days": _read_first_text(raw_item, TOTAL_DAYS_KEYS),
-    }
+    return MedicationCandidate(
+        drug_name=drug_name,
+        dosage_per_time=_read_first_text(raw_item, DOSAGE_KEYS),
+        daily_frequency=_read_first_text(raw_item, DAILY_FREQUENCY_KEYS),
+        total_days=_read_first_text(raw_item, TOTAL_DAYS_KEYS),
+    )
 
 
 def _read_first_list(data: dict[str, Any], keys: tuple[str, ...]) -> list[Any]:
@@ -256,25 +259,6 @@ def _read_first_list(data: dict[str, Any], keys: tuple[str, ...]) -> list[Any]:
         if isinstance(value, list):
             return value
     return []
-
-
-def _deduplicate_medications(
-    medications: list[dict[str, str]],
-) -> list[dict[str, str]]:
-    deduplicated_medications: list[dict[str, str]] = []
-    seen_keys = set()
-    for medication in medications:
-        medication_key = (
-            medication["drug_name"],
-            medication["dosage_per_time"],
-            medication["daily_frequency"],
-            medication["total_days"],
-        )
-        if medication_key in seen_keys:
-            continue
-        seen_keys.add(medication_key)
-        deduplicated_medications.append(medication)
-    return deduplicated_medications
 
 
 def _read_first_text(

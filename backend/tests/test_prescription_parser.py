@@ -10,6 +10,11 @@ from services.prescription_parser import (  # noqa: E402
     normalize_prescription_payload,
     parse_prescription,
 )
+from entities.prescription_analysis_entity import (  # noqa: E402
+    MedicationCandidate,
+    MedicationCandidateList,
+    PrescriptionText,
+)
 
 
 class PrescriptionParserTest(unittest.TestCase):
@@ -115,6 +120,34 @@ class PrescriptionParserTest(unittest.TestCase):
                     "total_days": "5",
                 }
             ],
+        )
+
+    def test_prescription_analysis_entities_preserve_diagram_operations(
+        self,
+    ) -> None:
+        medication_candidate = MedicationCandidate(
+            drug_name="\ud504\ub8e8\ucf54\ud504\uc815",
+            dosage_per_time="1",
+            daily_frequency="3",
+            total_days="5",
+        )
+        candidate_list = MedicationCandidateList()
+
+        self.assertTrue(candidate_list.isEmpty())
+        candidate_list.addCandidate(medication_candidate)
+
+        self.assertFalse(candidate_list.isEmpty())
+        self.assertEqual(
+            candidate_list.findByName("\ud504\ub8e8\ucf54\ud504\uc815"),
+            medication_candidate,
+        )
+        self.assertEqual(medication_candidate.drugName, "\ud504\ub8e8\ucf54\ud504\uc815")
+        self.assertEqual(medication_candidate.dosagePerTime, "1")
+        self.assertEqual(medication_candidate.dailyFrequency, "3")
+        self.assertEqual(medication_candidate.totalDays, "5")
+        self.assertEqual(
+            PrescriptionText(raw_text="900101-1234567").removeSensitiveInfoByRegex(),
+            "900101-*******",
         )
 
     def test_normalize_prescription_payload_rejects_non_object_response(self) -> None:

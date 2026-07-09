@@ -9,7 +9,7 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
-from controls.input_prescription_control import InputPrescription
+from controls.input_prescription_control import PrescriptionAnalysisControl
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -19,15 +19,26 @@ from controls.set_guardian_medication_control import SetGuardianMedication
 from controls.set_notification_control import SetNotification
 
 
-# Function Name: get_input_prescription
+# Function Name: get_prescription_analysis_control
 # Description:
 # - Builds the image prescription analysis control service.
 # Returns:
-# - InputPrescription instance.
+# - PrescriptionAnalysisControl instance.
+def get_prescription_analysis_control(
+    db: Session = Depends(get_db),
+) -> PrescriptionAnalysisControl:
+    return PrescriptionAnalysisControl(db=db)
+
+
+# Function Name: get_input_prescription
+# Description:
+# - Backward-compatible dependency wrapper for the original skeleton name.
+# Returns:
+# - PrescriptionAnalysisControl instance.
 def get_input_prescription(
     db: Session = Depends(get_db),
-) -> InputPrescription:
-    return InputPrescription(db=db)
+) -> PrescriptionAnalysisControl:
+    return get_prescription_analysis_control(db=db)
 
 
 # Function Name: get_check_medication_detail
