@@ -4,9 +4,10 @@
 import json
 import logging
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, ClassVar
 
 from google import genai
 from google.genai import types
@@ -60,6 +61,7 @@ class _PrescriptionMedicationNameVerifier:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
     _MAX_AI_CATALOG_CANDIDATES = 8
+    _MAX_AI_FALLBACK_CACHE_ENTRIES = 256
     _MAX_FRAGMENT_QUERY_ROWS = 24
     _MIN_FUZZY_SCORE = 0.45
     _AI_CONFIDENCE_THRESHOLD = 0.86
@@ -78,8 +80,19 @@ class _PrescriptionMedicationNameVerifier:
         (13, 17),  # u/yu: ㅜ, ㅠ
     )
 
+    _AI_FALLBACK_CACHE: ClassVar[
+        OrderedDict[
+            tuple[str, tuple[str, ...]],
+            tuple[_CatalogMedicationName, float] | None,
+        ]
+    ] = OrderedDict()
+
     def __init__(self, db: Session | None = None) -> None:
         self.db = db
+
+    @classmethod
+    def clear_ai_fallback_cache(cls) -> None:
+        cls._AI_FALLBACK_CACHE.clear()
 
     async def verify_many(
         self,
@@ -92,11 +105,22 @@ class _PrescriptionMedicationNameVerifier:
         if not fallback_requests:
             return verifications
 
-        corrections = await self._request_ai_catalog_choices(
+        corrections, uncached_fallback_requests = self._resolve_cached_fallbacks(
             fallback_requests,
-            ai_client,
-            model_name,
         )
+        if uncached_fallback_requests:
+            ai_corrections = await self._request_ai_catalog_choices(
+                uncached_fallback_requests,
+                ai_client,
+                model_name,
+            )
+            if ai_corrections is not None:
+                self._cache_ai_fallback_results(
+                    uncached_fallback_requests,
+                    ai_corrections,
+                )
+                corrections.update(ai_corrections)
+
         if not corrections:
             return verifications
 
@@ -112,6 +136,53 @@ class _PrescriptionMedicationNameVerifier:
                 source="llm_catalog_candidate",
             )
         return corrected_verifications
+
+    def _resolve_cached_fallbacks(
+        self,
+        fallback_requests: list[_MedicationNameFallbackRequest],
+    ) -> tuple[
+        dict[int, tuple[_CatalogMedicationName, float]],
+        list[_MedicationNameFallbackRequest],
+    ]:
+        corrections: dict[int, tuple[_CatalogMedicationName, float]] = {}
+        uncached_fallback_requests: list[_MedicationNameFallbackRequest] = []
+        cache = type(self)._AI_FALLBACK_CACHE
+
+        for request in fallback_requests:
+            cache_key = self._ai_fallback_cache_key(request)
+            if cache_key not in cache:
+                uncached_fallback_requests.append(request)
+                continue
+
+            cached_correction = cache.pop(cache_key)
+            cache[cache_key] = cached_correction
+            if cached_correction is not None:
+                corrections[request.index] = cached_correction
+
+        return corrections, uncached_fallback_requests
+
+    def _cache_ai_fallback_results(
+        self,
+        fallback_requests: list[_MedicationNameFallbackRequest],
+        corrections: dict[int, tuple[_CatalogMedicationName, float]],
+    ) -> None:
+        cache = type(self)._AI_FALLBACK_CACHE
+        for request in fallback_requests:
+            cache_key = self._ai_fallback_cache_key(request)
+            cache[cache_key] = corrections.get(request.index)
+            cache.move_to_end(cache_key)
+
+        while len(cache) > self._MAX_AI_FALLBACK_CACHE_ENTRIES:
+            cache.popitem(last=False)
+
+    def _ai_fallback_cache_key(
+        self,
+        request: _MedicationNameFallbackRequest,
+    ) -> tuple[str, tuple[str, ...]]:
+        return (
+            self._normalize_name(request.raw_name),
+            tuple(candidate.item_name for candidate in request.candidates),
+        )
 
     def verify(self, raw_name: str) -> _MedicationNameVerification:
         normalized_raw_name = self._normalize_name(raw_name)
@@ -173,7 +244,7 @@ class _PrescriptionMedicationNameVerifier:
         fallback_requests: list[_MedicationNameFallbackRequest],
         ai_client: genai.Client,
         model_name: str,
-    ) -> dict[int, tuple[_CatalogMedicationName, float]]:
+    ) -> dict[int, tuple[_CatalogMedicationName, float]] | None:
         request_payload = [
             {
                 "index": request.index,
@@ -206,10 +277,10 @@ class _PrescriptionMedicationNameVerifier:
             response_data = json.loads(self._clean_json_response(response.text))
         except Exception as exc:
             logger.warning("Medication name AI fallback failed: %s", exc)
-            return {}
+            return None
 
         if not isinstance(response_data, dict):
-            return {}
+            return None
 
         return self._select_ai_verified_corrections(
             response_data,
