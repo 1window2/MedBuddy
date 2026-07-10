@@ -1,5 +1,5 @@
 name: medbuddy_frontend
-description: A new Flutter project for MedBuddy.
+description: A Flutter medication management client for MedBuddy.
 publish_to: 'none'
 version: 0.0.7+7
 
