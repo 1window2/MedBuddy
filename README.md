@@ -11,7 +11,11 @@
 ### Prescription and Pill-Envelope Analysis
 
 - The Flutter app captures or selects a prescription or pill-envelope image and sends it to FastAPI as multipart data.
-- The backend preprocesses the image, requests structured extraction from Gemini Vision, validates the response schema, and applies secondary masking before returning medication candidates.
+- The backend preprocesses the image through an OCR boundary, requests structured extraction from Gemini Vision, normalizes the response into UML-aligned prescription analysis entities, validates the response schema, and applies secondary masking before returning medication candidates.
+- Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
+- Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
+- Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
+- OCR correction metadata, skipped item counts, and raw-name notices are surfaced in the Flutter preview so users can review imperfect OCR results before analysis.
 - The analysis result can be saved into the user's medication list while preserving prescription-derived schedule fields such as dose per time, daily frequency, and total days.
 
 ### Medication Detail and Guidance
@@ -21,6 +25,7 @@
 - Redis and Korean public drug APIs remain fallback paths for records missing from the local catalog.
 - Gemini Text generates patient-friendly medication guidance from the retrieved drug information.
 - The Flutter app can present medication details and voice guidance through the TTS service.
+- OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
 ### User Settings and Voice Playback
 
@@ -50,14 +55,16 @@
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
 - Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
+- Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
 ## Architecture
 
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
-- **Control** classes coordinate use cases, API calls, scope resolution, persistence, and external services.
-- **Entity/Model** classes preserve application data contracts such as medication schedules, saved medication snapshots, user settings, notification preferences, and patient-guardian links.
+- **Boundary** classes also wrap external OCR concerns such as prescription image preprocessing and Gemini Vision extraction, keeping `InputPrescription` focused on the UC-1/UC-2 control flow.
+- **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, and external services.
+- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-guardian links.
 - Backend routers remain thin boundary adapters around control classes.
 
 Detailed design references are maintained in [`docs/`](docs/), and contribution rules for preserving the UML-aligned structure are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -80,7 +87,7 @@ Detailed design references are maintained in [`docs/`](docs/), and contribution 
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/공공데이터포털-009900?style=for-the-badge)
+![Public Data](https://img.shields.io/badge/Korean%20Public%20Data-009900?style=for-the-badge)
 
 ### Collaboration
 
@@ -91,6 +98,7 @@ Detailed design references are maintained in [`docs/`](docs/), and contribution 
 
 #### Figma: [MedBuddy Design](https://www.figma.com/design/YS6yFzx1dpT7a0FxnefWUy/MedBuddy)
 - Designed by [@onlyone130](https://github.com/onlyone130)
+- Flutter UI colors are centralized in `frontend/lib/theme/medbuddy_theme.dart` from the Figma palette, including primary greens, mint borders, schedule slot colors, surface shades, dividers, and text colors.
 
 ## Getting Started
 
