@@ -102,7 +102,7 @@ async def identify_medication(
 # Returns:
 # - API-compatible success dictionary.
 @router.post("/save")
-async def save_medication(
+def save_medication(
     medication: SavedMedicationCreate,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
@@ -120,7 +120,7 @@ async def save_medication(
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
-async def get_saved_medications(
+def get_saved_medications(
     patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
@@ -153,7 +153,7 @@ async def get_saved_medications(
 # Returns:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
-async def get_today_medication_schedule(
+def get_today_medication_schedule(
     patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
@@ -189,7 +189,7 @@ async def get_today_medication_schedule(
 # Returns:
 # - API-compatible today medication summary dictionary.
 @router.get("/schedule/today/info")
-async def get_today_medication_info(
+def get_today_medication_info(
     patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
@@ -227,7 +227,7 @@ async def get_today_medication_info(
 # Returns:
 # - API-compatible status update dictionary.
 @router.patch("/schedule/{medication_id}/status")
-async def update_medication_status(
+def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
     patient_hash: str | None = None,
@@ -256,7 +256,7 @@ async def update_medication_status(
 # Returns:
 # - API-compatible medication alarm list dictionary.
 @router.get("/notification/settings")
-async def get_medication_alarms(
+def get_medication_alarms(
     patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
@@ -281,7 +281,7 @@ async def get_medication_alarms(
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.get("/notification/settings/{slot_key}")
-async def get_medication_alarm(
+def get_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
     user_hash: str | None = None,
@@ -309,7 +309,7 @@ async def get_medication_alarm(
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.put("/notification/settings/{slot_key}")
-async def save_medication_alarm(
+def save_medication_alarm(
     slot_key: str,
     request: MedicationAlarmUpdate,
     patient_hash: str | None = None,
@@ -339,7 +339,7 @@ async def save_medication_alarm(
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.patch("/notification/settings/{slot_key}/disable")
-async def disable_medication_alarm(
+def disable_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
     user_hash: str | None = None,
@@ -363,7 +363,7 @@ async def disable_medication_alarm(
 # Returns:
 # - API-compatible user setting dictionary.
 @router.get("/settings/user")
-async def get_user_setting(
+def get_user_setting(
     user_hash: str = DEFAULT_PATIENT_HASH,
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
@@ -380,7 +380,7 @@ async def get_user_setting(
 # Returns:
 # - API-compatible user setting dictionary.
 @router.put("/settings/user")
-async def save_user_setting(
+def save_user_setting(
     request: UserSettingUpdate,
     user_hash: str = DEFAULT_PATIENT_HASH,
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
@@ -402,7 +402,7 @@ async def save_user_setting(
 # Returns:
 # - API-compatible voice guide dictionary.
 @router.post("/voice-guide")
-async def request_voice_guide(
+def request_voice_guide(
     request: VoiceGuideRequest,
     request_voice_guide_control: RequestVoiceGuide = Depends(get_request_voice_guide),
 ) -> dict[str, object]:
@@ -459,7 +459,7 @@ async def get_health_recommendation(
 # Returns:
 # - API-compatible guardian alert setting dictionary.
 @router.get("/guardian-alert/settings/{patient_hash}")
-async def get_guardian_alert_setting(
+def get_guardian_alert_setting(
     patient_hash: str,
     guardian_hash: str,
     set_guardian_alert_setting: SetGuardianAlertSetting = Depends(
@@ -483,7 +483,7 @@ async def get_guardian_alert_setting(
 # Returns:
 # - API-compatible guardian alert setting dictionary.
 @router.put("/guardian-alert/settings/{patient_hash}")
-async def update_guardian_alert_setting(
+def update_guardian_alert_setting(
     patient_hash: str,
     guardian_hash: str,
     request: GuardianAlertUpdate,
@@ -509,7 +509,7 @@ async def update_guardian_alert_setting(
 # Returns:
 # - API-compatible guardian medication dictionary.
 @router.get("/guardian/medications/{patient_hash}")
-async def get_guardian_medication(
+def get_guardian_medication(
     patient_hash: str,
     guardian_hash: str,
     set_guardian_medication: SetGuardianMedication = Depends(
@@ -531,7 +531,7 @@ async def get_guardian_medication(
 # Returns:
 # - API-compatible link list dictionary.
 @router.get("/link/list")
-async def get_patient_guardian_links(
+def get_patient_guardian_links(
     user_hash: str = DEFAULT_PATIENT_HASH,
     patient_guardian_link_control: PatientGuardianLinkControl = Depends(
         get_patient_guardian_link_control
@@ -549,7 +549,7 @@ async def get_patient_guardian_links(
 # Returns:
 # - API-compatible patient code dictionary.
 @router.post("/link/code")
-async def create_patient_link_code(
+def create_patient_link_code(
     request: PatientCodeCreate,
     patient_guardian_link_control: PatientGuardianLinkControl = Depends(
         get_patient_guardian_link_control
@@ -567,7 +567,7 @@ async def create_patient_link_code(
 # Returns:
 # - API-compatible link dictionary.
 @router.post("/link/register")
-async def register_patient_link_code(
+def register_patient_link_code(
     request: PatientCodeRegister,
     patient_guardian_link_control: PatientGuardianLinkControl = Depends(
         get_patient_guardian_link_control
@@ -589,7 +589,7 @@ async def register_patient_link_code(
 # Returns:
 # - API-compatible unlink dictionary.
 @router.delete("/link/{link_id}")
-async def unlink_patient_guardian(
+def unlink_patient_guardian(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
     patient_guardian_link_control: PatientGuardianLinkControl = Depends(
@@ -609,7 +609,7 @@ async def unlink_patient_guardian(
 # Returns:
 # - API-compatible delete success dictionary.
 @router.delete("/delete/{drug_id}")
-async def delete_medication(
+def delete_medication(
     drug_id: int,
     patient_hash: str = DEFAULT_PATIENT_HASH,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
@@ -625,7 +625,7 @@ async def delete_medication(
 # Returns:
 # - API-compatible parse result dictionary.
 @router.post("/parse-prescription")
-async def parse_prescription_endpoint(
+def parse_prescription_endpoint(
     request: OCRParseRequest,
 ) -> dict[str, object]:
     if not request.text:

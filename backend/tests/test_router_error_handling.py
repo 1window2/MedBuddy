@@ -73,9 +73,9 @@ class _RecordingPrescriptionAnalysisControl:
 
 
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
-    async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
+    def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 user_hash="guardian-missing",
                 role="guardian",
                 check_saved_medication=_MissingGuardianSavedMedicationControl(),
@@ -83,9 +83,9 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    async def test_today_schedule_lookup_preserves_control_http_error(self) -> None:
+    def test_today_schedule_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_today_medication_schedule(
+            get_today_medication_schedule(
                 user_hash="guardian-missing",
                 role="guardian",
                 check_schedule=_MissingGuardianScheduleControl(),
@@ -93,11 +93,11 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    async def test_saved_medication_lookup_hides_internal_exception_details(
+    def test_saved_medication_lookup_hides_internal_exception_details(
         self,
     ) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 check_saved_medication=_FailingSavedMedicationControl(),
             )
 

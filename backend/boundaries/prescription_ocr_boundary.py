@@ -1,6 +1,7 @@
 # File Name: prescription_ocr_boundary.py
 # Role: Boundary classes for prescription OCR extraction.
 
+import asyncio
 from typing import Any
 
 from google import genai
@@ -71,8 +72,9 @@ class OCRServiceBoundary:
     # Description:
     # - Coordinates preprocessing and Gemini Vision extraction.
     async def extractText(self, image: bytes) -> str:
-        processed_image = self.image_processing_boundary.preprocessPrescriptionImage(
-            image
+        processed_image = await asyncio.to_thread(
+            self.image_processing_boundary.preprocessPrescriptionImage,
+            image,
         )
         return await self.gemini_vision_api.requestStructuredExtraction(
             client=self.client,
