@@ -24,6 +24,7 @@ class PrescriptionAnalysisControl {
   final ImagePicker _imagePicker;
   final http.Client _client;
   final bool _ownsClient;
+  final Duration requestTimeout;
   int _lastRawMedicationCount = 0;
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
@@ -36,6 +37,7 @@ class PrescriptionAnalysisControl {
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
+    this.requestTimeout = const Duration(seconds: 90),
   })  : _imagePicker = imagePicker ?? ImagePicker(),
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -101,13 +103,13 @@ class PrescriptionAnalysisControl {
       );
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      final streamedResponse = await _client.send(request).timeout(
-        const Duration(seconds: 90),
+      final response =
+          await _client.send(request).then(http.Response.fromStream).timeout(
+        requestTimeout,
         onTimeout: () {
           throw StateError('처방전 분석 요청 시간이 초과되었습니다.');
         },
       );
-      final response = await http.Response.fromStream(streamedResponse);
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {

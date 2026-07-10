@@ -1,6 +1,8 @@
 # File Name: dependencies.py
 # Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
+import logging
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,7 @@ from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_guardian_medication_control import SetGuardianMedication
 from controls.set_notification_control import SetNotification
 
+logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
 
 
@@ -33,10 +36,17 @@ async def get_medication_detail_cache() -> _MedicationDetailCache:
 
 async def close_medication_detail_cache() -> None:
     global _medication_detail_cache
-    if _medication_detail_cache is None:
-        return
-    await _medication_detail_cache.close()
+    medication_detail_cache = _medication_detail_cache
     _medication_detail_cache = None
+    if medication_detail_cache is None:
+        return
+    try:
+        await medication_detail_cache.close()
+    except Exception as exc:
+        logger.warning(
+            "Medication detail cache shutdown failed: %s",
+            type(exc).__name__,
+        )
 
 
 # Function Name: get_prescription_analysis_control

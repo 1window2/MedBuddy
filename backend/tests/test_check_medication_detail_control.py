@@ -11,6 +11,7 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
+from api import dependencies as api_dependencies
 from controls.check_medication_detail_control import (
     _MedicationDetailCache,
     _MedicationTextNormalizer,
@@ -39,6 +40,11 @@ class _FailingRedisClient:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class _CloseFailingMedicationCache:
+    async def close(self) -> None:
+        raise ConnectionError("redis close failed")
 
 
 @pytest.fixture
@@ -135,3 +141,21 @@ async def test_medication_cache_closes_its_redis_client() -> None:
     await cache.close()
 
     assert redis_client.closed is True
+
+
+@pytest.mark.anyio
+async def test_process_cache_cleanup_resets_state_after_close_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(
+        api_dependencies,
+        "_medication_detail_cache",
+        _CloseFailingMedicationCache(),
+    )
+
+    with caplog.at_level("WARNING"):
+        await api_dependencies.close_medication_detail_cache()
+
+    assert api_dependencies._medication_detail_cache is None
+    assert "ConnectionError" in caplog.text

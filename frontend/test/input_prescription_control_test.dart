@@ -25,6 +25,22 @@ class _FakeImagePicker extends ImagePicker {
   }
 }
 
+class _DelayedResponseBodyClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    return http.StreamedResponse(
+      Stream<List<int>>.fromFuture(
+        Future<List<int>>.delayed(
+          const Duration(milliseconds: 100),
+          () => utf8.encode('{"medications": []}'),
+        ),
+      ),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+}
+
 void main() {
   test('requestPrescriptionImage preserves OCR metadata from backend',
       () async {
@@ -123,5 +139,33 @@ void main() {
     expect(control.lastRawMedicationCount, 3);
     expect(control.lastParsedMedicationCount, 0);
     expect(control.lastSkippedMedicationCount, 3);
+  });
+
+  test('analyzePrescriptionImage times out while reading a stalled body',
+      () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-timeout-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+
+    final control = PrescriptionAnalysisControl(
+      client: _DelayedResponseBodyClient(),
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+    addTearDown(control.dispose);
+
+    expect(
+      () => control.analyzePrescriptionImage(
+        XFile(imageFile.path),
+        imageSource: ImageSource.gallery,
+      ),
+      throwsA(isA<StateError>()),
+    );
   });
 }
