@@ -885,21 +885,6 @@ class _LocalMedicationCatalog:
             or ""
         ).strip()
 
-    def _save_basic_ai_guide(
-        self,
-        basic_info: _DrugBasicInfo,
-        ai_guide: str | None,
-    ) -> None:
-        if not ai_guide:
-            return
-
-        try:
-            basic_info.ai_guide = ai_guide
-            self.db.commit()
-        except Exception as exc:
-            self.db.rollback()
-            logger.warning("Failed to persist local AI guide: %s", exc)
-
     def _save_approval_summary(
         self,
         approval_info: _DrugApprovalInfo,
