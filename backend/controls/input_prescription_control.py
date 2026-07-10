@@ -75,18 +75,28 @@ class _PrescriptionMedicationNameVerifier:
     _MIN_FUZZY_SCORE = 0.45
     _AI_CONFIDENCE_THRESHOLD = 0.86
     _AI_CONFIDENCE_CAP = 0.89
+    _PREFIX_CONFIDENCE_CAP = 0.95
+    _STRENGTH_UNIT_CONFIDENCE_CAP = 0.94
     _HANGUL_BASE = 0xAC00
     _HANGUL_LAST = 0xD7A3
     _HANGUL_MEDIAL_COUNT = 21
     _HANGUL_FINAL_COUNT = 28
     _HANGUL_BLOCK_SIZE = _HANGUL_MEDIAL_COUNT * _HANGUL_FINAL_COUNT
     _OCR_VOWEL_GROUPS = (
+        (1, 5),  # ae/e: 애/에
         (4, 20),  # eo/i: ㅓ, ㅣ
         (4, 5),  # eo/e: ㅓ, ㅔ
         (8, 13, 18),  # o/u/eu: ㅗ, ㅜ, ㅡ
         (0, 4),  # a/eo: ㅏ, ㅓ
         (8, 12),  # o/yo: ㅗ, ㅛ
         (13, 17),  # u/yu: ㅜ, ㅠ
+    )
+
+    _STRENGTH_UNIT_VARIANTS = (
+        ("mg", "밀리그램"),
+        ("mg", "밀리그람"),
+        ("㎎", "밀리그램"),
+        ("㎎", "밀리그람"),
     )
 
     _AI_FALLBACK_CACHE: ClassVar[
@@ -365,6 +375,7 @@ class _PrescriptionMedicationNameVerifier:
                     confidence=0.92,
                 )
             )
+        candidates.extend(self._strength_unit_variants(candidates))
 
         deduplicated_candidates: list[_MedicationNameVariant] = []
         seen_names = set()
@@ -408,7 +419,58 @@ class _PrescriptionMedicationNameVerifier:
             item_name = approval_matches.get(candidate.normalized_name)
             if item_name:
                 return candidate, item_name
+
+        for candidate in candidates:
+            item_name = self._find_unique_catalog_prefix_match(
+                candidate.normalized_name
+            )
+            if item_name:
+                return self._prefix_match_candidate(candidate), item_name
         return None
+
+    def _find_unique_catalog_prefix_match(self, normalized_name: str) -> str | None:
+        if not normalized_name:
+            return None
+
+        matches_by_name: dict[str, str] = {}
+        for model in (_DrugBasicInfo, _DrugApprovalInfo):
+            for row in (
+                self.db.query(model)
+                .filter(
+                    model.normalized_item_name.like(
+                        self._prefix_like_pattern(normalized_name),
+                        escape="\\",
+                    )
+                )
+                .order_by(model.item_name.asc())
+                .limit(2)
+                .all()
+            ):
+                if row.item_name and row.normalized_item_name:
+                    matches_by_name[row.normalized_item_name] = row.item_name
+                if len(set(matches_by_name.values())) > 1:
+                    return None
+
+        unique_item_names = sorted(set(matches_by_name.values()))
+        if len(unique_item_names) != 1:
+            return None
+        return unique_item_names[0]
+
+    def _prefix_match_candidate(
+        self,
+        candidate: _MedicationNameVariant,
+    ) -> _MedicationNameVariant:
+        if candidate.source == "local_catalog_exact":
+            return _MedicationNameVariant(
+                normalized_name=candidate.normalized_name,
+                source="local_catalog_prefix",
+                confidence=min(candidate.confidence, self._PREFIX_CONFIDENCE_CAP),
+            )
+        return _MedicationNameVariant(
+            normalized_name=candidate.normalized_name,
+            source=candidate.source,
+            confidence=min(candidate.confidence, self._PREFIX_CONFIDENCE_CAP),
+        )
 
     def _find_similar_catalog_names(
         self,
@@ -477,6 +539,15 @@ class _PrescriptionMedicationNameVerifier:
         )
         return f"%{escaped_fragment}%"
 
+    def _prefix_like_pattern(self, normalized_name: str) -> str:
+        escaped_name = (
+            normalized_name
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        return f"{escaped_name}%"
+
     def _name_similarity(self, left: str, right: str) -> float:
         return SequenceMatcher(None, left, right).ratio()
 
@@ -519,6 +590,34 @@ class _PrescriptionMedicationNameVerifier:
                         )
                         + normalized_name[index + 1 :]
                     )
+        return variants
+
+    def _strength_unit_variants(
+        self,
+        candidates: list[_MedicationNameVariant],
+    ) -> list[_MedicationNameVariant]:
+        variants: list[_MedicationNameVariant] = []
+        for candidate in candidates:
+            for source_unit, target_unit in self._STRENGTH_UNIT_VARIANTS:
+                if source_unit not in candidate.normalized_name:
+                    continue
+                variants.append(
+                    _MedicationNameVariant(
+                        normalized_name=candidate.normalized_name.replace(
+                            source_unit,
+                            target_unit,
+                        ),
+                        source=(
+                            candidate.source
+                            if candidate.source != "local_catalog_exact"
+                            else "local_catalog_strength_unit_variant"
+                        ),
+                        confidence=min(
+                            candidate.confidence,
+                            self._STRENGTH_UNIT_CONFIDENCE_CAP,
+                        ),
+                    )
+                )
         return variants
 
     def _hangul_medial_index(self, character: str) -> int | None:
