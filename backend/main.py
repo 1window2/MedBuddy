@@ -2,11 +2,14 @@
 # Role: Creates and configures the MedBuddy FastAPI application.
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from dotenv import load_dotenv
 
 from api.router import router as medication_router
+from api.dependencies import close_medication_detail_cache
 from core.database import Base, engine
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
@@ -33,6 +36,17 @@ def configure_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+
+@asynccontextmanager
+async def application_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    try:
+        yield
+    finally:
+        await close_medication_detail_cache()
 
 
 # Function Name: create_app
@@ -52,7 +66,11 @@ def create_app() -> FastAPI:
     ensure_guardian_alert_setting_schema(engine)
     ensure_user_setting_schema(engine)
 
-    app = FastAPI(title="MedBuddy API", version="1.0.0")
+    app = FastAPI(
+        title="MedBuddy API",
+        version="1.0.0",
+        lifespan=application_lifespan,
+    )
     app.include_router(
         medication_router,
         prefix="/api/v1/medication",

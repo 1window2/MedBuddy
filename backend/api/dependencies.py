@@ -5,7 +5,10 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_medication_detail_control import (
+    CheckMedicationDetail,
+    _MedicationDetailCache,
+)
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -17,6 +20,23 @@ from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
 from controls.set_guardian_medication_control import SetGuardianMedication
 from controls.set_notification_control import SetNotification
+
+_medication_detail_cache: _MedicationDetailCache | None = None
+
+
+async def get_medication_detail_cache() -> _MedicationDetailCache:
+    global _medication_detail_cache
+    if _medication_detail_cache is None:
+        _medication_detail_cache = _MedicationDetailCache()
+    return _medication_detail_cache
+
+
+async def close_medication_detail_cache() -> None:
+    global _medication_detail_cache
+    if _medication_detail_cache is None:
+        return
+    await _medication_detail_cache.close()
+    _medication_detail_cache = None
 
 
 # Function Name: get_prescription_analysis_control
@@ -50,8 +70,11 @@ def get_input_prescription(
 # - CheckMedicationDetail instance.
 def get_check_medication_detail(
     db: Session = Depends(get_db),
+    medication_cache: _MedicationDetailCache = Depends(
+        get_medication_detail_cache
+    ),
 ) -> CheckMedicationDetail:
-    return CheckMedicationDetail(db=db)
+    return CheckMedicationDetail(db=db, medication_cache=medication_cache)
 
 
 # Function Name: get_check_saved_medication
