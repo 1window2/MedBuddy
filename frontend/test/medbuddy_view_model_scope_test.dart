@@ -43,6 +43,46 @@ void main() {
     expect(viewModel.medicationRole, 'patient');
   });
 
+  test('setMedicationAccessScope normalizes the legacy caregiver role', () {
+    final viewModel = MedBuddyViewModel();
+    addTearDown(viewModel.dispose);
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-a',
+      userHash: 'guardian-a',
+      role: 'caregiver',
+    );
+
+    expect(viewModel.medicationRole, 'guardian');
+  });
+
+  test('setMedicationAccessScope rejects unsupported roles', () {
+    final viewModel = MedBuddyViewModel();
+    addTearDown(viewModel.dispose);
+
+    expect(
+      () => viewModel.setMedicationAccessScope(
+        patientHash: 'patient-a',
+        role: 'administrator',
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('setMedicationAccessScope rejects conflicting patient identity', () {
+    final viewModel = MedBuddyViewModel();
+    addTearDown(viewModel.dispose);
+
+    expect(
+      () => viewModel.setMedicationAccessScope(
+        patientHash: 'patient-a',
+        userHash: 'patient-b',
+        role: 'patient',
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('fetchHealthRecommendation uses selected medication access scope',
       () async {
     final client = MockClient((http.Request request) async {

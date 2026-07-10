@@ -17,6 +17,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from controls.input_prescription_control import (  # noqa: E402
+    MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisControl,
     _PrescriptionMedicationNameVerifier,
 )
@@ -55,6 +56,16 @@ class _FakeGeminiClient:
     def __init__(self, response_text: str) -> None:
         self.models = _FakeGeminiModels(response_text)
         self.aio = _FakeGeminiAio(self.models)
+
+
+class _RecordingOCRServiceBoundary:
+    def __init__(self, response_text: str = "{}") -> None:
+        self.response_text = response_text
+        self.call_count = 0
+
+    async def extractPrescriptionData(self, image: bytes) -> str:
+        self.call_count += 1
+        return self.response_text
 
 
 class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCase):
@@ -534,6 +545,55 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self.assertEqual(payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(payload["medications"][0]["total_days"], "5")
+
+    def test_request_prescription_image_rejects_empty_input_before_ocr(self) -> None:
+        ocr_boundary = _RecordingOCRServiceBoundary()
+        self.control = PrescriptionAnalysisControl(
+            client=object(),
+            ocr_service_boundary=ocr_boundary,
+        )
+
+        with self.assertRaisesRegex(ValueError, "empty"):
+            asyncio.run(self.control.request_prescription_image(b""))
+
+        self.assertEqual(ocr_boundary.call_count, 0)
+
+    def test_request_prescription_image_rejects_oversized_input_before_ocr(
+        self,
+    ) -> None:
+        ocr_boundary = _RecordingOCRServiceBoundary()
+        self.control = PrescriptionAnalysisControl(
+            client=object(),
+            ocr_service_boundary=ocr_boundary,
+        )
+
+        with self.assertRaisesRegex(ValueError, "15 MB"):
+            asyncio.run(
+                self.control.request_prescription_image(
+                    b"x" * (MAX_PRESCRIPTION_IMAGE_BYTES + 1)
+                )
+            )
+
+        self.assertEqual(ocr_boundary.call_count, 0)
+
+    def test_invalid_ocr_response_is_not_written_to_logs(self) -> None:
+        sensitive_response = "patient-medication-data"
+        ocr_boundary = _RecordingOCRServiceBoundary(sensitive_response)
+        self.control = PrescriptionAnalysisControl(
+            client=object(),
+            ocr_service_boundary=ocr_boundary,
+        )
+
+        with self.assertLogs(
+            "controls.input_prescription_control",
+            level="ERROR",
+        ) as captured_logs:
+            with self.assertRaisesRegex(ValueError, "invalid JSON"):
+                asyncio.run(
+                    self.control.request_prescription_image(b"image"),
+                )
+
+        self.assertNotIn(sensitive_response, "\n".join(captured_logs.output))
 
     def test_build_analysis_result_returns_diagram_entity(self) -> None:
         medication_candidate_list = MedicationCandidateList()

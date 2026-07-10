@@ -11,7 +11,11 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from services.medication_course_policy import MedicationCoursePolicy
+from services.medication_course_policy import (
+    MAX_DAILY_FREQUENCY,
+    MAX_MEDICATION_COURSE_DAYS,
+    MedicationCoursePolicy,
+)
 
 
 class MedicationCoursePolicyTest(unittest.TestCase):
@@ -56,6 +60,18 @@ class MedicationCoursePolicyTest(unittest.TestCase):
         self.assertEqual(self.policy.read_frequency_count("3 times a day"), 3)
         self.assertEqual(self.policy.read_frequency_count("1일 3회"), 3)
         self.assertEqual(self.policy.read_frequency_count("하루 2번"), 2)
+
+    def test_schedule_counts_are_positive_and_bounded(self) -> None:
+        self.assertEqual(self.policy.read_total_days("-5 days"), 0)
+        self.assertEqual(
+            self.policy.read_total_days("999999999999999999 days"),
+            MAX_MEDICATION_COURSE_DAYS,
+        )
+        self.assertEqual(self.policy.read_frequency_count("-2 times"), 0)
+        self.assertEqual(
+            self.policy.read_frequency_count("12 times"),
+            MAX_DAILY_FREQUENCY,
+        )
 
 
 if __name__ == "__main__":

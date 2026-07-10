@@ -140,6 +140,34 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
 
         self.assertEqual(linked_patient_hash, DEFAULT_PATIENT_HASH)
 
+    def test_resolve_patient_scope_rejects_unsupported_role(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.control.resolve_patient_scope(
+                patient_hash="patient-a",
+                role="administrator",
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+
+    def test_resolve_patient_scope_requires_guardian_identity(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.control.resolve_patient_scope(
+                patient_hash="patient-a",
+                role="guardian",
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+
+    def test_patient_scope_cannot_target_a_different_user_hash(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            self.control.resolve_patient_scope(
+                patient_hash="patient-a",
+                user_hash="patient-b",
+                role="patient",
+            )
+
+        self.assertEqual(context.exception.status_code, 403)
+
     def test_patient_code_cannot_be_registered_twice(self) -> None:
         code_response = self.control.request_patient_code("patient-a")
         patient_code = code_response["data"]["patient_code"]

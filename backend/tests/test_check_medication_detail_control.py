@@ -28,6 +28,7 @@ from controls.check_medication_detail_control import (
 class _FailingRedisClient:
     def __init__(self) -> None:
         self.get_calls = 0
+        self.closed = False
 
     async def get(self, key: str) -> str:
         self.get_calls += 1
@@ -35,6 +36,9 @@ class _FailingRedisClient:
 
     async def setex(self, key: str, ttl: int, value: str) -> None:
         raise ConnectionError("redis unavailable")
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 @pytest.fixture
@@ -121,3 +125,13 @@ async def test_medication_cache_disables_after_lookup_failure() -> None:
     assert await cache.get("엘타인캡슐") is None
     assert await cache.get("엘타인캡슐") is None
     assert redis_client.get_calls == 1
+
+
+@pytest.mark.anyio
+async def test_medication_cache_closes_its_redis_client() -> None:
+    redis_client = _FailingRedisClient()
+    cache = _MedicationDetailCache(redis_client=redis_client)
+
+    await cache.close()
+
+    assert redis_client.closed is True

@@ -221,6 +221,32 @@ void main() {
     expect(updatedSchedule.medicationStatus, isTrue);
   });
 
+  test('forScope reuses the base HTTP client across scope changes', () async {
+    var requestCount = 0;
+    final client = MockClient((http.Request request) async {
+      requestCount += 1;
+      return http.Response(
+        jsonEncode({'success': true, 'data': []}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final baseControl = CheckSchedule(
+      baseUrl: 'http://localhost',
+      client: client,
+    );
+    final firstScope = baseControl.forScope(patientHash: 'patient-a');
+    final secondScope = baseControl.forScope(patientHash: 'patient-b');
+
+    await firstScope.requestTodayMedicationSchedule();
+    firstScope.dispose();
+    await secondScope.requestTodayMedicationSchedule();
+
+    expect(requestCount, 2);
+    secondScope.dispose();
+    baseControl.dispose();
+  });
+
   test('MedicationSchedule accepts diagram typo status alias', () {
     final schedule = MedicationSchedule.fromScheduleJson({
       'medicationID': '9',

@@ -7,6 +7,8 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from services.prescription_parser import (  # noqa: E402
+    MAX_MEDICATION_NAME_LENGTH,
+    normalize_date,
     normalize_prescription_payload,
     parse_prescription,
 )
@@ -19,6 +21,15 @@ from entities.prescription_analysis_entity import (  # noqa: E402
 
 
 class PrescriptionParserTest(unittest.TestCase):
+    def test_normalize_date_rejects_invalid_calendar_values(self) -> None:
+        self.assertIsNone(normalize_date("처방일자 2026-02-30"))
+        self.assertIsNone(normalize_date("처방일자 2026-13-01"))
+
+        normalized_payload = normalize_prescription_payload(
+            {"prescription_date": "2026-02-30"}
+        )
+        self.assertEqual(normalized_payload["prescription_date"], "정보 없음")
+
     def test_normalize_prescription_payload_accepts_aliases_and_filters_noise(
         self,
     ) -> None:
@@ -112,6 +123,37 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertEqual(parsed_payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(parsed_payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(parsed_payload["medications"][0]["total_days"], "5")
+
+    def test_parse_prescription_rejects_nonpositive_schedule_values(self) -> None:
+        parsed_payload = parse_prescription(
+            [
+                "zero-dose 0 3 5",
+                "negative-frequency 1 -3 5",
+                "zero-duration 1 3 0",
+            ]
+        )
+
+        self.assertEqual(parsed_payload["medications"], [])
+
+    def test_parser_rejects_unbounded_medication_names(self) -> None:
+        oversized_name = "a" * (MAX_MEDICATION_NAME_LENGTH + 1)
+
+        parsed_payload = parse_prescription([f"{oversized_name} 1 3 5"])
+        normalized_payload = normalize_prescription_payload(
+            {
+                "medications": [
+                    {
+                        "drug_name": oversized_name,
+                        "dosage_per_time": "1",
+                        "daily_frequency": "3",
+                        "total_days": "5",
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(parsed_payload["medications"], [])
+        self.assertEqual(normalized_payload["medications"], [])
 
     def test_normalize_prescription_payload_skips_non_finite_numeric_aliases(
         self,
