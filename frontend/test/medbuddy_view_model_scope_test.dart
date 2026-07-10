@@ -12,6 +12,34 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('default API controls share an injected app transport', () async {
+    final requestedPaths = <String>[];
+    final client = MockClient((http.Request request) async {
+      requestedPaths.add(request.url.path);
+      return http.Response(
+        jsonEncode({'success': true, 'data': []}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final viewModel = MedBuddyViewModel(apiClient: client);
+    addTearDown(() {
+      viewModel.dispose();
+      client.close();
+    });
+
+    await viewModel.checkSavedMedication.requestSavedMedicationInfo();
+    await viewModel.checkSchedule.requestTodayMedicationSchedule();
+
+    expect(
+      requestedPaths,
+      containsAll(<String>[
+        '/api/v1/medication/list',
+        '/api/v1/medication/schedule/today',
+      ]),
+    );
+  });
+
   test('setMedicationAccessScope persists selected guardian medication scope',
       () {
     final viewModel = MedBuddyViewModel();

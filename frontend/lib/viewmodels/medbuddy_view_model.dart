@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_health_recommendation_control.dart';
@@ -42,15 +43,17 @@ class TodayMedicationProgress {
 // - 저장된 복약 정보와 오늘의 복약 일정을 캐시한다.
 // - 사용자 설정을 불러오고 변경 사항을 화면에 반영한다.
 class MedBuddyViewModel extends ChangeNotifier {
-  final PrescriptionAnalysisControl prescriptionAnalysisControl;
-  final CheckMedicationDetail checkMedicationDetail;
-  final CheckSavedMedication checkSavedMedication;
-  final CheckSchedule checkSchedule;
-  final CheckTodayMedicationInfo checkTodayMedicationInfo;
-  final CheckHealthRecommendation checkHealthRecommendation;
-  final SetNotification setNotification;
-  final ManageUserSetting manageUserSetting;
+  late final PrescriptionAnalysisControl prescriptionAnalysisControl;
+  late final CheckMedicationDetail checkMedicationDetail;
+  late final CheckSavedMedication checkSavedMedication;
+  late final CheckSchedule checkSchedule;
+  late final CheckTodayMedicationInfo checkTodayMedicationInfo;
+  late final CheckHealthRecommendation checkHealthRecommendation;
+  late final SetNotification setNotification;
+  late final ManageUserSetting manageUserSetting;
   final MedicationNotificationService notificationService;
+  final http.Client _apiClient;
+  final bool _ownsApiClient;
   CheckSavedMedication? _scopedCheckSavedMedication;
   CheckSchedule? _scopedCheckSchedule;
   CheckTodayMedicationInfo? _scopedCheckTodayMedicationInfo;
@@ -216,20 +219,27 @@ class MedBuddyViewModel extends ChangeNotifier {
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
     MedicationNotificationService? notificationService,
-  })  : prescriptionAnalysisControl =
-            prescriptionAnalysisControl ?? PrescriptionAnalysisControl(),
-        checkMedicationDetail =
-            checkMedicationDetail ?? CheckMedicationDetail(),
-        checkSavedMedication = checkSavedMedication ?? CheckSavedMedication(),
-        checkSchedule = checkSchedule ?? CheckSchedule(),
-        checkTodayMedicationInfo =
-            checkTodayMedicationInfo ?? CheckTodayMedicationInfo(),
-        checkHealthRecommendation =
-            checkHealthRecommendation ?? CheckHealthRecommendation(),
-        setNotification = setNotification ?? SetNotification(),
-        manageUserSetting = manageUserSetting ?? ManageUserSetting(),
+    http.Client? apiClient,
+  })  : _apiClient = apiClient ?? http.Client(),
+        _ownsApiClient = apiClient == null,
         notificationService =
-            notificationService ?? MedicationNotificationService.instance;
+            notificationService ?? MedicationNotificationService.instance {
+    this.prescriptionAnalysisControl = prescriptionAnalysisControl ??
+        PrescriptionAnalysisControl(client: _apiClient);
+    this.checkMedicationDetail =
+        checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
+    this.checkSavedMedication =
+        checkSavedMedication ?? CheckSavedMedication(client: _apiClient);
+    this.checkSchedule = checkSchedule ?? CheckSchedule(client: _apiClient);
+    this.checkTodayMedicationInfo = checkTodayMedicationInfo ??
+        CheckTodayMedicationInfo(client: _apiClient);
+    this.checkHealthRecommendation = checkHealthRecommendation ??
+        CheckHealthRecommendation(client: _apiClient);
+    this.setNotification =
+        setNotification ?? SetNotification(client: _apiClient);
+    this.manageUserSetting =
+        manageUserSetting ?? ManageUserSetting(client: _apiClient);
+  }
 
   void setMedicationAccessScope({
     required String patientHash,
@@ -1302,6 +1312,9 @@ class MedBuddyViewModel extends ChangeNotifier {
     checkHealthRecommendation.dispose();
     setNotification.dispose();
     manageUserSetting.dispose();
+    if (_ownsApiClient) {
+      _apiClient.close();
+    }
     super.dispose();
   }
 }
