@@ -1,6 +1,7 @@
 # File Name: patient_guardian_link_control.py
 # Role: Control mapped from the PatientGuardianLinkControl box in ClassDiagram2.
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
@@ -22,6 +23,8 @@ _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
 # "caregiver" is accepted only as a legacy API role alias.
 _GUARDIAN_ROLES = {"guardian", "caregiver"}
+_PATIENT_ROLES = {"patient"}
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -122,9 +125,13 @@ class PatientGuardianLinkControl:
             self.db.refresh(link_code)
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Patient link code creation failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Patient link code creation failed: {exc}",
+                detail="Patient link code could not be created.",
             ) from exc
 
         return {
@@ -241,9 +248,13 @@ class PatientGuardianLinkControl:
             raise
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Patient-guardian link registration failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Patient-guardian link registration failed: {exc}",
+                detail="Patient-guardian link could not be registered.",
             ) from exc
 
         return {
@@ -326,9 +337,13 @@ class PatientGuardianLinkControl:
             self.db.refresh(link)
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Patient-guardian unlink failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Patient-guardian unlink failed: {exc}",
+                detail="Patient-guardian link could not be removed.",
             ) from exc
 
         return {
@@ -368,11 +383,30 @@ class PatientGuardianLinkControl:
     ) -> str:
         normalized_role = (role or "patient").strip().lower()
         if normalized_role in _GUARDIAN_ROLES:
+            if not user_hash or not user_hash.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="user_hash is required for guardian access.",
+                )
             return self.get_linked_patient_hash(
-                user_hash or patient_hash,
+                user_hash,
                 patient_hash,
             )
-        return normalize_patient_hash(user_hash or patient_hash)
+        if normalized_role not in _PATIENT_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported medication access role: {role}",
+            )
+
+        normalized_patient_hash = normalize_patient_hash(patient_hash or user_hash)
+        if user_hash and patient_hash:
+            normalized_user_hash = normalize_patient_hash(user_hash)
+            if normalized_user_hash != normalized_patient_hash:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Patient access cannot target another patient hash.",
+                )
+        return normalized_patient_hash
 
     # Function Name: get_linked_patient_hash
     # Description:

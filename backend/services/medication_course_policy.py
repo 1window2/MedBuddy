@@ -5,8 +5,14 @@ from datetime import date, timedelta
 import re
 from typing import Any
 
-_SCHEDULE_COUNT_PATTERN = re.compile(r"\d+")
-_FREQUENCY_COUNT_PATTERN = re.compile(r"(\d+)\s*(?:회|번|times?|x)", re.IGNORECASE)
+_SCHEDULE_COUNT_PATTERN = re.compile(r"-?\d+")
+_FREQUENCY_COUNT_PATTERN = re.compile(
+    r"(-?\d+)\s*(?:회|번|times?|x)",
+    re.IGNORECASE,
+)
+
+MAX_MEDICATION_COURSE_DAYS = 3650
+MAX_DAILY_FREQUENCY = 4
 
 
 # Class Name: MedicationCoursePolicy
@@ -88,7 +94,10 @@ class MedicationCoursePolicy:
     # Returns:
     # - Parsed integer, or 0 when no number is available.
     def read_total_days(self, raw_total_days: str | None) -> int:
-        return self._read_schedule_count(raw_total_days)
+        return self._read_schedule_count(
+            raw_total_days,
+            maximum=MAX_MEDICATION_COURSE_DAYS,
+        )
 
     # Function Name: read_frequency_count
     # Description:
@@ -102,17 +111,35 @@ class MedicationCoursePolicy:
             return 0
         frequency_match = _FREQUENCY_COUNT_PATTERN.search(raw_frequency)
         if frequency_match is not None:
-            return int(frequency_match.group(1))
+            return self._bounded_positive_count(
+                frequency_match.group(1),
+                MAX_DAILY_FREQUENCY,
+            )
 
         matches = _SCHEDULE_COUNT_PATTERN.findall(raw_frequency)
         if not matches:
             return 0
-        return int(matches[-1])
+        return self._bounded_positive_count(matches[-1], MAX_DAILY_FREQUENCY)
 
-    def _read_schedule_count(self, raw_value: str | None) -> int:
+    def _read_schedule_count(
+        self,
+        raw_value: str | None,
+        *,
+        maximum: int,
+    ) -> int:
         if not raw_value:
             return 0
         match = _SCHEDULE_COUNT_PATTERN.search(raw_value)
         if match is None:
             return 0
-        return int(match.group(0))
+        return self._bounded_positive_count(match.group(0), maximum)
+
+    @staticmethod
+    def _bounded_positive_count(raw_value: str, maximum: int) -> int:
+        try:
+            parsed_value = int(raw_value)
+        except ValueError:
+            return 0
+        if parsed_value <= 0:
+            return 0
+        return min(parsed_value, maximum)

@@ -66,6 +66,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
+  int _prescriptionOperationId = 0;
 
   AnalysisProgressStep _analysisProgressStep =
       AnalysisProgressStep.prescriptionRecognition;
@@ -239,8 +240,29 @@ class MedBuddyViewModel extends ChangeNotifier {
     final normalizedUserHash = userHash == null || userHash.trim().isEmpty
         ? null
         : PatientHash.normalizePatientHash(userHash);
-    final normalizedRole =
+    final requestedRole =
         role.trim().isEmpty ? 'patient' : role.trim().toLowerCase();
+    final normalizedRole =
+        requestedRole == 'caregiver' ? 'guardian' : requestedRole;
+    if (normalizedRole != 'patient' && normalizedRole != 'guardian') {
+      throw ArgumentError.value(
+        role,
+        'role',
+        'Only patient and guardian medication access roles are supported.',
+      );
+    }
+    if (normalizedRole == 'guardian' && normalizedUserHash == null) {
+      throw ArgumentError(
+        'userHash is required for guardian medication access.',
+      );
+    }
+    if (normalizedRole == 'patient' &&
+        normalizedUserHash != null &&
+        normalizedUserHash != normalizedPatientHash) {
+      throw ArgumentError(
+        'Patient medication access cannot target another patient hash.',
+      );
+    }
 
     if (_medicationPatientHash == normalizedPatientHash &&
         _medicationUserHash == normalizedUserHash &&
@@ -323,6 +345,9 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
 
+    final operationId = _beginPrescriptionOperation();
+    final recognizedSchedules =
+        List<MedicationSchedule>.of(_recognizedMedicationScheduleList);
     _analysisProgressStep = AnalysisProgressStep.medicationAnalysis;
     _prescriptionFlowState = PrescriptionFlowState.analyzingMedication;
     _statusMessage = '약물 정보를 분석 중입니다...';
@@ -332,7 +357,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       final analysisResults = await Future.wait(
-        _recognizedMedicationScheduleList.map((schedule) async {
+        recognizedSchedules.map((schedule) async {
           try {
             final detail = await checkMedicationDetail.requestMedicationDetail(
               schedule,
@@ -346,6 +371,9 @@ class MedBuddyViewModel extends ChangeNotifier {
           }
         }),
       );
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       final analyzedMedicationList = analysisResults
           .whereType<AnalyzedMedication>()
           .toList(growable: false);
@@ -367,8 +395,14 @@ class MedBuddyViewModel extends ChangeNotifier {
           : '처방전 분석이 완료되었습니다.';
       notifyListeners();
     } on StateError catch (error) {
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       _showAnalysisFailure(error.message);
     } catch (_) {
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       _showAnalysisFailure('처방전 분석 중 오류가 발생했습니다.');
     }
   }
@@ -1019,6 +1053,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   void clearAnalysisResult() {
+    _cancelPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
     _analyzedMedicationList = [];
     _completedMedicationSaveIndexes.clear();
@@ -1061,6 +1096,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     }) imageRequest,
     required String cancelledMessage,
   }) async {
+    final operationId = _beginPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
     _analyzedMedicationList = [];
     _analysisErrorMessage = '';
@@ -1069,8 +1105,15 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       final result = await imageRequest(
-        onImageSelected: _showPrescriptionRecognitionProgress,
+        onImageSelected: () {
+          if (_isCurrentPrescriptionOperation(operationId)) {
+            _showPrescriptionRecognitionProgress();
+          }
+        },
       );
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       if (result == null) {
         _statusMessage = cancelledMessage;
         _prescriptionFlowState = PrescriptionFlowState.idle;
@@ -1091,10 +1134,29 @@ class MedBuddyViewModel extends ChangeNotifier {
           : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.';
       notifyListeners();
     } on StateError catch (error) {
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       _showAnalysisFailure(error.message);
     } catch (_) {
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
       _showAnalysisFailure('처방전 인식 중 오류가 발생했습니다.');
     }
+  }
+
+  int _beginPrescriptionOperation() {
+    _prescriptionOperationId += 1;
+    return _prescriptionOperationId;
+  }
+
+  void _cancelPrescriptionOperation() {
+    _prescriptionOperationId += 1;
+  }
+
+  bool _isCurrentPrescriptionOperation(int operationId) {
+    return _prescriptionOperationId == operationId;
   }
 
   void _showPrescriptionRecognitionProgress() {
@@ -1197,14 +1259,12 @@ class MedBuddyViewModel extends ChangeNotifier {
     _scopedCheckTodayMedicationInfo?.dispose();
     _scopedCheckHealthRecommendation?.dispose();
     _scopedSetNotification?.dispose();
-    _scopedCheckSavedMedication = CheckSavedMedication(
-      baseUrl: checkSavedMedication.baseUrl,
+    _scopedCheckSavedMedication = checkSavedMedication.forScope(
       patientHash: _medicationPatientHash,
       userHash: _medicationUserHash,
       role: _medicationRole,
     );
-    _scopedCheckSchedule = CheckSchedule(
-      baseUrl: checkSchedule.baseUrl,
+    _scopedCheckSchedule = checkSchedule.forScope(
       patientHash: _medicationPatientHash,
       userHash: _medicationUserHash,
       role: _medicationRole,
@@ -1228,6 +1288,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelPrescriptionOperation();
     _scopedCheckSavedMedication?.dispose();
     _scopedCheckSchedule?.dispose();
     _scopedCheckTodayMedicationInfo?.dispose();

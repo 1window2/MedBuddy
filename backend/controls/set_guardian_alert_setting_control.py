@@ -1,6 +1,8 @@
 # File Name: set_guardian_alert_setting_control.py
 # Role: Control class for guardian alert settings.
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +15,8 @@ from entities.guardian_alert_setting_entity import (
     enabled_from_alert_option,
 )
 from entities.patient_hash_entity import normalize_patient_hash
+
+logger = logging.getLogger(__name__)
 
 
 # Class Name: SetGuardianAlertSetting
@@ -142,9 +146,13 @@ class SetGuardianAlertSetting:
             raise
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Guardian alert setting persistence failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Guardian alert setting save failed: {exc}",
+                detail="Guardian alert setting could not be saved.",
             ) from exc
 
     # Function Name: enableGuardianAlert
@@ -246,9 +254,13 @@ class SetGuardianAlertSetting:
             return existing_setting
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Guardian alert setting initialization failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Guardian alert setting initialization failed: {exc}",
+                detail="Guardian alert setting could not be initialized.",
             ) from exc
 
     def _update_existing_setting_after_conflict(
@@ -267,9 +279,13 @@ class SetGuardianAlertSetting:
             return self._persist_setting_state(setting, enabled)
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Guardian alert setting conflict recovery failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Guardian alert setting save failed: {exc}",
+                detail="Guardian alert setting could not be saved.",
             ) from exc
 
     def _persist_setting_state(

@@ -1,12 +1,16 @@
 # File Name: manage_user_setting_control.py
 # Role: Control class for user display and reading settings.
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.user_setting_entity import UserSetting, _UserSetting
+
+logger = logging.getLogger(__name__)
 
 
 # Class Name: ManageUserSetting
@@ -131,9 +135,13 @@ class ManageUserSetting:
             raise
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "User setting persistence failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"User setting save failed: {exc}",
+                detail="User settings could not be saved.",
             ) from exc
 
     def _find_setting(self, user_hash: str) -> _UserSetting | None:

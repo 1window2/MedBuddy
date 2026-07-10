@@ -34,6 +34,22 @@ class CheckSchedule {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
+  CheckSchedule forScope({
+    required String patientHash,
+    String? userHash,
+    String role = 'patient',
+  }) {
+    return CheckSchedule(
+      baseUrl: baseUrl,
+      patientHash: PatientHash.normalizePatientHash(patientHash),
+      userHash: userHash == null || userHash.trim().isEmpty
+          ? null
+          : PatientHash.normalizePatientHash(userHash),
+      role: role.trim().isEmpty ? 'patient' : role.trim().toLowerCase(),
+      client: _client,
+    );
+  }
+
   // Function Name: requestMedicationSchedule
   // Description:
   // - Class diagram compatible wrapper for today's medication schedule lookup.

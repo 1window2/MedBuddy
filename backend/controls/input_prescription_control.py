@@ -26,6 +26,7 @@ from entities.prescription_analysis_entity import (
 from services.prescription_parser import normalize_prescription_payload
 
 logger = logging.getLogger(__name__)
+MAX_PRESCRIPTION_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -304,7 +305,10 @@ class _PrescriptionMedicationNameVerifier:
             )
             response_data = json.loads(self._clean_json_response(response.text))
         except Exception as exc:
-            logger.warning("Medication name AI fallback failed: %s", exc)
+            logger.warning(
+                "Medication name AI fallback failed: %s",
+                type(exc).__name__,
+            )
             return None
 
         if not isinstance(response_data, dict):
@@ -779,13 +783,17 @@ class PrescriptionAnalysisControl:
     # Returns:
     # - API-compatible dictionary containing medication schedule data.
     async def request_prescription_image(self, image_bytes: bytes) -> dict[str, object]:
+        self._validate_prescription_image(image_bytes)
         response_text = await self._extract_prescription_text(image_bytes)
         cleaned_text = self._clean_response_text(response_text)
 
         try:
             raw_data = json.loads(cleaned_text)
         except json.JSONDecodeError as exc:
-            logger.error("Prescription analysis JSON decoding failed:\n%s", response_text)
+            logger.error(
+                "Prescription analysis JSON decoding failed: response_length=%d",
+                len(response_text),
+            )
             raise ValueError("AI returned an invalid JSON response.") from exc
 
         safe_data = normalize_prescription_payload(
@@ -862,6 +870,13 @@ class PrescriptionAnalysisControl:
     # - Raw Gemini text response.
     async def _extract_prescription_text(self, image: bytes) -> str:
         return await self.ocr_service_boundary.extractPrescriptionData(image)
+
+    @staticmethod
+    def _validate_prescription_image(image: bytes) -> None:
+        if not image:
+            raise ValueError("Prescription image is empty.")
+        if len(image) > MAX_PRESCRIPTION_IMAGE_BYTES:
+            raise ValueError("Prescription image exceeds the 15 MB size limit.")
 
     # Function Name: _clean_response_text
     # Description:

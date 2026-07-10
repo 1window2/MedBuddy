@@ -57,7 +57,10 @@ class HealthRecommendationGenerator:
             )
             raw_data = json.loads(ai_response.text)
         except Exception as exc:
-            logger.error("Gemini health recommendation failed: %s", exc)
+            logger.error(
+                "Gemini health recommendation failed: %s",
+                type(exc).__name__,
+            )
             raise RuntimeError("건강 관리 추천 생성 중 오류가 발생했습니다.") from exc
 
         return self._normalize_response(raw_data, language)
@@ -190,6 +193,7 @@ class RequestHealthRecommendation:
             recommendation_generator or HealthRecommendationGenerator()
         )
         self.course_policy = course_policy or MedicationCoursePolicy()
+        self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
     # 함수명: request_health_recommendation
     # 함수역할:
@@ -212,7 +216,7 @@ class RequestHealthRecommendation:
             user_hash,
             role,
         )
-        SavedMedicationRetentionPolicy().cleanup_expired_medications(
+        self.retention_policy.cleanup_expired_medications(
             self.db,
             normalized_patient_hash,
         )
@@ -347,7 +351,10 @@ class RequestHealthRecommendation:
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
-            logger.warning("Health recommendation cache save failed: %s", exc)
+            logger.warning(
+                "Health recommendation cache save failed: %s",
+                type(exc).__name__,
+            )
 
     def _resolve_patient_hash(
         self,

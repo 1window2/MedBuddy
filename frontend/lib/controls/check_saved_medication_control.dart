@@ -56,6 +56,22 @@ class CheckSavedMedication {
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
+  CheckSavedMedication forScope({
+    required String patientHash,
+    String? userHash,
+    String role = 'patient',
+  }) {
+    return CheckSavedMedication(
+      baseUrl: baseUrl,
+      patientHash: PatientHash.normalizePatientHash(patientHash),
+      userHash: userHash == null || userHash.trim().isEmpty
+          ? null
+          : PatientHash.normalizePatientHash(userHash),
+      role: role.trim().isEmpty ? 'patient' : role.trim().toLowerCase(),
+      client: _client,
+    );
+  }
+
   // 함수명: saveMedicationDetail
   // 함수역할:
   // - 분석된 약 상세 정보와 처방전 일정 정보를 저장 API로 보낸다.

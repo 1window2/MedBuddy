@@ -43,7 +43,10 @@ class GeminiVisionAPI:
                 temperature=0.0,
             ),
         )
-        return response.text
+        response_text = response.text
+        if not response_text or not response_text.strip():
+            raise ValueError("OCR service returned an empty response.")
+        return response_text
 
 
 class OCRServiceBoundary:

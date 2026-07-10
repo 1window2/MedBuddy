@@ -3,6 +3,7 @@
 
 import math
 import re
+from datetime import date
 from typing import Any
 
 from entities.prescription_analysis_entity import (
@@ -13,6 +14,7 @@ from entities.prescription_analysis_entity import (
 
 
 INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
+MAX_MEDICATION_NAME_LENGTH = 200
 
 DATE_PATTERN = re.compile(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})")
 LEADING_MARKER_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*")
@@ -115,7 +117,10 @@ def normalize_date(text: str) -> str | None:
         return None
 
     year, month, day = match.groups()
-    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    try:
+        return date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return None
 
 
 def extract_patient_name(line: str) -> str | None:
@@ -148,13 +153,20 @@ def parse_medication_line(line: str) -> dict[str, Any] | None:
 
     name, dose_raw, frequency_raw, days_raw = medication_fields
     cleaned_name = _clean_medication_name(name)
-    if _is_unknown(cleaned_name):
+    if _is_unknown(cleaned_name) or len(cleaned_name) > MAX_MEDICATION_NAME_LENGTH:
         return None
 
     dose = _parse_number(dose_raw)
     frequency_per_day = _parse_int(frequency_raw)
     duration_days = _parse_int(days_raw)
-    if dose is None or frequency_per_day is None or duration_days is None:
+    if (
+        dose is None
+        or dose <= 0
+        or frequency_per_day is None
+        or frequency_per_day <= 0
+        or duration_days is None
+        or duration_days <= 0
+    ):
         return None
 
     dosage_text = _format_numeric_text(dose_raw)
@@ -229,8 +241,7 @@ def normalize_prescription_payload(data: dict[str, Any]) -> dict[str, Any]:
             HOSPITAL_NAME_KEYS,
             default=INFO_UNAVAILABLE,
         ),
-        prescription_date=normalized_date
-        or _read_first_text(data, PRESCRIPTION_DATE_KEYS, default=INFO_UNAVAILABLE),
+        prescription_date=normalized_date or INFO_UNAVAILABLE,
         medication_candidates=medication_candidate_list.deduplicated(),
     )
     return analysis_result.to_payload(raw_medication_count=len(raw_items))
@@ -241,7 +252,7 @@ def normalize_prescription_medication(raw_item: Any) -> MedicationCandidate | No
         return None
 
     drug_name = _clean_medication_name(_read_first_text(raw_item, DRUG_NAME_KEYS))
-    if _is_unknown(drug_name):
+    if _is_unknown(drug_name) or len(drug_name) > MAX_MEDICATION_NAME_LENGTH:
         return None
 
     return MedicationCandidate(

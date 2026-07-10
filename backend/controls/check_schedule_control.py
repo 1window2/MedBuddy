@@ -1,6 +1,7 @@
 # File Name: check_schedule_control.py
 # Role: Control class mapped from the CheckSchedule box in ClassDiagram2.
 
+import logging
 from datetime import date
 
 from fastapi import HTTPException
@@ -21,6 +22,8 @@ from entities.saved_medication_entity import _SavedMedication
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
+logger = logging.getLogger(__name__)
+
 
 # Class Name: CheckSchedule
 # Role: Requests and updates medication schedules.
@@ -37,6 +40,7 @@ class CheckSchedule:
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
+        self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
     # Function Name: requestMedicationSchedule
     # Description:
@@ -92,7 +96,7 @@ class CheckSchedule:
             user_hash,
             role,
         )
-        SavedMedicationRetentionPolicy().cleanup_expired_medications(
+        self.retention_policy.cleanup_expired_medications(
             self.db,
             normalized_patient_hash,
         )
@@ -215,9 +219,13 @@ class CheckSchedule:
             self.db.refresh(medication)
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Medication completion status update failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Status update failed: {exc}",
+                detail="Medication status could not be updated.",
             ) from exc
 
         return {

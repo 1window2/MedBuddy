@@ -1,6 +1,7 @@
 # File Name: check_saved_medication_control.py
 # Role: Control class for saved medication persistence workflows.
 
+import logging
 from datetime import date, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
+
+logger = logging.getLogger(__name__)
 
 
 # Class Name: CheckSavedMedication
@@ -30,6 +33,7 @@ class CheckSavedMedication:
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
+        self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
     # Function Name: save_medication_detail
     # Description:
@@ -80,7 +84,14 @@ class CheckSavedMedication:
             }
         except Exception as exc:
             self.db.rollback()
-            raise HTTPException(status_code=500, detail=f"Save failed: {exc}") from exc
+            logger.error(
+                "Saved medication persistence failed: %s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Medication could not be saved.",
+            ) from exc
 
     # Function Name: saveMedicationDetail
     # Description:
@@ -115,7 +126,7 @@ class CheckSavedMedication:
             user_hash,
             role,
         )
-        SavedMedicationRetentionPolicy().cleanup_expired_medications(
+        self.retention_policy.cleanup_expired_medications(
             self.db,
             normalized_patient_hash,
         )
@@ -173,7 +184,14 @@ class CheckSavedMedication:
             raise
         except Exception as exc:
             self.db.rollback()
-            raise HTTPException(status_code=500, detail=f"Delete failed: {exc}") from exc
+            logger.error(
+                "Saved medication deletion failed: %s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Medication could not be deleted.",
+            ) from exc
 
     # Function Name: requestDelete
     # Description:

@@ -24,7 +24,10 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
-from controls.input_prescription_control import PrescriptionAnalysisControl
+from controls.input_prescription_control import (
+    MAX_PRESCRIPTION_IMAGE_BYTES,
+    PrescriptionAnalysisControl,
+)
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -86,8 +89,8 @@ async def identify_medication(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("Identify API internal error: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {exc}") from exc
+        logger.error("Identify API internal error: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
 
 
 # Function Name: save_medication
@@ -132,8 +135,11 @@ async def get_saved_medications(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Saved medication lookup failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"불러오기 실패: {exc}") from exc
+        logger.error("Saved medication lookup failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=500,
+            detail="저장된 복약 정보를 불러오지 못했습니다.",
+        ) from exc
 
 
 # Function Name: get_today_medication_schedule
@@ -162,10 +168,13 @@ async def get_today_medication_schedule(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Today medication schedule lookup failed: %s", exc, exc_info=True)
+        logger.error(
+            "Today medication schedule lookup failed: %s",
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Schedule lookup failed: {exc}",
+            detail="오늘의 복약 일정을 불러오지 못했습니다.",
         ) from exc
 
 
@@ -197,10 +206,13 @@ async def get_today_medication_info(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Today medication info lookup failed: %s", exc, exc_info=True)
+        logger.error(
+            "Today medication info lookup failed: %s",
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Today medication info lookup failed: {exc}",
+            detail="오늘의 복약 정보를 불러오지 못했습니다.",
         ) from exc
 
 
@@ -430,10 +442,10 @@ async def get_health_recommendation(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Health recommendation failed: %s", exc, exc_info=True)
+        logger.error("Health recommendation failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=500,
-            detail=f"건강 관리 추천 생성 실패: {exc}",
+            detail="건강 관리 추천을 생성하지 못했습니다.",
         ) from exc
 
 
@@ -627,7 +639,14 @@ async def parse_prescription_endpoint(
             "parsed": parsed_data,
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"처방전 파싱 실패: {exc}") from exc
+        logger.error(
+            "Legacy prescription parsing failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="처방전 텍스트를 파싱하지 못했습니다.",
+        ) from exc
 
 
 # Function Name: upload_and_parse_prescription
@@ -646,10 +665,9 @@ async def upload_and_parse_prescription(
     ),
 ) -> dict[str, object]:
     try:
-        image_bytes = await file.read()
+        image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
         logger.info(
-            "Prescription image upload received: filename=%s, content_type=%s, bytes=%d",
-            file.filename,
+            "Prescription image upload received: content_type=%s, bytes=%d",
             file.content_type,
             len(image_bytes),
         )
@@ -657,10 +675,13 @@ async def upload_and_parse_prescription(
             image_bytes
         )
     except ValueError as exc:
-        logger.warning("Prescription image upload rejected: %s", exc, exc_info=True)
+        logger.warning("Prescription image upload rejected: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("Prescription image parsing failed: %s", exc, exc_info=True)
+        logger.error(
+            "Prescription image parsing failed: %s",
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=500,
             detail="데이터 추출 중 서버 오류가 발생했습니다.",

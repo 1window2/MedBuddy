@@ -306,7 +306,7 @@ class _MedicationDetailCache:
             if not cached_data:
                 return None
 
-            logger.info("[Redis] cache hit for '%s'.", drug_name)
+            logger.info("[Redis] medication detail cache hit.")
             cached_items = json.loads(cached_data)
             if not isinstance(cached_items, list):
                 return None
@@ -352,9 +352,12 @@ class _MedicationDetailCache:
                 self.CACHE_TTL_SECONDS,
                 json.dumps(payload, ensure_ascii=False),
             )
-            logger.info("[Redis] cached medication detail for '%s'.", drug_name)
+            logger.info("[Redis] medication detail cached.")
         except Exception as exc:
             self._disable_cache("save", exc)
+
+    async def close(self) -> None:
+        await self.redis_client.aclose()
 
     def _cache_key(self, drug_name: str) -> str:
         return f"drug_info:{drug_name}"
@@ -364,7 +367,7 @@ class _MedicationDetailCache:
         logger.warning(
             "Redis %s failed; disabling medication cache for this process: %s",
             operation,
-            exc,
+            type(exc).__name__,
         )
 
 
@@ -404,7 +407,10 @@ class _PublicDrugDataPortal:
             )
             return items
         except Exception as exc:
-            logger.warning("Basic public drug API lookup failed: %s", exc)
+            logger.warning(
+                "Basic public drug API lookup failed: %s",
+                type(exc).__name__,
+            )
             return []
 
     # Function Name: search_advanced_drug_info
@@ -577,10 +583,7 @@ class _MedicationSummaryGenerator:
         - 주의: {raw_warning}
         """
 
-        logger.info(
-            "[Gemini] requesting advanced approval summary for '%s'.",
-            actual_item_name,
-        )
+        logger.info("[Gemini] requesting advanced approval summary.")
 
         try:
             ai_response = await self.ai_client.aio.models.generate_content(
@@ -590,7 +593,7 @@ class _MedicationSummaryGenerator:
             )
             summary_data = json.loads(ai_response.text)
         except Exception as exc:
-            logger.error("Gemini AI summary failed: %s", exc)
+            logger.error("Gemini AI summary failed: %s", type(exc).__name__)
             raise RuntimeError("AI 요약 처리 중 오류가 발생했습니다.") from exc
 
         return MedicationDetail(
@@ -644,8 +647,7 @@ class _LocalMedicationCatalog:
         basic_items = self._search_basic(drug_name)
         if basic_items:
             logger.info(
-                "[Local DB] e약은요 lookup succeeded for '%s' (%s items).",
-                drug_name,
+                "[Local DB] e약은요 lookup succeeded (%s items).",
                 len(basic_items),
             )
             return await self._build_basic_details(basic_items)
@@ -654,7 +656,7 @@ class _LocalMedicationCatalog:
         if not approval_items:
             return []
 
-        logger.info("[Local DB] approval lookup succeeded for '%s'.", drug_name)
+        logger.info("[Local DB] approval lookup succeeded.")
         return [await self._build_approval_detail(drug_name, approval_items[0])]
 
     def _search_basic(self, drug_name: str, limit: int = 3) -> list[_DrugBasicInfo]:
@@ -801,10 +803,7 @@ class _LocalMedicationCatalog:
                 if normalized_item is not None:
                     return normalized_item
         except json.JSONDecodeError:
-            logger.warning(
-                "Local approval raw_json decode failed: item_name=%s",
-                approval_item.item_name,
-            )
+            logger.warning("Local approval raw_json decode failed.")
 
         return self._approval_columns_to_raw_item(approval_item)
 
@@ -914,7 +913,10 @@ class _LocalMedicationCatalog:
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
-            logger.warning("Failed to persist local approval summary: %s", exc)
+            logger.warning(
+                "Failed to persist local approval summary: %s",
+                type(exc).__name__,
+            )
 
     @classmethod
     def _normalize_name(cls, name: str) -> str:
@@ -983,11 +985,7 @@ class CheckMedicationDetail:
         if not search_keywords:
             raise ValueError("Extracted medication text is empty.")
 
-        logger.info(
-            "Medication lookup keywords for '%s': %s",
-            normalized_text,
-            search_keywords,
-        )
+        logger.info("Medication lookup generated %s candidate(s).", len(search_keywords))
 
         medication_details: list[MedicationDetail] = []
         for search_keyword in search_keywords:
@@ -1046,24 +1044,17 @@ class CheckMedicationDetail:
         )
         if basic_items:
             logger.info(
-                "[Basic API] '%s' search succeeded (%s items)",
-                drug_name,
+                "[Basic API] search succeeded (%s items)",
                 len(basic_items),
             )
             return await self._build_basic_drug_infos(basic_items)
 
-        logger.info(
-            "[Basic API] no result. Trying Advanced API fallback: '%s'",
-            drug_name,
-        )
+        logger.info("[Basic API] no result. Trying Advanced API fallback.")
         advanced_items = await self.public_drug_data_portal.search_advanced_drug_info(
             drug_name
         )
         if not advanced_items:
-            logger.warning(
-                "[%s] no drug information found in public drug databases.",
-                drug_name,
-            )
+            logger.warning("No drug information found in public drug databases.")
             return []
 
         advanced_drug = await self.summary_generator.summarize_advanced_item(

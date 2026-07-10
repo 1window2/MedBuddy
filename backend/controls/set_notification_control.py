@@ -1,6 +1,8 @@
 # File Name: set_notification_control.py
 # Role: Control class for patient medication alarm settings.
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +14,8 @@ from entities.medication_alarm_entity import (
     default_alarm_hour,
     valid_alarm_slot_keys,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Class Name: SetNotification
@@ -225,9 +229,13 @@ class SetNotification:
             )
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Medication alarm persistence failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Medication alarm save failed: {exc}",
+                detail="Medication alarm could not be saved.",
             ) from exc
 
     # Function Name: disableAlarmSetting
@@ -300,9 +308,13 @@ class SetNotification:
             )
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Medication alarm disable failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Medication alarm disable failed: {exc}",
+                detail="Medication alarm could not be disabled.",
             ) from exc
 
     def _resolve_patient_hash(
@@ -372,9 +384,13 @@ class SetNotification:
             }
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Medication alarm conflict recovery failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Medication alarm save failed: {exc}",
+                detail="Medication alarm could not be saved.",
             ) from exc
 
     def _disable_existing_alarm_after_conflict(
@@ -399,9 +415,13 @@ class SetNotification:
             }
         except Exception as exc:
             self.db.rollback()
+            logger.error(
+                "Medication alarm disable conflict recovery failed: %s",
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
-                detail=f"Medication alarm disable failed: {exc}",
+                detail="Medication alarm could not be disabled.",
             ) from exc
 
     def _default_setting_row(
