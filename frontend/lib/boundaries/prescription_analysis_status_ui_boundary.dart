@@ -40,7 +40,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFFEFFFF8), Colors.white],
+              colors: [MedBuddyColors.analysisBackground, Colors.white],
             ),
           ),
           child: Center(
@@ -342,7 +342,7 @@ class _SuccessMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 17),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
+        color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(

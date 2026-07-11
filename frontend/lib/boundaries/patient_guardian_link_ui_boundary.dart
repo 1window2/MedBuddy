@@ -44,7 +44,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
   Map<String, GuardianAlertSetting> _guardianAlertSettings = const {};
   Set<String> _guardianAlertLoadingKeys = const {};
   String _statusMessage =
-      '\uD604\uC7AC \uC0AC\uC6A9\uC790 \uD574\uC2DC\uB85C \uC5F0\uB3D9 \uC0C1\uD0DC\uB97C \uD655\uC778\uD569\uB2C8\uB2E4.';
+      '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
   bool _isLoading = false;
 
   @override
@@ -67,44 +67,61 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
+      backgroundColor: Colors.white,
       body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            _LinkHeader(onBackRequested: () => Navigator.pop(context)),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 22, 24, 32),
-                children: [
-                  _StatusCard(
-                    statusMessage: _statusMessage,
-                    isLoading: _isLoading,
-                  ),
-                  const SizedBox(height: 16),
-                  _CurrentUserCard(
-                    controller: _userHashController,
-                    onRefreshRequested: _refreshLinks,
-                    onGeneratePatientCodeRequested: _requestPatientCode,
-                  ),
-                  const SizedBox(height: 16),
-                  _RegisterPatientCard(
-                    controller: _patientCodeController,
-                    onRegisterRequested: _registerPatientCode,
-                  ),
-                  const SizedBox(height: 16),
-                  _LinkListCard(
-                    links: _links,
-                    currentUserHash: _currentUserHash,
-                    guardianAlertSettings: _guardianAlertSettings,
-                    guardianAlertLoadingKeys: _guardianAlertLoadingKeys,
-                    onUnlinkRequested: _requestUnlink,
-                    onGuardianAlertChanged: _updateGuardianAlertSetting,
-                  ),
-                ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(42, 24, 42, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconButton(
+                tooltip: '닫기',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 42,
+                  height: 42,
+                ),
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.close,
+                  color: MedBuddyColors.textMuted,
+                  size: 30,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              const Text(
+                '환자/보호자 연동하기',
+                style: TextStyle(
+                  color: Color(0xFF0A0A0A),
+                  fontSize: 27,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 26),
+              _StatusCard(
+                statusMessage: _statusMessage,
+                isLoading: _isLoading,
+              ),
+              const SizedBox(height: 24),
+              Expanded(
+                child: _LinkListCard(
+                  links: _links,
+                  currentUserHash: _currentUserHash,
+                  guardianAlertSettings: _guardianAlertSettings,
+                  guardianAlertLoadingKeys: _guardianAlertLoadingKeys,
+                  onUnlinkRequested: _requestUnlink,
+                  onGuardianAlertChanged: _updateGuardianAlertSetting,
+                ),
+              ),
+              const SizedBox(height: 20),
+              _LinkActionFooter(
+                onGeneratePatientCodeRequested: _requestPatientCode,
+                onRegisterPatientRequested: _showRegisterPatientDialog,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -121,7 +138,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
         setState(() {
           _links = links;
           _statusMessage = links.isEmpty
-              ? '\uC544\uC9C1 \uC5F0\uB3D9\uB41C \uD658\uC790/\uBCF4\uD638\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
+              ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
               : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
         });
         _applyMedicationScope(links);
@@ -151,16 +168,17 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     });
   }
 
-  Future<void> _registerPatientCode() async {
+  Future<bool> _registerPatientCode() async {
     final patientCode = _patientCodeController.text.trim();
     if (patientCode.isEmpty) {
       setState(() {
         _statusMessage =
             '\uB4F1\uB85D\uD560 \uD658\uC790 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.';
       });
-      return;
+      return false;
     }
 
+    var registered = false;
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
@@ -174,6 +192,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
           _patientCodeController.clear();
           _statusMessage =
               '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
+          registered = true;
         });
         _applyMedicationScope(links);
         await _requestGuardianAlertSettings(links);
@@ -181,6 +200,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
         control.dispose();
       }
     });
+    return registered;
   }
 
   Future<void> _requestUnlink(PatientGuardianLink link) async {
@@ -404,39 +424,104 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
       builder: (context) => _PatientCodeDialog(patientCode: patientCode),
     );
   }
+
+  Future<void> _showRegisterPatientDialog() {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (context) => _RegisterPatientDialog(
+        userHashController: _userHashController,
+        patientCodeController: _patientCodeController,
+        onRegisterRequested: _registerPatientCode,
+        statusMessageProvider: () => _statusMessage,
+      ),
+    );
+  }
 }
 
-class _LinkHeader extends StatelessWidget {
-  final VoidCallback onBackRequested;
+class _LinkActionFooter extends StatelessWidget {
+  final VoidCallback onGeneratePatientCodeRequested;
+  final VoidCallback onRegisterPatientRequested;
 
-  const _LinkHeader({required this.onBackRequested});
+  const _LinkActionFooter({
+    required this.onGeneratePatientCodeRequested,
+    required this.onRegisterPatientRequested,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      width: double.infinity,
-      color: MedBuddyColors.topBar,
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Back',
-            onPressed: onBackRequested,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
+    return Row(
+      children: [
+        Expanded(
+          child: _LinkActionButton(
+            title: '환자 코드 생성',
+            subtitle: '(환자 휴대폰)',
+            onPressed: onGeneratePatientCodeRequested,
           ),
-          const Expanded(
-            child: Text(
-              '\uD658\uC790/\uBCF4\uD638\uC790 \uC5F0\uB3D9',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _LinkActionButton(
+            title: '환자 관리 등록',
+            subtitle: '(보호자 휴대폰)',
+            onPressed: onRegisterPatientRequested,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LinkActionButton extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onPressed;
+
+  const _LinkActionButton({
+    required this.title,
+    required this.subtitle,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(92),
+        foregroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: Colors.white,
+        side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
             ),
           ),
-          const SizedBox(width: 48),
+          const SizedBox(height: 5),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
         ],
       ),
     );
@@ -456,40 +541,32 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      constraints: const BoxConstraints(minHeight: 72),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: MedBuddyColors.surfaceSubtle,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
-        boxShadow: MedBuddyShadows.soft,
+        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: MedBuddyColors.mint,
-              shape: BoxShape.circle,
+          if (isLoading) ...[
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: MedBuddyColors.primary,
+                strokeWidth: 2.5,
+              ),
             ),
-            child: isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(9),
-                    child: CircularProgressIndicator(
-                      color: MedBuddyColors.primary,
-                      strokeWidth: 3,
-                    ),
-                  )
-                : const Icon(
-                    Icons.link_outlined,
-                    color: MedBuddyColors.primary,
-                    size: 24,
-                  ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
+            const SizedBox(width: 12),
+          ],
+          Flexible(
             child: Text(
               statusMessage,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
                 fontSize: 14,
@@ -504,54 +581,142 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-class _CurrentUserCard extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onRefreshRequested;
-  final VoidCallback onGeneratePatientCodeRequested;
+class _RegisterPatientDialog extends StatefulWidget {
+  final TextEditingController userHashController;
+  final TextEditingController patientCodeController;
+  final Future<bool> Function() onRegisterRequested;
+  final String Function() statusMessageProvider;
 
-  const _CurrentUserCard({
-    required this.controller,
-    required this.onRefreshRequested,
-    required this.onGeneratePatientCodeRequested,
+  const _RegisterPatientDialog({
+    required this.userHashController,
+    required this.patientCodeController,
+    required this.onRegisterRequested,
+    required this.statusMessageProvider,
   });
 
   @override
+  State<_RegisterPatientDialog> createState() => _RegisterPatientDialogState();
+}
+
+class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
+  bool _isRegistering = false;
+
+  @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      icon: Icons.person_outline,
-      title: '\uD604\uC7AC \uC0AC\uC6A9\uC790',
-      child: Column(
-        children: [
-          TextField(
-            controller: controller,
-            decoration: _inputDecoration(
-              '\uC0AC\uC6A9\uC790 \uD574\uC2DC',
-              PatientHash.defaultPatientHash,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 42),
+      child: Container(
+        width: 328,
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: MedBuddyRadii.card,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: '닫기',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
+                  ),
+                  onPressed:
+                      _isRegistering ? null : () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.close,
+                    color: MedBuddyColors.textMuted,
+                    size: 22,
+                  ),
+                ),
+                const Expanded(
+                  child: Text(
+                    '환자 관리 등록',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0A0A0A),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 36),
+              ],
             ),
-            textInputAction: TextInputAction.done,
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onRefreshRequested,
-                  icon: const Icon(Icons.refresh_outlined),
-                  label: const Text('\uC0C8\uB85C\uACE0\uCE68'),
-                ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: widget.userHashController,
+              enabled: !_isRegistering,
+              decoration: _inputDecoration(
+                '보호자 사용자 ID',
+                PatientHash.defaultPatientHash,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: onGeneratePatientCodeRequested,
-                  icon: const Icon(Icons.qr_code_2_outlined),
-                  label: const Text('\uCF54\uB4DC \uC0DD\uC131'),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: widget.patientCodeController,
+              enabled: !_isRegistering,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              decoration: _inputDecoration('환자 코드', 'ABCD1234'),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _handleRegisterRequested(),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: FilledButton(
+                onPressed: _isRegistering ? null : _handleRegisterRequested,
+                style: FilledButton.styleFrom(
+                  backgroundColor: MedBuddyColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
                 ),
+                child: _isRegistering
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : const Text('등록하기'),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Future<void> _handleRegisterRequested() async {
+    setState(() => _isRegistering = true);
+    final success = await widget.onRegisterRequested();
+    if (!mounted) {
+      return;
+    }
+    if (success) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() => _isRegistering = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(widget.statusMessageProvider())),
     );
   }
 }
@@ -668,7 +833,7 @@ class _PatientCodeDialog extends StatelessWidget {
             ),
             const SizedBox(height: 28),
             _PatientCodeNotice(
-              backgroundColor: Color(0xFFECFDF5),
+              backgroundColor: MedBuddyColors.successSurface,
               foregroundColor: MedBuddyColors.textBody,
               text:
                   '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
@@ -749,46 +914,6 @@ class _PatientCodeNotice extends StatelessWidget {
   }
 }
 
-class _RegisterPatientCard extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onRegisterRequested;
-
-  const _RegisterPatientCard({
-    required this.controller,
-    required this.onRegisterRequested,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      icon: Icons.group_add_outlined,
-      title: '\uD658\uC790 \uCF54\uB4DC \uB4F1\uB85D',
-      child: Column(
-        children: [
-          TextField(
-            controller: controller,
-            decoration: _inputDecoration(
-              '\uC5F0\uB3D9 \uCF54\uB4DC',
-              'ABCD1234',
-            ),
-            textCapitalization: TextCapitalization.characters,
-            textInputAction: TextInputAction.done,
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: onRegisterRequested,
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('\uD658\uC790 \uC5F0\uB3D9'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _LinkListCard extends StatelessWidget {
   final List<PatientGuardianLink> links;
   final String currentUserHash;
@@ -809,30 +934,29 @@ class _LinkListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      icon: Icons.supervisor_account_outlined,
-      title: '\uC5F0\uB3D9 \uBAA9\uB85D',
-      child: links.isEmpty
-          ? const _EmptyLinkList()
-          : Column(
-              children: [
-                for (final link in links) ...[
-                  _LinkedUserTile(
-                    link: link,
-                    currentUserHash: currentUserHash,
-                    guardianAlertSetting:
-                        guardianAlertSettings[_alertSettingKeyForLink(link)],
-                    isGuardianAlertLoading: guardianAlertLoadingKeys.contains(
-                      _alertSettingKeyForLink(link),
-                    ),
-                    onUnlinkRequested: () => onUnlinkRequested(link),
-                    onGuardianAlertChanged: (enabled) =>
-                        onGuardianAlertChanged(link, enabled),
-                  ),
-                  if (link != links.last) const SizedBox(height: 10),
-                ],
-              ],
-            ),
+    if (links.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: links.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final link = links[index];
+        return _LinkedUserTile(
+          link: link,
+          currentUserHash: currentUserHash,
+          guardianAlertSetting:
+              guardianAlertSettings[_alertSettingKeyForLink(link)],
+          isGuardianAlertLoading: guardianAlertLoadingKeys.contains(
+            _alertSettingKeyForLink(link),
+          ),
+          onUnlinkRequested: () => onUnlinkRequested(link),
+          onGuardianAlertChanged: (enabled) =>
+              onGuardianAlertChanged(link, enabled),
+        );
+      },
     );
   }
 }
@@ -843,7 +967,7 @@ class _LinkedUserTile extends StatelessWidget {
   final GuardianAlertSetting? guardianAlertSetting;
   final bool isGuardianAlertLoading;
   final VoidCallback onUnlinkRequested;
-  final ValueChanged<bool> onGuardianAlertChanged;
+  final Future<void> Function(bool enabled) onGuardianAlertChanged;
 
   const _LinkedUserTile({
     required this.link,
@@ -857,81 +981,66 @@ class _LinkedUserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MedBuddyColors.divider),
+        color: MedBuddyColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
       ),
       child: Column(
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: link.linked
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.textLight,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  link.linked ? Icons.link : Icons.link_off_outlined,
-                  color: Colors.white,
-                  size: 21,
+              const Expanded(
+                child: Text(
+                  '연동 정보',
+                  style: TextStyle(
+                    color: Color(0xFF0A0A0A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _displayHash(link.patientID),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '\uBCF4\uD638\uC790 ${_displayHash(link.guardianID)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+              if (_canConfigureGuardianAlert)
+                IconButton(
+                  tooltip: '보호자 알림 설정',
+                  onPressed: () => _showGuardianAlertDialog(context),
+                  icon: Icon(
+                    guardianAlertSetting?.enabled == true
+                        ? Icons.notifications_active_outlined
+                        : Icons.notifications_none_outlined,
+                    color: guardianAlertSetting?.enabled == true
+                        ? MedBuddyColors.primary
+                        : MedBuddyColors.textMuted,
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Unlink',
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: MedBuddyColors.primary,
-                ),
-                onPressed: onUnlinkRequested,
-              ),
             ],
           ),
-          if (_canConfigureGuardianAlert) ...[
-            SetGuardianAlertSettingUI(
-              setting: guardianAlertSetting ??
-                  GuardianAlertSetting(
-                    guardianID: link.guardianID,
-                    patientID: link.patientID,
-                  ),
-              isLoading: isGuardianAlertLoading,
-              onAlertOptionChanged: onGuardianAlertChanged,
+          const SizedBox(height: 10),
+          _LinkedIdentityField(
+            label: '사용자 ID',
+            value: _displayHash(link.patientID),
+          ),
+          const SizedBox(height: 10),
+          _LinkedIdentityField(
+            label: '보호자 ID',
+            value: _displayHash(link.guardianID),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: onUnlinkRequested,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFFB2C36),
+              minimumSize: const Size.fromHeight(48),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
-          ],
+            child: const Text('삭제하기'),
+          ),
         ],
       ),
     );
@@ -942,30 +1051,105 @@ class _LinkedUserTile extends StatelessWidget {
         link.guardianID == currentUserHash &&
         link.patientID.trim().isNotEmpty;
   }
+
+  void _showGuardianAlertDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 42),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '닫기',
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: const Icon(Icons.close),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        '보호자 알림 설정',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SetGuardianAlertSettingUI(
+                  setting: guardianAlertSetting ??
+                      GuardianAlertSetting(
+                        guardianID: link.guardianID,
+                        patientID: link.patientID,
+                      ),
+                  isLoading: isGuardianAlertLoading,
+                  onAlertOptionChanged: (enabled) {
+                    Navigator.pop(dialogContext);
+                    onGuardianAlertChanged(enabled);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class _EmptyLinkList extends StatelessWidget {
-  const _EmptyLinkList();
+class _LinkedIdentityField extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _LinkedIdentityField({
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 18),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.link_off_outlined,
-            color: MedBuddyColors.textLight,
-            size: 42,
-          ),
-          SizedBox(height: 10),
           Text(
-            '\uC5F0\uB3D9\uB41C \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
+            '$label :',
+            style: const TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF0A0A0A),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
             ),
           ),
         ],
@@ -976,55 +1160,6 @@ class _EmptyLinkList extends StatelessWidget {
 
 String _alertSettingKeyForLink(PatientGuardianLink link) {
   return '${link.guardianID}|${link.patientID}';
-}
-
-class _SectionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Widget child;
-
-  const _SectionCard({
-    required this.icon,
-    required this.title,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.cardBorder, width: 2),
-        boxShadow: MedBuddyShadows.card,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: MedBuddyColors.primary, size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
-    );
-  }
 }
 
 InputDecoration _inputDecoration(String labelText, String hintText) {

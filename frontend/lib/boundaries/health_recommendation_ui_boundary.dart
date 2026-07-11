@@ -204,7 +204,7 @@ class _HealthRecommendationContent extends StatelessWidget {
           title: text.diet,
           body: recommendation.dietRecommendation,
           icon: Icons.local_dining_outlined,
-          iconColor: const Color(0xFFE91E63),
+          iconColor: const Color(0xFFEC003F),
           headerColor: const Color(0xFFFFF1F2),
         ),
         const SizedBox(height: 16),
@@ -212,7 +212,7 @@ class _HealthRecommendationContent extends StatelessWidget {
           title: text.exercise,
           body: recommendation.exerciseRecommendation,
           icon: Icons.directions_walk_rounded,
-          iconColor: const Color(0xFF006DFF),
+          iconColor: const Color(0xFF155DFC),
           headerColor: const Color(0xFFEFF6FF),
         ),
         const SizedBox(height: 16),
@@ -303,9 +303,9 @@ class _CautionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF9E8),
+        color: const Color(0xFFFFFBEB),
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFFFD24C), width: 1.5),
+        border: Border.all(color: const Color(0xFFFEE685), width: 1.5),
         boxShadow: MedBuddyShadows.soft,
       ),
       child: Column(
@@ -315,13 +315,13 @@ class _CautionCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
             decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFFFFD24C))),
+              border: Border(bottom: BorderSide(color: Color(0xFFFEE685))),
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.error_outline,
-                  color: Color(0xFFFF8A00),
+                  color: Color(0xFFE17100),
                   size: 27,
                 ),
                 const SizedBox(width: 10),
@@ -369,7 +369,7 @@ class _CautionItem extends StatelessWidget {
           height: 10,
           margin: const EdgeInsets.only(top: 8),
           decoration: const BoxDecoration(
-            color: Color(0xFFF5B51B),
+            color: MedBuddyColors.slotMorning,
             shape: BoxShape.circle,
           ),
         ),

@@ -379,7 +379,7 @@ class _PreviewPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAFBF3),
+        color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(

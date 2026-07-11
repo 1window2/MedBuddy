@@ -79,7 +79,7 @@ class PrescriptionInputUI extends StatelessWidget {
             ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(42, 10, 42, 32),
+                padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
                 child: Column(
                   children: [
                     _ScheduleCard(
@@ -217,7 +217,7 @@ class PrescriptionInputUI extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFECFDF5), Colors.white],
+            colors: [MedBuddyColors.analysisBackground, Colors.white],
           ),
         ),
         child: Center(

@@ -48,7 +48,7 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(42, 20, 42, 104),
+              padding: const EdgeInsets.fromLTRB(42, 32, 42, 104),
               children: [
                 _DetailHeader(
                   title: '약 상세정보',
@@ -60,26 +60,39 @@ class _MedicationDetailUIState extends State<MedicationDetailUI> {
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
-                _DetailSection(
-                  icon: Icons.info_outline,
-                  title: '효능',
-                  body: widget.medicationDetail.efficacy,
+                _DetailQuestionSection(
+                  title: '이 약은 어디가 좋아지나요?',
+                  values: _summaryValues(widget.medicationDetail.efficacy),
                   scale: scale,
                 ),
-                _DetailSection(
-                  icon: Icons.schedule_outlined,
-                  title: '복용 방법',
-                  body: widget.medicationDetail.usageMethod,
+                const SizedBox(height: 24),
+                _DetailQuestionSection(
+                  title: '어떻게 먹나요?',
+                  values: [
+                    _dailyFrequencyLabel(
+                      widget.medicationDetail.dailyFrequency,
+                    ),
+                    _summaryValue(widget.medicationDetail.usageMethod),
+                  ],
                   scale: scale,
                 ),
-                _DetailSection(
-                  icon: Icons.warning_amber_outlined,
-                  title: '주의사항',
-                  body: widget.medicationDetail.warning,
+                const SizedBox(height: 24),
+                _RecommendedDosageCard(
+                  medicationDetail: widget.medicationDetail,
                   scale: scale,
-                  tone: _DetailSectionTone.warning,
                 ),
+                const SizedBox(height: 22),
                 _DetailedDosageGuideCard(
+                  medicationDetail: widget.medicationDetail,
+                  scale: scale,
+                ),
+                const SizedBox(height: 18),
+                _MedicationRiskCard(
+                  medicationDetail: widget.medicationDetail,
+                  scale: scale,
+                ),
+                const SizedBox(height: 18),
+                _MedicationChecklistCard(
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
                 ),
@@ -177,26 +190,44 @@ class _MedicationHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 226),
       padding: const EdgeInsets.fromLTRB(22, 28, 22, 25),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF4FF),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFEAF4FF), Color(0xFFDFECFE)],
+        ),
         borderRadius: BorderRadius.circular(17),
       ),
       child: Column(
         children: [
           _MedicationImageBox(imageUrl: medicationDetail.imageUrl),
           const SizedBox(height: 20),
-          Text(
-            medicationDetail.displayName,
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 18 * scale,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.medication_rounded,
+                color: MedBuddyColors.primary,
+                size: 22,
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  medicationDetail.displayName,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: const Color(0xFF0A0A0A),
+                    fontSize: 18 * scale,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -260,70 +291,183 @@ class _MedicationImageBox extends StatelessWidget {
   }
 }
 
-enum _DetailSectionTone {
-  normal,
-  warning,
-}
-
-class _DetailSection extends StatelessWidget {
-  final IconData icon;
+class _DetailQuestionSection extends StatelessWidget {
   final String title;
-  final String body;
+  final List<String> values;
   final double scale;
-  final _DetailSectionTone tone;
 
-  const _DetailSection({
-    required this.icon,
+  const _DetailQuestionSection({
     required this.title,
-    required this.body,
+    required this.values,
     required this.scale,
-    this.tone = _DetailSectionTone.normal,
   });
 
   @override
   Widget build(BuildContext context) {
-    final normalizedBody = body.trim().isEmpty ? '정보 없음' : body.trim();
-    final backgroundColor = tone == _DetailSectionTone.warning
-        ? const Color(0xFFFFEEF5)
-        : const Color(0xFFF8FAFC);
+    final visibleValues = values
+        .map((value) => _summaryValue(value))
+        .take(2)
+        .toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: const Color(0xFF0A0A0A),
+            fontSize: 16 * scale,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            for (int index = 0; index < visibleValues.length; index++) ...[
+              Expanded(
+                child: _DetailValueTile(
+                  value: visibleValues[index],
+                  scale: scale,
+                ),
+              ),
+              if (index != visibleValues.length - 1) const SizedBox(width: 12),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailValueTile extends StatelessWidget {
+  final String value;
+  final double scale;
+
+  const _DetailValueTile({
+    required this.value,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 86),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: MedBuddyColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MedBuddyColors.divider, width: 1.5),
+      ),
+      child: Text(
+        value,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: MedBuddyColors.textLight,
+          fontSize: 14 * scale,
+          height: 1.35,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _RecommendedDosageCard extends StatelessWidget {
+  final MedicationDetail medicationDetail;
+  final double scale;
+
+  const _RecommendedDosageCard({
+    required this.medicationDetail,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dosageLines = medicationDetail.detailedDosageGuideLines;
+    final warning = _summaryValue(medicationDetail.warning);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(20, 19, 20, 20),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
       decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
+        color: MedBuddyColors.successSurface,
+        borderRadius: BorderRadius.circular(18),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: MedBuddyColors.primary, size: 23),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
+          Text(
+            '권장된 복용방법',
+            style: TextStyle(
+              color: const Color(0xFF0A0A0A),
+              fontSize: 16 * scale,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 16),
+          for (int index = 0; index < dosageLines.length; index++) ...[
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 15 * scale,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                  ),
+                SizedBox(
+                  width: 24,
+                  child: index == 0
+                      ? const Icon(
+                          Icons.add_box_rounded,
+                          color: MedBuddyColors.primary,
+                          size: 18,
+                        )
+                      : null,
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  normalizedBody,
-                  style: TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 14 * scale,
-                    height: 1.55,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
+                Expanded(
+                  child: Text(
+                    dosageLines[index],
+                    style: TextStyle(
+                      color: const Color(0xFF0A0A0A),
+                      fontSize: 14 * scale,
+                      height: 1.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
               ],
+            ),
+            if (index != dosageLines.length - 1) const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 20),
+          Text(
+            '주의사항',
+            style: TextStyle(
+              color: const Color(0xFF0A0A0A),
+              fontSize: 16 * scale,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(18, 17, 18, 17),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFCE7F3),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              warning,
+              style: TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 14 * scale,
+                height: 1.55,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+              ),
             ),
           ),
         ],
@@ -343,43 +487,176 @@ class _DetailedDosageGuideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _DetailListCard(
+      title: '상세 복용 가이드',
+      items: medicationDetail.detailedDosageGuideLines,
+      scale: scale,
+    );
+  }
+}
+
+class _MedicationRiskCard extends StatelessWidget {
+  final MedicationDetail medicationDetail;
+  final double scale;
+
+  const _MedicationRiskCard({
+    required this.medicationDetail,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailListCard(
+      title: '주요 주의사항 및 부작용',
+      items: _uniqueNonEmptyValues([
+        medicationDetail.warning,
+        medicationDetail.precaution,
+        medicationDetail.interaction,
+        medicationDetail.sideEffect,
+      ]),
+      scale: scale,
+      useInsetSurface: true,
+    );
+  }
+}
+
+class _MedicationChecklistCard extends StatelessWidget {
+  final MedicationDetail medicationDetail;
+  final double scale;
+
+  const _MedicationChecklistCard({
+    required this.medicationDetail,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailListCard(
+      title: '간편한 가이드 (Checklist)',
+      items: _uniqueNonEmptyValues([
+        medicationDetail.storageMethod,
+        medicationDetail.aiGuide,
+      ]),
+      scale: scale,
+    );
+  }
+}
+
+class _DetailListCard extends StatelessWidget {
+  final String title;
+  final List<String> items;
+  final double scale;
+  final bool useInsetSurface;
+
+  const _DetailListCard({
+    required this.title,
+    required this.items,
+    required this.scale,
+    this.useInsetSurface = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleItems = items.isEmpty ? const ['정보 없음'] : items;
+    final itemList = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int index = 0; index < visibleItems.length; index++) ...[
+          Text(
+            visibleItems[index],
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14 * scale,
+              height: 1.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+          if (index != visibleItems.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        color: MedBuddyColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '상세 복용 가이드',
+            title,
             style: TextStyle(
-              color: MedBuddyColors.textStrong,
+              color: const Color(0xFF0A0A0A),
               fontSize: 16 * scale,
               fontWeight: FontWeight.w900,
               letterSpacing: 0,
             ),
           ),
-          const SizedBox(height: 16),
-          for (final line in medicationDetail.detailedDosageGuideLines) ...[
-            Text(
-              line,
-              style: TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 14 * scale,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
+          const SizedBox(height: 18),
+          if (useInsetSurface)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
               ),
-            ),
-            const SizedBox(height: 9),
-          ],
+              child: itemList,
+            )
+          else
+            itemList,
         ],
       ),
     );
   }
+}
+
+List<String> _summaryValues(String value) {
+  final normalizedValue = value.trim();
+  if (normalizedValue.isEmpty) {
+    return const ['정보 없음'];
+  }
+
+  final values = normalizedValue
+      .split(RegExp(r'[,/;·\n]+'))
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .take(2)
+      .toList(growable: false);
+  return values.isEmpty ? [normalizedValue] : values;
+}
+
+String _summaryValue(String value) {
+  final normalizedValue = value.trim();
+  return normalizedValue.isEmpty ? '정보 없음' : normalizedValue;
+}
+
+String _dailyFrequencyLabel(String value) {
+  final normalizedValue = value.trim();
+  if (normalizedValue.isEmpty) {
+    return '정보 없음';
+  }
+  if (normalizedValue.contains('일') || normalizedValue.contains('하루')) {
+    return normalizedValue;
+  }
+
+  final count = RegExp(r'\d+').firstMatch(normalizedValue)?.group(0);
+  return count == null ? normalizedValue : '1일 $count회';
+}
+
+List<String> _uniqueNonEmptyValues(List<String> values) {
+  final uniqueValues = <String>{};
+  for (final value in values) {
+    final normalizedValue = value.trim();
+    if (normalizedValue.isNotEmpty) {
+      uniqueValues.add(normalizedValue);
+    }
+  }
+  return uniqueValues.toList(growable: false);
 }
 
 class _TtsButton extends StatelessWidget {

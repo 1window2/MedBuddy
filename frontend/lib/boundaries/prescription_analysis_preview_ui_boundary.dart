@@ -67,7 +67,7 @@ class _PrescriptionAnalysisPreviewUIState
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFFEFFFF8), Colors.white],
+              colors: [MedBuddyColors.analysisBackground, Colors.white],
             ),
           ),
           child: Column(

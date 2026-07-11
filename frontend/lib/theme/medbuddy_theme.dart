@@ -12,9 +12,11 @@ class MedBuddyColors {
   static const Color progressTrack = Color(0xFF006045);
   static const Color mint = Color(0xFFD0FAE5);
   static const Color successBorder = Color(0xFFA4F4CF);
+  static const Color successSurface = Color(0xFFECFDF5);
+  static const Color analysisBackground = Color(0xFFEEFDF6);
   static const Color pageBackground = Color(0xFFF4FFF4);
   static const Color surface = Colors.white;
-  static const Color surfaceSubtle = Color(0xFFFAFAFA);
+  static const Color surfaceSubtle = Color(0xFFF9FAFB);
   static const Color cardBorder = Color(0xFFF3F4F6);
   static const Color divider = Color(0xFFE5E7EB);
   static const Color outline = Color(0xFFD1D5DC);
@@ -26,8 +28,8 @@ class MedBuddyColors {
   static const Color textLight = Color(0xFF99A1AF);
   static const Color infoBlue = Color(0xFF1C398E);
   static const Color slotMorning = Color(0xFFFE9A00);
-  static const Color slotLunch = Color(0xFFFF5A00);
-  static const Color slotEvening = Color(0xFFFF1E62);
+  static const Color slotLunch = Color(0xFFFF6900);
+  static const Color slotEvening = Color(0xFFFF2056);
   static const Color slotBedtime = Color(0xFF625BFF);
 }
 
