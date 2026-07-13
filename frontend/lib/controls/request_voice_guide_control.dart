@@ -130,13 +130,8 @@ class RequestVoiceGuide {
   ) {
     return {
       'item_name': medicationDetail.itemName,
-      'efficacy': medicationDetail.efficacy,
       'usage_method': medicationDetail.usageMethod,
       'warning': medicationDetail.warning,
-      'dosage_per_time': medicationDetail.dosagePerTime,
-      'daily_frequency': medicationDetail.dailyFrequency,
-      'total_days': medicationDetail.totalDays,
-      'ai_guide': medicationDetail.aiGuide,
       'language': language,
     };
   }

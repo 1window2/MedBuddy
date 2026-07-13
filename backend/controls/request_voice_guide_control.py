@@ -69,12 +69,7 @@ class RequestVoiceGuide:
         lines = [
             self._line("약 이름", medication_detail.item_name),
             self._line("복용 방법", medication_detail.usage_method),
-            self._line("1회 복용량", medication_detail.dosage_per_time),
-            self._line("하루 복용 횟수", medication_detail.daily_frequency),
-            self._line("총 복용일", medication_detail.total_days),
             self._line("주의사항", medication_detail.warning),
-            self._line("효능", medication_detail.efficacy),
-            self._line("추가 안내", medication_detail.ai_guide or ""),
         ]
         return self._join_lines(lines)
 
@@ -82,12 +77,7 @@ class RequestVoiceGuide:
         lines = [
             self._line("Medication", medication_detail.item_name),
             self._line("How to take", medication_detail.usage_method),
-            self._line("Dose per time", medication_detail.dosage_per_time),
-            self._line("Daily frequency", medication_detail.daily_frequency),
-            self._line("Total days", medication_detail.total_days),
             self._line("Warning", medication_detail.warning),
-            self._line("Effect", medication_detail.efficacy),
-            self._line("Additional guide", medication_detail.ai_guide or ""),
         ]
         return self._join_lines(lines)
 

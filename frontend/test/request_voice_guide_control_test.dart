@@ -11,7 +11,8 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 void main() {
-  test('MedicationDetail preserves AI guide for local voice guide text', () {
+  test('MedicationDetail limits local voice guide to the three required parts',
+      () {
     const medicationDetail = MedicationDetail(
       itemName: 'Saved tablet',
       efficacy: 'Pain relief',
@@ -21,14 +22,16 @@ void main() {
     );
 
     expect(medicationDetail.aiGuide, 'Drink enough water.');
-    expect(medicationDetail.voiceGuideText, contains('Drink enough water.'));
     expect(
-      medicationDetail.voiceGuideText.indexOf('복용 방법'),
-      lessThan(medicationDetail.voiceGuideText.indexOf('주의사항')),
+      medicationDetail.voiceGuideText,
+      'Saved tablet\n'
+      '복용 방법. Take after meals\n'
+      '주의사항. May cause drowsiness',
     );
+    expect(medicationDetail.voiceGuideText, isNot(contains('Pain relief')));
     expect(
-      medicationDetail.voiceGuideText.indexOf('주의사항'),
-      lessThan(medicationDetail.voiceGuideText.indexOf('효능')),
+      medicationDetail.voiceGuideText,
+      isNot(contains('Drink enough water.')),
     );
   });
 
@@ -48,10 +51,7 @@ void main() {
           .where((line) => line.contains('1 tablet')),
       hasLength(3),
     );
-    expect(
-      medicationDetail.voiceGuideText,
-      contains('1 tablet'),
-    );
+    expect(medicationDetail.voiceGuideText, isNot(contains('1 tablet')));
   });
 
   test('requestVoiceGuide speaks backend voice guide text', () async {
@@ -98,7 +98,15 @@ void main() {
     );
 
     expect(requestBody['item_name'], 'Test tablet');
-    expect(requestBody['ai_guide'], 'Drink enough water.');
+    expect(
+      requestBody.keys,
+      unorderedEquals([
+        'item_name',
+        'usage_method',
+        'warning',
+        'language',
+      ]),
+    );
     expect(requestBody['language'], 'en');
     expect(usedText, 'Medication: Test tablet');
     expect(spokenText, 'Medication: Test tablet');
@@ -138,9 +146,11 @@ void main() {
     );
 
     expect(usedText, contains('Fallback tablet'));
-    expect(usedText, contains('Pain relief'));
     expect(usedText, contains('Take after meals'));
-    expect(usedText, contains('Drink enough water.'));
+    expect(usedText, contains('May cause drowsiness'));
+    expect(usedText, isNot(contains('Pain relief')));
+    expect(usedText, isNot(contains('1 tablet')));
+    expect(usedText, isNot(contains('Drink enough water.')));
     expect(usedText.trim(), isNotEmpty);
     expect(spokenText, usedText);
     control.dispose();

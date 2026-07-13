@@ -80,7 +80,7 @@ class MedicationDetail(BaseModel):
 
     # Function Name: get_voice_guide_text
     # Description:
-    # - Builds text that can be handed to a TTS boundary when voice guidance is implemented.
+    # - Builds the three-part medication voice guide defined by the voice use case.
     # Returns:
     # - Voice guide source text.
     def get_voice_guide_text(self) -> str:
@@ -89,12 +89,7 @@ class MedicationDetail(BaseModel):
             for item in [
                 self.item_name,
                 self.usage_method,
-                self.dosage_per_time,
-                self.daily_frequency,
-                self.total_days,
                 self.warning,
-                self.efficacy,
-                self.ai_guide or "",
             ]
             if item.strip()
         )
