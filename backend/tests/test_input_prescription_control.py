@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -136,6 +136,44 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
 
         self.assertEqual(medication_schedule.medication_name, canonical_name)
         self.assertEqual(verification.source, "local_catalog_ocr_vowel_variant")
+
+    def test_fuzzy_catalog_lookup_bounds_fragments_and_queries(self) -> None:
+        verifier = _PrescriptionMedicationNameVerifier(self.db)
+        query_count = 0
+
+        def count_catalog_queries(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            nonlocal query_count
+            if (
+                "drug_basic_infos" in statement
+                or "drug_approval_infos" in statement
+            ):
+                query_count += 1
+
+        event.listen(self.engine, "before_cursor_execute", count_catalog_queries)
+        try:
+            long_name = "".join(chr(0xAC00 + index) for index in range(200))
+            fragments = verifier._candidate_fragments(long_name)
+            candidates = verifier._find_similar_catalog_names(long_name)
+        finally:
+            event.remove(
+                self.engine,
+                "before_cursor_execute",
+                count_catalog_queries,
+            )
+
+        self.assertLessEqual(
+            len(fragments),
+            verifier._MAX_CANDIDATE_FRAGMENTS,
+        )
+        self.assertEqual(query_count, 2)
+        self.assertEqual(candidates, [])
 
     def test_uses_llm_fallback_only_when_catalog_candidate_is_selected(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"

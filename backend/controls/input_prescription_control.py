@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 
 from google import genai
 from google.genai import types
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from boundaries.prescription_ocr_boundary import OCRServiceBoundary
@@ -72,7 +73,8 @@ class _PrescriptionMedicationNameVerifier:
     _MAX_CANDIDATES = 48
     _MAX_AI_CATALOG_CANDIDATES = 8
     _MAX_AI_FALLBACK_CACHE_ENTRIES = 256
-    _MAX_FRAGMENT_QUERY_ROWS = 24
+    _MAX_CANDIDATE_FRAGMENTS = 16
+    _MAX_CATALOG_QUERY_ROWS = 96
     _MIN_FUZZY_SCORE = 0.45
     _AI_CONFIDENCE_THRESHOLD = 0.86
     _AI_CONFIDENCE_CAP = 0.89
@@ -480,30 +482,35 @@ class _PrescriptionMedicationNameVerifier:
         self,
         normalized_name: str,
     ) -> list[_CatalogMedicationName]:
+        fragments = self._candidate_fragments(normalized_name)
+        if not fragments:
+            return []
+
         catalog_candidates_by_name: dict[str, _CatalogMedicationName] = {}
-        for fragment in self._candidate_fragments(normalized_name):
-            for model in (_DrugBasicInfo, _DrugApprovalInfo):
-                for row in (
-                    self.db.query(model)
-                    .filter(
-                        model.normalized_item_name.like(
-                            self._like_pattern(fragment),
-                            escape="\\",
-                        )
-                    )
-                    .order_by(model.item_name.asc())
-                    .limit(self._MAX_FRAGMENT_QUERY_ROWS)
-                    .all()
-                ):
-                    if not row.item_name or not row.normalized_item_name:
-                        continue
-                    catalog_candidates_by_name.setdefault(
-                        row.normalized_item_name,
-                        _CatalogMedicationName(
-                            item_name=row.item_name,
-                            normalized_name=row.normalized_item_name,
-                        ),
-                    )
+        for model in (_DrugBasicInfo, _DrugApprovalInfo):
+            fragment_filters = [
+                model.normalized_item_name.like(
+                    self._like_pattern(fragment),
+                    escape="\\",
+                )
+                for fragment in fragments
+            ]
+            for row in (
+                self.db.query(model)
+                .filter(or_(*fragment_filters))
+                .order_by(model.item_name.asc())
+                .limit(self._MAX_CATALOG_QUERY_ROWS)
+                .all()
+            ):
+                if not row.item_name or not row.normalized_item_name:
+                    continue
+                catalog_candidates_by_name.setdefault(
+                    row.normalized_item_name,
+                    _CatalogMedicationName(
+                        item_name=row.item_name,
+                        normalized_name=row.normalized_item_name,
+                    ),
+                )
 
         scored_candidates = [
             (self._name_similarity(normalized_name, candidate.normalized_name), candidate)
@@ -527,7 +534,6 @@ class _PrescriptionMedicationNameVerifier:
             normalized_name[index : index + window_size]
             for index in range(0, len(normalized_name) - window_size + 1)
         ]
-        fragments.sort(key=lambda fragment: (-len(fragment), fragment))
         deduplicated_fragments: list[str] = []
         seen_fragments = set()
         for fragment in fragments:
@@ -535,7 +541,15 @@ class _PrescriptionMedicationNameVerifier:
                 continue
             seen_fragments.add(fragment)
             deduplicated_fragments.append(fragment)
-        return deduplicated_fragments
+        if len(deduplicated_fragments) <= self._MAX_CANDIDATE_FRAGMENTS:
+            return deduplicated_fragments
+
+        last_index = len(deduplicated_fragments) - 1
+        sample_divisor = self._MAX_CANDIDATE_FRAGMENTS - 1
+        return [
+            deduplicated_fragments[round(index * last_index / sample_divisor)]
+            for index in range(self._MAX_CANDIDATE_FRAGMENTS)
+        ]
 
     def _like_pattern(self, fragment: str) -> str:
         escaped_fragment = (
