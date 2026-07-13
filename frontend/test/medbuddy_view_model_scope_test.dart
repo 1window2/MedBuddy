@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,8 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
+import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 import 'package:medbuddy_frontend/services/medication_notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
@@ -246,6 +249,93 @@ void main() {
     expect(viewModel.medicationReminderSettings, isEmpty);
   });
 
+  test('stale schedule response cannot overwrite a newly selected scope',
+      () async {
+    final patientAResponse = Completer<http.Response>();
+    final patientARequestStarted = Completer<void>();
+    final client = MockClient((http.Request request) async {
+      final patientHash = request.url.queryParameters['patient_hash'];
+      if (patientHash == 'patient-a') {
+        patientARequestStarted.complete();
+        return patientAResponse.future;
+      }
+      return _jsonResponse(_schedulePayload('patient-b', medicationId: '8'));
+    });
+    final viewModel = MedBuddyViewModel(
+      checkTodayMedicationInfo: CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-a',
+      role: 'patient',
+    );
+    final staleLoad = viewModel.fetchTodayMedicationSchedule();
+    await patientARequestStarted.future;
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-b',
+      role: 'patient',
+    );
+    await viewModel.fetchTodayMedicationSchedule();
+    patientAResponse.complete(
+      _jsonResponse(_schedulePayload('patient-a', medicationId: '7')),
+    );
+    await staleLoad;
+
+    expect(viewModel.todayMedicationScheduleList.single.patientID, 'patient-b');
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+  });
+
+  test('stale alarm response cannot overwrite a newly selected scope',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final patientAResponse = Completer<http.Response>();
+    final patientARequestStarted = Completer<void>();
+    final client = MockClient((http.Request request) async {
+      final patientHash = request.url.queryParameters['patient_hash'];
+      if (patientHash == 'patient-a') {
+        patientARequestStarted.complete();
+        return patientAResponse.future;
+      }
+      return _jsonResponse(
+        _alarmPayload('patient-b', hour: 9, minute: 45),
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      setNotification: SetNotification(
+        baseUrl: 'http://localhost',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-a',
+      role: 'patient',
+    );
+    final staleLoad = viewModel.loadMedicationReminderSettings();
+    await patientARequestStarted.future;
+
+    viewModel.setMedicationAccessScope(
+      patientHash: 'patient-b',
+      role: 'patient',
+    );
+    await viewModel.loadMedicationReminderSettings();
+    patientAResponse.complete(
+      _jsonResponse(_alarmPayload('patient-a', hour: 7, minute: 15)),
+    );
+    await staleLoad;
+
+    final setting = viewModel.medicationReminderSettings['morning'];
+    expect(setting?.patientHash, 'patient-b');
+    expect(setting?.hour, 9);
+    expect(setting?.minute, 45);
+  });
+
   test('refreshMedicationOverview loads reminder and schedule for active scope',
       () async {
     SharedPreferences.setMockInitialValues({});
@@ -369,6 +459,83 @@ void main() {
 
     expect(notificationService.scheduledSlotKeys, ['lunch']);
   });
+
+  test('failed local reminder registration rolls back every persisted state',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final requestMethods = <String>[];
+    final notificationService = _FakeMedicationNotificationService(
+      failAfterScheduling: true,
+    );
+    final client = MockClient((http.Request request) async {
+      requestMethods.add(request.method);
+      if (request.method == 'PUT') {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'slot_key': 'morning',
+            'hour': 8,
+            'minute': 30,
+            'is_enabled': true,
+          },
+        });
+      }
+      if (request.method == 'PATCH') {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'slot_key': 'morning',
+            'hour': 8,
+            'minute': 30,
+            'is_enabled': false,
+          },
+        });
+      }
+      return _jsonResponse({'success': false});
+    });
+    final viewModel = MedBuddyViewModel(
+      setNotification: SetNotification(
+        baseUrl: 'http://localhost',
+        client: client,
+      ),
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    final result = await viewModel.requestMedicationReminderSave(
+      slotKey: 'morning',
+      slotTitle: 'Morning',
+      hour: 8,
+      minute: 30,
+      schedules: const [MedicationSchedule(medicationName: 'tablet')],
+    );
+
+    final setting = const MedicationAlarm(
+      patientHash: PatientHash.defaultPatientHash,
+      slotKey: 'morning',
+      hour: 8,
+      minute: 30,
+      enabled: true,
+    );
+    final preferences = await SharedPreferences.getInstance();
+    final cachedSetting = jsonDecode(
+      preferences.getString(
+        'medbuddy_medication_reminder_patient_local_patient_'
+        'local_patient_morning',
+      )!,
+    ) as Map<String, dynamic>;
+
+    expect(result, isFalse);
+    expect(requestMethods, ['PUT', 'PATCH']);
+    expect(
+      notificationService.canceledIds,
+      containsAll([setting.notificationId, setting.legacyNotificationId]),
+    );
+    expect(cachedSetting['is_enabled'], isFalse);
+    expect(viewModel.medicationReminderSettings, isEmpty);
+  });
 }
 
 http.Response _jsonResponse(Map<String, dynamic> payload) {
@@ -435,9 +602,14 @@ Map<String, dynamic> _alarmPayload(
 
 class _FakeMedicationNotificationService
     implements MedicationNotificationService {
+  final bool failAfterScheduling;
   final List<int> canceledIds = [];
   final List<String> scheduledSlotKeys = [];
   final List<List<String>> scheduledMedicationNames = [];
+
+  _FakeMedicationNotificationService({
+    this.failAfterScheduling = false,
+  });
 
   @override
   Future<void> initialize() async {}
@@ -457,6 +629,9 @@ class _FakeMedicationNotificationService
   }) async {
     scheduledSlotKeys.add(slotKey);
     scheduledMedicationNames.add(medicationNames);
+    if (failAfterScheduling) {
+      throw StateError('Simulated local notification failure.');
+    }
   }
 
   @override
