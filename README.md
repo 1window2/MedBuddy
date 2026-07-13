@@ -25,8 +25,8 @@
 - Redis and Korean public drug APIs remain fallback paths for records missing from the local catalog.
 - Gemini Text generates patient-friendly medication guidance from the retrieved drug information.
 - The Flutter app can present medication details and voice guidance through the TTS service.
-- Voice guidance prioritizes the medication name, administration method and dose schedule, and warnings before supplementary efficacy and AI guidance.
-- Official `e약은요` medication images are validated, preserved with saved medication snapshots, and reused by detail and schedule views when available.
+- Voice guidance reads only the medication name, administration method, and warnings, in that order.
+- Medication images use validated `e약은요` URLs first, then the MFDS pill-identification API for exact solid-medication matches; unsupported dosage forms retain the placeholder.
 - OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
 ### User Settings and Voice Playback
@@ -133,7 +133,14 @@ Open `backend/.env` and set at least:
 ```dotenv
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
+PILL_IMAGE_API_ENABLED=false
 ```
+
+The public-data key must be authorized for the `e약은요`, medication approval,
+and medication pill-identification APIs. Pill images are optional; lookups keep
+working with the existing placeholder when that API is unavailable or the dosage
+form has no public pill image. After Data.go.kr grants access to the pill-
+identification dataset, set `PILL_IMAGE_API_ENABLED=true`.
 
 Start the API server:
 
