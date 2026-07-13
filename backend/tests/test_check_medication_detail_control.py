@@ -15,6 +15,7 @@ from api import dependencies as api_dependencies
 from controls.check_medication_detail_control import (
     _MedicationDetailCache,
     _MedicationTextNormalizer,
+    _read_public_image_url,
     _read_text,
 )
 
@@ -121,6 +122,23 @@ def test_read_text_replaces_missing_public_api_fields() -> None:
     assert _read_text(None) == "정보 없음"
     assert _read_text("") == "정보 없음"
     assert _read_text(None, "") == ""
+
+
+def test_public_medication_image_url_accepts_documented_aliases() -> None:
+    assert (
+        _read_public_image_url({"itemImage": "https://example.com/pill.png"})
+        == "https://example.com/pill.png"
+    )
+    assert (
+        _read_public_image_url({"ITEM_IMAGE": "//example.com/pill.png"})
+        == "https://example.com/pill.png"
+    )
+
+
+def test_public_medication_image_url_rejects_non_network_schemes() -> None:
+    assert _read_public_image_url({"itemImage": "data:image/png;base64,abc"}) == ""
+    assert _read_public_image_url({"imageUrl": "javascript:alert(1)"}) == ""
+    assert _read_public_image_url({"imageUrl": "https://[invalid"}) == ""
 
 
 @pytest.mark.anyio

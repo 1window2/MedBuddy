@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import redis.asyncio as redis
@@ -29,6 +30,43 @@ def _read_text(value: Any, default: str = "정보 없음") -> str:
 
     text = str(value).strip()
     return text if text else default
+
+
+_PUBLIC_IMAGE_URL_FIELDS = (
+    "itemImage",
+    "ITEM_IMAGE",
+    "item_image",
+    "imageUrl",
+    "image_url",
+)
+
+
+def _read_public_image_url(item: dict[str, Any]) -> str:
+    lowered_items = {
+        str(existing_key).lower(): existing_value
+        for existing_key, existing_value in item.items()
+    }
+    image_url = ""
+    for key in _PUBLIC_IMAGE_URL_FIELDS:
+        value = item.get(key)
+        if value is None:
+            value = lowered_items.get(key.lower())
+        if value is not None and str(value).strip():
+            image_url = str(value).strip()
+            break
+
+    if image_url.startswith("//"):
+        image_url = f"https:{image_url}"
+    if not image_url or len(image_url) > 3000:
+        return ""
+
+    try:
+        parsed_url = urlsplit(image_url)
+    except ValueError:
+        return ""
+    if parsed_url.scheme.lower() not in {"http", "https"} or not parsed_url.netloc:
+        return ""
+    return image_url
 
 
 # Class Name: _MedicationTextNormalizer
@@ -601,13 +639,7 @@ class _MedicationSummaryGenerator:
             efficacy=_read_text(summary_data.get("efficacy"), "요약 실패"),
             usage_method=_read_text(summary_data.get("use_method"), "요약 실패"),
             warning=_read_text(summary_data.get("warning_message"), "요약 실패"),
-            image_url=_read_text(
-                advanced_item.get("ITEM_IMAGE")
-                or advanced_item.get("itemImage")
-                or advanced_item.get("imageUrl")
-                or "",
-                "",
-            ),
+            image_url=_read_public_image_url(advanced_item),
             source="Advanced (허가정보) + AI 요약",
             ai_guide="",
         )
@@ -785,6 +817,9 @@ class _LocalMedicationCatalog:
             efficacy=approval_item.summary_efficacy,
             usage_method=approval_item.summary_use_method,
             warning=approval_item.summary_warning_message,
+            image_url=_read_public_image_url(
+                self._load_raw_approval_item(approval_item)
+            ),
             source="Local DB (허가정보) + 저장된 AI 요약",
             ai_guide=approval_item.ai_guide,
         )
@@ -833,6 +868,7 @@ class _LocalMedicationCatalog:
                 ["NB_DOC_DATA", "atpnWarnQesitm"],
             )
             or approval_item.warning_doc,
+            "ITEM_IMAGE": _read_public_image_url(raw_item),
         }
         if any(
             normalized_item[key]
@@ -878,12 +914,7 @@ class _LocalMedicationCatalog:
         if not isinstance(raw_item, dict):
             return ""
 
-        return str(
-            raw_item.get("itemImage")
-            or raw_item.get("ITEM_IMAGE")
-            or raw_item.get("imageUrl")
-            or ""
-        ).strip()
+        return _read_public_image_url(raw_item)
 
     def _save_approval_summary(
         self,
@@ -1058,7 +1089,7 @@ class CheckMedicationDetail:
                 efficacy=_read_text(item.get("efcyQesitm")),
                 usage_method=_read_text(item.get("useMethodQesitm")),
                 warning=_read_text(item.get("atpnWarnQesitm")),
-                image_url=_read_text(item.get("itemImage"), ""),
+                image_url=_read_public_image_url(item),
                 source="Basic (e약은요)",
             )
             for item in basic_items

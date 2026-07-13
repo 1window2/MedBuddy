@@ -29,6 +29,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
                     "efcyQesitm": "raw effect",
                     "useMethodQesitm": "raw usage",
                     "atpnWarnQesitm": "raw warning",
+                    "itemImage": "https://example.com/pill.png",
                 }
             ),
         )
@@ -39,6 +40,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
         self.assertEqual(raw_item["EE_DOC_DATA"], "raw effect")
         self.assertEqual(raw_item["UD_DOC_DATA"], "raw usage")
         self.assertEqual(raw_item["NB_DOC_DATA"], "raw warning")
+        self.assertEqual(raw_item["ITEM_IMAGE"], "https://example.com/pill.png")
 
 
 if __name__ == "__main__":
