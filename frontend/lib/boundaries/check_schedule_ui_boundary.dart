@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/medication_detail_ui_boundary.dart';
+import '../boundaries/set_notification_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -181,14 +182,13 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
-    final selectedTime = await showDialog<_ReminderTime>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => _ReminderDialog(
-        text: text,
-        slotTitle: slotTitle,
-        initialHour: setting.hour,
-        initialMinute: setting.minute,
+    final selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+      context,
+      language: viewModel.userSetting.language,
+      slotTitle: slotTitle,
+      initialTime: TimeOfDay(
+        hour: setting.hour,
+        minute: setting.minute,
       ),
     );
     if (selectedTime == null) {
@@ -637,235 +637,6 @@ class _ReminderIconButton extends StatelessWidget {
   }
 }
 
-class _ReminderDialog extends StatefulWidget {
-  final _ScheduleText text;
-  final String slotTitle;
-  final int initialHour;
-  final int initialMinute;
-
-  const _ReminderDialog({
-    required this.text,
-    required this.slotTitle,
-    required this.initialHour,
-    required this.initialMinute,
-  });
-
-  @override
-  State<_ReminderDialog> createState() => _ReminderDialogState();
-}
-
-class _ReminderDialogState extends State<_ReminderDialog> {
-  late bool _isAm;
-  late int _hour12;
-  late int _minute;
-
-  @override
-  void initState() {
-    super.initState();
-    _isAm = widget.initialHour < 12;
-    final normalizedHour = widget.initialHour % 12;
-    _hour12 = normalizedHour == 0 ? 12 : normalizedHour;
-    _minute = widget.initialMinute;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF344054), width: 1.6),
-          boxShadow: const [
-            BoxShadow(
-              color: Color.fromRGBO(0, 0, 0, 0.18),
-              blurRadius: 16,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: widget.text.close,
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, size: 25),
-                ),
-                Expanded(
-                  child: Text(
-                    widget.text.reminderDialogTitle(widget.slotTitle),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 48),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _AmPmToggle(
-                  text: widget.text,
-                  isAm: _isAm,
-                  onChanged: (value) => setState(() => _isAm = value),
-                ),
-                const SizedBox(width: 10),
-                _TimeStepper(
-                  value: _hour12,
-                  min: 1,
-                  max: 12,
-                  onChanged: (value) => setState(() => _hour12 = value),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 9),
-                  child: Text(
-                    ':',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                _TimeStepper(
-                  value: _minute,
-                  min: 0,
-                  max: 59,
-                  onChanged: (value) => setState(() => _minute = value),
-                ),
-              ],
-            ),
-            const SizedBox(height: 22),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  _ReminderTime(hour: _to24Hour(), minute: _minute),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                backgroundColor: MedBuddyColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Text(
-                widget.text.confirm,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  int _to24Hour() {
-    if (_isAm) {
-      return _hour12 == 12 ? 0 : _hour12;
-    }
-    return _hour12 == 12 ? 12 : _hour12 + 12;
-  }
-}
-
-class _AmPmToggle extends StatelessWidget {
-  final _ScheduleText text;
-  final bool isAm;
-  final ValueChanged<bool> onChanged;
-
-  const _AmPmToggle({
-    required this.text,
-    required this.isAm,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 78,
-      height: 50,
-      decoration: BoxDecoration(
-        border: Border.all(color: MedBuddyColors.outline, width: 2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: TextButton(
-        onPressed: () => onChanged(!isAm),
-        child: Text(
-          isAm ? text.am : text.pm,
-          style: const TextStyle(
-            color: MedBuddyColors.textStrong,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimeStepper extends StatelessWidget {
-  final int value;
-  final int min;
-  final int max;
-  final ValueChanged<int> onChanged;
-
-  const _TimeStepper({
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 64,
-      height: 104,
-      decoration: BoxDecoration(
-        border: Border.all(color: MedBuddyColors.outline, width: 2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: IconButton(
-              onPressed: () => onChanged(value == max ? min : value + 1),
-              icon: const Icon(Icons.keyboard_arrow_up,
-                  color: MedBuddyColors.primary),
-            ),
-          ),
-          Text(
-            value.toString().padLeft(2, '0'),
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          Expanded(
-            child: IconButton(
-              onPressed: () => onChanged(value == min ? max : value - 1),
-              icon: const Icon(Icons.keyboard_arrow_down,
-                  color: MedBuddyColors.primary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ScheduleEmptyState extends StatelessWidget {
   final _ScheduleText text;
 
@@ -937,13 +708,6 @@ class _ScheduleSlot {
   String get timeLabel => '${hour.toString().padLeft(2, '0')}:00';
 }
 
-class _ReminderTime {
-  final int hour;
-  final int minute;
-
-  const _ReminderTime({required this.hour, required this.minute});
-}
-
 class _ScheduleText {
   final String language;
 
@@ -963,18 +727,11 @@ class _ScheduleText {
   String get complete => isEnglish ? 'Mark as taken' : '복용 완료';
   String get undoComplete => isEnglish ? 'Undo taken' : '복용 완료 취소';
   String get close => isEnglish ? 'Close' : '닫기';
-  String get confirm => isEnglish ? 'Confirm' : '확인';
-  String get am => isEnglish ? 'AM' : '오전';
-  String get pm => isEnglish ? 'PM' : '오후';
   String get statusUpdateFailed =>
       isEnglish ? 'Could not update medication status.' : '복약 상태를 변경하지 못했습니다.';
 
   String reminderTooltip(String slotTitle) {
     return isEnglish ? 'Set $slotTitle reminder' : '$slotTitle 알림 설정';
-  }
-
-  String reminderDialogTitle(String slotTitle) {
-    return isEnglish ? '$slotTitle Reminder' : '$slotTitle 알림';
   }
 
   String slotTitle(String slotKey) {
