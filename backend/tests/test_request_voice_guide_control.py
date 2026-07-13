@@ -37,6 +37,8 @@ class RequestVoiceGuideTest(unittest.TestCase):
         self.assertIn("Test tablet", text)
         self.assertIn("Take after meals", text)
         self.assertIn("May cause drowsiness", text)
+        self.assertLess(text.index("약 이름"), text.index("복용 방법"))
+        self.assertLess(text.index("복용 방법"), text.index("주의사항"))
 
     def test_request_voice_guide_returns_english_labeled_text(self) -> None:
         medication_detail = MedicationDetail(
@@ -53,6 +55,9 @@ class RequestVoiceGuideTest(unittest.TestCase):
         self.assertIn("Medication: Test tablet", text)
         self.assertIn("How to take: Take after meals", text)
         self.assertIn("Warning: May cause drowsiness", text)
+        self.assertLess(text.index("Medication"), text.index("How to take"))
+        self.assertLess(text.index("How to take"), text.index("Warning"))
+        self.assertLess(text.index("Warning"), text.index("Effect"))
 
     def test_invalid_language_is_rejected(self) -> None:
         medication_detail = MedicationDetail(

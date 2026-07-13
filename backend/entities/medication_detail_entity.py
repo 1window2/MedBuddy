@@ -88,12 +88,12 @@ class MedicationDetail(BaseModel):
             item
             for item in [
                 self.item_name,
-                self.efficacy,
                 self.usage_method,
                 self.dosage_per_time,
                 self.daily_frequency,
                 self.total_days,
                 self.warning,
+                self.efficacy,
                 self.ai_guide or "",
             ]
             if item.strip()

@@ -22,6 +22,14 @@ void main() {
 
     expect(medicationDetail.aiGuide, 'Drink enough water.');
     expect(medicationDetail.voiceGuideText, contains('Drink enough water.'));
+    expect(
+      medicationDetail.voiceGuideText.indexOf('복용 방법'),
+      lessThan(medicationDetail.voiceGuideText.indexOf('주의사항')),
+    );
+    expect(
+      medicationDetail.voiceGuideText.indexOf('주의사항'),
+      lessThan(medicationDetail.voiceGuideText.indexOf('효능')),
+    );
   });
 
   test('MedicationDetail derives dosage guide lines from frequency labels', () {

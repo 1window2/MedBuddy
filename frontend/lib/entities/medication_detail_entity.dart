@@ -143,10 +143,10 @@ class MedicationDetail {
   String get voiceGuideText {
     final sections = [
       displayName,
-      if (efficacy.trim().isNotEmpty) '효능. ${efficacy.trim()}',
       if (usageMethod.trim().isNotEmpty) '복용 방법. ${usageMethod.trim()}',
       '상세 복용 가이드. ${detailedDosageGuideLines.join('. ')}',
       '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
+      if (efficacy.trim().isNotEmpty) '효능. ${efficacy.trim()}',
       if (aiGuide.trim().isNotEmpty) '추가 안내. ${aiGuide.trim()}',
     ];
     return sections.join('\n');
