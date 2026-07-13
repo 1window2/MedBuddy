@@ -39,21 +39,35 @@ _PUBLIC_IMAGE_URL_FIELDS = (
     "imageUrl",
     "image_url",
 )
+_PUBLIC_ITEM_NAME_FIELDS = ("ITEM_NAME", "itemName", "item_name")
+_PUBLIC_ITEM_SEQUENCE_FIELDS = (
+    "ITEM_SEQ",
+    "itemSeq",
+    "item_seq",
+    "PRDLST_STDR_CODE",
+    "prdlst_Stdr_code",
+)
 
 
-def _read_public_image_url(item: dict[str, Any]) -> str:
+def _read_public_item_text(
+    item: dict[str, Any],
+    fields: tuple[str, ...],
+) -> str:
     lowered_items = {
         str(existing_key).lower(): existing_value
         for existing_key, existing_value in item.items()
     }
-    image_url = ""
-    for key in _PUBLIC_IMAGE_URL_FIELDS:
-        value = item.get(key)
+    for field in fields:
+        value = item.get(field)
         if value is None:
-            value = lowered_items.get(key.lower())
+            value = lowered_items.get(field.lower())
         if value is not None and str(value).strip():
-            image_url = str(value).strip()
-            break
+            return str(value).strip()
+    return ""
+
+
+def _read_public_image_url(item: dict[str, Any]) -> str:
+    image_url = _read_public_item_text(item, _PUBLIC_IMAGE_URL_FIELDS)
 
     if image_url.startswith("//"):
         image_url = f"https:{image_url}"
@@ -414,11 +428,15 @@ class _MedicationDetailCache:
 # Responsibilities:
 #   - Query e약은요 as the primary public data source.
 #   - Query drug approval information as fallback.
+#   - Resolve missing solid-medication images from pill-identification data.
 # Attributes:
 #   - timeout_seconds: HTTP timeout value for public API requests.
 class _PublicDrugDataPortal:
+    _PILL_IMAGE_CACHE_LIMIT = 512
+
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
+        self._pill_image_url_cache: dict[str, str] = {}
 
     # Function Name: search_basic_drug_info
     # Description:
@@ -474,6 +492,84 @@ class _PublicDrugDataPortal:
             params,
         )
         return items
+
+    # Function Name: search_pill_image_url
+    # Description:
+    # - Resolves an image for a solid medication that has no e약은요 image.
+    # - Accepts only an exact product-code or normalized-name match.
+    # Parameters:
+    # - item_name: Public medication item name.
+    # - item_seq: Optional product-standard code shared by public datasets.
+    # Returns:
+    # - Validated HTTP(S) image URL, or an empty string when unavailable.
+    async def search_pill_image_url(
+        self,
+        item_name: str,
+        item_seq: str = "",
+    ) -> str:
+        if not settings.PILL_IMAGE_API_ENABLED:
+            return ""
+
+        normalized_name = self._normalize_match_text(item_name)
+        normalized_sequence = item_seq.strip()
+        if not normalized_name and not normalized_sequence:
+            return ""
+
+        cache_key = (
+            f"seq:{normalized_sequence}"
+            if normalized_sequence
+            else f"name:{normalized_name}"
+        )
+        if cache_key in self._pill_image_url_cache:
+            return self._pill_image_url_cache[cache_key]
+
+        params: dict[str, object] = {
+            "serviceKey": settings.PUBLIC_DATA_API_KEY,
+            "type": "json",
+            "numOfRows": 1 if normalized_sequence else 10,
+        }
+        if normalized_sequence:
+            params["item_seq"] = normalized_sequence
+        else:
+            params["item_name"] = item_name.strip()
+
+        try:
+            items, _ = await self._request_items(
+                settings.PILL_IMAGE_API_BASE_URL,
+                params,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Pill image API lookup failed: %s",
+                type(exc).__name__,
+            )
+            return ""
+
+        matched_image_urls: list[str] = []
+        for item in items:
+            candidate_sequence = _read_public_item_text(
+                item,
+                _PUBLIC_ITEM_SEQUENCE_FIELDS,
+            )
+            candidate_name = _read_public_item_text(item, _PUBLIC_ITEM_NAME_FIELDS)
+            sequence_matches = bool(normalized_sequence) and (
+                candidate_sequence == normalized_sequence
+            )
+            name_matches = bool(normalized_name) and (
+                self._normalize_match_text(candidate_name) == normalized_name
+            )
+            candidate_matches = (
+                sequence_matches if normalized_sequence else name_matches
+            )
+            if candidate_matches:
+                image_url = _read_public_image_url(item)
+                if image_url:
+                    matched_image_urls.append(image_url)
+
+        unique_image_urls = list(dict.fromkeys(matched_image_urls))
+        image_url = unique_image_urls[0] if len(unique_image_urls) == 1 else ""
+        self._cache_pill_image_url(cache_key, image_url)
+        return image_url
 
     # Function Name: fetch_basic_drug_info_page
     # Description:
@@ -567,6 +663,16 @@ class _PublicDrugDataPortal:
             return int(value)
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _normalize_match_text(value: str) -> str:
+        return "".join(value.split()).lower()
+
+    def _cache_pill_image_url(self, cache_key: str, image_url: str) -> None:
+        if len(self._pill_image_url_cache) >= self._PILL_IMAGE_CACHE_LIMIT:
+            oldest_key = next(iter(self._pill_image_url_cache))
+            self._pill_image_url_cache.pop(oldest_key)
+        self._pill_image_url_cache[cache_key] = image_url
 
 
 # 클래스명: _MedicationSummaryGenerator
@@ -1041,15 +1147,38 @@ class CheckMedicationDetail:
     async def _fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
         local_drugs = await self.local_medication_catalog.fetch_drug_info(drug_name)
         if local_drugs:
-            return local_drugs
+            return await self._enrich_missing_image_urls(local_drugs)
 
         cached_drugs = await self.medication_cache.get(drug_name)
         if cached_drugs is not None:
-            return cached_drugs
+            return await self._enrich_missing_image_urls(cached_drugs)
 
         medication_details = await self._fetch_public_drug_info(drug_name)
         await self.medication_cache.set(drug_name, medication_details)
         return medication_details
+
+    async def _enrich_missing_image_urls(
+        self,
+        medication_details: list[MedicationDetail],
+    ) -> list[MedicationDetail]:
+        enriched_details: list[MedicationDetail] = []
+        for medication_detail in medication_details:
+            if medication_detail.image_url.strip():
+                enriched_details.append(medication_detail)
+                continue
+
+            image_url = await self.public_drug_data_portal.search_pill_image_url(
+                medication_detail.item_name,
+            )
+            if not image_url:
+                enriched_details.append(medication_detail)
+                continue
+
+            enriched_detail = medication_detail.model_copy(
+                update={"image_url": image_url}
+            )
+            enriched_details.append(enriched_detail)
+        return enriched_details
 
     async def _fetch_public_drug_info(
         self,
@@ -1063,7 +1192,8 @@ class CheckMedicationDetail:
                 "[Basic API] search succeeded (%s items)",
                 len(basic_items),
             )
-            return await self._build_basic_drug_infos(basic_items)
+            basic_details = await self._build_basic_drug_infos(basic_items)
+            return await self._enrich_missing_image_urls(basic_details)
 
         logger.info("[Basic API] no result. Trying Advanced API fallback.")
         advanced_items = await self.public_drug_data_portal.search_advanced_drug_info(
@@ -1073,9 +1203,22 @@ class CheckMedicationDetail:
             logger.warning("No drug information found in public drug databases.")
             return []
 
+        advanced_item = dict(advanced_items[0])
+        if not _read_public_image_url(advanced_item):
+            image_url = await self.public_drug_data_portal.search_pill_image_url(
+                _read_public_item_text(advanced_item, _PUBLIC_ITEM_NAME_FIELDS)
+                or drug_name,
+                _read_public_item_text(
+                    advanced_item,
+                    _PUBLIC_ITEM_SEQUENCE_FIELDS,
+                ),
+            )
+            if image_url:
+                advanced_item["ITEM_IMAGE"] = image_url
+
         advanced_drug = await self.summary_generator.summarize_advanced_item(
             drug_name,
-            advanced_items[0],
+            advanced_item,
         )
         return [advanced_drug]
 

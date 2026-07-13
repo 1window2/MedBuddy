@@ -12,9 +12,11 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from api import dependencies as api_dependencies
+from core.config import settings
 from controls.check_medication_detail_control import (
     _MedicationDetailCache,
     _MedicationTextNormalizer,
+    _PublicDrugDataPortal,
     _read_public_image_url,
     _read_text,
 )
@@ -139,6 +141,131 @@ def test_public_medication_image_url_rejects_non_network_schemes() -> None:
     assert _read_public_image_url({"itemImage": "data:image/png;base64,abc"}) == ""
     assert _read_public_image_url({"imageUrl": "javascript:alert(1)"}) == ""
     assert _read_public_image_url({"imageUrl": "https://[invalid"}) == ""
+
+
+@pytest.mark.anyio
+async def test_pill_image_lookup_requires_an_exact_medication_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portal = _PublicDrugDataPortal()
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+    request_count = 0
+
+    async def fake_request_items(
+        url: str,
+        params: dict[str, object],
+    ) -> tuple[list[dict[str, object]], int]:
+        nonlocal request_count
+        request_count += 1
+        assert url.endswith("getMdcinGrnIdntfcInfoList03")
+        assert params["item_name"] == "테스트정"
+        return (
+            [
+                {
+                    "ITEM_SEQ": "1",
+                    "ITEM_NAME": "테스트정서방형",
+                    "ITEM_IMAGE": "https://example.com/wrong.png",
+                },
+                {
+                    "ITEM_SEQ": "2",
+                    "ITEM_NAME": "테스트정",
+                    "ITEM_IMAGE": "https://example.com/right.png",
+                },
+            ],
+            2,
+        )
+
+    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+
+    assert (
+        await portal.search_pill_image_url("테스트정")
+        == "https://example.com/right.png"
+    )
+    assert (
+        await portal.search_pill_image_url("테스트정")
+        == "https://example.com/right.png"
+    )
+    assert request_count == 1
+
+
+@pytest.mark.anyio
+async def test_pill_image_lookup_is_optional_when_api_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portal = _PublicDrugDataPortal()
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+
+    async def failing_request_items(
+        url: str,
+        params: dict[str, object],
+    ) -> tuple[list[dict[str, object]], int]:
+        raise RuntimeError("not authorized")
+
+    monkeypatch.setattr(portal, "_request_items", failing_request_items)
+
+    assert await portal.search_pill_image_url("테스트정") == ""
+
+
+@pytest.mark.anyio
+async def test_pill_image_lookup_rejects_ambiguous_name_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portal = _PublicDrugDataPortal()
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+
+    async def fake_request_items(
+        url: str,
+        params: dict[str, object],
+    ) -> tuple[list[dict[str, object]], int]:
+        return (
+            [
+                {
+                    "ITEM_NAME": "동일정",
+                    "ITEM_IMAGE": "https://example.com/first.png",
+                },
+                {
+                    "ITEM_NAME": "동일정",
+                    "ITEM_IMAGE": "https://example.com/second.png",
+                },
+            ],
+            2,
+        )
+
+    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+
+    assert await portal.search_pill_image_url("동일정") == ""
+
+
+@pytest.mark.anyio
+async def test_pill_image_lookup_uses_product_code_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portal = _PublicDrugDataPortal()
+    monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+
+    async def fake_request_items(
+        url: str,
+        params: dict[str, object],
+    ) -> tuple[list[dict[str, object]], int]:
+        assert params["item_seq"] == "200000001"
+        assert params["numOfRows"] == 1
+        return (
+            [
+                {
+                    "ITEM_SEQ": "200000001",
+                    "ITEM_NAME": "테스트정",
+                    "ITEM_IMAGE": "https://example.com/by-code.png",
+                }
+            ],
+            1,
+        )
+
+    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+
+    assert (
+        await portal.search_pill_image_url("테스트정", "200000001")
+        == "https://example.com/by-code.png"
+    )
 
 
 @pytest.mark.anyio

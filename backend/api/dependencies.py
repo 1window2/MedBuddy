@@ -10,6 +10,7 @@ from core.database import get_db
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
+    _PublicDrugDataPortal,
 )
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
@@ -25,6 +26,7 @@ from controls.set_notification_control import SetNotification
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
+_public_drug_data_portal = _PublicDrugDataPortal()
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:
@@ -84,7 +86,11 @@ def get_check_medication_detail(
         get_medication_detail_cache
     ),
 ) -> CheckMedicationDetail:
-    return CheckMedicationDetail(db=db, medication_cache=medication_cache)
+    return CheckMedicationDetail(
+        db=db,
+        medication_cache=medication_cache,
+        public_drug_data_portal=_public_drug_data_portal,
+    )
 
 
 # Function Name: get_check_saved_medication

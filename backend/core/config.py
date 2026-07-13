@@ -15,6 +15,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - PUBLIC_DATA_API_KEY: Korean public data portal API key.
 #   - BASIC_DRUG_API_BASE_URL: e약은요 API endpoint.
 #   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
+#   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
+#   - PILL_IMAGE_API_ENABLED: Enables image enrichment after API authorization.
 #   - REDIS_URL: Optional Redis cache URL.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
@@ -28,6 +30,11 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/1471000/"
         "DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnDtlInq06"
     )
+    PILL_IMAGE_API_BASE_URL: str = (
+        "https://apis.data.go.kr/1471000/"
+        "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
+    )
+    PILL_IMAGE_API_ENABLED: bool = False
     REDIS_URL: str = "redis://localhost:6379"
 
 
