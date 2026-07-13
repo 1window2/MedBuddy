@@ -25,6 +25,8 @@
 - Redis and Korean public drug APIs remain fallback paths for records missing from the local catalog.
 - Gemini Text generates patient-friendly medication guidance from the retrieved drug information.
 - The Flutter app can present medication details and voice guidance through the TTS service.
+- Voice guidance prioritizes the medication name, administration method and dose schedule, and warnings before supplementary efficacy and AI guidance.
+- Official `e약은요` medication images are validated, preserved with saved medication snapshots, and reused by detail and schedule views when available.
 - OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
 ### User Settings and Voice Playback
@@ -54,6 +56,7 @@
 - The backend can generate patient-scoped health recommendations using saved medication context.
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
+- Reminder times can be entered directly in validated 24-hour `HH:mm` format before the existing alarm control persists and registers them.
 - Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
