@@ -56,7 +56,7 @@
 - The backend can generate patient-scoped health recommendations using saved medication context.
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
-- Reminder times can be entered directly in validated 24-hour `HH:mm` format before the existing alarm control persists and registers them.
+- Reminder times can be selected with rotating time wheels before the existing alarm control persists and registers them.
 - Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
