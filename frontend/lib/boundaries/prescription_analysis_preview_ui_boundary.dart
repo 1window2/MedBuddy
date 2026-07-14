@@ -56,6 +56,11 @@ class _PrescriptionAnalysisPreviewUIState
     final hasNameCorrection = widget.medicationScheduleList.any(
       (schedule) => schedule.hasNameCorrection,
     );
+    final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
+    final effectiveTextScale = scale * systemTextScale;
+    final medicationPageHeight = (hasNameCorrection ? 238.0 : 206.0) *
+            (effectiveTextScale > 1 ? effectiveTextScale : 1) +
+        8;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -77,9 +82,9 @@ class _PrescriptionAnalysisPreviewUIState
                 onBackRequested: widget.onBackRequested,
               ),
               Expanded(
-                child: Center(
+                child: _ScrollableCenteredCard(
                   child: Container(
-                    width: 328,
+                    width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(31, 32, 31, 30),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -113,7 +118,7 @@ class _PrescriptionAnalysisPreviewUIState
                         ] else
                           const SizedBox(height: 26),
                         SizedBox(
-                          height: hasNameCorrection ? 238 : 206,
+                          height: medicationPageHeight,
                           child: PageView.builder(
                             controller: _pageController,
                             itemCount: pageCount,
@@ -213,6 +218,37 @@ class _PrescriptionAnalysisPreviewUIState
       index,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
+    );
+  }
+}
+
+class _ScrollableCenteredCard extends StatelessWidget {
+  final Widget child;
+
+  const _ScrollableCenteredCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const padding = EdgeInsets.symmetric(vertical: 24, horizontal: 16);
+        final centeredHeight = constraints.maxHeight > padding.vertical
+            ? constraints.maxHeight - padding.vertical
+            : 0.0;
+
+        return SingleChildScrollView(
+          padding: padding,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: centeredHeight),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 328),
+                child: SizedBox(width: double.infinity, child: child),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
