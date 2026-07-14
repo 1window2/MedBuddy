@@ -17,6 +17,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
 #   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
 #   - PILL_IMAGE_API_ENABLED: Enables image enrichment after API authorization.
+#   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
+#   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
+#     duration.
 #   - REDIS_URL: Optional Redis cache URL.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
@@ -35,6 +38,8 @@ class Settings(BaseSettings):
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
     PILL_IMAGE_API_ENABLED: bool = False
+    PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = 30.0
+    PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: float = 8.0
     REDIS_URL: str = "redis://localhost:6379"
 
 

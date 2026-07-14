@@ -19,6 +19,7 @@ from api.router import (  # noqa: E402
 )
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
+    PrescriptionAnalysisTimeoutError,
 )
 
 
@@ -72,6 +73,14 @@ class _RecordingPrescriptionAnalysisControl:
         return {"received_bytes": len(image_bytes)}
 
 
+class _TimedOutPrescriptionAnalysisControl:
+    async def request_prescription_image(
+        self,
+        image_bytes: bytes,
+    ) -> dict[str, object]:
+        raise PrescriptionAnalysisTimeoutError("OCR request timed out.")
+
+
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
@@ -121,6 +130,18 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response["received_bytes"], 5)
         self.assertNotIn(upload_file.filename, "\n".join(captured_logs.output))
+
+    async def test_prescription_upload_maps_ocr_timeout_to_gateway_timeout(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await upload_and_parse_prescription(
+                file=_RecordingUploadFile(),
+                prescription_analysis_control=_TimedOutPrescriptionAnalysisControl(),
+            )
+
+        self.assertEqual(context.exception.status_code, 504)
+        self.assertEqual(context.exception.detail, "OCR request timed out.")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from google.genai import types
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -19,6 +20,7 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisControl,
+    PrescriptionAnalysisTimeoutError,
     _PrescriptionMedicationNameVerifier,
 )
 from core.database import Base  # noqa: E402
@@ -66,6 +68,11 @@ class _RecordingOCRServiceBoundary:
     async def extractPrescriptionData(self, image: bytes) -> str:
         self.call_count += 1
         return self.response_text
+
+
+class _TimedOutOCRServiceBoundary:
+    async def extractPrescriptionData(self, image: bytes) -> str:
+        raise TimeoutError("external OCR deadline exceeded")
 
 
 class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCase):
@@ -175,6 +182,45 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self.assertEqual(query_count, 2)
         self.assertEqual(candidates, [])
 
+    def test_prefix_catalog_lookup_uses_indexable_range_predicate(self) -> None:
+        canonical_name = "\ud504\ub85c\ucf54\ud478\uc815(\ub808\ubcf4\ub4dc\ub85c\ud504\ub85c\ud53c\uc9c4)"
+        self._save_approval_drug(canonical_name)
+        statements: list[str] = []
+
+        def capture_catalog_queries(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            if "drug_approval_infos" in statement:
+                statements.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", capture_catalog_queries)
+        try:
+            verification = _PrescriptionMedicationNameVerifier(self.db).verify(
+                "\ud504\ub85c\ucf54\ud478\uc815"
+            )
+        finally:
+            event.remove(
+                self.engine,
+                "before_cursor_execute",
+                capture_catalog_queries,
+            )
+
+        self.assertEqual(verification.canonical_name, canonical_name)
+        self.assertEqual(verification.source, "local_catalog_prefix")
+        self.assertTrue(
+            any(
+                "normalized_item_name >=" in statement
+                and "normalized_item_name <" in statement
+                for statement in statements
+            )
+        )
+        self.assertFalse(any(" LIKE " in statement for statement in statements))
+
     def test_uses_llm_fallback_only_when_catalog_candidate_is_selected(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
@@ -204,6 +250,12 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self.assertEqual(verification.source, "llm_catalog_candidate")
         self.assertEqual(verification.confidence, 0.89)
         self.assertEqual(fake_client.models.call_count, 1)
+        config = fake_client.models.last_request["config"]
+        self.assertEqual(
+            config.thinking_config.thinking_level,
+            types.ThinkingLevel.MINIMAL,
+        )
+        self.assertEqual(config.max_output_tokens, 1024)
 
     def test_reuses_cached_llm_fallback_result(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
@@ -613,6 +665,18 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
             )
 
         self.assertEqual(ocr_boundary.call_count, 0)
+
+    def test_request_prescription_image_translates_ocr_timeout(self) -> None:
+        self.control = PrescriptionAnalysisControl(
+            client=object(),
+            ocr_service_boundary=_TimedOutOCRServiceBoundary(),
+        )
+
+        with self.assertRaisesRegex(
+            PrescriptionAnalysisTimeoutError,
+            "응답 시간이 초과",
+        ):
+            asyncio.run(self.control.request_prescription_image(b"image"))
 
     def test_invalid_ocr_response_is_not_written_to_logs(self) -> None:
         sensitive_response = "patient-medication-data"

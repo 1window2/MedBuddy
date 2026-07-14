@@ -141,6 +141,47 @@ void main() {
     expect(control.lastSkippedMedicationCount, 3);
   });
 
+  test('analyzePrescriptionImage surfaces backend OCR timeout detail',
+      () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-backend-timeout-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        jsonEncode({'detail': '처방전 인식 서비스 응답 시간이 초과되었습니다.'}),
+        504,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = PrescriptionAnalysisControl(
+      baseUrl: 'http://localhost',
+      client: client,
+    );
+    addTearDown(control.dispose);
+
+    expect(
+      () => control.analyzePrescriptionImage(
+        XFile(imageFile.path),
+        imageSource: ImageSource.gallery,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('분석 실패 (504)'),
+        ),
+      ),
+    );
+  });
+
   test('analyzePrescriptionImage times out while reading a stalled body',
       () async {
     final tempDirectory = await Directory.systemTemp.createTemp(

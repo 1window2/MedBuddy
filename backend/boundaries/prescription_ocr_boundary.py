@@ -2,12 +2,16 @@
 # Role: Boundary classes for prescription OCR extraction.
 
 import asyncio
+import logging
+import time
 from typing import Any
 
 from google import genai
 from google.genai import types
 
 from utils.image_processing import preprocess_prescription_image
+
+logger = logging.getLogger(__name__)
 
 
 class ImageProcessingBoundary:
@@ -42,6 +46,11 @@ class GeminiVisionAPI:
                 response_mime_type="application/json",
                 response_schema=response_schema,
                 temperature=0.0,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL,
+                ),
+                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+                max_output_tokens=2048,
             ),
         )
         response_text = response.text
@@ -59,10 +68,14 @@ class OCRServiceBoundary:
         response_schema: dict[str, Any],
         image_processing_boundary: ImageProcessingBoundary | None = None,
         gemini_vision_api: GeminiVisionAPI | None = None,
+        request_timeout_seconds: float = 30.0,
     ) -> None:
+        if request_timeout_seconds <= 0:
+            raise ValueError("OCR request timeout must be greater than zero.")
         self.client = client
         self.model_name = model_name
         self.response_schema = response_schema
+        self.request_timeout_seconds = request_timeout_seconds
         self.image_processing_boundary = (
             image_processing_boundary or ImageProcessingBoundary()
         )
@@ -72,17 +85,43 @@ class OCRServiceBoundary:
     # Description:
     # - Coordinates preprocessing and Gemini Vision extraction.
     async def extractText(self, image: bytes) -> str:
+        preprocessing_started_at = time.perf_counter()
         processed_image = await asyncio.to_thread(
             self.image_processing_boundary.preprocessPrescriptionImage,
             image,
         )
-        return await self.gemini_vision_api.requestStructuredExtraction(
-            client=self.client,
-            model_name=self.model_name,
-            prompt=self._prescription_extraction_prompt(),
-            processed_image=processed_image,
-            response_schema=self.response_schema,
+        preprocessing_seconds = time.perf_counter() - preprocessing_started_at
+        extraction_started_at = time.perf_counter()
+        try:
+            response = await asyncio.wait_for(
+                self.gemini_vision_api.requestStructuredExtraction(
+                    client=self.client,
+                    model_name=self.model_name,
+                    prompt=self._prescription_extraction_prompt(),
+                    processed_image=processed_image,
+                    response_schema=self.response_schema,
+                ),
+                timeout=self.request_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            logger.warning(
+                "Prescription OCR timed out: model=%s, timeout_seconds=%.1f",
+                self.model_name,
+                self.request_timeout_seconds,
+            )
+            raise TimeoutError("Prescription OCR service timed out.") from exc
+
+        logger.info(
+            "Prescription OCR completed: model=%s, input_bytes=%d, "
+            "processed_bytes=%d, preprocessing_seconds=%.2f, "
+            "extraction_seconds=%.2f",
+            self.model_name,
+            len(image),
+            len(processed_image),
+            preprocessing_seconds,
+            time.perf_counter() - extraction_started_at,
         )
+        return response
 
     # Function Name: extractPrescriptionData
     # Description:

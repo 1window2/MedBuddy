@@ -27,6 +27,7 @@ from controls.check_today_medication_info_control import CheckTodayMedicationInf
 from controls.input_prescription_control import (
     MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisControl,
+    PrescriptionAnalysisTimeoutError,
 )
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
@@ -675,6 +676,9 @@ async def upload_and_parse_prescription(
         return await prescription_analysis_control.request_prescription_image(
             image_bytes
         )
+    except PrescriptionAnalysisTimeoutError as exc:
+        logger.warning("Prescription OCR request timed out.")
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
     except ValueError as exc:
         logger.warning("Prescription image upload rejected: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

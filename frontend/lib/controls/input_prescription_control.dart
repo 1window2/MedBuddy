@@ -37,7 +37,7 @@ class PrescriptionAnalysisControl {
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
-    this.requestTimeout = const Duration(seconds: 90),
+    this.requestTimeout = const Duration(seconds: 45),
   })  : _imagePicker = imagePicker ?? ImagePicker(),
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -107,7 +107,9 @@ class PrescriptionAnalysisControl {
           await _client.send(request).then(http.Response.fromStream).timeout(
         requestTimeout,
         onTimeout: () {
-          throw StateError('처방전 분석 요청 시간이 초과되었습니다.');
+          throw StateError(
+            '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
+          );
         },
       );
       final responseBody = ApiResponseParser.decodeBody(response);

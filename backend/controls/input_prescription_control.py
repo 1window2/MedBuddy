@@ -1,6 +1,7 @@
 # File Name: input_prescription_control.py
 # Role: Control class for prescription image analysis.
 
+import asyncio
 import json
 import logging
 import math
@@ -28,6 +29,10 @@ from services.prescription_parser import normalize_prescription_payload, parse_p
 
 logger = logging.getLogger(__name__)
 MAX_PRESCRIPTION_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+class PrescriptionAnalysisTimeoutError(RuntimeError):
+    """Raised when the required external OCR stage exceeds its deadline."""
 
 
 @dataclass(frozen=True)
@@ -109,8 +114,15 @@ class _PrescriptionMedicationNameVerifier:
         ]
     ] = OrderedDict()
 
-    def __init__(self, db: Session | None = None) -> None:
+    def __init__(
+        self,
+        db: Session | None = None,
+        ai_timeout_seconds: float = 8.0,
+    ) -> None:
+        if ai_timeout_seconds <= 0:
+            raise ValueError("AI fallback timeout must be greater than zero.")
         self.db = db
+        self.ai_timeout_seconds = ai_timeout_seconds
 
     @classmethod
     def clear_ai_fallback_cache(cls) -> None:
@@ -296,14 +308,21 @@ class _PrescriptionMedicationNameVerifier:
         )
 
         try:
-            response = await ai_client.aio.models.generate_content(
-                model=model_name,
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=self._ai_correction_response_schema(),
-                    temperature=0.0,
+            response = await asyncio.wait_for(
+                ai_client.aio.models.generate_content(
+                    model=model_name,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=self._ai_correction_response_schema(),
+                        temperature=0.0,
+                        thinking_config=types.ThinkingConfig(
+                            thinking_level=types.ThinkingLevel.MINIMAL,
+                        ),
+                        max_output_tokens=1024,
+                    ),
                 ),
+                timeout=self.ai_timeout_seconds,
             )
             response_data = json.loads(self._clean_json_response(response.text))
         except Exception as exc:
@@ -402,7 +421,10 @@ class _PrescriptionMedicationNameVerifier:
         basic_matches = {
             row.normalized_item_name: row.item_name
             for row in (
-                self.db.query(_DrugBasicInfo)
+                self.db.query(
+                    _DrugBasicInfo.normalized_item_name,
+                    _DrugBasicInfo.item_name,
+                )
                 .filter(_DrugBasicInfo.normalized_item_name.in_(normalized_names))
                 .order_by(_DrugBasicInfo.item_name.asc())
                 .all()
@@ -411,7 +433,10 @@ class _PrescriptionMedicationNameVerifier:
         approval_matches = {
             row.normalized_item_name: row.item_name
             for row in (
-                self.db.query(_DrugApprovalInfo)
+                self.db.query(
+                    _DrugApprovalInfo.normalized_item_name,
+                    _DrugApprovalInfo.item_name,
+                )
                 .filter(_DrugApprovalInfo.normalized_item_name.in_(normalized_names))
                 .order_by(_DrugApprovalInfo.item_name.asc())
                 .all()
@@ -438,15 +463,17 @@ class _PrescriptionMedicationNameVerifier:
         if not normalized_name:
             return None
 
+        prefix_upper_bound = self._prefix_upper_bound(normalized_name)
         matches_by_name: dict[str, str] = {}
         for model in (_DrugBasicInfo, _DrugApprovalInfo):
             for row in (
-                self.db.query(model)
+                self.db.query(
+                    model.normalized_item_name,
+                    model.item_name,
+                )
                 .filter(
-                    model.normalized_item_name.like(
-                        self._prefix_like_pattern(normalized_name),
-                        escape="\\",
-                    )
+                    model.normalized_item_name >= normalized_name,
+                    model.normalized_item_name < prefix_upper_bound,
                 )
                 .order_by(model.item_name.asc())
                 .limit(2)
@@ -496,7 +523,10 @@ class _PrescriptionMedicationNameVerifier:
                 for fragment in fragments
             ]
             for row in (
-                self.db.query(model)
+                self.db.query(
+                    model.normalized_item_name,
+                    model.item_name,
+                )
                 .filter(or_(*fragment_filters))
                 .order_by(model.item_name.asc())
                 .limit(self._MAX_CATALOG_QUERY_ROWS)
@@ -557,14 +587,12 @@ class _PrescriptionMedicationNameVerifier:
         )
         return f"%{escaped_fragment}%"
 
-    def _prefix_like_pattern(self, normalized_name: str) -> str:
-        escaped_name = (
-            normalized_name
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
-        return f"{escaped_name}%"
+    def _prefix_upper_bound(self, normalized_name: str) -> str:
+        for index in range(len(normalized_name) - 1, -1, -1):
+            code_point = ord(normalized_name[index])
+            if code_point < 0x10FFFF:
+                return normalized_name[:index] + chr(code_point + 1)
+        raise ValueError("Medication name cannot define a prefix range.")
 
     def _name_similarity(self, left: str, right: str) -> float:
         return SequenceMatcher(None, left, right).ratio()
@@ -784,9 +812,16 @@ class PrescriptionAnalysisControl:
             client=self.client,
             model_name=self.model_name,
             response_schema=self._PRESCRIPTION_RESPONSE_SCHEMA,
+            request_timeout_seconds=settings.PRESCRIPTION_OCR_TIMEOUT_SECONDS,
         )
         self.medication_name_verifier = (
-            medication_name_verifier or _PrescriptionMedicationNameVerifier(db=db)
+            medication_name_verifier
+            or _PrescriptionMedicationNameVerifier(
+                db=db,
+                ai_timeout_seconds=(
+                    settings.PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS
+                ),
+            )
         )
 
     # Function Name: request_prescription_image
@@ -888,7 +923,12 @@ class PrescriptionAnalysisControl:
     # Returns:
     # - Raw Gemini text response.
     async def _extract_prescription_text(self, image: bytes) -> str:
-        return await self.ocr_service_boundary.extractPrescriptionData(image)
+        try:
+            return await self.ocr_service_boundary.extractPrescriptionData(image)
+        except TimeoutError as exc:
+            raise PrescriptionAnalysisTimeoutError(
+                "처방전 인식 서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+            ) from exc
 
     @staticmethod
     def _validate_prescription_image(image: bytes) -> None:
