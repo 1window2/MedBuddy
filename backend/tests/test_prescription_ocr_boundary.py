@@ -99,6 +99,30 @@ async def test_structured_extraction_is_bounded_by_boundary_timeout() -> None:
 
 
 @pytest.mark.anyio
+async def test_timeout_does_not_log_request_configuration(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ocr_boundary = OCRServiceBoundary(
+        client=object(),  # type: ignore[arg-type]
+        model_name="sensitive-test-model",
+        response_schema={},
+        image_processing_boundary=_RecordingImageProcessingBoundary(),
+        gemini_vision_api=_SlowGeminiVisionAPI(),  # type: ignore[arg-type]
+        request_timeout_seconds=0.01,
+    )
+
+    with pytest.raises(TimeoutError, match="OCR service timed out"):
+        await ocr_boundary.extractText(b"source-image")
+
+    boundary_records = [
+        record
+        for record in caplog.records
+        if record.name == "boundaries.prescription_ocr_boundary"
+    ]
+    assert boundary_records == []
+
+
+@pytest.mark.anyio
 async def test_structured_extraction_uses_low_latency_high_resolution_config() -> None:
     client = _RecordingGeminiClient()
 

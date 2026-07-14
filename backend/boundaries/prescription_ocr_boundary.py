@@ -104,11 +104,6 @@ class OCRServiceBoundary:
                 timeout=self.request_timeout_seconds,
             )
         except TimeoutError as exc:
-            logger.warning(
-                "Prescription OCR timed out: model=%s, timeout_seconds=%.1f",
-                self.model_name,
-                self.request_timeout_seconds,
-            )
             raise TimeoutError("Prescription OCR service timed out.") from exc
 
         logger.info(
