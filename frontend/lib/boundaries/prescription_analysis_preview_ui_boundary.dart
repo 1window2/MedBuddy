@@ -58,9 +58,10 @@ class _PrescriptionAnalysisPreviewUIState
     );
     final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
     final effectiveTextScale = scale * systemTextScale;
+    final medicationPageSafety = hasNameCorrection ? 32.0 : 8.0;
     final medicationPageHeight = (hasNameCorrection ? 238.0 : 206.0) *
             (effectiveTextScale > 1 ? effectiveTextScale : 1) +
-        8;
+        medicationPageSafety;
 
     return Scaffold(
       backgroundColor: Colors.white,
