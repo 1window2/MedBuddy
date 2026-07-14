@@ -24,7 +24,7 @@ from entities.prescription_analysis_entity import (
     PrescriptionAnalysisResult,
     PrescriptionText,
 )
-from services.prescription_parser import normalize_prescription_payload
+from services.prescription_parser import normalize_prescription_payload, parse_prescription
 
 logger = logging.getLogger(__name__)
 MAX_PRESCRIPTION_IMAGE_BYTES = 15 * 1024 * 1024
@@ -836,6 +836,11 @@ class PrescriptionAnalysisControl:
             "parsed_medication_count": len(medication_schedules),
             "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
         }
+
+    @staticmethod
+    def parse_prescription_text(text: str) -> dict[str, object]:
+        """Parse legacy OCR text through the prescription control boundary."""
+        return parse_prescription(text.splitlines())
 
     # Function Name: requestPrescriptionImage
     # Description:

@@ -48,7 +48,6 @@ from schemas.medication import (
     UserSettingUpdate,
     VoiceGuideRequest,
 )
-from services.prescription_parser import parse_prescription
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -632,7 +631,9 @@ def parse_prescription_endpoint(
         raise HTTPException(status_code=400, detail="OCR 텍스트가 없습니다.")
 
     try:
-        parsed_data = parse_prescription(request.text.splitlines())
+        parsed_data = PrescriptionAnalysisControl.parse_prescription_text(
+            request.text,
+        )
         return {
             "success": True,
             "message": "처방전 파싱 성공",

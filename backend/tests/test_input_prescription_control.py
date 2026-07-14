@@ -657,6 +657,19 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
             medication_candidate_list.candidates[0],
         )
 
+    def test_parse_prescription_text_routes_legacy_parsing_through_control(
+        self,
+    ) -> None:
+        parsed = self.control.parse_prescription_text(
+            "\ud658\uc790\uba85: \uae40\ubbf8\uc601\n\ud504\ub8e8\ucf54\ud504\uc815 1 3 5",
+        )
+
+        self.assertEqual(parsed["patient_name"], "\uae40\ubbf8\uc601")
+        self.assertEqual(
+            parsed["medications"][0]["drug_name"],
+            "\ud504\ub8e8\ucf54\ud504\uc815",
+        )
+
     def _save_basic_drug(self, item_name: str) -> None:
         self.db.add(
             _DrugBasicInfo(
