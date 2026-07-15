@@ -63,7 +63,6 @@
 ## Roadmap
 
 1. **Unknown loose-pill identification:** Add a UML-defined front/back photo flow that returns user-confirmed candidates from a lightweight visual-retrieval model trained on the authorized [AI Hub oral-medication image dataset](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=11&dataSetSn=576&topMenu=).
-2. **Canonical medication image coverage:** Preserve `item_seq` throughout medication lookup and resolve clean official images through the [MFDS pill-identification API](https://www.data.go.kr/data/15057639/openapi.do) before beginning the recognition feature.
 
 ## Architecture
 
@@ -138,14 +137,15 @@ Open `backend/.env` and set at least:
 ```dotenv
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
-PILL_IMAGE_API_ENABLED=false
+PILL_IMAGE_API_ENABLED=true
+PILL_IMAGE_API_TIMEOUT_SECONDS=4
 ```
 
 The public-data key must be authorized for the `e약은요`, medication approval,
 and medication pill-identification APIs. Pill images are optional; lookups keep
 working with the existing placeholder when that API is unavailable or the dosage
-form has no public pill image. After Data.go.kr grants access to the pill-
-identification dataset, set `PILL_IMAGE_API_ENABLED=true`.
+form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
+MFDS service must be disabled explicitly.
 
 Start the API server:
 

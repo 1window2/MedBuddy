@@ -209,10 +209,12 @@ package "Entity Classes" {
   }
 
   class MedicationInfo <<entity>> {
+    +itemSeq: String
     +itemName: String
     +efficacy: String
     +useMethod: String
     +warningMessage: String
+    +imageUrl: String
     +source: String
     +aiGuide: String
     +attachAiGuide(aiGuide)
@@ -343,6 +345,7 @@ package "External / Storage Boundaries" {
   class PublicDrugDataPortal <<external>> {
     +searchBasicDrugInfo(medicineName): JSON
     +searchAdvancedDrugInfo(medicineName): JSON
+    +searchPillImage(medicineName, itemSeq): URL
   }
 
   class LLMService <<external>> {
