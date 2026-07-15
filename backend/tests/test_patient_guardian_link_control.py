@@ -56,6 +56,11 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         data = response["data"]
         self.assertEqual(data["patient_hash"], "patient-a")
         self.assertEqual(len(data["patient_code"]), PATIENT_LINK_CODE_LENGTH)
+        expires_at = datetime.fromisoformat(data["expires_at"])
+        self.assertEqual(expires_at.tzinfo, UTC)
+        remaining = expires_at - datetime.now(UTC)
+        self.assertGreater(remaining, timedelta(minutes=14))
+        self.assertLessEqual(remaining, timedelta(minutes=15))
 
         link_code = (
             self.db.query(_PatientLinkCode)

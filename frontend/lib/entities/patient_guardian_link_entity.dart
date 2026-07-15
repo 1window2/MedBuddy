@@ -7,6 +7,51 @@
 // - 서버 응답 JSON을 Dart 모델로 변환한다.
 // - 연동 생성/삭제 상태를 불변 객체 형태로 표현한다.
 // - API 전송이나 테스트에 사용할 JSON을 생성한다.
+class PatientLinkCode {
+  final String code;
+  final String patientHash;
+  final DateTime expiresAt;
+
+  const PatientLinkCode({
+    required this.code,
+    required this.patientHash,
+    required this.expiresAt,
+  });
+
+  factory PatientLinkCode.fromJson(Map<String, dynamic> json) {
+    final code = _readString(json['patient_code'] ?? json['code']);
+    final patientHash = _readString(
+      json['patient_hash'] ?? json['patientHash'],
+    );
+    final expiresAt = DateTime.tryParse(
+      _readString(json['expires_at'] ?? json['expiresAt']),
+    );
+    if (code.isEmpty || patientHash.isEmpty || expiresAt == null) {
+      throw const FormatException(
+        'Patient link code response is missing required fields.',
+      );
+    }
+    return PatientLinkCode(
+      code: code,
+      patientHash: patientHash,
+      expiresAt: expiresAt,
+    );
+  }
+
+  bool isExpired([DateTime? now]) {
+    return !expiresAt.isAfter(now ?? DateTime.now());
+  }
+
+  Duration remaining([DateTime? now]) {
+    final duration = expiresAt.difference(now ?? DateTime.now());
+    return duration.isNegative ? Duration.zero : duration;
+  }
+
+  static String _readString(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
+}
+
 class PatientGuardianLink {
   final int? linkID;
   final String patientID;

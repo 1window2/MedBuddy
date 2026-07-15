@@ -13,6 +13,12 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _as_naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
 class _PatientGuardianLink(Base):
     __tablename__ = "patient_caregiver_links"
     __table_args__ = (
@@ -42,6 +48,26 @@ class _PatientLinkCode(Base):
     used = Column(Boolean, nullable=False, default=False, server_default="0")
     # Keep the existing SQLite column name while exposing the UML term in code.
     guardian_hash = Column("caregiver_hash", String, nullable=True, index=True)
+
+
+# Class Name: PatientLinkCode
+# Role: Represents one expiring code shared by a patient with a guardian.
+class PatientLinkCode(BaseModel):
+    code: str
+    patient_hash: str
+    expires_at: datetime
+
+    def isExpired(self, now: datetime | None = None) -> bool:
+        comparison_time = _as_naive_utc(now) if now is not None else utc_now()
+        return _as_naive_utc(self.expires_at) <= comparison_time
+
+    def to_response_dict(self) -> dict[str, str]:
+        expires_at_utc = _as_naive_utc(self.expires_at).replace(tzinfo=UTC)
+        return {
+            "patient_hash": self.patient_hash,
+            "patient_code": self.code,
+            "expires_at": expires_at_utc.isoformat(),
+        }
 
 
 # Class Name: PatientGuardianLink

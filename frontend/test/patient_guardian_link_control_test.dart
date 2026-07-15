@@ -60,7 +60,7 @@ void main() {
           'data': {
             'patient_hash': 'patient-a',
             'patient_code': 'ABCD1234',
-            'expires_at': '2026-06-17T00:15:00',
+            'expires_at': '2026-06-17T00:15:00+00:00',
           },
         }),
         200,
@@ -76,7 +76,17 @@ void main() {
     final patientCode = await control.requestPatientCode();
 
     expect(requestBody['patient_hash'], 'patient-a');
-    expect(patientCode, 'ABCD1234');
+    expect(patientCode.code, 'ABCD1234');
+    expect(patientCode.patientHash, 'patient-a');
+    expect(patientCode.expiresAt, DateTime.utc(2026, 6, 17, 0, 15));
+    expect(
+      patientCode.isExpired(DateTime.utc(2026, 6, 17, 0, 14, 59)),
+      isFalse,
+    );
+    expect(
+      patientCode.isExpired(DateTime.utc(2026, 6, 17, 0, 15)),
+      isTrue,
+    );
   });
 
   test('createPatientCode preserves the diagram-level control name', () async {
@@ -89,7 +99,7 @@ void main() {
           'data': {
             'patient_hash': 'patient-a',
             'patient_code': 'WXYZ5678',
-            'expires_at': '2026-06-17T00:15:00',
+            'expires_at': '2026-06-17T00:15:00+00:00',
           },
         }),
         200,
@@ -104,7 +114,7 @@ void main() {
 
     final patientCode = await control.createPatientCode();
 
-    expect(patientCode, 'WXYZ5678');
+    expect(patientCode.code, 'WXYZ5678');
   });
 
   test('registerPatientCode sends guardian hash and patient code', () async {

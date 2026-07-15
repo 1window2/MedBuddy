@@ -78,7 +78,7 @@ class PatientGuardianLinkControl {
   // - Requests a temporary patient code for guardian registration.
   // Returns:
   // - Generated patient code.
-  Future<String> requestPatientCode() async {
+  Future<PatientLinkCode> requestPatientCode() async {
     try {
       final response = await _client
           .post(
@@ -99,7 +99,7 @@ class PatientGuardianLinkControl {
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawData = decodedData['data'];
       if (rawData is Map) {
-        return (rawData['patient_code'] ?? '').toString();
+        return PatientLinkCode.fromJson(Map<String, dynamic>.from(rawData));
       }
       throw StateError('Server response did not include a patient code.');
     } on StateError {
@@ -120,7 +120,7 @@ class PatientGuardianLinkControl {
   // - Class diagram compatible wrapper for creating a patient link code.
   // Returns:
   // - Generated patient code.
-  Future<String> createPatientCode() {
+  Future<PatientLinkCode> createPatientCode() {
     return requestPatientCode();
   }
 

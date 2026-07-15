@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -150,6 +152,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
   }
 
   Future<void> _requestPatientCode() async {
+    var shouldRefreshLinks = false;
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
@@ -162,10 +165,14 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
               '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
         });
         await _showPatientCodeDialog(patientCode);
+        shouldRefreshLinks = mounted;
       } finally {
         control.dispose();
       }
     });
+    if (shouldRefreshLinks) {
+      await _refreshLinks();
+    }
   }
 
   Future<bool> _registerPatientCode() async {
@@ -417,7 +424,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     );
   }
 
-  Future<void> _showPatientCodeDialog(String patientCode) {
+  Future<void> _showPatientCodeDialog(PatientLinkCode patientCode) {
     return showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
@@ -721,10 +728,37 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
   }
 }
 
-class _PatientCodeDialog extends StatelessWidget {
-  final String patientCode;
+class _PatientCodeDialog extends StatefulWidget {
+  final PatientLinkCode patientCode;
 
   const _PatientCodeDialog({required this.patientCode});
+
+  @override
+  State<_PatientCodeDialog> createState() => _PatientCodeDialogState();
+}
+
+class _PatientCodeDialogState extends State<_PatientCodeDialog> {
+  Timer? _countdownTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+      if (widget.patientCode.isExpired()) {
+        _countdownTimer?.cancel();
+      }
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -779,7 +813,9 @@ class _PatientCodeDialog extends StatelessWidget {
               child: InkWell(
                 borderRadius: BorderRadius.circular(13),
                 onTap: () {
-                  Clipboard.setData(ClipboardData(text: patientCode));
+                  Clipboard.setData(
+                    ClipboardData(text: widget.patientCode.code),
+                  );
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
@@ -799,7 +835,7 @@ class _PatientCodeDialog extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          patientCode,
+                          widget.patientCode.code,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -847,13 +883,13 @@ class _PatientCodeDialog extends StatelessWidget {
                   '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678 \uB2E4\uB978 \uC0AC\uB78C\uACFC\n\uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
             ),
             const SizedBox(height: 24),
-            const Text.rich(
+            Text.rich(
               TextSpan(
                 text: '\uB0A8\uC740 \uC2DC\uAC04: ',
                 children: [
                   TextSpan(
-                    text: '05:00',
-                    style: TextStyle(
+                    text: _remainingTimeText,
+                    style: const TextStyle(
                       color: MedBuddyColors.primary,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -862,7 +898,7 @@ class _PatientCodeDialog extends StatelessWidget {
                 ],
               ),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: MedBuddyColors.textSubtle,
                 fontSize: 13,
                 letterSpacing: 0,
@@ -872,6 +908,15 @@ class _PatientCodeDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String get _remainingTimeText {
+    final remaining = widget.patientCode.remaining();
+    final totalSeconds = (remaining.inMilliseconds / 1000).ceil();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
   }
 }
 

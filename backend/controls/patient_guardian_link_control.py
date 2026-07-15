@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from entities.patient_guardian_link_entity import (
     PatientGuardianLink,
+    PatientLinkCode,
     _PatientGuardianLink,
     _PatientLinkCode,
 )
@@ -134,14 +135,15 @@ class PatientGuardianLinkControl:
                 detail="Patient link code could not be created.",
             ) from exc
 
+        patient_link_code = PatientLinkCode(
+            code=link_code.patient_code,
+            patient_hash=link_code.patient_hash,
+            expires_at=link_code.expires_at,
+        )
         return {
             "success": True,
             "message": "Patient link code was created.",
-            "data": {
-                "patient_hash": link_code.patient_hash,
-                "patient_code": link_code.patient_code,
-                "expires_at": link_code.expires_at.isoformat(),
-            },
+            "data": patient_link_code.to_response_dict(),
         }
 
     # Function Name: createPatientCode
