@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'boundaries/check_schedule_ui_boundary.dart';
+import 'services/medication_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
-import 'services/medication_notification_service.dart';
 
 // 파일명: main.dart
 // 역할: Flutter 앱의 Provider, 테마, 첫 화면을 초기화한다.
@@ -26,8 +27,70 @@ Future<void> main() async {
 // - MedBuddyViewModel을 앱 전역 상태로 등록한다.
 // - 저장된 사용자 설정을 앱 시작 시 불러온다.
 // - 홈 화면과 공통 테마를 설정한다.
-class MedBuddyApp extends StatelessWidget {
-  const MedBuddyApp({super.key});
+class MedBuddyApp extends StatefulWidget {
+  final GlobalKey<NavigatorState>? navigatorKey;
+
+  const MedBuddyApp({
+    super.key,
+    this.navigatorKey,
+  });
+
+  @override
+  State<MedBuddyApp> createState() => _MedBuddyAppState();
+}
+
+class _MedBuddyAppState extends State<MedBuddyApp> {
+  static const String _scheduleRouteName = '/schedule';
+
+  late final GlobalKey<NavigatorState> _navigatorKey;
+  bool _isScheduleRouteOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _navigatorKey = widget.navigatorKey ?? GlobalKey<NavigatorState>();
+    MedicationNotificationService.setNotificationSelectionHandler(
+      _handleNotificationSelection,
+    );
+  }
+
+  @override
+  void dispose() {
+    MedicationNotificationService.setNotificationSelectionHandler(null);
+    super.dispose();
+  }
+
+  void _handleNotificationSelection(
+    MedicationNotificationDestination destination,
+  ) {
+    if (destination != MedicationNotificationDestination.schedule) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) {
+        return;
+      }
+      if (_isScheduleRouteOpen) {
+        navigator.popUntil(
+          (route) => route.settings.name == _scheduleRouteName || route.isFirst,
+        );
+        return;
+      }
+      _isScheduleRouteOpen = true;
+      navigator
+          .push(
+            MaterialPageRoute<void>(
+              settings: const RouteSettings(name: _scheduleRouteName),
+              builder: (context) => const CheckScheduleUI(),
+            ),
+          )
+          .whenComplete(() => _isScheduleRouteOpen = false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +101,7 @@ class MedBuddyApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
+        navigatorKey: _navigatorKey,
         title: 'MedBuddy',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(

@@ -4,6 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+enum MedicationNotificationDestination { schedule }
+
+typedef MedicationNotificationSelectionHandler = void Function(
+  MedicationNotificationDestination destination,
+);
+
 // 파일명: medication_notification_service.dart
 // 역할: 복약 알림을 휴대폰 로컬 알림으로 예약하고 취소한다.
 
@@ -18,10 +24,53 @@ class MedicationNotificationService {
 
   static final MedicationNotificationService instance =
       MedicationNotificationService._();
+  static MedicationNotificationSelectionHandler? _selectionHandler;
+  static MedicationNotificationDestination? _pendingDestination;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
+
+  static void setNotificationSelectionHandler(
+    MedicationNotificationSelectionHandler? handler,
+  ) {
+    _selectionHandler = handler;
+    final pendingDestination = _pendingDestination;
+    if (handler == null || pendingDestination == null) {
+      return;
+    }
+    _pendingDestination = null;
+    handler(pendingDestination);
+  }
+
+  static MedicationNotificationDestination? destinationFromPayload(
+    String? payload,
+  ) {
+    final segments = payload?.split(':') ?? const <String>[];
+    if (segments.length != 3 ||
+        segments[0] != 'schedule' ||
+        segments[1].trim().isEmpty) {
+      return null;
+    }
+    final notificationID = int.tryParse(segments[2]);
+    if (notificationID == null || notificationID < 0) {
+      return null;
+    }
+    return MedicationNotificationDestination.schedule;
+  }
+
+  static void handleNotificationPayload(String? payload) {
+    final destination = destinationFromPayload(payload);
+    if (destination == null) {
+      return;
+    }
+    final handler = _selectionHandler;
+    if (handler == null) {
+      _pendingDestination = destination;
+      return;
+    }
+    handler(destination);
+  }
 
   // 함수명: initialize
   // 함수역할:
@@ -36,6 +85,7 @@ class MedicationNotificationService {
     timezone_data.initializeTimeZones();
     timezone.setLocalLocation(timezone.getLocation('Asia/Seoul'));
 
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
     await _plugin.initialize(
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -45,8 +95,17 @@ class MedicationNotificationService {
           requestSoundPermission: false,
         ),
       ),
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
     );
     _isInitialized = true;
+
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+    }
+  }
+
+  static void _handleNotificationResponse(NotificationResponse response) {
+    handleNotificationPayload(response.payload);
   }
 
   // 함수명: requestPermission
