@@ -60,6 +60,11 @@
 - Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
+## Roadmap
+
+1. **Unknown loose-pill identification:** Add a UML-defined front/back photo flow that returns user-confirmed candidates from a lightweight visual-retrieval model trained on the authorized [AI Hub oral-medication image dataset](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=11&dataSetSn=576&topMenu=).
+2. **Canonical medication image coverage:** Preserve `item_seq` throughout medication lookup and resolve clean official images through the [MFDS pill-identification API](https://www.data.go.kr/data/15057639/openapi.do) before beginning the recognition feature.
+
 ## Architecture
 
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
