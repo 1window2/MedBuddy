@@ -14,6 +14,7 @@ from core.database import Base
 # Responsibilities:
 #   - Carry efficacy, usage, warning, source, and optional guide text.
 # Attributes:
+#   - item_seq: Canonical public product identifier shared by MFDS datasets.
 #   - item_name: Public medication item name.
 #   - efficacy: Medication efficacy summary.
 #   - usage_method: Medication use method summary.
@@ -26,6 +27,7 @@ from core.database import Base
 class MedicationDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
+    item_seq: str = ""
     item_name: str
     efficacy: str
     usage_method: str = Field(alias="use_method")

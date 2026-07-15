@@ -16,7 +16,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - BASIC_DRUG_API_BASE_URL: e약은요 API endpoint.
 #   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
 #   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
-#   - PILL_IMAGE_API_ENABLED: Enables image enrichment after API authorization.
+#   - PILL_IMAGE_API_ENABLED: Enables optional MFDS pill-image enrichment.
+#   - PILL_IMAGE_API_TIMEOUT_SECONDS: Maximum optional image lookup duration.
 #   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
 #   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
 #     duration.
@@ -37,7 +38,8 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/1471000/"
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
-    PILL_IMAGE_API_ENABLED: bool = False
+    PILL_IMAGE_API_ENABLED: bool = True
+    PILL_IMAGE_API_TIMEOUT_SECONDS: float = 4.0
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: float = 8.0
     REDIS_URL: str = "redis://localhost:6379"

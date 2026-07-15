@@ -14,12 +14,15 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from api import dependencies as api_dependencies
 from core.config import settings
 from controls.check_medication_detail_control import (
+    CheckMedicationDetail,
     _MedicationDetailCache,
+    _MedicationSummaryGenerator,
     _MedicationTextNormalizer,
     _PublicDrugDataPortal,
     _read_public_image_url,
     _read_text,
 )
+from entities.medication_detail_entity import MedicationDetail
 
 # 파일명: test_check_medication_detail_control.py
 # 역할: 약품 상세 조회 control의 검색어 정규화와 캐시 실패 처리를 검증한다.
@@ -194,16 +197,21 @@ async def test_pill_image_lookup_is_optional_when_api_is_unavailable(
 ) -> None:
     portal = _PublicDrugDataPortal()
     monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
+    request_count = 0
 
     async def failing_request_items(
         url: str,
         params: dict[str, object],
     ) -> tuple[list[dict[str, object]], int]:
+        nonlocal request_count
+        request_count += 1
         raise RuntimeError("not authorized")
 
     monkeypatch.setattr(portal, "_request_items", failing_request_items)
 
     assert await portal.search_pill_image_url("테스트정") == ""
+    assert await portal.search_pill_image_url("테스트정") == ""
+    assert request_count == 1
 
 
 @pytest.mark.anyio
@@ -266,6 +274,102 @@ async def test_pill_image_lookup_uses_product_code_when_available(
         await portal.search_pill_image_url("테스트정", "200000001")
         == "https://example.com/by-code.png"
     )
+
+
+def test_public_data_response_header_rejects_service_errors() -> None:
+    portal = _PublicDrugDataPortal()
+
+    with pytest.raises(RuntimeError, match="rejected"):
+        portal._validate_response_header(
+            {"response": {"header": {"resultCode": "30"}}}
+        )
+
+
+@pytest.mark.anyio
+async def test_image_enrichment_uses_canonical_product_code() -> None:
+    requested_values: list[tuple[str, str]] = []
+
+    class _FakePillImagePortal:
+        async def search_pill_image_url(
+            self,
+            item_name: str,
+            item_seq: str = "",
+        ) -> str:
+            requested_values.append((item_name, item_seq))
+            return "https://example.com/by-code.png"
+
+    control = object.__new__(CheckMedicationDetail)
+    control.public_drug_data_portal = _FakePillImagePortal()
+    details = await control._enrich_missing_image_urls(
+        [
+            MedicationDetail(
+                item_seq="200000001",
+                item_name="test-tablet",
+                efficacy="effect",
+                usage_method="usage",
+                warning="warning",
+            )
+        ]
+    )
+
+    assert requested_values == [("test-tablet", "200000001")]
+    assert details[0].item_seq == "200000001"
+    assert details[0].image_url == "https://example.com/by-code.png"
+
+
+@pytest.mark.anyio
+async def test_public_basic_detail_preserves_product_code() -> None:
+    control = object.__new__(CheckMedicationDetail)
+
+    details = await control._build_basic_drug_infos(
+        [
+            {
+                "itemSeq": "200000001",
+                "itemName": "test-tablet",
+                "efcyQesitm": "effect",
+                "useMethodQesitm": "usage",
+                "atpnWarnQesitm": "warning",
+            }
+        ]
+    )
+
+    assert details[0].item_seq == "200000001"
+
+
+@pytest.mark.anyio
+async def test_advanced_detail_preserves_product_code() -> None:
+    class _FakeModels:
+        async def generate_content(self, **kwargs: object) -> object:
+            return type(
+                "Response",
+                (),
+                {
+                    "text": (
+                        '{"efficacy":"effect","use_method":"usage",'
+                        '"warning_message":"warning"}'
+                    )
+                },
+            )()
+
+    fake_client = type(
+        "Client",
+        (),
+        {"aio": type("Aio", (), {"models": _FakeModels()})()},
+    )()
+    generator = _MedicationSummaryGenerator(ai_client=fake_client)
+
+    detail = await generator.summarize_advanced_item(
+        "test-tablet",
+        {
+            "ITEM_SEQ": "200000001",
+            "ITEM_NAME": "test-tablet",
+            "EE_DOC_DATA": "effect document",
+            "UD_DOC_DATA": "usage document",
+            "NB_DOC_DATA": "warning document",
+        },
+    )
+
+    assert detail.item_seq == "200000001"
 
 
 @pytest.mark.anyio

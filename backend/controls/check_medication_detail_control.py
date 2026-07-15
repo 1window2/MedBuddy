@@ -1,9 +1,11 @@
 # File Name: check_medication_detail_control.py
 # Role: Control class for requesting medication detail information.
 
+import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -433,10 +435,12 @@ class _MedicationDetailCache:
 #   - timeout_seconds: HTTP timeout value for public API requests.
 class _PublicDrugDataPortal:
     _PILL_IMAGE_CACHE_LIMIT = 512
+    _PILL_IMAGE_FAILURE_COOLDOWN_SECONDS = 60.0
 
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
         self._pill_image_url_cache: dict[str, str] = {}
+        self._pill_image_retry_after = 0.0
 
     # Function Name: search_basic_drug_info
     # Description:
@@ -509,6 +513,8 @@ class _PublicDrugDataPortal:
     ) -> str:
         if not settings.PILL_IMAGE_API_ENABLED:
             return ""
+        if time.monotonic() < self._pill_image_retry_after:
+            return ""
 
         normalized_name = self._normalize_match_text(item_name)
         normalized_sequence = item_seq.strip()
@@ -534,16 +540,24 @@ class _PublicDrugDataPortal:
             params["item_name"] = item_name.strip()
 
         try:
-            items, _ = await self._request_items(
-                settings.PILL_IMAGE_API_BASE_URL,
-                params,
+            items, _ = await asyncio.wait_for(
+                self._request_items(
+                    settings.PILL_IMAGE_API_BASE_URL,
+                    params,
+                ),
+                timeout=settings.PILL_IMAGE_API_TIMEOUT_SECONDS,
             )
         except Exception as exc:
+            self._pill_image_retry_after = (
+                time.monotonic() + self._PILL_IMAGE_FAILURE_COOLDOWN_SECONDS
+            )
             logger.warning(
                 "Pill image API lookup failed: %s",
                 type(exc).__name__,
             )
             return ""
+
+        self._pill_image_retry_after = 0.0
 
         matched_image_urls: list[str] = []
         for item in items:
@@ -625,6 +639,9 @@ class _PublicDrugDataPortal:
             raise RuntimeError("공공데이터 API 서버와 통신할 수 없습니다.")
 
         data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("Public data API returned an invalid payload.")
+        self._validate_response_header(data)
         body = self._extract_body(data)
         return self._normalize_items(body.get("items")), self._safe_int(
             body.get("totalCount")
@@ -640,6 +657,20 @@ class _PublicDrugDataPortal:
             return response["body"]
 
         return {}
+
+    def _validate_response_header(self, data: dict[str, Any]) -> None:
+        header = data.get("header")
+        response = data.get("response")
+        if not isinstance(header, dict) and isinstance(response, dict):
+            header = response.get("header")
+        if not isinstance(header, dict):
+            return
+
+        result_code = str(
+            header.get("resultCode", header.get("result_code", ""))
+        ).strip()
+        if result_code and result_code not in {"00", "0000"}:
+            raise RuntimeError("Public data API rejected the request.")
 
     def _normalize_items(self, raw_items: Any) -> list[dict[str, Any]]:
         if raw_items is None:
@@ -741,6 +772,10 @@ class _MedicationSummaryGenerator:
             raise RuntimeError("AI 요약 처리 중 오류가 발생했습니다.") from exc
 
         return MedicationDetail(
+            item_seq=_read_public_item_text(
+                advanced_item,
+                _PUBLIC_ITEM_SEQUENCE_FIELDS,
+            ),
             item_name=actual_item_name,
             efficacy=_read_text(summary_data.get("efficacy"), "요약 실패"),
             usage_method=_read_text(summary_data.get("use_method"), "요약 실패"),
@@ -872,6 +907,7 @@ class _LocalMedicationCatalog:
         enriched_details = []
         for item in basic_items:
             medication_detail = MedicationDetail(
+                item_seq=item.item_seq or "",
                 item_name=item.item_name,
                 efficacy=item.efficacy or "정보 없음",
                 usage_method=item.use_method or "정보 없음",
@@ -919,6 +955,7 @@ class _LocalMedicationCatalog:
             return None
 
         return MedicationDetail(
+            item_seq=approval_item.item_seq or "",
             item_name=approval_item.item_name,
             efficacy=approval_item.summary_efficacy,
             usage_method=approval_item.summary_use_method,
@@ -954,6 +991,12 @@ class _LocalMedicationCatalog:
         approval_item: _DrugApprovalInfo,
     ) -> dict[str, Any] | None:
         normalized_item = {
+            "ITEM_SEQ": self._read_first_raw_text(
+                raw_item,
+                list(_PUBLIC_ITEM_SEQUENCE_FIELDS),
+            )
+            or approval_item.item_seq
+            or "",
             "ITEM_NAME": self._read_first_raw_text(
                 raw_item,
                 ["ITEM_NAME", "itemName", "item_name"],
@@ -988,6 +1031,7 @@ class _LocalMedicationCatalog:
         approval_item: _DrugApprovalInfo,
     ) -> dict[str, Any]:
         return {
+            "ITEM_SEQ": approval_item.item_seq or "",
             "ITEM_NAME": approval_item.item_name,
             "EE_DOC_DATA": approval_item.efficacy_doc or "정보 없음",
             "UD_DOC_DATA": approval_item.use_method_doc or "정보 없음",
@@ -1169,6 +1213,7 @@ class CheckMedicationDetail:
 
             image_url = await self.public_drug_data_portal.search_pill_image_url(
                 medication_detail.item_name,
+                medication_detail.item_seq,
             )
             if not image_url:
                 enriched_details.append(medication_detail)
@@ -1228,6 +1273,10 @@ class CheckMedicationDetail:
     ) -> list[MedicationDetail]:
         medication_details = [
             MedicationDetail(
+                item_seq=_read_public_item_text(
+                    item,
+                    _PUBLIC_ITEM_SEQUENCE_FIELDS,
+                ),
                 item_name=_read_text(item.get("itemName")),
                 efficacy=_read_text(item.get("efcyQesitm")),
                 usage_method=_read_text(item.get("useMethodQesitm")),
