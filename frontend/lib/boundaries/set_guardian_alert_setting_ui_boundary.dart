@@ -14,6 +14,7 @@ import '../theme/medbuddy_theme.dart';
 class SetGuardianAlertSettingUI extends StatelessWidget {
   final GuardianAlertSetting setting;
   final bool isLoading;
+  final String language;
   final ValueChanged<bool> onAlertOptionChanged;
 
   const SetGuardianAlertSettingUI({
@@ -21,7 +22,68 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
     required this.setting,
     required this.onAlertOptionChanged,
     this.isLoading = false,
+    this.language = 'ko',
   });
+
+  static Future<bool?> showGuardianAlertSettingPopup(
+    BuildContext context, {
+    required GuardianAlertSetting setting,
+    bool isLoading = false,
+    String language = 'ko',
+  }) {
+    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    return showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 42),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: isEnglish ? 'Close' : '닫기',
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: const Icon(Icons.close),
+                    ),
+                    Expanded(
+                      child: Text(
+                        isEnglish ? 'Guardian alert settings' : '보호자 알림 설정',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 48),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SetGuardianAlertSettingUI(
+                  setting: setting,
+                  isLoading: isLoading,
+                  language: language,
+                  onAlertOptionChanged: (enabled) {
+                    Navigator.pop(dialogContext, enabled);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   void clickGuardianAlertSetting(bool enabled) {
     onAlertOptionChanged(enabled);
@@ -33,6 +95,7 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEnglish = language.trim().toLowerCase().startsWith('en');
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -53,10 +116,10 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
             size: 22,
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
-              '보호자 알림',
-              style: TextStyle(
+              isEnglish ? 'Guardian alert' : '보호자 알림',
+              style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,

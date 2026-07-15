@@ -15,6 +15,7 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 # Responsibilities:
 #   - Map saved medication fields to the saved_medications table.
 #   - Keep saved medication snapshots scoped to a patient hash.
+#   - Preserve the canonical MFDS product identifier for later enrichment.
 #   - Preserve prescription-derived dosage schedule fields for later schedule features.
 #   - Persist the current medication schedule status for CheckSchedule use cases.
 class _SavedMedication(Base):
@@ -30,6 +31,7 @@ class _SavedMedication(Base):
     )
     created_date = Column(Date, nullable=True, default=date.today)
     prescription_date = Column(Date, nullable=True)
+    item_seq = Column(String, nullable=True, index=True)
     item_name = Column(String, index=True)
     efficacy = Column(String)
     use_method = Column(String)
@@ -68,6 +70,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
         "created_date": "DATE",
         "prescription_date": "DATE",
+        "item_seq": "VARCHAR",
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",
@@ -101,5 +104,12 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS "
                 f"ix_{_SavedMedication.__tablename__}_patient_hash "
                 f"ON {_SavedMedication.__tablename__} (patient_hash)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                f"ix_{_SavedMedication.__tablename__}_item_seq "
+                f"ON {_SavedMedication.__tablename__} (item_seq)"
             )
         )

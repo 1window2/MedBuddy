@@ -28,6 +28,7 @@ void main() {
 
     final result = await control.saveMedicationDetail(
       const MedicationDetail(
+        itemSeq: '200000001',
         itemName: 'test-tablet',
         efficacy: 'effect',
         usageMethod: 'usage',
@@ -45,6 +46,7 @@ void main() {
     expect(result.status, MedicationSaveStatus.saved);
     expect(result.isCompleted, isTrue);
     expect(requestBody['patient_hash'], 'patient-a');
+    expect(requestBody['item_seq'], '200000001');
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');
@@ -92,6 +94,7 @@ void main() {
             {
               'id': 1,
               'patient_hash': 'patient-a',
+              'item_seq': '200000001',
               'item_name': 'test-tablet',
               'efficacy': 'effect',
               'use_method': 'usage',
@@ -118,6 +121,7 @@ void main() {
 
     expect(medications, hasLength(1));
     expect(medications.first.patientHash, 'patient-a');
+    expect(medications.first.itemSeq, '200000001');
     expect(medications.first.dosagePerTime, '1 tablet');
     expect(medications.first.imageUrl, 'https://example.com/medicine.jpg');
   });

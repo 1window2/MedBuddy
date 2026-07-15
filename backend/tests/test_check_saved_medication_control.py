@@ -1,6 +1,7 @@
 # 파일명: test_check_saved_medication_control.py
 # 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
 
+import asyncio
 import unittest
 import sys
 from datetime import date, timedelta
@@ -21,12 +22,36 @@ from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
     ensure_medication_completion_schema,
 )
+from entities.medication_detail_entity import _DrugApprovalInfo  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
     ensure_saved_medication_schema,
 )
 from schemas.medication import SavedMedicationCreate  # noqa: E402
+
+
+class _RecordingMedicationImageLookup:
+    def __init__(self, image_url: str) -> None:
+        self.image_url = image_url
+        self.requests: list[tuple[str, str]] = []
+
+    async def search_pill_image_url(
+        self,
+        item_name: str,
+        item_seq: str = "",
+    ) -> str:
+        self.requests.append((item_name, item_seq))
+        return self.image_url
+
+
+class _FailingMedicationImageLookup:
+    async def search_pill_image_url(
+        self,
+        item_name: str,
+        item_seq: str = "",
+    ) -> str:
+        raise TimeoutError("optional image service timed out")
 
 
 class CheckSavedMedicationTest(unittest.TestCase):
@@ -61,6 +86,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         return SavedMedicationCreate(
             patient_hash=patient_hash,
             prescription_date=self.active_prescription_date,
+            item_seq="200000001",
             item_name=item_name,
             efficacy="effect",
             use_method="usage",
@@ -80,13 +106,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_row = self.db.get(_SavedMedication, response["id"])
         self.assertIsNotNone(saved_row)
         self.assertEqual(saved_row.patient_hash, "patient-a")
+        self.assertEqual(saved_row.item_seq, "200000001")
         self.assertEqual(saved_row.dosage_per_time, "1 tablet")
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
         self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
         self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
 
-    def test_schema_upgrade_adds_ai_guide_to_legacy_saved_medications(self) -> None:
+    def test_schema_upgrade_adds_saved_metadata_to_legacy_table(self) -> None:
         engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -121,6 +148,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             column["name"] for column in inspect(engine).get_columns("saved_medications")
         }
         self.assertIn("ai_guide", existing_columns)
+        self.assertIn("item_seq", existing_columns)
 
         session_factory = sessionmaker(
             autocommit=False,
@@ -135,6 +163,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             saved_row = db.get(_SavedMedication, response["id"])
             self.assertIsNotNone(saved_row)
             self.assertEqual(saved_row.ai_guide, "guide")
+            self.assertEqual(saved_row.item_seq, "200000001")
         finally:
             db.close()
             engine.dispose()
@@ -192,6 +221,71 @@ class CheckSavedMedicationTest(unittest.TestCase):
             response["data"][0]["image_url"],
             "https://example.com/medicine.jpg",
         )
+
+    def test_list_enriches_and_persists_legacy_missing_image(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="catalog-tablet",
+        )
+        medication.item_seq = None
+        medication.image_url = None
+        save_response = self.control.save_medication_detail(medication)
+        self.db.add(
+            _DrugApprovalInfo(
+                item_seq="201907237",
+                item_name="catalog-tablet",
+                normalized_item_name="catalog-tablet",
+                raw_json="{}",
+            )
+        )
+        self.db.commit()
+        image_lookup = _RecordingMedicationImageLookup(
+            "https://example.com/catalog-tablet.jpg"
+        )
+        control = CheckSavedMedication(
+            self.db,
+            medication_image_lookup=image_lookup,
+        )
+
+        response = asyncio.run(
+            control.request_saved_medication_info_with_images("patient-a")
+        )
+
+        self.assertEqual(
+            image_lookup.requests,
+            [("catalog-tablet", "201907237")],
+        )
+        self.assertEqual(response["data"][0]["item_seq"], "201907237")
+        self.assertEqual(
+            response["data"][0]["image_url"],
+            "https://example.com/catalog-tablet.jpg",
+        )
+        saved_row = self.db.get(_SavedMedication, save_response["id"])
+        self.assertEqual(saved_row.item_seq, "201907237")
+        self.assertEqual(
+            saved_row.image_url,
+            "https://example.com/catalog-tablet.jpg",
+        )
+
+    def test_list_survives_optional_image_lookup_failure(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="no-image-tablet",
+        )
+        medication.image_url = None
+        self.control.save_medication_detail(medication)
+        control = CheckSavedMedication(
+            self.db,
+            medication_image_lookup=_FailingMedicationImageLookup(),
+        )
+
+        response = asyncio.run(
+            control.request_saved_medication_info_with_images("patient-a")
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"][0]["item_name"], "no-image-tablet")
+        self.assertFalse(response["data"][0]["image_url"])
 
     def test_list_removes_medications_ended_more_than_retention_period(self) -> None:
         expired_medication = self._saved_medication(

@@ -12,6 +12,7 @@ import 'medication_schedule_entity.dart';
 class MedicationDetail {
   final int? id;
   final String patientHash;
+  final String itemSeq;
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
   final String itemName;
@@ -31,6 +32,7 @@ class MedicationDetail {
   const MedicationDetail({
     this.id,
     this.patientHash = '',
+    this.itemSeq = '',
     this.createdDate,
     this.prescriptionDate,
     required this.itemName,
@@ -60,6 +62,7 @@ class MedicationDetail {
     return MedicationDetail(
       id: _readInt(json['id']),
       patientHash: _readString(json['patient_hash']),
+      itemSeq: _readString(json['item_seq'] ?? json['itemSeq']),
       createdDate: _readDate(json['created_date'] ?? json['createdDate']),
       prescriptionDate: _readDate(
         json['prescription_date'] ?? json['prescriptionDate'],
@@ -102,6 +105,7 @@ class MedicationDetail {
     return {
       'patient_hash': patientHash,
       'prescription_date': _formatDate(prescriptionDate),
+      'item_seq': itemSeq,
       'item_name': itemName,
       'efficacy': efficacy,
       'use_method': usageMethod,

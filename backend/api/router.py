@@ -120,14 +120,14 @@ def save_medication(
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
-def get_saved_medications(
+async def get_saved_medications(
     patient_hash: str | None = None,
     user_hash: str | None = None,
     role: str = "patient",
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return check_saved_medication.request_saved_medication_info(
+        return await check_saved_medication.request_saved_medication_info_with_images(
             patient_hash,
             user_hash,
             role,

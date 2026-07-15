@@ -22,6 +22,7 @@ class MedicationRequest(BaseModel):
 # Role: Request DTO for saving a medication snapshot.
 # Attributes:
 #   - patient_hash: Patient ownership key used for saved medication scoping.
+#   - item_seq: Canonical public product identifier used across MFDS datasets.
 #   - item_name: Medication item name.
 #   - efficacy: Medication efficacy summary.
 #   - use_method: Medication use method summary.
@@ -33,6 +34,7 @@ class MedicationRequest(BaseModel):
 class SavedMedicationCreate(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
     prescription_date: Optional[date] = None
+    item_seq: Optional[str] = None
     item_name: str
     efficacy: str
     use_method: str

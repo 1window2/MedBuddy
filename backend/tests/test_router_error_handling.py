@@ -24,7 +24,7 @@ from controls.input_prescription_control import (  # noqa: E402
 
 
 class _MissingGuardianSavedMedicationControl:
-    def request_saved_medication_info(
+    async def request_saved_medication_info_with_images(
         self,
         patient_hash: str,
         user_hash: str | None,
@@ -44,7 +44,7 @@ class _MissingGuardianScheduleControl:
 
 
 class _FailingSavedMedicationControl:
-    def request_saved_medication_info(
+    async def request_saved_medication_info_with_images(
         self,
         patient_hash: str | None,
         user_hash: str | None,
@@ -82,9 +82,9 @@ class _TimedOutPrescriptionAnalysisControl:
 
 
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
-    def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
+    async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
-            get_saved_medications(
+            await get_saved_medications(
                 user_hash="guardian-missing",
                 role="guardian",
                 check_saved_medication=_MissingGuardianSavedMedicationControl(),
@@ -102,11 +102,11 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    def test_saved_medication_lookup_hides_internal_exception_details(
+    async def test_saved_medication_lookup_hides_internal_exception_details(
         self,
     ) -> None:
         with self.assertRaises(HTTPException) as context:
-            get_saved_medications(
+            await get_saved_medications(
                 check_saved_medication=_FailingSavedMedicationControl(),
             )
 

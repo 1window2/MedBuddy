@@ -1097,62 +1097,20 @@ class _LinkedUserTile extends StatelessWidget {
         link.patientID.trim().isNotEmpty;
   }
 
-  void _showGuardianAlertDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
-      builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+  Future<void> _showGuardianAlertDialog(BuildContext context) async {
+    final enabled =
+        await SetGuardianAlertSettingUI.showGuardianAlertSettingPopup(
+      context,
+      setting: guardianAlertSetting ??
+          GuardianAlertSetting(
+            guardianID: link.guardianID,
+            patientID: link.patientID,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: '닫기',
-                      onPressed: () => Navigator.pop(dialogContext),
-                      icon: const Icon(Icons.close),
-                    ),
-                    const Expanded(
-                      child: Text(
-                        '보호자 알림 설정',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF0A0A0A),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SetGuardianAlertSettingUI(
-                  setting: guardianAlertSetting ??
-                      GuardianAlertSetting(
-                        guardianID: link.guardianID,
-                        patientID: link.patientID,
-                      ),
-                  isLoading: isGuardianAlertLoading,
-                  onAlertOptionChanged: (enabled) {
-                    Navigator.pop(dialogContext);
-                    onGuardianAlertChanged(enabled);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      isLoading: isGuardianAlertLoading,
     );
+    if (enabled != null) {
+      await onGuardianAlertChanged(enabled);
+    }
   }
 }
 

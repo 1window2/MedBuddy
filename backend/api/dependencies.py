@@ -103,7 +103,10 @@ def get_check_medication_detail(
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
-    return CheckSavedMedication(db=db)
+    return CheckSavedMedication(
+        db=db,
+        medication_image_lookup=_public_drug_data_portal,
+    )
 
 
 # Function Name: get_check_schedule

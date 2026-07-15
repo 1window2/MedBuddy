@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
     PILL_IMAGE_API_ENABLED: bool = True
-    PILL_IMAGE_API_TIMEOUT_SECONDS: float = 4.0
+    PILL_IMAGE_API_TIMEOUT_SECONDS: float = 8.0
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: float = 8.0
     REDIS_URL: str = "redis://localhost:6379"
