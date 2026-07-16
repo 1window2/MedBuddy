@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from entities.pill_identification_entity import PillCatalogEntry, PillVisualFeatures
 from repositories.pill_identification_catalog_repository import (
-    PillCatalogSessionLocal,
     PillIdentificationCatalogRepository,
+    open_pill_catalog_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -424,8 +424,10 @@ class PillVisionBoundary:
 
         if not self._owns_client:
             return
-        await self.client.aio.aclose()
-        self.client.close()
+        try:
+            await self.client.aio.aclose()
+        finally:
+            self.client.close()
 
     def _to_features(self, payload: dict[str, Any]) -> PillVisualFeatures:
         raw_colors = payload.get("colors")
@@ -705,7 +707,7 @@ class MFDSPillCatalogBoundary:
         self.cache_ttl = resolved_cache_ttl
         self.refresh_timeout_seconds = resolved_refresh_timeout
         self.minimum_catalog_rows = self.catalog_api.minimum_catalog_rows
-        self.session_factory = session_factory or PillCatalogSessionLocal
+        self.session_factory = session_factory or open_pill_catalog_session
         self._catalog: tuple[PillCatalogEntry, ...] | None = None
         self._catalog_loaded_at = 0.0
         self._catalog_is_stale = False

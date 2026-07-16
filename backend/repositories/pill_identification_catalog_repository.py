@@ -22,20 +22,27 @@ pill_catalog_engine = create_engine(
     PILL_CATALOG_DATABASE_URL,
     connect_args={"check_same_thread": False},
 )
-PillCatalogSessionLocal = sessionmaker(
+_PillCatalogSessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=pill_catalog_engine,
 )
 
 
-def initialize_pill_identification_catalog() -> None:
+def _initialize_pill_identification_catalog() -> None:
     """Creates the isolated public-reference cache table when absent."""
 
     PillIdentificationReference.__table__.create(
         bind=pill_catalog_engine,
         checkfirst=True,
     )
+
+
+def open_pill_catalog_session() -> Session:
+    """Opens a catalog session after lazily ensuring its isolated schema."""
+
+    _initialize_pill_identification_catalog()
+    return _PillCatalogSessionLocal()
 
 
 class PillIdentificationCatalogRepository:

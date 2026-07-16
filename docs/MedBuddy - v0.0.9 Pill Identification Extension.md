@@ -108,6 +108,8 @@ domain use case. `MFDSPillCatalogBoundary` owns its short-lived session factory
 and runs synchronous SQLite access outside the event loop. Its isolated
 reference database keeps catalog replacement independent from core MedBuddy
 transactions and keeps SQLAlchemy concerns out of the `IdentifyPill` control.
+The repository initializes this optional database lazily on first catalog
+access, so the extension adds no catalog I/O to the baseline app startup.
 
 ## Extension sequence diagram
 

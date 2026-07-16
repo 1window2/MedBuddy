@@ -75,16 +75,12 @@ class PillIdentificationCandidate {
 }
 
 class PillIdentificationResult {
-  final bool success;
-  final String message;
   final bool isConfident;
   final bool requiresConfirmation;
   final PillVisualFeatures observedFeatures;
   final List<PillIdentificationCandidate> candidates;
 
   const PillIdentificationResult({
-    required this.success,
-    required this.message,
     required this.isConfident,
     required this.requiresConfirmation,
     required this.observedFeatures,
@@ -95,8 +91,6 @@ class PillIdentificationResult {
     final rawFeatures = json['observed_features'];
     final rawCandidates = json['data'];
     return PillIdentificationResult(
-      success: json['success'] == true,
-      message: _readString(json['message']),
       isConfident: json['is_confident'] == true,
       // Product confirmation is a client-side safety invariant, not a
       // server-controlled display preference.

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -52,24 +53,38 @@ class IdentifyPill {
     }
   }
 
-  Future<XFile?> requestPillImage(ImageSource source) {
-    return _imagePicker.pickImage(
-      source: source,
-      imageQuality: 88,
-      maxWidth: 1600,
-      maxHeight: 1600,
-      requestFullMetadata: false,
-    );
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 88,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        requestFullMetadata: false,
+      );
+      return image == null ? null : await _readBoundedImage(image);
+    } on PillIdentificationException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      developer.log(
+        'Pill image file access failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.fileUnreadable,
+      );
+    }
   }
 
   Future<PillIdentificationResult> requestPillIdentification({
-    required XFile frontImage,
-    XFile? backImage,
+    required Uint8List frontImage,
+    Uint8List? backImage,
   }) async {
     try {
-      final frontBytes = await _readBoundedImage(frontImage);
-      final backBytes =
-          backImage == null ? null : await _readBoundedImage(backImage);
+      _validateImageBytes(frontImage);
+      if (backImage != null) {
+        _validateImageBytes(backImage);
+      }
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
       final request = http.AbortableMultipartRequest(
@@ -79,15 +94,15 @@ class IdentifyPill {
       )..files.add(
           http.MultipartFile.fromBytes(
             'front',
-            frontBytes,
+            frontImage,
             filename: 'pill-front.jpg',
           ),
         );
-      if (backBytes != null) {
+      if (backImage != null) {
         request.files.add(
           http.MultipartFile.fromBytes(
             'back',
-            backBytes,
+            backImage,
             filename: 'pill-back.jpg',
           ),
         );
@@ -121,14 +136,6 @@ class IdentifyPill {
       );
     } on PillIdentificationException {
       rethrow;
-    } on FileSystemException catch (error) {
-      developer.log(
-        'Pill image file access failed: ${error.runtimeType}.',
-        name: 'IdentifyPill',
-      );
-      throw const PillIdentificationException(
-        PillIdentificationFailure.fileUnreadable,
-      );
     } on FormatException catch (error) {
       developer.log(
         'Pill identification response parsing failed: ${error.runtimeType}.',
@@ -156,7 +163,7 @@ class IdentifyPill {
     }
   }
 
-  Future<List<int>> _readBoundedImage(XFile image) async {
+  Future<Uint8List> _readBoundedImage(XFile image) async {
     final imageLength = await image.length();
     if (imageLength == 0) {
       throw const PillIdentificationException(
@@ -169,6 +176,11 @@ class IdentifyPill {
       );
     }
     final bytes = await image.readAsBytes();
+    _validateImageBytes(bytes);
+    return bytes;
+  }
+
+  void _validateImageBytes(Uint8List bytes) {
     if (bytes.isEmpty) {
       throw const PillIdentificationException(
         PillIdentificationFailure.emptyImage,
@@ -179,7 +191,6 @@ class IdentifyPill {
         PillIdentificationFailure.oversizedImage,
       );
     }
-    return bytes;
   }
 
   static PillIdentificationFailure _failureForStatus(int statusCode) {

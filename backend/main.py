@@ -27,11 +27,6 @@ from entities.medication_completion_entity import ensure_medication_completion_s
 from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
-from repositories.pill_identification_catalog_repository import (
-    initialize_pill_identification_catalog,
-)
-
-logger = logging.getLogger(__name__)
 
 
 # Function Name: configure_logging
@@ -74,14 +69,6 @@ def create_app() -> FastAPI:
     ensure_medication_alarm_schema(engine)
     ensure_guardian_alert_setting_schema(engine)
     ensure_user_setting_schema(engine)
-    try:
-        initialize_pill_identification_catalog()
-    except Exception as exc:
-        logger.warning(
-            "Pill identification cache initialization failed: %s",
-            type(exc).__name__,
-        )
-
     app = FastAPI(
         title="MedBuddy API",
         version="1.0.0",

@@ -20,18 +20,16 @@ class _FakeIdentifyPill extends IdentifyPill {
       : super(client: MockClient((_) async => http.Response('{}', 500)));
 
   @override
-  Future<XFile?> requestPillImage(ImageSource source) async {
-    return XFile.fromData(_png, mimeType: 'image/png', name: 'pill.png');
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    return _png;
   }
 
   @override
   Future<PillIdentificationResult> requestPillIdentification({
-    required XFile frontImage,
-    XFile? backImage,
+    required Uint8List frontImage,
+    Uint8List? backImage,
   }) async {
     return const PillIdentificationResult(
-      success: true,
-      message: 'Candidates found.',
       isConfident: true,
       requiresConfirmation: true,
       observedFeatures: PillVisualFeatures(
@@ -56,8 +54,10 @@ class _FakeIdentifyPill extends IdentifyPill {
 
 class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
   @override
-  Future<XFile?> requestPillImage(ImageSource source) async {
-    return XFile.fromData(Uint8List(IdentifyPill.maxImageBytes + 1));
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    throw const PillIdentificationException(
+      PillIdentificationFailure.oversizedImage,
+    );
   }
 }
 
@@ -102,7 +102,7 @@ void main() {
     expect(find.textContaining('확정 결과가 아니므로'), findsOneWidget);
   });
 
-  testWidgets('pill photo preview rejects oversized images before allocation',
+  testWidgets('pill photo selection surfaces oversized image failures',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(

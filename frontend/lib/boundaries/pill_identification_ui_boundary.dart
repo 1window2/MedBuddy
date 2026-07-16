@@ -25,8 +25,8 @@ class PillIdentificationUI extends StatefulWidget {
 class _PillIdentificationUIState extends State<PillIdentificationUI> {
   late final IdentifyPill _control;
   late final bool _ownsControl;
-  _SelectedPillImage? _frontImage;
-  _SelectedPillImage? _backImage;
+  Uint8List? _frontImage;
+  Uint8List? _backImage;
   PillIdentificationResult? _result;
   String? _selectedItemSeq;
   bool _isAnalyzing = false;
@@ -102,7 +102,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       key: const Key('pill-front-image-slot'),
                       label: text.frontPhoto,
                       requiredLabel: text.requiredLabel,
-                      selection: _frontImage,
+                      imageBytes: _frontImage,
                       onTap: _isAnalyzing
                           ? null
                           : () => _selectImage(isFront: true, text: text),
@@ -114,7 +114,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       key: const Key('pill-back-image-slot'),
                       label: text.backPhoto,
                       requiredLabel: text.optionalLabel,
-                      selection: _backImage,
+                      imageBytes: _backImage,
                       onTap: _isAnalyzing
                           ? null
                           : () => _selectImage(isFront: false, text: text),
@@ -280,19 +280,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
 
     try {
-      final image = await _control.requestPillImage(source);
-      if (image == null) {
+      final imageBytes = await _control.requestPillImage(source);
+      if (imageBytes == null) {
         return;
       }
-      final selection = await _readPreviewImage(image);
       if (!mounted) {
         return;
       }
       setState(() {
         if (isFront) {
-          _frontImage = selection;
+          _frontImage = imageBytes;
         } else {
-          _backImage = selection;
+          _backImage = imageBytes;
         }
         _result = null;
         _selectedItemSeq = null;
@@ -306,32 +305,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         _errorMessage = _stateErrorMessage(error, text.imageSelectionFailed);
       });
     }
-  }
-
-  Future<_SelectedPillImage> _readPreviewImage(XFile image) async {
-    final imageLength = await image.length();
-    if (imageLength == 0) {
-      throw const PillIdentificationException(
-        PillIdentificationFailure.emptyImage,
-      );
-    }
-    if (imageLength > IdentifyPill.maxImageBytes) {
-      throw const PillIdentificationException(
-        PillIdentificationFailure.oversizedImage,
-      );
-    }
-    final bytes = await image.readAsBytes();
-    if (bytes.isEmpty) {
-      throw const PillIdentificationException(
-        PillIdentificationFailure.emptyImage,
-      );
-    }
-    if (bytes.length > IdentifyPill.maxImageBytes) {
-      throw const PillIdentificationException(
-        PillIdentificationFailure.oversizedImage,
-      );
-    }
-    return _SelectedPillImage(file: image, bytes: bytes);
   }
 
   Future<void> _requestIdentification() async {
@@ -348,8 +321,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
 
     try {
       final result = await _control.requestPillIdentification(
-        frontImage: frontImage.file,
-        backImage: _backImage?.file,
+        frontImage: frontImage,
+        backImage: _backImage,
       );
       if (!mounted) {
         return;
@@ -420,13 +393,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 }
 
-class _SelectedPillImage {
-  final XFile file;
-  final Uint8List bytes;
-
-  const _SelectedPillImage({required this.file, required this.bytes});
-}
-
 class _SafetyNotice extends StatelessWidget {
   final _PillIdentificationText text;
   final double textScale;
@@ -469,14 +435,14 @@ class _SafetyNotice extends StatelessWidget {
 class _PillImageSlot extends StatelessWidget {
   final String label;
   final String requiredLabel;
-  final _SelectedPillImage? selection;
+  final Uint8List? imageBytes;
   final VoidCallback? onTap;
 
   const _PillImageSlot({
     super.key,
     required this.label,
     required this.requiredLabel,
-    required this.selection,
+    required this.imageBytes,
     required this.onTap,
   });
 
@@ -494,10 +460,10 @@ class _PillImageSlot extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selection == null
+              color: imageBytes == null
                   ? MedBuddyColors.outline
                   : MedBuddyColors.primary,
-              width: selection == null ? 1.4 : 2,
+              width: imageBytes == null ? 1.4 : 2,
             ),
           ),
           child: Column(
@@ -530,7 +496,7 @@ class _PillImageSlot extends StatelessWidget {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: selection == null
+                  child: imageBytes == null
                       ? const ColoredBox(
                           color: MedBuddyColors.surfaceSubtle,
                           child: Center(
@@ -542,7 +508,7 @@ class _PillImageSlot extends StatelessWidget {
                           ),
                         )
                       : Image.memory(
-                          selection!.bytes,
+                          imageBytes!,
                           width: double.infinity,
                           fit: BoxFit.cover,
                           cacheWidth: 900,

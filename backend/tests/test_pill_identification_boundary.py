@@ -59,6 +59,24 @@ class _SlowImageProcessingBoundary:
         return image
 
 
+class _FailingAsyncClient:
+    def __init__(self) -> None:
+        self.close_called = False
+
+    async def aclose(self) -> None:
+        self.close_called = True
+        raise RuntimeError("async close failed")
+
+
+class _OwnedVisionClient:
+    def __init__(self) -> None:
+        self.aio = _FailingAsyncClient()
+        self.close_called = False
+
+    def close(self) -> None:
+        self.close_called = True
+
+
 def _valid_visual_payload(**overrides: object) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "shape": "round",
@@ -205,6 +223,25 @@ def test_visual_boundary_rejects_invalid_concurrency() -> None:
             client=object(),  # type: ignore[arg-type]
             max_concurrency=0,
         )
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_closes_sync_client_when_async_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _OwnedVisionClient()
+    monkeypatch.setattr(
+        boundary_module.genai,
+        "Client",
+        lambda **_kwargs: client,
+    )
+    boundary = PillVisionBoundary()
+
+    with pytest.raises(RuntimeError, match="async close failed"):
+        await boundary.close()
+
+    assert client.aio.close_called is True
+    assert client.close_called is True
 
 
 def test_mfds_catalog_parser_accepts_documented_response_shape() -> None:

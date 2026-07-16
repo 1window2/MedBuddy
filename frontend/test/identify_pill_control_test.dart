@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/identify_pill_control.dart';
 
 class _AbortAwareClient extends http.BaseClient {
@@ -60,8 +59,8 @@ void main() {
     final control = IdentifyPill(baseUrl: 'http://localhost', client: client);
 
     final result = await control.requestPillIdentification(
-      frontImage: XFile.fromData(Uint8List.fromList([1, 2, 3])),
-      backImage: XFile.fromData(Uint8List.fromList([4, 5, 6])),
+      frontImage: Uint8List.fromList([1, 2, 3]),
+      backImage: Uint8List.fromList([4, 5, 6]),
     );
 
     expect(result.isConfident, isTrue);
@@ -87,9 +86,7 @@ void main() {
 
     expect(
       () => control.requestPillIdentification(
-        frontImage: XFile.fromData(
-          Uint8List(IdentifyPill.maxImageBytes + 1),
-        ),
+        frontImage: Uint8List(IdentifyPill.maxImageBytes + 1),
       ),
       throwsA(
         isA<PillIdentificationException>().having(
@@ -110,7 +107,7 @@ void main() {
 
     expect(
       () => control.requestPillIdentification(
-        frontImage: XFile.fromData(Uint8List.fromList([1, 2, 3])),
+        frontImage: Uint8List.fromList([1, 2, 3]),
       ),
       throwsA(
         isA<PillIdentificationException>().having(
@@ -132,7 +129,7 @@ void main() {
 
     await expectLater(
       control.requestPillIdentification(
-        frontImage: XFile.fromData(Uint8List.fromList([1, 2, 3])),
+        frontImage: Uint8List.fromList([1, 2, 3]),
       ),
       throwsA(
         isA<PillIdentificationException>().having(
