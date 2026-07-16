@@ -284,10 +284,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       if (image == null) {
         return;
       }
-      final selection = _SelectedPillImage(
-        file: image,
-        bytes: await image.readAsBytes(),
-      );
+      final selection = await _readPreviewImage(image);
       if (!mounted) {
         return;
       }
@@ -309,6 +306,32 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         _errorMessage = _stateErrorMessage(error, text.imageSelectionFailed);
       });
     }
+  }
+
+  Future<_SelectedPillImage> _readPreviewImage(XFile image) async {
+    final imageLength = await image.length();
+    if (imageLength == 0) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.emptyImage,
+      );
+    }
+    if (imageLength > IdentifyPill.maxImageBytes) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.oversizedImage,
+      );
+    }
+    final bytes = await image.readAsBytes();
+    if (bytes.isEmpty) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.emptyImage,
+      );
+    }
+    if (bytes.length > IdentifyPill.maxImageBytes) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.oversizedImage,
+      );
+    }
+    return _SelectedPillImage(file: image, bytes: bytes);
   }
 
   Future<void> _requestIdentification() async {
@@ -522,6 +545,7 @@ class _PillImageSlot extends StatelessWidget {
                           selection!.bytes,
                           width: double.infinity,
                           fit: BoxFit.cover,
+                          cacheWidth: 900,
                         ),
                 ),
               ),
@@ -657,6 +681,8 @@ class _CandidateImage extends StatelessWidget {
             : Image.network(
                 url,
                 fit: BoxFit.contain,
+                cacheWidth: 228,
+                cacheHeight: 228,
                 errorBuilder: (_, __, ___) => placeholder,
                 loadingBuilder: (context, child, progress) {
                   return progress == null ? child : placeholder;

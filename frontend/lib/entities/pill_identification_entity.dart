@@ -107,19 +107,20 @@ class PillIdentificationResult {
             )
           : const PillVisualFeatures(),
       candidates: rawCandidates is List
-          ? rawCandidates
-              .whereType<Map>()
-              .map(
-                (item) => PillIdentificationCandidate.fromJson(
-                  Map<String, dynamic>.from(item),
-                ),
-              )
-              .where(
-                (candidate) =>
-                    candidate.itemSeq.isNotEmpty &&
-                    candidate.itemName.isNotEmpty,
-              )
-              .toList(growable: false)
+          ? List<PillIdentificationCandidate>.unmodifiable(
+              rawCandidates
+                  .whereType<Map>()
+                  .map(
+                    (item) => PillIdentificationCandidate.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  )
+                  .where(
+                    (candidate) =>
+                        candidate.itemSeq.isNotEmpty &&
+                        candidate.itemName.isNotEmpty,
+                  ),
+            )
           : const [],
     );
   }
@@ -134,10 +135,11 @@ List<String> _readStrings(dynamic value) {
   if (value is! List) {
     return const [];
   }
-  return value
-      .map((item) => item?.toString().trim() ?? '')
-      .where((item) => item.isNotEmpty)
-      .toList(growable: false);
+  return List<String>.unmodifiable(
+    value
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty),
+  );
 }
 
 double _readScore(dynamic value) {

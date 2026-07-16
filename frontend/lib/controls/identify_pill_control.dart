@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -32,6 +33,7 @@ class IdentifyPill {
   final http.Client _client;
   final bool _ownsClient;
   final Duration requestTimeout;
+  final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
 
   IdentifyPill({
     this.baseUrl = ApiConfig.baseUrl,
@@ -68,9 +70,12 @@ class IdentifyPill {
       final frontBytes = await _readBoundedImage(frontImage);
       final backBytes =
           backImage == null ? null : await _readBoundedImage(backImage);
-      final request = http.MultipartRequest(
+      final abortTrigger = Completer<void>();
+      _abortTriggers.add(abortTrigger);
+      final request = http.AbortableMultipartRequest(
         'POST',
         Uri.parse('$baseUrl/pill-identification/candidates'),
+        abortTrigger: abortTrigger.future,
       )..files.add(
           http.MultipartFile.fromBytes(
             'front',
@@ -88,13 +93,23 @@ class IdentifyPill {
         );
       }
 
-      final response =
-          await _client.send(request).then(http.Response.fromStream).timeout(
-                requestTimeout,
-                onTimeout: () => throw const PillIdentificationException(
-                  PillIdentificationFailure.timedOut,
-                ),
-              );
+      late final http.Response response;
+      try {
+        response =
+            await _client.send(request).then(http.Response.fromStream).timeout(
+          requestTimeout,
+          onTimeout: () {
+            if (!abortTrigger.isCompleted) {
+              abortTrigger.complete();
+            }
+            throw const PillIdentificationException(
+              PillIdentificationFailure.timedOut,
+            );
+          },
+        );
+      } finally {
+        _abortTriggers.remove(abortTrigger);
+      }
       if (response.statusCode != 200) {
         throw PillIdentificationException(
           _failureForStatus(response.statusCode),
@@ -178,6 +193,12 @@ class IdentifyPill {
   }
 
   void dispose() {
+    for (final abortTrigger in _abortTriggers) {
+      if (!abortTrigger.isCompleted) {
+        abortTrigger.complete();
+      }
+    }
+    _abortTriggers.clear();
     if (_ownsClient) {
       _client.close();
     }
