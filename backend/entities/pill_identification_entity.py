@@ -4,8 +4,9 @@
 from dataclasses import dataclass, field
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy.orm import declarative_base
 
-from core.database import Base
+PillCatalogBase = declarative_base()
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ class PillIdentificationResult:
     requires_confirmation: bool = True
 
 
-class PillIdentificationReference(Base):
+class PillIdentificationReference(PillCatalogBase):
     """Locally cached copy of public MFDS pill-identification metadata."""
 
     __tablename__ = "pill_identification_references"

@@ -7,8 +7,6 @@ import unicodedata
 from difflib import SequenceMatcher
 from functools import lru_cache
 
-from sqlalchemy.orm import Session
-
 from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
@@ -65,14 +63,12 @@ class IdentifyPill:
     def __init__(
         self,
         *,
-        db: Session,
         vision_boundary: PillVisionBoundary,
         catalog_boundary: MFDSPillCatalogBoundary,
         candidate_limit: int = 5,
     ) -> None:
         if candidate_limit < 1 or candidate_limit > 20:
             raise ValueError("Pill candidate limit must be between 1 and 20.")
-        self.db = db
         self.vision_boundary = vision_boundary
         self.catalog_boundary = catalog_boundary
         self.candidate_limit = candidate_limit
@@ -87,7 +83,7 @@ class IdentifyPill:
         vision_task = asyncio.create_task(
             self.vision_boundary.extractVisualFeatures(front_image, back_image)
         )
-        catalog_task = asyncio.create_task(self.catalog_boundary.getCatalog(self.db))
+        catalog_task = asyncio.create_task(self.catalog_boundary.getCatalog())
         required_tasks = (vision_task, catalog_task)
         try:
             features, catalog = await asyncio.gather(*required_tasks)

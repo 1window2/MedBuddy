@@ -1,15 +1,41 @@
 # File Name: pill_identification_catalog_repository.py
-# Role: Persists public MFDS pill-identification metadata in the local runtime DB.
+# Role: Persists public MFDS pill-identification metadata in an isolated cache DB.
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import Session, sessionmaker
 
 from entities.pill_identification_entity import (
     PillCatalogEntry,
     PillIdentificationReference,
 )
+
+PILL_CATALOG_DATABASE_PATH = (
+    Path(__file__).resolve().parents[1] / "pill_identification_catalog.db"
+)
+PILL_CATALOG_DATABASE_URL = (
+    f"sqlite:///{PILL_CATALOG_DATABASE_PATH.as_posix()}"
+)
+pill_catalog_engine = create_engine(
+    PILL_CATALOG_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+PillCatalogSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=pill_catalog_engine,
+)
+
+
+def initialize_pill_identification_catalog() -> None:
+    """Creates the isolated public-reference cache table when absent."""
+
+    PillIdentificationReference.__table__.create(
+        bind=pill_catalog_engine,
+        checkfirst=True,
+    )
 
 
 class PillIdentificationCatalogRepository:

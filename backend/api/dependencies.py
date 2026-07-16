@@ -2,6 +2,7 @@
 # Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
 import logging
+from threading import Lock
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -32,8 +33,9 @@ from controls.set_notification_control import SetNotification
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
 _public_drug_data_portal = _PublicDrugDataPortal()
-_pill_vision_boundary = PillVisionBoundary()
-_pill_catalog_boundary = MFDSPillCatalogBoundary()
+_pill_boundary_lock = Lock()
+_pill_vision_boundary: PillVisionBoundary | None = None
+_pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:
@@ -80,15 +82,48 @@ def get_input_prescription(
     return get_prescription_analysis_control(db=db)
 
 
-def get_identify_pill(
-    db: Session = Depends(get_db),
-) -> IdentifyPill:
+def _get_pill_identification_boundaries() -> tuple[
+    PillVisionBoundary,
+    MFDSPillCatalogBoundary,
+]:
+    global _pill_vision_boundary, _pill_catalog_boundary
+    with _pill_boundary_lock:
+        if _pill_vision_boundary is None:
+            _pill_vision_boundary = PillVisionBoundary()
+        if _pill_catalog_boundary is None:
+            _pill_catalog_boundary = MFDSPillCatalogBoundary()
+        return _pill_vision_boundary, _pill_catalog_boundary
+
+
+async def close_pill_identification_boundaries() -> None:
+    """Releases reusable external clients and invalidates in-memory catalog data."""
+
+    global _pill_vision_boundary, _pill_catalog_boundary
+    with _pill_boundary_lock:
+        vision_boundary = _pill_vision_boundary
+        catalog_boundary = _pill_catalog_boundary
+        _pill_vision_boundary = None
+        _pill_catalog_boundary = None
+    if catalog_boundary is not None:
+        catalog_boundary.invalidateMemoryCache()
+    if vision_boundary is None:
+        return
+    try:
+        await vision_boundary.close()
+    except Exception as exc:
+        logger.warning(
+            "Pill identification boundary shutdown failed: %s",
+            type(exc).__name__,
+        )
+
+
+def get_identify_pill() -> IdentifyPill:
     """Builds the experimental loose-pill identification control."""
 
+    vision_boundary, catalog_boundary = _get_pill_identification_boundaries()
     return IdentifyPill(
-        db=db,
-        vision_boundary=_pill_vision_boundary,
-        catalog_boundary=_pill_catalog_boundary,
+        vision_boundary=vision_boundary,
+        catalog_boundary=catalog_boundary,
     )
 
 

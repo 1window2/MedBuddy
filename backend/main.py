@@ -9,7 +9,10 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 
 from api.router import router as medication_router
-from api.dependencies import close_medication_detail_cache
+from api.dependencies import (
+    close_medication_detail_cache,
+    close_pill_identification_boundaries,
+)
 from core.database import Base, engine
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
@@ -17,7 +20,6 @@ from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import guardian_alert_setting_entity  # noqa: F401
 from entities import patient_guardian_link_entity  # noqa: F401
-from entities import pill_identification_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities.guardian_alert_setting_entity import ensure_guardian_alert_setting_schema
@@ -25,6 +27,11 @@ from entities.medication_completion_entity import ensure_medication_completion_s
 from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
+from repositories.pill_identification_catalog_repository import (
+    initialize_pill_identification_catalog,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Function Name: configure_logging
@@ -47,6 +54,7 @@ async def application_lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await close_pill_identification_boundaries()
         await close_medication_detail_cache()
 
 
@@ -66,6 +74,13 @@ def create_app() -> FastAPI:
     ensure_medication_alarm_schema(engine)
     ensure_guardian_alert_setting_schema(engine)
     ensure_user_setting_schema(engine)
+    try:
+        initialize_pill_identification_catalog()
+    except Exception as exc:
+        logger.warning(
+            "Pill identification cache initialization failed: %s",
+            type(exc).__name__,
+        )
 
     app = FastAPI(
         title="MedBuddy API",

@@ -8,6 +8,7 @@ import math
 import time
 from collections.abc import Callable
 from datetime import timedelta
+from io import BytesIO
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,11 +17,13 @@ import httpx
 import numpy as np
 from google import genai
 from google.genai import types
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.config import settings
 from entities.pill_identification_entity import PillCatalogEntry, PillVisualFeatures
 from repositories.pill_identification_catalog_repository import (
+    PillCatalogSessionLocal,
     PillIdentificationCatalogRepository,
 )
 
@@ -53,6 +56,23 @@ class PillImageProcessingBoundary:
             raise PillImageQualityError("The pill image is empty.")
         if len(image) > MAX_PILL_IMAGE_BYTES:
             raise PillImageQualityError("The pill image must be 10 MB or smaller.")
+
+        try:
+            with Image.open(BytesIO(image)) as metadata:
+                width, height = metadata.size
+        except (
+            Image.DecompressionBombError,
+            UnidentifiedImageError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise PillImageQualityError(
+                "The uploaded file is not a valid image."
+            ) from exc
+        if min(height, width) < self._MIN_IMAGE_DIMENSION:
+            raise PillImageQualityError("The pill image resolution is too small.")
+        if height * width > MAX_PILL_IMAGE_PIXELS:
+            raise PillImageQualityError("The pill image resolution is too large.")
 
         encoded = np.frombuffer(image, dtype=np.uint8)
         decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
@@ -298,7 +318,11 @@ class PillVisionBoundary:
         image_processing_boundary: PillImageProcessingBoundary | None = None,
         vision_api: GeminiPillVisionAPI | None = None,
         timeout_seconds: float | None = None,
+        max_concurrency: int = 4,
     ) -> None:
+        if max_concurrency < 1 or max_concurrency > 16:
+            raise ValueError("Pill vision concurrency must be between 1 and 16.")
+        self._owns_client = client is None
         self.client = client or genai.Client(
             api_key=settings.GEMINI_API_KEY,
             http_options={"api_version": "v1alpha"},
@@ -321,11 +345,27 @@ class PillVisionBoundary:
         )
         if self.timeout_seconds <= 0:
             raise ValueError("Pill identification timeout must be positive.")
+        self._analysis_semaphore = asyncio.Semaphore(max_concurrency)
 
     async def extractVisualFeatures(
         self,
         front_image: bytes,
         back_image: bytes | None = None,
+    ) -> PillVisualFeatures:
+        try:
+            async with asyncio.timeout(self.timeout_seconds):
+                async with self._analysis_semaphore:
+                    return await self._extract_visual_features(
+                        front_image,
+                        back_image,
+                    )
+        except TimeoutError as exc:
+            raise TimeoutError("Pill visual analysis timed out.") from exc
+
+    async def _extract_visual_features(
+        self,
+        front_image: bytes,
+        back_image: bytes | None,
     ) -> PillVisualFeatures:
         processed_images = await asyncio.gather(
             asyncio.to_thread(
@@ -347,18 +387,13 @@ class PillVisionBoundary:
         processed_back = processed_images[1] if len(processed_images) > 1 else None
 
         try:
-            response_text = await asyncio.wait_for(
-                self.vision_api.requestVisualFeatures(
-                    client=self.client,
-                    model_name=self.model_name,
-                    front_image=processed_front,
-                    back_image=processed_back,
-                    response_schema=self._RESPONSE_SCHEMA,
-                ),
-                timeout=self.timeout_seconds,
+            response_text = await self.vision_api.requestVisualFeatures(
+                client=self.client,
+                model_name=self.model_name,
+                front_image=processed_front,
+                back_image=processed_back,
+                response_schema=self._RESPONSE_SCHEMA,
             )
-        except TimeoutError as exc:
-            raise TimeoutError("Pill visual analysis timed out.") from exc
         except PillImageQualityError:
             raise
         except Exception as exc:
@@ -383,6 +418,14 @@ class PillVisionBoundary:
                 message = f"{message} Detected issues: {detail}."
             raise PillImageQualityError(message)
         return features
+
+    async def close(self) -> None:
+        """Closes HTTP resources owned by the reusable Gemini client."""
+
+        if not self._owns_client:
+            return
+        await self.client.aio.aclose()
+        self.client.close()
 
     def _to_features(self, payload: dict[str, Any]) -> PillVisualFeatures:
         raw_colors = payload.get("colors")
@@ -440,8 +483,8 @@ class PillVisionBoundary:
         return [cls._bounded_text(item, max_length).lower() for item in value[:limit]]
 
 
-class MFDSPillCatalogBoundary:
-    """Loads and caches the authoritative MFDS pill-identification catalog."""
+class MFDSPillAPI:
+    """Downloads and validates the authoritative MFDS pill catalog."""
 
     _MAX_CATALOG_ROWS = 50_000
 
@@ -453,8 +496,6 @@ class MFDSPillCatalogBoundary:
         timeout_seconds: float | None = None,
         page_size: int = 500,
         max_concurrency: int = 6,
-        cache_ttl: timedelta | None = None,
-        refresh_timeout_seconds: float | None = None,
         minimum_catalog_rows: int = 1_000,
         client_factory: Callable[..., httpx.AsyncClient] | None = None,
     ) -> None:
@@ -467,22 +508,8 @@ class MFDSPillCatalogBoundary:
             if timeout_seconds is not None
             else settings.PILL_IMAGE_API_TIMEOUT_SECONDS
         )
-        resolved_cache_ttl = (
-            cache_ttl
-            if cache_ttl is not None
-            else timedelta(hours=settings.PILL_IDENTIFICATION_CATALOG_TTL_HOURS)
-        )
-        resolved_refresh_timeout = (
-            refresh_timeout_seconds
-            if refresh_timeout_seconds is not None
-            else settings.PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS
-        )
         if resolved_timeout <= 0:
             raise ValueError("MFDS pill catalog timeout must be positive.")
-        if resolved_cache_ttl.total_seconds() <= 0:
-            raise ValueError("MFDS pill catalog cache lifetime must be positive.")
-        if resolved_refresh_timeout <= 0:
-            raise ValueError("MFDS pill catalog refresh timeout must be positive.")
         if minimum_catalog_rows < 1 or minimum_catalog_rows > self._MAX_CATALOG_ROWS:
             raise ValueError(
                 "MFDS pill catalog minimum rows must be between 1 and 50000."
@@ -492,66 +519,10 @@ class MFDSPillCatalogBoundary:
         self.timeout_seconds = resolved_timeout
         self.page_size = page_size
         self.max_concurrency = max_concurrency
-        self.cache_ttl = resolved_cache_ttl
-        self.refresh_timeout_seconds = resolved_refresh_timeout
         self.minimum_catalog_rows = minimum_catalog_rows
         self.client_factory = client_factory or httpx.AsyncClient
-        self._catalog: tuple[PillCatalogEntry, ...] | None = None
-        self._catalog_loaded_at = 0.0
-        self._catalog_lock = asyncio.Lock()
 
-    async def getCatalog(self, db: Session) -> tuple[PillCatalogEntry, ...]:
-        if self._is_memory_cache_fresh():
-            return self._catalog or ()
-
-        async with self._catalog_lock:
-            if self._is_memory_cache_fresh():
-                return self._catalog or ()
-
-            repository = PillIdentificationCatalogRepository(db)
-            if repository.is_fresh(
-                minimum_rows=self.minimum_catalog_rows,
-                max_age=self.cache_ttl,
-            ):
-                self._set_memory_catalog(repository.list_all())
-                return self._catalog or ()
-
-            stale_catalog = repository.list_all()
-            try:
-                catalog = await asyncio.wait_for(
-                    self._fetch_complete_catalog(),
-                    timeout=self.refresh_timeout_seconds,
-                )
-                repository.replace_all(catalog)
-                self._set_memory_catalog(catalog)
-            except Exception as exc:
-                if not stale_catalog:
-                    raise PillCatalogUnavailableError(
-                        "The public pill catalog is temporarily unavailable."
-                    ) from exc
-                logger.warning(
-                    "MFDS pill catalog refresh failed; using local cache: %s",
-                    type(exc).__name__,
-                )
-                self._set_memory_catalog(stale_catalog)
-            return self._catalog or ()
-
-    def invalidateMemoryCache(self) -> None:
-        self._catalog = None
-        self._catalog_loaded_at = 0.0
-
-    def _is_memory_cache_fresh(self) -> bool:
-        if self._catalog is None:
-            return False
-        return (
-            time.monotonic() - self._catalog_loaded_at
-        ) < self.cache_ttl.total_seconds()
-
-    def _set_memory_catalog(self, catalog: list[PillCatalogEntry]) -> None:
-        self._catalog = tuple(catalog)
-        self._catalog_loaded_at = time.monotonic()
-
-    async def _fetch_complete_catalog(self) -> list[PillCatalogEntry]:
+    async def requestCatalog(self) -> list[PillCatalogEntry]:
         limits = httpx.Limits(
             max_connections=self.max_concurrency,
             max_keepalive_connections=self.max_concurrency,
@@ -587,7 +558,7 @@ class MFDSPillCatalogBoundary:
 
         expected_minimum = max(
             self.minimum_catalog_rows,
-            math.floor(total_count * 0.95),
+            math.ceil(total_count * 0.95),
         )
         if len(deduplicated) < expected_minimum:
             raise RuntimeError("MFDS pill catalog download was incomplete.")
@@ -658,30 +629,35 @@ class MFDSPillCatalogBoundary:
 
     @classmethod
     def _to_catalog_entry(cls, item: dict[str, Any]) -> PillCatalogEntry | None:
-        item_seq = cls._read_text(item, "ITEM_SEQ")
-        item_name = cls._read_text(item, "ITEM_NAME")
+        item_seq = cls._read_text(item, "ITEM_SEQ", max_length=64)
+        item_name = cls._read_text(item, "ITEM_NAME", max_length=512)
         if not item_seq or not item_name:
             return None
         return PillCatalogEntry(
             item_seq=item_seq,
             item_name=item_name,
-            entp_name=cls._read_text(item, "ENTP_NAME"),
+            entp_name=cls._read_text(item, "ENTP_NAME", max_length=256),
             image_url=cls._safe_image_url(cls._read_text(item, "ITEM_IMAGE")),
-            shape=cls._read_text(item, "DRUG_SHAPE"),
-            color_primary=cls._read_text(item, "COLOR_CLASS1"),
-            color_secondary=cls._read_text(item, "COLOR_CLASS2"),
-            print_front=cls._read_text(item, "PRINT_FRONT"),
-            print_back=cls._read_text(item, "PRINT_BACK"),
-            line_front=cls._read_text(item, "LINE_FRONT"),
-            line_back=cls._read_text(item, "LINE_BACK"),
+            shape=cls._read_text(item, "DRUG_SHAPE", max_length=128),
+            color_primary=cls._read_text(item, "COLOR_CLASS1", max_length=128),
+            color_secondary=cls._read_text(item, "COLOR_CLASS2", max_length=128),
+            print_front=cls._read_text(item, "PRINT_FRONT", max_length=128),
+            print_back=cls._read_text(item, "PRINT_BACK", max_length=128),
+            line_front=cls._read_text(item, "LINE_FRONT", max_length=128),
+            line_back=cls._read_text(item, "LINE_BACK", max_length=128),
         )
 
     @staticmethod
-    def _read_text(item: dict[str, Any], key: str) -> str:
+    def _read_text(
+        item: dict[str, Any],
+        key: str,
+        *,
+        max_length: int = 3000,
+    ) -> str:
         value = item.get(key)
         if value is None:
             value = item.get(key.lower())
-        return str(value or "").strip()
+        return str(value or "").strip()[:max_length]
 
     @staticmethod
     def _safe_image_url(value: str) -> str:
@@ -696,3 +672,139 @@ class MFDSPillCatalogBoundary:
         if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
             return ""
         return value
+
+
+class MFDSPillCatalogBoundary:
+    """Coordinates memory, SQLite, and MFDS sources for the pill catalog."""
+
+    _STALE_RETRY_SECONDS = 300.0
+
+    def __init__(
+        self,
+        *,
+        catalog_api: MFDSPillAPI | None = None,
+        cache_ttl: timedelta | None = None,
+        refresh_timeout_seconds: float | None = None,
+        session_factory: Callable[[], Session] | None = None,
+    ) -> None:
+        resolved_cache_ttl = (
+            cache_ttl
+            if cache_ttl is not None
+            else timedelta(hours=settings.PILL_IDENTIFICATION_CATALOG_TTL_HOURS)
+        )
+        resolved_refresh_timeout = (
+            refresh_timeout_seconds
+            if refresh_timeout_seconds is not None
+            else settings.PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS
+        )
+        if resolved_cache_ttl.total_seconds() <= 0:
+            raise ValueError("MFDS pill catalog cache lifetime must be positive.")
+        if resolved_refresh_timeout <= 0:
+            raise ValueError("MFDS pill catalog refresh timeout must be positive.")
+        self.catalog_api = catalog_api or MFDSPillAPI()
+        self.cache_ttl = resolved_cache_ttl
+        self.refresh_timeout_seconds = resolved_refresh_timeout
+        self.minimum_catalog_rows = self.catalog_api.minimum_catalog_rows
+        self.session_factory = session_factory or PillCatalogSessionLocal
+        self._catalog: tuple[PillCatalogEntry, ...] | None = None
+        self._catalog_loaded_at = 0.0
+        self._catalog_is_stale = False
+        self._catalog_lock = asyncio.Lock()
+
+    async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
+        if self._is_memory_cache_fresh():
+            return self._catalog or ()
+
+        async with self._catalog_lock:
+            if self._is_memory_cache_fresh():
+                return self._catalog or ()
+
+            try:
+                is_fresh, persisted_catalog = await asyncio.to_thread(
+                    self._load_persisted_catalog
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Pill catalog cache read failed: %s",
+                    type(exc).__name__,
+                )
+                is_fresh, persisted_catalog = False, []
+            if is_fresh:
+                self._set_memory_catalog(persisted_catalog)
+                return self._catalog or ()
+
+            stale_catalog = (
+                persisted_catalog
+                if len(persisted_catalog) >= self.minimum_catalog_rows
+                else []
+            )
+            try:
+                catalog = await asyncio.wait_for(
+                    self.catalog_api.requestCatalog(),
+                    timeout=self.refresh_timeout_seconds,
+                )
+                if len(catalog) < self.minimum_catalog_rows:
+                    raise RuntimeError("MFDS pill catalog download was incomplete.")
+            except Exception as exc:
+                if not stale_catalog:
+                    raise PillCatalogUnavailableError(
+                        "The public pill catalog is temporarily unavailable."
+                    ) from exc
+                logger.warning(
+                    "MFDS pill catalog refresh failed; using local cache: %s",
+                    type(exc).__name__,
+                )
+                self._set_memory_catalog(stale_catalog, stale=True)
+                return self._catalog or ()
+
+            try:
+                await asyncio.to_thread(self._replace_persisted_catalog, catalog)
+            except Exception as exc:
+                logger.warning(
+                    "Pill catalog cache write failed: %s",
+                    type(exc).__name__,
+                )
+            self._set_memory_catalog(catalog)
+            return self._catalog or ()
+
+    def invalidateMemoryCache(self) -> None:
+        self._catalog = None
+        self._catalog_loaded_at = 0.0
+        self._catalog_is_stale = False
+
+    def _is_memory_cache_fresh(self) -> bool:
+        if self._catalog is None:
+            return False
+        max_age_seconds = self.cache_ttl.total_seconds()
+        if self._catalog_is_stale:
+            max_age_seconds = min(max_age_seconds, self._STALE_RETRY_SECONDS)
+        return (time.monotonic() - self._catalog_loaded_at) < max_age_seconds
+
+    def _set_memory_catalog(
+        self,
+        catalog: list[PillCatalogEntry],
+        *,
+        stale: bool = False,
+    ) -> None:
+        self._catalog = tuple(catalog)
+        self._catalog_loaded_at = time.monotonic()
+        self._catalog_is_stale = stale
+
+    def _load_persisted_catalog(self) -> tuple[bool, list[PillCatalogEntry]]:
+        db = self.session_factory()
+        try:
+            repository = PillIdentificationCatalogRepository(db)
+            is_fresh = repository.is_fresh(
+                minimum_rows=self.minimum_catalog_rows,
+                max_age=self.cache_ttl,
+            )
+            return is_fresh, repository.list_all()
+        finally:
+            db.close()
+
+    def _replace_persisted_catalog(self, catalog: list[PillCatalogEntry]) -> None:
+        db = self.session_factory()
+        try:
+            PillIdentificationCatalogRepository(db).replace_all(catalog)
+        finally:
+            db.close()
