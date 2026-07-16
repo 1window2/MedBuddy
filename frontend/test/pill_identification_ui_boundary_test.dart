@@ -54,6 +54,13 @@ class _FakeIdentifyPill extends IdentifyPill {
   }
 }
 
+class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
+  @override
+  Future<XFile?> requestPillImage(ImageSource source) async {
+    return XFile.fromData(Uint8List(IdentifyPill.maxImageBytes + 1));
+  }
+}
+
 void main() {
   testWidgets('pill candidate flow requires explicit user confirmation',
       (tester) async {
@@ -93,5 +100,29 @@ void main() {
 
     expect(find.text('후보 선택 완료'), findsOneWidget);
     expect(find.textContaining('확정 결과가 아니므로'), findsOneWidget);
+  });
+
+  testWidgets('pill photo preview rejects oversized images before allocation',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en'),
+          control: _OversizedImageIdentifyPill(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.text('Each pill image must be 10 MB or smaller.'), findsOneWidget);
+    final identifyButton = tester.widget<FilledButton>(
+      find.byKey(const Key('identify-pill-button')),
+    );
+    expect(identifyButton.onPressed, isNull);
   });
 }

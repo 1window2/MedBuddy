@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -14,7 +15,11 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from boundaries.pill_identification_boundary import MFDSPillCatalogBoundary
+from boundaries.pill_identification_boundary import (
+    MFDSPillCatalogBoundary,
+    PillCatalogUnavailableError,
+)
+from core.database import Base
 from entities.pill_identification_entity import (
     PillCatalogEntry,
     PillIdentificationReference,
@@ -37,7 +42,11 @@ def _entry(item_seq: str, item_name: str) -> PillCatalogEntry:
 
 @pytest.fixture
 def db() -> Session:
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     PillIdentificationReference.__table__.create(bind=engine)
     session = sessionmaker(bind=engine)()
     try:
@@ -56,6 +65,10 @@ def test_repository_replaces_and_reads_complete_catalog(db: Session) -> None:
         minimum_rows=2,
         max_age=timedelta(minutes=1),
     )
+
+
+def test_reference_entity_is_isolated_from_core_medication_metadata() -> None:
+    assert PillIdentificationReference.metadata is not Base.metadata
 
 
 def test_repository_rolls_back_failed_replacement(
@@ -90,16 +103,76 @@ async def test_catalog_boundary_uses_stale_cache_during_outage(db: Session) -> N
     )
     db.commit()
 
-    class _UnavailableCatalogBoundary(MFDSPillCatalogBoundary):
-        async def _fetch_complete_catalog(self) -> list[PillCatalogEntry]:
+    class _UnavailableCatalogAPI:
+        minimum_catalog_rows = 1
+
+        def __init__(self) -> None:
+            self.refresh_attempts = 0
+
+        async def requestCatalog(self) -> list[PillCatalogEntry]:
+            self.refresh_attempts += 1
             raise ConnectionError("upstream unavailable")
 
-    boundary = _UnavailableCatalogBoundary(
-        minimum_catalog_rows=1,
+    catalog_api = _UnavailableCatalogAPI()
+    boundary = MFDSPillCatalogBoundary(
+        catalog_api=catalog_api,  # type: ignore[arg-type]
         cache_ttl=timedelta(hours=1),
+        session_factory=sessionmaker(bind=db.get_bind()),
     )
 
-    catalog = await boundary.getCatalog(db)
+    catalog = await boundary.getCatalog()
+
+    assert [entry.item_seq for entry in catalog] == ["1"]
+    assert catalog_api.refresh_attempts == 1
+
+    assert await boundary.getCatalog() == catalog
+    assert catalog_api.refresh_attempts == 1
+
+    boundary._catalog_loaded_at -= 301
+    assert await boundary.getCatalog() == catalog
+    assert catalog_api.refresh_attempts == 2
+
+
+@pytest.mark.anyio
+async def test_catalog_boundary_rejects_incomplete_stale_cache(db: Session) -> None:
+    PillIdentificationCatalogRepository(db).replace_all([_entry("1", "partial")])
+
+    class _UnavailableCatalogAPI:
+        minimum_catalog_rows = 2
+
+        async def requestCatalog(self) -> list[PillCatalogEntry]:
+            raise ConnectionError("upstream unavailable")
+
+    boundary = MFDSPillCatalogBoundary(
+        catalog_api=_UnavailableCatalogAPI(),  # type: ignore[arg-type]
+        session_factory=sessionmaker(bind=db.get_bind()),
+    )
+
+    with pytest.raises(PillCatalogUnavailableError):
+        await boundary.getCatalog()
+
+
+@pytest.mark.anyio
+async def test_catalog_boundary_serves_remote_data_when_cache_io_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _AvailableCatalogAPI:
+        minimum_catalog_rows = 1
+
+        async def requestCatalog(self) -> list[PillCatalogEntry]:
+            return [_entry("1", "remote")]
+
+    boundary = MFDSPillCatalogBoundary(
+        catalog_api=_AvailableCatalogAPI(),  # type: ignore[arg-type]
+    )
+
+    def fail_cache(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(boundary, "_load_persisted_catalog", fail_cache)
+    monkeypatch.setattr(boundary, "_replace_persisted_catalog", fail_cache)
+
+    catalog = await boundary.getCatalog()
 
     assert [entry.item_seq for entry in catalog] == ["1"]
 

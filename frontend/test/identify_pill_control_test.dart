@@ -7,6 +7,18 @@ import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/identify_pill_control.dart';
 
+class _AbortAwareClient extends http.BaseClient {
+  bool wasAborted = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final abortableRequest = request as http.AbortableMultipartRequest;
+    await abortableRequest.abortTrigger;
+    wasAborted = true;
+    return http.StreamedResponse(const Stream<List<int>>.empty(), 499);
+  }
+}
+
 void main() {
   test('requestPillIdentification parses ranked MFDS candidates', () async {
     final client = MockClient((request) async {
@@ -57,6 +69,14 @@ void main() {
     expect(result.candidates, hasLength(1));
     expect(result.candidates.first.itemSeq, '200808877');
     expect(result.candidates.first.matchScore, 1.0);
+    expect(
+      () => result.candidates[0] = result.candidates[0],
+      throwsUnsupportedError,
+    );
+    expect(
+      () => result.observedFeatures.colors[0] = 'red',
+      throwsUnsupportedError,
+    );
   });
 
   test('requestPillIdentification rejects an oversized client image', () async {
@@ -100,5 +120,30 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('requestPillIdentification aborts the upload after timeout', () async {
+    final client = _AbortAwareClient();
+    final control = IdentifyPill(
+      baseUrl: 'http://localhost',
+      client: client,
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+
+    await expectLater(
+      control.requestPillIdentification(
+        frontImage: XFile.fromData(Uint8List.fromList([1, 2, 3])),
+      ),
+      throwsA(
+        isA<PillIdentificationException>().having(
+          (error) => error.failure,
+          'failure',
+          PillIdentificationFailure.timedOut,
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(client.wasAborted, isTrue);
   });
 }

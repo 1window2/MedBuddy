@@ -33,7 +33,7 @@ class _FakeCatalogBoundary:
     def __init__(self, entries: tuple[PillCatalogEntry, ...]) -> None:
         self.entries = entries
 
-    async def getCatalog(self, _db: object) -> tuple[PillCatalogEntry, ...]:
+    async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         return self.entries
 
 
@@ -51,7 +51,7 @@ class _SlowCatalogBoundary:
     def __init__(self) -> None:
         self.was_cancelled = False
 
-    async def getCatalog(self, _db: object) -> tuple[PillCatalogEntry, ...]:
+    async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         try:
             await asyncio.sleep(60)
         except asyncio.CancelledError:
@@ -88,7 +88,6 @@ def _control(
     entries: tuple[PillCatalogEntry, ...],
 ) -> IdentifyPill:
     return IdentifyPill(
-        db=object(),  # type: ignore[arg-type]
         vision_boundary=_FakeVisionBoundary(features),  # type: ignore[arg-type]
         catalog_boundary=_FakeCatalogBoundary(entries),  # type: ignore[arg-type]
     )
@@ -216,7 +215,6 @@ async def test_one_character_imprint_is_never_confident() -> None:
 async def test_failed_required_stage_cancels_sibling_work() -> None:
     catalog_boundary = _SlowCatalogBoundary()
     control = IdentifyPill(
-        db=object(),  # type: ignore[arg-type]
         vision_boundary=_FailingVisionBoundary(),  # type: ignore[arg-type]
         catalog_boundary=catalog_boundary,  # type: ignore[arg-type]
     )
