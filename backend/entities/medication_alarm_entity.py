@@ -47,7 +47,7 @@ def utc_now() -> datetime:
 #   - updated_at: Last update timestamp.
 class _MedicationAlarm(Base):
     # Keep the existing physical table name so v0.0.4 SQLite databases preserve
-    # saved alarm settings while the code-facing entity follows the UML name.
+    # saved alarm settings while this slot-level extension evolves independently.
     __tablename__ = "notification_settings"
     __table_args__ = (
         UniqueConstraint(
@@ -75,7 +75,7 @@ class _MedicationAlarm(Base):
 # Class Name: MedicationAlarm
 # Role: Represents patient medication alarms.
 # Responsibilities:
-#   - Expose a UML-compatible medication alarm entity.
+#   - Extend the v5 NotificationSetting concept with schedule-slot granularity.
 #   - Convert database rows into API-safe dictionaries.
 # Attributes:
 #   - patient_hash: Patient ownership key.
@@ -89,14 +89,6 @@ class MedicationAlarm(BaseModel):
     hour: int = 8
     minute: int = 0
     enabled: bool = False
-
-    # Function Name: saveMedicationAlarm
-    # Description:
-    # - Class diagram compatible operation that returns the current DTO payload.
-    # Returns:
-    # - JSON-compatible medication alarm dictionary.
-    def saveMedicationAlarm(self) -> dict[str, object]:
-        return self.to_response_dict()
 
     # Function Name: enable
     # Description:

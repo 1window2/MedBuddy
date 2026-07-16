@@ -11,28 +11,34 @@ from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
 )
+from boundaries.public_drug_api_boundary import (
+    PillImageAPI,
+    PublicDrugLargeAPI,
+    PublicDrugSmallAPI,
+)
 from core.database import get_db
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
-    _PublicDrugDataPortal,
 )
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
-from controls.input_prescription_control import PrescriptionAnalysisControl
+from controls.input_prescription_control import InputPrescription
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
-from controls.patient_guardian_link_control import PatientGuardianLinkControl
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.request_voice_guide_control import RequestVoiceGuide
-from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
-from controls.set_guardian_medication_control import SetGuardianMedication
+from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
-_public_drug_data_portal = _PublicDrugDataPortal()
+_public_drug_small_api = PublicDrugSmallAPI()
+_public_drug_large_api = PublicDrugLargeAPI()
+_pill_image_api = PillImageAPI()
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
@@ -60,26 +66,15 @@ async def close_medication_detail_cache() -> None:
         )
 
 
-# Function Name: get_prescription_analysis_control
+# Function Name: get_input_prescription
 # Description:
 # - Builds the image prescription analysis control service.
 # Returns:
-# - PrescriptionAnalysisControl instance.
-def get_prescription_analysis_control(
-    db: Session = Depends(get_db),
-) -> PrescriptionAnalysisControl:
-    return PrescriptionAnalysisControl(db=db)
-
-
-# Function Name: get_input_prescription
-# Description:
-# - Backward-compatible dependency wrapper for the original skeleton name.
-# Returns:
-# - PrescriptionAnalysisControl instance.
+# - InputPrescription instance.
 def get_input_prescription(
     db: Session = Depends(get_db),
-) -> PrescriptionAnalysisControl:
-    return get_prescription_analysis_control(db=db)
+) -> InputPrescription:
+    return InputPrescription(db=db)
 
 
 def _get_pill_identification_boundaries() -> tuple[
@@ -143,7 +138,9 @@ def get_check_medication_detail(
     return CheckMedicationDetail(
         db=db,
         medication_cache=medication_cache,
-        public_drug_data_portal=_public_drug_data_portal,
+        public_drug_small_api=_public_drug_small_api,
+        public_drug_large_api=_public_drug_large_api,
+        pill_image_api=_pill_image_api,
     )
 
 
@@ -159,7 +156,7 @@ def get_check_saved_medication(
 ) -> CheckSavedMedication:
     return CheckSavedMedication(
         db=db,
-        medication_image_lookup=_public_drug_data_portal,
+        medication_image_lookup=_pill_image_api,
     )
 
 
@@ -189,30 +186,39 @@ def get_check_today_medication_info(
     return CheckTodayMedicationInfo(db=db)
 
 
-# 함수명: get_request_health_recommendation
+# Function Name: get_check_health_recommendation
 # 함수역할:
 # - 요청 단위 DB 세션을 포함한 건강 관리 추천 control 서비스를 생성한다.
 # 매개변수:
 # - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
 # 반환값:
 # - CheckHealthRecommendation instance.
-def get_request_health_recommendation(
+def get_check_health_recommendation(
     db: Session = Depends(get_db),
 ) -> CheckHealthRecommendation:
     return CheckHealthRecommendation(db=db)
 
 
-# Function Name: get_patient_guardian_link_control
+# Function Name: get_link_patient_caregiver_control
 # Description:
-# - Builds the patient-guardian link control service with a request-scoped DB session.
+# - Builds the patient-caregiver link control with a request-scoped DB session.
 # Parameters:
 # - db: SQLAlchemy session supplied by FastAPI dependency injection.
 # Returns:
-# - PatientGuardianLinkControl instance.
-def get_patient_guardian_link_control(
+# - LinkPatientCaregiver instance.
+def get_link_patient_caregiver_control(
     db: Session = Depends(get_db),
-) -> PatientGuardianLinkControl:
-    return PatientGuardianLinkControl(db=db)
+) -> LinkPatientCaregiver:
+    return LinkPatientCaregiver(db=db)
+
+
+# Function Name: get_check_caregiver_medication
+# Description:
+# - Builds the read-only caregiver medication control for one request.
+def get_check_caregiver_medication(
+    db: Session = Depends(get_db),
+) -> CheckCaregiverMedication:
+    return CheckCaregiverMedication(db=db)
 
 
 # Function Name: get_set_notification
@@ -228,30 +234,17 @@ def get_set_notification(
     return SetNotification(db=db)
 
 
-# Function Name: get_set_guardian_alert_setting
+# Function Name: get_set_caregiver_notification
 # Description:
-# - Builds the guardian alert setting control with a request-scoped DB session.
+# - Builds the caregiver notification control with a request-scoped DB session.
 # Parameters:
 # - db: SQLAlchemy session supplied by FastAPI dependency injection.
 # Returns:
-# - SetGuardianAlertSetting instance.
-def get_set_guardian_alert_setting(
+# - SetCaregiverNotification instance.
+def get_set_caregiver_notification(
     db: Session = Depends(get_db),
-) -> SetGuardianAlertSetting:
-    return SetGuardianAlertSetting(db=db)
-
-
-# Function Name: get_set_guardian_medication
-# Description:
-# - Builds the guardian medication lookup control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - SetGuardianMedication instance.
-def get_set_guardian_medication(
-    db: Session = Depends(get_db),
-) -> SetGuardianMedication:
-    return SetGuardianMedication(db=db)
+) -> SetCaregiverNotification:
+    return SetCaregiverNotification(db=db)
 
 
 # Function Name: get_manage_user_setting

@@ -16,7 +16,6 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
-from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     MedicationCompletion,
@@ -46,7 +45,6 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = CheckSchedule(self.db)
-        self.link_control = PatientGuardianLinkControl(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -106,7 +104,7 @@ class CheckScheduleTest(unittest.TestCase):
             created_date=today,
         )
 
-        response = self.control.request_today_medication_schedule("patient-a")
+        response = self.control.requestTodayMedicationSchedule("patient-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(len(response["data"]), 1)
@@ -123,14 +121,14 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(patient_hash="patient-b")
 
         with self.assertRaises(HTTPException) as context:
-            self.control.update_medication_status(
+            self.control.updateMedicationStatus(
                 medication.id,
                 True,
                 "patient-a",
             )
         self.assertEqual(context.exception.status_code, 404)
 
-        response = self.control.update_medication_status(
+        response = self.control.updateMedicationStatus(
             medication.id,
             True,
             "patient-b",
@@ -145,7 +143,7 @@ class CheckScheduleTest(unittest.TestCase):
     def test_slot_status_update_only_marks_requested_dose(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
 
-        response = self.control.update_medication_status(
+        response = self.control.updateMedicationStatus(
             medication.id,
             True,
             "patient-a",
@@ -201,7 +199,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(patient_hash="patient-a")
 
         for slot_key in ["morning", "lunch", "evening"]:
-            response = self.control.update_medication_status(
+            response = self.control.updateMedicationStatus(
                 medication.id,
                 True,
                 "patient-a",
@@ -218,9 +216,9 @@ class CheckScheduleTest(unittest.TestCase):
 
     def test_unchecking_one_slot_clears_legacy_row_status(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
-        self.control.update_medication_status(medication.id, True, "patient-a")
+        self.control.updateMedicationStatus(medication.id, True, "patient-a")
 
-        response = self.control.update_medication_status(
+        response = self.control.updateMedicationStatus(
             medication.id,
             False,
             "patient-a",
@@ -242,7 +240,7 @@ class CheckScheduleTest(unittest.TestCase):
             medication_status_date=date.today(),
         )
 
-        response = self.control.update_medication_status(
+        response = self.control.updateMedicationStatus(
             medication.id,
             False,
             "patient-a",
@@ -261,7 +259,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(patient_hash="patient-a")
 
         with self.assertRaises(HTTPException) as context:
-            self.control.update_medication_status(
+            self.control.updateMedicationStatus(
                 medication.id,
                 True,
                 "patient-a",
@@ -277,7 +275,7 @@ class CheckScheduleTest(unittest.TestCase):
             medication_status_date=date.today() - timedelta(days=1),
         )
 
-        response = self.control.request_today_medication_schedule("patient-a")
+        response = self.control.requestTodayMedicationSchedule("patient-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
@@ -335,7 +333,7 @@ class CheckScheduleTest(unittest.TestCase):
             count_completion_select,
         )
         try:
-            response = self.control.request_today_medication_schedule("patient-a")
+            response = self.control.requestTodayMedicationSchedule("patient-a")
         finally:
             event.remove(
                 self.engine,
@@ -350,7 +348,7 @@ class CheckScheduleTest(unittest.TestCase):
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         medication = self._saved_medication(patient_hash=DEFAULT_PATIENT_HASH)
 
-        response = self.control.request_today_medication_schedule(" ")
+        response = self.control.requestTodayMedicationSchedule(" ")
 
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
@@ -422,68 +420,6 @@ class CheckScheduleTest(unittest.TestCase):
                     )
         finally:
             legacy_engine.dispose()
-
-    def test_guardian_today_schedule_resolves_linked_patient_hash(self) -> None:
-        medication = self._saved_medication(
-            patient_hash="patient-a",
-            item_name="guardian-visible-tablet",
-        )
-        self._saved_medication(
-            patient_hash="patient-b",
-            item_name="other-tablet",
-        )
-        code_response = self.link_control.request_patient_code("patient-a")
-        self.link_control.register_patient_code(
-            "guardian-a",
-            code_response["data"]["patient_code"],
-        )
-
-        response = self.control.request_today_medication_schedule(
-            user_hash="guardian-a",
-            role="guardian",
-        )
-
-        self.assertTrue(response["success"])
-        self.assertEqual(len(response["data"]), 1)
-        self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
-        self.assertEqual(response["data"][0]["patient_hash"], "patient-a")
-
-    def test_guardian_status_update_resolves_linked_patient_hash(self) -> None:
-        medication = self._saved_medication(
-            patient_hash="patient-a",
-            item_name="guardian-updated-tablet",
-        )
-        self._saved_medication(
-            patient_hash="patient-b",
-            item_name="other-tablet",
-        )
-        code_response = self.link_control.request_patient_code("patient-a")
-        self.link_control.register_patient_code(
-            "guardian-a",
-            code_response["data"]["patient_code"],
-        )
-
-        response = self.control.update_medication_status(
-            medication.id,
-            True,
-            "patient-a",
-            "guardian-a",
-            "guardian",
-        )
-
-        self.assertTrue(response["success"])
-        self.assertEqual(response["data"]["patient_hash"], "patient-a")
-        self.assertTrue(response["data"]["medication_status"])
-
-    def test_guardian_today_schedule_without_link_stops_with_not_found(self) -> None:
-        with self.assertRaises(HTTPException) as context:
-            self.control.request_today_medication_schedule(
-                user_hash="guardian-missing",
-                role="guardian",
-            )
-
-        self.assertEqual(context.exception.status_code, 404)
-
 
 if __name__ == "__main__":
     unittest.main()

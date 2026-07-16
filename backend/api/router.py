@@ -12,14 +12,14 @@ from api.dependencies import (
     get_check_schedule,
     get_check_saved_medication,
     get_check_today_medication_info,
+    get_check_caregiver_medication,
     get_manage_user_setting,
     get_identify_pill,
-    get_patient_guardian_link_control,
-    get_prescription_analysis_control,
-    get_request_health_recommendation,
+    get_link_patient_caregiver_control,
+    get_input_prescription,
+    get_check_health_recommendation,
     get_request_voice_guide,
-    get_set_guardian_alert_setting,
-    get_set_guardian_medication,
+    get_set_caregiver_notification,
     get_set_notification,
 )
 from boundaries.pill_identification_boundary import (
@@ -32,18 +32,18 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
+from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.input_prescription_control import (
     MAX_PRESCRIPTION_IMAGE_BYTES,
-    PrescriptionAnalysisControl,
+    InputPrescription,
     PrescriptionAnalysisTimeoutError,
 )
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
-from controls.patient_guardian_link_control import PatientGuardianLinkControl
+from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.request_voice_guide_control import RequestVoiceGuide
-from controls.set_guardian_alert_setting_control import SetGuardianAlertSetting
-from controls.set_guardian_medication_control import SetGuardianMedication
+from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.medication import (
@@ -51,7 +51,7 @@ from schemas.medication import (
     MedicationResponse,
     MedicationStatusUpdate,
     MedicationAlarmUpdate,
-    GuardianAlertUpdate,
+    CaregiverNotificationUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
     SavedMedicationCreate,
@@ -91,7 +91,7 @@ async def identify_medication(
         raise HTTPException(status_code=400, detail="추출된 텍스트가 없습니다.")
 
     try:
-        return await check_medication_detail.request_medication_detail(
+        return await check_medication_detail.requestMedicationDetail(
             request.extracted_text
         )
     except HTTPException:
@@ -116,31 +116,25 @@ def save_medication(
     medication: SavedMedicationCreate,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.save_medication_detail(medication)
+    return check_saved_medication.saveMedicationDetail(medication)
 
 
 # Function Name: get_saved_medications
 # Description:
-# - Returns saved medication rows scoped to patient or linked guardian access.
+# - Returns saved medication rows owned by one patient.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope saved medication lookup.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - check_saved_medication: CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
 async def get_saved_medications(
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return await check_saved_medication.request_saved_medication_info_with_images(
+        return await check_saved_medication.requestSavedMedicationInfoWithImages(
             patient_hash,
-            user_hash,
-            role,
         )
     except HTTPException:
         raise
@@ -154,27 +148,19 @@ async def get_saved_medications(
 
 # Function Name: get_today_medication_schedule
 # Description:
-# - Returns today's active medication schedule scoped to patient or linked guardian access.
+# - Returns today's active medication schedule for one patient.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope schedule lookup.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - check_schedule: CheckSchedule injected by FastAPI.
 # Returns:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
 def get_today_medication_schedule(
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
     try:
-        return check_schedule.request_today_medication_schedule(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        return check_schedule.requestTodayMedicationSchedule(patient_hash)
     except HTTPException:
         raise
     except Exception as exc:
@@ -190,29 +176,21 @@ def get_today_medication_schedule(
 
 # Function Name: get_today_medication_info
 # Description:
-# - Returns today's medication summary scoped to patient or linked guardian access.
+# - Returns today's medication summary for one patient.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope summary lookup.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - check_today_medication_info: CheckTodayMedicationInfo injected by FastAPI.
 # Returns:
 # - API-compatible today medication summary dictionary.
 @router.get("/schedule/today/info")
 def get_today_medication_info(
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     check_today_medication_info: CheckTodayMedicationInfo = Depends(
         get_check_today_medication_info
     ),
 ) -> dict[str, object]:
     try:
-        return check_today_medication_info.request_today_medication_info(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        return check_today_medication_info.requestTodayMedicationInfo(patient_hash)
     except HTTPException:
         raise
     except Exception as exc:
@@ -241,42 +219,30 @@ def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
-    return check_schedule.update_medication_status(
+    return check_schedule.updateMedicationStatus(
         medication_id,
         request.medication_status,
         patient_hash,
-        user_hash,
-        role,
         request.slot_key,
     )
 
 
 # Function Name: get_medication_alarms
 # Description:
-# - Returns all medication alarm settings scoped to patient or linked guardian access.
+# - Returns all medication alarm settings for one patient.
 # Parameters:
 # - patient_hash: Patient ownership key used to scope alarm setting lookup.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm list dictionary.
 @router.get("/notification/settings")
 def get_medication_alarms(
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.request_medication_alarm(
-        patient_hash,
-        user_hash,
-        role,
-    )
+    return set_notification.requestMedicationAlarm(patient_hash)
 
 
 # Function Name: get_medication_alarm
@@ -285,8 +251,6 @@ def get_medication_alarms(
 # Parameters:
 # - slot_key: Medication schedule time slot from the route path.
 # - patient_hash: Patient ownership key used to scope alarm setting lookup.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
@@ -294,16 +258,9 @@ def get_medication_alarms(
 def get_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.get_alarm_status(
-        patient_hash,
-        slot_key,
-        user_hash,
-        role,
-    )
+    return set_notification.requestAlarmToggle(patient_hash, slot_key)
 
 
 # Function Name: save_medication_alarm
@@ -313,8 +270,6 @@ def get_medication_alarm(
 # - slot_key: Medication schedule time slot from the route path.
 # - request: MedicationAlarmUpdate request DTO.
 # - patient_hash: Patient ownership key used to scope alarm setting update.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
@@ -323,17 +278,13 @@ def save_medication_alarm(
     slot_key: str,
     request: MedicationAlarmUpdate,
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.set_medication_alarm(
+    return set_notification.saveNotificationSetting(
         patient_hash,
         slot_key,
         request.hour,
         request.minute,
-        user_hash,
-        role,
     )
 
 
@@ -343,8 +294,6 @@ def save_medication_alarm(
 # Parameters:
 # - slot_key: Medication schedule time slot from the route path.
 # - patient_hash: Patient ownership key used to scope alarm setting update.
-# - user_hash: Requesting user hash. Used for guardian role resolution.
-# - role: Requesting user role such as patient or guardian.
 # - set_notification: SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
@@ -352,16 +301,9 @@ def save_medication_alarm(
 def disable_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.disable_alarm_setting(
-        patient_hash,
-        slot_key,
-        user_hash,
-        role,
-    )
+    return set_notification.disableAlarmSetting(patient_hash, slot_key)
 
 
 # Function Name: get_user_setting
@@ -377,7 +319,7 @@ def get_user_setting(
     user_hash: str = DEFAULT_PATIENT_HASH,
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
-    return manage_user_setting.request_user_setting(user_hash)
+    return manage_user_setting.requestUserSetting(user_hash)
 
 
 # Function Name: save_user_setting
@@ -395,7 +337,7 @@ def save_user_setting(
     user_hash: str = DEFAULT_PATIENT_HASH,
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
-    return manage_user_setting.save_user_setting(
+    return manage_user_setting.saveUserSetting(
         user_hash,
         request.font_size,
         request.reading_speed,
@@ -416,7 +358,7 @@ def request_voice_guide(
     request: VoiceGuideRequest,
     request_voice_guide_control: RequestVoiceGuide = Depends(get_request_voice_guide),
 ) -> dict[str, object]:
-    return request_voice_guide_control.request_voice_guide(
+    return request_voice_guide_control.requestVoiceGuide(
         request.to_medication_detail(),
         request.language,
     )
@@ -427,26 +369,21 @@ def request_voice_guide(
 # - 현재 복용 중인 약 조합을 바탕으로 AI 건강 관리 추천을 반환한다.
 # 매개변수:
 # - patient_hash: 추천 조회 범위를 구분하는 환자 해시
-# - user_hash: 보호자 요청자의 사용자 해시
-# - role: 요청자 역할
-# - request_health_recommendation: CheckHealthRecommendation injected by FastAPI.
+# - language: 추천 응답 언어
+# - check_health_recommendation: CheckHealthRecommendation injected by FastAPI.
 # 반환값:
 # - API-compatible health recommendation dictionary.
 @router.get("/health/recommendation")
 async def get_health_recommendation(
     patient_hash: str | None = None,
-    user_hash: str | None = None,
-    role: str = "patient",
     language: str = "ko",
-    request_health_recommendation: CheckHealthRecommendation = Depends(
-        get_request_health_recommendation
+    check_health_recommendation: CheckHealthRecommendation = Depends(
+        get_check_health_recommendation
     ),
 ) -> dict[str, object]:
     try:
-        return await request_health_recommendation.request_health_recommendation(
+        return await check_health_recommendation.requestHealthRecommendation(
             patient_hash,
-            user_hash,
-            role,
             language,
         )
     except HTTPException:
@@ -459,154 +396,177 @@ async def get_health_recommendation(
         ) from exc
 
 
-# Function Name: get_guardian_alert_setting
+# Function Name: get_caregiver_notification_setting
 # Description:
-# - Returns the guardian alert setting for one linked guardian-patient pair.
+# - Returns the notification setting for one linked caregiver-patient pair.
 # Parameters:
-# - patient_hash: Patient ownership key monitored by the guardian.
-# - guardian_hash: Guardian ownership key requesting alert state.
-# - set_guardian_alert_setting: SetGuardianAlertSetting injected by FastAPI.
+# - patient_hash: Patient ownership key monitored by the caregiver.
+# - caregiver_hash: Caregiver ownership key requesting notification state.
+# - legacy_guardian_hash: Backward-compatible alias for older clients.
+# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
 # Returns:
-# - API-compatible guardian alert setting dictionary.
-@router.get("/guardian-alert/settings/{patient_hash}")
-def get_guardian_alert_setting(
+# - API-compatible caregiver notification setting dictionary.
+@router.get("/caregiver-notification/settings/{patient_hash}")
+@router.get(
+    "/guardian-alert/settings/{patient_hash}",
+    include_in_schema=False,
+)
+def get_caregiver_notification_setting(
     patient_hash: str,
-    guardian_hash: str,
-    set_guardian_alert_setting: SetGuardianAlertSetting = Depends(
-        get_set_guardian_alert_setting
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    set_caregiver_notification: SetCaregiverNotification = Depends(
+        get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    return set_guardian_alert_setting.request_guardian_alert_setting(
-        guardian_hash,
+    requesting_caregiver_hash = caregiver_hash or guardian_hash
+    if not requesting_caregiver_hash:
+        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    return set_caregiver_notification.requestCaregiverNotificationSetting(
+        requesting_caregiver_hash,
         patient_hash,
     )
 
 
-# Function Name: update_guardian_alert_setting
+# Function Name: save_caregiver_notification_setting
 # Description:
-# - Updates guardian alert enable/disable state for one linked pair.
+# - Saves caregiver notification state for one linked pair.
 # Parameters:
-# - patient_hash: Patient ownership key monitored by the guardian.
-# - guardian_hash: Guardian ownership key requesting alert state update.
-# - request: GuardianAlertUpdate request DTO.
-# - set_guardian_alert_setting: SetGuardianAlertSetting injected by FastAPI.
+# - patient_hash: Patient ownership key monitored by the caregiver.
+# - caregiver_hash: Caregiver ownership key requesting the update.
+# - legacy_guardian_hash: Backward-compatible alias for older clients.
+# - request: CaregiverNotificationUpdate request DTO.
+# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
 # Returns:
-# - API-compatible guardian alert setting dictionary.
-@router.put("/guardian-alert/settings/{patient_hash}")
-def update_guardian_alert_setting(
+# - API-compatible caregiver notification setting dictionary.
+@router.put("/caregiver-notification/settings/{patient_hash}")
+@router.put(
+    "/guardian-alert/settings/{patient_hash}",
+    include_in_schema=False,
+)
+def save_caregiver_notification_setting(
     patient_hash: str,
-    guardian_hash: str,
-    request: GuardianAlertUpdate,
-    set_guardian_alert_setting: SetGuardianAlertSetting = Depends(
-        get_set_guardian_alert_setting
+    request: CaregiverNotificationUpdate,
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    set_caregiver_notification: SetCaregiverNotification = Depends(
+        get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    return set_guardian_alert_setting.update_guardian_alert_setting(
-        guardian_hash,
+    requesting_caregiver_hash = caregiver_hash or guardian_hash
+    if not requesting_caregiver_hash:
+        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    return set_caregiver_notification.saveCaregiverNotificationSetting(
+        requesting_caregiver_hash,
         patient_hash,
-        request.is_enabled,
-        request.alert_option,
+        request.notification_enabled,
+        request.notification_type,
     )
 
 
-# Function Name: get_guardian_medication
+# Function Name: get_patient_caregiver_links
 # Description:
-# - Returns saved medications and today's summary for one linked guardian-patient pair.
+# - Returns active patient-caregiver links for a patient or caregiver hash.
 # Parameters:
-# - patient_hash: Patient ownership key monitored by the guardian.
-# - guardian_hash: Guardian ownership key requesting medication data.
-# - set_guardian_medication: SetGuardianMedication injected by FastAPI.
-# Returns:
-# - API-compatible guardian medication dictionary.
-@router.get("/guardian/medications/{patient_hash}")
-def get_guardian_medication(
-    patient_hash: str,
-    guardian_hash: str,
-    set_guardian_medication: SetGuardianMedication = Depends(
-        get_set_guardian_medication
-    ),
-) -> dict[str, object]:
-    return set_guardian_medication.request_guardian_medication(
-        guardian_hash,
-        patient_hash,
-    )
-
-
-# Function Name: get_patient_guardian_links
-# Description:
-# - Returns active patient-guardian links for a patient or guardian hash.
-# Parameters:
-# - user_hash: Patient or guardian ownership key.
-# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
+# - user_hash: Patient or caregiver ownership key.
+# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible link list dictionary.
 @router.get("/link/list")
-def get_patient_guardian_links(
+def get_patient_caregiver_links(
     user_hash: str = DEFAULT_PATIENT_HASH,
-    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
-        get_patient_guardian_link_control
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return patient_guardian_link_control.request_link_page(user_hash)
+    return link_patient_caregiver_control.requestLinkScreen(user_hash)
+
+
+# Function Name: get_caregiver_patient_medication_info
+# Description:
+# - Returns read-only medication information for one explicitly selected linked patient.
+@router.get("/caregiver/medications/{patient_hash}")
+@router.get(
+    "/guardian/medications/{patient_hash}",
+    include_in_schema=False,
+)
+async def get_caregiver_patient_medication_info(
+    patient_hash: str,
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    check_caregiver_medication: CheckCaregiverMedication = Depends(
+        get_check_caregiver_medication
+    ),
+) -> dict[str, object]:
+    requesting_caregiver_hash = caregiver_hash or guardian_hash
+    if not requesting_caregiver_hash:
+        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    return await check_caregiver_medication.requestPatientMedicationInfo(
+        requesting_caregiver_hash,
+        patient_hash,
+    )
 
 
 # Function Name: create_patient_link_code
 # Description:
-# - Creates a temporary patient code for UC-6 guardian registration.
+# - Creates a temporary patient code for UC-6 caregiver registration.
 # Parameters:
 # - request: PatientCodeCreate request DTO.
-# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
+# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible patient code dictionary.
 @router.post("/link/code")
 def create_patient_link_code(
     request: PatientCodeCreate,
-    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
-        get_patient_guardian_link_control
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return patient_guardian_link_control.request_patient_code(request.patient_hash)
+    return link_patient_caregiver_control.generatePatientHash(request.patient_hash)
 
 
 # Function Name: register_patient_link_code
 # Description:
-# - Registers a guardian with a valid temporary patient code.
+# - Registers a caregiver with a valid temporary patient code.
 # Parameters:
 # - request: PatientCodeRegister request DTO.
-# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
+# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible link dictionary.
 @router.post("/link/register")
 def register_patient_link_code(
     request: PatientCodeRegister,
-    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
-        get_patient_guardian_link_control
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return patient_guardian_link_control.register_patient_code(
-        request.guardian_hash,
+    return link_patient_caregiver_control.requestPatientCaregiverLink(
+        request.caregiver_hash,
         request.patient_code,
     )
 
 
-# Function Name: unlink_patient_guardian
+# Function Name: unlink_patient_caregiver
 # Description:
-# - Removes one active patient-guardian link for a participating user hash.
+# - Removes one active patient-caregiver link for a participating user hash.
 # Parameters:
-# - link_id: Patient-guardian link primary key from route path.
-# - user_hash: Patient or guardian ownership key allowed to unlink.
-# - patient_guardian_link_control: PatientGuardianLinkControl injected by FastAPI.
+# - link_id: Patient-caregiver link primary key from route path.
+# - user_hash: Patient or caregiver ownership key allowed to unlink.
+# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible unlink dictionary.
 @router.delete("/link/{link_id}")
-def unlink_patient_guardian(
+def unlink_patient_caregiver(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    patient_guardian_link_control: PatientGuardianLinkControl = Depends(
-        get_patient_guardian_link_control
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return patient_guardian_link_control.request_unlink(link_id, user_hash)
+    return link_patient_caregiver_control.requestUnlink(
+        link_id,
+        user_hash,
+    )
 
 
 # Function Name: delete_medication
@@ -624,7 +584,7 @@ def delete_medication(
     patient_hash: str = DEFAULT_PATIENT_HASH,
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.request_delete(drug_id, patient_hash)
+    return check_saved_medication.requestDelete(drug_id, patient_hash)
 
 
 # Function Name: parse_prescription_endpoint
@@ -642,7 +602,7 @@ def parse_prescription_endpoint(
         raise HTTPException(status_code=400, detail="OCR 텍스트가 없습니다.")
 
     try:
-        parsed_data = PrescriptionAnalysisControl.parse_prescription_text(
+        parsed_data = InputPrescription.parse_prescription_text(
             request.text,
         )
         return {
@@ -729,14 +689,14 @@ async def identify_loose_pill(
 # - Receives a prescription image and returns structured medication candidates.
 # Parameters:
 # - file: Uploaded image file.
-# - prescription_analysis_control: PrescriptionAnalysisControl injected by FastAPI.
+# - input_prescription: InputPrescription injected by FastAPI.
 # Returns:
 # - API-compatible prescription analysis dictionary.
 @router.post("/upload-prescription")
 async def upload_and_parse_prescription(
     file: UploadFile = File(...),
-    prescription_analysis_control: PrescriptionAnalysisControl = Depends(
-        get_prescription_analysis_control
+    input_prescription: InputPrescription = Depends(
+        get_input_prescription
     ),
 ) -> dict[str, object]:
     try:
@@ -746,7 +706,7 @@ async def upload_and_parse_prescription(
             file.content_type,
             len(image_bytes),
         )
-        return await prescription_analysis_control.request_prescription_image(
+        return await input_prescription.requestPrescriptionImage(
             image_bytes
         )
     except PrescriptionAnalysisTimeoutError as exc:

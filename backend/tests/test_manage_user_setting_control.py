@@ -39,7 +39,7 @@ class ManageUserSettingTest(unittest.TestCase):
         self.engine.dispose()
 
     def test_request_returns_default_when_no_setting_exists(self) -> None:
-        response = self.control.request_user_setting("user-a")
+        response = self.control.requestUserSetting("user-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(response["data"]["user_hash"], "user-a")
@@ -49,7 +49,7 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(self.db.query(_UserSetting).count(), 0)
 
     def test_save_user_setting_persists_and_updates_values(self) -> None:
-        save_response = self.control.save_user_setting("user-a", 20, 1.2, "en")
+        save_response = self.control.saveUserSetting("user-a", 20, 1.2, "en")
 
         self.assertTrue(save_response["success"])
         self.assertEqual(save_response["data"]["font_size"], 20)
@@ -57,7 +57,7 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(save_response["data"]["language"], "en")
         self.assertEqual(self.db.query(_UserSetting).count(), 1)
 
-        update_response = self.control.updateUserSetting("user-a", 14, 0.8, "ko")
+        update_response = self.control.saveUserSetting("user-a", 14, 0.8, "ko")
 
         self.assertEqual(update_response["data"]["font_size"], 14)
         self.assertEqual(update_response["data"]["reading_speed"], 0.8)
@@ -66,15 +66,15 @@ class ManageUserSettingTest(unittest.TestCase):
 
     def test_invalid_user_setting_values_are_rejected(self) -> None:
         with self.assertRaises(HTTPException) as font_context:
-            self.control.save_user_setting("user-a", 40, 1.0, "ko")
+            self.control.saveUserSetting("user-a", 40, 1.0, "ko")
         self.assertEqual(font_context.exception.status_code, 400)
 
         with self.assertRaises(HTTPException) as speed_context:
-            self.control.save_user_setting("user-a", 16, 3.0, "ko")
+            self.control.saveUserSetting("user-a", 16, 3.0, "ko")
         self.assertEqual(speed_context.exception.status_code, 400)
 
         with self.assertRaises(HTTPException) as language_context:
-            self.control.save_user_setting("user-a", 16, 1.0, "jp")
+            self.control.saveUserSetting("user-a", 16, 1.0, "jp")
         self.assertEqual(language_context.exception.status_code, 400)
 
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:

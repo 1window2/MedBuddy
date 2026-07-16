@@ -9,7 +9,7 @@ if str(BACKEND_DIR) not in sys.path:
 from services.prescription_parser import (  # noqa: E402
     MAX_MEDICATION_NAME_LENGTH,
     normalize_date,
-    normalize_prescription_payload,
+    normalize_prescription_candidates,
     parse_prescription,
 )
 from entities.prescription_analysis_entity import (  # noqa: E402
@@ -25,12 +25,12 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertIsNone(normalize_date("처방일자 2026-02-30"))
         self.assertIsNone(normalize_date("처방일자 2026-13-01"))
 
-        normalized_payload = normalize_prescription_payload(
+        _, normalized_date, _, _ = normalize_prescription_candidates(
             {"prescription_date": "2026-02-30"}
         )
-        self.assertEqual(normalized_payload["prescription_date"], "정보 없음")
+        self.assertEqual(normalized_date, "정보 없음")
 
-    def test_normalize_prescription_payload_accepts_aliases_and_filters_noise(
+    def test_normalize_prescription_candidates_accepts_aliases_and_filters_noise(
         self,
     ) -> None:
         raw_payload = {
@@ -59,12 +59,14 @@ class PrescriptionParserTest(unittest.TestCase):
             ],
         }
 
-        normalized_payload = normalize_prescription_payload(raw_payload)
+        hospital_name, prescription_date, candidates, raw_count = (
+            normalize_prescription_candidates(raw_payload)
+        )
 
-        self.assertEqual(normalized_payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
-        self.assertEqual(normalized_payload["prescription_date"], "2026-07-08")
+        self.assertEqual(hospital_name, "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
+        self.assertEqual(prescription_date, "2026-07-08")
         self.assertEqual(
-            normalized_payload["medications"],
+            candidates.to_payload(),
             [
                 {
                     "drug_name": "\ud504\ub8e8\ucf54\ud504\uc815",
@@ -74,9 +76,8 @@ class PrescriptionParserTest(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(normalized_payload["raw_medication_count"], 4)
-        self.assertEqual(normalized_payload["parsed_medication_count"], 1)
-        self.assertEqual(normalized_payload["skipped_medication_count"], 3)
+        self.assertEqual(raw_count, 4)
+        self.assertEqual(len(candidates.candidates), 1)
 
     def test_parse_prescription_keeps_legacy_and_upload_shapes(self) -> None:
         parsed_payload = parse_prescription(
@@ -139,7 +140,7 @@ class PrescriptionParserTest(unittest.TestCase):
         oversized_name = "a" * (MAX_MEDICATION_NAME_LENGTH + 1)
 
         parsed_payload = parse_prescription([f"{oversized_name} 1 3 5"])
-        normalized_payload = normalize_prescription_payload(
+        _, _, candidates, _ = normalize_prescription_candidates(
             {
                 "medications": [
                     {
@@ -153,9 +154,9 @@ class PrescriptionParserTest(unittest.TestCase):
         )
 
         self.assertEqual(parsed_payload["medications"], [])
-        self.assertEqual(normalized_payload["medications"], [])
+        self.assertTrue(candidates.isEmpty())
 
-    def test_normalize_prescription_payload_skips_non_finite_numeric_aliases(
+    def test_normalize_prescription_candidates_skips_non_finite_numeric_aliases(
         self,
     ) -> None:
         raw_payload = {
@@ -172,10 +173,10 @@ class PrescriptionParserTest(unittest.TestCase):
             ],
         }
 
-        normalized_payload = normalize_prescription_payload(raw_payload)
+        _, _, candidates, _ = normalize_prescription_candidates(raw_payload)
 
         self.assertEqual(
-            normalized_payload["medications"],
+            candidates.to_payload(),
             [
                 {
                     "drug_name": "\ud504\ub8e8\ucf54\ud504\uc815",
@@ -225,9 +226,9 @@ class PrescriptionParserTest(unittest.TestCase):
             0,
         )
 
-    def test_normalize_prescription_payload_rejects_non_object_response(self) -> None:
+    def test_normalize_prescription_candidates_rejects_non_object_response(self) -> None:
         with self.assertRaises(ValueError):
-            normalize_prescription_payload(["not", "an", "object"])
+            normalize_prescription_candidates(["not", "an", "object"])
 
 
 if __name__ == "__main__":

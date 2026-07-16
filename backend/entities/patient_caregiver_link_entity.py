@@ -1,5 +1,5 @@
-# File Name: patient_guardian_link_entity.py
-# Role: Entity and persistence models mapped from PatientGuardianLink in ClassDiagram2.
+# File Name: patient_caregiver_link_entity.py
+# Role: Entity and persistence models mapped from PatientCaregiverLink in integrated v5.
 
 from datetime import UTC, datetime
 
@@ -19,7 +19,7 @@ def _as_naive_utc(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-class _PatientGuardianLink(Base):
+class _PatientCaregiverLink(Base):
     __tablename__ = "patient_caregiver_links"
     __table_args__ = (
         UniqueConstraint(
@@ -31,8 +31,7 @@ class _PatientGuardianLink(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     patient_hash = Column(String, nullable=False, index=True)
-    # Keep the existing SQLite column name while exposing the UML term in code.
-    guardian_hash = Column("caregiver_hash", String, nullable=False, index=True)
+    caregiver_hash = Column(String, nullable=False, index=True)
     linked = Column(Boolean, nullable=False, default=True, server_default="1")
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
@@ -46,12 +45,11 @@ class _PatientLinkCode(Base):
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, nullable=False, default=utc_now)
     used = Column(Boolean, nullable=False, default=False, server_default="0")
-    # Keep the existing SQLite column name while exposing the UML term in code.
-    guardian_hash = Column("caregiver_hash", String, nullable=True, index=True)
+    caregiver_hash = Column(String, nullable=True, index=True)
 
 
 # Class Name: PatientLinkCode
-# Role: Represents one expiring code shared by a patient with a guardian.
+# Role: Represents one expiring code shared by a patient with a caregiver.
 class PatientLinkCode(BaseModel):
     code: str
     patient_hash: str
@@ -70,18 +68,28 @@ class PatientLinkCode(BaseModel):
         }
 
 
-# Class Name: PatientGuardianLink
-# Role: Represents a patient-guardian relationship.
-class PatientGuardianLink(BaseModel):
+# Class Name: PatientCaregiverLink
+# Role: Represents a patient-caregiver relationship.
+class PatientCaregiverLink(BaseModel):
     link_id: int | None = None
     patient_id: str = ""
-    guardian_id: str = ""
-    linked: bool = False
+    caregiver_id: str = ""
+    patient_hash: str = ""
+    caregiver_hash: str = ""
+    link_status: bool = False
+    linked_at: datetime | None = None
 
-    def createPatientGuardianLink(self) -> "PatientGuardianLink":
-        self.linked = True
+    def validateCaregiverHash(self) -> bool:
+        patient_hash = self.patient_hash.strip()
+        caregiver_hash = self.caregiver_hash.strip()
+        return bool(caregiver_hash) and caregiver_hash != patient_hash
+
+    def savePatientCaregiverLink(self) -> "PatientCaregiverLink":
+        if not self.validateCaregiverHash():
+            raise ValueError("Caregiver hash must differ from the patient hash.")
+        self.link_status = True
         return self
 
-    def deletePatientGuardianLink(self) -> "PatientGuardianLink":
-        self.linked = False
+    def removePatientCaregiverLink(self) -> "PatientCaregiverLink":
+        self.link_status = False
         return self

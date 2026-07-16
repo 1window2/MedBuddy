@@ -1,5 +1,5 @@
 # File Name: medication_schedule_entity.py
-# Role: Entity class mapped from the MedicationSchedule box in ClassDiagram2.
+# Role: Entity class mapped from MedicationSchedule in class diagram integrated v5.
 
 from datetime import date
 
@@ -34,7 +34,7 @@ def medication_schedule_slot_keys_for_frequency(frequency_count: int) -> list[st
 # Role: Represents one medication schedule or one extracted medication candidate.
 # Responsibilities:
 #   - Carry medication schedule fields defined in the class diagram.
-#   - Provide operation names that preserve UML-to-code traceability.
+#   - Validate and serialize schedule data crossing the control/API boundary.
 # Attributes:
 #   - masked_prescription_text: Masked prescription text.
 #   - created_date: Date when the medication schedule was created.
@@ -110,67 +110,3 @@ class MedicationSchedule(BaseModel):
         validation_alias=AliasChoices("completedSlotKeys", "completed_slot_keys"),
         serialization_alias="completed_slot_keys",
     )
-
-    # Function Name: saveAnalysisResult
-    # Description:
-    # - Placeholder for persisting analysis results. Current implementation saves
-    #   selected medication details through CheckSavedMedication instead.
-    # Returns:
-    # - None.
-    def saveAnalysisResult(self) -> None:
-        raise NotImplementedError("Analysis result persistence is not implemented yet.")
-
-    # Function Name: getTodayMedicationInfo
-    # Description:
-    # - Placeholder for today's medication summary lookup.
-    # Returns:
-    # - None.
-    def getTodayMedicationInfo(self) -> None:
-        raise NotImplementedError("Today's medication info is not implemented yet.")
-
-    # Function Name: getAnalysisResult
-    # Description:
-    # - Returns this extracted schedule for the currently implemented analysis flow.
-    # Returns:
-    # - Current MedicationSchedule instance.
-    def getAnalysisResult(self) -> "MedicationSchedule":
-        return self
-
-    # Function Name: getSavedMedicationInfo
-    # Description:
-    # - Placeholder for saved medication lookup through this entity.
-    # Returns:
-    # - None.
-    def getSavedMedicationInfo(self) -> None:
-        raise NotImplementedError("Saved medication info is handled by CheckSavedMedication.")
-
-    # Function Name: updateMedicationInfo
-    # Description:
-    # - Placeholder for medication schedule editing.
-    # Returns:
-    # - None.
-    def updateMedicationInfo(self) -> None:
-        raise NotImplementedError("Medication schedule editing is not implemented yet.")
-
-    # Function Name: getTodayMedicationSchedule
-    # Description:
-    # - Returns this instance as today's medication schedule DTO.
-    # Returns:
-    # - Current MedicationSchedule instance.
-    def getTodayMedicationSchedule(self) -> "MedicationSchedule":
-        return self
-
-    # Function Name: saveMedicationStatus
-    # Description:
-    # - Applies a completion status to this schedule DTO.
-    # Parameters:
-    # - medication_status: New completion status.
-    # Returns:
-    # - Current MedicationSchedule instance with updated status.
-    def saveMedicationStatus(
-        self,
-        medication_status: bool | None = None,
-    ) -> "MedicationSchedule":
-        if medication_status is not None:
-            self.medcation_status = medication_status
-        return self

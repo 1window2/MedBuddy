@@ -71,12 +71,12 @@ class _MedicationCompletion(Base):
 
 
 # Class Name: MedicationCompletion
-# Role: Public UML entity for one medication schedule slot completion.
+# Role: Public slot-completion extension to the v5 MedicationSchedule model.
 # Responsibilities:
 #   - Preserve the patient, medicine, time slot, and completion timestamp names
-#     used by the Class/Sequence Diagrams.
+#     used by the schedule and completion flows.
 #   - Build the internal persistence row without exposing SQLAlchemy details to
-#     control code that follows the UML entity name.
+#     control code.
 # Attributes:
 #   - completion_id: Persisted completion identifier.
 #   - patient_hash: Patient ownership key.
@@ -114,7 +114,7 @@ class MedicationCompletion(BaseModel):
 
     # Function Name: insertMedicationCompletion
     # Description:
-    # - Creates the internal persistence row for this UML completion entity.
+    # - Creates the internal persistence row for this slot completion entity.
     # Parameters:
     # - saved_medication_id: Saved medication row id connected to this schedule slot.
     # - schedule_date: Date represented by this schedule slot.

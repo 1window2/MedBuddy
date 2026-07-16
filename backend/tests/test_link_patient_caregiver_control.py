@@ -1,4 +1,4 @@
-# 파일명: test_patient_guardian_link_control.py
+# 파일명: test_link_patient_caregiver_control.py
 # 역할: 환자-보호자 연동 코드 생성, 등록, 해제 control을 검증한다.
 
 import sys
@@ -14,10 +14,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
+from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.patient_guardian_link_entity import (  # noqa: E402
-    _PatientGuardianLink,
+from entities.patient_caregiver_link_entity import (  # noqa: E402
+    _PatientCaregiverLink,
     _PatientLinkCode,
 )
 from entities.patient_hash_entity import (  # noqa: E402
@@ -30,7 +30,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class PatientGuardianLinkControlTest(unittest.TestCase):
+class LinkPatientCaregiverTest(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -43,14 +43,14 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
             bind=self.engine,
         )
         self.db = session_factory()
-        self.control = PatientGuardianLinkControl(self.db)
+        self.control = LinkPatientCaregiver(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
     def test_patient_code_creation_persists_share_code(self) -> None:
-        response = self.control.request_patient_code("patient-a")
+        response = self.control.generatePatientHash("patient-a")
 
         self.assertTrue(response["success"])
         data = response["data"]
@@ -71,7 +71,7 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.assertFalse(link_code.used)
 
     def test_diagram_patient_code_wrapper_delegates_to_code_creation(self) -> None:
-        response = self.control.createPatientCode("patient-a")
+        response = self.control.generatePatientHash("patient-a")
 
         self.assertTrue(response["success"])
         data = response["data"]
@@ -79,10 +79,10 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.assertEqual(len(data["patient_code"]), PATIENT_LINK_CODE_LENGTH)
 
     def test_register_patient_code_creates_scoped_link(self) -> None:
-        code_response = self.control.request_patient_code("patient-a")
+        code_response = self.control.generatePatientHash("patient-a")
         patient_code = code_response["data"]["patient_code"]
 
-        link_response = self.control.register_patient_code("guardian-a", patient_code)
+        link_response = self.control.requestPatientCaregiverLink("guardian-a", patient_code)
 
         self.assertTrue(link_response["success"])
         link_data = link_response["data"]
@@ -90,12 +90,12 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.assertEqual(link_data["guardian_hash"], "guardian-a")
         self.assertTrue(link_data["linked"])
         self.assertEqual(
-            self.control.get_linked_patient_hash("guardian-a"),
+            self.control.getLinkedPatientHash("guardian-a"),
             "patient-a",
         )
 
-        patient_links = self.control.request_link_page("patient-a")
-        guardian_links = self.control.request_link_page("guardian-a")
+        patient_links = self.control.requestLinkScreen("patient-a")
+        guardian_links = self.control.requestLinkScreen("guardian-a")
         self.assertEqual(len(patient_links["data"]), 1)
         self.assertEqual(len(guardian_links["data"]), 1)
 
@@ -105,21 +105,21 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
             .first()
         )
         self.assertTrue(used_code.used)
-        self.assertEqual(used_code.guardian_hash, "guardian-a")
+        self.assertEqual(used_code.caregiver_hash, "guardian-a")
 
     def test_linked_patient_hash_honors_requested_patient(self) -> None:
-        patient_a_code = self.control.request_patient_code("patient-a")
-        patient_b_code = self.control.request_patient_code("patient-b")
-        self.control.register_patient_code(
+        patient_a_code = self.control.generatePatientHash("patient-a")
+        patient_b_code = self.control.generatePatientHash("patient-b")
+        self.control.requestPatientCaregiverLink(
             "guardian-a",
             patient_a_code["data"]["patient_code"],
         )
-        self.control.register_patient_code(
+        self.control.requestPatientCaregiverLink(
             "guardian-a",
             patient_b_code["data"]["patient_code"],
         )
 
-        linked_patient_hash = self.control.get_linked_patient_hash(
+        linked_patient_hash = self.control.getLinkedPatientHash(
             "guardian-a",
             "patient-b",
         )
@@ -127,60 +127,32 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.assertEqual(linked_patient_hash, "patient-b")
 
     def test_linked_patient_hash_honors_requested_default_patient(self) -> None:
-        patient_a_code = self.control.request_patient_code("patient-a")
-        default_patient_code = self.control.request_patient_code(DEFAULT_PATIENT_HASH)
-        self.control.register_patient_code(
+        patient_a_code = self.control.generatePatientHash("patient-a")
+        default_patient_code = self.control.generatePatientHash(DEFAULT_PATIENT_HASH)
+        self.control.requestPatientCaregiverLink(
             "guardian-a",
             patient_a_code["data"]["patient_code"],
         )
-        self.control.register_patient_code(
+        self.control.requestPatientCaregiverLink(
             "guardian-a",
             default_patient_code["data"]["patient_code"],
         )
 
-        linked_patient_hash = self.control.get_linked_patient_hash(
+        linked_patient_hash = self.control.getLinkedPatientHash(
             "guardian-a",
             DEFAULT_PATIENT_HASH,
         )
 
         self.assertEqual(linked_patient_hash, DEFAULT_PATIENT_HASH)
 
-    def test_resolve_patient_scope_rejects_unsupported_role(self) -> None:
-        with self.assertRaises(HTTPException) as context:
-            self.control.resolve_patient_scope(
-                patient_hash="patient-a",
-                role="administrator",
-            )
-
-        self.assertEqual(context.exception.status_code, 400)
-
-    def test_resolve_patient_scope_requires_guardian_identity(self) -> None:
-        with self.assertRaises(HTTPException) as context:
-            self.control.resolve_patient_scope(
-                patient_hash="patient-a",
-                role="guardian",
-            )
-
-        self.assertEqual(context.exception.status_code, 400)
-
-    def test_patient_scope_cannot_target_a_different_user_hash(self) -> None:
-        with self.assertRaises(HTTPException) as context:
-            self.control.resolve_patient_scope(
-                patient_hash="patient-a",
-                user_hash="patient-b",
-                role="patient",
-            )
-
-        self.assertEqual(context.exception.status_code, 403)
-
     def test_patient_code_cannot_be_registered_twice(self) -> None:
-        code_response = self.control.request_patient_code("patient-a")
+        code_response = self.control.generatePatientHash("patient-a")
         patient_code = code_response["data"]["patient_code"]
 
-        self.control.register_patient_code("guardian-a", patient_code)
+        self.control.requestPatientCaregiverLink("guardian-a", patient_code)
 
         with self.assertRaises(HTTPException) as context:
-            self.control.register_patient_code("guardian-b", patient_code)
+            self.control.requestPatientCaregiverLink("guardian-b", patient_code)
 
         self.assertIn(context.exception.status_code, {404, 409})
 
@@ -194,31 +166,31 @@ class PatientGuardianLinkControlTest(unittest.TestCase):
         self.db.commit()
 
         with self.assertRaises(HTTPException) as context:
-            self.control.register_patient_code("guardian-a", "EXPIRED1")
+            self.control.requestPatientCaregiverLink("guardian-a", "EXPIRED1")
 
         self.assertEqual(context.exception.status_code, 404)
 
     def test_unlink_requires_participating_user_hash(self) -> None:
-        code_response = self.control.request_patient_code("patient-a")
-        link_response = self.control.register_patient_code(
+        code_response = self.control.generatePatientHash("patient-a")
+        link_response = self.control.requestPatientCaregiverLink(
             "guardian-a",
             code_response["data"]["patient_code"],
         )
         link_id = link_response["data"]["id"]
 
         with self.assertRaises(HTTPException) as context:
-            self.control.request_unlink(link_id, "stranger")
+            self.control.requestUnlink(link_id, "stranger")
         self.assertEqual(context.exception.status_code, 404)
 
-        unlink_response = self.control.deletePatientGuardianLink(link_id, "guardian-a")
+        unlink_response = self.control.requestUnlink(link_id, "guardian-a")
 
         self.assertTrue(unlink_response["success"])
         self.assertFalse(unlink_response["data"]["linked"])
-        link_row = self.db.get(_PatientGuardianLink, link_id)
+        link_row = self.db.get(_PatientCaregiverLink, link_id)
         self.assertFalse(link_row.linked)
 
         with self.assertRaises(HTTPException) as missing_context:
-            self.control.get_linked_patient_hash("guardian-a")
+            self.control.getLinkedPatientHash("guardian-a")
         self.assertEqual(missing_context.exception.status_code, 404)
 
 

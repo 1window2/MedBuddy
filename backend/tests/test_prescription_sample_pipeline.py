@@ -21,7 +21,7 @@ from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from controls.check_today_medication_info_control import (  # noqa: E402
     CheckTodayMedicationInfo,
 )
-from controls.input_prescription_control import PrescriptionAnalysisControl  # noqa: E402
+from controls.input_prescription_control import InputPrescription  # noqa: E402
 from controls.set_notification_control import SetNotification  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_alarm_entity import ensure_medication_alarm_schema  # noqa: E402
@@ -110,14 +110,14 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
     ) -> None:
         ocr_boundary = _FakeOcrBoundary(self._sample_ocr_response())
         ai_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        prescription_control = PrescriptionAnalysisControl(
+        prescription_control = InputPrescription(
             client=ai_client,
             db=self.db,
             ocr_service_boundary=ocr_boundary,
         )
 
         analysis_payload = asyncio.run(
-            prescription_control.request_prescription_image(b"sample-image")
+            prescription_control.requestPrescriptionImage(b"sample-image")
         )
 
         self.assertEqual(ocr_boundary.received_image, b"sample-image")
@@ -159,7 +159,7 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
 
         save_control = CheckSavedMedication(self.db)
         saved_ids = [
-            save_control.save_medication_detail(
+            save_control.saveMedicationDetail(
                 SavedMedicationCreate(
                     patient_hash=self.patient_hash,
                     prescription_date=date.fromisoformat(
@@ -178,7 +178,7 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
         ]
 
         schedule_control = CheckSchedule(self.db)
-        schedule_response = schedule_control.request_today_medication_schedule(
+        schedule_response = schedule_control.requestTodayMedicationSchedule(
             self.patient_hash
         )
         schedules = schedule_response["data"]
@@ -199,34 +199,34 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
             self.db,
             check_schedule=schedule_control,
         )
-        today_info = today_info_control.request_today_medication_info(
+        today_info = today_info_control.requestTodayMedicationInfo(
             self.patient_hash
         )["data"]
         self.assertEqual(today_info["medication_count"], 5)
         self.assertEqual(today_info["total_dose_count"], 13)
         self.assertEqual(today_info["completed_dose_count"], 0)
 
-        schedule_control.update_medication_status(
+        schedule_control.updateMedicationStatus(
             int(saved_ids[0]),
             True,
             self.patient_hash,
             slot_key="morning",
         )
-        updated_today_info = today_info_control.request_today_medication_info(
+        updated_today_info = today_info_control.requestTodayMedicationInfo(
             self.patient_hash
         )["data"]
         self.assertEqual(updated_today_info["completed_dose_count"], 1)
         self.assertEqual(updated_today_info["remaining_dose_count"], 12)
 
         notification_control = SetNotification(self.db)
-        default_alarms = notification_control.request_medication_alarm(
+        default_alarms = notification_control.requestMedicationAlarm(
             self.patient_hash
         )["data"]
         self.assertEqual(
             [alarm["slot_key"] for alarm in default_alarms],
             ["morning", "lunch", "evening", "bedtime"],
         )
-        saved_alarm = notification_control.set_medication_alarm(
+        saved_alarm = notification_control.saveNotificationSetting(
             self.patient_hash,
             "morning",
             8,

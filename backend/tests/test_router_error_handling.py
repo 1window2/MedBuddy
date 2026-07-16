@@ -29,32 +29,26 @@ from controls.input_prescription_control import (  # noqa: E402
 )
 
 
-class _MissingGuardianSavedMedicationControl:
-    async def request_saved_medication_info_with_images(
+class _MissingSavedMedicationControl:
+    async def requestSavedMedicationInfoWithImages(
         self,
-        patient_hash: str,
-        user_hash: str | None,
-        role: str,
+        patient_hash: str | None,
     ) -> dict[str, object]:
-        raise HTTPException(status_code=404, detail="Linked patient was not found.")
+        raise HTTPException(status_code=404, detail="Patient medication was not found.")
 
 
-class _MissingGuardianScheduleControl:
-    def request_today_medication_schedule(
+class _MissingScheduleControl:
+    def requestTodayMedicationSchedule(
         self,
-        patient_hash: str,
-        user_hash: str | None,
-        role: str,
+        patient_hash: str | None,
     ) -> dict[str, object]:
-        raise HTTPException(status_code=404, detail="Linked patient was not found.")
+        raise HTTPException(status_code=404, detail="Patient schedule was not found.")
 
 
 class _FailingSavedMedicationControl:
-    async def request_saved_medication_info_with_images(
+    async def requestSavedMedicationInfoWithImages(
         self,
         patient_hash: str | None,
-        user_hash: str | None,
-        role: str,
     ) -> dict[str, object]:
         raise RuntimeError("sensitive database details")
 
@@ -71,16 +65,16 @@ class _RecordingUploadFile:
         return b"image"
 
 
-class _RecordingPrescriptionAnalysisControl:
-    async def request_prescription_image(
+class _RecordingInputPrescription:
+    async def requestPrescriptionImage(
         self,
         image_bytes: bytes,
     ) -> dict[str, object]:
         return {"received_bytes": len(image_bytes)}
 
 
-class _TimedOutPrescriptionAnalysisControl:
-    async def request_prescription_image(
+class _TimedOutInputPrescription:
+    async def requestPrescriptionImage(
         self,
         image_bytes: bytes,
     ) -> dict[str, object]:
@@ -105,9 +99,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
             await get_saved_medications(
-                user_hash="guardian-missing",
-                role="guardian",
-                check_saved_medication=_MissingGuardianSavedMedicationControl(),
+                patient_hash="patient-missing",
+                check_saved_medication=_MissingSavedMedicationControl(),
             )
 
         self.assertEqual(context.exception.status_code, 404)
@@ -115,9 +108,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     def test_today_schedule_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
             get_today_medication_schedule(
-                user_hash="guardian-missing",
-                role="guardian",
-                check_schedule=_MissingGuardianScheduleControl(),
+                patient_hash="patient-missing",
+                check_schedule=_MissingScheduleControl(),
             )
 
         self.assertEqual(context.exception.status_code, 404)
@@ -141,7 +133,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("api.router", level="INFO") as captured_logs:
             response = await upload_and_parse_prescription(
                 file=upload_file,
-                prescription_analysis_control=_RecordingPrescriptionAnalysisControl(),
+                input_prescription=_RecordingInputPrescription(),
             )
 
         self.assertEqual(
@@ -157,7 +149,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as context:
             await upload_and_parse_prescription(
                 file=_RecordingUploadFile(),
-                prescription_analysis_control=_TimedOutPrescriptionAnalysisControl(),
+                input_prescription=_TimedOutInputPrescription(),
             )
 
         self.assertEqual(context.exception.status_code, 504)

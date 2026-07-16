@@ -12,14 +12,17 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from api import dependencies as api_dependencies
+from boundaries.public_drug_api_boundary import (
+    PillImageAPI,
+    _PublicDrugTransport,
+    read_public_image_url,
+)
 from core.config import settings
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
     _MedicationSummaryGenerator,
     _MedicationTextNormalizer,
-    _PublicDrugDataPortal,
-    _read_public_image_url,
     _read_text,
 )
 from entities.medication_detail_entity import MedicationDetail
@@ -131,26 +134,26 @@ def test_read_text_replaces_missing_public_api_fields() -> None:
 
 def test_public_medication_image_url_accepts_documented_aliases() -> None:
     assert (
-        _read_public_image_url({"itemImage": "https://example.com/pill.png"})
+        read_public_image_url({"itemImage": "https://example.com/pill.png"})
         == "https://example.com/pill.png"
     )
     assert (
-        _read_public_image_url({"ITEM_IMAGE": "//example.com/pill.png"})
+        read_public_image_url({"ITEM_IMAGE": "//example.com/pill.png"})
         == "https://example.com/pill.png"
     )
 
 
 def test_public_medication_image_url_rejects_non_network_schemes() -> None:
-    assert _read_public_image_url({"itemImage": "data:image/png;base64,abc"}) == ""
-    assert _read_public_image_url({"imageUrl": "javascript:alert(1)"}) == ""
-    assert _read_public_image_url({"imageUrl": "https://[invalid"}) == ""
+    assert read_public_image_url({"itemImage": "data:image/png;base64,abc"}) == ""
+    assert read_public_image_url({"imageUrl": "javascript:alert(1)"}) == ""
+    assert read_public_image_url({"imageUrl": "https://[invalid"}) == ""
 
 
 @pytest.mark.anyio
 async def test_pill_image_lookup_requires_an_exact_medication_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    portal = _PublicDrugDataPortal()
+    portal = PillImageAPI()
     monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
     request_count = 0
 
@@ -178,14 +181,14 @@ async def test_pill_image_lookup_requires_an_exact_medication_match(
             2,
         )
 
-    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+    monkeypatch.setattr(portal._transport, "request_items", fake_request_items)
 
     assert (
-        await portal.search_pill_image_url("테스트정")
+        await portal.searchMedicationImage("테스트정")
         == "https://example.com/right.png"
     )
     assert (
-        await portal.search_pill_image_url("테스트정")
+        await portal.searchMedicationImage("테스트정")
         == "https://example.com/right.png"
     )
     assert request_count == 1
@@ -195,7 +198,7 @@ async def test_pill_image_lookup_requires_an_exact_medication_match(
 async def test_pill_image_lookup_is_optional_when_api_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    portal = _PublicDrugDataPortal()
+    portal = PillImageAPI()
     monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
     request_count = 0
 
@@ -207,10 +210,10 @@ async def test_pill_image_lookup_is_optional_when_api_is_unavailable(
         request_count += 1
         raise RuntimeError("not authorized")
 
-    monkeypatch.setattr(portal, "_request_items", failing_request_items)
+    monkeypatch.setattr(portal._transport, "request_items", failing_request_items)
 
-    assert await portal.search_pill_image_url("테스트정") == ""
-    assert await portal.search_pill_image_url("테스트정") == ""
+    assert await portal.searchMedicationImage("테스트정") == ""
+    assert await portal.searchMedicationImage("테스트정") == ""
     assert request_count == 1
 
 
@@ -218,7 +221,7 @@ async def test_pill_image_lookup_is_optional_when_api_is_unavailable(
 async def test_pill_image_lookup_rejects_ambiguous_name_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    portal = _PublicDrugDataPortal()
+    portal = PillImageAPI()
     monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
 
     async def fake_request_items(
@@ -239,16 +242,16 @@ async def test_pill_image_lookup_rejects_ambiguous_name_matches(
             2,
         )
 
-    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+    monkeypatch.setattr(portal._transport, "request_items", fake_request_items)
 
-    assert await portal.search_pill_image_url("동일정") == ""
+    assert await portal.searchMedicationImage("동일정") == ""
 
 
 @pytest.mark.anyio
 async def test_pill_image_lookup_uses_product_code_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    portal = _PublicDrugDataPortal()
+    portal = PillImageAPI()
     monkeypatch.setattr(settings, "PILL_IMAGE_API_ENABLED", True)
 
     async def fake_request_items(
@@ -268,19 +271,19 @@ async def test_pill_image_lookup_uses_product_code_when_available(
             1,
         )
 
-    monkeypatch.setattr(portal, "_request_items", fake_request_items)
+    monkeypatch.setattr(portal._transport, "request_items", fake_request_items)
 
     assert (
-        await portal.search_pill_image_url("테스트정", "200000001")
+        await portal.searchMedicationImage("테스트정", "200000001")
         == "https://example.com/by-code.png"
     )
 
 
 def test_public_data_response_header_rejects_service_errors() -> None:
-    portal = _PublicDrugDataPortal()
+    transport = _PublicDrugTransport()
 
     with pytest.raises(RuntimeError, match="rejected"):
-        portal._validate_response_header(
+        transport._validate_response_header(
             {"response": {"header": {"resultCode": "30"}}}
         )
 
@@ -290,7 +293,7 @@ async def test_image_enrichment_uses_canonical_product_code() -> None:
     requested_values: list[tuple[str, str]] = []
 
     class _FakePillImagePortal:
-        async def search_pill_image_url(
+        async def searchMedicationImage(
             self,
             item_name: str,
             item_seq: str = "",
@@ -299,7 +302,7 @@ async def test_image_enrichment_uses_canonical_product_code() -> None:
             return "https://example.com/by-code.png"
 
     control = object.__new__(CheckMedicationDetail)
-    control.public_drug_data_portal = _FakePillImagePortal()
+    control.pill_image_api = _FakePillImagePortal()
     details = await control._enrich_missing_image_urls(
         [
             MedicationDetail(

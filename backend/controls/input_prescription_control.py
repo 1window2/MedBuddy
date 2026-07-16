@@ -25,7 +25,11 @@ from entities.prescription_analysis_entity import (
     PrescriptionAnalysisResult,
     PrescriptionText,
 )
-from services.prescription_parser import normalize_prescription_payload, parse_prescription
+from services.prescription_parser import (
+    INFO_UNAVAILABLE,
+    normalize_prescription_candidates,
+    parse_prescription,
+)
 
 logger = logging.getLogger(__name__)
 MAX_PRESCRIPTION_IMAGE_BYTES = 15 * 1024 * 1024
@@ -739,7 +743,7 @@ class _PrescriptionMedicationNameVerifier:
         }
 
 
-# Class Name: PrescriptionAnalysisControl
+# Class Name: InputPrescription
 # Role: Coordinates prescription image preprocessing and structured extraction.
 # Responsibilities:
 #   - Preprocess prescription image bytes.
@@ -748,7 +752,7 @@ class _PrescriptionMedicationNameVerifier:
 # Attributes:
 #   - client: Gemini client used for prescription image analysis.
 #   - model_name: Gemini model name.
-class PrescriptionAnalysisControl:
+class InputPrescription:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
         "type": "OBJECT",
         "required": ["hospital_name", "prescription_date", "medications"],
@@ -824,14 +828,15 @@ class PrescriptionAnalysisControl:
             )
         )
 
-    # Function Name: request_prescription_image
+    # Function Name: requestPrescriptionImage
     # Description:
     # - Runs the full prescription image analysis pipeline.
     # Parameters:
-    # - image_bytes: Raw image bytes uploaded by the frontend.
+    # - image: Raw image bytes uploaded by the frontend.
     # Returns:
     # - API-compatible dictionary containing medication schedule data.
-    async def request_prescription_image(self, image_bytes: bytes) -> dict[str, object]:
+    async def requestPrescriptionImage(self, image: bytes) -> dict[str, object]:
+        image_bytes = image
         self._validate_prescription_image(image_bytes)
         response_text = await self._extract_prescription_text(image_bytes)
         cleaned_text = self._clean_response_text(response_text)
@@ -845,10 +850,20 @@ class PrescriptionAnalysisControl:
             )
             raise ValueError("AI returned an invalid JSON response.") from exc
 
-        safe_data = normalize_prescription_payload(
-            self._apply_secondary_masking(raw_data),
+        (
+            hospital_name,
+            prescription_date,
+            medication_candidates,
+            raw_medication_count,
+        ) = normalize_prescription_candidates(
+            self._apply_secondary_masking(raw_data)
         )
-        prescription_date = safe_data.get("prescription_date", "정보 없음")
+        safe_data = self.buildAnalysisResult(
+            medication_candidates,
+            hospital_name=hospital_name,
+            prescription_date=prescription_date,
+        ).to_payload(raw_medication_count=raw_medication_count)
+        prescription_date = safe_data.get("prescription_date", INFO_UNAVAILABLE)
         verified_medication_schedules = await self._to_verified_medication_schedules(
             safe_data.get("medications", []),
         )
@@ -861,7 +876,7 @@ class PrescriptionAnalysisControl:
             for medication_schedule, verification in verified_medication_schedules
         ]
         return {
-            "hospital_name": safe_data.get("hospital_name", "정보 없음"),
+            "hospital_name": safe_data.get("hospital_name", INFO_UNAVAILABLE),
             "prescription_date": prescription_date,
             "medications": medication_schedules,
             "raw_medication_count": safe_data.get(
@@ -877,26 +892,6 @@ class PrescriptionAnalysisControl:
         """Parse legacy OCR text through the prescription control boundary."""
         return parse_prescription(text.splitlines())
 
-    # Function Name: requestPrescriptionImage
-    # Description:
-    # - Class diagram compatible wrapper for request_prescription_image.
-    # Parameters:
-    # - image_bytes: Raw image bytes uploaded by the frontend.
-    # Returns:
-    # - API-compatible prescription analysis dictionary.
-    async def requestPrescriptionImage(self, image_bytes: bytes) -> dict[str, object]:
-        return await self.request_prescription_image(image_bytes)
-
-    # Function Name: analyzePrescriptionImage
-    # Description:
-    # - Class diagram compatible operation for prescription image analysis.
-    # Parameters:
-    # - image: Raw image bytes uploaded by the frontend.
-    # Returns:
-    # - API-compatible prescription analysis dictionary.
-    async def analyzePrescriptionImage(self, image: bytes) -> dict[str, object]:
-        return await self.request_prescription_image(image)
-
     # Function Name: buildAnalysisResult
     # Description:
     # - Class diagram compatible operation for promoting candidates into a
@@ -908,12 +903,17 @@ class PrescriptionAnalysisControl:
     def buildAnalysisResult(
         self,
         candidates: MedicationCandidateList,
+        *,
+        hospital_name: str = INFO_UNAVAILABLE,
+        prescription_date: str = INFO_UNAVAILABLE,
     ) -> PrescriptionAnalysisResult:
-        return PrescriptionAnalysisResult(
-            hospital_name="정보 없음",
-            prescription_date="정보 없음",
-            medication_candidates=candidates,
+        analysis_result = PrescriptionAnalysisResult(
+            hospital_name=hospital_name,
+            prescription_date=prescription_date,
         )
+        for candidate in candidates.candidates:
+            analysis_result.addMedicationCandidate(candidate)
+        return analysis_result
 
     # Function Name: _extract_prescription_text
     # Description:
@@ -980,7 +980,7 @@ class PrescriptionAnalysisControl:
         items: list[dict[str, Any]],
     ) -> list[tuple[MedicationSchedule, _MedicationNameVerification]]:
         medication_schedules = [
-            MedicationSchedule(**item).getAnalysisResult() for item in items
+            MedicationSchedule(**item) for item in items
         ]
         verifications = await self.medication_name_verifier.verify_many(
             [
@@ -1002,13 +1002,6 @@ class PrescriptionAnalysisControl:
                 )
             verified_schedules.append((medication_schedule, verification))
         return verified_schedules
-
-    async def _to_verified_medication_schedule(
-        self,
-        item: dict[str, Any],
-    ) -> tuple[MedicationSchedule, _MedicationNameVerification]:
-        verified_schedules = await self._to_verified_medication_schedules([item])
-        return verified_schedules[0]
 
     # Function Name: _to_prescription_medication_payload
     # Description:

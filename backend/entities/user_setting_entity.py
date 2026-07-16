@@ -41,19 +41,21 @@ class UserSetting(BaseModel):
     reading_speed: float = 1.0
     language: str = "ko"
 
-    def getUserSetting(self) -> "UserSetting":
-        return self
+    def updateUserSetting(
+        self,
+        font_size: int,
+        reading_speed: float,
+        language: str,
+    ) -> "UserSetting":
+        return self.model_copy(
+            update={
+                "font_size": font_size,
+                "reading_speed": reading_speed,
+                "language": language,
+            }
+        )
 
-    def changeFontSize(self, font_size: int) -> "UserSetting":
-        return self.model_copy(update={"font_size": font_size})
-
-    def changeReadingSpeed(self, reading_speed: float) -> "UserSetting":
-        return self.model_copy(update={"reading_speed": reading_speed})
-
-    def changeLanguage(self, language: str) -> "UserSetting":
-        return self.model_copy(update={"language": language})
-
-    def to_response_dict(self) -> dict[str, object]:
+    def getUserSetting(self) -> dict[str, object]:
         return {
             "user_hash": self.user_hash,
             "font_size": self.font_size,

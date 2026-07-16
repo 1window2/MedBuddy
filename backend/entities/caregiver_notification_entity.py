@@ -1,5 +1,5 @@
-# File Name: guardian_alert_setting_entity.py
-# Role: SQLAlchemy and DTO entities for guardian alert settings.
+# File Name: caregiver_notification_entity.py
+# Role: SQLAlchemy and DTO entities for caregiver notification settings.
 
 from datetime import UTC, datetime
 
@@ -26,7 +26,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class _GuardianAlertSetting(Base):
+class _CaregiverNotification(Base):
     __tablename__ = "guardian_alert_settings"
     __table_args__ = (
         UniqueConstraint(
@@ -37,7 +37,7 @@ class _GuardianAlertSetting(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    guardian_hash = Column(String, nullable=False, index=True)
+    caregiver_hash = Column("guardian_hash", String, nullable=False, index=True)
     patient_hash = Column(String, nullable=False, index=True)
     enabled = Column(Boolean, nullable=False, default=False, server_default="0")
     alert_option = Column(
@@ -50,75 +50,62 @@ class _GuardianAlertSetting(Base):
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
 
-# Class Name: GuardianAlertSetting
-# Role: Represents guardian alert settings.
+# Class Name: CaregiverNotification
+# Role: Represents caregiver notification settings.
 # Responsibilities:
-#   - Preserve one guardian-to-patient alert preference.
+#   - Preserve one caregiver-to-patient notification preference.
 #   - Expose the UML alertOption while keeping boolean toggle state for the UI.
 # Attributes:
-#   - setting_id: Persisted setting identifier.
-#   - patient_hash: Patient monitored by the guardian.
-#   - guardian_hash: Guardian receiving patient medication alerts.
-#   - enabled: Whether guardian alerts are active.
-#   - alert_option: UML option string, either enable or disable.
-class GuardianAlertSetting(BaseModel):
-    setting_id: int | None = None
+#   - notification_id: Persisted setting identifier.
+#   - patient_hash: Patient monitored by the caregiver.
+#   - caregiver_hash: Caregiver receiving patient medication notifications.
+#   - notification_enabled: Whether caregiver notifications are active.
+#   - notification_type: UML option string, either enable or disable.
+class CaregiverNotification(BaseModel):
+    notification_id: int | None = None
     patient_hash: str = ""
-    guardian_hash: str = ""
-    enabled: bool = False
-    alert_option: str = Field(default=_ALERT_OPTION_DISABLE)
+    caregiver_hash: str = ""
+    notification_enabled: bool = False
+    notification_type: str = Field(default=_ALERT_OPTION_DISABLE)
 
-    @property
-    def patient_id(self) -> str:
-        return self.patient_hash
-
-    @property
-    def guardian_id(self) -> str:
-        return self.guardian_hash
-
-    # Function Name: saveGuardianAlertSetting
+    # Function Name: updateNotificationSetting
     # Description:
-    # - Class diagram compatible operation that returns the current DTO payload.
+    # - Returns a copy with the requested notification option applied.
     # Returns:
-    # - JSON-compatible guardian alert setting dictionary.
-    def saveGuardianAlertSetting(self) -> dict[str, object]:
-        return self.to_response_dict()
-
-    # Function Name: enable
-    # Description:
-    # - Returns an enabled copy of the setting.
-    # Returns:
-    # - Enabled GuardianAlertSetting.
-    def enable(self) -> "GuardianAlertSetting":
-        return self.model_copy(
-            update={"enabled": True, "alert_option": _ALERT_OPTION_ENABLE}
+    # - Updated CaregiverNotification.
+    def updateNotificationSetting(
+        self,
+        notification_option: str | bool,
+    ) -> "CaregiverNotification":
+        enabled = (
+            notification_option
+            if isinstance(notification_option, bool)
+            else enabled_from_alert_option(notification_option)
         )
-
-    # Function Name: disable
-    # Description:
-    # - Returns a disabled copy of the setting.
-    # Returns:
-    # - Disabled GuardianAlertSetting.
-    def disable(self) -> "GuardianAlertSetting":
         return self.model_copy(
-            update={"enabled": False, "alert_option": _ALERT_OPTION_DISABLE}
+            update={
+                "notification_enabled": enabled,
+                "notification_type": alert_option_from_enabled(enabled),
+            }
         )
 
     # Function Name: to_response_dict
     # Description:
     # - Converts the setting to API field names used by the Flutter layer.
     # Returns:
-    # - JSON-compatible guardian alert setting dictionary.
+    # - JSON-compatible caregiver setting with legacy guardian aliases.
     def to_response_dict(self) -> dict[str, object]:
         return {
-            "setting_id": self.setting_id,
+            "notification_id": self.notification_id,
+            "setting_id": self.notification_id,
             "patient_hash": self.patient_hash,
-            "patient_id": self.patient_hash,
-            "guardian_hash": self.guardian_hash,
-            "guardian_id": self.guardian_hash,
-            "is_enabled": self.enabled,
-            "enabled": self.enabled,
-            "alert_option": self.alert_option,
+            "caregiver_hash": self.caregiver_hash,
+            "guardian_hash": self.caregiver_hash,
+            "notification_enabled": self.notification_enabled,
+            "is_enabled": self.notification_enabled,
+            "enabled": self.notification_enabled,
+            "notification_type": self.notification_type,
+            "alert_option": self.notification_type,
         }
 
 
@@ -132,28 +119,28 @@ def enabled_from_alert_option(alert_option: str) -> bool:
         return True
     if normalized_option in {"disable", "disabled", "off", "false", "0"}:
         return False
-    raise ValueError("Guardian alert option is not supported.")
+    raise ValueError("Caregiver notification option is not supported.")
 
 
-# Function Name: ensure_guardian_alert_setting_schema
+# Function Name: ensure_caregiver_notification_schema
 # Description:
 # - Creates or upgrades guardian alert setting storage for existing SQLite DBs.
 # Parameters:
 # - db_engine: SQLAlchemy engine bound to the application database.
 # Returns:
 # - None.
-def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
+def ensure_caregiver_notification_schema(db_engine: Engine) -> None:
     inspector = inspect(db_engine)
-    if not inspector.has_table(_GuardianAlertSetting.__tablename__):
+    if not inspector.has_table(_CaregiverNotification.__tablename__):
         Base.metadata.create_all(
             bind=db_engine,
-            tables=[_GuardianAlertSetting.__table__],
+            tables=[_CaregiverNotification.__table__],
         )
 
     inspector = inspect(db_engine)
     existing_columns = {
         column["name"]
-        for column in inspector.get_columns(_GuardianAlertSetting.__tablename__)
+        for column in inspector.get_columns(_CaregiverNotification.__tablename__)
     }
     optional_columns = {
         "guardian_hash": "VARCHAR DEFAULT ''",
@@ -169,26 +156,26 @@ def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
             if column_name not in existing_columns:
                 connection.execute(
                     text(
-                        f"ALTER TABLE {_GuardianAlertSetting.__tablename__} "
+                        f"ALTER TABLE {_CaregiverNotification.__tablename__} "
                         f"ADD COLUMN {column_name} {column_type}"
                     )
                 )
 
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET guardian_hash = '' WHERE guardian_hash IS NULL"
             )
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET patient_hash = '' WHERE patient_hash IS NULL"
             )
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET enabled = CASE "
                 "WHEN LOWER(alert_option) IN ('enable', 'enabled', 'on', 'true', '1') "
                 "THEN 1 ELSE 0 END "
@@ -197,13 +184,13 @@ def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET enabled = 0 WHERE enabled IS NULL"
             )
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET alert_option = CASE "
                 "WHEN enabled = 1 THEN 'enable' "
                 "ELSE 'disable' END "
@@ -213,21 +200,21 @@ def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"
             )
         )
         connection.execute(
             text(
-                f"UPDATE {_GuardianAlertSetting.__tablename__} "
+                f"UPDATE {_CaregiverNotification.__tablename__} "
                 "SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"
             )
         )
         connection.execute(
             text(
-                f"DELETE FROM {_GuardianAlertSetting.__tablename__} "
+                f"DELETE FROM {_CaregiverNotification.__tablename__} "
                 "WHERE id NOT IN ("
-                f"SELECT MAX(id) FROM {_GuardianAlertSetting.__tablename__} "
+                f"SELECT MAX(id) FROM {_CaregiverNotification.__tablename__} "
                 "GROUP BY guardian_hash, patient_hash"
                 ")"
             )
@@ -235,16 +222,16 @@ def ensure_guardian_alert_setting_schema(db_engine: Engine) -> None:
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS "
-                f"ix_{_GuardianAlertSetting.__tablename__}_scope "
-                f"ON {_GuardianAlertSetting.__tablename__} "
+                f"ix_{_CaregiverNotification.__tablename__}_scope "
+                f"ON {_CaregiverNotification.__tablename__} "
                 "(guardian_hash, patient_hash)"
             )
         )
         connection.execute(
             text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS "
-                f"uq_{_GuardianAlertSetting.__tablename__}_scope "
-                f"ON {_GuardianAlertSetting.__tablename__} "
+                f"uq_{_CaregiverNotification.__tablename__}_scope "
+                f"ON {_CaregiverNotification.__tablename__} "
                 "(guardian_hash, patient_hash)"
             )
         )

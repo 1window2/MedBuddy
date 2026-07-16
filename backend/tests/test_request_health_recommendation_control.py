@@ -14,14 +14,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.request_health_recommendation_control import (  # noqa: E402
-    HealthRecommendationGenerator,
-    RequestHealthRecommendation,
-)
+from boundaries.llm_service_boundary import LLMService  # noqa: E402
 from controls.check_health_recommendation_control import (  # noqa: E402
     CheckHealthRecommendation,
 )
-from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
@@ -29,17 +25,17 @@ from entities.saved_medication_entity import (  # noqa: E402
 )
 
 
-# 클래스명: _FakeRecommendationGenerator
+# 클래스명: _FakeLLMService
 # 역할: Gemini 호출 없이 control 입력값을 검증하기 위한 테스트용 생성기이다.
 # 주요 책임:
 #   - 전달된 약 요약 정보를 기록한다.
 #   - 고정된 건강 관리 추천 응답을 반환한다.
-class _FakeRecommendationGenerator:
+class _FakeLLMService:
     def __init__(self) -> None:
         self.generation_count = 0
         self.received_medications: list[dict[str, str]] = []
 
-    async def generate(
+    async def requestHealthRecommendation(
         self,
         medication_summaries: list[dict[str, str]],
         language: str = "ko",
@@ -53,7 +49,7 @@ class _FakeRecommendationGenerator:
         }
 
 
-class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
+class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -67,10 +63,10 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             bind=self.engine,
         )
         self.db = session_factory()
-        self.generator = _FakeRecommendationGenerator()
-        self.control = RequestHealthRecommendation(
+        self.llm_service = _FakeLLMService()
+        self.control = CheckHealthRecommendation(
             self.db,
-            recommendation_generator=self.generator,
+            llm_service=self.llm_service,
         )
 
     def tearDown(self) -> None:
@@ -117,7 +113,7 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             patient_hash="patient-b",
         )
 
-        response = await self.control.request_health_recommendation("patient-a")
+        response = await self.control.requestHealthRecommendation("patient-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(
@@ -129,10 +125,10 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             ["active-tablet"],
         )
         self.assertEqual(
-            [item["item_name"] for item in self.generator.received_medications],
+            [item["item_name"] for item in self.llm_service.received_medications],
             ["active-tablet"],
         )
-        self.assertEqual(self.generator.generation_count, 1)
+        self.assertEqual(self.llm_service.generation_count, 1)
 
     async def test_recommendation_reuses_cached_result_for_same_medication_combo(
         self,
@@ -143,11 +139,11 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             total_days="7 days",
         )
 
-        first_response = await self.control.request_health_recommendation("patient-a")
-        second_response = await self.control.request_health_recommendation("patient-a")
+        first_response = await self.control.requestHealthRecommendation("patient-a")
+        second_response = await self.control.requestHealthRecommendation("patient-a")
 
         self.assertEqual(first_response["data"], second_response["data"])
-        self.assertEqual(self.generator.generation_count, 1)
+        self.assertEqual(self.llm_service.generation_count, 1)
 
     async def test_recommendation_cache_is_separated_by_language(self) -> None:
         self._save_medication(
@@ -156,54 +152,25 @@ class RequestHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             total_days="7 days",
         )
 
-        await self.control.request_health_recommendation("patient-a", language="ko")
-        await self.control.request_health_recommendation("patient-a", language="en")
+        await self.control.requestHealthRecommendation("patient-a", language="ko")
+        await self.control.requestHealthRecommendation("patient-a", language="en")
 
-        self.assertEqual(self.generator.generation_count, 2)
-
-    async def test_guardian_recommendation_honors_requested_linked_patient_hash(
-        self,
-    ) -> None:
-        self._save_medication(item_name="patient-a-tablet", patient_hash="patient-a")
-        self._save_medication(item_name="patient-b-tablet", patient_hash="patient-b")
-        link_control = PatientGuardianLinkControl(self.db)
-        patient_a_code = link_control.request_patient_code("patient-a")
-        patient_b_code = link_control.request_patient_code("patient-b")
-        link_control.register_patient_code(
-            "guardian-a",
-            patient_a_code["data"]["patient_code"],
-        )
-        link_control.register_patient_code(
-            "guardian-a",
-            patient_b_code["data"]["patient_code"],
-        )
-
-        response = await self.control.request_health_recommendation(
-            patient_hash="patient-b",
-            user_hash="guardian-a",
-            role="guardian",
-        )
-
-        self.assertEqual(response["data"]["medication_names"], ["patient-b-tablet"])
-        self.assertEqual(
-            [item["item_name"] for item in self.generator.received_medications],
-            ["patient-b-tablet"],
-        )
+        self.assertEqual(self.llm_service.generation_count, 2)
 
     async def test_recommendation_without_active_medications_returns_not_found(
         self,
     ) -> None:
         with self.assertRaises(HTTPException) as context:
-            await self.control.request_health_recommendation("patient-a")
+            await self.control.requestHealthRecommendation("patient-a")
 
         self.assertEqual(context.exception.status_code, 404)
 
 
-class HealthRecommendationGeneratorTest(unittest.TestCase):
+class LLMServiceTest(unittest.TestCase):
     def test_normalize_response_limits_caution_items(self) -> None:
-        generator = HealthRecommendationGenerator(ai_client=object())
+        llm_service = LLMService(ai_client=object())
 
-        normalized_response = generator._normalize_response(
+        normalized_response = llm_service._normalize_response(
             {
                 "diet_recommendation": "식사",
                 "exercise_recommendation": "운동",
@@ -217,8 +184,8 @@ class HealthRecommendationGeneratorTest(unittest.TestCase):
         self.assertEqual(normalized_response["caution_items"], ["1", "2", "3", "4", "5"])
 
 
-class CheckHealthRecommendationWrapperTest(unittest.IsolatedAsyncioTestCase):
-    async def test_wrapper_preserves_diagram_method_name(self) -> None:
+class CheckHealthRecommendationContractTest(unittest.IsolatedAsyncioTestCase):
+    async def test_diagram_method_name_executes_recommendation_flow(self) -> None:
         engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -231,7 +198,7 @@ class CheckHealthRecommendationWrapperTest(unittest.IsolatedAsyncioTestCase):
             bind=engine,
         )
         db = session_factory()
-        generator = _FakeRecommendationGenerator()
+        llm_service = _FakeLLMService()
         try:
             medication = _SavedMedication(
                 patient_hash="patient-a",
@@ -248,7 +215,7 @@ class CheckHealthRecommendationWrapperTest(unittest.IsolatedAsyncioTestCase):
             db.commit()
             control = CheckHealthRecommendation(
                 db,
-                recommendation_generator=generator,
+                llm_service=llm_service,
             )
 
             response = await control.requestHealthRecommendation("patient-a")

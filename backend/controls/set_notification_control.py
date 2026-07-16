@@ -7,13 +7,13 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from entities.medication_alarm_entity import (
     MedicationAlarm,
     _MedicationAlarm,
     default_alarm_hour,
     valid_alarm_slot_keys,
 )
+from entities.patient_hash_entity import normalize_patient_hash
 
 logger = logging.getLogger(__name__)
 
@@ -32,41 +32,16 @@ class SetNotification:
 
     # Function Name: requestMedicationAlarm
     # Description:
-    # - Class diagram compatible wrapper for medication alarm lookup.
+    # - Reads all slot alarm settings for one patient scope.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible medication alarm list dictionary.
     def requestMedicationAlarm(
         self,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_medication_alarm(patient_hash, user_hash, role)
-
-    # Function Name: request_medication_alarm
-    # Description:
-    # - Reads all slot alarm settings for one patient scope.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible medication alarm list dictionary.
-    def request_medication_alarm(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         rows = {
             row.slot_key: row
             for row in (
@@ -93,41 +68,14 @@ class SetNotification:
     # Parameters:
     # - patient_hash: Patient ownership key used to scope alarm settings.
     # - slot_key: Medication schedule time slot.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible medication alarm dictionary.
     def requestAlarmToggle(
         self,
         patient_hash: str | None,
         slot_key: str,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        return self.get_alarm_status(patient_hash, slot_key, user_hash, role)
-
-    # Function Name: get_alarm_status
-    # Description:
-    # - Reads one slot alarm status with default fallback.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible medication alarm dictionary.
-    def get_alarm_status(
-        self,
-        patient_hash: str | None,
-        slot_key: str,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = self._normalize_slot_key(slot_key)
         setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
         return {
@@ -142,37 +90,7 @@ class SetNotification:
             ),
         }
 
-    # Function Name: setMedicationAlarm
-    # Description:
-    # - Class diagram compatible wrapper for enabling one slot alarm.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
-    # - hour: 24-hour local alarm hour.
-    # - minute: Local alarm minute.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible enabled medication alarm dictionary.
-    def setMedicationAlarm(
-        self,
-        patient_hash: str | None,
-        slot_key: str,
-        hour: int,
-        minute: int,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        return self.set_medication_alarm(
-            patient_hash,
-            slot_key,
-            hour,
-            minute,
-            user_hash,
-            role,
-        )
-
-    # Function Name: set_medication_alarm
+    # Function Name: saveNotificationSetting
     # Description:
     # - Creates or updates one enabled slot alarm.
     # Parameters:
@@ -180,24 +98,16 @@ class SetNotification:
     # - slot_key: Medication schedule time slot.
     # - hour: 24-hour local alarm hour.
     # - minute: Local alarm minute.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible enabled medication alarm dictionary.
-    def set_medication_alarm(
+    def saveNotificationSetting(
         self,
         patient_hash: str | None,
         slot_key: str,
         hour: int,
         minute: int,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = self._normalize_slot_key(slot_key)
         self._validate_alarm_time(hour, minute)
 
@@ -209,9 +119,12 @@ class SetNotification:
                     slot_key=normalized_slot_key,
                 )
                 self.db.add(setting)
-            setting.hour = hour
-            setting.minute = minute
-            setting.enabled = True
+            self._apply_alarm_state(
+                setting,
+                enabled=True,
+                hour=hour,
+                minute=minute,
+            )
             self.db.commit()
             self.db.refresh(setting)
             return {
@@ -240,45 +153,18 @@ class SetNotification:
 
     # Function Name: disableAlarmSetting
     # Description:
-    # - Class diagram compatible wrapper for disabling one slot alarm.
+    # - Disables one slot alarm while preserving its selected time.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope alarm settings.
     # - slot_key: Medication schedule time slot.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible disabled medication alarm dictionary.
     def disableAlarmSetting(
         self,
         patient_hash: str | None,
         slot_key: str,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        return self.disable_alarm_setting(patient_hash, slot_key, user_hash, role)
-
-    # Function Name: disable_alarm_setting
-    # Description:
-    # - Disables one slot alarm while preserving its selected time.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible disabled medication alarm dictionary.
-    def disable_alarm_setting(
-        self,
-        patient_hash: str | None,
-        slot_key: str,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = self._normalize_slot_key(slot_key)
 
         try:
@@ -292,7 +178,7 @@ class SetNotification:
                     enabled=False,
                 )
                 self.db.add(setting)
-            setting.enabled = False
+            self._apply_alarm_state(setting, enabled=False)
             self.db.commit()
             self.db.refresh(setting)
             return {
@@ -316,18 +202,6 @@ class SetNotification:
                 status_code=500,
                 detail="Medication alarm could not be disabled.",
             ) from exc
-
-    def _resolve_patient_hash(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> str:
-        return PatientGuardianLinkControl(self.db).resolve_patient_scope(
-            patient_hash,
-            user_hash,
-            role,
-        )
 
     def _find_setting(
         self,
@@ -372,9 +246,12 @@ class SetNotification:
                 detail="Medication alarm conflict could not be resolved.",
             )
         try:
-            setting.hour = hour
-            setting.minute = minute
-            setting.enabled = True
+            self._apply_alarm_state(
+                setting,
+                enabled=True,
+                hour=hour,
+                minute=minute,
+            )
             self.db.commit()
             self.db.refresh(setting)
             return {
@@ -405,7 +282,7 @@ class SetNotification:
                 detail="Medication alarm conflict could not be resolved.",
             )
         try:
-            setting.enabled = False
+            self._apply_alarm_state(setting, enabled=False)
             self.db.commit()
             self.db.refresh(setting)
             return {
@@ -437,16 +314,47 @@ class SetNotification:
             enabled=False,
         )
 
+    def _apply_alarm_state(
+        self,
+        setting: _MedicationAlarm,
+        *,
+        enabled: bool,
+        hour: int | None = None,
+        minute: int | None = None,
+    ) -> None:
+        alarm = self._to_entity(setting)
+        alarm = alarm.model_copy(
+            update={
+                "hour": alarm.hour if hour is None else hour,
+                "minute": alarm.minute if minute is None else minute,
+            }
+        )
+        alarm = alarm.enable() if enabled else alarm.disable()
+        setting.hour = alarm.hour
+        setting.minute = alarm.minute
+        setting.enabled = alarm.enabled
+
+    def _to_entity(
+        self,
+        setting: _MedicationAlarm | MedicationAlarm,
+    ) -> MedicationAlarm:
+        if isinstance(setting, MedicationAlarm):
+            return setting
+        slot_key = setting.slot_key
+        return MedicationAlarm(
+            patient_hash=setting.patient_hash,
+            slot_key=slot_key,
+            hour=(
+                setting.hour
+                if setting.hour is not None
+                else default_alarm_hour(slot_key)
+            ),
+            minute=setting.minute if setting.minute is not None else 0,
+            enabled=bool(setting.enabled),
+        )
+
     def _to_response_dict(
         self,
         setting: _MedicationAlarm | MedicationAlarm,
     ) -> dict[str, object]:
-        if isinstance(setting, MedicationAlarm):
-            return setting.to_response_dict()
-        return MedicationAlarm(
-            patient_hash=setting.patient_hash,
-            slot_key=setting.slot_key,
-            hour=setting.hour,
-            minute=setting.minute,
-            enabled=setting.enabled,
-        ).to_response_dict()
+        return self._to_entity(setting).to_response_dict()

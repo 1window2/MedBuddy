@@ -14,19 +14,19 @@ from utils.image_processing import preprocess_prescription_image
 logger = logging.getLogger(__name__)
 
 
-class ImageProcessingBoundary:
-    # Function Name: preprocessPrescriptionImage
+class PrescriptionImageProcessor:
+    # Function Name: preprocess_prescription_image
     # Description:
     # - Class-diagram boundary for OCR image preprocessing.
-    def preprocessPrescriptionImage(self, image: bytes) -> bytes:
+    def preprocess_prescription_image(self, image: bytes) -> bytes:
         return preprocess_prescription_image(image)
 
 
-class GeminiVisionAPI:
-    # Function Name: requestStructuredExtraction
+class GeminiVisionClient:
+    # Function Name: generate_content
     # Description:
     # - Class-diagram boundary for Gemini Vision structured OCR extraction.
-    async def requestStructuredExtraction(
+    async def generate_content(
         self,
         *,
         client: genai.Client,
@@ -66,8 +66,8 @@ class OCRServiceBoundary:
         client: genai.Client,
         model_name: str,
         response_schema: dict[str, Any],
-        image_processing_boundary: ImageProcessingBoundary | None = None,
-        gemini_vision_api: GeminiVisionAPI | None = None,
+        prescription_image_processor: PrescriptionImageProcessor | None = None,
+        gemini_vision_client: GeminiVisionClient | None = None,
         request_timeout_seconds: float = 30.0,
     ) -> None:
         if request_timeout_seconds <= 0:
@@ -76,25 +76,25 @@ class OCRServiceBoundary:
         self.model_name = model_name
         self.response_schema = response_schema
         self.request_timeout_seconds = request_timeout_seconds
-        self.image_processing_boundary = (
-            image_processing_boundary or ImageProcessingBoundary()
+        self.prescription_image_processor = (
+            prescription_image_processor or PrescriptionImageProcessor()
         )
-        self.gemini_vision_api = gemini_vision_api or GeminiVisionAPI()
+        self.gemini_vision_client = gemini_vision_client or GeminiVisionClient()
 
-    # Function Name: extractText
+    # Function Name: extractPrescriptionData
     # Description:
     # - Coordinates preprocessing and Gemini Vision extraction.
-    async def extractText(self, image: bytes) -> str:
+    async def extractPrescriptionData(self, image: bytes) -> str:
         preprocessing_started_at = time.perf_counter()
         processed_image = await asyncio.to_thread(
-            self.image_processing_boundary.preprocessPrescriptionImage,
+            self.prescription_image_processor.preprocess_prescription_image,
             image,
         )
         preprocessing_seconds = time.perf_counter() - preprocessing_started_at
         extraction_started_at = time.perf_counter()
         try:
             response = await asyncio.wait_for(
-                self.gemini_vision_api.requestStructuredExtraction(
+                self.gemini_vision_client.generate_content(
                     client=self.client,
                     model_name=self.model_name,
                     prompt=self._prescription_extraction_prompt(),
@@ -117,12 +117,6 @@ class OCRServiceBoundary:
             time.perf_counter() - extraction_started_at,
         )
         return response
-
-    # Function Name: extractPrescriptionData
-    # Description:
-    # - Class-diagram compatible alias for the OCR extraction boundary.
-    async def extractPrescriptionData(self, image: bytes) -> str:
-        return await self.extractText(image)
 
     @staticmethod
     def _prescription_extraction_prompt() -> str:

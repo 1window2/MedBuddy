@@ -43,66 +43,22 @@ class MedicationDetail(BaseModel):
     source: str = "e약은요"
     ai_guide: Optional[str] = None
 
-    # Function Name: saveMedicationDetail
-    # Description:
-    # - Placeholder for the class diagram operation. Persistence is currently
-    #   coordinated by CheckSavedMedication to keep write access in a control class.
-    # Returns:
-    # - None.
-    def saveMedicationDetail(self) -> None:
-        raise NotImplementedError(
-            "Medication detail saving is handled by CheckSavedMedication."
+    def getMedicationDetail(self) -> dict[str, object]:
+        return self.model_dump(by_alias=True)
+
+    def getVoiceGuideText(self, language: str = "ko") -> str:
+        normalized_language = (language or "").strip().lower()
+        labels = (
+            ("Medication", "How to take", "Warning")
+            if normalized_language == "en"
+            else ("약 이름", "복용 방법", "주의사항")
         )
-
-    # Function Name: checkMedicationDetail
-    # Description:
-    # - Placeholder for the class diagram operation. Detail lookup is currently
-    #   coordinated by CheckMedicationDetail.
-    # Returns:
-    # - Current MedicationDetail instance.
-    def checkMedicationDetail(self) -> "MedicationDetail":
-        return self
-
-    # Function Name: get_medication_detail
-    # Description:
-    # - Returns this MedicationDetail instance for control code that follows
-    #   the class diagram operation name.
-    # Returns:
-    # - Current MedicationDetail instance.
-    def get_medication_detail(self) -> "MedicationDetail":
-        return self
-
-    # Function Name: getMedicationDetail
-    # Description:
-    # - Class diagram compatible wrapper for get_medication_detail.
-    # Returns:
-    # - Current MedicationDetail instance.
-    def getMedicationDetail(self) -> "MedicationDetail":
-        return self.get_medication_detail()
-
-    # Function Name: get_voice_guide_text
-    # Description:
-    # - Builds the three-part medication voice guide defined by the voice use case.
-    # Returns:
-    # - Voice guide source text.
-    def get_voice_guide_text(self) -> str:
+        values = (self.item_name, self.usage_method, self.warning)
         return "\n".join(
-            item
-            for item in [
-                self.item_name,
-                self.usage_method,
-                self.warning,
-            ]
-            if item.strip()
+            f"{label}: {value.strip()}"
+            for label, value in zip(labels, values, strict=True)
+            if value and value.strip()
         )
-
-    # Function Name: getVoiceGuideText
-    # Description:
-    # - Class diagram compatible wrapper for get_voice_guide_text.
-    # Returns:
-    # - Voice guide source text.
-    def getVoiceGuideText(self) -> str:
-        return self.get_voice_guide_text()
 
 
 # Class Name: _DrugBasicInfo

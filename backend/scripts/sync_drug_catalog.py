@@ -18,7 +18,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from controls.check_medication_detail_control import _PublicDrugDataPortal
+from boundaries.public_drug_api_boundary import PublicDrugLargeAPI, PublicDrugSmallAPI
 from core.database import Base, SessionLocal, engine
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
@@ -279,7 +279,8 @@ class _DrugCatalogStore:
 #   - Upsert fetched records into the local catalog tables.
 # Attributes:
 #   - store: _DrugCatalogStore used for local persistence.
-#   - public_drug_data_portal: API boundary used for pagination.
+#   - public_drug_small_api: eDrug API boundary used for basic catalog pages.
+#   - public_drug_large_api: Approval API boundary used for complete catalog pages.
 #   - page_size: Number of API rows fetched per request.
 #   - start_page: First API page to request.
 #   - max_pages: Optional page cap for smoke tests or partial syncs.
@@ -289,7 +290,8 @@ class DrugCatalogSyncJob:
     def __init__(
         self,
         store: _DrugCatalogStore,
-        public_drug_data_portal: _PublicDrugDataPortal,
+        public_drug_small_api: PublicDrugSmallAPI,
+        public_drug_large_api: PublicDrugLargeAPI,
         page_size: int,
         start_page: int = 1,
         max_pages: int | None = None,
@@ -297,7 +299,8 @@ class DrugCatalogSyncJob:
         retry_delay_seconds: float = 3.0,
     ) -> None:
         self.store = store
-        self.public_drug_data_portal = public_drug_data_portal
+        self.public_drug_small_api = public_drug_small_api
+        self.public_drug_large_api = public_drug_large_api
         self.page_size = page_size
         self.start_page = start_page
         self.max_pages = max_pages
@@ -312,7 +315,7 @@ class DrugCatalogSyncJob:
     async def sync_basic(self) -> int:
         return await self._sync_pages(
             dataset_name="e약은요",
-            fetch_page=self.public_drug_data_portal.fetch_basic_drug_info_page,
+            fetch_page=self.public_drug_small_api.fetchPage,
             upsert_items=self.store.upsert_basic_items,
         )
 
@@ -324,7 +327,7 @@ class DrugCatalogSyncJob:
     async def sync_approval(self) -> int:
         return await self._sync_pages(
             dataset_name="허가정보",
-            fetch_page=self.public_drug_data_portal.fetch_approval_drug_info_page,
+            fetch_page=self.public_drug_large_api.fetchPage,
             upsert_items=self.store.upsert_approval_items,
         )
 
@@ -486,7 +489,8 @@ async def main() -> None:
         store = _DrugCatalogStore(db)
         sync_job = DrugCatalogSyncJob(
             store=store,
-            public_drug_data_portal=_PublicDrugDataPortal(timeout_seconds=60.0),
+            public_drug_small_api=PublicDrugSmallAPI(timeout_seconds=60.0),
+            public_drug_large_api=PublicDrugLargeAPI(timeout_seconds=60.0),
             page_size=args.page_size,
             start_page=args.start_page,
             max_pages=args.max_pages,

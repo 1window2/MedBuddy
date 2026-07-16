@@ -19,7 +19,7 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
-    PrescriptionAnalysisControl,
+    InputPrescription,
     PrescriptionAnalysisTimeoutError,
     _PrescriptionMedicationNameVerifier,
 )
@@ -75,7 +75,7 @@ class _TimedOutOCRServiceBoundary:
         raise TimeoutError("external OCR deadline exceeded")
 
 
-class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCase):
+class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     def setUp(self) -> None:
         _PrescriptionMedicationNameVerifier.clear_ai_fallback_cache()
         self.engine = create_engine(
@@ -89,7 +89,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
             bind=self.engine,
         )
         self.db = session_factory()
-        self.control = PrescriptionAnalysisControl(client=object(), db=self.db)
+        self.control = InputPrescription(client=object(), db=self.db)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -239,7 +239,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
+        self.control = InputPrescription(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -275,13 +275,13 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=first_client, db=self.db)
+        self.control = InputPrescription(client=first_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
 
         second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        self.control = PrescriptionAnalysisControl(client=second_client, db=self.db)
+        self.control = InputPrescription(client=second_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -310,7 +310,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=first_client,
             model_name="gemini-test-a",
             db=self.db,
@@ -320,7 +320,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         )
 
         second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=second_client,
             model_name="gemini-test-b",
             db=self.db,
@@ -353,7 +353,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
+        self.control = InputPrescription(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -381,7 +381,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
+        self.control = InputPrescription(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -410,7 +410,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=low_confidence_client,
             db=self.db,
         )
@@ -432,7 +432,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=high_confidence_client,
             db=self.db,
         )
@@ -451,7 +451,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
         malformed_client = _FakeGeminiClient("not-json")
-        self.control = PrescriptionAnalysisControl(client=malformed_client, db=self.db)
+        self.control = InputPrescription(client=malformed_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -470,7 +470,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=valid_client, db=self.db)
+        self.control = InputPrescription(client=valid_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -488,7 +488,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         malformed_client = _FakeGeminiClient(
             json.dumps({"unexpected": []}, ensure_ascii=False)
         )
-        self.control = PrescriptionAnalysisControl(client=malformed_client, db=self.db)
+        self.control = InputPrescription(client=malformed_client, db=self.db)
         _, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -507,7 +507,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=valid_client, db=self.db)
+        self.control = InputPrescription(client=valid_client, db=self.db)
         medication_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
@@ -537,7 +537,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
+        self.control = InputPrescription(client=fake_client, db=self.db)
 
         medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
@@ -573,7 +573,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client, db=self.db)
+        self.control = InputPrescription(client=fake_client, db=self.db)
 
         verified_schedules = asyncio.run(
             self.control._to_verified_medication_schedules(
@@ -615,14 +615,14 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
                 ensure_ascii=False,
             )
         )
-        self.control = PrescriptionAnalysisControl(client=fake_client)
+        self.control = InputPrescription(client=fake_client)
 
         with patch(
             "boundaries.prescription_ocr_boundary.preprocess_prescription_image",
             return_value=b"processed-image",
         ):
             payload = asyncio.run(
-                self.control.request_prescription_image(b"raw-image"),
+                self.control.requestPrescriptionImage(b"raw-image"),
             )
 
         self.assertEqual(payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
@@ -638,13 +638,13 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
 
     def test_request_prescription_image_rejects_empty_input_before_ocr(self) -> None:
         ocr_boundary = _RecordingOCRServiceBoundary()
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=object(),
             ocr_service_boundary=ocr_boundary,
         )
 
         with self.assertRaisesRegex(ValueError, "empty"):
-            asyncio.run(self.control.request_prescription_image(b""))
+            asyncio.run(self.control.requestPrescriptionImage(b""))
 
         self.assertEqual(ocr_boundary.call_count, 0)
 
@@ -652,14 +652,14 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self,
     ) -> None:
         ocr_boundary = _RecordingOCRServiceBoundary()
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=object(),
             ocr_service_boundary=ocr_boundary,
         )
 
         with self.assertRaisesRegex(ValueError, "15 MB"):
             asyncio.run(
-                self.control.request_prescription_image(
+                self.control.requestPrescriptionImage(
                     b"x" * (MAX_PRESCRIPTION_IMAGE_BYTES + 1)
                 )
             )
@@ -667,7 +667,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         self.assertEqual(ocr_boundary.call_count, 0)
 
     def test_request_prescription_image_translates_ocr_timeout(self) -> None:
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=object(),
             ocr_service_boundary=_TimedOutOCRServiceBoundary(),
         )
@@ -676,12 +676,12 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
             PrescriptionAnalysisTimeoutError,
             "응답 시간이 초과",
         ):
-            asyncio.run(self.control.request_prescription_image(b"image"))
+            asyncio.run(self.control.requestPrescriptionImage(b"image"))
 
     def test_invalid_ocr_response_is_not_written_to_logs(self) -> None:
         sensitive_response = "patient-medication-data"
         ocr_boundary = _RecordingOCRServiceBoundary(sensitive_response)
-        self.control = PrescriptionAnalysisControl(
+        self.control = InputPrescription(
             client=object(),
             ocr_service_boundary=ocr_boundary,
         )
@@ -692,7 +692,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         ) as captured_logs:
             with self.assertRaisesRegex(ValueError, "invalid JSON"):
                 asyncio.run(
-                    self.control.request_prescription_image(b"image"),
+                    self.control.requestPrescriptionImage(b"image"),
                 )
 
         self.assertNotIn(sensitive_response, "\n".join(captured_logs.output))
@@ -765,7 +765,7 @@ class PrescriptionAnalysisControlMedicationNameVerificationTest(unittest.TestCas
         }
 
     def _verify_medication_item(self, item: dict[str, str]):
-        return asyncio.run(self.control._to_verified_medication_schedule(item))
+        return asyncio.run(self.control._to_verified_medication_schedules([item]))[0]
 
     def _normalize_name(self, item_name: str) -> str:
         return "".join(item_name.split()).lower()

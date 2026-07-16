@@ -5,20 +5,23 @@ from typing import Any
 import pytest
 from google.genai import types
 
-from boundaries.prescription_ocr_boundary import GeminiVisionAPI, OCRServiceBoundary
+from boundaries.prescription_ocr_boundary import (
+    GeminiVisionClient,
+    OCRServiceBoundary,
+)
 
 
-class _RecordingImageProcessingBoundary:
+class _RecordingPrescriptionImageProcessor:
     def __init__(self) -> None:
         self.thread_id: int | None = None
 
-    def preprocessPrescriptionImage(self, image: bytes) -> bytes:
+    def preprocess_prescription_image(self, image: bytes) -> bytes:
         self.thread_id = threading.get_ident()
         return b"processed-image"
 
 
-class _RecordingGeminiVisionAPI:
-    async def requestStructuredExtraction(
+class _RecordingGeminiVisionClient:
+    async def generate_content(
         self,
         *,
         client: object,
@@ -31,8 +34,8 @@ class _RecordingGeminiVisionAPI:
         return "{}"
 
 
-class _SlowGeminiVisionAPI:
-    async def requestStructuredExtraction(
+class _SlowGeminiVisionClient:
+    async def generate_content(
         self,
         **_kwargs: object,
     ) -> str:
@@ -66,21 +69,21 @@ def anyio_backend() -> str:
 
 @pytest.mark.anyio
 async def test_image_preprocessing_runs_outside_the_event_loop_thread() -> None:
-    image_processing_boundary = _RecordingImageProcessingBoundary()
+    image_processor = _RecordingPrescriptionImageProcessor()
     event_loop_thread_id = threading.get_ident()
     ocr_boundary = OCRServiceBoundary(
         client=object(),  # type: ignore[arg-type]
         model_name="test-model",
         response_schema={},
-        image_processing_boundary=image_processing_boundary,
-        gemini_vision_api=_RecordingGeminiVisionAPI(),  # type: ignore[arg-type]
+        prescription_image_processor=image_processor,
+        gemini_vision_client=_RecordingGeminiVisionClient(),  # type: ignore[arg-type]
     )
 
-    response = await ocr_boundary.extractText(b"source-image")
+    response = await ocr_boundary.extractPrescriptionData(b"source-image")
 
     assert response == "{}"
-    assert image_processing_boundary.thread_id is not None
-    assert image_processing_boundary.thread_id != event_loop_thread_id
+    assert image_processor.thread_id is not None
+    assert image_processor.thread_id != event_loop_thread_id
 
 
 @pytest.mark.anyio
@@ -89,13 +92,13 @@ async def test_structured_extraction_is_bounded_by_boundary_timeout() -> None:
         client=object(),  # type: ignore[arg-type]
         model_name="test-model",
         response_schema={},
-        image_processing_boundary=_RecordingImageProcessingBoundary(),
-        gemini_vision_api=_SlowGeminiVisionAPI(),  # type: ignore[arg-type]
+        prescription_image_processor=_RecordingPrescriptionImageProcessor(),
+        gemini_vision_client=_SlowGeminiVisionClient(),  # type: ignore[arg-type]
         request_timeout_seconds=0.01,
     )
 
     with pytest.raises(TimeoutError, match="OCR service timed out"):
-        await ocr_boundary.extractText(b"source-image")
+        await ocr_boundary.extractPrescriptionData(b"source-image")
 
 
 @pytest.mark.anyio
@@ -106,13 +109,13 @@ async def test_timeout_does_not_log_request_configuration(
         client=object(),  # type: ignore[arg-type]
         model_name="sensitive-test-model",
         response_schema={},
-        image_processing_boundary=_RecordingImageProcessingBoundary(),
-        gemini_vision_api=_SlowGeminiVisionAPI(),  # type: ignore[arg-type]
+        prescription_image_processor=_RecordingPrescriptionImageProcessor(),
+        gemini_vision_client=_SlowGeminiVisionClient(),  # type: ignore[arg-type]
         request_timeout_seconds=0.01,
     )
 
     with pytest.raises(TimeoutError, match="OCR service timed out"):
-        await ocr_boundary.extractText(b"source-image")
+        await ocr_boundary.extractPrescriptionData(b"source-image")
 
     boundary_records = [
         record
@@ -126,7 +129,7 @@ async def test_timeout_does_not_log_request_configuration(
 async def test_structured_extraction_uses_low_latency_high_resolution_config() -> None:
     client = _RecordingGeminiClient()
 
-    response = await GeminiVisionAPI().requestStructuredExtraction(
+    response = await GeminiVisionClient().generate_content(
         client=client,  # type: ignore[arg-type]
         model_name="test-model",
         prompt="extract",

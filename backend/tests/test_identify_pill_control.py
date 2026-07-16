@@ -132,7 +132,7 @@ async def test_front_and_back_orientation_can_be_swapped() -> None:
     )
     control = _control(features, (_entry("200808877", "페라트라정"),))
 
-    result = await control.request_pill_identification(b"front", b"back")
+    result = await control.requestPillIdentification(b"front", b"back")
 
     assert result.candidates[0].item_seq == "200808877"
     assert result.candidates[0].match_score == 1.0

@@ -106,13 +106,6 @@ class IdentifyPill:
             requires_confirmation=True,
         )
 
-    async def request_pill_identification(
-        self,
-        front_image: bytes,
-        back_image: bytes | None = None,
-    ) -> PillIdentificationResult:
-        return await self.requestPillIdentification(front_image, back_image)
-
     def _rank_candidates(
         self,
         features: PillVisualFeatures,

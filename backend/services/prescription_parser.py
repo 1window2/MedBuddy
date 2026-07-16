@@ -9,7 +9,6 @@ from typing import Any
 from entities.prescription_analysis_entity import (
     MedicationCandidate,
     MedicationCandidateList,
-    PrescriptionAnalysisResult,
 )
 
 
@@ -222,7 +221,9 @@ def parse_prescription(lines: list[str]) -> dict[str, Any]:
     return result
 
 
-def normalize_prescription_payload(data: dict[str, Any]) -> dict[str, Any]:
+def normalize_prescription_candidates(
+    data: dict[str, Any],
+) -> tuple[str, str, MedicationCandidateList, int]:
     if not isinstance(data, dict):
         raise ValueError("Prescription analysis response must be a JSON object.")
 
@@ -235,16 +236,16 @@ def normalize_prescription_payload(data: dict[str, Any]) -> dict[str, Any]:
         if medication_candidate is not None:
             medication_candidate_list.addCandidate(medication_candidate)
 
-    analysis_result = PrescriptionAnalysisResult(
-        hospital_name=_read_first_text(
+    return (
+        _read_first_text(
             data,
             HOSPITAL_NAME_KEYS,
             default=INFO_UNAVAILABLE,
         ),
-        prescription_date=normalized_date or INFO_UNAVAILABLE,
-        medication_candidates=medication_candidate_list.deduplicated(),
+        normalized_date or INFO_UNAVAILABLE,
+        medication_candidate_list.deduplicated(),
+        len(raw_items),
     )
-    return analysis_result.to_payload(raw_medication_count=len(raw_items))
 
 
 def normalize_prescription_medication(raw_item: Any) -> MedicationCandidate | None:
