@@ -1,7 +1,7 @@
-// 파일명: patient_guardian_link_entity.dart
+// 파일명: patient_caregiver_link_entity.dart
 // 역할: 환자와 보호자 사이의 연동 상태를 표현하는 모델을 정의한다.
 
-// 클래스명: PatientGuardianLink
+// 클래스명: PatientCaregiverLink
 // 역할: 환자 해시, 보호자 해시, 연동 여부, 생성 시각을 앱 내부에서 보관한다.
 // 주요 책임:
 // - 서버 응답 JSON을 Dart 모델로 변환한다.
@@ -52,19 +52,23 @@ class PatientLinkCode {
   }
 }
 
-class PatientGuardianLink {
-  final int? linkID;
-  final String patientID;
-  final String guardianID;
-  final bool linked;
-  final DateTime? createdAt;
+class PatientCaregiverLink {
+  final int? linkId;
+  final String patientId;
+  final String caregiverId;
+  final String patientHash;
+  final String caregiverHash;
+  final bool linkStatus;
+  final DateTime? linkedAt;
 
-  const PatientGuardianLink({
-    this.linkID,
-    this.patientID = '',
-    this.guardianID = '',
-    this.linked = false,
-    this.createdAt,
+  const PatientCaregiverLink({
+    this.linkId,
+    this.patientId = '',
+    this.caregiverId = '',
+    this.patientHash = '',
+    this.caregiverHash = '',
+    this.linkStatus = false,
+    this.linkedAt,
   });
 
   // 함수명: fromJson
@@ -74,23 +78,31 @@ class PatientGuardianLink {
   // 매개변수:
   // - json: 환자-보호자 연동 API 응답 JSON
   // 반환값:
-  // - PatientGuardianLink 인스턴스
-  factory PatientGuardianLink.fromJson(Map<String, dynamic> json) {
-    return PatientGuardianLink(
-      linkID: _readInt(json['id'] ?? json['link_id'] ?? json['linkID']),
-      patientID: _readString(
+  // - PatientCaregiverLink 인스턴스
+  factory PatientCaregiverLink.fromJson(Map<String, dynamic> json) {
+    return PatientCaregiverLink(
+      linkId: _readInt(json['link_id'] ?? json['id'] ?? json['linkID']),
+      patientId: _readString(json['patient_id'] ?? json['patientID']),
+      caregiverId: _readString(
+        json['caregiver_id'] ?? json['caregiverID'] ?? json['guardian_id'],
+      ),
+      patientHash: _readString(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      guardianID: _readString(
-        json['guardian_hash'] ??
-            json['guardian_id'] ??
-            json['guardianID'] ??
-            json['caregiver_hash'] ??
+      caregiverHash: _readString(
+        json['caregiver_hash'] ??
             json['caregiver_id'] ??
-            json['caregiverID'],
+            json['caregiverID'] ??
+            json['guardian_hash'] ??
+            json['guardian_id'] ??
+            json['guardianID'],
       ),
-      linked: _readBool(json['linked']),
-      createdAt: _readDate(json['created_at'] ?? json['createdAt']),
+      linkStatus: _readBool(
+        json['link_status'] ?? json['linkStatus'] ?? json['linked'],
+      ),
+      linkedAt: _readDate(
+        json['linked_at'] ?? json['linkedAt'] ?? json['created_at'],
+      ),
     );
   }
 
@@ -101,40 +113,54 @@ class PatientGuardianLink {
   // - JSON Map
   Map<String, dynamic> toJson() {
     return {
-      'id': linkID,
-      'patient_hash': patientID,
-      'guardian_hash': guardianID,
-      'linked': linked,
-      'created_at': createdAt?.toIso8601String(),
+      'link_id': linkId,
+      'patient_id': patientId,
+      'caregiver_id': caregiverId,
+      'patient_hash': patientHash,
+      'caregiver_hash': caregiverHash,
+      'link_status': linkStatus,
+      'linked_at': linkedAt?.toIso8601String(),
     };
   }
 
-  PatientGuardianLink createPatientGuardianLink() {
-    return copyWith(linked: true);
+  PatientCaregiverLink savePatientCaregiverLink() {
+    if (!validateCaregiverHash()) {
+      throw StateError('Caregiver hash must differ from the patient hash.');
+    }
+    return copyWith(linkStatus: true);
   }
 
-  PatientGuardianLink deletePatientGuardianLink() {
-    return copyWith(linked: false);
+  bool validateCaregiverHash() {
+    return caregiverHash.trim().isNotEmpty &&
+        caregiverHash.trim() != patientHash.trim();
+  }
+
+  PatientCaregiverLink removePatientCaregiverLink() {
+    return copyWith(linkStatus: false);
   }
 
   // 함수명: copyWith
   // 함수역할:
   // - 기존 연동 정보를 유지하면서 일부 필드만 변경한 새 객체를 만든다.
   // 반환값:
-  // - 변경값이 반영된 PatientGuardianLink 인스턴스
-  PatientGuardianLink copyWith({
-    int? linkID,
-    String? patientID,
-    String? guardianID,
-    bool? linked,
-    DateTime? createdAt,
+  // - 변경값이 반영된 PatientCaregiverLink 인스턴스
+  PatientCaregiverLink copyWith({
+    int? linkId,
+    String? patientId,
+    String? caregiverId,
+    String? patientHash,
+    String? caregiverHash,
+    bool? linkStatus,
+    DateTime? linkedAt,
   }) {
-    return PatientGuardianLink(
-      linkID: linkID ?? this.linkID,
-      patientID: patientID ?? this.patientID,
-      guardianID: guardianID ?? this.guardianID,
-      linked: linked ?? this.linked,
-      createdAt: createdAt ?? this.createdAt,
+    return PatientCaregiverLink(
+      linkId: linkId ?? this.linkId,
+      patientId: patientId ?? this.patientId,
+      caregiverId: caregiverId ?? this.caregiverId,
+      patientHash: patientHash ?? this.patientHash,
+      caregiverHash: caregiverHash ?? this.caregiverHash,
+      linkStatus: linkStatus ?? this.linkStatus,
+      linkedAt: linkedAt ?? this.linkedAt,
     );
   }
 

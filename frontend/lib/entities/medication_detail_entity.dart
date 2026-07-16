@@ -118,12 +118,6 @@ class MedicationDetail {
     };
   }
 
-  bool get hasScheduleInfo {
-    return dosagePerTime.trim().isNotEmpty ||
-        dailyFrequency.trim().isNotEmpty ||
-        totalDays.trim().isNotEmpty;
-  }
-
   String get displayName {
     final normalizedName = itemName.trim();
     return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
@@ -151,27 +145,6 @@ class MedicationDetail {
       '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
     ];
     return sections.join('\n');
-  }
-
-  void saveMedicationDetail() {
-    throw UnsupportedError('약 상세 정보 저장은 CheckSavedMedication에서 처리합니다.');
-  }
-
-  MedicationDetail checkMedicationDetail() {
-    return this;
-  }
-
-  MedicationDetail getMedicationDetail() {
-    return this;
-  }
-
-  // 함수명: getVoiceGuideText
-  // 함수역할:
-  // - 사용자가 들을 수 있는 약 안내 문장을 주요 필드 순서대로 합친다.
-  // 반환값:
-  // - 빈 값이 제거된 음성 안내 문자열
-  String getVoiceGuideText() {
-    return voiceGuideText;
   }
 
   static String _normalizeOrFallback(String value, String fallback) {

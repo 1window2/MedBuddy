@@ -13,11 +13,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('requestSettingSave updates all user setting fields', () async {
+  test('saveUserSetting updates all user setting fields', () async {
     SharedPreferences.setMockInitialValues({});
     final control = ManageUserSetting(useRemotePersistence: false);
 
-    final setting = await control.requestSettingSave(
+    final setting = await control.saveUserSetting(
       currentSetting: const UserSetting(),
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
@@ -32,7 +32,7 @@ void main() {
     expect(setting.readingSpeedOption, 'fast');
   });
 
-  test('requestStoredUserSetting restores saved values', () async {
+  test('requestUserSetting restores saved values', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_font_size': 14,
       'user_setting_reading_speed': 0.8,
@@ -40,15 +40,14 @@ void main() {
     });
     final control = ManageUserSetting(useRemotePersistence: false);
 
-    final setting = await control.requestStoredUserSetting();
+    final setting = await control.requestUserSetting();
 
     expect(setting.fontSizeOption, 'small');
     expect(setting.readingSpeedOption, 'slow');
     expect(setting.language, 'en');
   });
 
-  test('requestStoredUserSetting prefers scoped cache over legacy keys',
-      () async {
+  test('requestUserSetting prefers scoped cache over legacy keys', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_user-a_font_size': 20,
       'user_setting_user-a_reading_speed': 1.2,
@@ -62,7 +61,7 @@ void main() {
       useRemotePersistence: false,
     );
 
-    final setting = await control.requestStoredUserSetting();
+    final setting = await control.requestUserSetting();
 
     expect(setting.userHash, 'user-a');
     expect(setting.fontSizeOption, 'large');
@@ -70,8 +69,7 @@ void main() {
     expect(setting.language, 'en');
   });
 
-  test('requestStoredUserSetting prefers backend setting and caches it',
-      () async {
+  test('requestUserSetting prefers backend setting and caches it', () async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
@@ -97,7 +95,7 @@ void main() {
       client: client,
     );
 
-    final setting = await control.requestStoredUserSetting();
+    final setting = await control.requestUserSetting();
 
     expect(setting.userHash, 'user-a');
     expect(setting.fontSizeOption, 'large');
@@ -108,7 +106,7 @@ void main() {
     control.dispose();
   });
 
-  test('requestSettingSave falls back to local cache when backend fails',
+  test('saveUserSetting falls back to local cache when backend fails',
       () async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((http.Request request) async {
@@ -120,7 +118,7 @@ void main() {
       client: client,
     );
 
-    final setting = await control.requestSettingSave(
+    final setting = await control.saveUserSetting(
       currentSetting: const UserSetting(),
       fontSizeOption: 'small',
       readingSpeedOption: 'slow',

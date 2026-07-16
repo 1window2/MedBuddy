@@ -1,33 +1,33 @@
 import 'package:flutter/material.dart';
 
-import '../entities/guardian_alert_setting_entity.dart';
+import '../entities/caregiver_notification_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
-// 파일명: set_guardian_alert_setting_ui_boundary.dart
+// 파일명: set_caregiver_notification_ui_boundary.dart
 // 역할: 보호자 알림 설정 UI boundary를 구성한다.
 
-// 클래스명: SetGuardianAlertSettingUI
+// 클래스명: SetCaregiverNotificationUI
 // 역할: 보호자가 환자별 알림 수신 여부를 확인하고 변경하는 UI를 제공한다.
 // 주요 책임:
-// - 현재 GuardianAlertSetting 상태를 시각화한다.
+// - 현재 CaregiverNotification 상태를 시각화한다.
 // - 사용자의 enable/disable 선택을 상위 control 흐름으로 전달한다.
-class SetGuardianAlertSettingUI extends StatelessWidget {
-  final GuardianAlertSetting setting;
+class SetCaregiverNotificationUI extends StatelessWidget {
+  final CaregiverNotification setting;
   final bool isLoading;
   final String language;
-  final ValueChanged<bool> onAlertOptionChanged;
+  final ValueChanged<bool> onNotificationOptionChanged;
 
-  const SetGuardianAlertSettingUI({
+  const SetCaregiverNotificationUI({
     super.key,
     required this.setting,
-    required this.onAlertOptionChanged,
+    required this.onNotificationOptionChanged,
     this.isLoading = false,
     this.language = 'ko',
   });
 
-  static Future<bool?> showGuardianAlertSettingPopup(
+  static Future<bool?> showNotificationPopup(
     BuildContext context, {
-    required GuardianAlertSetting setting,
+    required CaregiverNotification setting,
     bool isLoading = false,
     String language = 'ko',
   }) {
@@ -55,7 +55,9 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        isEnglish ? 'Guardian alert settings' : '보호자 알림 설정',
+                        isEnglish
+                            ? 'Caregiver notification settings'
+                            : '보호자 알림 설정',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Color(0xFF0A0A0A),
@@ -69,11 +71,11 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                SetGuardianAlertSettingUI(
+                SetCaregiverNotificationUI(
                   setting: setting,
                   isLoading: isLoading,
                   language: language,
-                  onAlertOptionChanged: (enabled) {
+                  onNotificationOptionChanged: (enabled) {
                     Navigator.pop(dialogContext, enabled);
                   },
                 ),
@@ -85,12 +87,8 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
     );
   }
 
-  void clickGuardianAlertSetting(bool enabled) {
-    onAlertOptionChanged(enabled);
-  }
-
-  Widget showGuardianAlertSetting() {
-    return this;
+  void setNotificationOption(bool enabled) {
+    onNotificationOptionChanged(enabled);
   }
 
   @override
@@ -107,10 +105,10 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            setting.enabled
+            setting.notificationEnabled
                 ? Icons.notifications_active_outlined
                 : Icons.notifications_none_outlined,
-            color: setting.enabled
+            color: setting.notificationEnabled
                 ? MedBuddyColors.primary
                 : MedBuddyColors.textLight,
             size: 22,
@@ -118,7 +116,7 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              isEnglish ? 'Guardian alert' : '보호자 알림',
+              isEnglish ? 'Caregiver notification' : '보호자 알림',
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 14,
@@ -137,9 +135,9 @@ class SetGuardianAlertSettingUI extends StatelessWidget {
             )
           else
             Switch(
-              value: setting.enabled,
+              value: setting.notificationEnabled,
               activeThumbColor: MedBuddyColors.primary,
-              onChanged: clickGuardianAlertSetting,
+              onChanged: setNotificationOption,
             ),
         ],
       ),

@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:medbuddy_frontend/services/medication_notification_service.dart';
+import 'package:medbuddy_frontend/services/notification_service.dart';
 
 void main() {
   tearDown(() {
-    MedicationNotificationService.setNotificationSelectionHandler(null);
+    NotificationService.setNotificationSelectionHandler(null);
   });
 
   test('schedule payload resolves to the dose screen destination', () {
     expect(
-      MedicationNotificationService.destinationFromPayload(
+      NotificationService.destinationFromPayload(
         'schedule:morning:17',
       ),
       MedicationNotificationDestination.schedule,
@@ -17,32 +17,32 @@ void main() {
 
   test('malformed notification payloads cannot trigger navigation', () {
     expect(
-      MedicationNotificationService.destinationFromPayload(null),
+      NotificationService.destinationFromPayload(null),
       isNull,
     );
     expect(
-      MedicationNotificationService.destinationFromPayload('schedule::17'),
+      NotificationService.destinationFromPayload('schedule::17'),
       isNull,
     );
     expect(
-      MedicationNotificationService.destinationFromPayload(
+      NotificationService.destinationFromPayload(
         'schedule:morning:not-an-id',
       ),
       isNull,
     );
     expect(
-      MedicationNotificationService.destinationFromPayload('settings:17'),
+      NotificationService.destinationFromPayload('settings:17'),
       isNull,
     );
   });
 
   test('a selected schedule notification reaches the registered handler', () {
     final destinations = <MedicationNotificationDestination>[];
-    MedicationNotificationService.setNotificationSelectionHandler(
+    NotificationService.setNotificationSelectionHandler(
       destinations.add,
     );
 
-    MedicationNotificationService.handleNotificationPayload(
+    NotificationService.handleNotificationPayload(
       'schedule:evening:29',
     );
 
@@ -50,12 +50,12 @@ void main() {
   });
 
   test('a cold-start notification is delivered after handler registration', () {
-    MedicationNotificationService.handleNotificationPayload(
+    NotificationService.handleNotificationPayload(
       'schedule:morning:31',
     );
 
     final destinations = <MedicationNotificationDestination>[];
-    MedicationNotificationService.setNotificationSelectionHandler(
+    NotificationService.setNotificationSelectionHandler(
       destinations.add,
     );
 

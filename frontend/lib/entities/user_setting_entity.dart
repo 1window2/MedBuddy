@@ -51,8 +51,6 @@ class UserSetting {
     return 'medium';
   }
 
-  double get textScaleFactor => fontSize / 16.0;
-
   double get contentTextScale {
     if (fontSize <= 14) {
       return 0.92;
@@ -82,16 +80,16 @@ class UserSetting {
     );
   }
 
-  UserSetting changeFontSize(int fontSize) {
-    return copyWith(fontSize: fontSize);
-  }
-
-  UserSetting changeReadingSpeed(double readingSpeed) {
-    return copyWith(readingSpeed: readingSpeed);
-  }
-
-  UserSetting changeLanguage(String language) {
-    return copyWith(language: language);
+  UserSetting updateUserSetting({
+    required int fontSize,
+    required double readingSpeed,
+    required String language,
+  }) {
+    return copyWith(
+      fontSize: fontSize,
+      readingSpeed: readingSpeed,
+      language: language,
+    );
   }
 
   Map<String, dynamic> toJson() {

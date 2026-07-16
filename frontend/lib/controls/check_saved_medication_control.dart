@@ -42,35 +42,16 @@ class MedicationSaveResult {
 class CheckSavedMedication {
   final String baseUrl;
   final String patientHash;
-  final String? userHash;
-  final String role;
   final http.Client _client;
   final bool _ownsClient;
 
   CheckSavedMedication({
     this.baseUrl = ApiConfig.baseUrl,
-    this.patientHash = PatientHash.defaultPatientHash,
-    this.userHash,
-    this.role = 'patient',
+    String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
+  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
+        _client = client ?? http.Client(),
         _ownsClient = client == null;
-
-  CheckSavedMedication forScope({
-    required String patientHash,
-    String? userHash,
-    String role = 'patient',
-  }) {
-    return CheckSavedMedication(
-      baseUrl: baseUrl,
-      patientHash: PatientHash.normalizePatientHash(patientHash),
-      userHash: userHash == null || userHash.trim().isEmpty
-          ? null
-          : PatientHash.normalizePatientHash(userHash),
-      role: role.trim().isEmpty ? 'patient' : role.trim().toLowerCase(),
-      client: _client,
-    );
-  }
 
   // 함수명: saveMedicationDetail
   // 함수역할:
@@ -288,15 +269,10 @@ class CheckSavedMedication {
   // 매개변수:
   // - path: baseUrl 아래의 API 경로
   // 반환값:
-  // - patient_hash, role, user_hash가 포함된 URI
+  // - patient_hash가 포함된 URI
   Uri _buildMedicationUri(String path) {
     return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {
-        'patient_hash': patientHash,
-        'role': role,
-        if (userHash != null && userHash!.trim().isNotEmpty)
-          'user_hash': userHash!.trim(),
-      },
+      queryParameters: {'patient_hash': patientHash},
     );
   }
 

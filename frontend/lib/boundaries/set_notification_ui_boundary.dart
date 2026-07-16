@@ -23,7 +23,7 @@ class SetNotificationUI extends StatefulWidget {
     required this.initialTime,
   });
 
-  static Future<TimeOfDay?> showAlarmSettingPopup(
+  static Future<TimeOfDay?> showNotificationPopup(
     BuildContext context, {
     required String language,
     required String slotTitle,
@@ -112,7 +112,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                 IconButton(
                   key: const Key('notification-time-confirm'),
                   tooltip: _isEnglish ? 'Confirm' : '확인',
-                  onPressed: _submit,
+                  onPressed: setNotificationTime,
                   style: IconButton.styleFrom(
                     backgroundColor: MedBuddyColors.primary,
                     foregroundColor: Colors.white,
@@ -144,7 +144,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  void _submit() {
+  void setNotificationTime() {
     Navigator.pop(
       context,
       TimeOfDay(

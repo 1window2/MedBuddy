@@ -89,15 +89,6 @@ class MedicationAlarm {
     );
   }
 
-  // Function Name: saveMedicationAlarm
-  // Description:
-  // - Class diagram compatible operation that returns the current payload.
-  // Returns:
-  // - JSON-compatible medication alarm dictionary.
-  Map<String, dynamic> saveMedicationAlarm() {
-    return toJson();
-  }
-
   static int defaultHourFor(String slotKey) {
     return switch (slotKey) {
       'morning' => 8,

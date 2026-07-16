@@ -1,4 +1,4 @@
-﻿// 파일명: patient_guardian_link_control_test.dart
+// 파일명: link_patient_caregiver_control_test.dart
 // 역할: 프론트 환자-보호자 연동 control의 조회, 코드 생성, 등록, 해제 요청을 검증한다.
 
 import 'dart:convert';
@@ -6,16 +6,16 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:medbuddy_frontend/controls/patient_guardian_link_control.dart';
-import 'package:medbuddy_frontend/entities/patient_guardian_link_entity.dart';
+import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
+import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 
 void main() {
-  test('requestLinkPage scopes link lookup by user hash', () async {
+  test('requestLinkScreen scopes link lookup by user hash', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
       expect(request.url.path, '/link/list');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['user_hash'], 'caregiver-a');
       return http.Response(
         jsonEncode({
           'success': true,
@@ -23,7 +23,7 @@ void main() {
             {
               'id': 3,
               'patient_hash': 'patient-a',
-              'guardian_hash': 'guardian-a',
+              'caregiver_hash': 'caregiver-a',
               'linked': true,
               'created_at': '2026-06-17T00:00:00',
             },
@@ -33,22 +33,22 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
-      userHash: 'guardian-a',
+      userHash: 'caregiver-a',
       client: client,
     );
 
-    final links = await control.requestLinkPage();
+    final links = await control.requestLinkScreen();
 
     expect(links, hasLength(1));
-    expect(links.first.linkID, 3);
-    expect(links.first.patientID, 'patient-a');
-    expect(links.first.guardianID, 'guardian-a');
-    expect(links.first.linked, isTrue);
+    expect(links.first.linkId, 3);
+    expect(links.first.patientHash, 'patient-a');
+    expect(links.first.caregiverHash, 'caregiver-a');
+    expect(links.first.linkStatus, isTrue);
   });
 
-  test('requestPatientCode sends patient hash and returns code', () async {
+  test('generatePatientHash sends patient hash and returns code', () async {
     late Map<String, dynamic> requestBody;
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
@@ -67,13 +67,13 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
       userHash: 'patient-a',
       client: client,
     );
 
-    final patientCode = await control.requestPatientCode();
+    final patientCode = await control.generatePatientHash();
 
     expect(requestBody['patient_hash'], 'patient-a');
     expect(patientCode.code, 'ABCD1234');
@@ -89,7 +89,8 @@ void main() {
     );
   });
 
-  test('createPatientCode preserves the diagram-level control name', () async {
+  test('generatePatientHash preserves the diagram-level control name',
+      () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
       expect(request.url.path, '/link/code');
@@ -106,18 +107,19 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
       userHash: 'patient-a',
       client: client,
     );
 
-    final patientCode = await control.createPatientCode();
+    final patientCode = await control.generatePatientHash();
 
     expect(patientCode.code, 'WXYZ5678');
   });
 
-  test('registerPatientCode sends guardian hash and patient code', () async {
+  test('requestPatientCaregiverLink sends caregiver hash and patient code',
+      () async {
     late Map<String, dynamic> requestBody;
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
@@ -129,7 +131,7 @@ void main() {
           'data': {
             'id': 7,
             'patient_hash': 'patient-a',
-            'guardian_hash': 'guardian-a',
+            'caregiver_hash': 'caregiver-a',
             'linked': true,
           },
         }),
@@ -137,32 +139,32 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
-      userHash: 'guardian-a',
+      userHash: 'caregiver-a',
       client: client,
     );
 
-    final link = await control.registerPatientCode('ABCD1234');
+    final link = await control.requestPatientCaregiverLink('ABCD1234');
 
-    expect(requestBody['guardian_hash'], 'guardian-a');
+    expect(requestBody['caregiver_hash'], 'caregiver-a');
     expect(requestBody['patient_code'], 'ABCD1234');
-    expect(link.linkID, 7);
-    expect(link.linked, isTrue);
+    expect(link.linkId, 7);
+    expect(link.linkStatus, isTrue);
   });
 
   test('requestUnlink scopes unlink request by user hash', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'DELETE');
       expect(request.url.path, '/link/7');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['user_hash'], 'caregiver-a');
       return http.Response(
         jsonEncode({
           'success': true,
           'data': {
             'id': 7,
             'patient_hash': 'patient-a',
-            'guardian_hash': 'guardian-a',
+            'caregiver_hash': 'caregiver-a',
             'linked': false,
           },
         }),
@@ -170,31 +172,30 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
-      userHash: 'guardian-a',
+      userHash: 'caregiver-a',
       client: client,
     );
 
     final link = await control.requestUnlink(7);
 
-    expect(link.linkID, 7);
-    expect(link.linked, isFalse);
+    expect(link.linkId, 7);
+    expect(link.linkStatus, isFalse);
   });
 
-  test('deletePatientGuardianLink preserves the diagram-level control name',
-      () async {
+  test('requestUnlink preserves the diagram-level control name', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'DELETE');
       expect(request.url.path, '/link/7');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
+      expect(request.url.queryParameters['user_hash'], 'caregiver-a');
       return http.Response(
         jsonEncode({
           'success': true,
           'data': {
             'id': 7,
             'patient_hash': 'patient-a',
-            'guardian_hash': 'guardian-a',
+            'caregiver_hash': 'caregiver-a',
             'linked': false,
           },
         }),
@@ -202,38 +203,33 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PatientGuardianLinkControl(
+    final control = LinkPatientCaregiver(
       baseUrl: 'http://localhost',
-      userHash: 'guardian-a',
+      userHash: 'caregiver-a',
       client: client,
     );
 
-    final link = await control.deletePatientGuardianLink(7);
+    final link = await control.requestUnlink(7);
 
-    expect(link.linkID, 7);
-    expect(link.linked, isFalse);
+    expect(link.linkId, 7);
+    expect(link.linkStatus, isFalse);
   });
 
-  test('PatientHash can normalize default hash and generate share code', () {
+  test('PatientHash normalizes an empty local patient scope', () {
     expect(
         PatientHash.normalizePatientHash(' '), PatientHash.defaultPatientHash);
-
-    final patientCode = const PatientHash().generatePatientHash();
-
-    expect(patientCode, hasLength(PatientHash.patientLinkCodeLength));
-    expect(RegExp(r'^[A-Z0-9]+$').hasMatch(patientCode), isTrue);
   });
 
-  test('PatientGuardianLink preserves diagram lifecycle methods', () {
-    const link = PatientGuardianLink(
-      patientID: 'patient-a',
-      guardianID: 'guardian-a',
+  test('PatientCaregiverLink preserves diagram lifecycle methods', () {
+    const link = PatientCaregiverLink(
+      patientHash: 'patient-a',
+      caregiverHash: 'caregiver-a',
     );
 
-    final createdLink = link.createPatientGuardianLink();
-    final deletedLink = createdLink.deletePatientGuardianLink();
+    final createdLink = link.savePatientCaregiverLink();
+    final deletedLink = createdLink.removePatientCaregiverLink();
 
-    expect(createdLink.linked, isTrue);
-    expect(deletedLink.linked, isFalse);
+    expect(createdLink.linkStatus, isTrue);
+    expect(deletedLink.linkStatus, isFalse);
   });
 }

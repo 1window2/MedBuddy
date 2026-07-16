@@ -11,13 +11,13 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
-class _FakePrescriptionAnalysisControl extends PrescriptionAnalysisControl {
+class _FakeInputPrescription extends InputPrescription {
   final List<MedicationSchedule> schedules;
   final int rawCount;
   final int parsedCount;
   final int skippedCount;
 
-  _FakePrescriptionAnalysisControl(
+  _FakeInputPrescription(
     this.schedules, {
     this.rawCount = 0,
     this.parsedCount = 0,
@@ -59,7 +59,7 @@ class _FakeCheckMedicationDetail extends CheckMedicationDetail {
   }
 }
 
-class _DeferredPrescriptionAnalysisControl extends PrescriptionAnalysisControl {
+class _DeferredInputPrescription extends InputPrescription {
   final Completer<List<MedicationSchedule>?> completer =
       Completer<List<MedicationSchedule>?>();
 
@@ -87,7 +87,7 @@ void main() {
   test('requestPrescriptionImageFromGallery exposes OCR correction notice',
       () async {
     final viewModel = MedBuddyViewModel(
-      prescriptionAnalysisControl: _FakePrescriptionAnalysisControl(
+      inputPrescription: _FakeInputPrescription(
         const [
           MedicationSchedule(
             medicationName: '프루코프정',
@@ -115,9 +115,10 @@ void main() {
     expect(viewModel.statusMessage, contains('인식 내역'));
   });
 
-  test('requestMedicationAnalysis surfaces partial lookup failures', () async {
+  test('requestPrescriptionAnalysis surfaces partial lookup failures',
+      () async {
     final viewModel = MedBuddyViewModel(
-      prescriptionAnalysisControl: _FakePrescriptionAnalysisControl(
+      inputPrescription: _FakeInputPrescription(
         const [
           MedicationSchedule(medicationName: 'found-tablet'),
           MedicationSchedule(medicationName: 'missing-tablet'),
@@ -128,7 +129,7 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestMedicationAnalysis();
+    await viewModel.requestPrescriptionAnalysis();
 
     expect(viewModel.prescriptionFlowState,
         PrescriptionFlowState.analysisSucceeded);
@@ -137,9 +138,9 @@ void main() {
   });
 
   test('clearing recognition ignores a late OCR result', () async {
-    final prescriptionControl = _DeferredPrescriptionAnalysisControl();
+    final prescriptionControl = _DeferredInputPrescription();
     final viewModel = MedBuddyViewModel(
-      prescriptionAnalysisControl: prescriptionControl,
+      inputPrescription: prescriptionControl,
     );
     addTearDown(viewModel.dispose);
 
@@ -163,7 +164,7 @@ void main() {
   test('clearing analysis ignores a late medication detail result', () async {
     final detailControl = _DeferredCheckMedicationDetail();
     final viewModel = MedBuddyViewModel(
-      prescriptionAnalysisControl: _FakePrescriptionAnalysisControl(
+      inputPrescription: _FakeInputPrescription(
         const [MedicationSchedule(medicationName: 'late-tablet')],
       ),
       checkMedicationDetail: detailControl,
@@ -171,7 +172,7 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    final pendingRequest = viewModel.requestMedicationAnalysis();
+    final pendingRequest = viewModel.requestPrescriptionAnalysis();
     await Future<void>.delayed(Duration.zero);
     expect(
       viewModel.prescriptionFlowState,

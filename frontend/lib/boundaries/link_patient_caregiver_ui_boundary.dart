@@ -3,48 +3,38 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../controls/patient_guardian_link_control.dart';
-import '../controls/set_guardian_alert_setting_control.dart';
-import '../entities/guardian_alert_setting_entity.dart';
-import '../entities/patient_guardian_link_entity.dart';
+import '../controls/link_patient_caregiver_control.dart';
+import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
-import 'set_guardian_alert_setting_ui_boundary.dart';
+import 'check_caregiver_medication_ui_boundary.dart';
 
-// 파일명: patient_guardian_link_ui_boundary.dart
+// 파일명: link_patient_caregiver_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
 
-// 클래스명: PatientGuardianLinkUI
+// 클래스명: LinkPatientCaregiverUI
 // 역할: 환자 코드 생성, 보호자 코드 등록, 연동 목록 조회/해제를 한 화면에서 처리한다.
 // 주요 책임:
 // - 현재 사용자 해시 기준 연동 목록을 조회한다.
 // - 환자용 임시 코드를 생성해 보호자에게 전달할 수 있게 한다.
 // - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
-class PatientGuardianLinkUI extends StatefulWidget {
+class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
-  final void Function({
-    required String patientHash,
-    String? userHash,
-    required String role,
-  })? onMedicationScopeSelected;
 
-  const PatientGuardianLinkUI({
+  const LinkPatientCaregiverUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
-    this.onMedicationScopeSelected,
   });
 
   @override
-  State<PatientGuardianLinkUI> createState() => _PatientGuardianLinkUIState();
+  State<LinkPatientCaregiverUI> createState() => _LinkPatientCaregiverUIState();
 }
 
-class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
+class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   late final TextEditingController _userHashController;
   late final TextEditingController _patientCodeController;
 
-  List<PatientGuardianLink> _links = const [];
-  Map<String, GuardianAlertSetting> _guardianAlertSettings = const {};
-  Set<String> _guardianAlertLoadingKeys = const {};
+  List<PatientCaregiverLink> _links = const [];
   String _statusMessage =
       '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
   bool _isLoading = false;
@@ -111,15 +101,13 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
                 child: _LinkListCard(
                   links: _links,
                   currentUserHash: _currentUserHash,
-                  guardianAlertSettings: _guardianAlertSettings,
-                  guardianAlertLoadingKeys: _guardianAlertLoadingKeys,
-                  onUnlinkRequested: _requestUnlink,
-                  onGuardianAlertChanged: _updateGuardianAlertSetting,
+                  onPatientMedicationRequested: _openPatientMedicationInfo,
+                  onUnlinkRequested: _removePatientCaregiverLink,
                 ),
               ),
               const SizedBox(height: 20),
               _LinkActionFooter(
-                onGeneratePatientCodeRequested: _requestPatientCode,
+                onGeneratePatientCodeRequested: _generatePatientHash,
                 onRegisterPatientRequested: _showRegisterPatientDialog,
               ),
             ],
@@ -133,7 +121,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
-        final links = await control.requestPatientGuardianLink();
+        final links = await control.requestLinkScreen();
         if (!mounted) {
           return;
         }
@@ -143,20 +131,18 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
               ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
               : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
         });
-        _applyMedicationScope(links);
-        await _requestGuardianAlertSettings(links);
       } finally {
         control.dispose();
       }
     });
   }
 
-  Future<void> _requestPatientCode() async {
+  Future<void> _generatePatientHash() async {
     var shouldRefreshLinks = false;
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
-        final patientCode = await control.requestPatientCode();
+        final patientCode = await control.generatePatientHash();
         if (!mounted) {
           return;
         }
@@ -175,7 +161,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     }
   }
 
-  Future<bool> _registerPatientCode() async {
+  Future<bool> _requestPatientCaregiverLink() async {
     final patientCode = _patientCodeController.text.trim();
     if (patientCode.isEmpty) {
       setState(() {
@@ -189,8 +175,8 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
-        await control.registerPatientCode(patientCode);
-        final links = await control.requestLinkPage();
+        await control.requestPatientCaregiverLink(patientCode);
+        final links = await control.requestLinkScreen();
         if (!mounted) {
           return;
         }
@@ -201,8 +187,6 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
               '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
           registered = true;
         });
-        _applyMedicationScope(links);
-        await _requestGuardianAlertSettings(links);
       } finally {
         control.dispose();
       }
@@ -210,9 +194,9 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     return registered;
   }
 
-  Future<void> _requestUnlink(PatientGuardianLink link) async {
-    final linkID = link.linkID;
-    if (linkID == null) {
+  Future<void> _removePatientCaregiverLink(PatientCaregiverLink link) async {
+    final linkId = link.linkId;
+    if (linkId == null) {
       setState(() {
         _statusMessage =
             '\uC5F0\uB3D9 \uC2DD\uBCC4\uC790\uAC00 \uC5C6\uC5B4 \uD574\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
@@ -223,21 +207,16 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     await _runLinkAction(() async {
       final control = _buildControl();
       try {
-        await control.requestUnlink(linkID);
-        final links = await control.requestLinkPage();
+        await control.requestUnlink(linkId);
+        final links = await control.requestLinkScreen();
         if (!mounted) {
           return;
         }
         setState(() {
           _links = links;
-          _guardianAlertSettings = Map<String, GuardianAlertSetting>.from(
-            _guardianAlertSettings,
-          )..remove(_alertSettingKeyForLink(link));
           _statusMessage =
               '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
         });
-        _applyMedicationScope(links);
-        await _requestGuardianAlertSettings(links);
       } finally {
         control.dispose();
       }
@@ -267,160 +246,33 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
     }
   }
 
-  PatientGuardianLinkControl _buildControl() {
-    return PatientGuardianLinkControl(userHash: _currentUserHash);
-  }
-
-  Future<void> _requestGuardianAlertSettings(
-    List<PatientGuardianLink> links,
-  ) async {
-    final currentUserHash = _currentUserHash;
-    final guardianLinks = links
-        .where(
-          (link) =>
-              link.linked &&
-              link.guardianID == currentUserHash &&
-              link.patientID.trim().isNotEmpty,
-        )
-        .toList(growable: false);
-    if (guardianLinks.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _guardianAlertSettings = const {};
-          _guardianAlertLoadingKeys = const {};
-        });
-      }
-      return;
-    }
-
-    final loadingKeys = guardianLinks.map(_alertSettingKeyForLink).toSet();
-    if (mounted) {
-      setState(() {
-        _guardianAlertLoadingKeys = {
-          ..._guardianAlertLoadingKeys,
-          ...loadingKeys,
-        };
-      });
-    }
-
-    final control = SetGuardianAlertSetting(guardianHash: currentUserHash);
-    final nextSettings = <String, GuardianAlertSetting>{};
-    String? errorMessage;
-    try {
-      for (final link in guardianLinks) {
-        try {
-          nextSettings[_alertSettingKeyForLink(link)] =
-              await control.requestGuardianAlertSetting(
-            patientHash: link.patientID,
-          );
-        } catch (error) {
-          errorMessage = error.toString().replaceFirst('Bad state: ', '');
-        }
-      }
-    } finally {
-      control.dispose();
-    }
-
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _guardianAlertSettings = {
-        ..._guardianAlertSettings,
-        ...nextSettings,
-      };
-      _guardianAlertLoadingKeys =
-          _guardianAlertLoadingKeys.difference(loadingKeys);
-      if (errorMessage != null) {
-        _statusMessage = errorMessage;
-      }
-    });
-  }
-
-  Future<void> _updateGuardianAlertSetting(
-    PatientGuardianLink link,
-    bool enabled,
-  ) async {
-    final currentUserHash = _currentUserHash;
-    if (link.guardianID != currentUserHash || link.patientID.trim().isEmpty) {
-      setState(() {
-        _statusMessage =
-            '\uBCF4\uD638\uC790 \uC5F0\uB3D9 \uBC94\uC704\uC5D0\uC11C\uB9CC \uC54C\uB9BC\uC744 \uC124\uC815\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
-      });
-      return;
-    }
-
-    final settingKey = _alertSettingKeyForLink(link);
-    setState(() {
-      _guardianAlertLoadingKeys = {
-        ..._guardianAlertLoadingKeys,
-        settingKey,
-      };
-    });
-
-    final control = SetGuardianAlertSetting(guardianHash: currentUserHash);
-    try {
-      final setting = await control.updateGuardianAlertSetting(
-        patientHash: link.patientID,
-        enabled: enabled,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _guardianAlertSettings = {
-          ..._guardianAlertSettings,
-          settingKey: setting,
-        };
-        _statusMessage = enabled
-            ? '\uBCF4\uD638\uC790 \uC54C\uB9BC\uC744 \uCF30\uC2B5\uB2C8\uB2E4.'
-            : '\uBCF4\uD638\uC790 \uC54C\uB9BC\uC744 \uB044\uC2B5\uB2C8\uB2E4.';
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _statusMessage = error.toString().replaceFirst('Bad state: ', '');
-      });
-    } finally {
-      control.dispose();
-      if (mounted) {
-        setState(() {
-          _guardianAlertLoadingKeys =
-              _guardianAlertLoadingKeys.difference({settingKey});
-        });
-      }
-    }
+  LinkPatientCaregiver _buildControl() {
+    return LinkPatientCaregiver(userHash: _currentUserHash);
   }
 
   String get _currentUserHash {
     return PatientHash.normalizePatientHash(_userHashController.text);
   }
 
-  void _applyMedicationScope(List<PatientGuardianLink> links) {
-    final scopeCallback = widget.onMedicationScopeSelected;
-    if (scopeCallback == null) {
+  void _openPatientMedicationInfo(PatientCaregiverLink link) {
+    final caregiverHash = _currentUserHash;
+    if (!link.linkStatus ||
+        link.caregiverHash != caregiverHash ||
+        link.patientHash.trim().isEmpty) {
+      setState(() {
+        _statusMessage =
+            '\uC5F0\uB3D9\uB41C \uD658\uC790\uC758 \uBCF5\uC57D \uC815\uBCF4\uB9CC \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
+      });
       return;
     }
 
-    final currentUserHash = _currentUserHash;
-    for (final link in links) {
-      if (link.linked &&
-          link.guardianID == currentUserHash &&
-          link.patientID.trim().isNotEmpty) {
-        scopeCallback(
-          patientHash: link.patientID,
-          userHash: currentUserHash,
-          role: 'guardian',
-        );
-        return;
-      }
-    }
-
-    scopeCallback(
-      patientHash: currentUserHash,
-      role: 'patient',
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CheckCaregiverMedicationUI(
+          caregiverHash: caregiverHash,
+          patientHash: link.patientHash,
+        ),
+      ),
     );
   }
 
@@ -439,7 +291,7 @@ class _PatientGuardianLinkUIState extends State<PatientGuardianLinkUI> {
       builder: (context) => _RegisterPatientDialog(
         userHashController: _userHashController,
         patientCodeController: _patientCodeController,
-        onRegisterRequested: _registerPatientCode,
+        onRegisterRequested: _requestPatientCaregiverLink,
         statusMessageProvider: () => _statusMessage,
       ),
     );
@@ -960,21 +812,16 @@ class _PatientCodeNotice extends StatelessWidget {
 }
 
 class _LinkListCard extends StatelessWidget {
-  final List<PatientGuardianLink> links;
+  final List<PatientCaregiverLink> links;
   final String currentUserHash;
-  final Map<String, GuardianAlertSetting> guardianAlertSettings;
-  final Set<String> guardianAlertLoadingKeys;
-  final Future<void> Function(PatientGuardianLink link) onUnlinkRequested;
-  final Future<void> Function(PatientGuardianLink link, bool enabled)
-      onGuardianAlertChanged;
+  final void Function(PatientCaregiverLink link) onPatientMedicationRequested;
+  final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
 
   const _LinkListCard({
     required this.links,
     required this.currentUserHash,
-    required this.guardianAlertSettings,
-    required this.guardianAlertLoadingKeys,
+    required this.onPatientMedicationRequested,
     required this.onUnlinkRequested,
-    required this.onGuardianAlertChanged,
   });
 
   @override
@@ -992,14 +839,9 @@ class _LinkListCard extends StatelessWidget {
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
-          guardianAlertSetting:
-              guardianAlertSettings[_alertSettingKeyForLink(link)],
-          isGuardianAlertLoading: guardianAlertLoadingKeys.contains(
-            _alertSettingKeyForLink(link),
-          ),
+          onPatientMedicationRequested: () =>
+              onPatientMedicationRequested(link),
           onUnlinkRequested: () => onUnlinkRequested(link),
-          onGuardianAlertChanged: (enabled) =>
-              onGuardianAlertChanged(link, enabled),
         );
       },
     );
@@ -1007,20 +849,16 @@ class _LinkListCard extends StatelessWidget {
 }
 
 class _LinkedUserTile extends StatelessWidget {
-  final PatientGuardianLink link;
+  final PatientCaregiverLink link;
   final String currentUserHash;
-  final GuardianAlertSetting? guardianAlertSetting;
-  final bool isGuardianAlertLoading;
+  final VoidCallback onPatientMedicationRequested;
   final VoidCallback onUnlinkRequested;
-  final Future<void> Function(bool enabled) onGuardianAlertChanged;
 
   const _LinkedUserTile({
     required this.link,
     required this.currentUserHash,
-    required this.guardianAlertSetting,
-    required this.isGuardianAlertLoading,
+    required this.onPatientMedicationRequested,
     required this.onUnlinkRequested,
-    required this.onGuardianAlertChanged,
   });
 
   @override
@@ -1047,30 +885,27 @@ class _LinkedUserTile extends StatelessWidget {
                   ),
                 ),
               ),
-              if (_canConfigureGuardianAlert)
+              if (_canOpenPatientMedication)
                 IconButton(
-                  tooltip: '보호자 알림 설정',
-                  onPressed: () => _showGuardianAlertDialog(context),
-                  icon: Icon(
-                    guardianAlertSetting?.enabled == true
-                        ? Icons.notifications_active_outlined
-                        : Icons.notifications_none_outlined,
-                    color: guardianAlertSetting?.enabled == true
-                        ? MedBuddyColors.primary
-                        : MedBuddyColors.textMuted,
+                  tooltip:
+                      '\uD658\uC790 \uBCF5\uC57D \uC815\uBCF4 \uD655\uC778',
+                  onPressed: onPatientMedicationRequested,
+                  icon: const Icon(
+                    Icons.medication_outlined,
+                    color: MedBuddyColors.primary,
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 10),
           _LinkedIdentityField(
-            label: '사용자 ID',
-            value: _displayHash(link.patientID),
+            label: '환자 해시',
+            value: _displayHash(link.patientHash),
           ),
           const SizedBox(height: 10),
           _LinkedIdentityField(
-            label: '보호자 ID',
-            value: _displayHash(link.guardianID),
+            label: '보호자 해시',
+            value: _displayHash(link.caregiverHash),
           ),
           const SizedBox(height: 8),
           TextButton(
@@ -1091,26 +926,10 @@ class _LinkedUserTile extends StatelessWidget {
     );
   }
 
-  bool get _canConfigureGuardianAlert {
-    return link.linked &&
-        link.guardianID == currentUserHash &&
-        link.patientID.trim().isNotEmpty;
-  }
-
-  Future<void> _showGuardianAlertDialog(BuildContext context) async {
-    final enabled =
-        await SetGuardianAlertSettingUI.showGuardianAlertSettingPopup(
-      context,
-      setting: guardianAlertSetting ??
-          GuardianAlertSetting(
-            guardianID: link.guardianID,
-            patientID: link.patientID,
-          ),
-      isLoading: isGuardianAlertLoading,
-    );
-    if (enabled != null) {
-      await onGuardianAlertChanged(enabled);
-    }
+  bool get _canOpenPatientMedication {
+    return link.linkStatus &&
+        link.caregiverHash == currentUserHash &&
+        link.patientHash.trim().isNotEmpty;
   }
 }
 
@@ -1159,10 +978,6 @@ class _LinkedIdentityField extends StatelessWidget {
       ),
     );
   }
-}
-
-String _alertSettingKeyForLink(PatientGuardianLink link) {
-  return '${link.guardianID}|${link.patientID}';
 }
 
 InputDecoration _inputDecoration(String labelText, String hintText) {

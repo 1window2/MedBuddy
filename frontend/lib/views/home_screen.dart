@@ -5,7 +5,7 @@ import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
-import '../boundaries/patient_guardian_link_ui_boundary.dart';
+import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
@@ -41,7 +41,7 @@ class HomeScreen extends StatelessWidget {
           recognitionNotice: viewModel.prescriptionRecognitionNotice,
           userSetting: viewModel.userSetting,
           onBackRequested: viewModel.clearAnalysisResult,
-          onAnalysisRequested: viewModel.requestMedicationAnalysis,
+          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
         ),
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
@@ -71,7 +71,7 @@ class HomeScreen extends StatelessWidget {
           onCloseRequested: viewModel.clearAnalysisResult,
           onAllMedicationSaveRequested:
               viewModel.requestAllAnalyzedMedicationSave,
-          onMedicationSaveRequested: viewModel.requestAnalyzedMedicationSave,
+          onMedicationSaveRequested: viewModel.requestMedicationSave,
         ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
@@ -91,7 +91,7 @@ class HomeScreen extends StatelessWidget {
   ) {
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
-    return PrescriptionInputUI(
+    return InputPrescriptionUI(
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
@@ -129,17 +129,13 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
-      onPatientGuardianLinkRequested: () {
+      onPatientCaregiverLinkRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PatientGuardianLinkUI(
-              initialUserHash: viewModel.medicationUserHash ??
-                  viewModel.medicationPatientHash,
-              onMedicationScopeSelected: viewModel.setMedicationAccessScope,
-            ),
+            builder: (context) => const LinkPatientCaregiverUI(),
           ),
-        ).then((_) => viewModel.refreshMedicationOverview());
+        );
       },
       onUserSettingRequested: () {
         Navigator.push(

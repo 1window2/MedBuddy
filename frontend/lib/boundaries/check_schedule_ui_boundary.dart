@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../boundaries/health_recommendation_ui_boundary.dart';
-import '../boundaries/medication_detail_ui_boundary.dart';
+import 'check_medication_detail_ui_boundary.dart';
 import '../boundaries/set_notification_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
@@ -63,7 +63,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
-      await viewModel.refreshMedicationOverview();
+      await viewModel.refreshMedicationSchedule();
     });
   }
 
@@ -182,7 +182,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
-    final selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+    final selectedTime = await SetNotificationUI.showNotificationPopup(
       context,
       language: viewModel.userSetting.language,
       slotTitle: slotTitle,
@@ -241,7 +241,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MedicationDetailUI(
+        builder: (context) => CheckMedicationDetailUI(
           medicationDetail: MedicationDetail.fromMedicationSchedule(schedule),
           userSetting: viewModel.userSetting,
         ),

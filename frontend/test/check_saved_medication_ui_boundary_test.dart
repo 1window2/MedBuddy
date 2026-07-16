@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
-import 'package:medbuddy_frontend/controls/set_guardian_alert_setting_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 
@@ -33,69 +32,6 @@ void main() {
 
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
-
-  testWidgets('guardian bell reads and updates the persisted alert setting',
-      (tester) async {
-    Map<String, dynamic>? updatePayload;
-    final client = MockClient((request) async {
-      if (request.url.path == '/list') {
-        expect(request.url.queryParameters['role'], 'guardian');
-        expect(request.url.queryParameters['user_hash'], 'guardian-a');
-        return _savedMedicationResponse(request);
-      }
-      if (request.url.path == '/guardian-alert/settings/patient-a') {
-        expect(request.url.queryParameters['guardian_hash'], 'guardian-a');
-        if (request.method == 'PUT') {
-          updatePayload = jsonDecode(request.body) as Map<String, dynamic>;
-          return _guardianAlertResponse(enabled: true);
-        }
-        return _guardianAlertResponse(enabled: false);
-      }
-      return http.Response('Not found', 404);
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSavedMedication: CheckSavedMedication(
-        baseUrl: 'http://medbuddy.test',
-        client: client,
-      ),
-      apiClient: client,
-    );
-    viewModel.setMedicationAccessScope(
-      patientHash: 'patient-a',
-      userHash: 'guardian-a',
-      role: 'guardian',
-    );
-    addTearDown(viewModel.dispose);
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: viewModel,
-        child: MaterialApp(
-          home: CheckSavedMedicationUI(
-            guardianAlertControlFactory: (guardianHash) {
-              return SetGuardianAlertSetting(
-                baseUrl: 'http://medbuddy.test',
-                guardianHash: guardianHash,
-                client: client,
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byIcon(Icons.notifications_none_outlined), findsOneWidget);
-    await tester.tap(find.byTooltip('알림 설정'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Switch), findsOneWidget);
-
-    await tester.tap(find.byType(Switch));
-    await tester.pumpAndSettle();
-
-    expect(updatePayload?['alert_option'], 'enable');
-    expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
-  });
 }
 
 Future<http.Response> _savedMedicationResponse(http.Request request) async {
@@ -117,22 +53,6 @@ Future<http.Response> _savedMedicationResponse(http.Request request) async {
           'image_url': 'https://example.com/tablet.jpg',
         },
       ],
-    }),
-    200,
-    headers: {'content-type': 'application/json; charset=utf-8'},
-  );
-}
-
-http.Response _guardianAlertResponse({required bool enabled}) {
-  return http.Response(
-    jsonEncode({
-      'success': true,
-      'data': {
-        'guardian_hash': 'guardian-a',
-        'patient_hash': 'patient-a',
-        'is_enabled': enabled,
-        'alert_option': enabled ? 'enable' : 'disable',
-      },
     }),
     200,
     headers: {'content-type': 'application/json; charset=utf-8'},

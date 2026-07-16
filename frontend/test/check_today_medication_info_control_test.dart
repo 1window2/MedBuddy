@@ -12,7 +12,8 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/schedule/today/info');
       expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters['role'], 'patient');
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
       return http.Response(
         jsonEncode({
           'success': true,
@@ -54,42 +55,5 @@ void main() {
     expect(schedules.first.patientID, 'patient-a');
     expect(schedules.first.medicationID, '7');
     expect(schedules.first.isSlotCompleted('morning'), isTrue);
-  });
-
-  test('requestTodayMedicationInfo can request guardian linked scope',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.url.path, '/schedule/today/info');
-      expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
-      expect(request.url.queryParameters['role'], 'guardian');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'patient_hash': 'patient-a',
-            'medication_count': 0,
-            'total_dose_count': 0,
-            'completed_dose_count': 0,
-            'remaining_dose_count': 0,
-            'progress_ratio': 0,
-            'schedules': [],
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
-      );
-    });
-    final control = CheckTodayMedicationInfo(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      userHash: 'guardian-a',
-      role: 'guardian',
-      client: client,
-    );
-
-    final schedules = await control.requestTodayMedicationInfo();
-
-    expect(schedules, isEmpty);
   });
 }

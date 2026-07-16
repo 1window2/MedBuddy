@@ -10,20 +10,19 @@ typedef MedicationNotificationSelectionHandler = void Function(
   MedicationNotificationDestination destination,
 );
 
-// 파일명: medication_notification_service.dart
+// 파일명: notification_service.dart
 // 역할: 복약 알림을 휴대폰 로컬 알림으로 예약하고 취소한다.
 
-// 클래스명: MedicationNotificationService
+// 클래스명: NotificationService
 // 역할: Flutter local notifications 플러그인을 감싸 복약 알림 전용 API를 제공한다.
 // 주요 책임:
 // - 앱 시작 시 알림 플러그인과 한국 시간대를 초기화한다.
 // - 알림 권한을 요청한다.
 // - 시간대별 매일 반복 알림을 예약하거나 취소한다.
-class MedicationNotificationService {
-  MedicationNotificationService._();
+class NotificationService {
+  NotificationService._();
 
-  static final MedicationNotificationService instance =
-      MedicationNotificationService._();
+  static final NotificationService instance = NotificationService._();
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationDestination? _pendingDestination;
 
@@ -136,7 +135,7 @@ class MedicationNotificationService {
     return true;
   }
 
-  // 함수명: scheduleDailyReminder
+  // 함수명: registerNotification
   // 함수역할:
   // - 지정한 시간에 매일 반복되는 복약 알림을 예약한다.
   // 매개변수:
@@ -148,7 +147,7 @@ class MedicationNotificationService {
   // - language: 알림 제목과 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 없음
-  Future<void> scheduleDailyReminder({
+  Future<void> registerNotification({
     required int id,
     required String slotKey,
     required String slotTitle,

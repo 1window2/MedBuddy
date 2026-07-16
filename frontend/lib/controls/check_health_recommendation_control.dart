@@ -18,42 +18,16 @@ import '../services/api_response_parser.dart';
 class CheckHealthRecommendation {
   final String baseUrl;
   final String patientHash;
-  final String? userHash;
-  final String role;
   final http.Client _client;
   final bool _ownsClient;
 
   CheckHealthRecommendation({
     this.baseUrl = ApiConfig.baseUrl,
-    this.patientHash = PatientHash.defaultPatientHash,
-    this.userHash,
-    this.role = 'patient',
+    String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
+  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
+        _client = client ?? http.Client(),
         _ownsClient = client == null;
-
-  // Function Name: forScope
-  // Description:
-  // - Creates a scoped health recommendation control that reuses this control's HTTP client.
-  // Parameters:
-  // - patientHash: Patient scope for the recommendation request.
-  // - userHash: Optional guardian user scope.
-  // - role: Requesting user role.
-  // Returns:
-  // - CheckHealthRecommendation configured for the selected medication access scope.
-  CheckHealthRecommendation forScope({
-    required String patientHash,
-    String? userHash,
-    required String role,
-  }) {
-    return CheckHealthRecommendation(
-      baseUrl: baseUrl,
-      patientHash: patientHash,
-      userHash: userHash,
-      role: role,
-      client: _client,
-    );
-  }
 
   // 함수명: requestHealthRecommendation
   // 함수역할:
@@ -104,10 +78,7 @@ class CheckHealthRecommendation {
     return Uri.parse('$baseUrl/$path').replace(
       queryParameters: {
         'patient_hash': patientHash,
-        'role': role,
         'language': language,
-        if (userHash != null && userHash!.trim().isNotEmpty)
-          'user_hash': userHash!.trim(),
       },
     );
   }

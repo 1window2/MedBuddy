@@ -80,7 +80,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
@@ -126,7 +126,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
@@ -141,7 +141,7 @@ void main() {
     expect(control.lastSkippedMedicationCount, 3);
   });
 
-  test('analyzePrescriptionImage surfaces backend OCR timeout detail',
+  test('requestPrescriptionImage surfaces backend OCR timeout detail',
       () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-backend-timeout-test-',
@@ -161,17 +161,15 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
     );
     addTearDown(control.dispose);
 
     expect(
-      () => control.analyzePrescriptionImage(
-        XFile(imageFile.path),
-        imageSource: ImageSource.gallery,
-      ),
+      () => control.requestPrescriptionImageFromGallery(),
       throwsA(
         isA<StateError>().having(
           (error) => error.message,
@@ -182,7 +180,7 @@ void main() {
     );
   });
 
-  test('analyzePrescriptionImage times out while reading a stalled body',
+  test('requestPrescriptionImage times out while reading a stalled body',
       () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-timeout-test-',
@@ -195,17 +193,15 @@ void main() {
     final imageFile = File('${tempDirectory.path}/prescription.jpg');
     await imageFile.writeAsBytes([1, 2, 3]);
 
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: _DelayedResponseBodyClient(),
       requestTimeout: const Duration(milliseconds: 10),
     );
     addTearDown(control.dispose);
 
     expect(
-      () => control.analyzePrescriptionImage(
-        XFile(imageFile.path),
-        imageSource: ImageSource.gallery,
-      ),
+      () => control.requestPrescriptionImageFromGallery(),
       throwsA(isA<StateError>()),
     );
   });

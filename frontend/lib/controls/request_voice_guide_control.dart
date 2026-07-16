@@ -7,7 +7,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
-import '../services/medication_tts_service.dart';
+import '../services/tts_service.dart';
 
 typedef VoiceGuideSpeaker = Future<void> Function(
   String text,
@@ -26,18 +26,17 @@ typedef VoiceGuideSpeaker = Future<void> Function(
 // - 실제 음성 재생은 TTS Service로 위임한다.
 class RequestVoiceGuide {
   final String baseUrl;
-  final MedicationTtsService? _ttsService;
+  final TTSService? _ttsService;
   final VoiceGuideSpeaker? _speaker;
   final http.Client _client;
   final bool _ownsClient;
 
   RequestVoiceGuide({
     this.baseUrl = ApiConfig.baseUrl,
-    MedicationTtsService? ttsService,
+    TTSService? ttsService,
     VoiceGuideSpeaker? speaker,
     http.Client? client,
-  })  : _ttsService =
-            ttsService ?? (speaker == null ? MedicationTtsService() : null),
+  })  : _ttsService = ttsService ?? (speaker == null ? TTSService() : null),
         _speaker = speaker,
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -56,10 +55,24 @@ class RequestVoiceGuide {
     required UserSetting userSetting,
     void Function()? onComplete,
   }) async {
-    final voiceGuideText = await getVoiceGuideText(
+    final voiceGuideText = await _getVoiceGuideText(
       medicationDetail: medicationDetail,
       language: userSetting.language,
     );
+    final normalizedVoiceGuideText = voiceGuideText.trim();
+    await requestTTS(
+      voiceGuideText: normalizedVoiceGuideText,
+      userSetting: userSetting,
+      onComplete: onComplete,
+    );
+    return normalizedVoiceGuideText;
+  }
+
+  Future<void> requestTTS({
+    required String voiceGuideText,
+    required UserSetting userSetting,
+    void Function()? onComplete,
+  }) async {
     final normalizedVoiceGuideText = voiceGuideText.trim();
     if (normalizedVoiceGuideText.isEmpty) {
       onComplete?.call();
@@ -70,10 +83,9 @@ class RequestVoiceGuide {
       userSetting,
       onComplete: onComplete,
     );
-    return normalizedVoiceGuideText;
   }
 
-  // 함수명: getVoiceGuideText
+  // 함수명: _getVoiceGuideText
   // 함수역할:
   // - backend에서 음성 안내 문구를 가져오고 실패 시 로컬 문구를 반환한다.
   // 매개변수:
@@ -81,7 +93,7 @@ class RequestVoiceGuide {
   // - language: 사용자 언어 설정
   // 반환값:
   // - 음성 안내 문구
-  Future<String> getVoiceGuideText({
+  Future<String> _getVoiceGuideText({
     required MedicationDetail medicationDetail,
     required String language,
   }) async {

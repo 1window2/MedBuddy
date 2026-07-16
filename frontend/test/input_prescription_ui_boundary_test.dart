@@ -13,7 +13,7 @@ void main() {
     var pillTaskRequested = false;
     await tester.pumpWidget(
       MaterialApp(
-        home: PrescriptionInputUI(
+        home: InputPrescriptionUI(
           statusMessage: '',
           userSetting: const UserSetting(language: 'ko'),
           onPrescriptionScanRequested: () {},
@@ -23,7 +23,7 @@ void main() {
           },
           onTodayScheduleRequested: () {},
           onSavedMedicationRequested: () {},
-          onPatientGuardianLinkRequested: () {},
+          onPatientCaregiverLinkRequested: () {},
           onUserSettingRequested: () {},
         ),
       ),

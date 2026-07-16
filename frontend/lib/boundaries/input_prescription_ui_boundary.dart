@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'check_today_medication_info_ui_boundary.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -7,13 +8,13 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// 클래스명: PrescriptionInputUI
+// 클래스명: InputPrescriptionUI
 // 역할: 오늘의 복약 일정, 처방전 촬영, 저장된 복약 정보, 환자/보호자 연동으로 이동하는 홈 화면이다.
 // 주요 책임:
 // - 사용자 설정에 맞춘 홈 화면 문구와 글자 크기를 보여준다.
 // - 카메라/갤러리 처방전 입력 방식을 선택할 수 있게 한다.
 // - OCR 진행 중에는 입력 화면 대신 진행 상태를 보여준다.
-class PrescriptionInputUI extends StatelessWidget {
+class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
@@ -25,11 +26,11 @@ class PrescriptionInputUI extends StatelessWidget {
   final VoidCallback? onPillIdentificationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
-  final VoidCallback? onPatientGuardianLinkRequested;
+  final VoidCallback? onPatientCaregiverLinkRequested;
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
-  const PrescriptionInputUI({
+  const InputPrescriptionUI({
     super.key,
     required this.statusMessage,
     required this.userSetting,
@@ -42,11 +43,11 @@ class PrescriptionInputUI extends StatelessWidget {
     required this.onPillIdentificationRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
-    required this.onPatientGuardianLinkRequested,
+    required this.onPatientCaregiverLinkRequested,
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
-  const PrescriptionInputUI.analyzing({
+  const InputPrescriptionUI.analyzing({
     super.key,
     required this.statusMessage,
   })  : userSetting = const UserSetting(),
@@ -59,7 +60,7 @@ class PrescriptionInputUI extends StatelessWidget {
         onPillIdentificationRequested = null,
         onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
-        onPatientGuardianLinkRequested = null,
+        onPatientCaregiverLinkRequested = null,
         onUserSettingRequested = null,
         isAnalyzing = true;
 
@@ -85,8 +86,9 @@ class PrescriptionInputUI extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
                 child: Column(
                   children: [
-                    _ScheduleCard(
-                      text: text,
+                    CheckTodayMedicationInfoUI(
+                      title: text.todaySchedule,
+                      noMedicationLabel: text.noMedication,
                       userSetting: userSetting,
                       schedules: todayMedicationScheduleList,
                       completedCount: todayMedicationCompletedCount,
@@ -114,9 +116,9 @@ class PrescriptionInputUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 22),
                     _LinkCard(
-                      title: text.patientGuardianLink,
+                      title: text.patientCaregiverLink,
                       userSetting: userSetting,
-                      onTap: onPatientGuardianLinkRequested,
+                      onTap: onPatientCaregiverLinkRequested,
                     ),
                   ],
                 ),
@@ -126,18 +128,6 @@ class PrescriptionInputUI extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  void clickPrescriptionInput() {
-    onPrescriptionScanRequested?.call();
-  }
-
-  void clickPrescriptionImageSelect() {
-    onPrescriptionGalleryRequested?.call();
-  }
-
-  String showMaskedInfrmation() {
-    return statusMessage;
   }
 
   Future<void> _showAnalysisTaskOptions(
@@ -405,89 +395,6 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-class _ScheduleCard extends StatelessWidget {
-  final _HomeText text;
-  final UserSetting userSetting;
-  final List<MedicationSchedule> schedules;
-  final int completedCount;
-  final int totalCount;
-  final bool isLoading;
-  final VoidCallback? onTap;
-
-  const _ScheduleCard({
-    required this.text,
-    required this.userSetting,
-    required this.schedules,
-    required this.completedCount,
-    required this.totalCount,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  String _buildScheduleSummary() {
-    if (isLoading) {
-      return text.isEnglish ? 'Loading schedule...' : '일정을 불러오는 중입니다';
-    }
-    if (schedules.isEmpty) {
-      return text.noMedication;
-    }
-
-    final firstNames =
-        schedules.take(2).map((schedule) => schedule.displayName).join(', ');
-    final remainingCount = schedules.length - 2;
-    final suffix = remainingCount > 0 ? ' 외 $remainingCount개' : '';
-    final displayTotalCount = totalCount == 0 ? schedules.length : totalCount;
-    return text.isEnglish
-        ? '$completedCount/$displayTotalCount completed\n$firstNames$suffix'
-        : '$completedCount/$displayTotalCount 복용 완료\n$firstNames$suffix';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return _SurfaceCard(
-      minHeight: 171,
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.schedule_rounded,
-            color: MedBuddyColors.primary,
-            size: 50,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            text.todaySchedule,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: const Color(0xFF0A0A0A),
-              fontSize: 22 * scale,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            _buildScheduleSummary(),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textLight,
-              fontSize: 14 * scale,
-              height: 1.25,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _HomeActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -742,8 +649,8 @@ class _HomeText {
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
-  String get patientGuardianLink =>
-      isEnglish ? 'Patient/Guardian Link' : '환자/보호자 연동';
+  String get patientCaregiverLink =>
+      isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
   String get prescriptionTask =>
       isEnglish ? 'Analyze a prescription' : '처방전 분석';
   String get prescriptionTaskSubtitle => isEnglish

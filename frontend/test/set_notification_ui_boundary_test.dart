@@ -13,7 +13,7 @@ void main() {
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
-              selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+              selectedTime = await SetNotificationUI.showNotificationPopup(
                 context,
                 language: 'en',
                 slotTitle: 'Morning',
@@ -55,7 +55,7 @@ void main() {
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
-              selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+              selectedTime = await SetNotificationUI.showNotificationPopup(
                 context,
                 language: 'en',
                 slotTitle: 'Morning',

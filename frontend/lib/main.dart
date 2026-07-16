@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_schedule_ui_boundary.dart';
-import 'services/medication_notification_service.dart';
+import 'services/notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
@@ -17,7 +17,7 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MedicationNotificationService.instance.initialize();
+  await NotificationService.instance.initialize();
   runApp(const MedBuddyApp());
 }
 
@@ -49,14 +49,14 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void initState() {
     super.initState();
     _navigatorKey = widget.navigatorKey ?? GlobalKey<NavigatorState>();
-    MedicationNotificationService.setNotificationSelectionHandler(
+    NotificationService.setNotificationSelectionHandler(
       _handleNotificationSelection,
     );
   }
 
   @override
   void dispose() {
-    MedicationNotificationService.setNotificationSelectionHandler(null);
+    NotificationService.setNotificationSelectionHandler(null);
     super.dispose();
   }
 

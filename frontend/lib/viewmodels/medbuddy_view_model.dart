@@ -20,7 +20,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
-import '../services/medication_notification_service.dart';
+import '../services/notification_service.dart';
 
 class TodayMedicationProgress {
   final int completedCount;
@@ -43,7 +43,7 @@ class TodayMedicationProgress {
 // - 저장된 복약 정보와 오늘의 복약 일정을 캐시한다.
 // - 사용자 설정을 불러오고 변경 사항을 화면에 반영한다.
 class MedBuddyViewModel extends ChangeNotifier {
-  late final PrescriptionAnalysisControl prescriptionAnalysisControl;
+  late final InputPrescription inputPrescription;
   late final CheckMedicationDetail checkMedicationDetail;
   late final CheckSavedMedication checkSavedMedication;
   late final CheckSchedule checkSchedule;
@@ -51,22 +51,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckHealthRecommendation checkHealthRecommendation;
   late final SetNotification setNotification;
   late final ManageUserSetting manageUserSetting;
-  final MedicationNotificationService notificationService;
+  final NotificationService notificationService;
   final http.Client _apiClient;
   final bool _ownsApiClient;
-  CheckSavedMedication? _scopedCheckSavedMedication;
-  CheckSchedule? _scopedCheckSchedule;
-  CheckTodayMedicationInfo? _scopedCheckTodayMedicationInfo;
-  CheckHealthRecommendation? _scopedCheckHealthRecommendation;
-  SetNotification? _scopedSetNotification;
-
-  String _medicationPatientHash = PatientHash.defaultPatientHash;
-  String? _medicationUserHash;
-  String _medicationRole = 'patient';
-  int _medicationScopeRevision = 0;
-  String get medicationPatientHash => _medicationPatientHash;
-  String? get medicationUserHash => _medicationUserHash;
-  String get medicationRole => _medicationRole;
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
@@ -104,9 +91,6 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   bool _isHealthRecommendationLoading = false;
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
-
-  bool _isUserSettingLoading = false;
-  bool get isUserSettingLoading => _isUserSettingLoading;
 
   String _statusMessage = '처방전을 촬영하거나 이미지를 선택해주세요.';
   String get statusMessage => _statusMessage;
@@ -159,8 +143,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   UserSetting _userSetting = const UserSetting();
-  UserSetting get userSetting =>
-      manageUserSetting.requestUserSetting(_userSetting);
+  UserSetting get userSetting => _userSetting;
   bool get _isEnglishSetting =>
       userSetting.language.trim().toLowerCase().startsWith('en');
 
@@ -211,7 +194,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   static const List<String> _reminderSlotKeys = medicationScheduleSlotKeys;
 
   MedBuddyViewModel({
-    PrescriptionAnalysisControl? prescriptionAnalysisControl,
+    InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
@@ -219,14 +202,14 @@ class MedBuddyViewModel extends ChangeNotifier {
     CheckHealthRecommendation? checkHealthRecommendation,
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
-    MedicationNotificationService? notificationService,
+    NotificationService? notificationService,
     http.Client? apiClient,
   })  : _apiClient = apiClient ?? http.Client(),
         _ownsApiClient = apiClient == null,
         notificationService =
-            notificationService ?? MedicationNotificationService.instance {
-    this.prescriptionAnalysisControl = prescriptionAnalysisControl ??
-        PrescriptionAnalysisControl(client: _apiClient);
+            notificationService ?? NotificationService.instance {
+    this.inputPrescription =
+        inputPrescription ?? InputPrescription(client: _apiClient);
     this.checkMedicationDetail =
         checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
     this.checkSavedMedication =
@@ -236,68 +219,13 @@ class MedBuddyViewModel extends ChangeNotifier {
         CheckTodayMedicationInfo(client: _apiClient);
     this.checkHealthRecommendation = checkHealthRecommendation ??
         CheckHealthRecommendation(client: _apiClient);
-    this.setNotification =
-        setNotification ?? SetNotification(client: _apiClient);
+    this.setNotification = setNotification ??
+        SetNotification(
+          client: _apiClient,
+          notificationRegistrar: this.notificationService.registerNotification,
+        );
     this.manageUserSetting =
         manageUserSetting ?? ManageUserSetting(client: _apiClient);
-  }
-
-  void setMedicationAccessScope({
-    required String patientHash,
-    String? userHash,
-    String role = 'patient',
-  }) {
-    final normalizedPatientHash = PatientHash.normalizePatientHash(patientHash);
-    final normalizedUserHash = userHash == null || userHash.trim().isEmpty
-        ? null
-        : PatientHash.normalizePatientHash(userHash);
-    final requestedRole =
-        role.trim().isEmpty ? 'patient' : role.trim().toLowerCase();
-    final normalizedRole =
-        requestedRole == 'caregiver' ? 'guardian' : requestedRole;
-    if (normalizedRole != 'patient' && normalizedRole != 'guardian') {
-      throw ArgumentError.value(
-        role,
-        'role',
-        'Only patient and guardian medication access roles are supported.',
-      );
-    }
-    if (normalizedRole == 'guardian' && normalizedUserHash == null) {
-      throw ArgumentError(
-        'userHash is required for guardian medication access.',
-      );
-    }
-    if (normalizedRole == 'patient' &&
-        normalizedUserHash != null &&
-        normalizedUserHash != normalizedPatientHash) {
-      throw ArgumentError(
-        'Patient medication access cannot target another patient hash.',
-      );
-    }
-
-    if (_medicationPatientHash == normalizedPatientHash &&
-        _medicationUserHash == normalizedUserHash &&
-        _medicationRole == normalizedRole) {
-      return;
-    }
-
-    _medicationPatientHash = normalizedPatientHash;
-    _medicationUserHash = normalizedUserHash;
-    _medicationRole = normalizedRole;
-    _medicationScopeRevision += 1;
-    _rebuildMedicationScopeControls();
-    _savedMedicationInfoList = [];
-    _todayMedicationScheduleList = [];
-    _healthRecommendation = null;
-    _medicationReminderSettings.clear();
-    _completedMedicationSaveIndexes.clear();
-    _savingMedicationIndex = null;
-    _isAllMedicationSaving = false;
-    _isSavedMedicationLoading = false;
-    _isTodayScheduleLoading = false;
-    _isHealthRecommendationLoading = false;
-    _lastTodayScheduleLoadSucceeded = false;
-    notifyListeners();
   }
 
   // 함수명: loadUserSetting
@@ -310,34 +238,34 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 반환값:
   // - 없음
   Future<void> loadUserSetting() async {
-    _isUserSettingLoading = true;
-    notifyListeners();
-
     try {
-      _userSetting = await manageUserSetting.requestStoredUserSetting();
+      _userSetting = await manageUserSetting.requestUserSetting();
       await refreshMedicationOverview();
     } finally {
-      _isUserSettingLoading = false;
       notifyListeners();
     }
   }
 
   Future<void> refreshMedicationOverview() async {
-    final scopeRevision = _medicationScopeRevision;
+    await Future.wait([
+      loadMedicationReminderSettings(notifyAfterLoad: false),
+      fetchTodayMedicationInfo(),
+    ]);
+    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+  }
+
+  Future<void> refreshMedicationSchedule() async {
     await Future.wait([
       loadMedicationReminderSettings(notifyAfterLoad: false),
       fetchTodayMedicationSchedule(),
     ]);
-    if (!_isCurrentMedicationScope(scopeRevision)) {
-      return;
-    }
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
   }
 
   // - 없음
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
-      imageRequest: prescriptionAnalysisControl.startPrescriptionInput,
+      imageRequest: inputPrescription.requestPrescriptionImage,
       cancelledMessage: '사진 촬영이 취소되었습니다.',
     );
   }
@@ -349,19 +277,18 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음
   Future<void> requestPrescriptionImageFromGallery() async {
     await _requestPrescriptionRecognition(
-      imageRequest:
-          prescriptionAnalysisControl.requestPrescriptionImageFromGallery,
+      imageRequest: inputPrescription.requestPrescriptionImageFromGallery,
       cancelledMessage: '이미지 선택이 취소되었습니다.',
     );
   }
 
-  // 함수명: requestMedicationAnalysis
+  // 함수명: requestPrescriptionAnalysis
   // 함수역할:
   // - UC-1에서 인식된 약 목록 각각에 대해 공공데이터 기반 상세 정보를 요청한다.
   // - 저장은 하지 않고 분석 성공/실패 화면 상태까지만 변경한다.
   // 반환값:
   // - 없음
-  Future<void> requestMedicationAnalysis() async {
+  Future<void> requestPrescriptionAnalysis() async {
     if (_recognizedMedicationScheduleList.isEmpty) {
       _showAnalysisFailure('인식된 처방 내역이 없습니다.');
       return;
@@ -444,7 +371,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 함수명: requestAnalyzedMedicationSave
+  // 함수명: requestMedicationSave
   // 함수역할:
   // - 이미 분석된 약 상세 정보를 저장 목록에 저장한다.
   // 매개변수:
@@ -452,11 +379,10 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - medicationIndex: 저장 버튼 로딩 표시를 위한 화면상 인덱스
   // 반환값:
   // - 저장 성공 여부
-  Future<bool> requestAnalyzedMedicationSave(
+  Future<bool> requestMedicationSave(
     AnalyzedMedication analyzedMedication,
     int medicationIndex,
   ) async {
-    final scopeRevision = _medicationScopeRevision;
     if (_completedMedicationSaveIndexes.contains(medicationIndex)) {
       _statusMessage = '이미 추가된 약입니다.';
       notifyListeners();
@@ -471,7 +397,7 @@ class MedBuddyViewModel extends ChangeNotifier {
         analyzedMedication.detail,
         medicationSchedule: analyzedMedication.schedule,
       );
-      if (result.isCompleted && _isCurrentMedicationScope(scopeRevision)) {
+      if (result.isCompleted) {
         _completedMedicationSaveIndexes.add(medicationIndex);
         notifyListeners();
       }
@@ -488,7 +414,6 @@ class MedBuddyViewModel extends ChangeNotifier {
       return false;
     }
 
-    final scopeRevision = _medicationScopeRevision;
     _isAllMedicationSaving = true;
     _statusMessage = '전체 복약 일정을 저장 중입니다...';
     notifyListeners();
@@ -499,9 +424,6 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       for (var index = 0; index < _analyzedMedicationList.length; index += 1) {
-        if (!_isCurrentMedicationScope(scopeRevision)) {
-          return false;
-        }
         if (_completedMedicationSaveIndexes.contains(index)) {
           duplicateCount += 1;
           continue;
@@ -516,9 +438,6 @@ class MedBuddyViewModel extends ChangeNotifier {
           medicationSchedule: analyzedMedication.schedule,
           refreshAfterSave: false,
         );
-        if (!_isCurrentMedicationScope(scopeRevision)) {
-          return false;
-        }
         if (result.status == MedicationSaveStatus.saved) {
           savedCount += 1;
           _completedMedicationSaveIndexes.add(index);
@@ -532,9 +451,6 @@ class MedBuddyViewModel extends ChangeNotifier {
 
       await fetchSavedMedicationInfo();
       await fetchTodayMedicationSchedule();
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return false;
-      }
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
       _statusMessage = _buildBulkSaveMessage(
         savedCount: savedCount,
@@ -546,48 +462,6 @@ class MedBuddyViewModel extends ChangeNotifier {
       _savingMedicationIndex = null;
       _isAllMedicationSaving = false;
       notifyListeners();
-    }
-  }
-
-  Future<bool> requestMedicationSave(
-    MedicationSchedule medicationSchedule,
-    int medicationIndex,
-  ) async {
-    final scopeRevision = _medicationScopeRevision;
-    final drugName = medicationSchedule.displayName;
-    _statusMessage = '$drugName 정보를 공공 API와 AI가 분석 중입니다...';
-    _setSavingMedicationIndex(medicationIndex);
-
-    try {
-      final medicationInfo =
-          await checkMedicationDetail.requestMedicationDetail(
-        medicationSchedule,
-      );
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return false;
-      }
-      if (medicationInfo == null) {
-        _statusMessage = '해당 의약품 정보를 찾을 수 없습니다.';
-        return false;
-      }
-
-      final result = await saveMedicationInfo(
-        medicationInfo,
-        medicationSchedule: medicationSchedule,
-      );
-      return result.isCompleted;
-    } on StateError catch (error) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = error.message;
-      }
-      return false;
-    } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = '의약품 분석 중 오류가 발생했습니다.';
-      }
-      return false;
-    } finally {
-      _setSavingMedicationIndex(null);
     }
   }
 
@@ -604,18 +478,13 @@ class MedBuddyViewModel extends ChangeNotifier {
     MedicationSchedule? medicationSchedule,
     bool refreshAfterSave = true,
   }) async {
-    final scopeRevision = _medicationScopeRevision;
-    final savedMedicationControl = _activeCheckSavedMedication;
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
     notifyListeners();
 
-    final result = await savedMedicationControl.saveMedicationDetail(
+    final result = await checkSavedMedication.saveMedicationDetail(
       medicationInfo,
       medicationSchedule: medicationSchedule,
     );
-    if (!_isCurrentMedicationScope(scopeRevision)) {
-      return result;
-    }
     if (result.status == MedicationSaveStatus.failed) {
       _statusMessage = result.message;
       notifyListeners();
@@ -640,41 +509,29 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 반환값:
   // - 없음
   Future<void> fetchSavedMedicationInfo() async {
-    final scopeRevision = _medicationScopeRevision;
-    final savedMedicationControl = _activeCheckSavedMedication;
     _isSavedMedicationLoading = true;
     notifyListeners();
 
     try {
       final savedMedicationInfoList =
-          await savedMedicationControl.requestSavedMedicationInfo();
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _savedMedicationInfoList = savedMedicationInfoList;
-      }
+          await checkSavedMedication.requestSavedMedicationInfo();
+      _savedMedicationInfoList = savedMedicationInfoList;
     } on StateError catch (error) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = error.message;
-      }
+      _statusMessage = error.message;
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = '저장된 복약 정보를 불러오지 못했습니다.';
-      }
+      _statusMessage = '저장된 복약 정보를 불러오지 못했습니다.';
     } finally {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _isSavedMedicationLoading = false;
-        notifyListeners();
-      }
+      _isSavedMedicationLoading = false;
+      notifyListeners();
     }
   }
 
   Future<bool> requestDeleteSavedMedication(int savedMedicationId) async {
-    final scopeRevision = _medicationScopeRevision;
-    final savedMedicationControl = _activeCheckSavedMedication;
-    final success = await savedMedicationControl.requestDelete(
+    final success = await checkSavedMedication.requestDelete(
       savedMedicationId,
     );
 
-    if (success && _isCurrentMedicationScope(scopeRevision)) {
+    if (success) {
       _savedMedicationInfoList = _savedMedicationInfoList
           .where((item) => item.id != savedMedicationId)
           .toList(growable: false);
@@ -690,33 +547,35 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 반환값:
   // - 없음
   Future<void> fetchTodayMedicationSchedule() async {
-    final scopeRevision = _medicationScopeRevision;
-    final todayMedicationInfoControl = _activeCheckTodayMedicationInfo;
+    await _loadTodayMedicationSchedule(
+      checkSchedule.requestTodayMedicationSchedule,
+    );
+  }
+
+  Future<void> fetchTodayMedicationInfo() async {
+    await _loadTodayMedicationSchedule(
+      checkTodayMedicationInfo.requestTodayMedicationInfo,
+    );
+  }
+
+  Future<void> _loadTodayMedicationSchedule(
+    Future<List<MedicationSchedule>> Function() loader,
+  ) async {
     _isTodayScheduleLoading = true;
     notifyListeners();
 
     try {
-      final todayMedicationScheduleList =
-          await todayMedicationInfoControl.requestTodayMedicationInfo();
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _todayMedicationScheduleList = todayMedicationScheduleList;
-        _lastTodayScheduleLoadSucceeded = true;
-      }
+      _todayMedicationScheduleList = await loader();
+      _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _lastTodayScheduleLoadSucceeded = false;
-        _statusMessage = error.message;
-      }
+      _lastTodayScheduleLoadSucceeded = false;
+      _statusMessage = error.message;
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _lastTodayScheduleLoadSucceeded = false;
-        _statusMessage = '복약 일정을 불러오지 못했습니다.';
-      }
+      _lastTodayScheduleLoadSucceeded = false;
+      _statusMessage = '복약 일정을 불러오지 못했습니다.';
     } finally {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _isTodayScheduleLoading = false;
-        notifyListeners();
-      }
+      _isTodayScheduleLoading = false;
+      notifyListeners();
     }
   }
 
@@ -726,8 +585,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 반환값:
   // - 없음
   Future<void> fetchHealthRecommendation() async {
-    final scopeRevision = _medicationScopeRevision;
-    final healthRecommendationControl = _activeCheckHealthRecommendation;
     _isHealthRecommendationLoading = true;
     _healthRecommendation = null;
     _statusMessage = _isEnglishSetting
@@ -737,31 +594,22 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     try {
       final healthRecommendation =
-          await healthRecommendationControl.requestHealthRecommendation(
+          await checkHealthRecommendation.requestHealthRecommendation(
         language: userSetting.language,
       );
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return;
-      }
       _healthRecommendation = healthRecommendation;
       _statusMessage = _isEnglishSetting
           ? 'Health recommendations loaded.'
           : '건강 관리 추천을 불러왔습니다.';
     } on StateError catch (error) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = error.message;
-      }
+      _statusMessage = error.message;
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = _isEnglishSetting
-            ? 'Could not load health recommendations.'
-            : '건강 관리 추천을 불러오지 못했습니다.';
-      }
+      _statusMessage = _isEnglishSetting
+          ? 'Could not load health recommendations.'
+          : '건강 관리 추천을 불러오지 못했습니다.';
     } finally {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _isHealthRecommendationLoading = false;
-        notifyListeners();
-      }
+      _isHealthRecommendationLoading = false;
+      notifyListeners();
     }
   }
 
@@ -775,13 +623,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> loadMedicationReminderSettings({
     bool notifyAfterLoad = true,
   }) async {
-    final scopeRevision = _medicationScopeRevision;
-    final alarmControl = _activeSetNotification;
     try {
-      final settings = await alarmControl.requestMedicationAlarm();
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return;
-      }
+      final settings = await setNotification.requestMedicationAlarm();
       final settingsBySlot = {
         for (final slotKey in _reminderSlotKeys)
           slotKey: MedicationAlarm.defaults(slotKey),
@@ -797,19 +640,13 @@ class MedBuddyViewModel extends ChangeNotifier {
 
       final preferences = await SharedPreferences.getInstance();
       for (final setting in settingsBySlot.values) {
-        if (!_isCurrentMedicationScope(scopeRevision)) {
-          return;
-        }
         await _cacheMedicationReminderSetting(preferences, setting);
       }
     } catch (_) {
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return;
-      }
       await _loadMedicationReminderSettingsFromCache();
     }
 
-    if (notifyAfterLoad && _isCurrentMedicationScope(scopeRevision)) {
+    if (notifyAfterLoad) {
       notifyListeners();
     }
   }
@@ -832,8 +669,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     required int minute,
     required List<MedicationSchedule> schedules,
   }) async {
-    final scopeRevision = _medicationScopeRevision;
-    final alarmControl = _activeSetNotification;
     final storageKey = _reminderStorageKey(slotKey);
     if (schedules.isEmpty) {
       _statusMessage = _isEnglishSetting
@@ -847,15 +682,10 @@ class MedBuddyViewModel extends ChangeNotifier {
     try {
       hasPermission = await notificationService.requestPermission();
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = _isEnglishSetting
-            ? 'Could not request notification permission.'
-            : '알림 권한을 요청하지 못했습니다.';
-        notifyListeners();
-      }
-      return false;
-    }
-    if (!_isCurrentMedicationScope(scopeRevision)) {
+      _statusMessage = _isEnglishSetting
+          ? 'Could not request notification permission.'
+          : '알림 권한을 요청하지 못했습니다.';
+      notifyListeners();
       return false;
     }
     if (!hasPermission) {
@@ -868,34 +698,18 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     MedicationAlarm? persistedSetting;
     try {
-      final setting = await alarmControl.setMedicationAlarm(
+      final setting = await setNotification.saveNotificationSetting(
         slotKey: slotKey,
         hour: hour,
         minute: minute,
       );
       persistedSetting = setting;
-      if (await _rollbackReminderSaveIfScopeChanged(
-        scopeRevision: scopeRevision,
-        alarmControl: alarmControl,
-        setting: setting,
-        storageKey: storageKey,
-      )) {
-        return false;
-      }
 
       await _scheduleMedicationReminder(
         setting: setting,
         slotTitle: slotTitle,
         schedules: schedules,
       );
-      if (await _rollbackReminderSaveIfScopeChanged(
-        scopeRevision: scopeRevision,
-        alarmControl: alarmControl,
-        setting: setting,
-        storageKey: storageKey,
-      )) {
-        return false;
-      }
 
       final preferences = await SharedPreferences.getInstance();
       await _cacheMedicationReminderSetting(
@@ -903,14 +717,6 @@ class MedBuddyViewModel extends ChangeNotifier {
         setting,
         storageKey: storageKey,
       );
-      if (await _rollbackReminderSaveIfScopeChanged(
-        scopeRevision: scopeRevision,
-        alarmControl: alarmControl,
-        setting: setting,
-        storageKey: storageKey,
-      )) {
-        return false;
-      }
       _medicationReminderSettings[setting.slotKey] = setting;
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder is set for ${setting.timeLabel}.'
@@ -919,27 +725,23 @@ class MedBuddyViewModel extends ChangeNotifier {
       return true;
     } on StateError catch (error) {
       await _rollbackMedicationReminderSave(
-        alarmControl: alarmControl,
+        alarmControl: setNotification,
         setting: persistedSetting,
         storageKey: storageKey,
       );
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = error.message;
-        notifyListeners();
-      }
+      _statusMessage = error.message;
+      notifyListeners();
       return false;
     } catch (_) {
       await _rollbackMedicationReminderSave(
-        alarmControl: alarmControl,
+        alarmControl: setNotification,
         setting: persistedSetting,
         storageKey: storageKey,
       );
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = _isEnglishSetting
-            ? 'Could not set the $slotTitle reminder.'
-            : '$slotTitle 알림을 설정하지 못했습니다.';
-        notifyListeners();
-      }
+      _statusMessage = _isEnglishSetting
+          ? 'Could not set the $slotTitle reminder.'
+          : '$slotTitle 알림을 설정하지 못했습니다.';
+      notifyListeners();
       return false;
     }
   }
@@ -956,11 +758,10 @@ class MedBuddyViewModel extends ChangeNotifier {
     required String slotKey,
     required String slotTitle,
   }) async {
-    final scopeRevision = _medicationScopeRevision;
-    final alarmControl = _activeSetNotification;
     final storageKey = _reminderStorageKey(slotKey);
     try {
-      final disabledSetting = await alarmControl.disableAlarmSetting(slotKey);
+      final disabledSetting =
+          await setNotification.disableAlarmSetting(slotKey);
       await _cancelMedicationReminder(disabledSetting);
       final preferences = await SharedPreferences.getInstance();
       await _cacheMedicationReminderSetting(
@@ -968,9 +769,6 @@ class MedBuddyViewModel extends ChangeNotifier {
         disabledSetting,
         storageKey: storageKey,
       );
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return true;
-      }
       _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
@@ -978,20 +776,18 @@ class MedBuddyViewModel extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = _isEnglishSetting
-            ? 'Could not turn off the $slotTitle reminder.'
-            : '$slotTitle 알림을 해제하지 못했습니다.';
-        notifyListeners();
-      }
+      _statusMessage = _isEnglishSetting
+          ? 'Could not turn off the $slotTitle reminder.'
+          : '$slotTitle 알림을 해제하지 못했습니다.';
+      notifyListeners();
       return false;
     }
   }
 
   String _reminderStorageKey(String slotKey) {
-    final userScope = _medicationUserHash ?? _medicationPatientHash;
     return 'medbuddy_medication_reminder_'
-        '${_medicationRole}_${userScope}_${_medicationPatientHash}_$slotKey';
+        'patient_${PatientHash.defaultPatientHash}_'
+        '${PatientHash.defaultPatientHash}_$slotKey';
   }
 
   String _legacyReminderStorageKey(String slotKey) {
@@ -1043,23 +839,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> _rollbackReminderSaveIfScopeChanged({
-    required int scopeRevision,
-    required SetNotification alarmControl,
-    required MedicationAlarm setting,
-    required String storageKey,
-  }) async {
-    if (_isCurrentMedicationScope(scopeRevision)) {
-      return false;
-    }
-    await _rollbackMedicationReminderSave(
-      alarmControl: alarmControl,
-      setting: setting,
-      storageKey: storageKey,
-    );
-    return true;
-  }
-
   Future<void> _loadMedicationReminderSettingsFromCache() async {
     final preferences = await SharedPreferences.getInstance();
     for (final slotKey in _reminderSlotKeys) {
@@ -1090,13 +869,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
 
-    final scopeRevision = _medicationScopeRevision;
-    final alarmControl = _activeSetNotification;
     final preferences = await SharedPreferences.getInstance();
     for (final slotKey in _reminderSlotKeys) {
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return;
-      }
       final setting = _medicationReminderSettings[slotKey] ??
           MedicationAlarm.defaults(slotKey);
       if (!setting.isEnabled) {
@@ -1107,14 +881,10 @@ class MedBuddyViewModel extends ChangeNotifier {
       final schedules = _schedulesForReminderSlot(slotKey);
       if (schedules.isEmpty) {
         final disabledSetting = await _disableReminderSettingForEmptySlot(
-          alarmControl,
+          setNotification,
           slotKey,
           setting,
         );
-        if (!_isCurrentMedicationScope(scopeRevision)) {
-          await _cancelMedicationReminder(disabledSetting);
-          return;
-        }
         await _cacheMedicationReminderSetting(preferences, disabledSetting);
         _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
         await _cancelMedicationReminder(disabledSetting);
@@ -1126,10 +896,6 @@ class MedBuddyViewModel extends ChangeNotifier {
         slotTitle: _reminderSlotTitle(slotKey),
         schedules: schedules,
       );
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        await _cancelMedicationReminder(setting);
-        return;
-      }
     }
   }
 
@@ -1159,7 +925,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     required List<MedicationSchedule> schedules,
   }) async {
     await _cancelLegacyMedicationReminder(setting);
-    await notificationService.scheduleDailyReminder(
+    await setNotification.registerNotification(
       id: setting.notificationId,
       slotKey: setting.slotKey,
       slotTitle: slotTitle,
@@ -1253,17 +1019,12 @@ class MedBuddyViewModel extends ChangeNotifier {
       return false;
     }
 
-    final scopeRevision = _medicationScopeRevision;
-    final scheduleControl = _activeCheckSchedule;
     try {
-      final updatedSchedule = await scheduleControl.updateMedicationStatus(
+      final updatedSchedule = await checkSchedule.updateMedicationStatus(
         medicationSchedule.medicationID,
         medicationStatus,
         slotKey: slotKey,
       );
-      if (!_isCurrentMedicationScope(scopeRevision)) {
-        return false;
-      }
       _todayMedicationScheduleList = _todayMedicationScheduleList
           .map(
             (item) => item.medicationID == updatedSchedule.medicationID
@@ -1274,16 +1035,12 @@ class MedBuddyViewModel extends ChangeNotifier {
       notifyListeners();
       return true;
     } on StateError catch (error) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = error.message;
-        notifyListeners();
-      }
+      _statusMessage = error.message;
+      notifyListeners();
       return false;
     } catch (_) {
-      if (_isCurrentMedicationScope(scopeRevision)) {
-        _statusMessage = '복약 상태를 업데이트하지 못했습니다.';
-        notifyListeners();
-      }
+      _statusMessage = '복약 상태를 업데이트하지 못했습니다.';
+      notifyListeners();
       return false;
     }
   }
@@ -1308,7 +1065,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     required String readingSpeedOption,
     required String language,
   }) async {
-    _userSetting = await manageUserSetting.requestSettingSave(
+    _userSetting = await manageUserSetting.saveUserSetting(
       currentSetting: _userSetting,
       fontSizeOption: fontSizeOption,
       readingSpeedOption: readingSpeedOption,
@@ -1411,17 +1168,15 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _recordPrescriptionRecognitionCounts(
     List<MedicationSchedule> schedules,
   ) {
-    final parsedCount =
-        prescriptionAnalysisControl.lastParsedMedicationCount > 0
-            ? prescriptionAnalysisControl.lastParsedMedicationCount
-            : schedules.length;
-    final rawCount = prescriptionAnalysisControl.lastRawMedicationCount > 0
-        ? prescriptionAnalysisControl.lastRawMedicationCount
+    final parsedCount = inputPrescription.lastParsedMedicationCount > 0
+        ? inputPrescription.lastParsedMedicationCount
+        : schedules.length;
+    final rawCount = inputPrescription.lastRawMedicationCount > 0
+        ? inputPrescription.lastRawMedicationCount
         : parsedCount;
-    final skippedCount =
-        prescriptionAnalysisControl.lastSkippedMedicationCount > 0
-            ? prescriptionAnalysisControl.lastSkippedMedicationCount
-            : rawCount - parsedCount;
+    final skippedCount = inputPrescription.lastSkippedMedicationCount > 0
+        ? inputPrescription.lastSkippedMedicationCount
+        : rawCount - parsedCount;
 
     _lastPrescriptionParsedMedicationCount = parsedCount < 0 ? 0 : parsedCount;
     _lastPrescriptionRawMedicationCount = rawCount < 0 ? 0 : rawCount;
@@ -1462,25 +1217,6 @@ class MedBuddyViewModel extends ChangeNotifier {
     return '전체 저장 완료: ${parts.join(', ')}';
   }
 
-  CheckSavedMedication get _activeCheckSavedMedication =>
-      _scopedCheckSavedMedication ?? checkSavedMedication;
-
-  CheckSchedule get _activeCheckSchedule =>
-      _scopedCheckSchedule ?? checkSchedule;
-
-  CheckTodayMedicationInfo get _activeCheckTodayMedicationInfo =>
-      _scopedCheckTodayMedicationInfo ?? checkTodayMedicationInfo;
-
-  CheckHealthRecommendation get _activeCheckHealthRecommendation =>
-      _scopedCheckHealthRecommendation ?? checkHealthRecommendation;
-
-  SetNotification get _activeSetNotification =>
-      _scopedSetNotification ?? setNotification;
-
-  bool _isCurrentMedicationScope(int scopeRevision) {
-    return scopeRevision == _medicationScopeRevision;
-  }
-
   List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
     if (schedule.slotStatuses.isNotEmpty) {
       final slotKeys = medicationScheduleSlotKeys
@@ -1493,48 +1229,10 @@ class MedBuddyViewModel extends ChangeNotifier {
     return schedule.slotKeys;
   }
 
-  void _rebuildMedicationScopeControls() {
-    _scopedCheckSavedMedication?.dispose();
-    _scopedCheckSchedule?.dispose();
-    _scopedCheckTodayMedicationInfo?.dispose();
-    _scopedCheckHealthRecommendation?.dispose();
-    _scopedSetNotification?.dispose();
-    _scopedCheckSavedMedication = checkSavedMedication.forScope(
-      patientHash: _medicationPatientHash,
-      userHash: _medicationUserHash,
-      role: _medicationRole,
-    );
-    _scopedCheckSchedule = checkSchedule.forScope(
-      patientHash: _medicationPatientHash,
-      userHash: _medicationUserHash,
-      role: _medicationRole,
-    );
-    _scopedCheckTodayMedicationInfo = checkTodayMedicationInfo.forScope(
-      patientHash: _medicationPatientHash,
-      userHash: _medicationUserHash,
-      role: _medicationRole,
-    );
-    _scopedCheckHealthRecommendation = checkHealthRecommendation.forScope(
-      patientHash: _medicationPatientHash,
-      userHash: _medicationUserHash,
-      role: _medicationRole,
-    );
-    _scopedSetNotification = setNotification.forScope(
-      patientHash: _medicationPatientHash,
-      userHash: _medicationUserHash,
-      role: _medicationRole,
-    );
-  }
-
   @override
   void dispose() {
     _cancelPrescriptionOperation();
-    _scopedCheckSavedMedication?.dispose();
-    _scopedCheckSchedule?.dispose();
-    _scopedCheckTodayMedicationInfo?.dispose();
-    _scopedCheckHealthRecommendation?.dispose();
-    _scopedSetNotification?.dispose();
-    prescriptionAnalysisControl.dispose();
+    inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
