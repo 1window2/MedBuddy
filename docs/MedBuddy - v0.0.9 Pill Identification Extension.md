@@ -21,8 +21,10 @@ to verify the package or consult a pharmacist before taking an unknown pill.
 - `IdentifyPill` ranks MFDS rows deterministically from those attributes.
 - User photos are normalized in memory and sent for analysis, but are not
   persisted or logged.
-- Public MFDS metadata is cached in the existing SQLite runtime database for
-  seven days. A stale complete cache remains available during an MFDS outage.
+- Public MFDS metadata is cached for seven days in an isolated local SQLite
+  reference database, so a catalog refresh cannot lock or enlarge the core
+  medication/schedule database. A stale complete cache remains available
+  during an MFDS outage.
 - The published Korean pill-identification reference implementation expects
   trained shape-specific model weights and a large offline image corpus. Those
   assets are not publicly bundled, so v0.0.9 uses a replaceable vision boundary
@@ -57,7 +59,7 @@ package "Backend" {
   }
   class IdentifyPill <<control>> {
     +requestPillIdentification(frontImage, backImage)
-    -rankCandidates(features, catalog)
+    -_rank_candidates(features, catalog)
   }
   class PillVisionBoundary <<boundary>> {
     +extractVisualFeatures(frontImage, backImage)
@@ -66,10 +68,12 @@ package "Backend" {
     +preprocessPillImage(image)
   }
   class MFDSPillCatalogBoundary <<boundary>> {
-    +getCatalog(db)
+    +getCatalog()
   }
   class GeminiPillVisionAPI <<external>>
-  class MFDSPillAPI <<external>>
+  class MFDSPillAPI <<external>> {
+    +requestCatalog()
+  }
   class PillIdentificationCatalogRepository <<repository>>
   class PillVisualFeatures <<entity>>
   class PillCatalogEntry <<entity>>
@@ -100,8 +104,10 @@ MFDSPillCatalogBoundary --> PillCatalogEntry
 ```
 
 `PillIdentificationCatalogRepository` is an infrastructure adapter, not a new
-domain use case. It prevents SQLAlchemy persistence concerns from leaking into
-the MFDS HTTP boundary or ranking control.
+domain use case. `MFDSPillCatalogBoundary` owns its short-lived session factory
+and runs synchronous SQLite access outside the event loop. Its isolated
+reference database keeps catalog replacement independent from core MedBuddy
+transactions and keeps SQLAlchemy concerns out of the `IdentifyPill` control.
 
 ## Extension sequence diagram
 
@@ -117,7 +123,7 @@ boundary PillVisionBoundary
 boundary MFDSPillCatalogBoundary
 external GeminiPillVisionAPI
 external MFDSPillAPI
-database SQLite
+database PillCatalogSQLite
 
 User -> PrescriptionInputUI : click camera analysis
 PrescriptionInputUI -> User : choose prescription or loose pill
@@ -136,11 +142,11 @@ par Visual attributes
   PillVisionBoundary --> IdentifyPill : PillVisualFeatures
 else Public catalog
   IdentifyPill -> MFDSPillCatalogBoundary : getCatalog()
-  MFDSPillCatalogBoundary -> SQLite : read fresh cache
+  MFDSPillCatalogBoundary -> PillCatalogSQLite : read fresh cache
   alt cache missing or expired
     MFDSPillCatalogBoundary -> MFDSPillAPI : fetch bounded pages concurrently
     MFDSPillAPI --> MFDSPillCatalogBoundary : public product rows
-    MFDSPillCatalogBoundary -> SQLite : replace complete cache atomically
+    MFDSPillCatalogBoundary -> PillCatalogSQLite : replace complete cache atomically
   end
   MFDSPillCatalogBoundary --> IdentifyPill : PillCatalogEntry[]
 end
@@ -161,14 +167,20 @@ end note
 ## Failure and performance policy
 
 - Empty, invalid, oversized, tiny, or excessively large images are rejected
-  before external analysis.
+  before external analysis. Encoded dimensions are bounded before OpenCV
+  allocates a decoded pixel buffer.
 - Poor visual quality is reported as `422`; unavailable catalog as `503`;
   visual timeout as `504`; internal details are not returned to the client.
 - Front/back preprocessing and catalog loading run concurrently with visual
   analysis. MFDS pages are downloaded with bounded concurrency and the complete
-  refresh has a fixed deadline. A failed required stage cancels its sibling.
+  refresh has a fixed deadline. Visual preprocessing, queueing, and the Gemini
+  request share one deadline and a bounded concurrency gate. A failed required
+  stage cancels its sibling.
 - A catalog refresh is accepted only when at least 95% of the advertised rows
   are present, preventing a partial response from replacing a valid cache.
+- A stale persisted catalog remains available during upstream failure, but its
+  in-memory fallback is retried after five minutes rather than suppressing
+  refresh attempts for the full seven-day fresh-cache lifetime.
 - If no readable imprint exists, the score is capped and `is_confident` remains
   false. Shape and color must both match before an imprint-free candidate can
   be returned, and a one-character imprint cannot produce a confident result.

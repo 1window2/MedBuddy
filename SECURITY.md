@@ -59,7 +59,7 @@ text from the repository after exposure is not sufficient by itself.
 
 The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
-`backend/medbuddy.db`.
+`backend/medbuddy.db` or `backend/pill_identification_catalog.db`.
 
 Do not commit local SDK paths, generated Flutter build files, tool telemetry
 state, emulator-specific configuration, Python virtual environments, pytest

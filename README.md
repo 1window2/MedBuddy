@@ -33,7 +33,7 @@
 
 - Users can provide a front photo and an optional reverse-side photo of one loose pill.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
-- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached locally with completeness checks and stale-cache fallback.
+- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached in the isolated `backend/pill_identification_catalog.db` reference store with completeness checks and stale-cache fallback.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
 - This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
 
