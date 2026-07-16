@@ -87,5 +87,7 @@ as untrusted input:
 
 - Validate structured model/API responses before using them.
 - Do not log secrets or raw personal medical data.
+- Tell users when an uploaded image is processed by an external AI service;
+  do not persist or log loose-pill photos.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.

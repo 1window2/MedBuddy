@@ -22,6 +22,7 @@ class PrescriptionInputUI extends StatelessWidget {
   final bool isTodayScheduleLoading;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
+  final VoidCallback? onPillIdentificationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
   final VoidCallback? onPatientGuardianLinkRequested;
@@ -38,6 +39,7 @@ class PrescriptionInputUI extends StatelessWidget {
     this.isTodayScheduleLoading = false,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
+    required this.onPillIdentificationRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
     required this.onPatientGuardianLinkRequested,
@@ -54,6 +56,7 @@ class PrescriptionInputUI extends StatelessWidget {
         isTodayScheduleLoading = false,
         onPrescriptionScanRequested = null,
         onPrescriptionGalleryRequested = null,
+        onPillIdentificationRequested = null,
         onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
         onPatientGuardianLinkRequested = null,
@@ -98,7 +101,7 @@ class PrescriptionInputUI extends StatelessWidget {
                       subtitle: text.scanPrescriptionSubtitle,
                       filled: true,
                       userSetting: userSetting,
-                      onTap: () => _showPrescriptionInputOptions(context, text),
+                      onTap: () => _showAnalysisTaskOptions(context, text),
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
@@ -137,19 +140,11 @@ class PrescriptionInputUI extends StatelessWidget {
     return statusMessage;
   }
 
-  // 함수명: _showPrescriptionInputOptions
-  // 함수역할:
-  // - 처방전 입력 버튼을 눌렀을 때 카메라와 갤러리 선택지를 하단 시트로 보여준다.
-  // 매개변수:
-  // - context: 하단 시트를 띄울 BuildContext
-  // - text: 현재 언어에 맞는 홈 화면 문구 묶음
-  // 반환값:
-  // - 없음
-  void _showPrescriptionInputOptions(
+  Future<void> _showAnalysisTaskOptions(
     BuildContext context,
     _HomeText text,
-  ) {
-    showModalBottomSheet<void>(
+  ) async {
+    final task = await showModalBottomSheet<_CameraAnalysisTask>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -173,23 +168,21 @@ class PrescriptionInputUI extends StatelessWidget {
                 const SizedBox(height: 18),
                 _PrescriptionInputOption(
                   icon: Icons.photo_camera_outlined,
-                  title: text.cameraOption,
-                  subtitle: text.cameraOptionSubtitle,
+                  title: text.prescriptionTask,
+                  subtitle: text.prescriptionTaskSubtitle,
                   userSetting: userSetting,
                   onTap: () {
-                    Navigator.pop(context);
-                    onPrescriptionScanRequested?.call();
+                    Navigator.pop(context, _CameraAnalysisTask.prescription);
                   },
                 ),
                 const SizedBox(height: 10),
                 _PrescriptionInputOption(
-                  icon: Icons.photo_library_outlined,
-                  title: text.galleryOption,
-                  subtitle: text.galleryOptionSubtitle,
+                  icon: Icons.medication_outlined,
+                  title: text.pillTask,
+                  subtitle: text.pillTaskSubtitle,
                   userSetting: userSetting,
                   onTap: () {
-                    Navigator.pop(context);
-                    onPrescriptionGalleryRequested?.call();
+                    Navigator.pop(context, _CameraAnalysisTask.pill);
                   },
                 ),
               ],
@@ -197,6 +190,59 @@ class PrescriptionInputUI extends StatelessWidget {
           ),
         );
       },
+    );
+
+    if (!context.mounted || task == null) {
+      return;
+    }
+    if (task == _CameraAnalysisTask.pill) {
+      onPillIdentificationRequested?.call();
+      return;
+    }
+    _showPrescriptionSourceOptions(context, text);
+  }
+
+  void _showPrescriptionSourceOptions(
+    BuildContext context,
+    _HomeText text,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PrescriptionInputOption(
+                icon: Icons.photo_camera_outlined,
+                title: text.cameraOption,
+                subtitle: text.cameraOptionSubtitle,
+                userSetting: userSetting,
+                onTap: () {
+                  Navigator.pop(context);
+                  onPrescriptionScanRequested?.call();
+                },
+              ),
+              const SizedBox(height: 10),
+              _PrescriptionInputOption(
+                icon: Icons.photo_library_outlined,
+                title: text.galleryOption,
+                subtitle: text.galleryOptionSubtitle,
+                userSetting: userSetting,
+                onTap: () {
+                  Navigator.pop(context);
+                  onPrescriptionGalleryRequested?.call();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -688,14 +734,25 @@ class _HomeText {
   String get noMedication => isEnglish
       ? 'No medicine registered\nScan a prescription'
       : '등록된 약이 없습니다\n처방전을 촬영해주세요';
-  String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';
-  String get scanPrescriptionSubtitle =>
-      isEnglish ? 'Take a photo of your prescription' : '카메라로 처방전을 찍어주세요';
+  String get scanPrescription =>
+      isEnglish ? 'Analyze with Camera' : '약 정보 촬영하기';
+  String get scanPrescriptionSubtitle => isEnglish
+      ? 'Choose a prescription or a loose pill'
+      : '처방전 또는 낱알약을 촬영해주세요';
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
   String get patientGuardianLink =>
       isEnglish ? 'Patient/Guardian Link' : '환자/보호자 연동';
+  String get prescriptionTask =>
+      isEnglish ? 'Analyze a prescription' : '처방전 분석';
+  String get prescriptionTaskSubtitle => isEnglish
+      ? 'Extract medication names and schedules.'
+      : '처방전에서 약 이름과 복약 일정을 확인합니다.';
+  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
+  String get pillTaskSubtitle => isEnglish
+      ? 'Compare a photographed pill with MFDS candidates.'
+      : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
   String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
   String get cameraOptionSubtitle =>
       isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
@@ -705,3 +762,5 @@ class _HomeText {
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
+
+enum _CameraAnalysisTask { prescription, pill }

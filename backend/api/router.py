@@ -1,6 +1,7 @@
 # File Name: router.py
 # Role: Defines medication-related HTTP endpoints for the MedBuddy backend.
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -12,6 +13,7 @@ from api.dependencies import (
     get_check_saved_medication,
     get_check_today_medication_info,
     get_manage_user_setting,
+    get_identify_pill,
     get_patient_guardian_link_control,
     get_prescription_analysis_control,
     get_request_health_recommendation,
@@ -19,6 +21,12 @@ from api.dependencies import (
     get_set_guardian_alert_setting,
     get_set_guardian_medication,
     get_set_notification,
+)
+from boundaries.pill_identification_boundary import (
+    MAX_PILL_IMAGE_BYTES,
+    PillCatalogUnavailableError,
+    PillImageQualityError,
+    PillVisionUnavailableError,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_schedule_control import CheckSchedule
@@ -29,6 +37,7 @@ from controls.input_prescription_control import (
     PrescriptionAnalysisControl,
     PrescriptionAnalysisTimeoutError,
 )
+from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -49,6 +58,7 @@ from schemas.medication import (
     UserSettingUpdate,
     VoiceGuideRequest,
 )
+from schemas.pill_identification import PillIdentificationResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -648,6 +658,69 @@ def parse_prescription_endpoint(
         raise HTTPException(
             status_code=500,
             detail="처방전 텍스트를 파싱하지 못했습니다.",
+        ) from exc
+
+
+# Function Name: identify_loose_pill
+# Description:
+# - Receives front and optional back photos and returns ranked MFDS candidates.
+# Parameters:
+# - front: Required front-side pill image.
+# - back: Optional reverse-side pill image.
+# - identify_pill: IdentifyPill injected by FastAPI.
+# Returns:
+# - PillIdentificationResponse with mandatory user confirmation.
+@router.post(
+    "/pill-identification/candidates",
+    response_model=PillIdentificationResponse,
+)
+async def identify_loose_pill(
+    front: UploadFile = File(...),
+    back: UploadFile | None = File(None),
+    identify_pill: IdentifyPill = Depends(get_identify_pill),
+) -> PillIdentificationResponse:
+    """Returns MFDS candidates for one pill; user confirmation remains mandatory."""
+
+    async def read_bounded(upload: UploadFile) -> bytes:
+        content = await upload.read(MAX_PILL_IMAGE_BYTES + 1)
+        if len(content) > MAX_PILL_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Each pill image must be 10 MB or smaller.",
+            )
+        return content
+
+    try:
+        uploads = [read_bounded(front)]
+        if back is not None:
+            uploads.append(read_bounded(back))
+        images = await asyncio.gather(*uploads)
+        result = await identify_pill.requestPillIdentification(
+            images[0],
+            images[1] if len(images) > 1 else None,
+        )
+        return PillIdentificationResponse.from_domain(result)
+    except HTTPException:
+        raise
+    except PillImageQualityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PillCatalogUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PillVisionUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Pill identification timed out. Please try again.",
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Loose-pill identification failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The pill could not be identified due to a server error.",
         ) from exc
 
 

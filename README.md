@@ -29,6 +29,14 @@
 - Medication images use validated `e약은요` URLs first, then the MFDS pill-identification API for exact solid-medication matches; unsupported dosage forms retain the placeholder.
 - OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
+### Experimental Loose-Pill Identification
+
+- Users can provide a front photo and an optional reverse-side photo of one loose pill.
+- A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
+- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached locally with completeness checks and stale-cache fallback.
+- Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
+- This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
+
 ### User Settings and Voice Playback
 
 - Users can save display font size, reading speed, and language settings.
@@ -62,7 +70,7 @@
 
 ## Roadmap
 
-1. **Unknown loose-pill identification:** Add a UML-defined front/back photo flow that returns user-confirmed candidates from a lightweight visual-retrieval model trained on the authorized [AI Hub oral-medication image dataset](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=11&dataSetSn=576&topMenu=).
+1. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
 
@@ -138,14 +146,19 @@ Open `backend/.env` and set at least:
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
 PILL_IMAGE_API_ENABLED=true
-PILL_IMAGE_API_TIMEOUT_SECONDS=4
+PILL_IMAGE_API_TIMEOUT_SECONDS=8
+PILL_IDENTIFICATION_MODEL_NAME=gemini-3.1-flash-lite
+PILL_IDENTIFICATION_TIMEOUT_SECONDS=20
+PILL_IDENTIFICATION_CATALOG_TTL_HOURS=168
+PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS=30
 ```
 
 The public-data key must be authorized for the `e약은요`, medication approval,
 and medication pill-identification APIs. Pill images are optional; lookups keep
 working with the existing placeholder when that API is unavailable or the dosage
 form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
-MFDS service must be disabled explicitly.
+optional saved-medication image enrichment must be disabled. The experimental
+loose-pill flow still requires the MFDS identification catalog.
 
 Start the API server:
 

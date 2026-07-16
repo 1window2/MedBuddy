@@ -17,6 +17,7 @@ from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import guardian_alert_setting_entity  # noqa: F401
 from entities import patient_guardian_link_entity  # noqa: F401
+from entities import pill_identification_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities.guardian_alert_setting_entity import ensure_guardian_alert_setting_schema

@@ -18,6 +18,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
 #   - PILL_IMAGE_API_ENABLED: Enables optional MFDS pill-image enrichment.
 #   - PILL_IMAGE_API_TIMEOUT_SECONDS: Maximum optional image lookup duration.
+#   - PILL_IDENTIFICATION_MODEL_NAME: Visual feature extraction model.
+#   - PILL_IDENTIFICATION_TIMEOUT_SECONDS: Maximum pill image analysis duration.
+#   - PILL_IDENTIFICATION_CATALOG_TTL_HOURS: Local MFDS catalog cache lifetime.
+#   - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: Maximum full catalog
+#     refresh duration.
 #   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
 #   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
 #     duration.
@@ -40,6 +45,10 @@ class Settings(BaseSettings):
     )
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = 8.0
+    PILL_IDENTIFICATION_MODEL_NAME: str = "gemini-3.1-flash-lite"
+    PILL_IDENTIFICATION_TIMEOUT_SECONDS: float = 20.0
+    PILL_IDENTIFICATION_CATALOG_TTL_HOURS: int = 168
+    PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: float = 8.0
     REDIS_URL: str = "redis://localhost:6379"

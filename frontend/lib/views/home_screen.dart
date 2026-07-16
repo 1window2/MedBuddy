@@ -6,6 +6,7 @@ import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/patient_guardian_link_ui_boundary.dart';
+import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
@@ -100,6 +101,16 @@ class HomeScreen extends StatelessWidget {
       onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
+      onPillIdentificationRequested: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PillIdentificationUI(
+              userSetting: viewModel.userSetting,
+            ),
+          ),
+        );
+      },
       onTodayScheduleRequested: () {
         Navigator.push(
           context,

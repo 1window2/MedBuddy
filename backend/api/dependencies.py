@@ -6,6 +6,10 @@ import logging
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from boundaries.pill_identification_boundary import (
+    MFDSPillCatalogBoundary,
+    PillVisionBoundary,
+)
 from core.database import get_db
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
@@ -16,6 +20,7 @@ from controls.check_today_medication_info_control import CheckTodayMedicationInf
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import PrescriptionAnalysisControl
+from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -27,6 +32,8 @@ from controls.set_notification_control import SetNotification
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
 _public_drug_data_portal = _PublicDrugDataPortal()
+_pill_vision_boundary = PillVisionBoundary()
+_pill_catalog_boundary = MFDSPillCatalogBoundary()
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:
@@ -71,6 +78,18 @@ def get_input_prescription(
     db: Session = Depends(get_db),
 ) -> PrescriptionAnalysisControl:
     return get_prescription_analysis_control(db=db)
+
+
+def get_identify_pill(
+    db: Session = Depends(get_db),
+) -> IdentifyPill:
+    """Builds the experimental loose-pill identification control."""
+
+    return IdentifyPill(
+        db=db,
+        vision_boundary=_pill_vision_boundary,
+        catalog_boundary=_pill_catalog_boundary,
+    )
 
 
 # Function Name: get_check_medication_detail
