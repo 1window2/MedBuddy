@@ -81,7 +81,19 @@ as untrusted input:
 
 - Validate structured model/API responses before using them.
 - Do not log secrets or raw personal medical data.
-- Tell users when an uploaded image is processed by an external AI service;
-  do not persist or log loose-pill photos.
+- Tell users that prescription and loose-pill images are processed by an
+  external AI service. Do not persist or log either image type.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
+
+## Alpha Identity Boundary
+
+Current alpha builds use patient and caregiver hashes to select demo data
+scopes. Those hashes are not authentication credentials and must not be treated
+as proof of identity. Do not expose the current backend directly to untrusted
+networks or use it for real multi-user medical data.
+
+Production deployment requires an authenticated principal at the API boundary,
+server-derived ownership scope, and authorization checks for every medication,
+schedule, notification, and patient-caregiver operation. Client-supplied hashes
+must not remain the authority for mutation access.

@@ -195,8 +195,11 @@ large-text layouts without committing pill photos or generated catalog files.
 - Empty, invalid, oversized, tiny, or excessively large images are rejected
   before external analysis. Encoded dimensions are bounded before OpenCV
   allocates a decoded pixel buffer.
-- Poor visual quality is reported as `422`; unavailable catalog as `503`;
-  visual timeout as `504`; internal details are not returned to the client.
+- Blocking visual defects such as unreadable blur, glare, occlusion, multiple
+  pills, or no detectable pill are reported as `422`. A small pill in frame or
+  a textured background is treated as a non-blocking warning when shape and
+  color remain usable. Unavailable catalog is reported as `503`; visual timeout
+  as `504`; internal details are not returned to the client.
 - Front/back preprocessing and catalog loading run concurrently with visual
   analysis. MFDS pages are downloaded with bounded concurrency and the complete
   refresh has a fixed deadline. Visual preprocessing, queueing, and the Gemini
