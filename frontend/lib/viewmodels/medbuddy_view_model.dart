@@ -32,6 +32,20 @@ class TodayMedicationProgress {
   });
 }
 
+class SavedMedicationBatchDeleteResult {
+  final int successCount;
+  final int failureCount;
+
+  const SavedMedicationBatchDeleteResult({
+    required this.successCount,
+    required this.failureCount,
+  });
+
+  int get totalCount => successCount + failureCount;
+  bool get allSucceeded => totalCount > 0 && failureCount == 0;
+  bool get hasFailures => failureCount > 0;
+}
+
 // 파일명: medbuddy_view_model.dart
 // 역할: 화면 상태와 컨트롤 계층을 연결하는 앱 전역 ViewModel을 정의한다.
 
@@ -88,6 +102,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool _isTodayScheduleLoading = false;
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
   bool _lastTodayScheduleLoadSucceeded = false;
+  int _todayScheduleEpoch = 0;
+  int _todayScheduleLoadCount = 0;
 
   bool _isHealthRecommendationLoading = false;
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
@@ -527,18 +543,49 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   Future<bool> requestDeleteSavedMedication(int savedMedicationId) async {
-    final success = await checkSavedMedication.requestDelete(
-      savedMedicationId,
-    );
+    final result = await requestDeleteSavedMedications([savedMedicationId]);
+    return result.allSucceeded;
+  }
 
-    if (success) {
+  Future<SavedMedicationBatchDeleteResult> requestDeleteSavedMedications(
+    Iterable<int> savedMedicationIds,
+  ) async {
+    final uniqueIds = savedMedicationIds.toSet().toList(growable: false);
+    if (uniqueIds.isEmpty) {
+      return const SavedMedicationBatchDeleteResult(
+        successCount: 0,
+        failureCount: 0,
+      );
+    }
+
+    final deleteResults = await Future.wait(
+      uniqueIds.map((savedMedicationId) async {
+        try {
+          return await checkSavedMedication.requestDelete(savedMedicationId);
+        } catch (_) {
+          return false;
+        }
+      }),
+    );
+    final deletedIds = <int>{};
+    for (var index = 0; index < uniqueIds.length; index += 1) {
+      if (deleteResults[index]) {
+        deletedIds.add(uniqueIds[index]);
+      }
+    }
+
+    if (deletedIds.isNotEmpty) {
       _savedMedicationInfoList = _savedMedicationInfoList
-          .where((item) => item.id != savedMedicationId)
+          .where((item) => !deletedIds.contains(item.id))
           .toList(growable: false);
       await fetchTodayMedicationSchedule();
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
-    return success;
+
+    return SavedMedicationBatchDeleteResult(
+      successCount: deletedIds.length,
+      failureCount: uniqueIds.length - deletedIds.length,
+    );
   }
 
   // 함수명: fetchTodayMedicationSchedule
@@ -561,20 +608,31 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> _loadTodayMedicationSchedule(
     Future<List<MedicationSchedule>> Function() loader,
   ) async {
+    final loadEpoch = ++_todayScheduleEpoch;
+    _todayScheduleLoadCount += 1;
     _isTodayScheduleLoading = true;
     notifyListeners();
 
     try {
-      _todayMedicationScheduleList = await loader();
+      final scheduleList = await loader();
+      if (loadEpoch != _todayScheduleEpoch) {
+        return;
+      }
+      _todayMedicationScheduleList = scheduleList;
       _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
-      _lastTodayScheduleLoadSucceeded = false;
-      _statusMessage = error.message;
+      if (loadEpoch == _todayScheduleEpoch) {
+        _lastTodayScheduleLoadSucceeded = false;
+        _statusMessage = error.message;
+      }
     } catch (_) {
-      _lastTodayScheduleLoadSucceeded = false;
-      _statusMessage = '복약 일정을 불러오지 못했습니다.';
+      if (loadEpoch == _todayScheduleEpoch) {
+        _lastTodayScheduleLoadSucceeded = false;
+        _statusMessage = '복약 일정을 불러오지 못했습니다.';
+      }
     } finally {
-      _isTodayScheduleLoading = false;
+      _todayScheduleLoadCount -= 1;
+      _isTodayScheduleLoading = _todayScheduleLoadCount > 0;
       notifyListeners();
     }
   }
@@ -1025,6 +1083,7 @@ class MedBuddyViewModel extends ChangeNotifier {
         medicationStatus,
         slotKey: slotKey,
       );
+      _todayScheduleEpoch += 1;
       _todayMedicationScheduleList = _todayMedicationScheduleList
           .map(
             (item) => item.medicationID == updatedSchedule.medicationID

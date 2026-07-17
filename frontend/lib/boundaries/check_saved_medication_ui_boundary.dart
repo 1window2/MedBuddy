@@ -279,7 +279,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   // 함수명: _confirmAndDeleteMedicationGroup
   // 함수역할:
   // - 삭제 확인 팝업을 띄운 뒤 사용자가 승인하면 날짜 그룹의 약들을 삭제한다.
-  // - 현재 UI는 날짜 카드 단위 삭제를 제공하므로 그룹 내부 약을 순차 삭제한다.
+  // - 날짜 그룹 전체를 ViewModel의 일괄 삭제 흐름으로 전달한다.
   // 매개변수:
   // - viewModel: 삭제 API를 호출할 ViewModel
   // - group: 삭제 대상 날짜 그룹
@@ -302,17 +302,14 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       return;
     }
 
-    for (final medication in group.medications) {
-      final id = medication.id;
-      if (id != null) {
-        await viewModel.requestDeleteSavedMedication(id);
-      }
-    }
+    final result = await viewModel.requestDeleteSavedMedications(
+      group.medications.map((medication) => medication.id).whereType<int>(),
+    );
     if (!mounted) {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleted)),
+      SnackBar(content: Text(text.deleteResult(result))),
     );
   }
 
@@ -339,18 +336,20 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     }
 
     final selectedIds = List<int>.from(_selectedMedicationIds);
-    for (final id in selectedIds) {
-      await viewModel.requestDeleteSavedMedication(id);
-    }
+    final result = await viewModel.requestDeleteSavedMedications(selectedIds);
     if (!mounted) {
       return;
     }
+    final remainingIds = viewModel.savedMedicationInfoList
+        .map((medication) => medication.id)
+        .whereType<int>()
+        .toSet();
     setState(() {
-      _selectedMedicationIds.clear();
-      _isSelectionMode = false;
+      _selectedMedicationIds.retainAll(remainingIds);
+      _isSelectionMode = _selectedMedicationIds.isNotEmpty;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleted)),
+      SnackBar(content: Text(text.deleteResult(result))),
     );
   }
 
@@ -1363,6 +1362,18 @@ class _SavedMedicationText {
   String selectedCount(int count) =>
       isEnglish ? '$count selected' : '$count개 선택됨';
   String get deleted => isEnglish ? 'Deleted.' : '삭제되었습니다.';
+  String deleteResult(SavedMedicationBatchDeleteResult result) {
+    if (result.totalCount == 0) {
+      return noSelection;
+    }
+    if (result.allSucceeded) {
+      return deleted;
+    }
+    return isEnglish
+        ? 'Deleted: ${result.successCount}. Failed: ${result.failureCount}.'
+        : '삭제 성공: ${result.successCount}개. 실패: ${result.failureCount}개.';
+  }
+
   String get deleteMessage => isEnglish
       ? 'Delete this medication information?\nThis action cannot be undone.'
       : '해당 복약 정보를 삭제하시겠습니까?\n되돌릴 수 없습니다.';

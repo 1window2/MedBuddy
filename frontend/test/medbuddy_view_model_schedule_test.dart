@@ -1,6 +1,7 @@
 // File Name: medbuddy_view_model_schedule_test.dart
 // Role: Verifies schedule status updates are routed through the ViewModel.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -112,6 +113,152 @@ void main() {
     );
     expect(viewModel.todayMedicationProgress.completedCount, 1);
     expect(viewModel.todayMedicationProgress.totalCount, 3);
+  });
+
+  test('older schedule GET cannot overwrite a newer completion PATCH',
+      () async {
+    final staleGetStarted = Completer<void>();
+    final staleGetResponse = Completer<http.Response>();
+    var getCount = 0;
+    final client = MockClient((http.Request request) async {
+      if (request.method == 'GET') {
+        getCount += 1;
+        if (getCount == 1) {
+          return _scheduleResponse(morningCompleted: false);
+        }
+        expect(getCount, 2);
+        staleGetStarted.complete();
+        return staleGetResponse.future;
+      }
+
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/schedule/7/status');
+      return _scheduleResponse(
+        morningCompleted: true,
+        wrapInList: false,
+      );
+    });
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.fetchTodayMedicationSchedule();
+    final schedule = viewModel.todayMedicationScheduleList.single;
+
+    final staleFetch = viewModel.fetchTodayMedicationSchedule();
+    await staleGetStarted.future;
+    final patchSucceeded = await viewModel.requestMedicationDoseStatusUpdate(
+      'morning',
+      schedule,
+      true,
+    );
+
+    expect(patchSucceeded, isTrue);
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.single,
+      ),
+      isTrue,
+    );
+
+    staleGetResponse.complete(_scheduleResponse(morningCompleted: false));
+    await staleFetch;
+
+    expect(getCount, 2);
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.single,
+      ),
+      isTrue,
+    );
+  });
+
+  test('batch delete applies mixed results once and refreshes schedule once',
+      () async {
+    final deletedRequestIds = <int>[];
+    final savedMedicationClient = MockClient((http.Request request) async {
+      if (request.method == 'GET') {
+        expect(request.url.path, '/list');
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            _savedMedicationJson(1, 'tablet-one'),
+            _savedMedicationJson(2, 'tablet-two'),
+            _savedMedicationJson(3, 'tablet-three'),
+          ],
+        });
+      }
+
+      expect(request.method, 'DELETE');
+      final id = int.parse(request.url.pathSegments.last);
+      deletedRequestIds.add(id);
+      return http.Response(
+        jsonEncode({'success': id != 2}),
+        id == 2 ? 500 : 200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    var scheduleFetchCount = 0;
+    final scheduleClient = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/schedule/today');
+      scheduleFetchCount += 1;
+      return _jsonResponse({
+        'success': true,
+        'data': <Map<String, dynamic>>[],
+      });
+    });
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: savedMedicationClient,
+      ),
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: scheduleClient,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.fetchSavedMedicationInfo();
+    final observedSavedIds = <List<int>>[];
+    viewModel.addListener(() {
+      observedSavedIds.add(
+        viewModel.savedMedicationInfoList
+            .map((medication) => medication.id!)
+            .toList(growable: false),
+      );
+    });
+
+    final result = await viewModel.requestDeleteSavedMedications([1, 2, 3]);
+
+    expect(result.successCount, 2);
+    expect(result.failureCount, 1);
+    expect(result.totalCount, 3);
+    expect(result.hasFailures, isTrue);
+    expect(deletedRequestIds, containsAll(<int>[1, 2, 3]));
+    expect(deletedRequestIds, hasLength(3));
+    expect(scheduleFetchCount, 1);
+    expect(
+      viewModel.savedMedicationInfoList
+          .map((medication) => medication.id)
+          .toList(),
+      [2],
+    );
+    expect(observedSavedIds, isNotEmpty);
+    for (final savedIds in observedSavedIds) {
+      expect(savedIds, [2]);
+    }
   });
 
   test('deleting saved medication refreshes today schedule cache', () async {
@@ -395,6 +542,44 @@ void main() {
     expect(cachedSetting['is_enabled'], isFalse);
     expect(viewModel.medicationReminderSettings, isEmpty);
   });
+}
+
+http.Response _scheduleResponse({
+  required bool morningCompleted,
+  bool wrapInList = true,
+}) {
+  final schedule = <String, dynamic>{
+    'medication_id': '7',
+    'drug_name': 'test-tablet',
+    'dosage_per_time': '1 tablet',
+    'daily_frequency': '3 times',
+    'total_days': '7 days',
+    'medication_status': false,
+    'slot_statuses': {
+      'morning': morningCompleted,
+      'lunch': false,
+      'evening': false,
+    },
+    'patient_hash': 'patient-a',
+  };
+  return _jsonResponse({
+    'success': true,
+    'data': wrapInList ? [schedule] : schedule,
+  });
+}
+
+Map<String, dynamic> _savedMedicationJson(int id, String name) {
+  return {
+    'id': id,
+    'patient_hash': 'patient-a',
+    'created_date': '2026-07-15',
+    'prescription_date': '2026-07-15',
+    'item_seq': '20000000$id',
+    'item_name': name,
+    'efficacy': 'effect',
+    'use_method': 'usage',
+    'warning_message': 'warning',
+  };
 }
 
 http.Response _jsonResponse(Map<String, dynamic> payload) {
