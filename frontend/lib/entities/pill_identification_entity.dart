@@ -140,6 +140,9 @@ double _readScore(dynamic value) {
   final score = value is num
       ? value.toDouble()
       : double.tryParse(value?.toString() ?? '') ?? 0.0;
+  if (!score.isFinite) {
+    return 0.0;
+  }
   return score.clamp(0.0, 1.0).toDouble();
 }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -58,6 +59,20 @@ class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
     throw const PillIdentificationException(
       PillIdentificationFailure.oversizedImage,
     );
+  }
+}
+
+class _DelayedReplacementIdentifyPill extends _FakeIdentifyPill {
+  final replacementImage = Completer<Uint8List?>();
+  int _selectionCount = 0;
+
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) {
+    _selectionCount += 1;
+    if (_selectionCount == 1) {
+      return super.requestPillImage(source);
+    }
+    return replacementImage.future;
   }
 }
 
@@ -124,5 +139,97 @@ void main() {
       find.byKey(const Key('identify-pill-button')),
     );
     expect(identifyButton.onPressed, isNull);
+  });
+
+  testWidgets('replacement image loading disables stale candidate actions',
+      (tester) async {
+    final control = _DelayedReplacementIdentifyPill();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en'),
+          control: control,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    final candidateName = find.textContaining('페라트라');
+    await tester.ensureVisible(candidateName);
+    await tester.tap(candidateName);
+    await tester.pump();
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('confirm-pill-candidate-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    final frontSlot = find.byKey(const Key('pill-front-image-slot'));
+    await tester.ensureVisible(frontSlot);
+    await tester.tap(frontSlot);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose from gallery'));
+    await tester.pump();
+
+    final identifyButton = tester.widget<FilledButton>(
+      find.byKey(const Key('identify-pill-button')),
+    );
+    final confirmButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('confirm-pill-candidate-button')),
+    );
+    expect(identifyButton.onPressed, isNull);
+    expect(confirmButton.onPressed, isNull);
+    expect(
+      find.byKey(const Key('pill-image-loading-indicator')),
+      findsOneWidget,
+    );
+
+    control.replacementImage.complete(_FakeIdentifyPill._png);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('페라트라'), findsNothing);
+  });
+
+  testWidgets('candidate results fit a compact viewport at large text size',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.3),
+          ),
+          child: child!,
+        ),
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en', fontSize: 20),
+          control: _FakeIdentifyPill(),
+        ),
+      ),
+    );
+
+    final frontSlot = find.byKey(const Key('pill-front-image-slot'));
+    await tester.ensureVisible(frontSlot);
+    await tester.tap(frontSlot);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+    final identifyButton = find.byKey(const Key('identify-pill-button'));
+    await tester.ensureVisible(identifyButton);
+    await tester.tap(identifyButton);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
   });
 }

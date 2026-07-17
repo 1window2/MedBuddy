@@ -30,6 +30,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   PillIdentificationResult? _result;
   String? _selectedItemSeq;
   bool _isAnalyzing = false;
+  bool _isSelectingImage = false;
+  bool? _selectingFront;
   String _errorMessage = '';
 
   @override
@@ -51,6 +53,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   Widget build(BuildContext context) {
     final text = _PillIdentificationText(widget.userSetting.language);
     final textScale = widget.userSetting.contentTextScale;
+    final isBusy = _isAnalyzing || _isSelectingImage;
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       appBar: AppBar(
@@ -103,7 +106,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       label: text.frontPhoto,
                       requiredLabel: text.requiredLabel,
                       imageBytes: _frontImage,
-                      onTap: _isAnalyzing
+                      isLoading: _isSelectingImage && _selectingFront == true,
+                      onTap: isBusy
                           ? null
                           : () => _selectImage(isFront: true, text: text),
                     ),
@@ -115,7 +119,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       label: text.backPhoto,
                       requiredLabel: text.optionalLabel,
                       imageBytes: _backImage,
-                      onTap: _isAnalyzing
+                      isLoading: _isSelectingImage && _selectingFront == false,
+                      onTap: isBusy
                           ? null
                           : () => _selectImage(isFront: false, text: text),
                     ),
@@ -132,7 +137,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 height: 56,
                 child: FilledButton.icon(
                   key: const Key('identify-pill-button'),
-                  onPressed: _frontImage == null || _isAnalyzing
+                  onPressed: _frontImage == null || isBusy
                       ? null
                       : _requestIdentification,
                   style: FilledButton.styleFrom(
@@ -174,6 +179,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
 
   Widget _buildResults(_PillIdentificationText text, double textScale) {
     final result = _result!;
+    final actionsEnabled = !_isAnalyzing && !_isSelectingImage;
     if (result.candidates.isEmpty) {
       return _EmptyResult(text: text, textScale: textScale);
     }
@@ -207,35 +213,50 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             selected: candidate.itemSeq == _selectedItemSeq,
             text: text,
             textScale: textScale,
-            onTap: () => setState(() {
-              _selectedItemSeq = candidate.itemSeq;
-            }),
+            onTap: actionsEnabled
+                ? () => setState(() {
+                      _selectedItemSeq = candidate.itemSeq;
+                    })
+                : null,
           ),
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 6),
         SizedBox(
           width: double.infinity,
-          height: 54,
-          child: OutlinedButton.icon(
+          child: OutlinedButton(
             key: const Key('confirm-pill-candidate-button'),
-            onPressed:
-                _selectedItemSeq == null ? null : () => _confirmCandidate(text),
+            onPressed: !actionsEnabled || _selectedItemSeq == null
+                ? null
+                : () => _confirmCandidate(text),
             style: OutlinedButton.styleFrom(
               foregroundColor: MedBuddyColors.primaryDark,
               side: const BorderSide(color: MedBuddyColors.primary, width: 1.5),
+              minimumSize: const Size.fromHeight(54),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            icon: const Icon(Icons.verified_outlined),
-            label: Text(
-              text.confirmSelection,
-              style: TextStyle(
-                fontSize: 16 * textScale,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.verified_outlined),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    text.confirmSelection,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16 * textScale,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -247,6 +268,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     required bool isFront,
     required _PillIdentificationText text,
   }) async {
+    if (_isAnalyzing || _isSelectingImage) {
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,
@@ -275,9 +299,13 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         ),
       ),
     );
-    if (source == null) {
+    if (!mounted || source == null) {
       return;
     }
+    setState(() {
+      _isSelectingImage = true;
+      _selectingFront = isFront;
+    });
 
     try {
       final imageBytes = await _control.requestPillImage(source);
@@ -304,6 +332,13 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       setState(() {
         _errorMessage = _stateErrorMessage(error, text.imageSelectionFailed);
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSelectingImage = false;
+          _selectingFront = null;
+        });
+      }
     }
   }
 
@@ -436,6 +471,7 @@ class _PillImageSlot extends StatelessWidget {
   final String label;
   final String requiredLabel;
   final Uint8List? imageBytes;
+  final bool isLoading;
   final VoidCallback? onTap;
 
   const _PillImageSlot({
@@ -443,6 +479,7 @@ class _PillImageSlot extends StatelessWidget {
     required this.label,
     required this.requiredLabel,
     required this.imageBytes,
+    required this.isLoading,
     required this.onTap,
   });
 
@@ -468,18 +505,19 @@ class _PillImageSlot extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
                     ),
                   ),
                   Text(
@@ -496,8 +534,11 @@ class _PillImageSlot extends StatelessWidget {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: imageBytes == null
-                      ? const ColoredBox(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (imageBytes == null)
+                        const ColoredBox(
                           color: MedBuddyColors.surfaceSubtle,
                           child: Center(
                             child: Icon(
@@ -507,12 +548,26 @@ class _PillImageSlot extends StatelessWidget {
                             ),
                           ),
                         )
-                      : Image.memory(
+                      else
+                        Image.memory(
                           imageBytes!,
                           width: double.infinity,
                           fit: BoxFit.cover,
                           cacheWidth: 900,
                         ),
+                      if (isLoading)
+                        const ColoredBox(
+                          color: Color(0xB3FFFFFF),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              key: Key('pill-image-loading-indicator'),
+                              strokeWidth: 2.4,
+                              color: MedBuddyColors.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -528,7 +583,7 @@ class _PillCandidateCard extends StatelessWidget {
   final bool selected;
   final _PillIdentificationText text;
   final double textScale;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PillCandidateCard({
     required this.candidate,

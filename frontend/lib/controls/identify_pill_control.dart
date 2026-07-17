@@ -194,13 +194,19 @@ class IdentifyPill {
   }
 
   static PillIdentificationFailure _failureForStatus(int statusCode) {
-    return switch (statusCode) {
-      413 => PillIdentificationFailure.oversizedImage,
-      422 => PillIdentificationFailure.invalidPhoto,
-      503 => PillIdentificationFailure.serviceUnavailable,
-      504 => PillIdentificationFailure.timedOut,
-      _ => PillIdentificationFailure.invalidResponse,
-    };
+    if (statusCode == 413) {
+      return PillIdentificationFailure.oversizedImage;
+    }
+    if (statusCode == 422) {
+      return PillIdentificationFailure.invalidPhoto;
+    }
+    if (statusCode == 408 || statusCode == 504) {
+      return PillIdentificationFailure.timedOut;
+    }
+    if (statusCode >= 500 && statusCode < 600) {
+      return PillIdentificationFailure.serviceUnavailable;
+    }
+    return PillIdentificationFailure.invalidResponse;
   }
 
   void dispose() {

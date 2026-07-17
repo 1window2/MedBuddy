@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/identify_pill_control.dart';
+import 'package:medbuddy_frontend/entities/pill_identification_entity.dart';
 
 class _AbortAwareClient extends http.BaseClient {
   bool wasAborted = false;
@@ -119,6 +120,39 @@ void main() {
     );
   });
 
+  test('requestPillIdentification maps server errors to service unavailable',
+      () async {
+    final control = IdentifyPill(
+      baseUrl: 'http://localhost',
+      client: MockClient((_) async => http.Response('{}', 500)),
+    );
+
+    expect(
+      () => control.requestPillIdentification(
+        frontImage: Uint8List.fromList([1, 2, 3]),
+      ),
+      throwsA(
+        isA<PillIdentificationException>().having(
+          (error) => error.failure,
+          'failure',
+          PillIdentificationFailure.serviceUnavailable,
+        ),
+      ),
+    );
+  });
+
+  test('candidate parsing rejects non-finite match scores', () {
+    for (final rawScore in const ['NaN', 'Infinity', '-Infinity']) {
+      final candidate = PillIdentificationCandidate.fromJson({
+        'item_seq': 'item-$rawScore',
+        'item_name': 'Candidate',
+        'match_score': rawScore,
+      });
+
+      expect(candidate.matchScore, 0, reason: 'raw score: $rawScore');
+    }
+  });
+
   test('requestPillIdentification aborts the upload after timeout', () async {
     final client = _AbortAwareClient();
     final control = IdentifyPill(
@@ -141,6 +175,23 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
+    expect(client.wasAborted, isTrue);
+  });
+
+  test('dispose aborts an in-flight upload', () async {
+    final client = _AbortAwareClient();
+    final control = IdentifyPill(
+      baseUrl: 'http://localhost',
+      client: client,
+    );
+
+    final request = control.requestPillIdentification(
+      frontImage: Uint8List.fromList([1, 2, 3]),
+    );
+    control.dispose();
+
+    await expectLater(request, throwsA(isA<PillIdentificationException>()));
+    await Future<void>.delayed(Duration.zero);
     expect(client.wasAborted, isTrue);
   });
 }
