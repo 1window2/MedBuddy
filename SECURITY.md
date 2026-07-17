@@ -9,19 +9,13 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `main` / next alpha | Current development target | Security fixes should be applied here first. |
+| `Unreleased` | Current development target | Security fixes should be applied here first. |
 | `v0.0.8-alpha` | Latest alpha demo | Current supported demo release. |
-| `v0.0.7-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.6-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.5-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.4-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.3-alpha` | Superseded alpha demo | No routine security backports. |
-| `v0.0.2-alpha` | Superseded alpha demo | No routine security backports. |
-| `v0.0.1-alpha` | Superseded alpha demo | No routine security backports. |
+| `v0.0.7-alpha` and earlier | Superseded alpha demos | Update to `v0.0.8-alpha`; no routine security backports. |
 
-The `main` branch is the source of truth for the next alpha release. When a
-security fix lands on `main`, the next alpha tag should be cut from a commit
-that includes the fix.
+The active release branch or pull request is the source of truth for
+`Unreleased`. The next alpha tag should be cut only from a commit that includes
+all applicable security fixes.
 
 ## Reporting a Vulnerability
 

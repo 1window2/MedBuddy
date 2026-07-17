@@ -2,11 +2,11 @@
 
 ## Status and scope
 
-This document defines an experimental extension developed on `temp`. Loose-pill
-identification was not part of the original MedBuddy use cases, so the baseline
-class and sequence diagrams remain unchanged. The extension follows the same
-Boundary-Control-Entity structure and does not enter the prescription OCR or
-saved-medication workflows.
+This document defines the experimental extension developed on `temp` for the
+v0.0.9-alpha candidate. Loose-pill identification was not part of the original
+MedBuddy use cases, so the baseline class and sequence diagrams remain
+unchanged. The extension follows the same Boundary-Control-Entity structure and
+does not enter the prescription OCR or saved-medication workflows.
 
 The feature returns **possible MFDS product candidates**, not a medical
 diagnosis. It never saves a candidate as medication automatically, and the UI
@@ -165,6 +165,30 @@ note right of PillIdentificationUI
 end note
 @enduml
 ```
+
+## Release-candidate validation
+
+The v0.0.9-alpha candidate was validated against three distinct front/back
+image pairs obtained from the official MFDS catalog. The production FastAPI
+endpoint, local image preprocessing, Gemini visual-feature boundary, MFDS
+catalog boundary, deterministic ranking, response DTO, and confirmation policy
+were exercised together. The expected MFDS products ranked first for item
+sequences `200808877`, `200809076`, and `200809402`; every response kept
+`requires_confirmation=true`.
+
+A complete live catalog refresh advertised 25,315 upstream rows and accepted
+25,298 normalized image-bearing entries after validation and deduplication,
+well above the 95% completeness threshold. With the bounded 12-request
+concurrency used by the external catalog adapter, the local validation refresh
+completed in approximately 14.7 seconds; an in-memory cache lookup was
+effectively immediate. These timings describe one development-machine run and
+are not a service-level guarantee.
+
+Live external-service validation is intentionally separate from CI because it
+requires private credentials and network availability. Deterministic unit and
+widget tests cover malformed upstream data, candidate ambiguity, mandatory
+confirmation, request cancellation, replacement-image locking, and compact
+large-text layouts without committing pill photos or generated catalog files.
 
 ## Failure and performance policy
 

@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-guardian linked views with guardian alert preferences.
+> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-caregiver linked views with caregiver notification preferences.
 
 ## Key Features
 
@@ -47,17 +47,17 @@
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
 - Saved medications retain dosage schedule fields for today's medication schedule.
-- Today's schedule supports patient-scoped and guardian-scoped status updates.
+- Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
 - Saved medication records are retained through their medication period and cleaned up after the configured retention window.
 
-### Patient and Guardian Link Flow
+### Patient and Caregiver Link Flow
 
 - Patients can create a temporary link code.
-- Guardians can register the code, view linked patient medication data, and unlink when needed.
-- Guardians can enable or disable alert preferences for each linked patient through a persisted guardian-patient setting.
-- Patient/guardian scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
+- Caregivers can register the code, view linked patient medication data, and unlink when needed.
+- Caregivers can enable or disable notification preferences for each linked patient through a persisted caregiver-patient setting.
+- Patient/caregiver scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
 
 ### Health Recommendations and Reminders
 
@@ -65,7 +65,7 @@
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
 - Reminder times can be selected with rotating time wheels before the existing alarm control persists and registers them.
-- Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
+- Caregiver notification settings persist the UC-13 preference state per caregiver-patient scope.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
 ## Roadmap
@@ -79,7 +79,7 @@ MedBuddy is implemented around the project UML diagrams and follows a Boundary-C
 - **Boundary/UI** classes render screens and collect user input.
 - **Boundary** classes also wrap external OCR concerns such as prescription image preprocessing and Gemini Vision extraction, keeping `InputPrescription` focused on the UC-1/UC-2 control flow.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, and external services.
-- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-guardian links.
+- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-caregiver links.
 - Backend routers remain thin boundary adapters around control classes.
 
 Detailed design references are maintained in [`docs/`](docs/), and contribution rules for preserving the UML-aligned structure are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
