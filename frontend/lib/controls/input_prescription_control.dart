@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -25,6 +26,7 @@ class InputPrescription {
   final http.Client _client;
   final bool _ownsClient;
   final Duration requestTimeout;
+  final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
   int _lastRawMedicationCount = 0;
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
@@ -40,7 +42,15 @@ class InputPrescription {
     this.requestTimeout = const Duration(seconds: 45),
   })  : _imagePicker = imagePicker ?? ImagePicker(),
         _client = client ?? http.Client(),
-        _ownsClient = client == null;
+        _ownsClient = client == null {
+    if (requestTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        requestTimeout,
+        'requestTimeout',
+        'must be positive',
+      );
+    }
+  }
 
   // 함수명: requestPrescriptionImage
   // 함수역할:
@@ -88,21 +98,32 @@ class InputPrescription {
     ImageSource imageSource = ImageSource.camera,
   }) async {
     try {
-      final request = http.MultipartRequest(
+      final abortTrigger = Completer<void>();
+      _abortTriggers.add(abortTrigger);
+      final request = http.AbortableMultipartRequest(
         'POST',
         Uri.parse('$baseUrl/upload-prescription'),
+        abortTrigger: abortTrigger.future,
       );
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      final response =
-          await _client.send(request).then(http.Response.fromStream).timeout(
-        requestTimeout,
-        onTimeout: () {
-          throw StateError(
-            '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
-          );
-        },
-      );
+      late final http.Response response;
+      try {
+        response =
+            await _client.send(request).then(http.Response.fromStream).timeout(
+          requestTimeout,
+          onTimeout: () {
+            if (!abortTrigger.isCompleted) {
+              abortTrigger.complete();
+            }
+            throw StateError(
+              '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
+            );
+          },
+        );
+      } finally {
+        _abortTriggers.remove(abortTrigger);
+      }
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
@@ -205,6 +226,12 @@ class InputPrescription {
   }
 
   void dispose() {
+    for (final abortTrigger in _abortTriggers.toList(growable: false)) {
+      if (!abortTrigger.isCompleted) {
+        abortTrigger.complete();
+      }
+    }
+    _abortTriggers.clear();
     if (_ownsClient) {
       _client.close();
     }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,6 +39,22 @@ class _DelayedResponseBodyClient extends http.BaseClient {
       200,
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
+  }
+}
+
+class _AbortAwareClient extends http.BaseClient {
+  bool wasAborted = false;
+  final Completer<void> started = Completer<void>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final abortableRequest = request as http.AbortableMultipartRequest;
+    if (!started.isCompleted) {
+      started.complete();
+    }
+    await abortableRequest.abortTrigger;
+    wasAborted = true;
+    return http.StreamedResponse(const Stream<List<int>>.empty(), 499);
   }
 }
 
@@ -203,6 +220,68 @@ void main() {
     expect(
       () => control.requestPrescriptionImageFromGallery(),
       throwsA(isA<StateError>()),
+    );
+  });
+
+  test('requestPrescriptionImage aborts an in-flight upload after timeout',
+      () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-abort-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+    addTearDown(control.dispose);
+
+    await expectLater(
+      control.requestPrescriptionImageFromGallery(),
+      throwsA(isA<StateError>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(client.wasAborted, isTrue);
+  });
+
+  test('dispose aborts an in-flight prescription upload', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-dispose-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+    );
+
+    final request = control.requestPrescriptionImageFromGallery();
+    await client.started.future;
+    control.dispose();
+
+    await expectLater(request, throwsA(isA<StateError>()));
+    await Future<void>.delayed(Duration.zero);
+    expect(client.wasAborted, isTrue);
+  });
+
+  test('request timeout must be positive', () {
+    expect(
+      () => InputPrescription(requestTimeout: Duration.zero),
+      throwsArgumentError,
     );
   });
 }
