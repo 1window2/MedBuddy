@@ -9,6 +9,10 @@ import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 
+typedef LinkPatientCaregiverFactory = LinkPatientCaregiver Function(
+  String userHash,
+);
+
 // 파일명: link_patient_caregiver_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
 
@@ -20,10 +24,12 @@ import 'check_caregiver_medication_ui_boundary.dart';
 // - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
 class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
+  final LinkPatientCaregiverFactory? controlFactory;
 
   const LinkPatientCaregiverUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
+    this.controlFactory,
   });
 
   @override
@@ -33,24 +39,53 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   late final TextEditingController _userHashController;
   late final TextEditingController _patientCodeController;
+  late String _committedUserHash;
+  late LinkPatientCaregiver _control;
 
   List<PatientCaregiverLink> _links = const [];
   String _statusMessage =
       '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
   bool _isLoading = false;
+  int _requestGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _userHashController = TextEditingController(text: widget.initialUserHash);
     _patientCodeController = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshLinks();
-    });
+    _committedUserHash = PatientHash.normalizePatientHash(
+      widget.initialUserHash,
+    );
+    _control = _createControl(_committedUserHash);
+    _scheduleRefresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant LinkPatientCaregiverUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialUserHash == oldWidget.initialUserHash) {
+      return;
+    }
+
+    _userHashController.text = widget.initialUserHash;
+    final nextUserHash = PatientHash.normalizePatientHash(
+      widget.initialUserHash,
+    );
+    if (nextUserHash == _committedUserHash) {
+      return;
+    }
+
+    _replaceControl(nextUserHash);
+    _links = const [];
+    _statusMessage =
+        '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
+    _scheduleRefresh();
   }
 
   @override
   void dispose() {
+    _requestGeneration += 1;
+    _control.dispose();
     _userHashController.dispose();
     _patientCodeController.dispose();
     super.dispose();
@@ -100,15 +135,18 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               Expanded(
                 child: _LinkListCard(
                   links: _links,
-                  currentUserHash: _currentUserHash,
+                  currentUserHash: _committedUserHash,
+                  isEnabled: !_isLoading,
                   onPatientMedicationRequested: _openPatientMedicationInfo,
                   onUnlinkRequested: _removePatientCaregiverLink,
                 ),
               ),
               const SizedBox(height: 20),
               _LinkActionFooter(
-                onGeneratePatientCodeRequested: _generatePatientHash,
-                onRegisterPatientRequested: _showRegisterPatientDialog,
+                onGeneratePatientCodeRequested:
+                    _isLoading ? null : _generatePatientHash,
+                onRegisterPatientRequested:
+                    _isLoading ? null : _showRegisterPatientDialog,
               ),
             ],
           ),
@@ -118,50 +156,49 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   Future<void> _refreshLinks() async {
-    await _runLinkAction(() async {
-      final control = _buildControl();
-      try {
-        final links = await control.requestLinkScreen();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _links = links;
-          _statusMessage = links.isEmpty
-              ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
-              : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
-        });
-      } finally {
-        control.dispose();
+    await _runLinkAction((request) async {
+      final links = await request.control.requestLinkScreen();
+      if (!_isCurrentRequest(request)) {
+        return;
       }
+      setState(() {
+        _links = links;
+        _statusMessage = links.isEmpty
+            ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
+            : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
+      });
     });
   }
 
   Future<void> _generatePatientHash() async {
-    var shouldRefreshLinks = false;
-    await _runLinkAction(() async {
-      final control = _buildControl();
-      try {
-        final patientCode = await control.generatePatientHash();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _statusMessage =
-              '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
-        });
-        await _showPatientCodeDialog(patientCode);
-        shouldRefreshLinks = mounted;
-      } finally {
-        control.dispose();
+    PatientLinkCode? patientCode;
+    final request = await _runLinkAction((request) async {
+      final generatedCode = await request.control.generatePatientHash();
+      if (!_isCurrentRequest(request)) {
+        return;
       }
+      patientCode = generatedCode;
+      setState(() {
+        _statusMessage =
+            '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
+      });
     });
-    if (shouldRefreshLinks) {
+
+    if (request == null || patientCode == null || !_isCurrentRequest(request)) {
+      return;
+    }
+
+    await _showPatientCodeDialog(patientCode!);
+    if (_isCurrentRequest(request)) {
       await _refreshLinks();
     }
   }
 
   Future<bool> _requestPatientCaregiverLink() async {
+    if (_isLoading || !mounted) {
+      return false;
+    }
+
     final patientCode = _patientCodeController.text.trim();
     if (patientCode.isEmpty) {
       setState(() {
@@ -171,30 +208,33 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return false;
     }
 
+    _commitUserHash();
     var registered = false;
-    await _runLinkAction(() async {
-      final control = _buildControl();
-      try {
-        await control.requestPatientCaregiverLink(patientCode);
-        final links = await control.requestLinkScreen();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _links = links;
-          _patientCodeController.clear();
-          _statusMessage =
-              '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
-          registered = true;
-        });
-      } finally {
-        control.dispose();
+    final request = await _runLinkAction((request) async {
+      await request.control.requestPatientCaregiverLink(patientCode);
+      if (!_isCurrentRequest(request)) {
+        return;
       }
+      final links = await request.control.requestLinkScreen();
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
+      setState(() {
+        _links = links;
+        _patientCodeController.clear();
+        _statusMessage =
+            '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
+        registered = true;
+      });
     });
-    return registered;
+    return request != null && registered;
   }
 
   Future<void> _removePatientCaregiverLink(PatientCaregiverLink link) async {
+    if (_isLoading || !mounted) {
+      return;
+    }
+
     final linkId = link.linkId;
     if (linkId == null) {
       setState(() {
@@ -204,41 +244,51 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
 
-    await _runLinkAction(() async {
-      final control = _buildControl();
-      try {
-        await control.requestUnlink(linkId);
-        final links = await control.requestLinkScreen();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _links = links;
-          _statusMessage =
-              '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
-        });
-      } finally {
-        control.dispose();
+    await _runLinkAction((request) async {
+      await request.control.requestUnlink(linkId);
+      if (!_isCurrentRequest(request)) {
+        return;
       }
+      final links = await request.control.requestLinkScreen();
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
+      setState(() {
+        _links = links;
+        _statusMessage =
+            '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
+      });
     });
   }
 
-  Future<void> _runLinkAction(Future<void> Function() action) async {
+  Future<_LinkRequest?> _runLinkAction(
+    Future<void> Function(_LinkRequest request) action,
+  ) async {
+    if (!mounted || _isLoading) {
+      return null;
+    }
+
+    final request = _LinkRequest(
+      generation: ++_requestGeneration,
+      userHash: _committedUserHash,
+      control: _control,
+    );
     setState(() {
       _isLoading = true;
     });
 
     try {
-      await action();
+      await action(request);
+      return _isCurrentRequest(request) ? request : null;
     } catch (error) {
-      if (!mounted) {
-        return;
+      if (_isCurrentRequest(request)) {
+        setState(() {
+          _statusMessage = error.toString().replaceFirst('Bad state: ', '');
+        });
       }
-      setState(() {
-        _statusMessage = error.toString().replaceFirst('Bad state: ', '');
-      });
+      return null;
     } finally {
-      if (mounted) {
+      if (_isCurrentRequest(request)) {
         setState(() {
           _isLoading = false;
         });
@@ -246,16 +296,54 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
   }
 
-  LinkPatientCaregiver _buildControl() {
-    return LinkPatientCaregiver(userHash: _currentUserHash);
+  void _scheduleRefresh() {
+    final generation = _requestGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _requestGeneration) {
+        return;
+      }
+      _refreshLinks();
+    });
   }
 
-  String get _currentUserHash {
-    return PatientHash.normalizePatientHash(_userHashController.text);
+  void _commitUserHash() {
+    final nextUserHash = PatientHash.normalizePatientHash(
+      _userHashController.text,
+    );
+    if (nextUserHash != _committedUserHash) {
+      _replaceControl(nextUserHash);
+      _links = const [];
+    }
+  }
+
+  void _replaceControl(String userHash) {
+    final previousControl = _control;
+    final nextControl = _createControl(userHash);
+    _requestGeneration += 1;
+    _committedUserHash = userHash;
+    _control = nextControl;
+    _isLoading = false;
+    previousControl.dispose();
+  }
+
+  LinkPatientCaregiver _createControl(String userHash) {
+    return widget.controlFactory?.call(userHash) ??
+        LinkPatientCaregiver(userHash: userHash);
+  }
+
+  bool _isCurrentRequest(_LinkRequest request) {
+    return mounted &&
+        request.generation == _requestGeneration &&
+        request.userHash == _committedUserHash &&
+        identical(request.control, _control);
   }
 
   void _openPatientMedicationInfo(PatientCaregiverLink link) {
-    final caregiverHash = _currentUserHash;
+    if (_isLoading) {
+      return;
+    }
+
+    final caregiverHash = _committedUserHash;
     if (!link.linkStatus ||
         link.caregiverHash != caregiverHash ||
         link.patientHash.trim().isEmpty) {
@@ -298,9 +386,21 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 }
 
+class _LinkRequest {
+  final int generation;
+  final String userHash;
+  final LinkPatientCaregiver control;
+
+  const _LinkRequest({
+    required this.generation,
+    required this.userHash,
+    required this.control,
+  });
+}
+
 class _LinkActionFooter extends StatelessWidget {
-  final VoidCallback onGeneratePatientCodeRequested;
-  final VoidCallback onRegisterPatientRequested;
+  final VoidCallback? onGeneratePatientCodeRequested;
+  final VoidCallback? onRegisterPatientRequested;
 
   const _LinkActionFooter({
     required this.onGeneratePatientCodeRequested,
@@ -334,7 +434,7 @@ class _LinkActionFooter extends StatelessWidget {
 class _LinkActionButton extends StatelessWidget {
   final String title;
   final String subtitle;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _LinkActionButton({
     required this.title,
@@ -814,12 +914,14 @@ class _PatientCodeNotice extends StatelessWidget {
 class _LinkListCard extends StatelessWidget {
   final List<PatientCaregiverLink> links;
   final String currentUserHash;
+  final bool isEnabled;
   final void Function(PatientCaregiverLink link) onPatientMedicationRequested;
   final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
 
   const _LinkListCard({
     required this.links,
     required this.currentUserHash,
+    required this.isEnabled,
     required this.onPatientMedicationRequested,
     required this.onUnlinkRequested,
   });
@@ -839,9 +941,9 @@ class _LinkListCard extends StatelessWidget {
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
-          onPatientMedicationRequested: () =>
-              onPatientMedicationRequested(link),
-          onUnlinkRequested: () => onUnlinkRequested(link),
+          onPatientMedicationRequested:
+              isEnabled ? () => onPatientMedicationRequested(link) : null,
+          onUnlinkRequested: isEnabled ? () => onUnlinkRequested(link) : null,
         );
       },
     );
@@ -851,8 +953,8 @@ class _LinkListCard extends StatelessWidget {
 class _LinkedUserTile extends StatelessWidget {
   final PatientCaregiverLink link;
   final String currentUserHash;
-  final VoidCallback onPatientMedicationRequested;
-  final VoidCallback onUnlinkRequested;
+  final VoidCallback? onPatientMedicationRequested;
+  final VoidCallback? onUnlinkRequested;
 
   const _LinkedUserTile({
     required this.link,
