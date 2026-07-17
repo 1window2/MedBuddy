@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -373,6 +374,70 @@ async def test_advanced_detail_preserves_product_code() -> None:
     )
 
     assert detail.item_seq == "200000001"
+
+
+def test_medication_summary_timeout_uses_configured_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "MEDICATION_SUMMARY_TIMEOUT_SECONDS", 0.25)
+
+    generator = _MedicationSummaryGenerator(ai_client=object())
+
+    assert generator.timeout_seconds == 0.25
+
+
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    [0.0, -1.0, float("nan"), float("inf")],
+)
+def test_medication_summary_rejects_unbounded_timeout(
+    timeout_seconds: float,
+) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        _MedicationSummaryGenerator(
+            ai_client=object(),
+            timeout_seconds=timeout_seconds,
+        )
+
+
+@pytest.mark.anyio
+async def test_medication_summary_timeout_is_stable_and_cancels_request() -> None:
+    class _BlockingModels:
+        def __init__(self) -> None:
+            self.cancelled = False
+
+        async def generate_content(self, **kwargs: object) -> object:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    models = _BlockingModels()
+    fake_client = type(
+        "Client",
+        (),
+        {"aio": type("Aio", (), {"models": models})()},
+    )()
+    generator = _MedicationSummaryGenerator(
+        ai_client=fake_client,
+        timeout_seconds=0.01,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await generator.summarize_advanced_item(
+            "test-tablet",
+            {
+                "ITEM_NAME": "test-tablet",
+                "EE_DOC_DATA": "effect document",
+                "UD_DOC_DATA": "usage document",
+                "NB_DOC_DATA": "warning document",
+            },
+        )
+
+    assert str(exc_info.value) == "Medication summary generation timed out."
+    assert isinstance(exc_info.value.__cause__, TimeoutError)
+    assert models.cancelled is True
 
 
 @pytest.mark.anyio

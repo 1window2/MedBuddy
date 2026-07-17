@@ -1,7 +1,9 @@
 """LLM boundary for medication-aware health recommendations."""
 
+import asyncio
 import json
 import logging
+import math
 from typing import Any
 
 from google import genai
@@ -18,9 +20,20 @@ class LLMService:
         self,
         ai_client: genai.Client | None = None,
         model_name: str = "gemini-3.1-flash-lite",
+        timeout_seconds: float | None = None,
     ) -> None:
+        resolved_timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.HEALTH_RECOMMENDATION_TIMEOUT_SECONDS
+        )
+        if not math.isfinite(resolved_timeout) or resolved_timeout <= 0:
+            raise ValueError(
+                "Health recommendation timeout must be finite and positive."
+            )
         self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model_name = model_name
+        self.timeout_seconds = resolved_timeout
 
     async def requestHealthRecommendation(
         self,
@@ -29,12 +42,18 @@ class LLMService:
     ) -> dict[str, object]:
         prompt = self._build_prompt(medication_summaries, language)
         try:
-            ai_response = await self.ai_client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={"response_mime_type": "application/json"},
+            ai_response = await asyncio.wait_for(
+                self.ai_client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"},
+                ),
+                timeout=self.timeout_seconds,
             )
             raw_data = json.loads(ai_response.text)
+        except TimeoutError as exc:
+            logger.warning("Gemini health recommendation timed out.")
+            raise RuntimeError("Health recommendation generation timed out.") from exc
         except Exception as exc:
             logger.error(
                 "Gemini health recommendation failed: %s",

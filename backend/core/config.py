@@ -26,6 +26,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
 #   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
 #     duration.
+#   - MEDICATION_SUMMARY_TIMEOUT_SECONDS: Maximum approval summary duration.
+#   - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS: Maximum health recommendation duration.
 #   - REDIS_URL: Optional Redis cache URL.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
@@ -51,6 +53,8 @@ class Settings(BaseSettings):
     PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = 30.0
     PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: float = 8.0
+    MEDICATION_SUMMARY_TIMEOUT_SECONDS: float = 20.0
+    HEALTH_RECOMMENDATION_TIMEOUT_SECONDS: float = 20.0
     REDIS_URL: str = "redis://localhost:6379"
 
 

@@ -1,8 +1,10 @@
 # File Name: check_medication_detail_control.py
 # Role: Control class for requesting medication detail information.
 
+import asyncio
 import json
 import logging
+import math
 import re
 from typing import Any
 
@@ -379,9 +381,20 @@ class _MedicationSummaryGenerator:
         self,
         ai_client: genai.Client | None = None,
         model_name: str = "gemini-3.1-flash-lite",
+        timeout_seconds: float | None = None,
     ) -> None:
+        resolved_timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.MEDICATION_SUMMARY_TIMEOUT_SECONDS
+        )
+        if not math.isfinite(resolved_timeout) or resolved_timeout <= 0:
+            raise ValueError(
+                "Medication summary timeout must be finite and positive."
+            )
         self.ai_client = ai_client or genai.Client(api_key=settings.GEMINI_API_KEY)
         self.model_name = model_name
+        self.timeout_seconds = resolved_timeout
 
     # Function Name: summarize_advanced_item
     # Description:
@@ -422,12 +435,18 @@ class _MedicationSummaryGenerator:
         logger.info("[Gemini] requesting advanced approval summary.")
 
         try:
-            ai_response = await self.ai_client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={"response_mime_type": "application/json"},
+            ai_response = await asyncio.wait_for(
+                self.ai_client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config={"response_mime_type": "application/json"},
+                ),
+                timeout=self.timeout_seconds,
             )
             summary_data = json.loads(ai_response.text)
+        except TimeoutError as exc:
+            logger.warning("Gemini medication summary timed out.")
+            raise RuntimeError("Medication summary generation timed out.") from exc
         except Exception as exc:
             logger.error("Gemini AI summary failed: %s", type(exc).__name__)
             raise RuntimeError("AI 요약 처리 중 오류가 발생했습니다.") from exc
