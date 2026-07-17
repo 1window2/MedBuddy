@@ -141,15 +141,99 @@ def test_image_preprocessing_returns_bounded_jpeg() -> None:
     assert min(decoded.shape[:2]) >= 64
 
 
-def test_image_preprocessing_rejects_multiple_similar_pills() -> None:
+def test_image_preprocessing_preserves_ambiguous_multi_object_frame() -> None:
     image = np.full((500, 700, 3), 245, dtype=np.uint8)
     cv2.circle(image, (210, 250), 80, (30, 210, 230), thickness=-1)
     cv2.circle(image, (490, 250), 80, (30, 210, 230), thickness=-1)
     success, encoded = cv2.imencode(".jpg", image)
     assert success
 
-    with pytest.raises(PillImageQualityError, match="exactly one pill"):
-        PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert decoded is not None
+    assert decoded.shape[:2] == image.shape[:2]
+
+
+def test_image_preprocessing_ignores_edge_clutter_when_cropping() -> None:
+    image = np.full((700, 900, 3), 235, dtype=np.uint8)
+    cv2.rectangle(image, (0, 0), (900, 170), (80, 80, 80), thickness=-1)
+    cv2.circle(image, (470, 420), 85, (80, 210, 120), thickness=-1)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success
+
+    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert decoded is not None
+    assert decoded.shape[0] < image.shape[0]
+    assert decoded.shape[1] < image.shape[1]
+    center_pixel = decoded[decoded.shape[0] // 2, decoded.shape[1] // 2]
+    assert int(center_pixel[1]) > int(center_pixel[0]) + 60
+
+
+def test_image_preprocessing_crops_high_contrast_pill_on_textured_frame() -> None:
+    image = np.full((700, 900, 3), (70, 90, 120), dtype=np.uint8)
+    cv2.rectangle(image, (0, 300), (900, 700), (95, 115, 145), thickness=-1)
+    cv2.ellipse(
+        image,
+        (260, 190),
+        (75, 115),
+        0,
+        0,
+        360,
+        (90, 108, 135),
+        thickness=-1,
+    )
+    cv2.circle(image, (520, 470), 80, (210, 220, 80), thickness=-1)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success
+
+    processed = PillImageProcessingBoundary().preprocessPillImage(encoded.tobytes())
+    decoded = cv2.imdecode(np.frombuffer(processed, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert decoded is not None
+    assert decoded.shape[0] < image.shape[0]
+    assert decoded.shape[1] < image.shape[1]
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_accepts_small_pill_with_usable_features() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(
+                quality="poor",
+                quality_issues=["pill occupies too little of the image"],
+            )
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    features = await boundary.extractVisualFeatures(b"front")
+
+    assert features.shape == "round"
+    assert features.colors == ("yellow",)
+    assert features.quality == "poor"
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_still_rejects_small_blurred_pill() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(
+                quality="poor",
+                quality_issues=["pill is small and blurred"],
+            )
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="retake"):
+        await boundary.extractVisualFeatures(b"front")
 
 
 @pytest.mark.anyio

@@ -177,6 +177,25 @@ async def test_shape_and_color_only_result_is_never_confident() -> None:
 
 
 @pytest.mark.anyio
+async def test_poor_quality_result_is_never_confident() -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        front_imprint="YH",
+        back_imprint="LT",
+        quality="poor",
+        quality_issues=("pill occupies too little of the image",),
+    )
+    control = _control(features, (_entry("200808877", "test pill"),))
+
+    result = await control.requestPillIdentification(b"front", b"back")
+
+    assert result.candidates
+    assert result.is_confident is False
+    assert result.requires_confirmation is True
+
+
+@pytest.mark.anyio
 async def test_round_observation_does_not_match_oval_catalog_shape() -> None:
     features = PillVisualFeatures(
         shape="round",

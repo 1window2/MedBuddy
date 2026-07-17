@@ -148,24 +148,87 @@ class PillImageProcessingBoundary:
             return image
 
         image_area = float(height * width)
-        plausible_contours = [
-            contour
-            for contour in contours
-            if 0.01 <= cv2.contourArea(contour) / image_area <= 0.85
-        ]
-        if not plausible_contours:
+        frame_margin = max(border_size, min(height, width) // 100)
+        crop_candidates: list[tuple[float, float, np.ndarray]] = []
+        for contour in contours:
+            contour_area = cv2.contourArea(contour)
+            area_ratio = contour_area / image_area
+            if not 0.003 <= area_ratio <= 0.45:
+                continue
+
+            x, y, crop_width, crop_height = cv2.boundingRect(contour)
+            if (
+                x <= frame_margin
+                or y <= frame_margin
+                or x + crop_width >= width - frame_margin
+                or y + crop_height >= height - frame_margin
+            ):
+                continue
+
+            perimeter = cv2.arcLength(contour, closed=True)
+            hull_area = cv2.contourArea(cv2.convexHull(contour))
+            bounding_area = float(crop_width * crop_height)
+            if perimeter <= 0 or hull_area <= 0 or bounding_area <= 0:
+                continue
+
+            solidity = contour_area / hull_area
+            extent = contour_area / bounding_area
+            aspect_ratio = crop_width / crop_height
+            circularity = 4.0 * math.pi * contour_area / (perimeter * perimeter)
+            contour_mask = np.zeros((crop_height, crop_width), dtype=np.uint8)
+            shifted_contour = contour - np.array([[[x, y]]], dtype=contour.dtype)
+            cv2.drawContours(contour_mask, [shifted_contour], -1, 255, -1)
+            mean_contrast = cv2.mean(
+                color_distance[y : y + crop_height, x : x + crop_width],
+                mask=contour_mask,
+            )[0]
+            if (
+                solidity < 0.72
+                or extent < 0.38
+                or not 0.2 <= aspect_ratio <= 5.0
+                or circularity < 0.18
+                or mean_contrast < 35.0
+            ):
+                continue
+
+            center_x = x + crop_width / 2.0
+            center_y = y + crop_height / 2.0
+            normalized_distance = math.hypot(
+                (center_x - width / 2.0) / (width / 2.0),
+                (center_y - height / 2.0) / (height / 2.0),
+            )
+            center_score = max(0.0, 1.0 - min(1.0, normalized_distance))
+            shape_score = (
+                0.4 * solidity
+                + 0.35 * extent
+                + 0.25 * min(1.0, circularity / 0.7)
+            )
+            area_score = min(1.0, area_ratio / 0.04)
+            contrast_score = min(1.0, (mean_contrast - 18.0) / 70.0)
+            score = (
+                0.45 * shape_score
+                + 0.20 * center_score
+                + 0.15 * area_score
+                + 0.20 * contrast_score
+            )
+            crop_candidates.append((score, area_ratio, contour))
+
+        if not crop_candidates:
             return image
 
-        plausible_contours.sort(key=cv2.contourArea, reverse=True)
-        contour = plausible_contours[0]
-        largest_area = cv2.contourArea(contour)
-        if (
-            len(plausible_contours) > 1
-            and cv2.contourArea(plausible_contours[1]) >= largest_area * 0.55
-        ):
-            raise PillImageQualityError(
-                "Photograph exactly one pill at a time on a plain background."
+        crop_candidates.sort(key=lambda candidate: candidate[0], reverse=True)
+        best_score, best_area_ratio, contour = crop_candidates[0]
+        if len(crop_candidates) > 1:
+            second_score, second_area_ratio, _ = crop_candidates[1]
+            comparable_area = (
+                0.5 <= second_area_ratio / best_area_ratio <= 2.0
             )
+            if comparable_area and second_score >= best_score * 0.93:
+                # Contours alone cannot distinguish multiple pills from textured
+                # backgrounds reliably. Preserve the frame so the vision boundary
+                # can make the semantic image-quality decision.
+                return image
+
         x, y, crop_width, crop_height = cv2.boundingRect(contour)
         padding = max(12, round(max(crop_width, crop_height) * 0.12))
         left = max(0, x - padding)
@@ -234,14 +297,40 @@ class GeminiPillVisionAPI:
         - Do not identify or guess a medicine or product name.
         - Read only characters that are visibly imprinted or engraved.
         - Use an empty string when imprint text is unreadable.
-        - Mark quality as poor for blur, glare, occlusion, multiple pills, or when
-          the pill occupies too little of the image.
+        - Search the entire image for the pill even when it occupies a small
+          portion of the frame.
+        - Any background color or texture is acceptable. Background texture
+          alone is not an image-quality defect.
+        - Mark quality as poor only when blur, glare, occlusion, multiple pills,
+          or missing visual evidence prevents reliable attribute extraction.
         - Return only the requested JSON object.
         """
 
 
 class PillVisionBoundary:
     """Coordinates bounded local preprocessing and visual attribute extraction."""
+
+    _NON_BLOCKING_QUALITY_MARKERS = (
+        "pill occupies too little",
+        "pill is small",
+        "small portion",
+        "background texture",
+        "textured background",
+        "imprint is unreadable",
+        "imprint unreadable",
+    )
+    _BLOCKING_QUALITY_MARKERS = (
+        "blur",
+        "glare",
+        "occlusion",
+        "occluded",
+        "multiple pill",
+        "more than one pill",
+        "no pill",
+        "missing pill",
+        "not visible",
+        "cannot extract",
+    )
 
     _SHAPES = (
         "round",
@@ -411,13 +500,40 @@ class PillVisionBoundary:
             raise PillImageQualityError("The visual analysis returned invalid data.")
 
         features = self._to_features(payload)
-        if features.quality == "poor":
+        if features.quality == "poor" and not self._has_usable_low_quality_features(
+            features
+        ):
             detail = ", ".join(features.quality_issues[:3])
-            message = "Please retake a clear photo of one pill on a plain background."
+            message = "Please retake a clear photo of one pill."
             if detail:
                 message = f"{message} Detected issues: {detail}."
             raise PillImageQualityError(message)
         return features
+
+    @classmethod
+    def _has_usable_low_quality_features(
+        cls,
+        features: PillVisualFeatures,
+    ) -> bool:
+        """Allows non-blocking model warnings without treating them as success."""
+
+        if features.shape in {"unknown", "other"} or not features.colors:
+            return False
+        if not features.quality_issues:
+            return False
+        for issue in features.quality_issues:
+            normalized_issue = issue.casefold()
+            if any(
+                marker in normalized_issue
+                for marker in cls._BLOCKING_QUALITY_MARKERS
+            ):
+                return False
+            if not any(
+                marker in normalized_issue
+                for marker in cls._NON_BLOCKING_QUALITY_MARKERS
+            ):
+                return False
+        return True
 
     async def close(self) -> None:
         """Closes HTTP resources owned by the reusable Gemini client."""

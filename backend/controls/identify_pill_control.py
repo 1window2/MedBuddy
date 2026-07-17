@@ -393,6 +393,8 @@ class IdentifyPill:
         features: PillVisualFeatures,
         candidates: list[PillIdentificationCandidate],
     ) -> bool:
+        if features.quality == "poor":
+            return False
         observed_imprint_length = sum(
             len(IdentifyPill._normalize_imprint(value))
             for value in (features.front_imprint, features.back_imprint)
