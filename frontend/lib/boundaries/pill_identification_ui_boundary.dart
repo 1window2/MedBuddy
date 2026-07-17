@@ -107,6 +107,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       requiredLabel: text.requiredLabel,
                       imageBytes: _frontImage,
                       isLoading: _isSelectingImage && _selectingFront == true,
+                      removeButtonKey:
+                          const Key('remove-pill-front-image-button'),
+                      onRemove: _frontImage == null || isBusy
+                          ? null
+                          : () => _removeImage(isFront: true),
                       onTap: isBusy
                           ? null
                           : () => _selectImage(isFront: true, text: text),
@@ -120,6 +125,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       requiredLabel: text.optionalLabel,
                       imageBytes: _backImage,
                       isLoading: _isSelectingImage && _selectingFront == false,
+                      removeButtonKey:
+                          const Key('remove-pill-back-image-button'),
+                      onRemove: _backImage == null || isBusy
+                          ? null
+                          : () => _removeImage(isFront: false),
                       onTap: isBusy
                           ? null
                           : () => _selectImage(isFront: false, text: text),
@@ -384,6 +394,19 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
   }
 
+  void _removeImage({required bool isFront}) {
+    setState(() {
+      if (isFront) {
+        _frontImage = null;
+      } else {
+        _backImage = null;
+      }
+      _result = null;
+      _selectedItemSeq = null;
+      _errorMessage = '';
+    });
+  }
+
   Future<void> _confirmCandidate(_PillIdentificationText text) async {
     PillIdentificationCandidate? candidate;
     for (final item in _result?.candidates ?? const []) {
@@ -472,6 +495,8 @@ class _PillImageSlot extends StatelessWidget {
   final String requiredLabel;
   final Uint8List? imageBytes;
   final bool isLoading;
+  final Key removeButtonKey;
+  final VoidCallback? onRemove;
   final VoidCallback? onTap;
 
   const _PillImageSlot({
@@ -480,6 +505,8 @@ class _PillImageSlot extends StatelessWidget {
     required this.requiredLabel,
     required this.imageBytes,
     required this.isLoading,
+    required this.removeButtonKey,
+    required this.onRemove,
     required this.onTap,
   });
 
@@ -505,29 +532,49 @@ class _PillImageSlot extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Wrap(
-                spacing: 6,
-                runSpacing: 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              Row(
                 children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        Text(
+                          requiredLabel,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textSubtle,
+                            fontSize: 11,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    requiredLabel,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textSubtle,
-                      fontSize: 11,
-                      letterSpacing: 0,
+                  if (imageBytes != null)
+                    SizedBox.square(
+                      dimension: 28,
+                      child: IconButton(
+                        key: removeButtonKey,
+                        tooltip: MaterialLocalizations.of(context)
+                            .deleteButtonTooltip,
+                        padding: EdgeInsets.zero,
+                        iconSize: 19,
+                        color: MedBuddyColors.textMuted,
+                        onPressed: onRemove,
+                        icon: const Icon(Icons.close),
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -808,8 +855,8 @@ class _PillIdentificationText {
   String get photoSectionTitle =>
       isEnglish ? 'Photograph one pill' : '알약 한 개를 촬영해주세요';
   String get photoSectionDescription => isEnglish
-      ? 'Use a plain background without glare. A reverse-side photo improves matching.'
-      : '무늬 없는 배경에서 빛 반사 없이 촬영하세요. 뒷면 사진을 추가하면 식별 정확도가 높아집니다.';
+      ? 'Keep one pill in focus with its surface and outline visible. Any background color or texture is acceptable. A reverse-side photo improves matching.'
+      : '알약 한 개에 초점을 맞추고 표면과 윤곽이 구분되도록 촬영하세요. 배경의 색이나 재질은 상관없습니다. 뒷면 사진을 추가하면 식별 정확도가 높아집니다.';
   String get frontPhoto => isEnglish ? 'Front' : '앞면';
   String get backPhoto => isEnglish ? 'Back' : '뒷면';
   String get requiredLabel => isEnglish ? 'Required' : '필수';
@@ -850,8 +897,8 @@ class _PillIdentificationText {
       ? 'Pill identification timed out. Please try again.'
       : '알약 식별 시간이 초과되었습니다. 다시 시도해주세요.';
   String get invalidPhoto => isEnglish
-      ? 'Retake one clear pill photo on a plain background.'
-      : '무늬 없는 배경에서 알약 한 개를 선명하게 다시 촬영해주세요.';
+      ? 'The pill could not be distinguished. Avoid fingers, strong glare, and occlusion, then retake the photo in focus.'
+      : '알약을 구분할 수 없습니다. 손가락, 강한 반사, 가림을 피하고 초점을 맞춰 다시 촬영해주세요.';
   String get serviceUnavailable => isEnglish
       ? 'The pill identification service is temporarily unavailable.'
       : '알약 식별 서비스에 일시적으로 연결할 수 없습니다.';

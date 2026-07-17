@@ -141,6 +141,64 @@ void main() {
     expect(identifyButton.onPressed, isNull);
   });
 
+  testWidgets('front and optional back photos can be removed independently',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en'),
+          control: _FakeIdentifyPill(),
+        ),
+      ),
+    );
+
+    for (final slotKey in const [
+      Key('pill-front-image-slot'),
+      Key('pill-back-image-slot'),
+    ]) {
+      await tester.tap(find.byKey(slotKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Take a photo'));
+      await tester.pumpAndSettle();
+    }
+
+    FilledButton identifyButton() => tester.widget<FilledButton>(
+          find.byKey(const Key('identify-pill-button')),
+        );
+
+    expect(identifyButton().onPressed, isNotNull);
+    expect(
+      find.byKey(const Key('remove-pill-front-image-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('remove-pill-back-image-button')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('remove-pill-back-image-button')),
+    );
+    await tester.pump();
+
+    expect(identifyButton().onPressed, isNotNull);
+    expect(
+      find.byKey(const Key('remove-pill-back-image-button')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('remove-pill-front-image-button')),
+    );
+    await tester.pump();
+
+    expect(identifyButton().onPressed, isNull);
+    expect(
+      find.byKey(const Key('remove-pill-front-image-button')),
+      findsNothing,
+    );
+  });
+
   testWidgets('replacement image loading disables stale candidate actions',
       (tester) async {
     final control = _DelayedReplacementIdentifyPill();
