@@ -93,12 +93,14 @@ class IdentifyPill:
                     task.cancel()
             await asyncio.gather(*required_tasks, return_exceptions=True)
             raise
-        candidates = await asyncio.to_thread(
+        ranked_candidates = await asyncio.to_thread(
             self._rank_candidates,
             features,
             catalog,
+            max(self.candidate_limit, 2),
         )
-        is_confident = self._is_confident(features, candidates)
+        is_confident = self._is_confident(features, ranked_candidates)
+        candidates = ranked_candidates[: self.candidate_limit]
         return PillIdentificationResult(
             observed_features=features,
             candidates=tuple(candidates),
@@ -110,7 +112,9 @@ class IdentifyPill:
         self,
         features: PillVisualFeatures,
         catalog: tuple[PillCatalogEntry, ...],
+        ranking_limit: int | None = None,
     ) -> list[PillIdentificationCandidate]:
+        selection_limit = ranking_limit or self.candidate_limit
         top_matches: list[
             tuple[
                 tuple[float, int, str],
@@ -134,7 +138,7 @@ class IdentifyPill:
                 entry.item_seq,
             )
             match = (ranking_key, entry, tuple(matched_attributes))
-            if len(top_matches) < self.candidate_limit:
+            if len(top_matches) < selection_limit:
                 heapq.heappush(top_matches, match)
             elif ranking_key > top_matches[0][0]:
                 heapq.heapreplace(top_matches, match)
@@ -263,7 +267,7 @@ class IdentifyPill:
     def _shape_score(cls, observed: str, catalog_shape: str) -> float:
         normalized_catalog = cls._normalize_label(catalog_shape)
         aliases = cls._SHAPE_ALIASES.get(observed, ())
-        return 1.0 if any(alias in normalized_catalog for alias in aliases) else 0.0
+        return 1.0 if normalized_catalog in aliases else 0.0
 
     @classmethod
     def _color_score(

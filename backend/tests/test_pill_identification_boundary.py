@@ -185,6 +185,21 @@ async def test_visual_boundary_rejects_poor_quality_result() -> None:
 
 
 @pytest.mark.anyio
+async def test_visual_boundary_rejects_non_string_imprint() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(front_imprint=["YH"])
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="invalid data"):
+        await boundary.extractVisualFeatures(b"front")
+
+
+@pytest.mark.anyio
 async def test_visual_boundary_hides_upstream_failure_details() -> None:
     boundary = PillVisionBoundary(
         client=object(),  # type: ignore[arg-type]
@@ -284,6 +299,19 @@ def test_mfds_catalog_rejects_non_network_image_url() -> None:
 
     assert entry is not None
     assert entry.image_url == ""
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"ITEM_SEQ": ["1"], "ITEM_NAME": "test"},
+        {"ITEM_SEQ": "1", "ITEM_NAME": {"text": "test"}},
+    ],
+)
+def test_mfds_catalog_rejects_structured_required_text(
+    item: dict[str, Any],
+) -> None:
+    assert MFDSPillAPI._to_catalog_entry(item) is None
 
 
 @pytest.mark.anyio

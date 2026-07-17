@@ -177,6 +177,32 @@ async def test_shape_and_color_only_result_is_never_confident() -> None:
 
 
 @pytest.mark.anyio
+async def test_round_observation_does_not_match_oval_catalog_shape() -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        quality="usable",
+    )
+    control = _control(
+        features,
+        (
+            _entry(
+                "oval",
+                "타원정",
+                shape="타원형",
+                print_front="",
+                print_back="",
+            ),
+        ),
+    )
+
+    result = await control.requestPillIdentification(b"front")
+
+    assert result.candidates == ()
+    assert result.is_confident is False
+
+
+@pytest.mark.anyio
 async def test_single_weak_attribute_does_not_generate_candidates() -> None:
     features = PillVisualFeatures(
         shape="unknown",
@@ -209,6 +235,32 @@ async def test_one_character_imprint_is_never_confident() -> None:
 
     assert result.candidates
     assert result.is_confident is False
+
+
+@pytest.mark.anyio
+async def test_single_result_limit_still_checks_tied_runner_up() -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        front_imprint="YH",
+        back_imprint="LT",
+        quality="good",
+    )
+    entries = (
+        _entry("1", "첫번째정"),
+        _entry("2", "두번째정"),
+    )
+    control = IdentifyPill(
+        vision_boundary=_FakeVisionBoundary(features),  # type: ignore[arg-type]
+        catalog_boundary=_FakeCatalogBoundary(entries),  # type: ignore[arg-type]
+        candidate_limit=1,
+    )
+
+    result = await control.requestPillIdentification(b"front", b"back")
+
+    assert len(result.candidates) == 1
+    assert result.is_confident is False
+    assert result.requires_confirmation is True
 
 
 @pytest.mark.anyio

@@ -430,59 +430,109 @@ class PillVisionBoundary:
             self.client.close()
 
     def _to_features(self, payload: dict[str, Any]) -> PillVisualFeatures:
-        raw_colors = payload.get("colors")
-        colors = tuple(
-            color
-            for color in self._bounded_strings(raw_colors, limit=2, max_length=24)
-            if color in self._COLORS and color != "unknown"
-        )
-        shape = self._enum_value(payload.get("shape"), self._SHAPES, "unknown")
-        quality = self._enum_value(
-            payload.get("quality"),
-            self._QUALITIES,
-            "poor",
-        )
-        return PillVisualFeatures(
-            shape=shape,
-            colors=colors,
-            front_imprint=self._bounded_text(payload.get("front_imprint"), 32),
-            back_imprint=self._bounded_text(payload.get("back_imprint"), 32),
-            front_line=self._enum_value(
-                payload.get("front_line"), self._LINES, "unknown"
-            ),
-            back_line=self._enum_value(
-                payload.get("back_line"), self._LINES, "unknown"
-            ),
-            quality=quality,
-            quality_issues=tuple(
-                self._bounded_strings(
-                    payload.get("quality_issues"),
+        try:
+            shape = self._required_enum(payload, "shape", self._SHAPES)
+            colors = tuple(
+                color
+                for color in self._required_enum_list(
+                    payload,
+                    "colors",
+                    self._COLORS,
+                    limit=2,
+                    max_length=24,
+                )
+                if color != "unknown"
+            )
+            front_imprint = self._required_text(payload, "front_imprint", 32)
+            back_imprint = self._required_text(payload, "back_imprint", 32)
+            front_line = self._required_enum(payload, "front_line", self._LINES)
+            back_line = self._required_enum(payload, "back_line", self._LINES)
+            quality = self._required_enum(payload, "quality", self._QUALITIES)
+            quality_issues = tuple(
+                self._required_string_list(
+                    payload,
+                    "quality_issues",
                     limit=5,
                     max_length=80,
                 )
-            ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PillImageQualityError(
+                "The visual analysis returned invalid data."
+            ) from exc
+
+        return PillVisualFeatures(
+            shape=shape,
+            colors=colors,
+            front_imprint=front_imprint,
+            back_imprint=back_imprint,
+            front_line=front_line,
+            back_line=back_line,
+            quality=quality,
+            quality_issues=quality_issues,
         )
 
-    @staticmethod
-    def _enum_value(value: Any, allowed: tuple[str, ...], default: str) -> str:
-        normalized = str(value or "").strip().lower()
-        return normalized if normalized in allowed else default
+    @classmethod
+    def _required_enum(
+        cls,
+        payload: dict[str, Any],
+        key: str,
+        allowed: tuple[str, ...],
+    ) -> str:
+        normalized = cls._required_text(payload, key, 24).lower()
+        if normalized not in allowed:
+            raise ValueError(f"Invalid {key} value.")
+        return normalized
 
     @staticmethod
-    def _bounded_text(value: Any, max_length: int) -> str:
-        return str(value or "").strip()[:max_length]
+    def _required_text(
+        payload: dict[str, Any],
+        key: str,
+        max_length: int,
+    ) -> str:
+        value = payload[key]
+        if not isinstance(value, str) or len(value) > max_length:
+            raise ValueError(f"Invalid {key} value.")
+        return value.strip()
 
     @classmethod
-    def _bounded_strings(
+    def _required_string_list(
         cls,
-        value: Any,
+        payload: dict[str, Any],
+        key: str,
         *,
         limit: int,
         max_length: int,
     ) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        return [cls._bounded_text(item, max_length).lower() for item in value[:limit]]
+        value = payload[key]
+        if not isinstance(value, list) or len(value) > limit:
+            raise ValueError(f"Invalid {key} value.")
+        normalized: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or len(item) > max_length:
+                raise ValueError(f"Invalid {key} value.")
+            normalized.append(item.strip().lower())
+        return normalized
+
+    @classmethod
+    def _required_enum_list(
+        cls,
+        payload: dict[str, Any],
+        key: str,
+        allowed: tuple[str, ...],
+        *,
+        limit: int,
+        max_length: int,
+    ) -> list[str]:
+        normalized = cls._required_string_list(
+            payload,
+            key,
+            limit=limit,
+            max_length=max_length,
+        )
+        if any(item not in allowed for item in normalized):
+            raise ValueError(f"Invalid {key} value.")
+        return normalized
 
 
 class MFDSPillAPI:
@@ -497,7 +547,7 @@ class MFDSPillAPI:
         api_key: str | None = None,
         timeout_seconds: float | None = None,
         page_size: int = 500,
-        max_concurrency: int = 6,
+        max_concurrency: int = 12,
         minimum_catalog_rows: int = 1_000,
         client_factory: Callable[..., httpx.AsyncClient] | None = None,
     ) -> None:
@@ -659,7 +709,9 @@ class MFDSPillAPI:
         value = item.get(key)
         if value is None:
             value = item.get(key.lower())
-        return str(value or "").strip()[:max_length]
+        if not isinstance(value, str):
+            return ""
+        return value.strip()[:max_length]
 
     @staticmethod
     def _safe_image_url(value: str) -> str:
