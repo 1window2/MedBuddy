@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.patient_caregiver_link_entity import (
     PatientCaregiverLink,
     PatientLinkCode,
@@ -250,6 +251,7 @@ class LinkPatientCaregiver:
                 linked_at=link.created_at,
             ).removePatientCaregiverLink()
             link.linked = link_state.link_status
+            self._revoke_caregiver_notification(link)
             self.db.commit()
             self.db.refresh(link)
         except Exception as exc:
@@ -268,6 +270,15 @@ class LinkPatientCaregiver:
             "message": "Patient-caregiver link was removed.",
             "data": self._to_response_dict(link),
         }
+
+    def _revoke_caregiver_notification(
+        self,
+        link: _PatientCaregiverLink,
+    ) -> None:
+        self.db.query(_CaregiverNotification).filter(
+            _CaregiverNotification.patient_hash == link.patient_hash,
+            _CaregiverNotification.caregiver_hash == link.caregiver_hash,
+        ).delete(synchronize_session=False)
 
     # Function Name: getLinkedPatientHash
     # Description:

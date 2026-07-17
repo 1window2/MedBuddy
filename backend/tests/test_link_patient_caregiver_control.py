@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from core.database import Base  # noqa: E402
+from entities.caregiver_notification_entity import _CaregiverNotification  # noqa: E402
 from entities.patient_caregiver_link_entity import (  # noqa: E402
     _PatientCaregiverLink,
     _PatientLinkCode,
@@ -192,6 +193,28 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         with self.assertRaises(HTTPException) as missing_context:
             self.control.getLinkedPatientHash("guardian-a")
         self.assertEqual(missing_context.exception.status_code, 404)
+
+    def test_unlink_revokes_caregiver_notification_setting(self) -> None:
+        code_response = self.control.generatePatientHash("patient-a")
+        link_response = self.control.requestPatientCaregiverLink(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+        setting = _CaregiverNotification(
+            caregiver_hash="guardian-a",
+            patient_hash="patient-a",
+            enabled=True,
+            alert_option="enable",
+        )
+        self.db.add(setting)
+        self.db.commit()
+
+        self.control.requestUnlink(
+            link_response["data"]["id"],
+            "guardian-a",
+        )
+
+        self.assertEqual(self.db.query(_CaregiverNotification).count(), 0)
 
 
 if __name__ == "__main__":
