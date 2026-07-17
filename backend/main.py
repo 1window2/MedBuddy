@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
     ensure_user_setting_schema(engine)
     app = FastAPI(
         title="MedBuddy API",
-        version="1.0.0",
+        version="0.0.9-alpha",
         lifespan=application_lifespan,
     )
     app.include_router(
