@@ -21,7 +21,7 @@ class CheckResultUI extends StatelessWidget {
   final int? savingMedicationIndex;
   final Set<int> completedMedicationSaveIndexes;
   final bool isAllMedicationSaving;
-  final VoidCallback onCloseRequested;
+  final VoidCallback? onCloseRequested;
   final Future<bool> Function() onAllMedicationSaveRequested;
   final Future<bool> Function(
     AnalyzedMedication analyzedMedication,
@@ -137,7 +137,7 @@ class CheckResultUI extends StatelessWidget {
 class _ResultHeader extends StatelessWidget {
   final String title;
   final String backTooltip;
-  final VoidCallback onCloseRequested;
+  final VoidCallback? onCloseRequested;
 
   const _ResultHeader({
     required this.title,
@@ -157,7 +157,11 @@ class _ResultHeader extends StatelessWidget {
           IconButton(
             tooltip: backTooltip,
             onPressed: onCloseRequested,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
+            icon: Icon(
+              Icons.arrow_back,
+              color: onCloseRequested == null ? Colors.white54 : Colors.white,
+              size: 31,
+            ),
           ),
           Expanded(
             child: Text(

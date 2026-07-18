@@ -28,8 +28,11 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MedBuddyViewModel>();
+    final flowState = viewModel.prescriptionFlowState;
+    final isPrescriptionExitBlocked =
+        viewModel.isMedicationSaving || viewModel.isAllMedicationSaving;
 
-    return switch (viewModel.prescriptionFlowState) {
+    final activeScreen = switch (flowState) {
       PrescriptionFlowState.recognizingPrescription =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,
@@ -74,13 +77,26 @@ class HomeScreen extends StatelessWidget {
           completedMedicationSaveIndexes:
               viewModel.completedMedicationSaveIndexes,
           isAllMedicationSaving: viewModel.isAllMedicationSaving,
-          onCloseRequested: viewModel.clearAnalysisResult,
+          onCloseRequested:
+              isPrescriptionExitBlocked ? null : viewModel.clearAnalysisResult,
           onAllMedicationSaveRequested:
               viewModel.requestAllAnalyzedMedicationSave,
           onMedicationSaveRequested: viewModel.requestMedicationSave,
         ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
+
+    return PopScope<void>(
+      canPop: flowState == PrescriptionFlowState.idle,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop &&
+            flowState != PrescriptionFlowState.idle &&
+            !isPrescriptionExitBlocked) {
+          viewModel.clearAnalysisResult();
+        }
+      },
+      child: activeScreen,
+    );
   }
 
   // 함수명: _buildHomeInput

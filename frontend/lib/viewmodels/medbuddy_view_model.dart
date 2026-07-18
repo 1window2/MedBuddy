@@ -101,6 +101,8 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   bool _isTodayScheduleLoading = false;
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+  bool _hasTodayScheduleLoadError = false;
+  bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
   bool _lastTodayScheduleLoadSucceeded = false;
   int _todayScheduleEpoch = 0;
   int _todayScheduleLoadCount = 0;
@@ -616,6 +618,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     final loadEpoch = ++_todayScheduleEpoch;
     _todayScheduleLoadCount += 1;
     _isTodayScheduleLoading = true;
+    _hasTodayScheduleLoadError = false;
     notifyListeners();
 
     try {
@@ -624,16 +627,23 @@ class MedBuddyViewModel extends ChangeNotifier {
         return;
       }
       _todayMedicationScheduleList = scheduleList;
+      _hasTodayScheduleLoadError = false;
       _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
       if (loadEpoch == _todayScheduleEpoch) {
+        _todayMedicationScheduleList = const [];
         _lastTodayScheduleLoadSucceeded = false;
         _statusMessage = error.message;
+        _hasTodayScheduleLoadError = true;
       }
     } catch (_) {
       if (loadEpoch == _todayScheduleEpoch) {
+        _todayMedicationScheduleList = const [];
         _lastTodayScheduleLoadSucceeded = false;
-        _statusMessage = '복약 일정을 불러오지 못했습니다.';
+        _statusMessage = _isEnglishSetting
+            ? 'Could not load today\'s medication schedule.'
+            : '복약 일정을 불러오지 못했습니다.';
+        _hasTodayScheduleLoadError = true;
       }
     } finally {
       _todayScheduleLoadCount -= 1;
@@ -967,7 +977,14 @@ class MedBuddyViewModel extends ChangeNotifier {
     if (!_lastTodayScheduleLoadSucceeded) {
       return;
     }
-    await _synchronizeMedicationReminderSchedules();
+    try {
+      await _synchronizeMedicationReminderSchedules();
+    } catch (_) {
+      _statusMessage = _isEnglishSetting
+          ? 'The schedule loaded, but reminders could not be synchronized.'
+          : '복약 일정은 불러왔지만 알림을 동기화하지 못했습니다.';
+      notifyListeners();
+    }
   }
 
   Future<MedicationAlarm> _disableReminderSettingForEmptySlot(

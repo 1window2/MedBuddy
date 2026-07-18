@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_status_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
+import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
@@ -18,6 +24,62 @@ class _EmptyGalleryInputPrescription extends InputPrescription {
   }) async {
     galleryRequestCount += 1;
     onImageSelected?.call();
+    return const [];
+  }
+}
+
+class _SuccessfulGalleryInputPrescription extends InputPrescription {
+  @override
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    onImageSelected?.call();
+    return const [
+      MedicationSchedule(
+        medicationName: 'test-tablet',
+        dosage: '1 tablet',
+        intakeTime: '3 times',
+        medicationTime: 3,
+      ),
+    ];
+  }
+}
+
+class _SuccessfulMedicationDetail extends CheckMedicationDetail {
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule medicationSchedule,
+  ) async {
+    return MedicationDetail(
+      itemName: medicationSchedule.medicationName,
+      efficacy: 'effect',
+      usageMethod: 'usage',
+      warning: 'warning',
+    );
+  }
+}
+
+class _DeferredSavedMedication extends CheckSavedMedication {
+  final Completer<MedicationSaveResult> saveCompleter =
+      Completer<MedicationSaveResult>();
+
+  @override
+  Future<MedicationSaveResult> saveMedicationDetail(
+    MedicationDetail medicationDetail, {
+    MedicationSchedule? medicationSchedule,
+  }) {
+    return saveCompleter.future;
+  }
+
+  @override
+  Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
+    return const [];
+  }
+}
+
+class _EmptySchedule extends CheckSchedule {
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [];
   }
 }
@@ -123,6 +185,93 @@ void main() {
     expect(inputPrescription.galleryRequestCount, 2);
     expect(
         viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+  });
+
+  testWidgets('system back from prescription result returns to home',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _SuccessfulGalleryInputPrescription(),
+      checkMedicationDetail: _SuccessfulMedicationDetail(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    await viewModel.requestPrescriptionAnalysis();
+    viewModel.showMedicationAnalysisResult();
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.resultReady);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
+    expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('back actions stay blocked until bulk save completes',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final savedMedication = _DeferredSavedMedication();
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _SuccessfulGalleryInputPrescription(),
+      checkMedicationDetail: _SuccessfulMedicationDetail(),
+      checkSavedMedication: savedMedication,
+      checkSchedule: _EmptySchedule(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    await viewModel.requestPrescriptionAnalysis();
+    viewModel.showMedicationAnalysisResult();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+
+    final pendingSave = viewModel.requestAllAnalyzedMedicationSave();
+    await tester.pump();
+    expect(viewModel.isAllMedicationSaving, isTrue);
+
+    final backButton = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.arrow_back),
+    );
+    expect(backButton.onPressed, isNull);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.resultReady);
+
+    savedMedication.saveCompleter.complete(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.saved,
+        message: 'saved',
+      ),
+    );
+    await pendingSave;
+    await tester.pumpAndSettle();
+    expect(viewModel.isAllMedicationSaving, isFalse);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
   });
 
   testWidgets('analysis failure actions fit a compact large-text viewport',
