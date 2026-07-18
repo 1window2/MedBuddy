@@ -113,6 +113,10 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   String _analysisErrorMessage = '';
   String get analysisErrorMessage => _analysisErrorMessage;
+  bool get canRetryPrescriptionAnalysis =>
+      _prescriptionFlowState == PrescriptionFlowState.analysisFailed &&
+      _analysisProgressStep != AnalysisProgressStep.prescriptionRecognition &&
+      _recognizedMedicationScheduleList.isNotEmpty;
 
   int _lastPrescriptionRawMedicationCount = 0;
   int _lastPrescriptionParsedMedicationCount = 0;
@@ -306,6 +310,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음
   Future<void> requestPrescriptionAnalysis() async {
     if (_recognizedMedicationScheduleList.isEmpty) {
+      _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
       _showAnalysisFailure('인식된 처방 내역이 없습니다.');
       return;
     }
@@ -345,13 +350,13 @@ class MedBuddyViewModel extends ChangeNotifier {
       final failedAnalysisCount =
           analysisResults.length - analyzedMedicationList.length;
 
-      _analysisProgressStep = AnalysisProgressStep.scheduleGeneration;
-      notifyListeners();
-
       if (analyzedMedicationList.isEmpty) {
         _showAnalysisFailure('약물 상세 정보를 찾지 못했습니다.');
         return;
       }
+
+      _analysisProgressStep = AnalysisProgressStep.scheduleGeneration;
+      notifyListeners();
 
       _analyzedMedicationList = analyzedMedicationList;
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;

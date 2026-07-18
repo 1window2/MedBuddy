@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -175,10 +176,12 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
 // 역할: 처방전 인식 또는 약품 정보 분석 실패 원인과 다음 행동을 안내한다.
 // 주요 책임:
 // - 실패 메시지를 화면에 표시한다.
-// - 카메라 재촬영, 갤러리 재선택, 홈 복귀 선택지를 제공한다.
+// - 실패 단계에 맞는 재분석 또는 이미지 재선택 복구 동작을 제공한다.
 class PrescriptionAnalysisFailureUI extends StatelessWidget {
   final String message;
   final UserSetting userSetting;
+  final AnalysisProgressStep failureStep;
+  final VoidCallback? onAnalysisRetryRequested;
   final VoidCallback onCameraRetryRequested;
   final VoidCallback onGalleryRetryRequested;
   final VoidCallback onHomeRequested;
@@ -187,6 +190,8 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     super.key,
     required this.message,
     required this.userSetting,
+    required this.failureStep,
+    this.onAnalysisRetryRequested,
     required this.onCameraRetryRequested,
     required this.onGalleryRetryRequested,
     required this.onHomeRequested,
@@ -196,6 +201,9 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = _StatusText(userSetting.language);
     final scale = userSetting.contentTextScale;
+    final isMedicationAnalysisFailure =
+        failureStep != AnalysisProgressStep.prescriptionRecognition;
+    final canRetryAnalysis = onAnalysisRetryRequested != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -249,7 +257,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 34),
                     Text(
-                      text.failureMessage,
+                      text.failureMessage(isMedicationAnalysisFailure),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -261,7 +269,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                       message.trim().isEmpty
-                          ? text.failureDescription
+                          ? text.failureDescription(isMedicationAnalysisFailure)
                           : message,
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -272,55 +280,38 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
+                    if (!isMedicationAnalysisFailure) ...[
+                      const SizedBox(height: 28),
+                      _FailureReasonPanel(text: text, scale: scale),
+                    ],
                     const SizedBox(height: 28),
-                    _FailureReasonPanel(text: text, scale: scale),
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 63,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: MedBuddyColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: MedBuddyRadii.card,
-                          ),
-                          textStyle: TextStyle(
-                            fontSize: 17 * scale,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        onPressed: onCameraRetryRequested,
-                        icon: const Icon(Icons.photo_camera_outlined),
-                        label: Text(text.cameraRetry),
+                    if (onAnalysisRetryRequested case final retryCallback?) ...[
+                      _buildActionButton(
+                        key: const Key('prescription-analysis-retry-button'),
+                        isPrimary: true,
+                        onPressed: retryCallback,
+                        icon: Icons.refresh,
+                        label: text.analysisRetry,
+                        scale: scale,
                       ),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildActionButton(
+                      key: const Key('prescription-camera-retry-button'),
+                      isPrimary: !canRetryAnalysis,
+                      onPressed: onCameraRetryRequested,
+                      icon: Icons.photo_camera_outlined,
+                      label: text.cameraRetry,
+                      scale: scale,
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 63,
-                      child: OutlinedButton.icon(
-                        key: const Key('prescription-gallery-retry-button'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: MedBuddyColors.primaryDark,
-                          side: const BorderSide(
-                            color: MedBuddyColors.primary,
-                            width: 1.5,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: MedBuddyRadii.card,
-                          ),
-                          textStyle: TextStyle(
-                            fontSize: 17 * scale,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        onPressed: onGalleryRetryRequested,
-                        icon: const Icon(Icons.photo_library_outlined),
-                        label: Text(text.galleryRetry),
-                      ),
+                    _buildActionButton(
+                      key: const Key('prescription-gallery-retry-button'),
+                      isPrimary: false,
+                      onPressed: onGalleryRetryRequested,
+                      icon: Icons.photo_library_outlined,
+                      label: text.galleryRetry,
+                      scale: scale,
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
@@ -350,6 +341,55 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required Key key,
+    required bool isPrimary,
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required double scale,
+  }) {
+    final shape = RoundedRectangleBorder(borderRadius: MedBuddyRadii.card);
+    final textStyle = TextStyle(
+      fontSize: 17 * scale,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0,
+    );
+
+    return SizedBox(
+      width: double.infinity,
+      height: 63,
+      child: isPrimary
+          ? FilledButton.icon(
+              key: key,
+              style: FilledButton.styleFrom(
+                backgroundColor: MedBuddyColors.primary,
+                foregroundColor: Colors.white,
+                shape: shape,
+                textStyle: textStyle,
+              ),
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: Text(label),
+            )
+          : OutlinedButton.icon(
+              key: key,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MedBuddyColors.primaryDark,
+                side: const BorderSide(
+                  color: MedBuddyColors.primary,
+                  width: 1.5,
+                ),
+                shape: shape,
+                textStyle: textStyle,
+              ),
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: Text(label),
+            ),
     );
   }
 }
@@ -499,10 +539,24 @@ class _StatusText {
   String days(int days) => isEnglish ? '${days}d' : '$days일';
 
   String get failureTitle => isEnglish ? 'Analysis Failed' : '분석 실패';
-  String get failureMessage =>
-      isEnglish ? 'Prescription recognition failed' : '처방전 인식에 실패했습니다';
-  String get failureDescription =>
-      isEnglish ? 'Please retake the photo clearly' : '처방전이 잘 보이도록\n다시 촬영해주세요';
+  String failureMessage(bool medicationAnalysisFailure) {
+    if (medicationAnalysisFailure) {
+      return isEnglish ? 'Medication analysis failed' : '약물 정보 분석에 실패했습니다';
+    }
+    return isEnglish ? 'Prescription recognition failed' : '처방전 인식에 실패했습니다';
+  }
+
+  String failureDescription(bool medicationAnalysisFailure) {
+    if (medicationAnalysisFailure) {
+      return isEnglish
+          ? 'Please retry the recognized medication analysis'
+          : '인식된 약물 정보를 다시 분석해주세요';
+    }
+    return isEnglish
+        ? 'Please retake the photo clearly'
+        : '처방전이 잘 보이도록\n다시 촬영해주세요';
+  }
+
   String get failureReasons => isEnglish ? 'Possible reasons' : '인식 실패 원인';
   List<String> get reasonItems {
     if (isEnglish) {
@@ -520,6 +574,7 @@ class _StatusText {
     ];
   }
 
+  String get analysisRetry => isEnglish ? 'Retry Analysis' : '분석 다시 시도하기';
   String get cameraRetry => isEnglish ? 'Retake Photo' : '다시 촬영하기';
   String get galleryRetry => isEnglish ? 'Choose Another Image' : '이미지 다시 선택하기';
   String get home => isEnglish ? 'Back to Home' : '홈으로 돌아가기';

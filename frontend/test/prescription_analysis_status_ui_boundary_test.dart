@@ -1,7 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_status_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/views/home_screen.dart';
+import 'package:provider/provider.dart';
+
+class _EmptyGalleryInputPrescription extends InputPrescription {
+  int galleryRequestCount = 0;
+
+  @override
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    galleryRequestCount += 1;
+    onImageSelected?.call();
+    return const [];
+  }
+}
 
 void main() {
   testWidgets('analysis failure offers camera and gallery retry actions',
@@ -14,6 +33,7 @@ void main() {
         home: PrescriptionAnalysisFailureUI(
           message: 'The request failed.',
           userSetting: const UserSetting(language: 'en'),
+          failureStep: AnalysisProgressStep.prescriptionRecognition,
           onCameraRetryRequested: () => cameraRetryCount += 1,
           onGalleryRetryRequested: () => galleryRetryCount += 1,
           onHomeRequested: () {},
@@ -35,6 +55,74 @@ void main() {
 
     expect(cameraRetryCount, 1);
     expect(galleryRetryCount, 1);
+    expect(
+      find.byKey(const Key('prescription-analysis-retry-button')),
+      findsNothing,
+    );
+    expect(find.text('Possible reasons'), findsOneWidget);
+  });
+
+  testWidgets('medication analysis failure offers stage-specific retry',
+      (tester) async {
+    var analysisRetryCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisFailureUI(
+          message: 'Medication lookup failed.',
+          userSetting: const UserSetting(language: 'en'),
+          failureStep: AnalysisProgressStep.medicationAnalysis,
+          onAnalysisRetryRequested: () => analysisRetryCount += 1,
+          onCameraRetryRequested: () {},
+          onGalleryRetryRequested: () {},
+          onHomeRequested: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Medication analysis failed'), findsOneWidget);
+    expect(find.text('Possible reasons'), findsNothing);
+
+    final analysisRetryButton =
+        find.byKey(const Key('prescription-analysis-retry-button'));
+    await tester.ensureVisible(analysisRetryButton);
+    await tester.tap(analysisRetryButton);
+
+    expect(analysisRetryCount, 1);
+  });
+
+  testWidgets('gallery retry re-enters the gallery recognition flow',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final inputPrescription = _EmptyGalleryInputPrescription();
+    final viewModel = MedBuddyViewModel(inputPrescription: inputPrescription);
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    expect(
+        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    expect(inputPrescription.galleryRequestCount, 1);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+
+    final galleryRetryButton =
+        find.byKey(const Key('prescription-gallery-retry-button'));
+    await tester.ensureVisible(galleryRetryButton);
+    await tester.tap(galleryRetryButton);
+    await tester.pumpAndSettle();
+
+    expect(inputPrescription.galleryRequestCount, 2);
+    expect(
+        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
   });
 
   testWidgets('analysis failure actions fit a compact large-text viewport',
@@ -55,6 +143,8 @@ void main() {
         home: PrescriptionAnalysisFailureUI(
           message: 'The request failed.',
           userSetting: const UserSetting(language: 'en', fontSize: 20),
+          failureStep: AnalysisProgressStep.medicationAnalysis,
+          onAnalysisRetryRequested: () {},
           onCameraRetryRequested: () {},
           onGalleryRetryRequested: () {},
           onHomeRequested: () {},

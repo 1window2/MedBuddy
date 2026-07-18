@@ -83,6 +83,26 @@ class _DeferredCheckMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+class _RetryableCheckMedicationDetail extends CheckMedicationDetail {
+  int requestCount = 0;
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule medicationSchedule,
+  ) async {
+    requestCount += 1;
+    if (requestCount == 1) {
+      return null;
+    }
+    return MedicationDetail(
+      itemName: medicationSchedule.medicationName,
+      efficacy: 'effect',
+      usageMethod: 'usage',
+      warning: 'warning',
+    );
+  }
+}
+
 void main() {
   test('requestPrescriptionImageFromGallery exposes OCR correction notice',
       () async {
@@ -135,6 +155,50 @@ void main() {
         PrescriptionFlowState.analysisSucceeded);
     expect(viewModel.analyzedMedicationList, hasLength(1));
     expect(viewModel.statusMessage, contains('1개 약 정보'));
+  });
+
+  test('medication analysis can retry without repeating prescription OCR',
+      () async {
+    final detailControl = _RetryableCheckMedicationDetail();
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(
+        const [MedicationSchedule(medicationName: 'retry-tablet')],
+      ),
+      checkMedicationDetail: detailControl,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    await viewModel.requestPrescriptionAnalysis();
+
+    expect(
+        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    expect(viewModel.canRetryPrescriptionAnalysis, isTrue);
+    expect(viewModel.recognizedMedicationScheduleList, hasLength(1));
+
+    await viewModel.requestPrescriptionAnalysis();
+
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+    expect(viewModel.canRetryPrescriptionAnalysis, isFalse);
+    expect(viewModel.analyzedMedicationList, hasLength(1));
+    expect(detailControl.requestCount, 2);
+  });
+
+  test('prescription recognition failure does not expose analysis retry',
+      () async {
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(const []),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+
+    expect(
+        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    expect(viewModel.canRetryPrescriptionAnalysis, isFalse);
   });
 
   test('clearing recognition ignores a late OCR result', () async {
