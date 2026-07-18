@@ -57,7 +57,9 @@ class HomeScreen extends StatelessWidget {
       PrescriptionFlowState.analysisFailed => PrescriptionAnalysisFailureUI(
           message: viewModel.analysisErrorMessage,
           userSetting: viewModel.userSetting,
-          onRetryRequested: viewModel.requestPrescriptionImage,
+          onCameraRetryRequested: viewModel.requestPrescriptionImage,
+          onGalleryRetryRequested:
+              viewModel.requestPrescriptionImageFromGallery,
           onHomeRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.resultReady => CheckResultUI(

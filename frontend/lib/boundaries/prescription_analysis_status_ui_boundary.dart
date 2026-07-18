@@ -175,18 +175,20 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
 // 역할: 처방전 인식 또는 약품 정보 분석 실패 원인과 다음 행동을 안내한다.
 // 주요 책임:
 // - 실패 메시지를 화면에 표시한다.
-// - 다시 촬영하거나 홈으로 돌아가는 선택지를 제공한다.
+// - 카메라 재촬영, 갤러리 재선택, 홈 복귀 선택지를 제공한다.
 class PrescriptionAnalysisFailureUI extends StatelessWidget {
   final String message;
   final UserSetting userSetting;
-  final VoidCallback onRetryRequested;
+  final VoidCallback onCameraRetryRequested;
+  final VoidCallback onGalleryRetryRequested;
   final VoidCallback onHomeRequested;
 
   const PrescriptionAnalysisFailureUI({
     super.key,
     required this.message,
     required this.userSetting,
-    required this.onRetryRequested,
+    required this.onCameraRetryRequested,
+    required this.onGalleryRetryRequested,
     required this.onHomeRequested,
   });
 
@@ -289,9 +291,35 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                             letterSpacing: 0,
                           ),
                         ),
-                        onPressed: onRetryRequested,
+                        onPressed: onCameraRetryRequested,
                         icon: const Icon(Icons.photo_camera_outlined),
-                        label: Text(text.retry),
+                        label: Text(text.cameraRetry),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 63,
+                      child: OutlinedButton.icon(
+                        key: const Key('prescription-gallery-retry-button'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: MedBuddyColors.primaryDark,
+                          side: const BorderSide(
+                            color: MedBuddyColors.primary,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: MedBuddyRadii.card,
+                          ),
+                          textStyle: TextStyle(
+                            fontSize: 17 * scale,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        onPressed: onGalleryRetryRequested,
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: Text(text.galleryRetry),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -492,6 +520,7 @@ class _StatusText {
     ];
   }
 
-  String get retry => isEnglish ? 'Retake Photo' : '다시 촬영하기';
+  String get cameraRetry => isEnglish ? 'Retake Photo' : '다시 촬영하기';
+  String get galleryRetry => isEnglish ? 'Choose Another Image' : '이미지 다시 선택하기';
   String get home => isEnglish ? 'Back to Home' : '홈으로 돌아가기';
 }
