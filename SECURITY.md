@@ -96,6 +96,9 @@ server-derived ownership scope, and authorization checks for every medication,
 schedule, notification, and patient-caregiver operation. Client-supplied hashes
 must not remain the authority for mutation access.
 
+The approved migration boundary and delivery order are documented in
+[`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
+
 ## Alpha Release Integrity
 
 Current Android release APKs use the repository's development signing setup and
