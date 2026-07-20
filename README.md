@@ -57,7 +57,10 @@
 - Patients can create a temporary link code.
 - Caregivers can register the code, view linked patient medication data, and unlink when needed.
 - Caregivers can enable or disable notification preferences for each linked patient through a persisted caregiver-patient setting.
-- Patient/caregiver scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
+- Patient/caregiver demo-data scope resolution is handled in control-layer
+  classes so UI screens do not bypass backend scope checks. The current
+  hash-based scope is not authentication and must not be used with real
+  multi-user medical data.
 
 ### Health Recommendations and Reminders
 
@@ -102,7 +105,7 @@ Detailed design references are maintained in [`docs/`](docs/), and contribution 
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/Korean%20Public%20Data-009900?style=for-the-badge)
+![Public Data](https://img.shields.io/badge/Public%20Data-009900?style=for-the-badge)
 
 ### Collaboration
 
@@ -207,12 +210,19 @@ Use the device id shown by `flutter devices`. By default, the Android emulator b
 http://10.0.2.2:8000/api/v1/medication
 ```
 
-For a physical Android device on the same network, replace the example host with
-your development machine's LAN IP address. Override the backend URL at run time:
+For a physical Android device on the same trusted network, replace the example
+host with your development machine's LAN IP address. Supply the backend URL when
+building or launching the app:
 
 ```powershell
 flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
 ```
+
+`MEDBUDDY_API_BASE_URL` is compiled into the Flutter application through
+`String.fromEnvironment`; it is not an in-app runtime setting. An APK built
+without this value keeps the emulator-only `10.0.2.2` default. Do not publish an
+APK containing a private LAN address as a portable client. Current APKs are
+local alpha-demo artifacts and require a separately running backend.
 
 ## Contributing
 

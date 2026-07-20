@@ -9,12 +9,11 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `Unreleased (v0.0.9-alpha candidate)` | Current development target | Security fixes should be applied here first. |
+| `v0.0.9-alpha` | Current alpha release | Security fixes should be applied here first. |
 | `v0.0.8-alpha` and earlier | Published alpha demos | Use the newest published alpha; superseded demos receive no routine backports. |
 
-The active release branch or pull request is the source of truth for
-`Unreleased`. The next alpha tag should be cut only from a commit that includes
-all applicable security fixes.
+The release tag and default branch must include all applicable security fixes.
+Superseded alpha demos are not supported release lines.
 
 ## Reporting a Vulnerability
 
@@ -104,3 +103,11 @@ are intended only for explicitly labeled alpha-demo sideloading. They must not
 be presented as Play Store, production, or trusted-distribution artifacts. A
 stable release requires a protected release keystore, documented key custody,
 and verification of the signed artifact produced by the release pipeline.
+
+The Android alpha client permits clear-text HTTP so it can reach a developer-run
+backend on an emulator or trusted local network. The backend URL is compiled
+into the app, and a build without an explicit override uses the emulator-only
+`10.0.2.2` address. Do not expose this configuration to an untrusted network or
+embed a private LAN address in a generally distributed APK. Production delivery
+requires HTTPS, a deployed backend endpoint, and an Android network policy that
+does not allow unrestricted clear-text traffic.
