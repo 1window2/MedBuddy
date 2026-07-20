@@ -13,7 +13,10 @@ from api.dependencies import (
     close_medication_detail_cache,
     close_pill_identification_boundaries,
 )
+from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
+from controls.input_prescription_control import MAX_PRESCRIPTION_IMAGE_BYTES
 from core.database import Base, engine
+from core.request_limits import RequestBodyLimitMiddleware
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
@@ -73,6 +76,18 @@ def create_app() -> FastAPI:
         title="MedBuddy API",
         version="0.0.9-alpha",
         lifespan=application_lifespan,
+    )
+    multipart_overhead_bytes = 512 * 1024
+    app.add_middleware(
+        RequestBodyLimitMiddleware,
+        limits={
+            "/api/v1/medication/upload-prescription": (
+                MAX_PRESCRIPTION_IMAGE_BYTES + multipart_overhead_bytes
+            ),
+            "/api/v1/medication/pill-identification/candidates": (
+                2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
+            ),
+        },
     )
     app.include_router(
         medication_router,

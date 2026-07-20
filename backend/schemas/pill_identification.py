@@ -1,6 +1,8 @@
 # File Name: pill_identification.py
 # Role: HTTP response DTOs for experimental loose-pill candidate identification.
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from entities.pill_identification_entity import (
@@ -19,6 +21,8 @@ class PillVisualFeaturesResponse(BaseModel):
     back_line: str = "unknown"
     quality: str = "usable"
     quality_issues: list[str] = Field(default_factory=list)
+    same_pill: bool = True
+    side_consistency_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
 
     @classmethod
     def from_domain(
@@ -34,6 +38,8 @@ class PillVisualFeaturesResponse(BaseModel):
             back_line=features.back_line,
             quality=features.quality,
             quality_issues=list(features.quality_issues),
+            same_pill=features.same_pill,
+            side_consistency_confidence=features.side_consistency_confidence,
         )
 
 
@@ -72,7 +78,7 @@ class PillIdentificationResponse(BaseModel):
     success: bool
     message: str
     is_confident: bool = False
-    requires_confirmation: bool = True
+    requires_confirmation: Literal[True] = True
     observed_features: PillVisualFeaturesResponse
     data: list[PillIdentificationCandidateResponse] = Field(default_factory=list)
 
@@ -90,8 +96,8 @@ class PillIdentificationResponse(BaseModel):
         return cls(
             success=bool(result.candidates),
             message=message,
-            is_confident=result.is_confident,
-            requires_confirmation=result.requires_confirmation,
+            is_confident=result.is_confident and bool(result.candidates),
+            requires_confirmation=True,
             observed_features=PillVisualFeaturesResponse.from_domain(
                 result.observed_features
             ),

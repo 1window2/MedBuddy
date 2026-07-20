@@ -66,12 +66,14 @@ class IdentifyPill:
         vision_boundary: PillVisionBoundary,
         catalog_boundary: MFDSPillCatalogBoundary,
         candidate_limit: int = 5,
+        ranking_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         if candidate_limit < 1 or candidate_limit > 20:
             raise ValueError("Pill candidate limit must be between 1 and 20.")
         self.vision_boundary = vision_boundary
         self.catalog_boundary = catalog_boundary
         self.candidate_limit = candidate_limit
+        self._ranking_semaphore = ranking_semaphore or asyncio.Semaphore(1)
 
     async def requestPillIdentification(
         self,
@@ -93,8 +95,7 @@ class IdentifyPill:
                     task.cancel()
             await asyncio.gather(*required_tasks, return_exceptions=True)
             raise
-        ranked_candidates = await asyncio.to_thread(
-            self._rank_candidates,
+        ranked_candidates = await self._rank_candidates_with_capacity(
             features,
             catalog,
             max(self.candidate_limit, 2),
@@ -107,6 +108,47 @@ class IdentifyPill:
             is_confident=is_confident,
             requires_confirmation=True,
         )
+
+    async def _rank_candidates_with_capacity(
+        self,
+        features: PillVisualFeatures,
+        catalog: tuple[PillCatalogEntry, ...],
+        ranking_limit: int,
+    ) -> list[PillIdentificationCandidate]:
+        """Keeps shared CPU capacity reserved until a detached worker exits."""
+
+        await self._ranking_semaphore.acquire()
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                self._rank_candidates,
+                features,
+                catalog,
+                ranking_limit,
+            )
+        )
+        release_on_exit = True
+        try:
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                worker.add_done_callback(self._release_ranking_capacity)
+                release_on_exit = False
+                raise
+        finally:
+            if release_on_exit:
+                self._ranking_semaphore.release()
+
+    def _release_ranking_capacity(
+        self,
+        worker: asyncio.Task[list[PillIdentificationCandidate]],
+    ) -> None:
+        """Consumes a detached ranking result and releases its shared slot."""
+
+        try:
+            worker.exception()
+        except asyncio.CancelledError:
+            pass
+        self._ranking_semaphore.release()
 
     def _rank_candidates(
         self,
@@ -393,7 +435,11 @@ class IdentifyPill:
         features: PillVisualFeatures,
         candidates: list[PillIdentificationCandidate],
     ) -> bool:
-        if features.quality == "poor":
+        if (
+            features.quality == "poor"
+            or not features.same_pill
+            or features.side_consistency_confidence < 0.7
+        ):
             return False
         observed_imprint_length = sum(
             len(IdentifyPill._normalize_imprint(value))

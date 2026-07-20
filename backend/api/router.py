@@ -26,6 +26,7 @@ from boundaries.pill_identification_boundary import (
     MAX_PILL_IMAGE_BYTES,
     PillCatalogUnavailableError,
     PillImageQualityError,
+    PillVisionResponseError,
     PillVisionUnavailableError,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
@@ -668,6 +669,11 @@ async def identify_loose_pill(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except PillVisionUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PillVisionResponseError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The pill visual-analysis service returned an invalid response.",
+        ) from exc
     except TimeoutError as exc:
         raise HTTPException(
             status_code=504,

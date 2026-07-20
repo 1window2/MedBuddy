@@ -7,9 +7,10 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import timedelta
 from io import BytesIO
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 import cv2
@@ -17,7 +18,7 @@ import httpx
 import numpy as np
 from google import genai
 from google.genai import types
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -28,6 +29,8 @@ from repositories.pill_identification_catalog_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+_CatalogIOResult = TypeVar("_CatalogIOResult")
 
 MAX_PILL_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PILL_IMAGE_PIXELS = 24_000_000
@@ -45,6 +48,10 @@ class PillVisionUnavailableError(RuntimeError):
     """Raised when the external visual-attribute service is unavailable."""
 
 
+class PillVisionResponseError(RuntimeError):
+    """Raised when the visual service returns an invalid response contract."""
+
+
 class PillImageProcessingBoundary:
     """Bounds, decodes, crops, and normalizes an uploaded pill photo."""
 
@@ -58,8 +65,43 @@ class PillImageProcessingBoundary:
             raise PillImageQualityError("The pill image must be 10 MB or smaller.")
 
         try:
-            with Image.open(BytesIO(image)) as metadata:
-                width, height = metadata.size
+            with Image.open(BytesIO(image)) as source:
+                width, height = source.size
+                if min(height, width) < self._MIN_IMAGE_DIMENSION:
+                    raise PillImageQualityError(
+                        "The pill image resolution is too small."
+                    )
+                if height * width > MAX_PILL_IMAGE_PIXELS:
+                    raise PillImageQualityError(
+                        "The pill image resolution is too large."
+                    )
+
+                # JPEG draft decoding avoids materializing the full camera frame
+                # before it is reduced to the bounded analysis resolution.
+                if source.format == "JPEG":
+                    source.draft(
+                        "RGB",
+                        (
+                            self._MAX_ANALYSIS_DIMENSION,
+                            self._MAX_ANALYSIS_DIMENSION,
+                        ),
+                    )
+                source.load()
+                oriented = ImageOps.exif_transpose(source)
+                oriented.thumbnail(
+                    (
+                        self._MAX_ANALYSIS_DIMENSION,
+                        self._MAX_ANALYSIS_DIMENSION,
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+                rgb_image = oriented.convert("RGB")
+                decoded = cv2.cvtColor(
+                    np.asarray(rgb_image, dtype=np.uint8),
+                    cv2.COLOR_RGB2BGR,
+                )
+        except PillImageQualityError:
+            raise
         except (
             Image.DecompressionBombError,
             UnidentifiedImageError,
@@ -69,21 +111,9 @@ class PillImageProcessingBoundary:
             raise PillImageQualityError(
                 "The uploaded file is not a valid image."
             ) from exc
-        if min(height, width) < self._MIN_IMAGE_DIMENSION:
-            raise PillImageQualityError("The pill image resolution is too small.")
-        if height * width > MAX_PILL_IMAGE_PIXELS:
-            raise PillImageQualityError("The pill image resolution is too large.")
-
-        encoded = np.frombuffer(image, dtype=np.uint8)
-        decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-        if decoded is None:
-            raise PillImageQualityError("The uploaded file is not a valid image.")
-
         height, width = decoded.shape[:2]
         if min(height, width) < self._MIN_IMAGE_DIMENSION:
             raise PillImageQualityError("The pill image resolution is too small.")
-        if height * width > MAX_PILL_IMAGE_PIXELS:
-            raise PillImageQualityError("The pill image resolution is too large.")
 
         normalized = self._resize_for_analysis(decoded)
         cropped = self._crop_likely_foreground(normalized)
@@ -279,15 +309,19 @@ class GeminiPillVisionAPI:
         )
         response_text = response.text
         if not response_text or not response_text.strip():
-            raise PillImageQualityError("The visual analysis returned no result.")
+            raise PillVisionResponseError(
+                "The visual analysis returned an invalid response."
+            )
         return response_text
 
     @staticmethod
     def _prompt(*, has_back_image: bool) -> str:
         back_instruction = (
-            "The second image is the reverse side of the same pill."
+            "A second image was supplied. Compare both images and report whether "
+            "they show opposite sides of the same pill."
             if has_back_image
-            else "No reverse-side image was supplied; leave back-side fields empty."
+            else "No reverse-side image was supplied; leave back-side fields empty, "
+            "set same_pill to true, and set side_consistency_confidence to 1.0."
         )
         return f"""
         Extract visible physical attributes from the photographed loose pill.
@@ -303,6 +337,9 @@ class GeminiPillVisionAPI:
           alone is not an image-quality defect.
         - Mark quality as poor only when blur, glare, occlusion, multiple pills,
           or missing visual evidence prevents reliable attribute extraction.
+        - When two images are supplied, compare shape, color, score lines, and
+          imprints. Set same_pill to false if they appear to be different pills.
+        - side_consistency_confidence must be between 0.0 and 1.0.
         - Return only the requested JSON object.
         """
 
@@ -378,6 +415,8 @@ class PillVisionBoundary:
             "back_line",
             "quality",
             "quality_issues",
+            "same_pill",
+            "side_consistency_confidence",
         ],
         "properties": {
             "shape": {"type": "STRING", "enum": list(_SHAPES)},
@@ -395,6 +434,12 @@ class PillVisionBoundary:
                 "type": "ARRAY",
                 "items": {"type": "STRING", "maxLength": 80},
                 "maxItems": 5,
+            },
+            "same_pill": {"type": "BOOLEAN"},
+            "side_consistency_confidence": {
+                "type": "NUMBER",
+                "minimum": 0.0,
+                "maximum": 1.0,
             },
         },
     }
@@ -435,6 +480,7 @@ class PillVisionBoundary:
         if self.timeout_seconds <= 0:
             raise ValueError("Pill identification timeout must be positive.")
         self._analysis_semaphore = asyncio.Semaphore(max_concurrency)
+        self._preprocessing_semaphore = asyncio.Semaphore(max_concurrency)
 
     async def extractVisualFeatures(
         self,
@@ -456,24 +502,10 @@ class PillVisionBoundary:
         front_image: bytes,
         back_image: bytes | None,
     ) -> PillVisualFeatures:
-        processed_images = await asyncio.gather(
-            asyncio.to_thread(
-                self.image_processing_boundary.preprocessPillImage,
-                front_image,
-            ),
-            *(
-                [
-                    asyncio.to_thread(
-                        self.image_processing_boundary.preprocessPillImage,
-                        back_image,
-                    )
-                ]
-                if back_image is not None
-                else []
-            ),
+        processed_front, processed_back = await self._preprocess_images_with_capacity(
+            front_image,
+            back_image,
         )
-        processed_front = processed_images[0]
-        processed_back = processed_images[1] if len(processed_images) > 1 else None
 
         try:
             response_text = await self.vision_api.requestVisualFeatures(
@@ -483,7 +515,7 @@ class PillVisionBoundary:
                 back_image=processed_back,
                 response_schema=self._RESPONSE_SCHEMA,
             )
-        except PillImageQualityError:
+        except (PillImageQualityError, PillVisionResponseError):
             raise
         except Exception as exc:
             raise PillVisionUnavailableError(
@@ -493,13 +525,33 @@ class PillVisionBoundary:
         try:
             payload = json.loads(response_text)
         except json.JSONDecodeError as exc:
-            raise PillImageQualityError(
-                "The visual analysis returned invalid data."
+            raise PillVisionResponseError(
+                "The visual analysis returned an invalid response."
             ) from exc
         if not isinstance(payload, dict):
-            raise PillImageQualityError("The visual analysis returned invalid data.")
+            raise PillVisionResponseError(
+                "The visual analysis returned an invalid response."
+            )
 
-        features = self._to_features(payload)
+        features = self._to_features(
+            payload,
+            has_back_image=back_image is not None,
+        )
+        if back_image is not None and not features.same_pill:
+            raise PillImageQualityError(
+                "The front and back photos appear to show different pills."
+            )
+        if (
+            back_image is not None
+            and features.side_consistency_confidence < 0.7
+        ):
+            features = replace(
+                features,
+                quality_issues=(
+                    *features.quality_issues[:4],
+                    "front/back consistency is uncertain",
+                ),
+            )
         if features.quality == "poor" and not self._has_usable_low_quality_features(
             features
         ):
@@ -509,6 +561,62 @@ class PillVisionBoundary:
                 message = f"{message} Detected issues: {detail}."
             raise PillImageQualityError(message)
         return features
+
+    def _preprocess_images(
+        self,
+        front_image: bytes,
+        back_image: bytes | None,
+    ) -> tuple[bytes, bytes | None]:
+        """Normalizes both sides sequentially to cap per-request decode memory."""
+
+        processed_front = self.image_processing_boundary.preprocessPillImage(
+            front_image
+        )
+        processed_back = (
+            self.image_processing_boundary.preprocessPillImage(back_image)
+            if back_image is not None
+            else None
+        )
+        return processed_front, processed_back
+
+    async def _preprocess_images_with_capacity(
+        self,
+        front_image: bytes,
+        back_image: bytes | None,
+    ) -> tuple[bytes, bytes | None]:
+        """Keeps decode capacity reserved until a timed-out worker really exits."""
+
+        await self._preprocessing_semaphore.acquire()
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                self._preprocess_images,
+                front_image,
+                back_image,
+            )
+        )
+        release_on_exit = True
+        try:
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                worker.add_done_callback(self._release_preprocessing_capacity)
+                release_on_exit = False
+                raise
+        finally:
+            if release_on_exit:
+                self._preprocessing_semaphore.release()
+
+    def _release_preprocessing_capacity(
+        self,
+        worker: asyncio.Task[tuple[bytes, bytes | None]],
+    ) -> None:
+        """Consumes a detached worker result and releases its capacity slot."""
+
+        try:
+            worker.exception()
+        except asyncio.CancelledError:
+            pass
+        self._preprocessing_semaphore.release()
 
     @classmethod
     def _has_usable_low_quality_features(
@@ -545,7 +653,12 @@ class PillVisionBoundary:
         finally:
             self.client.close()
 
-    def _to_features(self, payload: dict[str, Any]) -> PillVisualFeatures:
+    def _to_features(
+        self,
+        payload: dict[str, Any],
+        *,
+        has_back_image: bool,
+    ) -> PillVisualFeatures:
         try:
             shape = self._required_enum(payload, "shape", self._SHAPES)
             colors = tuple(
@@ -572,10 +685,21 @@ class PillVisionBoundary:
                     max_length=80,
                 )
             )
+            same_pill = self._required_bool(payload, "same_pill")
+            side_consistency_confidence = self._required_score(
+                payload,
+                "side_consistency_confidence",
+            )
         except (KeyError, TypeError, ValueError) as exc:
-            raise PillImageQualityError(
-                "The visual analysis returned invalid data."
+            raise PillVisionResponseError(
+                "The visual analysis returned an invalid response."
             ) from exc
+
+        if not has_back_image:
+            back_imprint = ""
+            back_line = "unknown"
+            same_pill = True
+            side_consistency_confidence = 1.0
 
         return PillVisualFeatures(
             shape=shape,
@@ -586,7 +710,26 @@ class PillVisionBoundary:
             back_line=back_line,
             quality=quality,
             quality_issues=quality_issues,
+            same_pill=same_pill,
+            side_consistency_confidence=side_consistency_confidence,
         )
+
+    @staticmethod
+    def _required_bool(payload: dict[str, Any], key: str) -> bool:
+        value = payload[key]
+        if not isinstance(value, bool):
+            raise ValueError(f"Invalid {key} value.")
+        return value
+
+    @staticmethod
+    def _required_score(payload: dict[str, Any], key: str) -> float:
+        value = payload[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Invalid {key} value.")
+        normalized = float(value)
+        if not math.isfinite(normalized) or not 0.0 <= normalized <= 1.0:
+            raise ValueError(f"Invalid {key} value.")
+        return normalized
 
     @classmethod
     def _required_enum(
@@ -655,6 +798,8 @@ class MFDSPillAPI:
     """Downloads and validates the authoritative MFDS pill catalog."""
 
     _MAX_CATALOG_ROWS = 50_000
+    _MAX_PAGE_RESPONSE_BYTES = 5 * 1024 * 1024
+    _MAX_REFRESH_RESPONSE_BYTES = 128 * 1024 * 1024
 
     def __init__(
         self,
@@ -683,6 +828,9 @@ class MFDSPillAPI:
                 "MFDS pill catalog minimum rows must be between 1 and 50000."
             )
         self.base_url = base_url or settings.PILL_IMAGE_API_BASE_URL
+        parsed_base_url = urlsplit(self.base_url)
+        if parsed_base_url.scheme.lower() != "https" or not parsed_base_url.netloc:
+            raise ValueError("MFDS pill catalog endpoint must use HTTPS.")
         self.api_key = api_key or settings.PUBLIC_DATA_API_KEY
         self.timeout_seconds = resolved_timeout
         self.page_size = page_size
@@ -699,29 +847,71 @@ class MFDSPillAPI:
             timeout=self.timeout_seconds,
             limits=limits,
         ) as client:
-            first_items, total_count = await self._request_page(client, 1)
+            first_items, total_count, first_response_bytes = await self._request_page(
+                client,
+                1,
+            )
             if total_count < 1 or total_count > self._MAX_CATALOG_ROWS:
                 raise RuntimeError("MFDS pill catalog returned an invalid row count.")
+            if first_response_bytes > self._MAX_REFRESH_RESPONSE_BYTES:
+                raise RuntimeError("MFDS pill catalog refresh response is too large.")
 
             page_count = math.ceil(total_count / self.page_size)
             semaphore = asyncio.Semaphore(self.max_concurrency)
+            response_budget_lock = asyncio.Lock()
+            total_response_bytes = first_response_bytes
 
-            async def fetch_page(page_no: int) -> list[dict[str, Any]]:
+            async def fetch_page(
+                page_no: int,
+            ) -> tuple[list[PillCatalogEntry], int]:
+                nonlocal total_response_bytes
                 async with semaphore:
-                    items, _ = await self._request_page(client, page_no)
-                    return items
+                    items, page_total_count, response_bytes = await self._request_page(
+                        client,
+                        page_no,
+                    )
+                    if page_total_count != total_count:
+                        raise RuntimeError(
+                            "MFDS pill catalog returned inconsistent row counts."
+                        )
+                    async with response_budget_lock:
+                        total_response_bytes += response_bytes
+                        if total_response_bytes > self._MAX_REFRESH_RESPONSE_BYTES:
+                            raise RuntimeError(
+                                "MFDS pill catalog refresh response is too large."
+                            )
+                    entries = [
+                        entry
+                        for item in items
+                        if (entry := self._to_catalog_entry(item)) is not None
+                    ]
+                    return entries, len(items)
 
-            remaining_pages = await asyncio.gather(
-                *(fetch_page(page_no) for page_no in range(2, page_count + 1))
-            )
+            page_tasks = [
+                asyncio.create_task(fetch_page(page_no))
+                for page_no in range(2, page_count + 1)
+            ]
+            try:
+                remaining_pages = await asyncio.gather(*page_tasks)
+            except BaseException:
+                for task in page_tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*page_tasks, return_exceptions=True)
+                raise
 
-        raw_items = first_items + [
-            item for page_items in remaining_pages for item in page_items
-        ]
+        raw_row_count = len(first_items) + sum(
+            page_row_count for _, page_row_count in remaining_pages
+        )
+        if raw_row_count > total_count or raw_row_count > self._MAX_CATALOG_ROWS:
+            raise RuntimeError("MFDS pill catalog returned too many rows.")
         deduplicated: dict[str, PillCatalogEntry] = {}
-        for item in raw_items:
+        for item in first_items:
             entry = self._to_catalog_entry(item)
             if entry is not None:
+                deduplicated[entry.item_seq] = entry
+        for page_entries, _ in remaining_pages:
+            for entry in page_entries:
                 deduplicated[entry.item_seq] = entry
 
         expected_minimum = max(
@@ -742,7 +932,7 @@ class MFDSPillAPI:
         self,
         client: httpx.AsyncClient,
         page_no: int,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int, int]:
         params = {
             "serviceKey": self.api_key,
             "type": "json",
@@ -752,14 +942,50 @@ class MFDSPillAPI:
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                response = await client.get(self.base_url, params=params)
-                response.raise_for_status()
-                return self._extract_items(response.json())
+                async with client.stream(
+                    "GET",
+                    self.base_url,
+                    params=params,
+                ) as response:
+                    response.raise_for_status()
+                    payload, response_bytes = await self._read_bounded_json(response)
+                items, total_count = self._extract_items(payload)
+                if len(items) > self.page_size:
+                    raise RuntimeError(
+                        "MFDS pill catalog page returned too many rows."
+                    )
+                return items, total_count, response_bytes
             except Exception as exc:
                 last_error = exc
                 if attempt == 0:
                     await asyncio.sleep(0.25)
         raise RuntimeError("MFDS pill catalog page request failed.") from last_error
+
+    @classmethod
+    async def _read_bounded_json(
+        cls,
+        response: httpx.Response,
+    ) -> tuple[Any, int]:
+        content_length = response.headers.get("content-length")
+        if content_length is not None:
+            try:
+                declared_length = int(content_length)
+            except ValueError:
+                declared_length = 0
+            if declared_length > cls._MAX_PAGE_RESPONSE_BYTES:
+                raise RuntimeError("MFDS pill catalog page response is too large.")
+
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            body.extend(chunk)
+            if len(body) > cls._MAX_PAGE_RESPONSE_BYTES:
+                raise RuntimeError("MFDS pill catalog page response is too large.")
+        try:
+            return json.loads(body), len(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "MFDS pill catalog returned invalid JSON."
+            ) from exc
 
     @staticmethod
     def _extract_items(payload: Any) -> tuple[list[dict[str, Any]], int]:
@@ -848,6 +1074,7 @@ class MFDSPillCatalogBoundary:
     """Coordinates memory, SQLite, and MFDS sources for the pill catalog."""
 
     _STALE_RETRY_SECONDS = 300.0
+    _FAILED_REFRESH_RETRY_SECONDS = 15.0
 
     def __init__(
         self,
@@ -879,19 +1106,33 @@ class MFDSPillCatalogBoundary:
         self._catalog: tuple[PillCatalogEntry, ...] | None = None
         self._catalog_loaded_at = 0.0
         self._catalog_is_stale = False
+        self._last_refresh_failure_at = 0.0
         self._catalog_lock = asyncio.Lock()
+        self._cache_io_semaphore = asyncio.Semaphore(1)
 
     async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         if self._is_memory_cache_fresh():
             return self._catalog or ()
 
+        try:
+            async with asyncio.timeout(self.refresh_timeout_seconds):
+                return await self._get_catalog_with_lock()
+        except TimeoutError as exc:
+            self._last_refresh_failure_at = time.monotonic()
+            if self._catalog is not None and self._catalog_is_stale:
+                return self._catalog
+            raise PillCatalogUnavailableError(
+                "The public pill catalog request timed out."
+            ) from exc
+
+    async def _get_catalog_with_lock(self) -> tuple[PillCatalogEntry, ...]:
         async with self._catalog_lock:
             if self._is_memory_cache_fresh():
                 return self._catalog or ()
 
             try:
-                is_fresh, persisted_catalog = await asyncio.to_thread(
-                    self._load_persisted_catalog
+                is_fresh, persisted_catalog = await self._run_cache_io(
+                    self._load_persisted_catalog,
                 )
             except Exception as exc:
                 logger.warning(
@@ -908,14 +1149,26 @@ class MFDSPillCatalogBoundary:
                 if len(persisted_catalog) >= self.minimum_catalog_rows
                 else []
             )
-            try:
-                catalog = await asyncio.wait_for(
-                    self.catalog_api.requestCatalog(),
-                    timeout=self.refresh_timeout_seconds,
+            if stale_catalog:
+                # Publish a complete stale snapshot before remote refresh so
+                # timeout and cancellation paths can still serve known data.
+                self._set_memory_catalog(stale_catalog, stale=True)
+            if self._is_refresh_backoff_active():
+                if stale_catalog:
+                    return self._catalog or ()
+                raise PillCatalogUnavailableError(
+                    "The public pill catalog is temporarily unavailable."
                 )
+            try:
+                catalog = await self.catalog_api.requestCatalog()
                 if len(catalog) < self.minimum_catalog_rows:
                     raise RuntimeError("MFDS pill catalog download was incomplete.")
+            except asyncio.CancelledError:
+                # A sibling use-case failure or client cancellation is not an
+                # upstream outage and must not poison the next refresh attempt.
+                raise
             except Exception as exc:
+                self._last_refresh_failure_at = time.monotonic()
                 if not stale_catalog:
                     raise PillCatalogUnavailableError(
                         "The public pill catalog is temporarily unavailable."
@@ -924,23 +1177,65 @@ class MFDSPillCatalogBoundary:
                     "MFDS pill catalog refresh failed; using local cache: %s",
                     type(exc).__name__,
                 )
-                self._set_memory_catalog(stale_catalog, stale=True)
                 return self._catalog or ()
 
             try:
-                await asyncio.to_thread(self._replace_persisted_catalog, catalog)
+                await self._run_cache_io(
+                    lambda: self._replace_persisted_catalog(catalog),
+                )
             except Exception as exc:
                 logger.warning(
                     "Pill catalog cache write failed: %s",
                     type(exc).__name__,
                 )
             self._set_memory_catalog(catalog)
+            self._last_refresh_failure_at = 0.0
             return self._catalog or ()
+
+    async def _run_cache_io(
+        self,
+        operation: Callable[[], _CatalogIOResult],
+    ) -> _CatalogIOResult:
+        """Keeps SQLite capacity reserved until a timed-out worker exits."""
+
+        await self._cache_io_semaphore.acquire()
+        worker = asyncio.create_task(asyncio.to_thread(operation))
+        release_on_exit = True
+        try:
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                worker.add_done_callback(self._release_cache_io_capacity)
+                release_on_exit = False
+                raise
+        finally:
+            if release_on_exit:
+                self._cache_io_semaphore.release()
+
+    def _release_cache_io_capacity(
+        self,
+        worker: asyncio.Task[_CatalogIOResult],
+    ) -> None:
+        """Consumes a detached SQLite result and releases its capacity slot."""
+
+        try:
+            worker.exception()
+        except asyncio.CancelledError:
+            pass
+        self._cache_io_semaphore.release()
 
     def invalidateMemoryCache(self) -> None:
         self._catalog = None
         self._catalog_loaded_at = 0.0
         self._catalog_is_stale = False
+        self._last_refresh_failure_at = 0.0
+
+    def _is_refresh_backoff_active(self) -> bool:
+        return (
+            self._last_refresh_failure_at > 0.0
+            and time.monotonic() - self._last_refresh_failure_at
+            < self._FAILED_REFRESH_RETRY_SECONDS
+        )
 
     def _is_memory_cache_fresh(self) -> bool:
         if self._catalog is None:

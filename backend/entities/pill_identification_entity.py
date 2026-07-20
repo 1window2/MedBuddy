@@ -2,6 +2,7 @@
 # Role: Domain entities and local MFDS reference rows for loose-pill identification.
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import declarative_base
@@ -21,6 +22,8 @@ class PillVisualFeatures:
     back_line: str = "unknown"
     quality: str = "usable"
     quality_issues: tuple[str, ...] = ()
+    same_pill: bool = True
+    side_consistency_confidence: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,13 @@ class PillIdentificationResult:
     observed_features: PillVisualFeatures
     candidates: tuple[PillIdentificationCandidate, ...] = field(default_factory=tuple)
     is_confident: bool = False
-    requires_confirmation: bool = True
+    requires_confirmation: Literal[True] = True
+
+    def __post_init__(self) -> None:
+        if self.requires_confirmation is not True:
+            raise ValueError("Pill identification always requires confirmation.")
+        if self.is_confident and not self.candidates:
+            raise ValueError("An empty pill result cannot be confident.")
 
 
 class PillIdentificationReference(PillCatalogBase):

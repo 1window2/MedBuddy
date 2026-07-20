@@ -1,6 +1,7 @@
 # File Name: dependencies.py
 # Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
+import asyncio
 import logging
 from threading import Lock
 
@@ -42,6 +43,7 @@ _pill_image_api = PillImageAPI()
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
+_pill_ranking_semaphore = asyncio.Semaphore(2)
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:
@@ -119,6 +121,7 @@ def get_identify_pill() -> IdentifyPill:
     return IdentifyPill(
         vision_boundary=vision_boundary,
         catalog_boundary=catalog_boundary,
+        ranking_semaphore=_pill_ranking_semaphore,
     )
 
 
