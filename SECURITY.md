@@ -9,9 +9,8 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `Unreleased` | Current development target | Security fixes should be applied here first. |
-| `v0.0.8-alpha` | Latest alpha demo | Current supported demo release. |
-| `v0.0.7-alpha` and earlier | Superseded alpha demos | Update to `v0.0.8-alpha`; no routine security backports. |
+| `Unreleased (v0.0.9-alpha candidate)` | Current development target | Security fixes should be applied here first. |
+| `v0.0.8-alpha` and earlier | Published alpha demos | Use the newest published alpha; superseded demos receive no routine backports. |
 
 The active release branch or pull request is the source of truth for
 `Unreleased`. The next alpha tag should be cut only from a commit that includes
@@ -97,3 +96,11 @@ Production deployment requires an authenticated principal at the API boundary,
 server-derived ownership scope, and authorization checks for every medication,
 schedule, notification, and patient-caregiver operation. Client-supplied hashes
 must not remain the authority for mutation access.
+
+## Alpha Release Integrity
+
+Current Android release APKs use the repository's development signing setup and
+are intended only for explicitly labeled alpha-demo sideloading. They must not
+be presented as Play Store, production, or trusted-distribution artifacts. A
+stable release requires a protected release keystore, documented key custody,
+and verification of the signed artifact produced by the release pipeline.

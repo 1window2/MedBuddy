@@ -19,8 +19,12 @@ to verify the package or consult a pharmacist before taking an unknown pill.
 - Gemini Vision extracts only visible attributes: shape, color, imprint, score
   line, and image quality. Its prompt explicitly forbids product-name guessing.
 - `IdentifyPill` ranks MFDS rows deterministically from those attributes.
+- The optional reverse-side photo is checked against the front-side photo.
+  Clearly mismatched pills are rejected; uncertain pairs remain non-confident
+  and are surfaced to the user for retaking or manual verification.
 - User photos are normalized in memory and sent for analysis, but are not
-  persisted or logged.
+  persisted or logged. Path-specific body limits reject oversized multipart
+  requests before Starlette parses them.
 - Public MFDS metadata is cached for seven days in an isolated local SQLite
   reference database, so a catalog refresh cannot lock or enlarge the core
   medication/schedule database. A stale complete cache remains available
@@ -43,20 +47,22 @@ Official sources:
 skinparam classAttributeIconSize 0
 
 package "Frontend" {
-  class PrescriptionInputUI <<boundary>>
+  class HomeScreen <<boundary>>
+  class InputPrescriptionUI <<boundary>>
   class PillIdentificationUI <<boundary>>
   class "IdentifyPill" as IdentifyPillFlutter <<control>> {
     +requestPillImage(source)
     +requestPillIdentification(frontImage, backImage)
   }
+  class "PillVisualFeatures" as PillVisualFeaturesFlutter <<entity>>
   class "PillIdentificationResult" as PillIdentificationResultFlutter <<entity>>
   class "PillIdentificationCandidate" as PillIdentificationCandidateFlutter <<entity>>
 }
 
 package "Backend" {
-  class MedicationRouter <<boundary>> {
-    +identify_loose_pill(front, back)
-  }
+  class RequestBodyLimitMiddleware <<infrastructure>>
+  rectangle "api.router\n<<HTTP boundary module>>" as ApiRouter
+  rectangle "api.dependencies\n<<composition module>>" as ApiDependencies
   class IdentifyPill <<control>> {
     +requestPillIdentification(frontImage, backImage)
     -_rank_candidates(features, catalog)
@@ -82,13 +88,21 @@ package "Backend" {
   class PillIdentificationReference <<entity>>
 }
 
-PrescriptionInputUI --> PillIdentificationUI : opens
+HomeScreen --> InputPrescriptionUI : renders
+InputPrescriptionUI --> HomeScreen : requests UC-15 navigation
+HomeScreen --> PillIdentificationUI : Navigator.push
 PillIdentificationUI --> IdentifyPillFlutter
-IdentifyPillFlutter --> MedicationRouter : multipart HTTP
+IdentifyPillFlutter --> RequestBodyLimitMiddleware : multipart HTTP
+RequestBodyLimitMiddleware --> ApiRouter : bounded request
 IdentifyPillFlutter --> PillIdentificationResultFlutter
+PillIdentificationResultFlutter *-- PillVisualFeaturesFlutter
 PillIdentificationResultFlutter *-- PillIdentificationCandidateFlutter
 
-MedicationRouter --> IdentifyPill
+ApiRouter --> IdentifyPill
+ApiRouter ..> ApiDependencies : Depends(get_identify_pill)
+ApiDependencies ..> IdentifyPill : constructs per request
+ApiDependencies ..> PillVisionBoundary : owns reusable boundary
+ApiDependencies ..> MFDSPillCatalogBoundary : owns reusable boundary
 IdentifyPill --> PillVisionBoundary
 IdentifyPill --> MFDSPillCatalogBoundary
 IdentifyPill --> PillIdentificationResult
@@ -110,16 +124,24 @@ reference database keeps catalog replacement independent from core MedBuddy
 transactions and keeps SQLAlchemy concerns out of the `IdentifyPill` control.
 The repository initializes this optional database lazily on first catalog
 access, so the extension adds no catalog I/O to the baseline app startup.
+`api.dependencies` is the runtime composition module: it owns the reusable
+vision/catalog boundary instances, constructs a request-scoped `IdentifyPill`
+control from those boundaries, injects that control into `api.router`, and
+closes owned clients during the FastAPI lifespan. It is an implementation node,
+not a replacement for any conceptual BCE class.
 
 ## Extension sequence diagram
 
 ```plantuml
 @startuml MedBuddy_v009_Pill_Identification_Sequence
 actor User
-boundary PrescriptionInputUI
+boundary HomeScreen
+boundary InputPrescriptionUI
 boundary PillIdentificationUI
 control IdentifyPillFlutter
-boundary MedicationRouter
+participant RequestBodyLimitMiddleware
+participant "api.router" as ApiRouter
+participant "api.dependencies" as ApiDependencies
 control IdentifyPill
 boundary PillVisionBoundary
 boundary MFDSPillCatalogBoundary
@@ -127,22 +149,27 @@ external GeminiPillVisionAPI
 external MFDSPillAPI
 database PillCatalogSQLite
 
-User -> PrescriptionInputUI : click camera analysis
-PrescriptionInputUI -> User : choose prescription or loose pill
-User -> PrescriptionInputUI : choose loose pill
-PrescriptionInputUI -> PillIdentificationUI : open
+User -> InputPrescriptionUI : click camera analysis
+InputPrescriptionUI -> User : choose prescription or loose pill
+User -> InputPrescriptionUI : choose loose pill
+InputPrescriptionUI -> HomeScreen : onPillIdentificationRequested()
+HomeScreen -> PillIdentificationUI : Navigator.push
 User -> PillIdentificationUI : select front image\n[optional back image]
 User -> PillIdentificationUI : request identification
 PillIdentificationUI -> IdentifyPillFlutter : requestPillIdentification()
-IdentifyPillFlutter -> MedicationRouter : POST front + optional back
-MedicationRouter -> IdentifyPill : requestPillIdentification()
+IdentifyPillFlutter -> RequestBodyLimitMiddleware : POST front + optional back
+RequestBodyLimitMiddleware -> ApiRouter : bounded multipart request
+ApiRouter -> ApiDependencies : get_identify_pill()
+ApiDependencies --> ApiRouter : configured IdentifyPill
+ApiRouter -> IdentifyPill : requestPillIdentification()
 
 par Visual attributes
   IdentifyPill -> PillVisionBoundary : extractVisualFeatures()
-  PillVisionBoundary -> GeminiPillVisionAPI : bounded normalized images
+  PillVisionBoundary -> PillVisionBoundary : normalize front then optional back
+  PillVisionBoundary -> GeminiPillVisionAPI : bounded images + same-pill check
   GeminiPillVisionAPI --> PillVisionBoundary : visible attributes only
   PillVisionBoundary --> IdentifyPill : PillVisualFeatures
-else Public catalog
+and Public catalog
   IdentifyPill -> MFDSPillCatalogBoundary : getCatalog()
   MFDSPillCatalogBoundary -> PillCatalogSQLite : read fresh cache
   alt cache missing or expired
@@ -154,8 +181,8 @@ else Public catalog
 end
 
 IdentifyPill -> IdentifyPill : deterministic weighted ranking
-IdentifyPill --> MedicationRouter : candidate result
-MedicationRouter --> IdentifyPillFlutter : response DTO
+IdentifyPill --> ApiRouter : candidate result
+ApiRouter --> IdentifyPillFlutter : response DTO
 IdentifyPillFlutter --> PillIdentificationUI : candidate entities
 PillIdentificationUI --> User : show candidates + safety warning
 User -> PillIdentificationUI : select and confirm candidate
@@ -175,6 +202,11 @@ catalog boundary, deterministic ranking, response DTO, and confirmation policy
 were exercised together. The expected MFDS products ranked first for item
 sequences `200808877`, `200809076`, and `200809402`; every response kept
 `requires_confirmation=true`.
+After the front/back consistency contract was added, item `200808877` was
+revalidated through the production boundaries using the two sides of its
+official MFDS reference image. The expected product ranked first, the pair was
+accepted as consistent, and the result remained explicitly confirmable by the
+user.
 
 A complete live catalog refresh advertised 25,315 upstream rows and accepted
 25,298 normalized image-bearing entries after validation and deduplication,
@@ -187,24 +219,37 @@ are not a service-level guarantee.
 Live external-service validation is intentionally separate from CI because it
 requires private credentials and network availability. Deterministic unit and
 widget tests cover malformed upstream data, candidate ambiguity, mandatory
-confirmation, request cancellation, replacement-image locking, and compact
-large-text layouts without committing pill photos or generated catalog files.
+confirmation, request cancellation, replacement-image locking, front-only
+evidence isolation, front/back consistency, bounded multipart and MFDS response
+bodies, and compact large-text layouts without committing pill photos or
+generated catalog files.
 
 ## Failure and performance policy
 
-- Empty, invalid, oversized, tiny, or excessively large images are rejected
-  before external analysis. Encoded dimensions are bounded before OpenCV
-  allocates a decoded pixel buffer.
+- Oversized requests are rejected before multipart parsing. Empty, invalid,
+  oversized, tiny, or excessively large images are rejected before external
+  analysis. High-resolution JPEGs use bounded draft decoding before Pillow and
+  OpenCV normalize the analysis frame to at most 1,600 pixels per side.
 - Blocking visual defects such as unreadable blur, glare, occlusion, multiple
   pills, or no detectable pill are reported as `422`. A small pill in frame or
   a textured background is treated as a non-blocking warning when shape and
-  color remain usable. Unavailable catalog is reported as `503`; visual timeout
-  as `504`; internal details are not returned to the client.
-- Front/back preprocessing and catalog loading run concurrently with visual
-  analysis. MFDS pages are downloaded with bounded concurrency and the complete
-  refresh has a fixed deadline. Visual preprocessing, queueing, and the Gemini
-  request share one deadline and a bounded concurrency gate. A failed required
-  stage cancels its sibling.
+  color remain usable. Unavailable catalog is reported as `503`; invalid
+  visual-service data as `502`; visual timeout as `504`. Internal details are
+  not returned to the client.
+- When both sides are supplied, photos that clearly show different pills are
+  reported as `422`. A low side-consistency score forces `is_confident=false`
+  and produces a visible warning instead of silently combining two pills.
+- When no reverse-side photo is supplied, any model-generated reverse imprint
+  or score-line value is discarded before ranking, so nonexistent evidence
+  cannot increase candidate confidence.
+- Front and optional back preprocessing run sequentially inside one worker to
+  cap per-request decode memory. A timed-out worker retains a preprocessing
+  capacity slot until the underlying thread actually exits. The complete vision
+  task and catalog loading run concurrently. MFDS pages use bounded concurrency,
+  a fixed decompressed response-body limit, and cancellation of unfinished
+  siblings when one page fails. Catalog lock waiting, refresh, and fallback share
+  one fixed deadline; failed cold-cache refreshes use a short retry backoff so
+  queued callers do not repeat the same outage.
 - A catalog refresh is accepted only when at least 95% of the advertised rows
   are present, preventing a partial response from replacing a valid cache.
 - A stale persisted catalog remains available during upstream failure, but its

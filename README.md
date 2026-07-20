@@ -207,10 +207,11 @@ Use the device id shown by `flutter devices`. By default, the Android emulator b
 http://10.0.2.2:8000/api/v1/medication
 ```
 
-For a physical Android device, replace the host with your development machine's LAN IP address. Override the backend URL at run time when needed:
+For a physical Android device on the same network, replace the example host with
+your development machine's LAN IP address. Override the backend URL at run time:
 
 ```powershell
-flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
+flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
 ```
 
 ## Contributing
