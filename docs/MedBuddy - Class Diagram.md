@@ -1,512 +1,349 @@
 # MedBuddy Class Diagram
 
-> **Document status:** Historical design exploration, not the canonical
-> implementation contract. The authoritative first-semester baseline is
-> `docs/temp/class diagram v5.png`. Current v0.0.9 behavior is documented by
-> that baseline together with `MedBuddy - v0.0.9 Pill Identification
-> Extension.md`. Names such as `Guardian` and `MedicationAPIBoundary`, and
-> `planned` labels below, must not be used to rename implemented classes without
-> first reconciling them with those authoritative artifacts and the codebase.
+## Document Contract
 
-이 문서는 README의 초기 Class/Sequence Diagram, `docs/temp/SequenceDiagram_1window2.md`, `docs/temp/CommunicationDiagrams_jeeon0318.md`, 현재 Figma 화면 흐름, 실제 Flutter/FastAPI 코드 구조를 대조하여 새로 정리한 MedBuddy 분석/설계 Class Diagram이다.
+This is the canonical implementation-grounded class view for the
+`v0.0.9-alpha` baseline and the Android beta hardening branch.
 
-## 1. 판단 기준
+- `docs/temp/class diagram v5.png` remains the authoritative first-semester
+  conceptual baseline.
+- This document preserves that diagram's Boundary-Control-Entity spine while
+  using the classes and module boundaries that exist in the repository.
+- `docs/MedBuddy - v0.0.9 Pill Identification Extension.md` defines the UC-15
+  extension that was not present in v5.
+- `docs/MedBuddy - Beta Security Architecture.md` defines planned beta security
+  types. Planned security types are intentionally not represented as already
+  implemented below.
 
-- Class Diagram은 시스템의 정적 구조를 보여야 하므로, 단순한 파일 목록이 아니라 책임, 속성, 연산, 관계를 기준으로 클래스를 도출한다.
-- 강의 자료 기준으로 Use Case만으로는 분석 클래스 도출이 부족하며, Sequence Diagram과 Communication Diagram의 메시지 송수신 객체를 Boundary, Control, Entity로 분류해야 한다.
-- 현재 구현 클래스와 목표 설계 클래스를 무비판적으로 합치면 문서가 거짓말을 하게 된다. 따라서 아래 다이어그램은 아직 구현 근거가 부족한 클래스를 `planned` 스테레오타입으로 표시하고, 별도 표시가 없는 클래스는 현재 구현 또는 현재 시퀀스의 직접 근거가 있는 클래스로 본다.
-- `간병인`은 제외하고, 사용자 Actor는 `Patient`와 `Guardian`만 둔다.
-- Figma의 화면 흐름은 `촬영 -> 분석중 -> 분석 완료 -> 결과 확인 -> 저장/조회/연동/설정`으로 이어진다. 따라서 UI Boundary는 화면 단위로 분리한다.
-- README의 초기 Class Diagram은 실제 코드 파일을 잘 나열하지만, 일정, 보호자 연동, 알림, 사용자 설정 같은 목표 기능의 도메인 클래스가 부족하다.
-- 동료 Communication Diagram은 클래스 후보를 잘 드러내지만, `Caregiver` 명명은 현재 범위와 맞지 않으므로 모두 `Guardian`으로 정리한다.
+Private Flutter widgets, private Python helper classes, Pydantic transport DTOs,
+SQLAlchemy row classes, exceptions, and framework-generated state classes are
+implementation details. They remain valid code but are omitted from the primary
+diagram so the use-case architecture remains readable.
 
-## 2. 주요 클래스 도출 논거
+## Naming and Layer Rules
 
-| 클래스 | 분류 | 생성 논거 |
-| --- | --- | --- |
-| `PrescriptionInputUI`, `PrescriptionResultUI` | Boundary | Figma와 Sequence Diagram에서 촬영, 분석중, 분석완료, 결과 카드 화면이 분리되어 나타난다. |
-| `SavedMedicationUI`, `TodayMedicationUI`, `LinkUI`, `UserSettingUI` | Boundary | 저장 목록, 오늘 일정, 환자/보호자 연동, 환경설정 화면이 독립 화면으로 존재한다. |
-| `MedicationAPIBoundary` | Boundary | Flutter와 FastAPI 사이의 HTTP API 경계다. 실제 코드에서는 `ApiService`, `MedicationViewModel`, `api/router.py`가 나누어 담당한다. |
-| `PrescriptionAnalysisControl` | Control | 이미지 입력, OCR, Gemini Vision, 개인정보 마스킹, 후보 약물 생성 순서를 조정한다. |
-| `MedicationSaveControl` | Control | 후보 약물명을 공공 API/Redis/LLM으로 보강하고 저장 트랜잭션을 조정한다. |
-| `SavedMedicationControl` | Control | 환자/보호자 권한에 따라 저장 복약 정보 조회, 상세 확인, 삭제, 보호자 알림 설정을 조정한다. |
-| `TodayMedicationControl` | Control | 오늘 복약 일정, 완료 체크, 알림, 건강 추천, TTS를 하나의 일정 중심 흐름으로 조정한다. |
-| `PatientGuardianLinkControl` | Control | 환자 코드 생성, 보호자 등록, 연동 해제를 조정한다. |
-| `UserSettingControl` | Control | 글씨 크기, 읽기 속도, 언어 설정 변경을 조정한다. |
-| `MedicationCandidate` | Entity | 처방전 이미지에서 추출된 약 후보는 공공 DB로 검증된 약 상세 정보가 아니므로 `MedicationInfo`와 분리해야 한다. |
-| `MedicationInfo` | Entity | 공공 의약품 API와 LLM 요약을 통해 보강된 약 상세 정보다. 캐시 가능하며 사용자 소유 정보가 아니다. |
-| `SavedMedicationInfo` | Entity | 사용자가 약통에 저장한 약 정보다. `MedicationInfo`의 스냅샷이지만 사용자 소유, 삭제, 알림, 일정과 연결된다. |
-| `MedicationSchedule`, `MedicationScheduleItem` | Entity | 복약 일정은 여러 약과 시간대의 반복 구조를 가지므로 별도 엔티티와 항목 클래스로 분리한다. |
-| `MedicationAlarm`, `MedicationCompletion` | Entity | 알림 설정과 복약 완료 기록은 상태 변경 이력이므로 일정 항목에서 분리한다. |
-| `PatientGuardianLink`, `PatientLinkCode`, `GuardianAlertSetting` | Entity | 보호자 연동과 알림 설정은 저장 복약 정보 조회 권한과 알림 발송 조건을 결정한다. |
-| `UserSetting` | Entity | Figma 환경설정 화면과 Communication Diagram UC-14에서 글씨 크기, 읽기 속도, 언어가 독립 상태로 존재한다. |
+1. Frontend and backend classes with the same name are separate tier-local
+   implementations and are qualified by package in this document.
+2. `api.router` is the FastAPI boundary. It is a module, not a fictional
+   `MedicationRouter` class.
+3. `api.dependencies` is the backend composition root. It constructs controls
+   and shared boundaries; domain controls do not construct the API router.
+4. Cross-tier calls use HTTP through `api.router`. No Flutter class directly
+   invokes a backend Python class.
+5. SQLite ORM rows prefixed with `_` are persistence mappings, not domain
+   entities. Relationships shown to databases are logical because current ORM
+   tables do not declare all relationships as SQL foreign keys.
+6. Patient and caregiver are current domain roles. The alpha hashes select demo
+   scopes but are not authentication credentials.
 
-## 3. Class Diagram
+## Current Implementation Diagram
 
 ```plantuml
-@startuml MedBuddy_Class_Diagram
+@startuml MedBuddy_Current_Implementation
 left to right direction
-skinparam classAttributeIconSize 0
-hide circle
-
 skinparam packageStyle rectangle
-skinparam class {
-  BackgroundColor<<boundary>> #EAF7FF
-  BorderColor<<boundary>> #2B83BA
-  BackgroundColor<<control>> #FFF4E6
-  BorderColor<<control>> #F08C00
-  BackgroundColor<<entity>> #F1F8E9
-  BorderColor<<entity>> #5C940D
-  BackgroundColor<<external>> #F8F0FC
-  BorderColor<<external>> #862E9C
-  BackgroundColor<<database>> #F1F3F5
-  BorderColor<<database>> #495057
-  BackgroundColor<<planned>> #FFF9DB
-  BorderColor<<planned>> #FAB005
+skinparam classAttributeIconSize 0
+hide empty members
+
+package "Flutter / Boundary" as FE_Boundary {
+  class MedBuddyApp <<composition root>>
+  class HomeScreen <<boundary>>
+  class InputPrescriptionUI <<boundary>>
+  class PrescriptionAnalysisProgressUI <<boundary>>
+  class PrescriptionAnalysisPreviewUI <<boundary>>
+  class PrescriptionAnalysisSuccessUI <<boundary>>
+  class PrescriptionAnalysisFailureUI <<boundary>>
+  class CheckResultUI <<boundary>>
+  class CheckMedicationDetailUI <<boundary>>
+  class CheckSavedMedicationUI <<boundary>>
+  class CheckTodayMedicationInfoUI <<boundary>>
+  class CheckScheduleUI <<boundary>>
+  class HealthRecommendationUI <<boundary>>
+  class LinkPatientCaregiverUI <<boundary>>
+  class CheckCaregiverMedicationUI <<boundary>>
+  class SetCaregiverNotificationUI <<boundary>>
+  class SetNotificationUI <<boundary>>
+  class ManageUserSettingUI <<boundary>>
+  class PillIdentificationUI <<boundary>>
 }
 
-package "Actors / Domain Users" {
-  abstract class User <<entity>> {
-    +userHash: String
-    +role: UserRole
-    +displayName: String
-  }
-
-  class Patient <<entity>> {
-    +createLinkCode(): PatientLinkCode
-  }
-
-  class Guardian <<entity>> {
-    +registerPatient(code: String): PatientGuardianLink
-  }
-
-  enum UserRole {
-    PATIENT
-    GUARDIAN
-  }
-
-  User <|-- Patient
-  User <|-- Guardian
-  User --> UserRole
+package "Flutter / Control" as FE_Control {
+  class MedBuddyViewModel <<control, facade>>
+  class "InputPrescription" as FE_InputPrescription <<control>>
+  class "CheckMedicationDetail" as FE_CheckMedicationDetail <<control>>
+  class "CheckSavedMedication" as FE_CheckSavedMedication <<control>>
+  class "CheckTodayMedicationInfo" as FE_CheckTodayMedicationInfo <<control>>
+  class "CheckSchedule" as FE_CheckSchedule <<control>>
+  class "CheckHealthRecommendation" as FE_CheckHealthRecommendation <<control>>
+  class "RequestVoiceGuide" as FE_RequestVoiceGuide <<control>>
+  class "LinkPatientCaregiver" as FE_LinkPatientCaregiver <<control>>
+  class "CheckCaregiverMedication" as FE_CheckCaregiverMedication <<control>>
+  class "SetCaregiverNotification" as FE_SetCaregiverNotification <<control>>
+  class "SetNotification" as FE_SetNotification <<control>>
+  class "ManageUserSetting" as FE_ManageUserSetting <<control>>
+  class "IdentifyPill" as FE_IdentifyPill <<control>>
 }
 
-package "Boundary Classes" {
-  class MainUI <<boundary>> {
-    +displayMainScreen()
-    +displayTodayMedicationSummary(summary)
-  }
-
-  class PrescriptionInputUI <<boundary>> {
-    +displayCaptureScreen()
-    +displayAnalyzingScreen()
-    +displayAnalysisFailure(errorMessage)
-  }
-
-  class PrescriptionResultUI <<boundary>> {
-    +displayAnalysisComplete(summary)
-    +displayMedicationCards(result)
-    +displayMedicationNotFound(medicineName)
-    +displaySaveSuccess()
-  }
-
-  class SavedMedicationUI <<boundary>> {
-    +displaySavedMedicationInfo(list)
-    +displayDrugDetail(drugInfo)
-    +displayDeleteConfirmPopup()
-    +displayGuardianAlertState()
-  }
-
-  class TodayMedicationUI <<boundary, planned>> {
-    +displayTodaySchedule(schedule)
-    +displayHealthRecommendation(recommendation)
-    +displayUpdatedProgress(progress)
-  }
-
-  class LinkUI <<boundary, planned>> {
-    +displayLinkPage(linkList)
-    +displayPatientCode(code, expiresAt)
-    +displayLinkedInfo(link)
-  }
-
-  class UserSettingUI <<boundary, planned>> {
-    +displayUserSettingPage(setting)
-    +displayUpdatedPreview(setting)
-  }
-
-  class MedicationAPIBoundary <<boundary>> {
-    +uploadPrescription(image): PrescriptionAnalysisResult
-    +identifyMedication(text): List~MedicationInfo~
-    +saveMedication(drugInfo): SavedMedicationInfo
-    +getSavedMedications(): List~SavedMedicationInfo~
-    +deleteMedication(savedMedicationId): Boolean
-  }
+package "Flutter / Entity" as FE_Entity {
+  class "AnalyzedMedication" as FE_AnalyzedMedication <<entity>>
+  class "MedicationDetail" as FE_MedicationDetail <<entity>>
+  class "MedicationSchedule" as FE_MedicationSchedule <<entity>>
+  class "MedicationAlarm" as FE_MedicationAlarm <<entity>>
+  class "CaregiverNotification" as FE_CaregiverNotification <<entity>>
+  class "HealthRecommendation" as FE_HealthRecommendation <<entity>>
+  class "PatientHash" as FE_PatientHash <<entity>>
+  class "PatientLinkCode" as FE_PatientLinkCode <<entity>>
+  class "PatientCaregiverLink" as FE_PatientCaregiverLink <<entity>>
+  class "UserSetting" as FE_UserSetting <<entity>>
+  class "PillVisualFeatures" as FE_PillVisualFeatures <<entity>>
+  class "PillIdentificationCandidate" as FE_PillCandidate <<entity>>
+  class "PillIdentificationResult" as FE_PillResult <<entity>>
 }
 
-package "Control Classes" {
-  class PrescriptionAnalysisControl <<control>> {
-    +startPrescriptionInput()
-    +analyzePrescriptionImage(image)
-    +maskSensitiveInfo(rawText): PrescriptionText
-    +buildAnalysisResult(candidates): PrescriptionAnalysisResult
-  }
-
-  class MedicationSaveControl <<control>> {
-    +requestMedicationDetailAndSave(candidate)
-    +resolveDrugInfo(medicineName): List~MedicationInfo~
-    +selectBestMatchedDrugInfo(list): MedicationInfo
-    +saveSelectedMedication(info): SavedMedicationInfo
-  }
-
-  class SavedMedicationControl <<control>> {
-    +requestSavedMedicationInfo(userHash, role)
-    +requestDrugInfo(medicineName): MedicationInfo
-    +deleteSavedMedication(patientHash, savedMedicationId)
-    +updateGuardianAlertSetting(guardianHash, patientHash, option)
-  }
-
-  class TodayMedicationControl <<control, planned>> {
-    +requestTodayMedicationSummary(userHash, role)
-    +requestTodayMedicationSchedule(patientHash)
-    +completeMedication(patientHash, medicineName, timeSlot)
-    +requestHealthRecommendation(patientHash)
-    +requestTTS(text)
-    +requestAlarmToggle(patientHash, timeSlot)
-  }
-
-  class PatientGuardianLinkControl <<control, planned>> {
-    +requestLinkPage(userHash)
-    +createPatientCode(patientHash): PatientLinkCode
-    +registerPatientCode(guardianHash, code): PatientGuardianLink
-    +deletePatientGuardianLink(linkId)
-  }
-
-  class UserSettingControl <<control, planned>> {
-    +requestUserSetting(userHash): UserSetting
-    +updateFontSize(fontSize)
-    +updateReadingSpeed(readingSpeed)
-    +updateLanguage(language)
-  }
+package "Flutter / External and Shared Services" as FE_Service {
+  class ApiConfig <<configuration>>
+  class ApiResponseParser <<boundary helper>>
+  class NotificationService <<external boundary>>
+  class TTSService <<external boundary>>
 }
 
-package "Entity Classes" {
-  class PrescriptionText <<entity>> {
-    +rawText: String
-    +medicationOnlyText: String
-    +removeSensitiveInfoByRegex(): String
-  }
-
-  class MedicationCandidate <<entity>> {
-    +drugName: String
-    +dosagePerTime: String
-    +dailyFrequency: String
-    +totalDays: String
-  }
-
-  class MedicationCandidateList <<entity>> {
-    -candidates: List~MedicationCandidate~
-    +addCandidate(candidate)
-    +isEmpty(): Boolean
-    +findByName(drugName): MedicationCandidate
-  }
-
-  class PrescriptionAnalysisResult <<entity>> {
-    +hospitalName: String
-    +prescriptionDate: String
-    +candidateCount: int
-    +addMedicationCandidate(candidate)
-  }
-
-  class MedicationInfo <<entity>> {
-    +itemSeq: String
-    +itemName: String
-    +efficacy: String
-    +useMethod: String
-    +warningMessage: String
-    +imageUrl: String
-    +source: String
-    +aiGuide: String
-    +attachAiGuide(aiGuide)
-  }
-
-  class SavedMedicationInfo <<entity>> {
-    +savedMedicationId: int
-    +patientHash: String
-    +itemName: String
-    +efficacy: String
-    +useMethod: String
-    +warningMessage: String
-    +aiGuide: String
-    +createdAt: DateTime
-  }
-
-  class MedicationSchedule <<entity, planned>> {
-    +scheduleId: String
-    +patientHash: String
-    +scheduleDate: Date
-    +buildTodaySchedule()
-    +calculateProgress(): double
-  }
-
-  class MedicationScheduleItem <<entity, planned>> {
-    +scheduleItemId: String
-    +medicineName: String
-    +timeSlot: String
-    +dosage: String
-    +isTaken: Boolean
-  }
-
-  class MedicationAlarm <<entity, planned>> {
-    +alarmId: String
-    +patientHash: String
-    +timeSlot: String
-    +alarmTime: Time
-    +enabled: Boolean
-    +enable()
-    +disable()
-  }
-
-  class MedicationCompletion <<entity, planned>> {
-    +completionId: String
-    +patientHash: String
-    +medicineName: String
-    +timeSlot: String
-    +completedAt: DateTime
-  }
-
-  class HealthRecommendation <<entity, planned>> {
-    +recommendationId: String
-    +patientHash: String
-    +recommendationText: String
-    +generatedAt: DateTime
-  }
-
-  class PatientLinkCode <<entity, planned>> {
-    +code: String
-    +patientHash: String
-    +expiresAt: DateTime
-    +isExpired(): Boolean
-  }
-
-  class PatientGuardianLink <<entity, planned>> {
-    +linkId: String
-    +patientHash: String
-    +guardianHash: String
-    +linkedAt: DateTime
-    +status: LinkStatus
-  }
-
-  class GuardianAlertSetting <<entity, planned>> {
-    +settingId: String
-    +patientHash: String
-    +guardianHash: String
-    +enabled: Boolean
-    +alertOption: String
-    +enable()
-    +disable()
-  }
-
-  class UserSetting <<entity, planned>> {
-    +userHash: String
-    +fontSize: FontSize
-    +readingSpeed: ReadingSpeed
-    +language: Language
-  }
-
-  enum LinkStatus {
-    PENDING
-    LINKED
-    REVOKED
-  }
-
-  enum FontSize {
-    SMALL
-    MEDIUM
-    LARGE
-  }
-
-  enum ReadingSpeed {
-    SLOW
-    NORMAL
-    FAST
-  }
-
-  enum Language {
-    KO
-    EN
-  }
+package "FastAPI / API Boundary" as BE_API {
+  component "api.router" as APIRouter <<boundary>>
+  component "api.dependencies" as APIDependencies <<composition root>>
+  class RequestBodyLimitMiddleware <<middleware>>
+  class Settings <<configuration>>
 }
 
-package "External / Storage Boundaries" {
-  class OCRServiceBoundary <<external>> {
-    +extractPrescriptionData(image): PrescriptionAnalysisResult
-    +processText(rawText): String
-  }
-
-  class ImageProcessingBoundary <<external>> {
-    +preprocessPrescriptionImage(imageBytes): bytes
-  }
-
-  class GeminiVisionAPI <<external>> {
-    +requestStructuredExtraction(image): JSON
-  }
-
-  class PublicDrugDataPortal <<external>> {
-    +searchBasicDrugInfo(medicineName): JSON
-    +searchAdvancedDrugInfo(medicineName): JSON
-    +searchPillImage(medicineName, itemSeq): URL
-  }
-
-  class LLMService <<external>> {
-    +generateFriendlyGuide(drugInfo): String
-    +summarizeAdvancedDrugDocument(document): MedicationInfo
-    +generateHealthRecommendation(context): String
-  }
-
-  class TTSService <<external, planned>> {
-    +readDoseInstruction(text): AudioStream
-  }
-
-  class NotificationService <<external, planned>> {
-    +registerMedicationAlarm(alarm)
-    +cancelMedicationAlarm(alarm)
-    +registerGuardianAlert(setting)
-    +cancelGuardianAlert(setting)
-  }
-
-  class RedisCache <<database>> {
-    +findDrugInfo(cacheKey): List~MedicationInfo~
-    +saveDrugInfo(cacheKey, value, ttl)
-  }
-
-  class MedicationDB <<database>> {
-    +insertSavedMedication(savedMedication)
-    +findSavedMedicationList(patientHash)
-    +deleteSavedMedication(patientHash, savedMedicationId)
-    +findTodayMedicationSchedule(patientHash)
-    +saveAlarmSetting(alarm)
-    +insertMedicationCompletion(completion)
-  }
-
-  class LinkDB <<database, planned>> {
-    +savePatientCode(code)
-    +findValidPatientCode(code)
-    +insertPatientGuardianLink(link)
-    +deletePatientGuardianLink(linkId)
-  }
-
-  class LocalSettingStorage <<external, planned>> {
-    +findUserSetting(userHash): UserSetting
-    +saveUserSetting(setting)
-  }
+package "FastAPI / Control" as BE_Control {
+  class "InputPrescription" as BE_InputPrescription <<control>>
+  class "CheckMedicationDetail" as BE_CheckMedicationDetail <<control>>
+  class "CheckSavedMedication" as BE_CheckSavedMedication <<control>>
+  class "CheckTodayMedicationInfo" as BE_CheckTodayMedicationInfo <<control>>
+  class "CheckSchedule" as BE_CheckSchedule <<control>>
+  class "CheckHealthRecommendation" as BE_CheckHealthRecommendation <<control>>
+  class "RequestVoiceGuide" as BE_RequestVoiceGuide <<control>>
+  class "LinkPatientCaregiver" as BE_LinkPatientCaregiver <<control>>
+  class "CheckCaregiverMedication" as BE_CheckCaregiverMedication <<control>>
+  class "SetCaregiverNotification" as BE_SetCaregiverNotification <<control>>
+  class "SetNotification" as BE_SetNotification <<control>>
+  class "ManageUserSetting" as BE_ManageUserSetting <<control>>
+  class "IdentifyPill" as BE_IdentifyPill <<control>>
 }
 
-' Boundary -> Control
-MainUI ..> TodayMedicationControl : requests summary
-PrescriptionInputUI ..> PrescriptionAnalysisControl : submits image
-PrescriptionResultUI ..> MedicationSaveControl : analyze and save
-SavedMedicationUI ..> SavedMedicationControl : query/manage saved meds
-TodayMedicationUI ..> TodayMedicationControl : schedule actions
-LinkUI ..> PatientGuardianLinkControl : link actions
-UserSettingUI ..> UserSettingControl : setting actions
+package "FastAPI / Entity" as BE_Entity {
+  class PrescriptionText <<entity>>
+  class MedicationCandidate <<entity>>
+  class MedicationCandidateList <<entity>>
+  class PrescriptionAnalysisResult <<entity>>
+  class "MedicationDetail" as BE_MedicationDetail <<entity>>
+  class "MedicationSchedule" as BE_MedicationSchedule <<entity>>
+  class "MedicationAlarm" as BE_MedicationAlarm <<entity>>
+  class MedicationCompletion <<entity>>
+  class "CaregiverNotification" as BE_CaregiverNotification <<entity>>
+  class "HealthRecommendation" as BE_HealthRecommendation <<entity>>
+  class "PatientHash" as BE_PatientHash <<entity>>
+  class "PatientLinkCode" as BE_PatientLinkCode <<entity>>
+  class "PatientCaregiverLink" as BE_PatientCaregiverLink <<entity>>
+  class "UserSetting" as BE_UserSetting <<entity>>
+  class "PillVisualFeatures" as BE_PillVisualFeatures <<entity>>
+  class PillCatalogEntry <<entity>>
+  class "PillIdentificationCandidate" as BE_PillCandidate <<entity>>
+  class "PillIdentificationResult" as BE_PillResult <<entity>>
+  class PillIdentificationReference <<reference mapping>>
+}
 
-' Frontend/backend API boundary
-PrescriptionInputUI ..> MedicationAPIBoundary : HTTP multipart
-PrescriptionResultUI ..> MedicationAPIBoundary : HTTP JSON
-SavedMedicationUI ..> MedicationAPIBoundary : HTTP JSON
-MedicationAPIBoundary ..> PrescriptionAnalysisControl
-MedicationAPIBoundary ..> MedicationSaveControl
-MedicationAPIBoundary ..> SavedMedicationControl
+package "FastAPI / External Boundary" as BE_Boundary {
+  class PrescriptionImageProcessor <<utility boundary>>
+  class GeminiVisionClient <<external boundary>>
+  class OCRServiceBoundary <<external boundary>>
+  class LLMService <<external boundary>>
+  class PublicDrugSmallAPI <<external boundary>>
+  class PublicDrugLargeAPI <<external boundary>>
+  class PillImageAPI <<external boundary>>
+  class PillImageProcessingBoundary <<utility boundary>>
+  class GeminiPillVisionAPI <<external boundary>>
+  class PillVisionBoundary <<external boundary>>
+  class MFDSPillAPI <<external boundary>>
+  class MFDSPillCatalogBoundary <<external boundary>>
+}
 
-' Prescription analysis
-PrescriptionAnalysisControl ..> OCRServiceBoundary
-OCRServiceBoundary ..> ImageProcessingBoundary
-OCRServiceBoundary ..> GeminiVisionAPI
-PrescriptionAnalysisControl --> PrescriptionText
-PrescriptionAnalysisControl --> MedicationCandidateList
-PrescriptionAnalysisResult "1" *-- "0..*" MedicationCandidate : contains
-MedicationCandidateList "1" o-- "0..*" MedicationCandidate : collects
-PrescriptionAnalysisControl --> PrescriptionAnalysisResult : creates
+package "FastAPI / Policy and Repository" as BE_Support {
+  class MedicationCoursePolicy <<policy>>
+  class SavedMedicationRetentionPolicy <<policy>>
+  class PillIdentificationCatalogRepository <<repository>>
+}
 
-' Detail lookup and save
-MedicationSaveControl ..> RedisCache
-MedicationSaveControl ..> PublicDrugDataPortal
-MedicationSaveControl ..> LLMService
-MedicationSaveControl --> MedicationInfo : resolves
-MedicationSaveControl --> SavedMedicationInfo : creates
-SavedMedicationInfo ..> MedicationInfo : snapshot of
-MedicationDB "1" o-- "0..*" SavedMedicationInfo : stores
-Patient "1" -- "0..*" SavedMedicationInfo : owns
+package "Persistence" {
+  database "medbuddy.db\n(local/demo SQLite)" as MedicationDB
+  database "pill_identification_catalog.db\n(reference SQLite)" as PillCatalogDB
+  database "Redis\n(optional cache)" as RedisCache
+}
 
-' Saved medication management
-SavedMedicationControl ..> MedicationDB
-SavedMedicationControl ..> PublicDrugDataPortal
-SavedMedicationControl --> SavedMedicationInfo
-SavedMedicationControl --> GuardianAlertSetting
-Guardian "1" -- "0..*" GuardianAlertSetting : configures
-GuardianAlertSetting "0..*" --> "1" Patient : monitors
-GuardianAlertSetting ..> NotificationService
+' Main Flutter navigation and use-case coordination
+MedBuddyApp o-- MedBuddyViewModel
+MedBuddyApp --> HomeScreen
+HomeScreen --> MedBuddyViewModel
+HomeScreen ..> InputPrescriptionUI
+HomeScreen ..> CheckSavedMedicationUI
+HomeScreen ..> CheckScheduleUI
+HomeScreen ..> LinkPatientCaregiverUI
+HomeScreen ..> PillIdentificationUI
+InputPrescriptionUI --> MedBuddyViewModel
+PrescriptionAnalysisPreviewUI --> MedBuddyViewModel
+CheckResultUI --> MedBuddyViewModel
+CheckSavedMedicationUI --> MedBuddyViewModel
+CheckScheduleUI --> MedBuddyViewModel
+HealthRecommendationUI --> MedBuddyViewModel
+MedBuddyViewModel o-- FE_InputPrescription
+MedBuddyViewModel o-- FE_CheckSavedMedication
+MedBuddyViewModel o-- FE_CheckSchedule
+MedBuddyViewModel o-- FE_CheckHealthRecommendation
+MedBuddyViewModel o-- FE_ManageUserSetting
+LinkPatientCaregiverUI --> FE_LinkPatientCaregiver
+CheckCaregiverMedicationUI --> FE_CheckCaregiverMedication
+CheckCaregiverMedicationUI --> FE_SetCaregiverNotification
+SetNotificationUI --> FE_SetNotification
+CheckMedicationDetailUI --> FE_CheckMedicationDetail
+CheckMedicationDetailUI --> FE_RequestVoiceGuide
+PillIdentificationUI --> FE_IdentifyPill
 
-' Schedule, alarm, completion, recommendation
-TodayMedicationControl --> MedicationSchedule
-MedicationSchedule "1" *-- "0..*" MedicationScheduleItem : contains
-MedicationScheduleItem "0..*" --> "1" SavedMedicationInfo : based on
-MedicationAlarm "0..*" --> "1" MedicationScheduleItem : reminds
-MedicationCompletion "0..*" --> "1" MedicationScheduleItem : records
-TodayMedicationControl --> MedicationAlarm
-TodayMedicationControl --> MedicationCompletion
-TodayMedicationControl --> HealthRecommendation
-TodayMedicationControl ..> MedicationDB
-TodayMedicationControl ..> LLMService
-TodayMedicationControl ..> TTSService
-TodayMedicationControl ..> NotificationService
+' Frontend entities and local external services
+FE_InputPrescription --> FE_AnalyzedMedication
+FE_CheckMedicationDetail --> FE_MedicationDetail
+FE_CheckSavedMedication --> FE_MedicationDetail
+FE_CheckSchedule --> FE_MedicationSchedule
+FE_CheckSchedule --> FE_MedicationAlarm
+FE_CheckHealthRecommendation --> FE_HealthRecommendation
+FE_LinkPatientCaregiver --> FE_PatientLinkCode
+FE_LinkPatientCaregiver --> FE_PatientCaregiverLink
+FE_SetCaregiverNotification --> FE_CaregiverNotification
+FE_ManageUserSetting --> FE_UserSetting
+FE_IdentifyPill --> FE_PillResult
+FE_PillResult *-- "0..*" FE_PillCandidate
+FE_PillResult *-- FE_PillVisualFeatures
+FE_SetNotification ..> NotificationService
+FE_RequestVoiceGuide ..> TTSService
 
-' Patient and guardian link
-Patient "1" -- "0..*" PatientLinkCode : generates
-Patient "1" -- "0..*" PatientGuardianLink : shares with
-Guardian "1" -- "0..*" PatientGuardianLink : follows
-PatientGuardianLink --> LinkStatus
-PatientGuardianLinkControl --> PatientLinkCode
-PatientGuardianLinkControl --> PatientGuardianLink
-PatientGuardianLinkControl ..> LinkDB
-SavedMedicationControl ..> PatientGuardianLink : resolves access
-TodayMedicationControl ..> PatientGuardianLink : resolves access
+' Every Flutter control reaches the backend only through HTTP
+FE_Control ..> APIRouter : HTTP JSON/multipart
+FE_Control ..> ApiConfig
+FE_Control ..> ApiResponseParser
 
-' User setting
-User "1" -- "1" UserSetting : owns
-UserSetting --> FontSize
-UserSetting --> ReadingSpeed
-UserSetting --> Language
-UserSettingControl --> UserSetting
-UserSettingControl ..> LocalSettingStorage
+' FastAPI composition and use-case controls
+RequestBodyLimitMiddleware --> APIRouter
+APIRouter --> APIDependencies
+APIDependencies o-- BE_InputPrescription
+APIDependencies o-- BE_CheckMedicationDetail
+APIDependencies o-- BE_CheckSavedMedication
+APIDependencies o-- BE_CheckTodayMedicationInfo
+APIDependencies o-- BE_CheckSchedule
+APIDependencies o-- BE_CheckHealthRecommendation
+APIDependencies o-- BE_RequestVoiceGuide
+APIDependencies o-- BE_LinkPatientCaregiver
+APIDependencies o-- BE_CheckCaregiverMedication
+APIDependencies o-- BE_SetCaregiverNotification
+APIDependencies o-- BE_SetNotification
+APIDependencies o-- BE_ManageUserSetting
+APIDependencies o-- BE_IdentifyPill
 
-note right of SavedMedicationInfo
-현재 구현의 SavedMedication DB 모델은 patientHash와 일정 필드가 없다.
-보호자 조회/알림/일정 기능까지 포함하려면 사용자 소유권이 필요하다.
-end note
+' Prescription pipeline
+BE_InputPrescription --> OCRServiceBoundary
+OCRServiceBoundary --> PrescriptionImageProcessor
+OCRServiceBoundary --> GeminiVisionClient
+BE_InputPrescription --> PrescriptionText
+BE_InputPrescription --> MedicationCandidateList
+MedicationCandidateList *-- "0..*" MedicationCandidate
+BE_InputPrescription --> PrescriptionAnalysisResult
+PrescriptionAnalysisResult *-- "0..*" MedicationCandidate
 
-note bottom of OCRServiceBoundary
-현재 백엔드 OCRService가 Gemini Vision과 image_processing을 호출한다.
-프론트엔드 VisionService/ML Kit 경로는 보조 또는 과거 경로로 보고
-핵심 다이어그램에는 넣지 않았다.
-end note
+' Medication, schedule, setting, and link pipelines
+BE_CheckMedicationDetail --> PublicDrugSmallAPI
+BE_CheckMedicationDetail --> PublicDrugLargeAPI
+BE_CheckMedicationDetail --> LLMService
+BE_CheckSavedMedication --> PillImageAPI
+BE_CheckSavedMedication --> SavedMedicationRetentionPolicy
+BE_CheckSchedule --> MedicationCoursePolicy
+BE_CheckSchedule --> BE_MedicationSchedule
+BE_SetNotification --> BE_MedicationAlarm
+BE_CheckSchedule --> MedicationCompletion
+BE_SetCaregiverNotification --> BE_CaregiverNotification
+BE_LinkPatientCaregiver --> BE_PatientLinkCode
+BE_LinkPatientCaregiver --> BE_PatientCaregiverLink
+BE_CheckHealthRecommendation --> LLMService
+BE_CheckHealthRecommendation --> BE_HealthRecommendation
+BE_ManageUserSetting --> BE_UserSetting
 
-note bottom of PatientGuardianLink
-Communication Diagram의 Caregiver 명칭은 현재 범위에서 Guardian으로 통일한다.
-end note
+' UC-15 loose-pill extension
+BE_IdentifyPill --> PillVisionBoundary
+PillVisionBoundary --> PillImageProcessingBoundary
+PillVisionBoundary --> GeminiPillVisionAPI
+BE_IdentifyPill --> MFDSPillCatalogBoundary
+MFDSPillCatalogBoundary --> MFDSPillAPI
+MFDSPillCatalogBoundary --> PillIdentificationCatalogRepository
+PillIdentificationCatalogRepository --> PillCatalogDB
+PillIdentificationCatalogRepository --> PillIdentificationReference
+PillIdentificationReference --> PillCatalogDB
+BE_IdentifyPill --> BE_PillResult
+BE_PillResult *-- "0..*" BE_PillCandidate
+BE_PillResult *-- BE_PillVisualFeatures
+BE_PillCandidate --> PillCatalogEntry
+
+' Persistence is logical; private ORM rows implement these mappings
+BE_Control ..> MedicationDB
+BE_CheckMedicationDetail ..> RedisCache
+MedicationDB ..> BE_MedicationSchedule
+MedicationDB ..> BE_MedicationAlarm
+MedicationDB ..> MedicationCompletion
+MedicationDB ..> BE_CaregiverNotification
+MedicationDB ..> BE_PatientCaregiverLink
+MedicationDB ..> BE_UserSetting
 @enduml
 ```
 
-## 4. README 초기 Class Diagram과의 차이
+## Public Architectural Type Inventory
 
-- README의 기존 Class Diagram은 실제 파일 구조를 추적하는 데는 유용하지만, `MedicationSchedule`, `MedicationAlarm`, `MedicationCompletion`, `PatientGuardianLink`, `GuardianAlertSetting`, `UserSetting` 같은 목표 기능 클래스가 부족하다.
-- 기존 README는 `MedicationRouter`, `OCRService`, `DrugService`, `SavedMedication`, `DrugInfo` 등 구현 클래스 중심이다. 새 다이어그램은 이를 `MedicationAPIBoundary`, `PrescriptionAnalysisControl`, `MedicationSaveControl`, `SavedMedicationInfo`, `MedicationInfo`로 재배치하여 BCE 책임을 더 명확히 했다.
-- 기존 README는 `VisionService`와 `PrescriptionParser_Dart`를 포함하지만, 현재 주요 흐름은 `processMedicationImage()`가 이미지 파일을 서버에 보내고 백엔드 `OCRService`가 Gemini Vision을 호출한다. 따라서 핵심 설계에서는 프론트 ML Kit 경로를 제외했다.
-- 기존 README는 보호자/연동/알림/일정 기능을 정적 구조로 설명하지 못한다. Figma와 Communication Diagram은 이 기능들을 명확히 요구하므로, 새 다이어그램에는 `planned` 클래스로 반영했다.
+The primary diagram includes every public production type that participates in
+a use case or architectural boundary. The following categories are intentionally
+not expanded into separate diagram nodes:
 
-## 5. 구현 관점에서 바로 보이는 보완점
+| Category | Examples | Reason |
+| --- | --- | --- |
+| Flutter private presentation types | `_MedicationResultCard`, `_ScheduleSlot`, `_PillImageSlot` | File-local rendering decomposition; no domain responsibility. |
+| Flutter state classes | `_CheckScheduleUIState`, `_PillIdentificationUIState` | Framework lifecycle implementation owned by the public UI boundary. |
+| View-model result/projection types | `TodayMedicationProgress`, `SavedMedicationBatchDeleteResult`, `MedicationSaveResult` | Typed return/state projections owned by their control or view model. |
+| Theme tokens | `MedBuddyColors`, `MedBuddyRadii`, `MedBuddyShadows` | Shared presentation constants without use-case behavior. |
+| Transport DTOs | `OCRParseRequest`, `MedicationRequest`, `MedicationResponse`, `PillIdentificationResponse` | API serialization contracts, not domain coordinators. |
+| Private ORM rows | `_SavedMedication`, `_MedicationAlarm`, `_PatientCaregiverLink` | Persistence mapping for public entities and controls. |
+| Private control helpers | `_MedicationTextNormalizer`, `_PrescriptionMedicationNameVerifier` | Cohesive algorithms owned by their public control module. |
+| Exceptions | `PillImageQualityError`, `PrescriptionAnalysisTimeoutError` | Error contracts, not stateful architectural collaborators. |
 
-- `SavedMedication`에 사용자 소유권(`patientHash` 또는 user id)이 없다. 보호자 조회, 일정 생성, 알림 설정을 구현하려면 저장 약 정보가 누구의 것인지 알아야 한다.
-- 현재 저장 약 정보에는 복용 시간, 복용 기간, 1일 횟수 같은 처방 후보 정보가 저장되지 않는다. `MedicationCandidate`와 `SavedMedicationInfo` 사이의 변환 정책이 필요하다.
-- 일정/알림/완료 기능은 DB 모델이 아직 없다. `MedicationScheduleItem`, `MedicationAlarm`, `MedicationCompletion`에 해당하는 테이블 또는 문서 구조가 필요하다.
-- 환자/보호자 연동을 구현하려면 `PatientGuardianLink`, `PatientLinkCode`, `GuardianAlertSetting` 저장소가 필요하다.
-- `MedicationInfo`는 공공 DB/LLM 결과이고 `SavedMedicationInfo`는 사용자 저장 스냅샷이다. 둘을 같은 클래스로 뭉치면 캐시, 저장, 삭제, 사용자 권한 책임이 뒤섞인다.
+## v5 Reconciliation
+
+| v5/conceptual name | Current implementation | Resolution |
+| --- | --- | --- |
+| `MainUI` | `HomeScreen`, `InputPrescriptionUI` | Flutter separates the home view from the prescription input boundary. |
+| `PrescriptionInputUI` | `InputPrescriptionUI`, progress/preview/status UIs | One use case is decomposed by visible UI state. |
+| `PrescriptionResultUI` | `CheckResultUI` | Same result-review responsibility. |
+| `SavedMedicationUI` | `CheckSavedMedicationUI` | Exact implementation name retained. |
+| `TodayMedicationUI` | `CheckTodayMedicationInfoUI`, `CheckScheduleUI` | Summary and actionable schedule are separate boundaries. |
+| `LinkUI` | `LinkPatientCaregiverUI` | Uses the final patient-caregiver terminology. |
+| `UserSettingUI` | `ManageUserSettingUI` | Matches the implemented UC-14 control/UI pair. |
+| `PrescriptionAnalysisControl` | frontend/backend `InputPrescription` | v5 responsibility preserved across the HTTP boundary. |
+| `MedicationSaveControl` | `CheckMedicationDetail` plus `CheckSavedMedication` | Detail enrichment and persistence remain separate cohesive controls. |
+| `SavedMedicationControl` | `CheckSavedMedication` | Direct implementation mapping. |
+| `TodayMedicationControl` | `CheckTodayMedicationInfo`, `CheckSchedule`, `SetNotification`, `CheckHealthRecommendation`, `RequestVoiceGuide` | Split by the original UC-3/8/10/11/12 responsibilities. |
+| `PatientGuardianLinkControl` | `LinkPatientCaregiver` | Terminology reconciled to the final code/document language. |
+| `GuardianAlertSetting` | `CaregiverNotification` | Preference persistence is implemented; remote delivery remains a beta gap. |
+| `MedicationAPIBoundary` | `api.router` module | The real FastAPI boundary is documented without inventing a class. |
+| UC-15 types | `IdentifyPill`, `PillVisionBoundary`, pill entities/repository | Deliberate v0.0.9 extension documented separately. |
+
+## Known Beta Architecture Gaps
+
+- `PatientHash` and caregiver hashes are demo selectors, not authenticated
+  identity. The planned replacement is defined in the beta security document.
+- `CaregiverNotification` currently persists preference state; it does not by
+  itself prove cross-device delivery.
+- `medbuddy.db` is suitable for local/demo execution, not a horizontally scaled
+  multi-user deployment.
+- Android release builds still require production HTTPS policy and protected
+  signing before beta distribution.
