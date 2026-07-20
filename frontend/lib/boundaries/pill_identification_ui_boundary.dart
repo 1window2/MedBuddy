@@ -107,8 +107,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       requiredLabel: text.requiredLabel,
                       imageBytes: _frontImage,
                       isLoading: _isSelectingImage && _selectingFront == true,
-                      removeButtonKey:
-                          const Key('remove-pill-front-image-button'),
+                      removeButtonKey: const Key(
+                        'remove-pill-front-image-button',
+                      ),
+                      removeTooltip: text.removePhoto(text.frontPhoto),
                       onRemove: _frontImage == null || isBusy
                           ? null
                           : () => _removeImage(isFront: true),
@@ -125,8 +127,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       requiredLabel: text.optionalLabel,
                       imageBytes: _backImage,
                       isLoading: _isSelectingImage && _selectingFront == false,
-                      removeButtonKey:
-                          const Key('remove-pill-back-image-button'),
+                      removeButtonKey: const Key(
+                        'remove-pill-back-image-button',
+                      ),
+                      removeTooltip: text.removePhoto(text.backPhoto),
                       onRemove: _backImage == null || isBusy
                           ? null
                           : () => _removeImage(isFront: false),
@@ -191,86 +195,112 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final result = _result!;
     final actionsEnabled = !_isAnalyzing && !_isSelectingImage;
     if (result.candidates.isEmpty) {
-      return _EmptyResult(text: text, textScale: textScale);
+      return Semantics(
+        key: const Key('pill-empty-results'),
+        container: true,
+        liveRegion: true,
+        label: text.candidateResultsAnnouncement(0),
+        child: _EmptyResult(text: text, textScale: textScale),
+      );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          text.candidateTitle(result.candidates.length),
-          style: TextStyle(
-            color: MedBuddyColors.textStrong,
-            fontSize: 19 * textScale,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
+    return Semantics(
+      key: const Key('pill-candidate-results'),
+      container: true,
+      liveRegion: true,
+      label: text.candidateResultsAnnouncement(result.candidates.length),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text.candidateTitle(result.candidates.length),
+            style: TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 19 * textScale,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          text.candidateDescription,
-          style: TextStyle(
-            color: MedBuddyColors.textMuted,
-            fontSize: 13 * textScale,
-            height: 1.4,
-            letterSpacing: 0,
+          const SizedBox(height: 6),
+          Text(
+            text.candidateDescription,
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13 * textScale,
+              height: 1.4,
+              letterSpacing: 0,
+            ),
           ),
-        ),
-        const SizedBox(height: 14),
-        for (final candidate in result.candidates) ...[
-          _PillCandidateCard(
-            candidate: candidate,
-            selected: candidate.itemSeq == _selectedItemSeq,
-            text: text,
-            textScale: textScale,
-            onTap: actionsEnabled
-                ? () => setState(() {
+          if (!result.isConfident ||
+              result.observedFeatures.qualityIssues.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _ConfidenceNotice(
+              key: const Key('pill-confidence-warning'),
+              message: text.lowConfidenceNotice,
+            ),
+          ],
+          const SizedBox(height: 14),
+          for (final candidate in result.candidates) ...[
+            _PillCandidateCard(
+              candidate: candidate,
+              selected: candidate.itemSeq == _selectedItemSeq,
+              text: text,
+              textScale: textScale,
+              onTap: actionsEnabled
+                  ? () => setState(() {
                       _selectedItemSeq = candidate.itemSeq;
                     })
-                : null,
-          ),
-          const SizedBox(height: 10),
-        ],
-        const SizedBox(height: 6),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            key: const Key('confirm-pill-candidate-button'),
-            onPressed: !actionsEnabled || _selectedItemSeq == null
-                ? null
-                : () => _confirmCandidate(text),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: MedBuddyColors.primaryDark,
-              side: const BorderSide(color: MedBuddyColors.primary, width: 1.5),
-              minimumSize: const Size.fromHeight(54),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+                  : null,
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.verified_outlined),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    text.confirmSelection,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 16 * textScale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+            const SizedBox(height: 10),
+          ],
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              key: const Key('confirm-pill-candidate-button'),
+              onPressed: !actionsEnabled || _selectedItemSeq == null
+                  ? null
+                  : () => _confirmCandidate(text),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MedBuddyColors.primaryDark,
+                side: const BorderSide(
+                  color: MedBuddyColors.primary,
+                  width: 1.5,
+                ),
+                minimumSize: const Size.fromHeight(54),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.verified_outlined),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      text.confirmSelection,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16 * textScale,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -496,6 +526,7 @@ class _PillImageSlot extends StatelessWidget {
   final Uint8List? imageBytes;
   final bool isLoading;
   final Key removeButtonKey;
+  final String removeTooltip;
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
 
@@ -506,6 +537,7 @@ class _PillImageSlot extends StatelessWidget {
     required this.imageBytes,
     required this.isLoading,
     required this.removeButtonKey,
+    required this.removeTooltip,
     required this.onRemove,
     required this.onTap,
   });
@@ -563,11 +595,10 @@ class _PillImageSlot extends StatelessWidget {
                   ),
                   if (imageBytes != null)
                     SizedBox.square(
-                      dimension: 28,
+                      dimension: 48,
                       child: IconButton(
                         key: removeButtonKey,
-                        tooltip: MaterialLocalizations.of(context)
-                            .deleteButtonTooltip,
+                        tooltip: removeTooltip,
                         padding: EdgeInsets.zero,
                         iconSize: 19,
                         color: MedBuddyColors.textMuted,
@@ -642,84 +673,91 @@ class _PillCandidateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imprint = [candidate.printFront, candidate.printBack]
-        .where((value) => value.isNotEmpty)
-        .join(' / ');
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
+    final imprint = [
+      candidate.printFront,
+      candidate.printBack,
+    ].where((value) => value.isNotEmpty).join(' / ');
+    return Semantics(
+      container: true,
+      selected: selected,
+      child: Material(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: selected ? MedBuddyColors.primary : MedBuddyColors.divider,
-              width: selected ? 2 : 1,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected
+                    ? MedBuddyColors.primary
+                    : MedBuddyColors.divider,
+                width: selected ? 2 : 1,
+              ),
             ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _CandidateImage(url: candidate.imageUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      candidate.itemName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 15 * textScale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    if (candidate.manufacturer.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CandidateImage(url: candidate.imageUrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        candidate.manufacturer,
-                        maxLines: 1,
+                        candidate.itemName,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: MedBuddyColors.textSubtle,
+                          color: MedBuddyColors.textStrong,
+                          fontSize: 15 * textScale,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      if (candidate.manufacturer.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          candidate.manufacturer,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: MedBuddyColors.textSubtle,
+                            fontSize: 12 * textScale,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '${text.similarity}: '
+                        '${(candidate.matchScore * 100).round()}%'
+                        '${imprint.isEmpty ? '' : '  ·  $imprint'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: MedBuddyColors.primaryDark,
                           fontSize: 12 * textScale,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '${text.similarity}: '
-                      '${(candidate.matchScore * 100).round()}%'
-                      '${imprint.isEmpty ? '' : '  ·  $imprint'}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: MedBuddyColors.primaryDark,
-                        fontSize: 12 * textScale,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: selected
-                    ? MedBuddyColors.primary
-                    : MedBuddyColors.textLight,
-                semanticLabel: selected ? text.selected : text.notSelected,
-              ),
-            ],
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: selected
+                      ? MedBuddyColors.primary
+                      : MedBuddyColors.textLight,
+                  semanticLabel: selected ? text.selected : text.notSelected,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -751,7 +789,7 @@ class _CandidateImage extends StatelessWidget {
                 fit: BoxFit.contain,
                 cacheWidth: 228,
                 cacheHeight: 228,
-                errorBuilder: (_, __, ___) => placeholder,
+                errorBuilder: (context, error, stackTrace) => placeholder,
                 loadingBuilder: (context, child, progress) {
                   return progress == null ? child : placeholder;
                 },
@@ -792,16 +830,62 @@ class _ErrorNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF0F1),
-        borderRadius: BorderRadius.circular(8),
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF0F1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          message,
+          style: const TextStyle(color: Color(0xFFB42318), height: 1.4),
+        ),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(color: Color(0xFFB42318), height: 1.4),
+    );
+  }
+}
+
+class _ConfidenceNotice extends StatelessWidget {
+  final String message;
+
+  const _ConfidenceNotice({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8E7),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFF0C36A)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFF9A6700),
+              size: 21,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xFF6B4B00),
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -867,9 +951,17 @@ class _PillIdentificationText {
   String get analyzing => isEnglish ? 'Comparing...' : '비교 중...';
   String candidateTitle(int count) =>
       isEnglish ? '$count possible matches' : '가능성이 있는 후보 $count개';
+  String candidateResultsAnnouncement(int count) => isEnglish
+      ? 'Pill identification completed. $count possible matches.'
+      : '알약 식별이 완료되었습니다. 가능한 후보는 $count개입니다.';
+  String removePhoto(String label) =>
+      isEnglish ? 'Remove $label photo' : '$label 사진 삭제';
   String get candidateDescription => isEnglish
       ? 'Select the closest product and verify every printed detail.'
       : '가장 가까운 제품을 선택한 뒤 각인과 제품 정보를 직접 대조하세요.';
+  String get lowConfidenceNotice => isEnglish
+      ? 'These matches are uncertain or the photo needs extra care. Compare both sides and every imprint before confirming.'
+      : '후보 일치도가 낮거나 사진 품질에 주의가 필요합니다. 앞뒷면과 각인 정보를 직접 비교한 뒤 선택하세요.';
   String get similarity => isEnglish ? 'Attribute match' : '속성 일치도';
   String get selected => isEnglish ? 'Selected' : '선택됨';
   String get notSelected => isEnglish ? 'Not selected' : '선택 안 됨';

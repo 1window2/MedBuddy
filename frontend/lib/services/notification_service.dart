@@ -6,9 +6,8 @@ import 'package:timezone/timezone.dart' as timezone;
 
 enum MedicationNotificationDestination { schedule }
 
-typedef MedicationNotificationSelectionHandler = void Function(
-  MedicationNotificationDestination destination,
-);
+typedef MedicationNotificationSelectionHandler =
+    void Function(MedicationNotificationDestination destination);
 
 // 파일명: notification_service.dart
 // 역할: 복약 알림을 휴대폰 로컬 알림으로 예약하고 취소한다.
@@ -29,6 +28,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
+  Future<void>? _initializationFuture;
 
   static void setNotificationSelectionHandler(
     MedicationNotificationSelectionHandler? handler,
@@ -76,30 +76,38 @@ class NotificationService {
   // - 알림 플러그인과 timezone 패키지를 한 번만 초기화한다.
   // 반환값:
   // - 없음
-  Future<void> initialize() async {
+  Future<void> initialize() {
     if (_isInitialized) {
-      return;
+      return Future<void>.value();
     }
+    return _initializationFuture ??= _initialize();
+  }
 
-    timezone_data.initializeTimeZones();
-    timezone.setLocalLocation(timezone.getLocation('Asia/Seoul'));
+  Future<void> _initialize() async {
+    try {
+      timezone_data.initializeTimeZones();
+      timezone.setLocalLocation(timezone.getLocation('Asia/Seoul'));
 
-    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-    await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
+      final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+      await _plugin.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
         ),
-      ),
-      onDidReceiveNotificationResponse: _handleNotificationResponse,
-    );
-    _isInitialized = true;
+        onDidReceiveNotificationResponse: _handleNotificationResponse,
+      );
+      _isInitialized = true;
 
-    if (launchDetails?.didNotificationLaunchApp ?? false) {
-      handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+      if (launchDetails?.didNotificationLaunchApp ?? false) {
+        handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+      }
+    } catch (_) {
+      _initializationFuture = null;
+      rethrow;
     }
   }
 
@@ -116,14 +124,18 @@ class NotificationService {
     await initialize();
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       return await androidPlugin?.requestNotificationsPermission() ?? true;
     }
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>();
+      final iosPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
       return await iosPlugin?.requestPermissions(
             alert: true,
             badge: true,
