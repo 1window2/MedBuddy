@@ -21,6 +21,7 @@ from api.router import (  # noqa: E402
 from boundaries.pill_identification_boundary import (  # noqa: E402
     MAX_PILL_IMAGE_BYTES,
     PillImageQualityError,
+    PillVisionResponseError,
     PillVisionUnavailableError,
 )
 from controls.input_prescription_control import (  # noqa: E402
@@ -186,6 +187,21 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(context.exception.status_code, 503)
+        self.assertNotIn("private", str(context.exception.detail))
+
+    async def test_pill_upload_maps_invalid_upstream_contract_to_bad_gateway(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await identify_loose_pill(
+                front=_RecordingUploadFile(),
+                back=None,
+                identify_pill=_RecordingPillIdentificationControl(
+                    PillVisionResponseError("private malformed payload")
+                ),
+            )
+
+        self.assertEqual(context.exception.status_code, 502)
         self.assertNotIn("private", str(context.exception.detail))
 
 

@@ -1,6 +1,10 @@
+import asyncio
 import json
 import os
 import sys
+import threading
+import time
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +27,7 @@ from boundaries.pill_identification_boundary import (
     MFDSPillAPI,
     PillImageProcessingBoundary,
     PillImageQualityError,
+    PillVisionResponseError,
     PillVisionUnavailableError,
     PillVisionBoundary,
 )
@@ -59,6 +64,28 @@ class _SlowImageProcessingBoundary:
         return image
 
 
+class _ConcurrencyTrackingImageProcessingBoundary:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.active_workers = 0
+        self.maximum_active_workers = 0
+        self.delay_seconds = 0.08
+
+    def preprocessPillImage(self, image: bytes) -> bytes:
+        with self._lock:
+            self.active_workers += 1
+            self.maximum_active_workers = max(
+                self.maximum_active_workers,
+                self.active_workers,
+            )
+        try:
+            time.sleep(self.delay_seconds)
+            return image
+        finally:
+            with self._lock:
+                self.active_workers -= 1
+
+
 class _FailingAsyncClient:
     def __init__(self) -> None:
         self.close_called = False
@@ -87,6 +114,8 @@ def _valid_visual_payload(**overrides: object) -> dict[str, Any]:
         "back_line": "none",
         "quality": "good",
         "quality_issues": [],
+        "same_pill": True,
+        "side_consistency_confidence": 1.0,
     }
     payload.update(overrides)
     return payload
@@ -139,6 +168,24 @@ def test_image_preprocessing_returns_bounded_jpeg() -> None:
     assert decoded is not None
     assert max(decoded.shape[:2]) <= 1600
     assert min(decoded.shape[:2]) >= 64
+
+
+def test_image_preprocessing_downsamples_high_resolution_jpeg() -> None:
+    image = np.full((4000, 6000, 3), 245, dtype=np.uint8)
+    cv2.circle(image, (3000, 2000), 700, (30, 210, 230), thickness=-1)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success
+
+    processed = PillImageProcessingBoundary().preprocessPillImage(
+        encoded.tobytes()
+    )
+    decoded = cv2.imdecode(
+        np.frombuffer(processed, dtype=np.uint8),
+        cv2.IMREAD_COLOR,
+    )
+
+    assert decoded is not None
+    assert max(decoded.shape[:2]) <= 1600
 
 
 def test_image_preprocessing_preserves_ambiguous_multi_object_frame() -> None:
@@ -254,6 +301,65 @@ async def test_visual_boundary_preserves_front_and_back_features() -> None:
 
 
 @pytest.mark.anyio
+async def test_visual_boundary_discards_back_features_without_back_photo() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(
+                front_imprint="",
+                back_imprint="LT",
+                back_line="plus",
+            )
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    features = await boundary.extractVisualFeatures(b"front")
+
+    assert features.back_imprint == ""
+    assert features.back_line == "unknown"
+    assert features.same_pill is True
+    assert features.side_consistency_confidence == 1.0
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_rejects_mismatched_front_and_back_photos() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(
+                same_pill=False,
+                side_consistency_confidence=0.95,
+            )
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="different pills"):
+        await boundary.extractVisualFeatures(b"front", b"back")
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_marks_uncertain_side_consistency() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(side_consistency_confidence=0.45)
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    features = await boundary.extractVisualFeatures(b"front", b"back")
+
+    assert features.same_pill is True
+    assert features.side_consistency_confidence == 0.45
+    assert "front/back consistency is uncertain" in features.quality_issues
+
+
+@pytest.mark.anyio
 async def test_visual_boundary_rejects_poor_quality_result() -> None:
     boundary = PillVisionBoundary(
         client=object(),  # type: ignore[arg-type]
@@ -279,7 +385,7 @@ async def test_visual_boundary_rejects_non_string_imprint() -> None:
         timeout_seconds=1,
     )
 
-    with pytest.raises(PillImageQualityError, match="invalid data"):
+    with pytest.raises(PillVisionResponseError, match="invalid response"):
         await boundary.extractVisualFeatures(b"front")
 
 
@@ -309,6 +415,34 @@ async def test_visual_boundary_applies_timeout_to_preprocessing_stage() -> None:
 
     with pytest.raises(TimeoutError, match="timed out"):
         await boundary.extractVisualFeatures(b"front")
+
+
+@pytest.mark.anyio
+async def test_visual_timeout_keeps_preprocessing_capacity_until_worker_exits() -> None:
+    image_processing = _ConcurrencyTrackingImageProcessingBoundary()
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=image_processing,
+        vision_api=_FakeVisionAPI(_valid_visual_payload()),  # type: ignore[arg-type]
+        timeout_seconds=0.01,
+        max_concurrency=1,
+    )
+
+    for _ in range(2):
+        with pytest.raises(TimeoutError, match="timed out"):
+            await boundary.extractVisualFeatures(b"front")
+
+    await asyncio.sleep(0.1)
+
+    assert image_processing.maximum_active_workers == 1
+    assert image_processing.active_workers == 0
+
+    image_processing.delay_seconds = 0
+    boundary.timeout_seconds = 1
+    recovered = await boundary.extractVisualFeatures(b"front")
+
+    assert recovered.front_imprint == "YH"
+    assert image_processing.maximum_active_workers == 1
 
 
 def test_visual_boundary_rejects_empty_model_name() -> None:
@@ -485,6 +619,204 @@ async def test_mfds_api_rejects_incomplete_multi_page_download() -> None:
         await api.requestCatalog()
 
 
+@pytest.mark.anyio
+async def test_mfds_api_rejects_oversized_chunked_page_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OversizedStream(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield b"x" * 10
+            yield b"y" * 10
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=_OversizedStream())
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    monkeypatch.setattr(MFDSPillAPI, "_MAX_PAGE_RESPONSE_BYTES", 16)
+    api = MFDSPillAPI(
+        page_size=1,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="page request failed") as context:
+        await api.requestCatalog()
+
+    assert context.value.__cause__ is not None
+    assert "too large" in str(context.value.__cause__)
+
+
+@pytest.mark.anyio
+async def test_mfds_api_rejects_page_with_more_rows_than_requested() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 2,
+                    "items": [
+                        {"ITEM_SEQ": "1", "ITEM_NAME": "first"},
+                        {"ITEM_SEQ": "2", "ITEM_NAME": "second"},
+                    ],
+                },
+            },
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    api = MFDSPillAPI(
+        page_size=1,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="page request failed") as context:
+        await api.requestCatalog()
+
+    assert context.value.__cause__ is not None
+    assert "too many rows" in str(context.value.__cause__)
+
+
+@pytest.mark.anyio
+async def test_mfds_api_rejects_inconsistent_page_totals() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        return httpx.Response(
+            200,
+            json={
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 2 if page_no == 1 else 3,
+                    "items": [
+                        {
+                            "ITEM_SEQ": str(page_no),
+                            "ITEM_NAME": f"pill-{page_no}",
+                        }
+                    ],
+                },
+            },
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    api = MFDSPillAPI(
+        page_size=1,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="inconsistent row counts"):
+        await api.requestCatalog()
+
+
+@pytest.mark.anyio
+async def test_mfds_api_rejects_aggregate_rows_above_advertised_total() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        offset = (page_no - 1) * 2
+        return httpx.Response(
+            200,
+            json={
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 3,
+                    "items": [
+                        {
+                            "ITEM_SEQ": str(offset + index),
+                            "ITEM_NAME": f"pill-{offset + index}",
+                        }
+                        for index in range(2)
+                    ],
+                },
+            },
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    api = MFDSPillAPI(
+        page_size=2,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="too many rows"):
+        await api.requestCatalog()
+
+
+@pytest.mark.anyio
+async def test_mfds_api_rejects_refresh_above_aggregate_byte_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads = {
+        page_no: json.dumps(
+            {
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 2,
+                    "items": [
+                        {
+                            "ITEM_SEQ": str(page_no),
+                            "ITEM_NAME": f"pill-{page_no}",
+                        }
+                    ],
+                },
+            }
+        ).encode("utf-8")
+        for page_no in (1, 2)
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        return httpx.Response(
+            200,
+            content=payloads[page_no],
+            headers={"content-type": "application/json"},
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    monkeypatch.setattr(
+        MFDSPillAPI,
+        "_MAX_REFRESH_RESPONSE_BYTES",
+        len(payloads[1]) + len(payloads[2]) - 1,
+    )
+    api = MFDSPillAPI(
+        page_size=1,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="refresh response is too large"):
+        await api.requestCatalog()
+
+
 @pytest.mark.parametrize(
     "overrides, expected_message",
     [
@@ -492,6 +824,7 @@ async def test_mfds_api_rejects_incomplete_multi_page_download() -> None:
         ({"minimum_catalog_rows": 0}, "minimum rows"),
         ({"page_size": 501}, "page size"),
         ({"max_concurrency": 13}, "concurrency"),
+        ({"base_url": "http://mfds.test/catalog"}, "HTTPS"),
     ],
 )
 def test_mfds_api_rejects_invalid_configuration(

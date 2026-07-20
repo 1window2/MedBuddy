@@ -18,7 +18,7 @@ class _FakeIdentifyPill extends IdentifyPill {
   );
 
   _FakeIdentifyPill()
-      : super(client: MockClient((_) async => http.Response('{}', 500)));
+    : super(client: MockClient((_) async => http.Response('{}', 500)));
 
   @override
   Future<Uint8List?> requestPillImage(ImageSource source) async {
@@ -62,6 +62,45 @@ class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+class _LowConfidenceIdentifyPill extends _FakeIdentifyPill {
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) async {
+    final result = await super.requestPillIdentification(
+      frontImage: frontImage,
+      backImage: backImage,
+    );
+    return PillIdentificationResult(
+      isConfident: false,
+      requiresConfirmation: true,
+      observedFeatures: const PillVisualFeatures(
+        shape: 'round',
+        colors: ['yellow'],
+        quality: 'usable',
+        qualityIssues: ['pill is small in the frame'],
+      ),
+      candidates: result.candidates,
+    );
+  }
+}
+
+class _EmptyIdentifyPill extends _FakeIdentifyPill {
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) async {
+    return const PillIdentificationResult(
+      isConfident: false,
+      requiresConfirmation: true,
+      observedFeatures: PillVisualFeatures(),
+      candidates: [],
+    );
+  }
+}
+
 class _DelayedReplacementIdentifyPill extends _FakeIdentifyPill {
   final replacementImage = Completer<Uint8List?>();
   int _selectionCount = 0;
@@ -77,8 +116,9 @@ class _DelayedReplacementIdentifyPill extends _FakeIdentifyPill {
 }
 
 void main() {
-  testWidgets('pill candidate flow requires explicit user confirmation',
-      (tester) async {
+  testWidgets('pill candidate flow requires explicit user confirmation', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -106,8 +146,9 @@ void main() {
 
     await tester.tap(find.text('페라트라정2.5밀리그램(레트로졸)'));
     await tester.pump();
-    final confirmButton =
-        find.byKey(const Key('confirm-pill-candidate-button'));
+    final confirmButton = find.byKey(
+      const Key('confirm-pill-candidate-button'),
+    );
     await tester.ensureVisible(confirmButton);
     await tester.pumpAndSettle();
     await tester.tap(confirmButton);
@@ -117,8 +158,9 @@ void main() {
     expect(find.textContaining('확정 결과가 아니므로'), findsOneWidget);
   });
 
-  testWidgets('pill photo selection surfaces oversized image failures',
-      (tester) async {
+  testWidgets('pill photo selection surfaces oversized image failures', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
@@ -134,15 +176,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-        find.text('Each pill image must be 10 MB or smaller.'), findsOneWidget);
+      find.text('Each pill image must be 10 MB or smaller.'),
+      findsOneWidget,
+    );
     final identifyButton = tester.widget<FilledButton>(
       find.byKey(const Key('identify-pill-button')),
     );
     expect(identifyButton.onPressed, isNull);
   });
 
-  testWidgets('front and optional back photos can be removed independently',
-      (tester) async {
+  testWidgets('front and optional back photos can be removed independently', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
@@ -163,8 +208,8 @@ void main() {
     }
 
     FilledButton identifyButton() => tester.widget<FilledButton>(
-          find.byKey(const Key('identify-pill-button')),
-        );
+      find.byKey(const Key('identify-pill-button')),
+    );
 
     expect(identifyButton().onPressed, isNotNull);
     expect(
@@ -175,10 +220,20 @@ void main() {
       find.byKey(const Key('remove-pill-back-image-button')),
       findsOneWidget,
     );
-
-    await tester.tap(
+    expect(
+      tester.getSize(find.byKey(const Key('remove-pill-front-image-button'))),
+      const Size(48, 48),
+    );
+    final frontRemoveButton = tester.widget<IconButton>(
+      find.byKey(const Key('remove-pill-front-image-button')),
+    );
+    final backRemoveButton = tester.widget<IconButton>(
       find.byKey(const Key('remove-pill-back-image-button')),
     );
+    expect(frontRemoveButton.tooltip, 'Remove Front photo');
+    expect(backRemoveButton.tooltip, 'Remove Back photo');
+
+    await tester.tap(find.byKey(const Key('remove-pill-back-image-button')));
     await tester.pump();
 
     expect(identifyButton().onPressed, isNotNull);
@@ -187,9 +242,7 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(
-      find.byKey(const Key('remove-pill-front-image-button')),
-    );
+    await tester.tap(find.byKey(const Key('remove-pill-front-image-button')));
     await tester.pump();
 
     expect(identifyButton().onPressed, isNull);
@@ -199,8 +252,67 @@ void main() {
     );
   });
 
-  testWidgets('replacement image loading disables stale candidate actions',
-      (tester) async {
+  testWidgets('uncertain results surface the backend confidence warning', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en'),
+          control: _LowConfidenceIdentifyPill(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('pill-confidence-warning')), findsOneWidget);
+    expect(find.textContaining('matches are uncertain'), findsOneWidget);
+    final resultSemantics = tester
+        .getSemantics(find.byKey(const Key('pill-candidate-results')))
+        .getSemanticsData();
+    expect(resultSemantics.flagsCollection.isLiveRegion, isTrue);
+    expect(resultSemantics.label, contains('Pill identification completed.'));
+    semantics.dispose();
+  });
+
+  testWidgets('empty results are announced as a live accessibility update', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'en'),
+          control: _EmptyIdentifyPill(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+
+    final emptyResult = find.byKey(const Key('pill-empty-results'));
+    expect(emptyResult, findsOneWidget);
+    final resultSemantics = tester.getSemantics(emptyResult).getSemanticsData();
+    expect(resultSemantics.flagsCollection.isLiveRegion, isTrue);
+    expect(resultSemantics.label, contains('0 possible matches'));
+    semantics.dispose();
+  });
+
+  testWidgets('replacement image loading disables stale candidate actions', (
+    tester,
+  ) async {
     final control = _DelayedReplacementIdentifyPill();
     addTearDown(control.dispose);
     await tester.pumpWidget(
@@ -256,8 +368,9 @@ void main() {
     expect(find.textContaining('페라트라'), findsNothing);
   });
 
-  testWidgets('candidate results fit a compact viewport at large text size',
-      (tester) async {
+  testWidgets('candidate results fit a compact viewport at large text size', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -265,9 +378,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: const TextScaler.linear(1.3),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
           child: child!,
         ),
         home: PillIdentificationUI(

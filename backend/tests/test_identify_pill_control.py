@@ -1,6 +1,8 @@
 import asyncio
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -14,7 +16,11 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from boundaries.pill_identification_boundary import PillImageQualityError
 from controls.identify_pill_control import IdentifyPill
-from entities.pill_identification_entity import PillCatalogEntry, PillVisualFeatures
+from entities.pill_identification_entity import (
+    PillCatalogEntry,
+    PillIdentificationCandidate,
+    PillVisualFeatures,
+)
 
 
 class _FakeVisionBoundary:
@@ -58,6 +64,35 @@ class _SlowCatalogBoundary:
             self.was_cancelled = True
             raise
         return ()
+
+
+class _ConcurrencyTrackingIdentifyPill(IdentifyPill):
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self._worker_lock = threading.Lock()
+        self.worker_started = threading.Event()
+        self.active_workers = 0
+        self.maximum_active_workers = 0
+
+    def _rank_candidates(
+        self,
+        features: PillVisualFeatures,
+        catalog: tuple[PillCatalogEntry, ...],
+        ranking_limit: int | None = None,
+    ) -> list[PillIdentificationCandidate]:
+        with self._worker_lock:
+            self.active_workers += 1
+            self.maximum_active_workers = max(
+                self.maximum_active_workers,
+                self.active_workers,
+            )
+            self.worker_started.set()
+        try:
+            time.sleep(0.08)
+            return super()._rank_candidates(features, catalog, ranking_limit)
+        finally:
+            with self._worker_lock:
+                self.active_workers -= 1
 
 
 def _entry(
@@ -196,6 +231,24 @@ async def test_poor_quality_result_is_never_confident() -> None:
 
 
 @pytest.mark.anyio
+async def test_uncertain_front_back_pair_is_never_confident() -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        front_imprint="YH",
+        back_imprint="LT",
+        quality="good",
+        side_consistency_confidence=0.45,
+    )
+    control = _control(features, (_entry("200808877", "test pill"),))
+
+    result = await control.requestPillIdentification(b"front", b"back")
+
+    assert result.candidates
+    assert result.is_confident is False
+
+
+@pytest.mark.anyio
 async def test_round_observation_does_not_match_oval_catalog_shape() -> None:
     features = PillVisualFeatures(
         shape="round",
@@ -294,6 +347,34 @@ async def test_failed_required_stage_cancels_sibling_work() -> None:
         await control.requestPillIdentification(b"front")
 
     assert catalog_boundary.was_cancelled is True
+
+
+@pytest.mark.anyio
+async def test_cancelled_ranking_retains_shared_capacity_until_worker_exits() -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        front_imprint="YH",
+        quality="good",
+    )
+    control = _ConcurrencyTrackingIdentifyPill(
+        vision_boundary=_FakeVisionBoundary(features),  # type: ignore[arg-type]
+        catalog_boundary=_FakeCatalogBoundary((_entry("1", "pill"),)),  # type: ignore[arg-type]
+        ranking_semaphore=asyncio.Semaphore(1),
+    )
+    first_request = asyncio.create_task(control.requestPillIdentification(b"front"))
+    while not control.worker_started.is_set():
+        await asyncio.sleep(0.001)
+
+    first_request.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first_request
+
+    recovered = await control.requestPillIdentification(b"front")
+
+    assert recovered.candidates
+    assert control.maximum_active_workers == 1
+    assert control.active_workers == 0
 
 
 @pytest.fixture

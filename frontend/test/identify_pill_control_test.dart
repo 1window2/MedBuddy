@@ -25,18 +25,22 @@ void main() {
       expect(request.method, 'POST');
       expect(request.url.path, '/pill-identification/candidates');
       expect(
-          request.headers['content-type'], startsWith('multipart/form-data'));
+        request.headers['content-type'],
+        startsWith('multipart/form-data'),
+      );
       return http.Response(
         jsonEncode({
           'success': true,
           'message': 'Candidates found.',
           'is_confident': true,
-          'requires_confirmation': false,
+          'requires_confirmation': true,
           'observed_features': {
             'shape': 'round',
             'colors': ['yellow'],
             'front_imprint': 'YH',
             'back_imprint': 'LT',
+            'same_pill': true,
+            'side_consistency_confidence': 0.98,
           },
           'data': [
             {
@@ -66,6 +70,8 @@ void main() {
 
     expect(result.isConfident, isTrue);
     expect(result.requiresConfirmation, isTrue);
+    expect(result.observedFeatures.samePill, isTrue);
+    expect(result.observedFeatures.sideConsistencyConfidence, 0.98);
     expect(result.candidates, hasLength(1));
     expect(result.candidates.first.itemSeq, '200808877');
     expect(result.candidates.first.matchScore, 1.0);
@@ -99,46 +105,202 @@ void main() {
     );
   });
 
-  test('requestPillIdentification maps invalid photos to a typed failure',
-      () async {
+  test(
+    'requestPillIdentification maps invalid photos to a typed failure',
+    () async {
+      final control = IdentifyPill(
+        baseUrl: 'http://localhost',
+        client: MockClient((_) async => http.Response('{}', 422)),
+      );
+
+      expect(
+        () => control.requestPillIdentification(
+          frontImage: Uint8List.fromList([1, 2, 3]),
+        ),
+        throwsA(
+          isA<PillIdentificationException>().having(
+            (error) => error.failure,
+            'failure',
+            PillIdentificationFailure.invalidPhoto,
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'requestPillIdentification maps server errors to service unavailable',
+    () async {
+      final control = IdentifyPill(
+        baseUrl: 'http://localhost',
+        client: MockClient((_) async => http.Response('{}', 500)),
+      );
+
+      expect(
+        () => control.requestPillIdentification(
+          frontImage: Uint8List.fromList([1, 2, 3]),
+        ),
+        throwsA(
+          isA<PillIdentificationException>().having(
+            (error) => error.failure,
+            'failure',
+            PillIdentificationFailure.serviceUnavailable,
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'requestPillIdentification rejects malformed success payloads',
+    () async {
+      final validFeatures = <String, dynamic>{
+        'same_pill': true,
+        'side_consistency_confidence': 1.0,
+      };
+      final validCandidate = <String, dynamic>{
+        'item_seq': '200808877',
+        'item_name': 'Candidate',
+        'match_score': 0.9,
+      };
+      final malformedPayloads = <Map<String, dynamic>>[
+        {
+          'success': 'yes',
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+        },
+        {
+          'success': true,
+          'message': '',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': 'yes',
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': false,
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+        },
+        {
+          'success': false,
+          'message': 'No candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': const [],
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': 'not-an-array',
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [
+            {
+              'item_seq': '',
+              'item_name': 'Missing identifier',
+              'match_score': 0.9,
+            },
+          ],
+        },
+        {
+          'success': false,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+        },
+        {
+          'success': true,
+          'message': 'No candidates found.',
+          'is_confident': false,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': const [],
+        },
+      ];
+
+      for (final payload in malformedPayloads) {
+        final control = IdentifyPill(
+          baseUrl: 'http://localhost',
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode(payload),
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        );
+
+        await expectLater(
+          control.requestPillIdentification(
+            frontImage: Uint8List.fromList([1, 2, 3]),
+          ),
+          throwsA(
+            isA<PillIdentificationException>().having(
+              (error) => error.failure,
+              'failure',
+              PillIdentificationFailure.invalidResponse,
+            ),
+          ),
+        );
+      }
+    },
+  );
+
+  test('requestPillIdentification accepts a valid empty result', () async {
     final control = IdentifyPill(
       baseUrl: 'http://localhost',
-      client: MockClient((_) async => http.Response('{}', 422)),
-    );
-
-    expect(
-      () => control.requestPillIdentification(
-        frontImage: Uint8List.fromList([1, 2, 3]),
-      ),
-      throwsA(
-        isA<PillIdentificationException>().having(
-          (error) => error.failure,
-          'failure',
-          PillIdentificationFailure.invalidPhoto,
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'success': false,
+            'message': 'No matching pill candidates were found.',
+            'is_confident': false,
+            'requires_confirmation': true,
+            'observed_features': {
+              'same_pill': true,
+              'side_consistency_confidence': 1.0,
+            },
+            'data': const [],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
         ),
       ),
     );
-  });
 
-  test('requestPillIdentification maps server errors to service unavailable',
-      () async {
-    final control = IdentifyPill(
-      baseUrl: 'http://localhost',
-      client: MockClient((_) async => http.Response('{}', 500)),
+    final result = await control.requestPillIdentification(
+      frontImage: Uint8List.fromList([1, 2, 3]),
     );
 
-    expect(
-      () => control.requestPillIdentification(
-        frontImage: Uint8List.fromList([1, 2, 3]),
-      ),
-      throwsA(
-        isA<PillIdentificationException>().having(
-          (error) => error.failure,
-          'failure',
-          PillIdentificationFailure.serviceUnavailable,
-        ),
-      ),
-    );
+    expect(result.candidates, isEmpty);
+    expect(result.isConfident, isFalse);
+    expect(result.requiresConfirmation, isTrue);
   });
 
   test('candidate parsing rejects non-finite match scores', () {
@@ -180,10 +342,7 @@ void main() {
 
   test('dispose aborts an in-flight upload', () async {
     final client = _AbortAwareClient();
-    final control = IdentifyPill(
-      baseUrl: 'http://localhost',
-      client: client,
-    );
+    final control = IdentifyPill(baseUrl: 'http://localhost', client: client);
 
     final request = control.requestPillIdentification(
       frontImage: Uint8List.fromList([1, 2, 3]),
