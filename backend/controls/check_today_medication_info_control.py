@@ -1,17 +1,18 @@
 # File Name: check_today_medication_info_control.py
-# Role: Control class mapped from the CheckTodayMedicationInfo box in ClassDiagram2.
+# Role: Control class mapped from CheckTodayMedicationInfo in class diagram integrated v5.
 
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from controls.check_schedule_control import CheckSchedule
+from entities.patient_hash_entity import normalize_patient_hash
 
 
 # Class Name: CheckTodayMedicationInfo
 # Role: Builds today's medication summary from the schedule entity flow.
 # Responsibilities:
-#   - Resolve patient or guardian medication access scope through CheckSchedule.
+#   - Read one patient's medication schedule through CheckSchedule.
 #   - Reuse today's MedicationSchedule DTOs instead of creating a second schedule source.
 #   - Return dose-level progress counts for MainUI/TodayMedicationUI summaries.
 # Attributes:
@@ -27,45 +28,18 @@ class CheckTodayMedicationInfo:
 
     # Function Name: requestTodayMedicationInfo
     # Description:
-    # - Class diagram compatible wrapper for today's medication summary lookup.
+    # - Reads today's schedule and converts it into medication/dose progress data.
     # Parameters:
-    # - patient_hash: Optional selected patient ownership key.
-    # - user_hash: Requesting user hash used for guardian requests.
-    # - role: Requesting user role.
+    # - patient_hash: Patient ownership key used for the summary lookup.
     # Returns:
     # - API-compatible today medication summary response dictionary.
     def requestTodayMedicationInfo(
         self,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_today_medication_info(patient_hash, user_hash, role)
-
-    # Function Name: request_today_medication_info
-    # Description:
-    # - Reads today's schedule and converts it into medication/dose progress data.
-    # Parameters:
-    # - patient_hash: Optional selected patient ownership key.
-    # - user_hash: Requesting user hash used for guardian requests.
-    # - role: Requesting user role.
-    # Returns:
-    # - API-compatible today medication summary response dictionary.
-    def request_today_medication_info(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        resolved_patient_hash = self.check_schedule.resolvePatientHash(
-            patient_hash,
-            user_hash,
-            role,
-        )
-        schedule_response = self.check_schedule.request_today_medication_schedule(
+        resolved_patient_hash = normalize_patient_hash(patient_hash)
+        schedule_response = self.check_schedule.requestTodayMedicationSchedule(
             resolved_patient_hash,
-            None,
-            "patient",
         )
         schedules = self._read_schedule_items(schedule_response.get("data"))
         total_dose_count = sum(self._dose_count(schedule) for schedule in schedules)

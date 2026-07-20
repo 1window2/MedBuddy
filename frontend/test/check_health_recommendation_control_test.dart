@@ -15,7 +15,8 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/health/recommendation');
       expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters['role'], 'patient');
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
       expect(request.url.queryParameters['language'], 'en');
       return http.Response(
         jsonEncode({
@@ -47,14 +48,14 @@ void main() {
     expect(recommendation.medicationNames, ['test-tablet']);
   });
 
-  test('requestHealthRecommendation can request guardian linked scope',
+  test('requestHealthRecommendation supports a selected patient scope',
       () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
       expect(request.url.path, '/health/recommendation');
-      expect(request.url.queryParameters['patient_hash'], 'local_patient');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
-      expect(request.url.queryParameters['role'], 'guardian');
+      expect(request.url.queryParameters['patient_hash'], 'patient-b');
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
       expect(request.url.queryParameters['language'], 'ko');
       return http.Response(
         jsonEncode({
@@ -71,8 +72,7 @@ void main() {
     });
     final control = CheckHealthRecommendation(
       baseUrl: 'http://localhost',
-      userHash: 'guardian-a',
-      role: 'guardian',
+      patientHash: 'patient-b',
       client: client,
     );
 

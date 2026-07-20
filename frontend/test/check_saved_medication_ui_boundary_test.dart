@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
-import 'package:medbuddy_frontend/controls/set_guardian_alert_setting_control.dart';
+import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('patient saved list does not expose guardian alert control',
@@ -34,67 +36,50 @@ void main() {
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
 
-  testWidgets('guardian bell reads and updates the persisted alert setting',
+  testWidgets('group delete reports mixed results instead of full success',
       (tester) async {
-    Map<String, dynamic>? updatePayload;
-    final client = MockClient((request) async {
-      if (request.url.path == '/list') {
-        expect(request.url.queryParameters['role'], 'guardian');
-        expect(request.url.queryParameters['user_hash'], 'guardian-a');
-        return _savedMedicationResponse(request);
-      }
-      if (request.url.path == '/guardian-alert/settings/patient-a') {
-        expect(request.url.queryParameters['guardian_hash'], 'guardian-a');
-        if (request.method == 'PUT') {
-          updatePayload = jsonDecode(request.body) as Map<String, dynamic>;
-          return _guardianAlertResponse(enabled: true);
-        }
-        return _guardianAlertResponse(enabled: false);
-      }
-      return http.Response('Not found', 404);
-    });
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient(_mixedDeleteResponse);
     final viewModel = MedBuddyViewModel(
       checkSavedMedication: CheckSavedMedication(
         baseUrl: 'http://medbuddy.test',
         client: client,
       ),
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      ),
+      manageUserSetting: ManageUserSetting(useRemotePersistence: false),
       apiClient: client,
     );
-    viewModel.setMedicationAccessScope(
-      patientHash: 'patient-a',
-      userHash: 'guardian-a',
-      role: 'guardian',
-    );
     addTearDown(viewModel.dispose);
+    await viewModel.requestUserSettingSave(
+      fontSizeOption: 'medium',
+      readingSpeedOption: 'medium',
+      language: 'en',
+    );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: viewModel,
-        child: MaterialApp(
-          home: CheckSavedMedicationUI(
-            guardianAlertControlFactory: (guardianHash) {
-              return SetGuardianAlertSetting(
-                baseUrl: 'http://medbuddy.test',
-                guardianHash: guardianHash,
-                client: client,
-              );
-            },
-          ),
-        ),
+        child: const MaterialApp(home: CheckSavedMedicationUI()),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.notifications_none_outlined), findsOneWidget);
-    await tester.tap(find.byTooltip('알림 설정'));
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
-    expect(find.byType(Switch), findsOneWidget);
-
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.text('Yes'));
     await tester.pumpAndSettle();
 
-    expect(updatePayload?['alert_option'], 'enable');
-    expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
+    expect(find.text('Deleted: 1. Failed: 1.'), findsOneWidget);
+    expect(find.text('Deleted.'), findsNothing);
+    expect(
+      viewModel.savedMedicationInfoList
+          .map((medication) => medication.id)
+          .toList(),
+      [2],
+    );
   });
 }
 
@@ -123,18 +108,54 @@ Future<http.Response> _savedMedicationResponse(http.Request request) async {
   );
 }
 
-http.Response _guardianAlertResponse({required bool enabled}) {
-  return http.Response(
-    jsonEncode({
-      'success': true,
-      'data': {
-        'guardian_hash': 'guardian-a',
-        'patient_hash': 'patient-a',
-        'is_enabled': enabled,
-        'alert_option': enabled ? 'enable' : 'disable',
-      },
-    }),
-    200,
-    headers: {'content-type': 'application/json; charset=utf-8'},
-  );
+Future<http.Response> _mixedDeleteResponse(http.Request request) async {
+  if (request.method == 'GET' && request.url.path == '/list') {
+    return http.Response(
+      jsonEncode({
+        'success': true,
+        'data': [
+          _savedMedicationJson(request, 1, 'tablet-one'),
+          _savedMedicationJson(request, 2, 'tablet-two'),
+        ],
+      }),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+  if (request.method == 'DELETE') {
+    final id = int.parse(request.url.pathSegments.last);
+    return http.Response(
+      jsonEncode({'success': id == 1}),
+      id == 1 ? 200 : 500,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+  if (request.method == 'GET' && request.url.path == '/schedule/today') {
+    return http.Response(
+      jsonEncode({'success': true, 'data': <Map<String, dynamic>>[]}),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+  return http.Response('Not found', 404);
+}
+
+Map<String, dynamic> _savedMedicationJson(
+  http.Request request,
+  int id,
+  String name,
+) {
+  return {
+    'id': id,
+    'patient_hash':
+        request.url.queryParameters['patient_hash'] ?? 'local_patient',
+    'created_date': '2026-07-15',
+    'prescription_date': '2026-07-15',
+    'item_seq': '20000000$id',
+    'item_name': name,
+    'efficacy': 'effect',
+    'use_method': 'usage',
+    'warning_message': 'warning',
+    'image_url': 'https://example.com/tablet.jpg',
+  };
 }

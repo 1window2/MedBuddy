@@ -1,5 +1,10 @@
 # (D1) 클래스 설계서
 
+> **Document status:** First-semester historical baseline. It does not describe
+> the complete current implementation and must not override
+> `docs/temp/class diagram v5.png` or the versioned architecture extension
+> documents. Use it for design history only.
+
 ## **1\. 개요**
 
 MedBuddy는 사용자가 모바일 환경에서 의약품 정보 또는 처방전 관련 텍스트를 입력하면, 이를 분석하여 약 정보를 조회하고, 이해하기 쉬운 안내를 제공하며, 필요 시 개인 약통에 저장할 수 있도록 지원하는 시스템이다. 현재 백엔드는 FastAPI 기반으로 구성되어 있으며, OCR 결과 텍스트 정제, 공공 의약품 API 조회, AI 기반 복약 안내 생성, 저장 기능을 중심으로 구현되어 있다.

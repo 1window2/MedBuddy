@@ -21,25 +21,12 @@ class ManageUserSetting:
 
     # Function Name: requestUserSetting
     # Description:
-    # - Class diagram compatible wrapper for user setting retrieval.
-    # Parameters:
-    # - user_hash: User ownership key used to scope settings.
-    # Returns:
-    # - API-compatible user setting dictionary.
-    def requestUserSetting(
-        self,
-        user_hash: str = DEFAULT_PATIENT_HASH,
-    ) -> dict[str, object]:
-        return self.request_user_setting(user_hash)
-
-    # Function Name: request_user_setting
-    # Description:
     # - Returns persisted user settings or a default setting if none exists yet.
     # Parameters:
     # - user_hash: User ownership key used to scope settings.
     # Returns:
     # - API-compatible user setting dictionary.
-    def request_user_setting(
+    def requestUserSetting(
         self,
         user_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
@@ -50,44 +37,6 @@ class ManageUserSetting:
 
     # Function Name: saveUserSetting
     # Description:
-    # - Class diagram compatible wrapper for user setting persistence.
-    # Parameters:
-    # - user_hash: User ownership key used to scope settings.
-    # - font_size: Selected display font size.
-    # - reading_speed: Selected voice/reading speed multiplier.
-    # - language: Selected language code.
-    # Returns:
-    # - API-compatible saved user setting dictionary.
-    def saveUserSetting(
-        self,
-        user_hash: str,
-        font_size: int,
-        reading_speed: float,
-        language: str,
-    ) -> dict[str, object]:
-        return self.save_user_setting(user_hash, font_size, reading_speed, language)
-
-    # Function Name: updateUserSetting
-    # Description:
-    # - Class diagram compatible wrapper for updating user settings.
-    # Parameters:
-    # - user_hash: User ownership key used to scope settings.
-    # - font_size: Selected display font size.
-    # - reading_speed: Selected voice/reading speed multiplier.
-    # - language: Selected language code.
-    # Returns:
-    # - API-compatible saved user setting dictionary.
-    def updateUserSetting(
-        self,
-        user_hash: str,
-        font_size: int,
-        reading_speed: float,
-        language: str,
-    ) -> dict[str, object]:
-        return self.save_user_setting(user_hash, font_size, reading_speed, language)
-
-    # Function Name: save_user_setting
-    # Description:
     # - Creates or updates one user setting row.
     # Parameters:
     # - user_hash: User ownership key used to scope settings.
@@ -96,7 +45,7 @@ class ManageUserSetting:
     # - language: Selected language code.
     # Returns:
     # - API-compatible saved user setting dictionary.
-    def save_user_setting(
+    def saveUserSetting(
         self,
         user_hash: str,
         font_size: int,
@@ -113,9 +62,14 @@ class ManageUserSetting:
             if row is None:
                 row = _UserSetting(user_hash=normalized_user_hash)
                 self.db.add(row)
-            row.font_size = normalized_font_size
-            row.reading_speed = normalized_reading_speed
-            row.language = normalized_language
+            next_setting = self._to_entity(row).updateUserSetting(
+                normalized_font_size,
+                normalized_reading_speed,
+                normalized_language,
+            )
+            row.font_size = next_setting.font_size
+            row.reading_speed = next_setting.reading_speed
+            row.language = next_setting.language
             self.db.commit()
             self.db.refresh(row)
             return self._success_response(
@@ -190,9 +144,11 @@ class ManageUserSetting:
     def _to_entity(self, row: _UserSetting) -> UserSetting:
         return UserSetting(
             user_hash=row.user_hash,
-            font_size=row.font_size,
-            reading_speed=row.reading_speed,
-            language=row.language,
+            font_size=row.font_size if row.font_size is not None else 16,
+            reading_speed=(
+                row.reading_speed if row.reading_speed is not None else 1.0
+            ),
+            language=row.language or "ko",
         )
 
     def _success_response(
@@ -203,5 +159,5 @@ class ManageUserSetting:
         return {
             "success": True,
             "message": message,
-            "data": setting.to_response_dict(),
+            "data": setting.getUserSetting(),
         }

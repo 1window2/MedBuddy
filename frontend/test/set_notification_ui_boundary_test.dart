@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/set_notification_ui_boundary.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 void main() {
   testWidgets('alarm popup returns the time selected by the wheel',
@@ -13,7 +14,7 @@ void main() {
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
-              selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+              selectedTime = await SetNotificationUI.showNotificationPopup(
                 context,
                 language: 'en',
                 slotTitle: 'Morning',
@@ -55,7 +56,7 @@ void main() {
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
-              selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+              selectedTime = await SetNotificationUI.showNotificationPopup(
                 context,
                 language: 'en',
                 slotTitle: 'Morning',
@@ -75,5 +76,41 @@ void main() {
 
     expect(selectedTime, isNull);
     expect(find.byType(SetNotificationUI), findsNothing);
+  });
+
+  testWidgets('alarm wheel stays visible with a dark device theme',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () {
+              SetNotificationUI.showNotificationPopup(
+                context,
+                language: 'en',
+                slotTitle: 'Morning',
+                initialTime: const TimeOfDay(hour: 8, minute: 0),
+              );
+            },
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    final pickerFinder = find.byKey(const Key('notification-time-wheel'));
+    final picker = tester.widget<CupertinoDatePicker>(pickerFinder);
+    final pickerTheme = CupertinoTheme.of(tester.element(pickerFinder));
+
+    expect(picker.backgroundColor, Colors.white);
+    expect(pickerTheme.brightness, Brightness.light);
+    expect(
+      pickerTheme.textTheme.dateTimePickerTextStyle.color,
+      MedBuddyColors.textStrong,
+    );
   });
 }

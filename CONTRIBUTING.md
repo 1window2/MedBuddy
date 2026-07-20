@@ -53,6 +53,12 @@ Since MedBuddy is a full-stack project, we follow different naming conventions d
 * **Constants:** `UPPER_SNAKE_CASE` (e.g., `GEMINI_API_KEY`)
 * **Type Hinting:** Type hinting is strictly required for all function parameters and return values.
 
+Public operations whose names are explicitly defined by an authoritative UML
+diagram may retain that diagram's `camelCase` spelling in Python so the code and
+design artifact remain traceable one-to-one. This is a narrow architecture
+exception: new internal helpers, variables, and operations that are not defined
+by UML continue to use `snake_case`.
+
 ### Frontend (Dart / Flutter)
 * **File Names:** `snake_case` (e.g., `drug_info.dart`, `api_service.dart`)
 * **Class Names:** `PascalCase` (e.g., `MedicationViewModel`, `DrugInfo`)
@@ -207,6 +213,13 @@ flutter analyze --no-pub
 flutter test --no-pub
 ```
 
+Before tagging a release candidate, also verify the distributable path:
+
+```powershell
+cd frontend
+flutter build apk --release --no-pub
+```
+
 Before committing, also check:
 
 - No `.env`, `.db`, local SDK path, telemetry state, generated build output, or emulator-specific file is staged.
@@ -252,4 +265,3 @@ Used for changes that do not affect the meaning of the code (white-space, format
 #### `test:` (Testing)
 Used when adding missing tests or correcting existing tests.
 * **Example:** `test: add dummy test for CI pipeline`
-

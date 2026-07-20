@@ -1,5 +1,5 @@
 # File Name: check_schedule_control.py
-# Role: Control class mapped from the CheckSchedule box in ClassDiagram2.
+# Role: Control class mapped from CheckSchedule in class diagram integrated v5.
 
 import logging
 from datetime import date
@@ -7,7 +7,6 @@ from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from entities.medication_completion_entity import (
     MedicationCompletion,
     _MedicationCompletion,
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Class Name: CheckSchedule
 # Role: Requests and updates medication schedules.
 # Responsibilities:
-#   - Read today's medication schedule for one patient or linked guardian scope.
+#   - Read today's medication schedule for one patient scope.
 #   - Persist a medication completion status for one saved medication row.
 # Attributes:
 #   - db: SQLAlchemy session used for schedule persistence operations.
@@ -42,64 +41,18 @@ class CheckSchedule:
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
-    # Function Name: requestMedicationSchedule
-    # Description:
-    # - Class diagram compatible wrapper for today's medication schedule lookup.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope schedule lookup.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible schedule list response dictionary.
-    def requestMedicationSchedule(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        return self.request_today_medication_schedule(patient_hash, user_hash, role)
-
     # Function Name: requestTodayMedicationSchedule
     # Description:
-    # - Class diagram compatible wrapper for today's medication schedule lookup.
+    # - Reads active medication schedules for today's date.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope schedule lookup.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible schedule list response dictionary.
     def requestTodayMedicationSchedule(
         self,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        return self.request_today_medication_schedule(patient_hash, user_hash, role)
-
-    # Function Name: request_today_medication_schedule
-    # Description:
-    # - Reads active medication schedules for today's date.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope schedule lookup.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible schedule list response dictionary.
-    def request_today_medication_schedule(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
-        self.retention_policy.cleanup_expired_medications(
-            self.db,
-            normalized_patient_hash,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         today = date.today()
         medications = (
             self.db.query(_SavedMedication)
@@ -133,7 +86,7 @@ class CheckSchedule:
 
     # Function Name: updateMedicationStatus
     # Description:
-    # - Class diagram compatible wrapper for medication status persistence.
+    # - Persists the medication completion status for one saved medication row.
     # Parameters:
     # - medication_id: Saved medication primary key.
     # - medication_status: New medication completion status.
@@ -146,43 +99,9 @@ class CheckSchedule:
         medication_id: int,
         medication_status: bool,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
         slot_key: str | None = None,
     ) -> dict[str, object]:
-        return self.update_medication_status(
-            medication_id,
-            medication_status,
-            patient_hash,
-            user_hash,
-            role,
-            slot_key,
-        )
-
-    # Function Name: update_medication_status
-    # Description:
-    # - Persists the medication completion status for one saved medication row.
-    # Parameters:
-    # - medication_id: Saved medication primary key.
-    # - medication_status: New medication completion status.
-    # - patient_hash: Patient ownership key used to scope update.
-    # - slot_key: Optional time-slot key. Empty means all schedule slots.
-    # Returns:
-    # - API-compatible status update response dictionary.
-    def update_medication_status(
-        self,
-        medication_id: int,
-        medication_status: bool,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-        slot_key: str | None = None,
-    ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         medication = self._get_existing_medication(
             medication_id,
             normalized_patient_hash,
@@ -281,7 +200,7 @@ class CheckSchedule:
             medication,
             target_date,
             completion_rows,
-        ).getTodayMedicationSchedule()
+        )
         return {
             "medication_id": schedule.medication_id,
             "drug_name": schedule.medication_name,
@@ -305,44 +224,6 @@ class CheckSchedule:
             ),
             "prescription_date": schedule.created_date.isoformat(),
         }
-
-    # Function Name: resolvePatientHash
-    # Description:
-    # - Class diagram compatible wrapper for patient/guardian scope resolution.
-    # Parameters:
-    # - patient_hash: Direct patient hash for patient requests.
-    # - user_hash: Requesting user hash for guardian requests.
-    # - role: Requesting user role.
-    # Returns:
-    # - Patient hash authorized for this request.
-    def resolvePatientHash(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> str:
-        return self._resolve_patient_hash(patient_hash, user_hash, role)
-
-    # 함수명: _resolve_patient_hash
-    # 함수역할:
-    # - 요청자 역할에 따라 직접 환자 해시 또는 보호자 연동 환자 해시를 계산한다.
-    # 매개변수:
-    # - patient_hash: 환자 해시 후보
-    # - user_hash: 사용자 해시 후보
-    # - role: 요청자 역할
-    # 반환값:
-    # - 권한 범위가 확인된 환자 해시
-    def _resolve_patient_hash(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> str:
-        return PatientGuardianLinkControl(self.db).resolve_patient_scope(
-            patient_hash,
-            user_hash,
-            role,
-        )
 
     # Function Name: _to_schedule
     # Description:

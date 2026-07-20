@@ -8,6 +8,17 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
+import '../services/notification_service.dart';
+
+typedef NotificationRegistrar = Future<void> Function({
+  required int id,
+  required String slotKey,
+  required String slotTitle,
+  required int hour,
+  required int minute,
+  required List<String> medicationNames,
+  String language,
+});
 
 // File Name: set_notification_control.dart
 // Role: Handles medication alarm API calls.
@@ -21,42 +32,20 @@ import '../services/api_response_parser.dart';
 class SetNotification {
   final String baseUrl;
   final String patientHash;
-  final String? userHash;
-  final String role;
   final http.Client _client;
   final bool _ownsClient;
+  final NotificationRegistrar _notificationRegistrar;
 
   SetNotification({
     this.baseUrl = ApiConfig.baseUrl,
-    this.patientHash = PatientHash.defaultPatientHash,
-    this.userHash,
-    this.role = 'patient',
+    String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
-
-  // Function Name: forScope
-  // Description:
-  // - Creates a scoped alarm control that reuses this control's HTTP client.
-  // Parameters:
-  // - patientHash: Patient scope for medication alarms.
-  // - userHash: Optional guardian user scope.
-  // - role: Requesting user role.
-  // Returns:
-  // - SetNotification configured for the selected medication access scope.
-  SetNotification forScope({
-    required String patientHash,
-    String? userHash,
-    required String role,
-  }) {
-    return SetNotification(
-      baseUrl: baseUrl,
-      patientHash: patientHash,
-      userHash: userHash,
-      role: role,
-      client: _client,
-    );
-  }
+    NotificationRegistrar? notificationRegistrar,
+  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
+        _client = client ?? http.Client(),
+        _ownsClient = client == null,
+        _notificationRegistrar = notificationRegistrar ??
+            NotificationService.instance.registerNotification;
 
   // Function Name: requestMedicationAlarm
   // Description:
@@ -103,56 +92,7 @@ class SetNotification {
     }
   }
 
-  // Function Name: requestAlarmToggle
-  // Description:
-  // - Reads one slot alarm status before the UI decides whether to show a time picker.
-  // Parameters:
-  // - slotKey: Medication schedule slot key.
-  // Returns:
-  // - MedicationAlarm for the requested slot.
-  Future<MedicationAlarm> requestAlarmToggle(String slotKey) {
-    return getAlarmStatus(slotKey);
-  }
-
-  // Function Name: getAlarmStatus
-  // Description:
-  // - Reads one slot alarm status.
-  // Parameters:
-  // - slotKey: Medication schedule slot key.
-  // Returns:
-  // - MedicationAlarm for the requested slot.
-  Future<MedicationAlarm> getAlarmStatus(String slotKey) async {
-    final normalizedSlotKey = _normalizeSlotKey(slotKey);
-    try {
-      final response = await _client
-          .get(
-            _buildNotificationUri('notification/settings/$normalizedSlotKey'),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw StateError(
-          'Medication alarm lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
-        );
-      }
-
-      return _decodeSetting(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication alarm lookup failed.',
-        name: 'SetNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw StateError('Medication alarm lookup failed.');
-    }
-  }
-
-  // Function Name: setMedicationAlarm
+  // Function Name: saveNotificationSetting
   // Description:
   // - Saves and enables one medication alarm setting.
   // Parameters:
@@ -161,7 +101,7 @@ class SetNotification {
   // - minute: Local alarm minute.
   // Returns:
   // - Saved MedicationAlarm.
-  Future<MedicationAlarm> setMedicationAlarm({
+  Future<MedicationAlarm> saveNotificationSetting({
     required String slotKey,
     required int hour,
     required int minute,
@@ -199,6 +139,31 @@ class SetNotification {
       );
       throw StateError('Medication alarm save failed.');
     }
+  }
+
+  // Function Name: registerNotification
+  // Description:
+  // - Delegates platform notification registration after the setting is saved.
+  // - Keeps the use-case operation in SetNotification while the plugin details
+  //   remain isolated in NotificationService.
+  Future<void> registerNotification({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<String> medicationNames,
+    String language = 'ko',
+  }) {
+    return _notificationRegistrar(
+      id: id,
+      slotKey: slotKey,
+      slotTitle: slotTitle,
+      hour: hour,
+      minute: minute,
+      medicationNames: medicationNames,
+      language: language,
+    );
   }
 
   // Function Name: disableAlarmSetting
@@ -254,12 +219,7 @@ class SetNotification {
 
   Uri _buildNotificationUri(String path) {
     return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {
-        'patient_hash': patientHash,
-        'role': role,
-        if (userHash != null && userHash!.trim().isNotEmpty)
-          'user_hash': userHash!.trim(),
-      },
+      queryParameters: {'patient_hash': patientHash},
     );
   }
 

@@ -15,7 +15,14 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from api.router import (  # noqa: E402
     get_saved_medications,
     get_today_medication_schedule,
+    identify_loose_pill,
     upload_and_parse_prescription,
+)
+from boundaries.pill_identification_boundary import (  # noqa: E402
+    MAX_PILL_IMAGE_BYTES,
+    PillImageQualityError,
+    PillVisionResponseError,
+    PillVisionUnavailableError,
 )
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
@@ -23,32 +30,26 @@ from controls.input_prescription_control import (  # noqa: E402
 )
 
 
-class _MissingGuardianSavedMedicationControl:
-    async def request_saved_medication_info_with_images(
+class _MissingSavedMedicationControl:
+    async def requestSavedMedicationInfoWithImages(
         self,
-        patient_hash: str,
-        user_hash: str | None,
-        role: str,
+        patient_hash: str | None,
     ) -> dict[str, object]:
-        raise HTTPException(status_code=404, detail="Linked patient was not found.")
+        raise HTTPException(status_code=404, detail="Patient medication was not found.")
 
 
-class _MissingGuardianScheduleControl:
-    def request_today_medication_schedule(
+class _MissingScheduleControl:
+    def requestTodayMedicationSchedule(
         self,
-        patient_hash: str,
-        user_hash: str | None,
-        role: str,
+        patient_hash: str | None,
     ) -> dict[str, object]:
-        raise HTTPException(status_code=404, detail="Linked patient was not found.")
+        raise HTTPException(status_code=404, detail="Patient schedule was not found.")
 
 
 class _FailingSavedMedicationControl:
-    async def request_saved_medication_info_with_images(
+    async def requestSavedMedicationInfoWithImages(
         self,
         patient_hash: str | None,
-        user_hash: str | None,
-        role: str,
     ) -> dict[str, object]:
         raise RuntimeError("sensitive database details")
 
@@ -65,29 +66,42 @@ class _RecordingUploadFile:
         return b"image"
 
 
-class _RecordingPrescriptionAnalysisControl:
-    async def request_prescription_image(
+class _RecordingInputPrescription:
+    async def requestPrescriptionImage(
         self,
         image_bytes: bytes,
     ) -> dict[str, object]:
         return {"received_bytes": len(image_bytes)}
 
 
-class _TimedOutPrescriptionAnalysisControl:
-    async def request_prescription_image(
+class _TimedOutInputPrescription:
+    async def requestPrescriptionImage(
         self,
         image_bytes: bytes,
     ) -> dict[str, object]:
         raise PrescriptionAnalysisTimeoutError("OCR request timed out.")
 
 
+class _RecordingPillIdentificationControl:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+
+    async def requestPillIdentification(
+        self,
+        _front_image: bytes,
+        _back_image: bytes | None = None,
+    ) -> object:
+        if self.error is not None:
+            raise self.error
+        raise AssertionError("This fake is only used for error mapping.")
+
+
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
             await get_saved_medications(
-                user_hash="guardian-missing",
-                role="guardian",
-                check_saved_medication=_MissingGuardianSavedMedicationControl(),
+                patient_hash="patient-missing",
+                check_saved_medication=_MissingSavedMedicationControl(),
             )
 
         self.assertEqual(context.exception.status_code, 404)
@@ -95,9 +109,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     def test_today_schedule_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
             get_today_medication_schedule(
-                user_hash="guardian-missing",
-                role="guardian",
-                check_schedule=_MissingGuardianScheduleControl(),
+                patient_hash="patient-missing",
+                check_schedule=_MissingScheduleControl(),
             )
 
         self.assertEqual(context.exception.status_code, 404)
@@ -121,7 +134,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("api.router", level="INFO") as captured_logs:
             response = await upload_and_parse_prescription(
                 file=upload_file,
-                prescription_analysis_control=_RecordingPrescriptionAnalysisControl(),
+                input_prescription=_RecordingInputPrescription(),
             )
 
         self.assertEqual(
@@ -137,11 +150,59 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as context:
             await upload_and_parse_prescription(
                 file=_RecordingUploadFile(),
-                prescription_analysis_control=_TimedOutPrescriptionAnalysisControl(),
+                input_prescription=_TimedOutInputPrescription(),
             )
 
         self.assertEqual(context.exception.status_code, 504)
         self.assertEqual(context.exception.detail, "OCR request timed out.")
+
+    async def test_pill_upload_reads_only_the_validated_size_window(self) -> None:
+        upload_file = _RecordingUploadFile()
+
+        with self.assertRaises(HTTPException) as context:
+            await identify_loose_pill(
+                front=upload_file,
+                back=None,
+                identify_pill=_RecordingPillIdentificationControl(
+                    PillImageQualityError("Retake the pill photo.")
+                ),
+            )
+
+        self.assertEqual(upload_file.requested_size, MAX_PILL_IMAGE_BYTES + 1)
+        self.assertEqual(context.exception.status_code, 422)
+        self.assertEqual(context.exception.detail, "Retake the pill photo.")
+
+    async def test_pill_upload_maps_visual_outage_to_service_unavailable(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await identify_loose_pill(
+                front=_RecordingUploadFile(),
+                back=None,
+                identify_pill=_RecordingPillIdentificationControl(
+                    PillVisionUnavailableError(
+                        "The pill visual analysis service is temporarily unavailable."
+                    )
+                ),
+            )
+
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertNotIn("private", str(context.exception.detail))
+
+    async def test_pill_upload_maps_invalid_upstream_contract_to_bad_gateway(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await identify_loose_pill(
+                front=_RecordingUploadFile(),
+                back=None,
+                identify_pill=_RecordingPillIdentificationControl(
+                    PillVisionResponseError("private malformed payload")
+                ),
+            )
+
+        self.assertEqual(context.exception.status_code, 502)
+        self.assertNotIn("private", str(context.exception.detail))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ class SetNotificationUI extends StatefulWidget {
     required this.initialTime,
   });
 
-  static Future<TimeOfDay?> showAlarmSettingPopup(
+  static Future<TimeOfDay?> showNotificationPopup(
     BuildContext context, {
     required String language,
     required String slotTitle,
@@ -112,7 +112,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                 IconButton(
                   key: const Key('notification-time-confirm'),
                   tooltip: _isEnglish ? 'Confirm' : '확인',
-                  onPressed: _submit,
+                  onPressed: setNotificationTime,
                   style: IconButton.styleFrom(
                     backgroundColor: MedBuddyColors.primary,
                     foregroundColor: Colors.white,
@@ -126,15 +126,28 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
               label: _isEnglish ? 'Medication reminder time' : '복약 알림 시간',
               child: SizedBox(
                 height: 220,
-                child: CupertinoDatePicker(
-                  key: const Key('notification-time-wheel'),
-                  mode: CupertinoDatePickerMode.time,
-                  initialDateTime: _selectedDateTime,
-                  minuteInterval: 1,
-                  use24hFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-                  onDateTimeChanged: (value) {
-                    setState(() => _selectedDateTime = value);
-                  },
+                child: CupertinoTheme(
+                  data: const CupertinoThemeData(
+                    brightness: Brightness.light,
+                    textTheme: CupertinoTextThemeData(
+                      dateTimePickerTextStyle: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  child: CupertinoDatePicker(
+                    key: const Key('notification-time-wheel'),
+                    backgroundColor: Colors.white,
+                    mode: CupertinoDatePickerMode.time,
+                    initialDateTime: _selectedDateTime,
+                    minuteInterval: 1,
+                    use24hFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+                    onDateTimeChanged: (value) {
+                      setState(() => _selectedDateTime = value);
+                    },
+                  ),
                 ),
               ),
             ),
@@ -144,7 +157,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
     );
   }
 
-  void _submit() {
+  void setNotificationTime() {
     Navigator.pop(
       context,
       TimeOfDay(

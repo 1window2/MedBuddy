@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -13,18 +14,19 @@ typedef PrescriptionImageSelectedCallback = void Function();
 // 파일명: input_prescription_control.dart
 // 역할: 카메라와 갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
 
-// 클래스명: PrescriptionAnalysisControl
+// 클래스명: InputPrescription
 // 역할: 처방전 이미지 선택, 업로드, OCR 결과 변환을 담당한다.
 // 주요 책임:
 // - 카메라 또는 갤러리에서 이미지를 선택한다.
 // - 이미지가 실제 선택된 뒤에만 진행 상태 콜백을 호출한다.
 // - 백엔드 OCR 응답을 MedicationSchedule 목록으로 변환한다.
-class PrescriptionAnalysisControl {
+class InputPrescription {
   final String baseUrl;
   final ImagePicker _imagePicker;
   final http.Client _client;
   final bool _ownsClient;
   final Duration requestTimeout;
+  final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
   int _lastRawMedicationCount = 0;
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
@@ -33,14 +35,22 @@ class PrescriptionAnalysisControl {
   int get lastParsedMedicationCount => _lastParsedMedicationCount;
   int get lastSkippedMedicationCount => _lastSkippedMedicationCount;
 
-  PrescriptionAnalysisControl({
+  InputPrescription({
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
     this.requestTimeout = const Duration(seconds: 45),
   })  : _imagePicker = imagePicker ?? ImagePicker(),
         _client = client ?? http.Client(),
-        _ownsClient = client == null;
+        _ownsClient = client == null {
+    if (requestTimeout <= Duration.zero) {
+      throw ArgumentError.value(
+        requestTimeout,
+        'requestTimeout',
+        'must be positive',
+      );
+    }
+  }
 
   // 함수명: requestPrescriptionImage
   // 함수역할:
@@ -49,15 +59,6 @@ class PrescriptionAnalysisControl {
   // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
   // 반환값:
   // - OCR에서 추출한 복약 일정 목록, 취소 시 null
-  Future<List<MedicationSchedule>?> requestPrescriptionImage({
-    PrescriptionImageSelectedCallback? onImageSelected,
-  }) async {
-    return _requestPrescriptionImage(
-      ImageSource.camera,
-      onImageSelected: onImageSelected,
-    );
-  }
-
   // 함수명: requestPrescriptionImageFromGallery
   // 함수역할:
   // - 갤러리에서 처방전 이미지를 선택하고 OCR 분석을 요청한다.
@@ -83,7 +84,7 @@ class PrescriptionAnalysisControl {
   // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
   // 반환값:
   // - OCR에서 추출한 복약 일정 목록, 취소 시 null
-  Future<List<MedicationSchedule>?> startPrescriptionInput({
+  Future<List<MedicationSchedule>?> requestPrescriptionImage({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
     return _requestPrescriptionImage(
@@ -92,26 +93,37 @@ class PrescriptionAnalysisControl {
     );
   }
 
-  Future<List<MedicationSchedule>> analyzePrescriptionImage(
+  Future<List<MedicationSchedule>> _requestPrescriptionAnalysis(
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
   }) async {
     try {
-      final request = http.MultipartRequest(
+      final abortTrigger = Completer<void>();
+      _abortTriggers.add(abortTrigger);
+      final request = http.AbortableMultipartRequest(
         'POST',
         Uri.parse('$baseUrl/upload-prescription'),
+        abortTrigger: abortTrigger.future,
       );
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      final response =
-          await _client.send(request).then(http.Response.fromStream).timeout(
-        requestTimeout,
-        onTimeout: () {
-          throw StateError(
-            '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
-          );
-        },
-      );
+      late final http.Response response;
+      try {
+        response =
+            await _client.send(request).then(http.Response.fromStream).timeout(
+          requestTimeout,
+          onTimeout: () {
+            if (!abortTrigger.isCompleted) {
+              abortTrigger.complete();
+            }
+            throw StateError(
+              '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
+            );
+          },
+        );
+      } finally {
+        _abortTriggers.remove(abortTrigger);
+      }
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
@@ -142,7 +154,7 @@ class PrescriptionAnalysisControl {
     } on FileSystemException catch (error, stackTrace) {
       developer.log(
         'Prescription image file access failed.',
-        name: 'PrescriptionAnalysisControl',
+        name: 'InputPrescription',
         error: error,
         stackTrace: stackTrace,
       );
@@ -150,7 +162,7 @@ class PrescriptionAnalysisControl {
     } catch (error, stackTrace) {
       developer.log(
         'Prescription image upload failed.',
-        name: 'PrescriptionAnalysisControl',
+        name: 'InputPrescription',
         error: error,
         stackTrace: stackTrace,
       );
@@ -173,7 +185,7 @@ class PrescriptionAnalysisControl {
       return null;
     }
     onImageSelected?.call();
-    return analyzePrescriptionImage(image, imageSource: imageSource);
+    return _requestPrescriptionAnalysis(image, imageSource: imageSource);
   }
 
   String _imageFileAccessErrorMessage(ImageSource imageSource) {
@@ -214,6 +226,12 @@ class PrescriptionAnalysisControl {
   }
 
   void dispose() {
+    for (final abortTrigger in _abortTriggers.toList(growable: false)) {
+      if (!abortTrigger.isCompleted) {
+        abortTrigger.complete();
+      }
+    }
+    _abortTriggers.clear();
     if (_ownsClient) {
       _client.close();
     }

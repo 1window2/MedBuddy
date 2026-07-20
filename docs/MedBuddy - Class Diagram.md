@@ -1,5 +1,13 @@
 # MedBuddy Class Diagram
 
+> **Document status:** Historical design exploration, not the canonical
+> implementation contract. The authoritative first-semester baseline is
+> `docs/temp/class diagram v5.png`. Current v0.0.9 behavior is documented by
+> that baseline together with `MedBuddy - v0.0.9 Pill Identification
+> Extension.md`. Names such as `Guardian` and `MedicationAPIBoundary`, and
+> `planned` labels below, must not be used to rename implemented classes without
+> first reconciling them with those authoritative artifacts and the codebase.
+
 이 문서는 README의 초기 Class/Sequence Diagram, `docs/temp/SequenceDiagram_1window2.md`, `docs/temp/CommunicationDiagrams_jeeon0318.md`, 현재 Figma 화면 흐름, 실제 Flutter/FastAPI 코드 구조를 대조하여 새로 정리한 MedBuddy 분석/설계 Class Diagram이다.
 
 ## 1. 판단 기준

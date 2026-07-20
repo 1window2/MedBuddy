@@ -196,7 +196,7 @@ class MedicationSchedule {
         .map(
           (item) => MedicationSchedule.fromScheduleJson(
             Map<String, dynamic>.from(item),
-          ).getTodayMedicationSchedule(),
+          ),
         )
         .toList(growable: false);
   }
@@ -213,10 +213,6 @@ class MedicationSchedule {
 
     final correctionSource = nameCorrectionSource.trim();
     return correctionSource.isNotEmpty && correctionSource != 'unverified';
-  }
-
-  DateTime? get scheduleStartDate {
-    return prescriptionDate ?? createdDate;
   }
 
   int get dailyFrequencyCount {
@@ -314,55 +310,6 @@ class MedicationSchedule {
       rawMedicationName: rawMedicationName ?? this.rawMedicationName,
       nameConfidence: nameConfidence ?? this.nameConfidence,
       nameCorrectionSource: nameCorrectionSource ?? this.nameCorrectionSource,
-    );
-  }
-
-  void saveAnalysisResult() {
-    throw UnsupportedError('Analysis result saving is handled by controls.');
-  }
-
-  MedicationSchedule getTodayMedicationInfo() {
-    return this;
-  }
-
-  MedicationSchedule getAnalysisResult() {
-    return this;
-  }
-
-  MedicationSchedule getSavedMedicationInfo() {
-    throw UnsupportedError('Saved medication lookup is handled by controls.');
-  }
-
-  MedicationSchedule updateMedicationInfo() {
-    throw UnsupportedError(
-      'Medication schedule editing is not implemented yet.',
-    );
-  }
-
-  MedicationSchedule getTodayMedicationSchedule() {
-    return this;
-  }
-
-  MedicationSchedule saveMedicationStatus({
-    bool medicationStatus = true,
-    String? slotKey,
-  }) {
-    final normalizedSlotKey = slotKey?.trim().toLowerCase() ?? '';
-    if (normalizedSlotKey.isEmpty) {
-      return copyWith(
-        medicationStatus: medicationStatus,
-        slotStatuses: slotStatuses.map(
-          (key, _) => MapEntry(key, medicationStatus),
-        ),
-      );
-    }
-
-    final updatedSlotStatuses = Map<String, bool>.from(slotStatuses);
-    updatedSlotStatuses[normalizedSlotKey] = medicationStatus;
-    return copyWith(
-      medicationStatus: updatedSlotStatuses.isNotEmpty &&
-          updatedSlotStatuses.values.every((completed) => completed),
-      slotStatuses: Map.unmodifiable(updatedSlotStatuses),
     );
   }
 

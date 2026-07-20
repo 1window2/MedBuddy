@@ -45,16 +45,12 @@ class ManageUserSetting {
   // - currentSetting: ViewModel이 보관 중인 현재 설정
   // 반환값:
   // - 현재 사용자 설정
-  UserSetting requestUserSetting(UserSetting currentSetting) {
-    return currentSetting;
-  }
-
-  // 함수명: requestStoredUserSetting
+  // 함수명: requestUserSetting
   // 함수역할:
   // - SharedPreferences에 저장된 사용자 설정을 불러온다.
   // 반환값:
   // - 저장값이 없으면 기본값으로 채운 UserSetting
-  Future<UserSetting> requestStoredUserSetting() async {
+  Future<UserSetting> requestUserSetting() async {
     if (!useRemotePersistence) {
       return _requestCachedUserSetting();
     }
@@ -84,7 +80,7 @@ class ManageUserSetting {
     }
   }
 
-  // 함수명: requestSettingSave
+  // 함수명: saveUserSetting
   // 함수역할:
   // - 설정 화면에서 선택한 옵션을 실제 설정값으로 변환한 뒤 저장한다.
   // 매개변수:
@@ -94,7 +90,7 @@ class ManageUserSetting {
   // - language: ko 또는 en 언어 코드
   // 반환값:
   // - 저장 완료된 새 UserSetting
-  Future<UserSetting> requestSettingSave({
+  Future<UserSetting> saveUserSetting({
     required UserSetting currentSetting,
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -102,11 +98,11 @@ class ManageUserSetting {
   }) async {
     final nextSetting = currentSetting
         .copyWith(userHash: _normalizedUserHash)
-        .changeFontSize(UserSetting.fontSizeFromOption(fontSizeOption))
-        .changeReadingSpeed(
-          UserSetting.readingSpeedFromOption(readingSpeedOption),
-        )
-        .changeLanguage(language);
+        .updateUserSetting(
+          fontSize: UserSetting.fontSizeFromOption(fontSizeOption),
+          readingSpeed: UserSetting.readingSpeedFromOption(readingSpeedOption),
+          language: language,
+        );
 
     await _cacheUserSetting(nextSetting);
 

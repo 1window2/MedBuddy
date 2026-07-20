@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'check_today_medication_info_ui_boundary.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -7,13 +8,13 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// 클래스명: PrescriptionInputUI
+// 클래스명: InputPrescriptionUI
 // 역할: 오늘의 복약 일정, 처방전 촬영, 저장된 복약 정보, 환자/보호자 연동으로 이동하는 홈 화면이다.
 // 주요 책임:
 // - 사용자 설정에 맞춘 홈 화면 문구와 글자 크기를 보여준다.
 // - 카메라/갤러리 처방전 입력 방식을 선택할 수 있게 한다.
 // - OCR 진행 중에는 입력 화면 대신 진행 상태를 보여준다.
-class PrescriptionInputUI extends StatelessWidget {
+class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
@@ -22,13 +23,14 @@ class PrescriptionInputUI extends StatelessWidget {
   final bool isTodayScheduleLoading;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
+  final VoidCallback? onPillIdentificationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
-  final VoidCallback? onPatientGuardianLinkRequested;
+  final VoidCallback? onPatientCaregiverLinkRequested;
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
-  const PrescriptionInputUI({
+  const InputPrescriptionUI({
     super.key,
     required this.statusMessage,
     required this.userSetting,
@@ -38,13 +40,14 @@ class PrescriptionInputUI extends StatelessWidget {
     this.isTodayScheduleLoading = false,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
+    required this.onPillIdentificationRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
-    required this.onPatientGuardianLinkRequested,
+    required this.onPatientCaregiverLinkRequested,
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
-  const PrescriptionInputUI.analyzing({
+  const InputPrescriptionUI.analyzing({
     super.key,
     required this.statusMessage,
   })  : userSetting = const UserSetting(),
@@ -54,9 +57,10 @@ class PrescriptionInputUI extends StatelessWidget {
         isTodayScheduleLoading = false,
         onPrescriptionScanRequested = null,
         onPrescriptionGalleryRequested = null,
+        onPillIdentificationRequested = null,
         onTodayScheduleRequested = null,
         onSavedMedicationRequested = null,
-        onPatientGuardianLinkRequested = null,
+        onPatientCaregiverLinkRequested = null,
         onUserSettingRequested = null,
         isAnalyzing = true;
 
@@ -82,8 +86,9 @@ class PrescriptionInputUI extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
                 child: Column(
                   children: [
-                    _ScheduleCard(
-                      text: text,
+                    CheckTodayMedicationInfoUI(
+                      title: text.todaySchedule,
+                      noMedicationLabel: text.noMedication,
                       userSetting: userSetting,
                       schedules: todayMedicationScheduleList,
                       completedCount: todayMedicationCompletedCount,
@@ -98,7 +103,7 @@ class PrescriptionInputUI extends StatelessWidget {
                       subtitle: text.scanPrescriptionSubtitle,
                       filled: true,
                       userSetting: userSetting,
-                      onTap: () => _showPrescriptionInputOptions(context, text),
+                      onTap: () => _showAnalysisTaskOptions(context, text),
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
@@ -111,9 +116,9 @@ class PrescriptionInputUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 22),
                     _LinkCard(
-                      title: text.patientGuardianLink,
+                      title: text.patientCaregiverLink,
                       userSetting: userSetting,
-                      onTap: onPatientGuardianLinkRequested,
+                      onTap: onPatientCaregiverLinkRequested,
                     ),
                   ],
                 ),
@@ -125,31 +130,11 @@ class PrescriptionInputUI extends StatelessWidget {
     );
   }
 
-  void clickPrescriptionInput() {
-    onPrescriptionScanRequested?.call();
-  }
-
-  void clickPrescriptionImageSelect() {
-    onPrescriptionGalleryRequested?.call();
-  }
-
-  String showMaskedInfrmation() {
-    return statusMessage;
-  }
-
-  // 함수명: _showPrescriptionInputOptions
-  // 함수역할:
-  // - 처방전 입력 버튼을 눌렀을 때 카메라와 갤러리 선택지를 하단 시트로 보여준다.
-  // 매개변수:
-  // - context: 하단 시트를 띄울 BuildContext
-  // - text: 현재 언어에 맞는 홈 화면 문구 묶음
-  // 반환값:
-  // - 없음
-  void _showPrescriptionInputOptions(
+  Future<void> _showAnalysisTaskOptions(
     BuildContext context,
     _HomeText text,
-  ) {
-    showModalBottomSheet<void>(
+  ) async {
+    final task = await showModalBottomSheet<_CameraAnalysisTask>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -173,23 +158,21 @@ class PrescriptionInputUI extends StatelessWidget {
                 const SizedBox(height: 18),
                 _PrescriptionInputOption(
                   icon: Icons.photo_camera_outlined,
-                  title: text.cameraOption,
-                  subtitle: text.cameraOptionSubtitle,
+                  title: text.prescriptionTask,
+                  subtitle: text.prescriptionTaskSubtitle,
                   userSetting: userSetting,
                   onTap: () {
-                    Navigator.pop(context);
-                    onPrescriptionScanRequested?.call();
+                    Navigator.pop(context, _CameraAnalysisTask.prescription);
                   },
                 ),
                 const SizedBox(height: 10),
                 _PrescriptionInputOption(
-                  icon: Icons.photo_library_outlined,
-                  title: text.galleryOption,
-                  subtitle: text.galleryOptionSubtitle,
+                  icon: Icons.medication_outlined,
+                  title: text.pillTask,
+                  subtitle: text.pillTaskSubtitle,
                   userSetting: userSetting,
                   onTap: () {
-                    Navigator.pop(context);
-                    onPrescriptionGalleryRequested?.call();
+                    Navigator.pop(context, _CameraAnalysisTask.pill);
                   },
                 ),
               ],
@@ -197,6 +180,59 @@ class PrescriptionInputUI extends StatelessWidget {
           ),
         );
       },
+    );
+
+    if (!context.mounted || task == null) {
+      return;
+    }
+    if (task == _CameraAnalysisTask.pill) {
+      onPillIdentificationRequested?.call();
+      return;
+    }
+    _showPrescriptionSourceOptions(context, text);
+  }
+
+  void _showPrescriptionSourceOptions(
+    BuildContext context,
+    _HomeText text,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PrescriptionInputOption(
+                icon: Icons.photo_camera_outlined,
+                title: text.cameraOption,
+                subtitle: text.cameraOptionSubtitle,
+                userSetting: userSetting,
+                onTap: () {
+                  Navigator.pop(context);
+                  onPrescriptionScanRequested?.call();
+                },
+              ),
+              const SizedBox(height: 10),
+              _PrescriptionInputOption(
+                icon: Icons.photo_library_outlined,
+                title: text.galleryOption,
+                subtitle: text.galleryOptionSubtitle,
+                userSetting: userSetting,
+                onTap: () {
+                  Navigator.pop(context);
+                  onPrescriptionGalleryRequested?.call();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -351,89 +387,6 @@ class _HomeHeader extends StatelessWidget {
                   size: 29,
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScheduleCard extends StatelessWidget {
-  final _HomeText text;
-  final UserSetting userSetting;
-  final List<MedicationSchedule> schedules;
-  final int completedCount;
-  final int totalCount;
-  final bool isLoading;
-  final VoidCallback? onTap;
-
-  const _ScheduleCard({
-    required this.text,
-    required this.userSetting,
-    required this.schedules,
-    required this.completedCount,
-    required this.totalCount,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  String _buildScheduleSummary() {
-    if (isLoading) {
-      return text.isEnglish ? 'Loading schedule...' : '일정을 불러오는 중입니다';
-    }
-    if (schedules.isEmpty) {
-      return text.noMedication;
-    }
-
-    final firstNames =
-        schedules.take(2).map((schedule) => schedule.displayName).join(', ');
-    final remainingCount = schedules.length - 2;
-    final suffix = remainingCount > 0 ? ' 외 $remainingCount개' : '';
-    final displayTotalCount = totalCount == 0 ? schedules.length : totalCount;
-    return text.isEnglish
-        ? '$completedCount/$displayTotalCount completed\n$firstNames$suffix'
-        : '$completedCount/$displayTotalCount 복용 완료\n$firstNames$suffix';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return _SurfaceCard(
-      minHeight: 171,
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.schedule_rounded,
-            color: MedBuddyColors.primary,
-            size: 50,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            text.todaySchedule,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: const Color(0xFF0A0A0A),
-              fontSize: 22 * scale,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            _buildScheduleSummary(),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textLight,
-              fontSize: 14 * scale,
-              height: 1.25,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
             ),
           ),
         ],
@@ -688,14 +641,25 @@ class _HomeText {
   String get noMedication => isEnglish
       ? 'No medicine registered\nScan a prescription'
       : '등록된 약이 없습니다\n처방전을 촬영해주세요';
-  String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';
-  String get scanPrescriptionSubtitle =>
-      isEnglish ? 'Take a photo of your prescription' : '카메라로 처방전을 찍어주세요';
+  String get scanPrescription =>
+      isEnglish ? 'Analyze with Camera' : '약 정보 촬영하기';
+  String get scanPrescriptionSubtitle => isEnglish
+      ? 'Choose a prescription or a loose pill'
+      : '처방전 또는 낱알약을 촬영해주세요';
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
-  String get patientGuardianLink =>
-      isEnglish ? 'Patient/Guardian Link' : '환자/보호자 연동';
+  String get patientCaregiverLink =>
+      isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
+  String get prescriptionTask =>
+      isEnglish ? 'Analyze a prescription' : '처방전 분석';
+  String get prescriptionTaskSubtitle => isEnglish
+      ? 'Extract medication names and schedules.'
+      : '처방전에서 약 이름과 복약 일정을 확인합니다.';
+  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
+  String get pillTaskSubtitle => isEnglish
+      ? 'Compare a photographed pill with MFDS candidates.'
+      : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
   String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
   String get cameraOptionSubtitle =>
       isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
@@ -705,3 +669,5 @@ class _HomeText {
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
+
+enum _CameraAnalysisTask { prescription, pill }

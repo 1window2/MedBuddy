@@ -30,7 +30,7 @@ class RequestVoiceGuideTest(unittest.TestCase):
             total_days="3 days",
         )
 
-        response = self.control.request_voice_guide(medication_detail, "ko")
+        response = self.control.requestVoiceGuide(medication_detail, "ko")
 
         self.assertTrue(response["success"])
         text = response["data"]["voice_guide_text"]
@@ -74,7 +74,7 @@ class RequestVoiceGuideTest(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as context:
-            self.control.request_voice_guide(medication_detail, "jp")
+            self.control.requestVoiceGuide(medication_detail, "jp")
 
         self.assertEqual(context.exception.status_code, 400)
 

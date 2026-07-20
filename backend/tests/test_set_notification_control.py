@@ -14,7 +14,6 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.patient_guardian_link_control import PatientGuardianLinkControl  # noqa: E402
 from controls.set_notification_control import SetNotification  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_alarm_entity import (  # noqa: E402
@@ -38,14 +37,13 @@ class SetNotificationTest(unittest.TestCase):
         )
         self.db = session_factory()
         self.control = SetNotification(self.db)
-        self.link_control = PatientGuardianLinkControl(self.db)
 
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
     def test_default_settings_return_every_schedule_slot(self) -> None:
-        response = self.control.request_medication_alarm("patient-a")
+        response = self.control.requestMedicationAlarm("patient-a")
 
         self.assertTrue(response["success"])
         self.assertEqual(
@@ -62,7 +60,7 @@ class SetNotificationTest(unittest.TestCase):
         self.assertEqual(self.db.query(_MedicationAlarm).count(), 0)
 
     def test_set_and_disable_alarm_setting_are_persisted(self) -> None:
-        save_response = self.control.set_medication_alarm(
+        save_response = self.control.saveNotificationSetting(
             "patient-a",
             "morning",
             9,
@@ -82,7 +80,7 @@ class SetNotificationTest(unittest.TestCase):
         self.assertEqual(row.slot_key, "morning")
         self.assertTrue(row.enabled)
 
-        disable_response = self.control.disable_alarm_setting(
+        disable_response = self.control.disableAlarmSetting(
             "patient-a",
             "morning",
         )
@@ -96,51 +94,16 @@ class SetNotificationTest(unittest.TestCase):
 
     def test_invalid_alarm_slot_and_time_are_rejected(self) -> None:
         with self.assertRaises(HTTPException) as slot_context:
-            self.control.set_medication_alarm("patient-a", "midnight", 8, 0)
+            self.control.saveNotificationSetting("patient-a", "midnight", 8, 0)
         self.assertEqual(slot_context.exception.status_code, 400)
 
         with self.assertRaises(HTTPException) as hour_context:
-            self.control.set_medication_alarm("patient-a", "morning", 24, 0)
+            self.control.saveNotificationSetting("patient-a", "morning", 24, 0)
         self.assertEqual(hour_context.exception.status_code, 400)
 
         with self.assertRaises(HTTPException) as minute_context:
-            self.control.set_medication_alarm("patient-a", "morning", 8, 60)
+            self.control.saveNotificationSetting("patient-a", "morning", 8, 60)
         self.assertEqual(minute_context.exception.status_code, 400)
-
-    def test_guardian_alarm_settings_resolve_linked_patient_scope(self) -> None:
-        code_response = self.link_control.request_patient_code("patient-a")
-        self.link_control.register_patient_code(
-            "guardian-a",
-            code_response["data"]["patient_code"],
-        )
-
-        response = self.control.set_medication_alarm(
-            "patient-a",
-            "lunch",
-            13,
-            15,
-            user_hash="guardian-a",
-            role="guardian",
-        )
-
-        self.assertTrue(response["success"])
-        self.assertEqual(response["data"]["patient_hash"], "patient-a")
-        self.assertEqual(response["data"]["slot_key"], "lunch")
-        self.assertTrue(response["data"]["is_enabled"])
-
-        guardian_list = self.control.request_medication_alarm(
-            patient_hash="patient-a",
-            user_hash="guardian-a",
-            role="guardian",
-        )
-        lunch_setting = [
-            setting
-            for setting in guardian_list["data"]
-            if setting["slot_key"] == "lunch"
-        ][0]
-        self.assertEqual(lunch_setting["hour"], 13)
-        self.assertEqual(lunch_setting["minute"], 15)
-        self.assertTrue(lunch_setting["is_enabled"])
 
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(
         self,

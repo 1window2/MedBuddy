@@ -9,7 +9,6 @@ from typing import Protocol
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from controls.patient_guardian_link_control import PatientGuardianLinkControl
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class _MedicationImageLookup(Protocol):
-    async def search_pill_image_url(
+    async def searchMedicationImage(
         self,
         item_name: str,
         item_seq: str = "",
@@ -33,7 +32,7 @@ class _MedicationImageLookup(Protocol):
 # Role: Coordinates saved medication CRUD use cases.
 # Responsibilities:
 #   - Save medication snapshots.
-#   - List saved medications for the requested patient or linked guardian scope.
+#   - List saved medications for one patient-owned scope.
 #   - Delete saved medications with not-found handling.
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
@@ -52,19 +51,20 @@ class CheckSavedMedication:
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
         self.medication_image_lookup = medication_image_lookup
 
-    # Function Name: save_medication_detail
+    # Function Name: saveMedicationDetail
     # Description:
     # - Persists a selected medication as a saved medication snapshot.
     # Parameters:
     # - medication: Validated saved medication DTO.
     # Returns:
     # - API-compatible success response dictionary.
-    def save_medication_detail(
+    def saveMedicationDetail(
         self,
         medication: SavedMedicationCreate,
     ) -> dict[str, object]:
         try:
             patient_hash = normalize_patient_hash(medication.patient_hash)
+            self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
             duplicate_medication = self._find_today_duplicate(
                 patient_hash,
                 medication,
@@ -111,54 +111,30 @@ class CheckSavedMedication:
                 detail="Medication could not be saved.",
             ) from exc
 
-    # Function Name: saveMedicationDetail
+    # Function Name: requestSavedMedicationInfo
     # Description:
-    # - Class diagram compatible wrapper for save_medication_detail.
-    # Parameters:
-    # - medication: Validated saved medication DTO.
-    # Returns:
-    # - API-compatible success response dictionary.
-    def saveMedicationDetail(
-        self,
-        medication: SavedMedicationCreate,
-    ) -> dict[str, object]:
-        return self.save_medication_detail(medication)
-
-    # Function Name: request_saved_medication_info
-    # Description:
-    # - Reads saved medications owned by one patient hash or linked guardian scope.
+    # - Reads saved medications for one patient scope.
     # Parameters:
     # - patient_hash: Patient ownership key used to scope saved medication lookup.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
     # Returns:
     # - API-compatible list response dictionary.
-    def request_saved_medication_info(
+    def requestSavedMedicationInfo(
         self,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         saved_medications = self._load_saved_medications(normalized_patient_hash)
         return self._build_list_response(saved_medications)
 
-    async def request_saved_medication_info_with_images(
+    # Function Name: requestSavedMedicationInfoWithImages
+    # Description:
+    # - HTTP-boundary extension that enriches missing image metadata without
+    #   changing the synchronous UML control contract.
+    async def requestSavedMedicationInfoWithImages(
         self,
         patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
     ) -> dict[str, object]:
-        """Return saved rows after best-effort, persisted image enrichment."""
-        normalized_patient_hash = self._resolve_patient_hash(
-            patient_hash,
-            user_hash,
-            role,
-        )
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
         saved_medications = self._load_saved_medications(normalized_patient_hash)
         enrichment = await self._enrich_missing_medication_images(
             saved_medications
@@ -169,12 +145,18 @@ class CheckSavedMedication:
         self,
         patient_hash: str,
     ) -> list[_SavedMedication]:
-        self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
-        return (
+        medications = (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == patient_hash)
+            .order_by(_SavedMedication.id.asc())
             .all()
         )
+        today = date.today()
+        return [
+            medication
+            for medication in medications
+            if not self.retention_policy.is_expired(medication, today)
+        ]
 
     def _build_list_response(
         self,
@@ -222,7 +204,7 @@ class CheckSavedMedication:
                 if item_seq:
                     resolved_item_sequences[medication.id] = item_seq
             async with semaphore:
-                return await self.medication_image_lookup.search_pill_image_url(
+                return await self.medication_image_lookup.searchMedicationImage(
                     medication.item_name or "",
                     item_seq,
                 )
@@ -284,24 +266,7 @@ class CheckSavedMedication:
             )
         return next(iter(item_sequences)) if len(item_sequences) == 1 else ""
 
-    # Function Name: requestSavedMedicationInfo
-    # Description:
-    # - Class diagram compatible wrapper for request_saved_medication_info.
-    # Parameters:
-    # - patient_hash: Patient ownership key used to scope saved medication lookup.
-    # - user_hash: Requesting user hash. Used for guardian role resolution.
-    # - role: Requesting user role such as patient or guardian.
-    # Returns:
-    # - API-compatible list response dictionary.
-    def requestSavedMedicationInfo(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> dict[str, object]:
-        return self.request_saved_medication_info(patient_hash, user_hash, role)
-
-    # Function Name: request_delete
+    # Function Name: requestDelete
     # Description:
     # - Deletes a saved medication by id.
     # Parameters:
@@ -309,7 +274,7 @@ class CheckSavedMedication:
     # - patient_hash: Patient ownership key used to scope deletion.
     # Returns:
     # - API-compatible success response dictionary.
-    def request_delete(
+    def requestDelete(
         self,
         medication_id: int,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -332,21 +297,6 @@ class CheckSavedMedication:
                 status_code=500,
                 detail="Medication could not be deleted.",
             ) from exc
-
-    # Function Name: requestDelete
-    # Description:
-    # - Class diagram compatible wrapper for request_delete.
-    # Parameters:
-    # - medication_id: Saved medication primary key.
-    # - patient_hash: Patient ownership key used to scope deletion.
-    # Returns:
-    # - API-compatible delete success dictionary.
-    def requestDelete(
-        self,
-        medication_id: int,
-        patient_hash: str = DEFAULT_PATIENT_HASH,
-    ) -> dict[str, object]:
-        return self.request_delete(medication_id, patient_hash)
 
     # Function Name: _to_response_dict
     # Description:
@@ -386,35 +336,6 @@ class CheckSavedMedication:
             "image_url": image_url_override or medication.image_url,
             "ai_guide": medication.ai_guide,
         }
-
-    # Function Name: resolvePatientHash
-    # Description:
-    # - Class diagram compatible wrapper for patient/guardian scope resolution.
-    # Parameters:
-    # - patient_hash: Direct patient hash for patient requests.
-    # - user_hash: Requesting user hash for guardian requests.
-    # - role: Requesting user role.
-    # Returns:
-    # - Patient hash authorized for this request.
-    def resolvePatientHash(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> str:
-        return self._resolve_patient_hash(patient_hash, user_hash, role)
-
-    def _resolve_patient_hash(
-        self,
-        patient_hash: str | None = None,
-        user_hash: str | None = None,
-        role: str = "patient",
-    ) -> str:
-        return PatientGuardianLinkControl(self.db).resolve_patient_scope(
-            patient_hash,
-            user_hash,
-            role,
-        )
 
     # Function Name: _get_existing_medication
     # Description:

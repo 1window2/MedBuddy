@@ -1,5 +1,5 @@
 # File Name: patient_hash_entity.py
-# Role: Entity mapped from the PatientHash box in ClassDiagram2.
+# Role: Entity mapped from PatientHash in class diagram integrated v5.
 
 import secrets
 import string
@@ -27,7 +27,7 @@ def normalize_patient_hash(patient_hash: str | None) -> str:
 
 # Function Name: generate_patient_link_code
 # Description:
-# - Generates a short share code for UC-6 patient-guardian linking.
+# - Generates a short share code for UC-6 patient-caregiver linking.
 # Returns:
 # - Random uppercase alphanumeric patient link code.
 def generate_patient_link_code() -> str:
@@ -42,5 +42,15 @@ def generate_patient_link_code() -> str:
 class PatientHash(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
 
-    def generatePatientHash(self) -> str:
+    def createPatientHash(self) -> str:
         return generate_patient_link_code()
+
+    def validatePatientHash(self, candidate: str) -> bool:
+        normalized_candidate = (candidate or "").strip().upper()
+        return (
+            len(normalized_candidate) == PATIENT_LINK_CODE_LENGTH
+            and all(
+                character in _PATIENT_LINK_CODE_ALPHABET
+                for character in normalized_candidate
+            )
+        )

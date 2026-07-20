@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../boundaries/health_recommendation_ui_boundary.dart';
-import '../boundaries/medication_detail_ui_boundary.dart';
+import 'check_medication_detail_ui_boundary.dart';
 import '../boundaries/set_notification_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
@@ -63,7 +63,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
-      await viewModel.refreshMedicationOverview();
+      await viewModel.refreshMedicationSchedule();
     });
   }
 
@@ -107,6 +107,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         viewModel.todayMedicationScheduleList.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(color: MedBuddyColors.primary),
+      );
+    }
+
+    if (viewModel.hasTodayScheduleLoadError) {
+      return _ScheduleLoadErrorState(
+        text: text,
+        message: text.scheduleLoadFailed,
+        onRetryRequested: viewModel.refreshMedicationSchedule,
       );
     }
 
@@ -182,7 +190,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final setting = viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
-    final selectedTime = await SetNotificationUI.showAlarmSettingPopup(
+    final selectedTime = await SetNotificationUI.showNotificationPopup(
       context,
       language: viewModel.userSetting.language,
       slotTitle: slotTitle,
@@ -241,7 +249,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MedicationDetailUI(
+        builder: (context) => CheckMedicationDetailUI(
           medicationDetail: MedicationDetail.fromMedicationSchedule(schedule),
           userSetting: viewModel.userSetting,
         ),
@@ -678,6 +686,62 @@ class _ScheduleEmptyState extends StatelessWidget {
   }
 }
 
+class _ScheduleLoadErrorState extends StatelessWidget {
+  final _ScheduleText text;
+  final String message;
+  final Future<void> Function() onRetryRequested;
+
+  const _ScheduleLoadErrorState({
+    required this.text,
+    required this.message,
+    required this.onRetryRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        key: const Key('schedule-load-error'),
+        width: 320,
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: MedBuddyRadii.largeCard,
+          boxShadow: MedBuddyShadows.card,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 52,
+              color: MedBuddyColors.textMuted,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: MedBuddyColors.textStrong,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              key: const Key('schedule-load-retry'),
+              onPressed: onRetryRequested,
+              icon: const Icon(Icons.refresh),
+              label: Text(text.retry),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ScheduleSlotDefinition {
   final String key;
   final String title;
@@ -729,6 +793,10 @@ class _ScheduleText {
   String get close => isEnglish ? 'Close' : '닫기';
   String get statusUpdateFailed =>
       isEnglish ? 'Could not update medication status.' : '복약 상태를 변경하지 못했습니다.';
+  String get scheduleLoadFailed => isEnglish
+      ? 'Could not load today\'s medication schedule.'
+      : '오늘의 복약 일정을 불러오지 못했습니다.';
+  String get retry => isEnglish ? 'Retry' : '다시 시도';
 
   String reminderTooltip(String slotTitle) {
     return isEnglish ? 'Set $slotTitle reminder' : '$slotTitle 알림 설정';

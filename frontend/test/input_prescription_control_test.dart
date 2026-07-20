@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -41,6 +42,22 @@ class _DelayedResponseBodyClient extends http.BaseClient {
   }
 }
 
+class _AbortAwareClient extends http.BaseClient {
+  bool wasAborted = false;
+  final Completer<void> started = Completer<void>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final abortableRequest = request as http.AbortableMultipartRequest;
+    if (!started.isCompleted) {
+      started.complete();
+    }
+    await abortableRequest.abortTrigger;
+    wasAborted = true;
+    return http.StreamedResponse(const Stream<List<int>>.empty(), 499);
+  }
+}
+
 void main() {
   test('requestPrescriptionImage preserves OCR metadata from backend',
       () async {
@@ -80,7 +97,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
@@ -126,7 +143,7 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
@@ -141,7 +158,7 @@ void main() {
     expect(control.lastSkippedMedicationCount, 3);
   });
 
-  test('analyzePrescriptionImage surfaces backend OCR timeout detail',
+  test('requestPrescriptionImage surfaces backend OCR timeout detail',
       () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-backend-timeout-test-',
@@ -161,17 +178,15 @@ void main() {
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     });
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
       baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
     );
     addTearDown(control.dispose);
 
     expect(
-      () => control.analyzePrescriptionImage(
-        XFile(imageFile.path),
-        imageSource: ImageSource.gallery,
-      ),
+      () => control.requestPrescriptionImageFromGallery(),
       throwsA(
         isA<StateError>().having(
           (error) => error.message,
@@ -182,7 +197,7 @@ void main() {
     );
   });
 
-  test('analyzePrescriptionImage times out while reading a stalled body',
+  test('requestPrescriptionImage times out while reading a stalled body',
       () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-timeout-test-',
@@ -195,18 +210,78 @@ void main() {
     final imageFile = File('${tempDirectory.path}/prescription.jpg');
     await imageFile.writeAsBytes([1, 2, 3]);
 
-    final control = PrescriptionAnalysisControl(
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: _DelayedResponseBodyClient(),
       requestTimeout: const Duration(milliseconds: 10),
     );
     addTearDown(control.dispose);
 
     expect(
-      () => control.analyzePrescriptionImage(
-        XFile(imageFile.path),
-        imageSource: ImageSource.gallery,
-      ),
+      () => control.requestPrescriptionImageFromGallery(),
       throwsA(isA<StateError>()),
+    );
+  });
+
+  test('requestPrescriptionImage aborts an in-flight upload after timeout',
+      () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-abort-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+    addTearDown(control.dispose);
+
+    await expectLater(
+      control.requestPrescriptionImageFromGallery(),
+      throwsA(isA<StateError>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(client.wasAborted, isTrue);
+  });
+
+  test('dispose aborts an in-flight prescription upload', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-dispose-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+    );
+
+    final request = control.requestPrescriptionImageFromGallery();
+    await client.started.future;
+    control.dispose();
+
+    await expectLater(request, throwsA(isA<StateError>()));
+    await Future<void>.delayed(Duration.zero);
+    expect(client.wasAborted, isTrue);
+  });
+
+  test('request timeout must be positive', () {
+    expect(
+      () => InputPrescription(requestTimeout: Duration.zero),
+      throwsArgumentError,
     );
   });
 }

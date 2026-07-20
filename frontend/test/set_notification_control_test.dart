@@ -16,7 +16,8 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/notification/settings');
       expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters['role'], 'patient');
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
       return http.Response(
         jsonEncode({
           'success': true,
@@ -49,7 +50,7 @@ void main() {
     expect(settings.first.isEnabled, isTrue);
   });
 
-  test('setMedicationAlarm sends selected alarm time', () async {
+  test('saveNotificationSetting sends selected alarm time', () async {
     late Map<String, dynamic> requestBody;
     final client = MockClient((http.Request request) async {
       expect(request.method, 'PUT');
@@ -77,7 +78,7 @@ void main() {
       client: client,
     );
 
-    final setting = await control.setMedicationAlarm(
+    final setting = await control.saveNotificationSetting(
       slotKey: 'lunch',
       hour: 13,
       minute: 15,
@@ -90,13 +91,13 @@ void main() {
     expect(setting.isEnabled, isTrue);
   });
 
-  test('disableAlarmSetting sends selected guardian scope', () async {
+  test('disableAlarmSetting sends selected patient scope', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'PATCH');
       expect(request.url.path, '/notification/settings/evening/disable');
       expect(request.url.queryParameters['patient_hash'], 'patient-b');
-      expect(request.url.queryParameters['user_hash'], 'guardian-a');
-      expect(request.url.queryParameters['role'], 'guardian');
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
       return http.Response(
         jsonEncode({
           'success': true,
@@ -115,8 +116,6 @@ void main() {
     final control = SetNotification(
       baseUrl: 'http://localhost',
       patientHash: 'patient-b',
-      userHash: 'guardian-a',
-      role: 'guardian',
       client: client,
     );
 
@@ -126,7 +125,7 @@ void main() {
     expect(setting.isEnabled, isFalse);
   });
 
-  test('setMedicationAlarm rejects unsupported slot keys before request',
+  test('saveNotificationSetting rejects unsupported slot keys before request',
       () async {
     var requestCalled = false;
     final client = MockClient((http.Request request) async {
@@ -140,7 +139,7 @@ void main() {
     );
 
     await expectLater(
-      control.setMedicationAlarm(
+      control.saveNotificationSetting(
         slotKey: '../bad',
         hour: 9,
         minute: 0,
@@ -148,6 +147,55 @@ void main() {
       throwsA(isA<StateError>()),
     );
     expect(requestCalled, isFalse);
+  });
+
+  test('registerNotification delegates platform registration through control',
+      () async {
+    Map<String, Object?>? registration;
+    final control = SetNotification(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: MockClient((_) async => http.Response('{}', 500)),
+      notificationRegistrar: ({
+        required id,
+        required slotKey,
+        required slotTitle,
+        required hour,
+        required minute,
+        required medicationNames,
+        language = 'ko',
+      }) async {
+        registration = {
+          'id': id,
+          'slotKey': slotKey,
+          'slotTitle': slotTitle,
+          'hour': hour,
+          'minute': minute,
+          'medicationNames': medicationNames,
+          'language': language,
+        };
+      },
+    );
+
+    await control.registerNotification(
+      id: 17,
+      slotKey: 'morning',
+      slotTitle: 'Morning',
+      hour: 8,
+      minute: 25,
+      medicationNames: const ['Medicine A'],
+      language: 'en',
+    );
+
+    expect(registration, {
+      'id': 17,
+      'slotKey': 'morning',
+      'slotTitle': 'Morning',
+      'hour': 8,
+      'minute': 25,
+      'medicationNames': const ['Medicine A'],
+      'language': 'en',
+    });
   });
 
   test('MedicationAlarm notification ids are scoped by patient hash', () {

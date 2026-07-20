@@ -9,19 +9,11 @@ pre-release builds, not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `main` / next alpha | Current development target | Security fixes should be applied here first. |
-| `v0.0.8-alpha` | Latest alpha demo | Current supported demo release. |
-| `v0.0.7-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.6-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.5-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.4-alpha` | Superseded alpha demo | Update to `v0.0.8-alpha` unless a targeted backport is explicitly needed. |
-| `v0.0.3-alpha` | Superseded alpha demo | No routine security backports. |
-| `v0.0.2-alpha` | Superseded alpha demo | No routine security backports. |
-| `v0.0.1-alpha` | Superseded alpha demo | No routine security backports. |
+| `v0.0.9-alpha` | Current alpha release | Security fixes should be applied here first. |
+| `v0.0.8-alpha` and earlier | Published alpha demos | Use the newest published alpha; superseded demos receive no routine backports. |
 
-The `main` branch is the source of truth for the next alpha release. When a
-security fix lands on `main`, the next alpha tag should be cut from a commit
-that includes the fix.
+The release tag and default branch must include all applicable security fixes.
+Superseded alpha demos are not supported release lines.
 
 ## Reporting a Vulnerability
 
@@ -59,7 +51,7 @@ text from the repository after exposure is not sufficient by itself.
 
 The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
-`backend/medbuddy.db`.
+`backend/medbuddy.db` or `backend/pill_identification_catalog.db`.
 
 Do not commit local SDK paths, generated Flutter build files, tool telemetry
 state, emulator-specific configuration, Python virtual environments, pytest
@@ -87,5 +79,35 @@ as untrusted input:
 
 - Validate structured model/API responses before using them.
 - Do not log secrets or raw personal medical data.
+- Tell users that prescription and loose-pill images are processed by an
+  external AI service. Do not persist or log either image type.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
+
+## Alpha Identity Boundary
+
+Current alpha builds use patient and caregiver hashes to select demo data
+scopes. Those hashes are not authentication credentials and must not be treated
+as proof of identity. Do not expose the current backend directly to untrusted
+networks or use it for real multi-user medical data.
+
+Production deployment requires an authenticated principal at the API boundary,
+server-derived ownership scope, and authorization checks for every medication,
+schedule, notification, and patient-caregiver operation. Client-supplied hashes
+must not remain the authority for mutation access.
+
+## Alpha Release Integrity
+
+Current Android release APKs use the repository's development signing setup and
+are intended only for explicitly labeled alpha-demo sideloading. They must not
+be presented as Play Store, production, or trusted-distribution artifacts. A
+stable release requires a protected release keystore, documented key custody,
+and verification of the signed artifact produced by the release pipeline.
+
+The Android alpha client permits clear-text HTTP so it can reach a developer-run
+backend on an emulator or trusted local network. The backend URL is compiled
+into the app, and a build without an explicit override uses the emulator-only
+`10.0.2.2` address. Do not expose this configuration to an untrusted network or
+embed a private LAN address in a generally distributed APK. Production delivery
+requires HTTPS, a deployed backend endpoint, and an Android network policy that
+does not allow unrestricted clear-text traffic.

@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-guardian linked views with guardian alert preferences.
+> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-caregiver linked views with caregiver notification preferences.
 
 ## Key Features
 
@@ -29,6 +29,14 @@
 - Medication images use validated `e약은요` URLs first, then the MFDS pill-identification API for exact solid-medication matches; unsupported dosage forms retain the placeholder.
 - OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
+### Experimental Loose-Pill Identification
+
+- Users can provide a front photo and an optional reverse-side photo of one loose pill.
+- A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
+- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached in the isolated `backend/pill_identification_catalog.db` reference store with completeness checks and stale-cache fallback.
+- Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
+- This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
+
 ### User Settings and Voice Playback
 
 - Users can save display font size, reading speed, and language settings.
@@ -39,17 +47,20 @@
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
 - Saved medications retain dosage schedule fields for today's medication schedule.
-- Today's schedule supports patient-scoped and guardian-scoped status updates.
+- Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
 - Saved medication records are retained through their medication period and cleaned up after the configured retention window.
 
-### Patient and Guardian Link Flow
+### Patient and Caregiver Link Flow
 
 - Patients can create a temporary link code.
-- Guardians can register the code, view linked patient medication data, and unlink when needed.
-- Guardians can enable or disable alert preferences for each linked patient through a persisted guardian-patient setting.
-- Patient/guardian scope resolution is handled in control-layer classes so UI screens do not bypass backend authorization scope.
+- Caregivers can register the code, view linked patient medication data, and unlink when needed.
+- Caregivers can enable or disable notification preferences for each linked patient through a persisted caregiver-patient setting.
+- Patient/caregiver demo-data scope resolution is handled in control-layer
+  classes so UI screens do not bypass backend scope checks. The current
+  hash-based scope is not authentication and must not be used with real
+  multi-user medical data.
 
 ### Health Recommendations and Reminders
 
@@ -57,12 +68,12 @@
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
 - Reminder times can be selected with rotating time wheels before the existing alarm control persists and registers them.
-- Guardian alert settings persist the UC-13 notification preference state per guardian-patient scope.
+- Caregiver notification settings persist the UC-13 preference state per caregiver-patient scope.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
 ## Roadmap
 
-1. **Unknown loose-pill identification:** Add a UML-defined front/back photo flow that returns user-confirmed candidates from a lightweight visual-retrieval model trained on the authorized [AI Hub oral-medication image dataset](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&currMenu=11&dataSetSn=576&topMenu=).
+1. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
 
@@ -71,7 +82,7 @@ MedBuddy is implemented around the project UML diagrams and follows a Boundary-C
 - **Boundary/UI** classes render screens and collect user input.
 - **Boundary** classes also wrap external OCR concerns such as prescription image preprocessing and Gemini Vision extraction, keeping `InputPrescription` focused on the UC-1/UC-2 control flow.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, and external services.
-- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-guardian links.
+- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-caregiver links.
 - Backend routers remain thin boundary adapters around control classes.
 
 Detailed design references are maintained in [`docs/`](docs/), and contribution rules for preserving the UML-aligned structure are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -94,7 +105,7 @@ Detailed design references are maintained in [`docs/`](docs/), and contribution 
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
-![Public Data](https://img.shields.io/badge/Korean%20Public%20Data-009900?style=for-the-badge)
+![Public Data](https://img.shields.io/badge/Public%20Data-009900?style=for-the-badge)
 
 ### Collaboration
 
@@ -138,14 +149,19 @@ Open `backend/.env` and set at least:
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
 PILL_IMAGE_API_ENABLED=true
-PILL_IMAGE_API_TIMEOUT_SECONDS=4
+PILL_IMAGE_API_TIMEOUT_SECONDS=8
+PILL_IDENTIFICATION_MODEL_NAME=gemini-3.1-flash-lite
+PILL_IDENTIFICATION_TIMEOUT_SECONDS=20
+PILL_IDENTIFICATION_CATALOG_TTL_HOURS=168
+PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS=30
 ```
 
 The public-data key must be authorized for the `e약은요`, medication approval,
 and medication pill-identification APIs. Pill images are optional; lookups keep
 working with the existing placeholder when that API is unavailable or the dosage
 form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
-MFDS service must be disabled explicitly.
+optional saved-medication image enrichment must be disabled. The experimental
+loose-pill flow still requires the MFDS identification catalog.
 
 Start the API server:
 
@@ -194,11 +210,19 @@ Use the device id shown by `flutter devices`. By default, the Android emulator b
 http://10.0.2.2:8000/api/v1/medication
 ```
 
-For a physical Android device, replace the host with your development machine's LAN IP address. Override the backend URL at run time when needed:
+For a physical Android device on the same trusted network, replace the example
+host with your development machine's LAN IP address. Supply the backend URL when
+building or launching the app:
 
 ```powershell
-flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://10.0.2.2:8000/api/v1/medication
+flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
 ```
+
+`MEDBUDDY_API_BASE_URL` is compiled into the Flutter application through
+`String.fromEnvironment`; it is not an in-app runtime setting. An APK built
+without this value keeps the emulator-only `10.0.2.2` default. Do not publish an
+APK containing a private LAN address as a portable client. Current APKs are
+local alpha-demo artifacts and require a separately running backend.
 
 ## Contributing
 

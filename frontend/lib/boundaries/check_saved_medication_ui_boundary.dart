@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../boundaries/medication_detail_ui_boundary.dart';
-import '../boundaries/set_guardian_alert_setting_ui_boundary.dart';
-import '../controls/set_guardian_alert_setting_control.dart';
-import '../entities/guardian_alert_setting_entity.dart';
+import 'check_medication_detail_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -20,13 +17,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 // - 저장 날짜별로 약 목록을 묶어 표 형태에 가깝게 표시한다.
 // - 가이드/사진/삭제 팝업 같은 저장 목록 세부 동작을 제공한다.
 class CheckSavedMedicationUI extends StatefulWidget {
-  final SetGuardianAlertSetting Function(String guardianHash)?
-      guardianAlertControlFactory;
-
-  const CheckSavedMedicationUI({
-    super.key,
-    this.guardianAlertControlFactory,
-  });
+  const CheckSavedMedicationUI({super.key});
 
   @override
   State<CheckSavedMedicationUI> createState() => _CheckSavedMedicationUIState();
@@ -35,8 +26,6 @@ class CheckSavedMedicationUI extends StatefulWidget {
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
   bool _isSelectionMode = false;
-  GuardianAlertSetting? _guardianAlertSetting;
-  bool _isGuardianAlertLoading = false;
 
   @override
   void initState() {
@@ -44,9 +33,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
       await viewModel.fetchSavedMedicationInfo();
-      if (mounted && _canConfigureGuardianAlert(viewModel)) {
-        await _loadGuardianAlertSetting(viewModel);
-      }
     });
   }
 
@@ -191,13 +177,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
               userSetting: viewModel.userSetting,
             );
           },
-          showGuardianAlert:
-              index == 0 && _canConfigureGuardianAlert(viewModel),
-          isGuardianAlertEnabled: _guardianAlertSetting?.enabled == true,
-          isGuardianAlertLoading: _isGuardianAlertLoading,
-          onGuardianAlertRequested: () {
-            _showGuardianAlertSetting(viewModel, text);
-          },
           onDeleteRequested: () async {
             await _confirmAndDeleteMedicationGroup(
               viewModel: viewModel,
@@ -229,110 +208,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         ),
       ],
     );
-  }
-
-  bool _canConfigureGuardianAlert(MedBuddyViewModel viewModel) {
-    return viewModel.medicationRole == 'guardian' &&
-        (viewModel.medicationUserHash ?? '').trim().isNotEmpty &&
-        viewModel.medicationPatientHash.trim().isNotEmpty;
-  }
-
-  Future<void> _loadGuardianAlertSetting(
-    MedBuddyViewModel viewModel, {
-    bool showError = false,
-  }) async {
-    final guardianHash = viewModel.medicationUserHash;
-    if (!_canConfigureGuardianAlert(viewModel) ||
-        guardianHash == null ||
-        _isGuardianAlertLoading) {
-      return;
-    }
-
-    setState(() => _isGuardianAlertLoading = true);
-    final control = _createGuardianAlertControl(guardianHash);
-    try {
-      final setting = await control.requestGuardianAlertSetting(
-        patientHash: viewModel.medicationPatientHash,
-      );
-      if (mounted) {
-        setState(() => _guardianAlertSetting = setting);
-      }
-    } catch (_) {
-      if (mounted && showError) {
-        final text = _SavedMedicationText(viewModel.userSetting.language);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(text.guardianAlertLoadFailed)),
-        );
-      }
-    } finally {
-      control.dispose();
-      if (mounted) {
-        setState(() => _isGuardianAlertLoading = false);
-      }
-    }
-  }
-
-  Future<void> _showGuardianAlertSetting(
-    MedBuddyViewModel viewModel,
-    _SavedMedicationText text,
-  ) async {
-    if (_guardianAlertSetting == null) {
-      await _loadGuardianAlertSetting(viewModel, showError: true);
-    }
-    final setting = _guardianAlertSetting;
-    if (!mounted || setting == null) {
-      return;
-    }
-
-    final enabled =
-        await SetGuardianAlertSettingUI.showGuardianAlertSettingPopup(
-      context,
-      setting: setting,
-      isLoading: _isGuardianAlertLoading,
-      language: viewModel.userSetting.language,
-    );
-    if (enabled != null) {
-      await _updateGuardianAlertSetting(viewModel, enabled, text);
-    }
-  }
-
-  Future<void> _updateGuardianAlertSetting(
-    MedBuddyViewModel viewModel,
-    bool enabled,
-    _SavedMedicationText text,
-  ) async {
-    final guardianHash = viewModel.medicationUserHash;
-    if (!_canConfigureGuardianAlert(viewModel) || guardianHash == null) {
-      return;
-    }
-
-    setState(() => _isGuardianAlertLoading = true);
-    final control = _createGuardianAlertControl(guardianHash);
-    try {
-      final setting = await control.updateGuardianAlertSetting(
-        patientHash: viewModel.medicationPatientHash,
-        enabled: enabled,
-      );
-      if (mounted) {
-        setState(() => _guardianAlertSetting = setting);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(text.guardianAlertSaveFailed)),
-        );
-      }
-    } finally {
-      control.dispose();
-      if (mounted) {
-        setState(() => _isGuardianAlertLoading = false);
-      }
-    }
-  }
-
-  SetGuardianAlertSetting _createGuardianAlertControl(String guardianHash) {
-    return widget.guardianAlertControlFactory?.call(guardianHash) ??
-        SetGuardianAlertSetting(guardianHash: guardianHash);
   }
 
   // 함수명: _showPrescriptionInputOptions
@@ -404,7 +279,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   // 함수명: _confirmAndDeleteMedicationGroup
   // 함수역할:
   // - 삭제 확인 팝업을 띄운 뒤 사용자가 승인하면 날짜 그룹의 약들을 삭제한다.
-  // - 현재 UI는 날짜 카드 단위 삭제를 제공하므로 그룹 내부 약을 순차 삭제한다.
+  // - 날짜 그룹 전체를 ViewModel의 일괄 삭제 흐름으로 전달한다.
   // 매개변수:
   // - viewModel: 삭제 API를 호출할 ViewModel
   // - group: 삭제 대상 날짜 그룹
@@ -427,17 +302,14 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       return;
     }
 
-    for (final medication in group.medications) {
-      final id = medication.id;
-      if (id != null) {
-        await viewModel.requestDeleteSavedMedication(id);
-      }
-    }
+    final result = await viewModel.requestDeleteSavedMedications(
+      group.medications.map((medication) => medication.id).whereType<int>(),
+    );
     if (!mounted) {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleted)),
+      SnackBar(content: Text(text.deleteResult(result))),
     );
   }
 
@@ -464,18 +336,20 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     }
 
     final selectedIds = List<int>.from(_selectedMedicationIds);
-    for (final id in selectedIds) {
-      await viewModel.requestDeleteSavedMedication(id);
-    }
+    final result = await viewModel.requestDeleteSavedMedications(selectedIds);
     if (!mounted) {
       return;
     }
+    final remainingIds = viewModel.savedMedicationInfoList
+        .map((medication) => medication.id)
+        .whereType<int>()
+        .toSet();
     setState(() {
-      _selectedMedicationIds.clear();
-      _isSelectionMode = false;
+      _selectedMedicationIds.retainAll(remainingIds);
+      _isSelectionMode = _selectedMedicationIds.isNotEmpty;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleted)),
+      SnackBar(content: Text(text.deleteResult(result))),
     );
   }
 
@@ -496,7 +370,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MedicationDetailUI(
+        builder: (context) => CheckMedicationDetailUI(
           medicationDetail: medication,
           userSetting: userSetting,
         ),
@@ -794,10 +668,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
       onSelectionChanged;
   final void Function(MedicationDetail medication) onGuideRequested;
   final void Function(MedicationDetail medication) onImageRequested;
-  final bool showGuardianAlert;
-  final bool isGuardianAlertEnabled;
-  final bool isGuardianAlertLoading;
-  final VoidCallback onGuardianAlertRequested;
   final Future<void> Function() onDeleteRequested;
 
   const _SavedMedicationDateCard({
@@ -809,10 +679,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
     required this.onSelectionChanged,
     required this.onGuideRequested,
     required this.onImageRequested,
-    required this.showGuardianAlert,
-    required this.isGuardianAlertEnabled,
-    required this.isGuardianAlertLoading,
-    required this.onGuardianAlertRequested,
     required this.onDeleteRequested,
   });
 
@@ -845,31 +711,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (showGuardianAlert)
-                  IconButton(
-                    tooltip: text.notification,
-                    onPressed: isGuardianAlertLoading
-                        ? null
-                        : onGuardianAlertRequested,
-                    icon: isGuardianAlertLoading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: MedBuddyColors.primary,
-                            ),
-                          )
-                        : Icon(
-                            isGuardianAlertEnabled
-                                ? Icons.notifications_active_outlined
-                                : Icons.notifications_none_outlined,
-                            color: isGuardianAlertEnabled
-                                ? MedBuddyColors.primary
-                                : MedBuddyColors.textMuted,
-                            size: 28,
-                          ),
-                  ),
               ],
             ),
           ),
@@ -1501,13 +1342,6 @@ class _SavedMedicationText {
   String get galleryOption => isEnglish ? 'Choose From Gallery' : '갤러리에서 선택';
   String get galleryOptionSubtitle =>
       isEnglish ? 'Load a saved prescription image.' : '저장된 처방전 이미지를 불러옵니다.';
-  String get notification => isEnglish ? 'Notification' : '알림 설정';
-  String get guardianAlertLoadFailed => isEnglish
-      ? 'Could not load the guardian alert setting.'
-      : '보호자 알림 설정을 불러오지 못했습니다.';
-  String get guardianAlertSaveFailed => isEnglish
-      ? 'Could not save the guardian alert setting.'
-      : '보호자 알림 설정을 저장하지 못했습니다.';
   String get noInformation => isEnglish ? 'No information' : '정보 없음';
   String get registeredDate => isEnglish ? 'Registered' : '등록일자';
   String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';
@@ -1528,6 +1362,18 @@ class _SavedMedicationText {
   String selectedCount(int count) =>
       isEnglish ? '$count selected' : '$count개 선택됨';
   String get deleted => isEnglish ? 'Deleted.' : '삭제되었습니다.';
+  String deleteResult(SavedMedicationBatchDeleteResult result) {
+    if (result.totalCount == 0) {
+      return noSelection;
+    }
+    if (result.allSucceeded) {
+      return deleted;
+    }
+    return isEnglish
+        ? 'Deleted: ${result.successCount}. Failed: ${result.failureCount}.'
+        : '삭제 성공: ${result.successCount}개. 실패: ${result.failureCount}개.';
+  }
+
   String get deleteMessage => isEnglish
       ? 'Delete this medication information?\nThis action cannot be undone.'
       : '해당 복약 정보를 삭제하시겠습니까?\n되돌릴 수 없습니다.';

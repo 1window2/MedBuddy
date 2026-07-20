@@ -5,7 +5,8 @@ import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
-import '../boundaries/patient_guardian_link_ui_boundary.dart';
+import '../boundaries/link_patient_caregiver_ui_boundary.dart';
+import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
@@ -27,8 +28,11 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MedBuddyViewModel>();
+    final flowState = viewModel.prescriptionFlowState;
+    final isPrescriptionExitBlocked =
+        viewModel.isMedicationSaving || viewModel.isAllMedicationSaving;
 
-    return switch (viewModel.prescriptionFlowState) {
+    final activeScreen = switch (flowState) {
       PrescriptionFlowState.recognizingPrescription =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,
@@ -40,7 +44,7 @@ class HomeScreen extends StatelessWidget {
           recognitionNotice: viewModel.prescriptionRecognitionNotice,
           userSetting: viewModel.userSetting,
           onBackRequested: viewModel.clearAnalysisResult,
-          onAnalysisRequested: viewModel.requestMedicationAnalysis,
+          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
         ),
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
@@ -56,7 +60,13 @@ class HomeScreen extends StatelessWidget {
       PrescriptionFlowState.analysisFailed => PrescriptionAnalysisFailureUI(
           message: viewModel.analysisErrorMessage,
           userSetting: viewModel.userSetting,
-          onRetryRequested: viewModel.requestPrescriptionImage,
+          failureStep: viewModel.analysisProgressStep,
+          onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
+              ? viewModel.requestPrescriptionAnalysis
+              : null,
+          onCameraRetryRequested: viewModel.requestPrescriptionImage,
+          onGalleryRetryRequested:
+              viewModel.requestPrescriptionImageFromGallery,
           onHomeRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.resultReady => CheckResultUI(
@@ -67,13 +77,26 @@ class HomeScreen extends StatelessWidget {
           completedMedicationSaveIndexes:
               viewModel.completedMedicationSaveIndexes,
           isAllMedicationSaving: viewModel.isAllMedicationSaving,
-          onCloseRequested: viewModel.clearAnalysisResult,
+          onCloseRequested:
+              isPrescriptionExitBlocked ? null : viewModel.clearAnalysisResult,
           onAllMedicationSaveRequested:
               viewModel.requestAllAnalyzedMedicationSave,
-          onMedicationSaveRequested: viewModel.requestAnalyzedMedicationSave,
+          onMedicationSaveRequested: viewModel.requestMedicationSave,
         ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
+
+    return PopScope<void>(
+      canPop: flowState == PrescriptionFlowState.idle,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop &&
+            flowState != PrescriptionFlowState.idle &&
+            !isPrescriptionExitBlocked) {
+          viewModel.clearAnalysisResult();
+        }
+      },
+      child: activeScreen,
+    );
   }
 
   // 함수명: _buildHomeInput
@@ -90,7 +113,7 @@ class HomeScreen extends StatelessWidget {
   ) {
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
-    return PrescriptionInputUI(
+    return InputPrescriptionUI(
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
@@ -100,6 +123,16 @@ class HomeScreen extends StatelessWidget {
       onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
+      onPillIdentificationRequested: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PillIdentificationUI(
+              userSetting: viewModel.userSetting,
+            ),
+          ),
+        );
+      },
       onTodayScheduleRequested: () {
         Navigator.push(
           context,
@@ -118,17 +151,13 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
-      onPatientGuardianLinkRequested: () {
+      onPatientCaregiverLinkRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PatientGuardianLinkUI(
-              initialUserHash: viewModel.medicationUserHash ??
-                  viewModel.medicationPatientHash,
-              onMedicationScopeSelected: viewModel.setMedicationAccessScope,
-            ),
+            builder: (context) => const LinkPatientCaregiverUI(),
           ),
-        ).then((_) => viewModel.refreshMedicationOverview());
+        );
       },
       onUserSettingRequested: () {
         Navigator.push(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_schedule_ui_boundary.dart';
-import 'services/medication_notification_service.dart';
+import 'services/notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
@@ -17,8 +17,19 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MedicationNotificationService.instance.initialize();
   runApp(const MedBuddyApp());
+  try {
+    await NotificationService.instance.initialize();
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'MedBuddy bootstrap',
+        context: ErrorDescription('initializing medication notifications'),
+      ),
+    );
+  }
 }
 
 // 클래스명: MedBuddyApp
@@ -29,10 +40,15 @@ Future<void> main() async {
 // - 홈 화면과 공통 테마를 설정한다.
 class MedBuddyApp extends StatefulWidget {
   final GlobalKey<NavigatorState>? navigatorKey;
+  final MedBuddyViewModel Function()? viewModelFactory;
+  final void Function(MedicationNotificationSelectionHandler? handler)?
+  notificationSelectionRegistrar;
 
   const MedBuddyApp({
     super.key,
     this.navigatorKey,
+    this.viewModelFactory,
+    this.notificationSelectionRegistrar,
   });
 
   @override
@@ -49,15 +65,24 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void initState() {
     super.initState();
     _navigatorKey = widget.navigatorKey ?? GlobalKey<NavigatorState>();
-    MedicationNotificationService.setNotificationSelectionHandler(
-      _handleNotificationSelection,
-    );
+    _registerNotificationSelectionHandler(_handleNotificationSelection);
   }
 
   @override
   void dispose() {
-    MedicationNotificationService.setNotificationSelectionHandler(null);
+    _registerNotificationSelectionHandler(null);
     super.dispose();
+  }
+
+  void _registerNotificationSelectionHandler(
+    MedicationNotificationSelectionHandler? handler,
+  ) {
+    final registrar = widget.notificationSelectionRegistrar;
+    if (registrar != null) {
+      registrar(handler);
+      return;
+    }
+    NotificationService.setNotificationSelectionHandler(handler);
   }
 
   void _handleNotificationSelection(
@@ -66,30 +91,39 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     if (destination != MedicationNotificationDestination.schedule) {
       return;
     }
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null) {
+      _openSchedule(navigator);
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
-      final navigator = _navigatorKey.currentState;
-      if (navigator == null) {
+      final mountedNavigator = _navigatorKey.currentState;
+      if (mountedNavigator == null) {
         return;
       }
-      if (_isScheduleRouteOpen) {
-        navigator.popUntil(
-          (route) => route.settings.name == _scheduleRouteName || route.isFirst,
-        );
-        return;
-      }
-      _isScheduleRouteOpen = true;
-      navigator
-          .push(
-            MaterialPageRoute<void>(
-              settings: const RouteSettings(name: _scheduleRouteName),
-              builder: (context) => const CheckScheduleUI(),
-            ),
-          )
-          .whenComplete(() => _isScheduleRouteOpen = false);
+      _openSchedule(mountedNavigator);
     });
+  }
+
+  void _openSchedule(NavigatorState navigator) {
+    if (_isScheduleRouteOpen) {
+      navigator.popUntil(
+        (route) => route.settings.name == _scheduleRouteName || route.isFirst,
+      );
+      return;
+    }
+    _isScheduleRouteOpen = true;
+    navigator
+        .push(
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: _scheduleRouteName),
+            builder: (context) => const CheckScheduleUI(),
+          ),
+        )
+        .whenComplete(() => _isScheduleRouteOpen = false);
   }
 
   @override
@@ -97,7 +131,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => MedBuddyViewModel()..loadUserSetting(),
+          create: (_) =>
+              (widget.viewModelFactory?.call() ?? MedBuddyViewModel())
+                ..loadUserSetting(),
         ),
       ],
       child: MaterialApp(
@@ -105,9 +141,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         title: 'MedBuddy',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: MedBuddyColors.primary,
-          ),
+          colorScheme: ColorScheme.fromSeed(seedColor: MedBuddyColors.primary),
           primaryColor: MedBuddyColors.primary,
           scaffoldBackgroundColor: MedBuddyColors.pageBackground,
           useMaterial3: true,
