@@ -23,9 +23,20 @@ class CheckSavedMedicationUI extends StatefulWidget {
   State<CheckSavedMedicationUI> createState() => _CheckSavedMedicationUIState();
 }
 
+// 열거형명: _SavedMedicationSortMode
+// 역할: 저장된 복약 정보 목록에 적용할 날짜 정렬 기준을 구분한다.
+enum _SavedMedicationSortMode { registeredDate, medicationDate }
+
+// 열거형명: _SavedMedicationSortDirection
+// 역할: 선택한 날짜 정렬 기준의 오름차순과 내림차순을 구분한다.
+enum _SavedMedicationSortDirection { ascending, descending }
+
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
   bool _isSelectionMode = false;
+  _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
+  _SavedMedicationSortDirection _sortDirection =
+      _SavedMedicationSortDirection.descending;
 
   @override
   void initState() {
@@ -92,7 +103,25 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                     ),
                 ],
               ),
-              const SizedBox(height: 26),
+              if (savedMedicationInfoList.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _SavedMedicationSortControl(
+                  sortMode: _sortMode,
+                  sortDirection: _sortDirection,
+                  text: text,
+                  onModeChanged: (sortMode) {
+                    setState(() {
+                      _sortMode = sortMode;
+                    });
+                  },
+                  onDirectionChanged: (sortDirection) {
+                    setState(() {
+                      _sortDirection = sortDirection;
+                    });
+                  },
+                ),
+              ],
+              const SizedBox(height: 20),
               Expanded(
                 child: _buildContent(viewModel, savedMedicationInfoList, text),
               ),
@@ -128,16 +157,15 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         text: text,
         userSetting: viewModel.userSetting,
         onPrescriptionInputRequested: () {
-          _showPrescriptionInputOptions(
-            viewModel: viewModel,
-            text: text,
-          );
+          _showPrescriptionInputOptions(viewModel: viewModel, text: text);
         },
       );
     }
 
     final groups = _SavedMedicationGroup.fromMedicationList(
       savedMedicationInfoList,
+      sortMode: _sortMode,
+      sortDirection: _sortDirection,
     );
 
     final medicationListView = ListView.builder(
@@ -308,9 +336,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleteResult(result))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
   }
 
   Future<void> _confirmAndDeleteSelectedMedications({
@@ -318,9 +346,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     required _SavedMedicationText text,
   }) async {
     if (_selectedMedicationIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text.noSelection)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.noSelection)));
       return;
     }
 
@@ -348,9 +376,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       _selectedMedicationIds.retainAll(remainingIds);
       _isSelectionMode = _selectedMedicationIds.isNotEmpty;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.deleteResult(result))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
   }
 
   // 함수명: _showMedicationDetail
@@ -394,9 +422,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     required UserSetting userSetting,
   }) {
     if (medication.imageUrl.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text.noImage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.noImage)));
       return;
     }
 
@@ -473,9 +501,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               backgroundColor: MedBuddyColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              shape: RoundedRectangleBorder(
-                borderRadius: MedBuddyRadii.card,
-              ),
+              shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
               textStyle: TextStyle(
                 fontSize: 22 * scale,
                 fontWeight: FontWeight.w800,
@@ -488,10 +514,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               children: [
                 const Icon(Icons.photo_camera_outlined, size: 40),
                 const SizedBox(height: 18),
-                Text(
-                  text.scanPrescription,
-                  textAlign: TextAlign.center,
-                ),
+                Text(text.scanPrescription, textAlign: TextAlign.center),
                 const SizedBox(height: 10),
                 Text(
                   text.scanSubtitle,
@@ -634,8 +657,9 @@ class _SelectionDeleteBar extends StatelessWidget {
             ),
           ),
           FilledButton(
-            onPressed:
-                selectedCount == 0 ? null : () async => onDeleteRequested(),
+            onPressed: selectedCount == 0
+                ? null
+                : () async => onDeleteRequested(),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF1F2D),
               disabledBackgroundColor: MedBuddyColors.outline,
@@ -665,7 +689,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
   final bool isSelectionMode;
   final Set<int> selectedMedicationIds;
   final void Function(MedicationDetail medication, bool selected)
-      onSelectionChanged;
+  onSelectionChanged;
   final void Function(MedicationDetail medication) onGuideRequested;
   final void Function(MedicationDetail medication) onImageRequested;
   final Future<void> Function() onDeleteRequested;
@@ -721,7 +745,8 @@ class _SavedMedicationDateCard extends StatelessWidget {
               text: text,
               userSetting: userSetting,
               isSelectionMode: isSelectionMode,
-              isSelected: medication.id != null &&
+              isSelected:
+                  medication.id != null &&
                   selectedMedicationIds.contains(medication.id),
               onSelectionChanged: (selected) {
                 onSelectionChanged(medication, selected);
@@ -751,6 +776,136 @@ class _SavedMedicationDateCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// 클래스명: _SavedMedicationSortControl
+// 역할: 저장 목록의 등록일자순과 복용날짜순 정렬 기준을 전환한다.
+// 주요 책임:
+// - 현재 선택된 정렬 기준을 초록색으로 구분해 표시한다.
+// - 사용자가 선택한 기준을 상위 화면 상태로 전달한다.
+class _SavedMedicationSortControl extends StatelessWidget {
+  final _SavedMedicationSortMode sortMode;
+  final _SavedMedicationSortDirection sortDirection;
+  final _SavedMedicationText text;
+  final ValueChanged<_SavedMedicationSortMode> onModeChanged;
+  final ValueChanged<_SavedMedicationSortDirection> onDirectionChanged;
+
+  const _SavedMedicationSortControl({
+    required this.sortMode,
+    required this.sortDirection,
+    required this.text,
+    required this.onModeChanged,
+    required this.onDirectionChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isAscending =
+        sortDirection == _SavedMedicationSortDirection.ascending;
+    return SizedBox(
+      height: 44,
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: MedBuddyColors.outline),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildOption(
+                      mode: _SavedMedicationSortMode.registeredDate,
+                      label: text.sortByRegisteredDate,
+                    ),
+                  ),
+                  Container(width: 1, color: MedBuddyColors.outline),
+                  Expanded(
+                    child: _buildOption(
+                      mode: _SavedMedicationSortMode.medicationDate,
+                      label: text.sortByMedicationDate,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            label: isAscending ? text.ascendingOrder : text.descendingOrder,
+            child: IconButton(
+              key: const ValueKey('savedMedicationSortDirectionButton'),
+              tooltip: text.changeSortDirection,
+              style: IconButton.styleFrom(
+                foregroundColor: MedBuddyColors.primary,
+                backgroundColor: MedBuddyColors.successSurface,
+                side: const BorderSide(color: MedBuddyColors.successBorder),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: _toggleDirection,
+              icon: Icon(
+                isAscending
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 22,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 함수명: _buildOption
+  // 함수역할:
+  // - 선택 여부에 따라 색상을 달리하는 정렬 기준 버튼을 만든다.
+  Widget _buildOption({
+    required _SavedMedicationSortMode mode,
+    required String label,
+  }) {
+    final isSelected = sortMode == mode;
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: label,
+      child: Material(
+        color: isSelected ? MedBuddyColors.primary : Colors.white,
+        child: InkWell(
+          onTap: () => onModeChanged(mode),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isSelected ? Colors.white : MedBuddyColors.textStrong,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 함수명: _toggleDirection
+  // 함수역할:
+  // - 오른쪽 화살표를 누르면 현재 날짜 정렬 방향을 반전한다.
+  void _toggleDirection() {
+    final nextDirection =
+        sortDirection == _SavedMedicationSortDirection.descending
+        ? _SavedMedicationSortDirection.ascending
+        : _SavedMedicationSortDirection.descending;
+    onDirectionChanged(nextDirection);
   }
 }
 
@@ -1275,10 +1430,7 @@ class _SavedMedicationGroup {
   final DateTime? date;
   final List<MedicationDetail> medications;
 
-  const _SavedMedicationGroup({
-    required this.date,
-    required this.medications,
-  });
+  const _SavedMedicationGroup({required this.date, required this.medications});
 
   String get displayDate {
     final value = date ?? DateTime.now();
@@ -1286,27 +1438,47 @@ class _SavedMedicationGroup {
   }
 
   static List<_SavedMedicationGroup> fromMedicationList(
-    List<MedicationDetail> medicationList,
-  ) {
+    List<MedicationDetail> medicationList, {
+    required _SavedMedicationSortMode sortMode,
+    required _SavedMedicationSortDirection sortDirection,
+  }) {
     final groupedMedications = <String, List<MedicationDetail>>{};
     for (final medication in medicationList) {
-      final dateKey = _dateKey(medication.createdDate);
+      final groupDate = _dateForSortMode(medication, sortMode);
+      final dateKey = _dateKey(groupDate);
       groupedMedications.putIfAbsent(dateKey, () => []).add(medication);
     }
 
-    final groups = groupedMedications.entries.map((entry) {
-      return _SavedMedicationGroup(
-        date: DateTime.tryParse(entry.key),
-        medications: entry.value,
-      );
-    }).toList(growable: false);
+    final groups = groupedMedications.entries
+        .map((entry) {
+          return _SavedMedicationGroup(
+            date: DateTime.tryParse(entry.key),
+            medications: entry.value,
+          );
+        })
+        .toList(growable: false);
 
-    return groups
-      ..sort((left, right) {
-        final leftDate = left.date ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final rightDate = right.date ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return rightDate.compareTo(leftDate);
-      });
+    return groups..sort((left, right) {
+      final leftDate = left.date ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final rightDate = right.date ?? DateTime.fromMillisecondsSinceEpoch(0);
+      if (sortDirection == _SavedMedicationSortDirection.ascending) {
+        return leftDate.compareTo(rightDate);
+      }
+      return rightDate.compareTo(leftDate);
+    });
+  }
+
+  // 함수명: _dateForSortMode
+  // 함수역할:
+  // - 선택한 기준에 맞는 그룹 날짜를 반환하고 복용일이 없으면 등록일을 사용한다.
+  static DateTime? _dateForSortMode(
+    MedicationDetail medication,
+    _SavedMedicationSortMode sortMode,
+  ) {
+    if (sortMode == _SavedMedicationSortMode.medicationDate) {
+      return medication.prescriptionDate ?? medication.createdDate;
+    }
+    return medication.createdDate;
   }
 
   static String _dateKey(DateTime? date) {
@@ -1330,6 +1502,12 @@ class _SavedMedicationText {
   String get close => isEnglish ? 'Close' : '닫기';
   String get select => isEnglish ? 'Select' : '선택';
   String get done => isEnglish ? 'Done' : '완료';
+  String get sortByRegisteredDate => isEnglish ? 'Registration date' : '등록일자순';
+  String get sortByMedicationDate => isEnglish ? 'Medication date' : '복용날짜순';
+  String get ascendingOrder => isEnglish ? 'Oldest first' : '오름차순';
+  String get descendingOrder => isEnglish ? 'Newest first' : '내림차순';
+  String get changeSortDirection =>
+      isEnglish ? 'Change sort direction' : '정렬 방향 변경';
   String get emptyMessage =>
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
   String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';
