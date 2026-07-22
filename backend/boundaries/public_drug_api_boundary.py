@@ -209,7 +209,7 @@ class PublicDrugLargeAPI:
                 "serviceKey": settings.PUBLIC_DATA_API_KEY,
                 "item_name": medication_name,
                 "type": "json",
-                "numOfRows": 1,
+                "numOfRows": 5,
             },
         )
         return items
