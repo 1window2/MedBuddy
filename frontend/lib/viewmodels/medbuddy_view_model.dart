@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_health_recommendation_control.dart';
 import '../controls/check_medication_detail_control.dart';
+import '../controls/check_prescription_change_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/check_today_medication_info_control.dart';
@@ -18,6 +20,7 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/prescription_change_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
@@ -59,6 +62,7 @@ class SavedMedicationBatchDeleteResult {
 class MedBuddyViewModel extends ChangeNotifier {
   late final InputPrescription inputPrescription;
   late final CheckMedicationDetail checkMedicationDetail;
+  late final CheckPrescriptionChange checkPrescriptionChange;
   late final CheckSavedMedication checkSavedMedication;
   late final CheckSchedule checkSchedule;
   late final CheckTodayMedicationInfo checkTodayMedicationInfo;
@@ -180,6 +184,12 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<AnalyzedMedication> get analyzedMedicationList =>
       List.unmodifiable(_analyzedMedicationList);
 
+  PrescriptionChangeRadar? _prescriptionChangeRadar;
+  PrescriptionChangeRadar? get prescriptionChangeRadar =>
+      _prescriptionChangeRadar;
+  bool _isPrescriptionChangeLoading = false;
+  bool get isPrescriptionChangeLoading => _isPrescriptionChangeLoading;
+
   List<MedicationDetail> _savedMedicationInfoList = [];
   List<MedicationDetail> get savedMedicationInfoList =>
       List.unmodifiable(_savedMedicationInfoList);
@@ -218,6 +228,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   MedBuddyViewModel({
     InputPrescription? inputPrescription,
     CheckMedicationDetail? checkMedicationDetail,
+    CheckPrescriptionChange? checkPrescriptionChange,
     CheckSavedMedication? checkSavedMedication,
     CheckSchedule? checkSchedule,
     CheckTodayMedicationInfo? checkTodayMedicationInfo,
@@ -226,22 +237,27 @@ class MedBuddyViewModel extends ChangeNotifier {
     ManageUserSetting? manageUserSetting,
     NotificationService? notificationService,
     http.Client? apiClient,
-  })  : _apiClient = apiClient ?? http.Client(),
-        _ownsApiClient = apiClient == null,
-        notificationService =
-            notificationService ?? NotificationService.instance {
+  }) : _apiClient = apiClient ?? http.Client(),
+       _ownsApiClient = apiClient == null,
+       notificationService =
+           notificationService ?? NotificationService.instance {
     this.inputPrescription =
         inputPrescription ?? InputPrescription(client: _apiClient);
     this.checkMedicationDetail =
         checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
+    this.checkPrescriptionChange =
+        checkPrescriptionChange ?? CheckPrescriptionChange(client: _apiClient);
     this.checkSavedMedication =
         checkSavedMedication ?? CheckSavedMedication(client: _apiClient);
     this.checkSchedule = checkSchedule ?? CheckSchedule(client: _apiClient);
-    this.checkTodayMedicationInfo = checkTodayMedicationInfo ??
+    this.checkTodayMedicationInfo =
+        checkTodayMedicationInfo ??
         CheckTodayMedicationInfo(client: _apiClient);
-    this.checkHealthRecommendation = checkHealthRecommendation ??
+    this.checkHealthRecommendation =
+        checkHealthRecommendation ??
         CheckHealthRecommendation(client: _apiClient);
-    this.setNotification = setNotification ??
+    this.setNotification =
+        setNotification ??
         SetNotification(
           client: _apiClient,
           notificationRegistrar: this.notificationService.registerNotification,
@@ -304,10 +320,70 @@ class MedBuddyViewModel extends ChangeNotifier {
     );
   }
 
-  // 함수명: requestPrescriptionAnalysis
+  // 함수이름: updateRecognizedMedicationSchedule
+  // 함수역할:
+  // - 사용자가 수정한 OCR 인식 결과를 분석 대기 목록에 반영한다.
+  // - 약명이 변경되면 최초 OCR 원문을 보존하고 사용자 수정 정보로 표시한다.
+  // 매개변수:
+  // - scheduleIndex: 전체 OCR 인식 결과 목록에서 수정할 항목의 인덱스
+  // - medicationSchedule: 사용자가 입력한 변경값이 포함된 복약 일정
+  // 반환값:
+  // - 없음
+  void updateRecognizedMedicationSchedule(
+    int scheduleIndex,
+    MedicationSchedule medicationSchedule,
+  ) {
+    if (_prescriptionFlowState != PrescriptionFlowState.previewReady ||
+        scheduleIndex < 0 ||
+        scheduleIndex >= _recognizedMedicationScheduleList.length) {
+      return;
+    }
+
+    final currentSchedule = _recognizedMedicationScheduleList[scheduleIndex];
+    final updatedName = medicationSchedule.medicationName.trim();
+    if (updatedName.isEmpty) {
+      return;
+    }
+
+    final isNameChanged = updatedName != currentSchedule.medicationName.trim();
+    final originalOcrName = currentSchedule.rawMedicationName.trim().isEmpty
+        ? currentSchedule.medicationName.trim()
+        : currentSchedule.rawMedicationName.trim();
+    final normalizedSchedule = medicationSchedule.copyWith(
+      medicationName: updatedName,
+      dosage: medicationSchedule.dosage.trim(),
+      intakeTime: medicationSchedule.intakeTime.trim(),
+      rawMedicationName: isNameChanged
+          ? originalOcrName
+          : currentSchedule.rawMedicationName,
+      nameConfidence: isNameChanged ? 1.0 : currentSchedule.nameConfidence,
+      nameCorrectionSource: isNameChanged
+          ? 'user_edit'
+          : currentSchedule.nameCorrectionSource,
+    );
+
+    final updatedScheduleList = List<MedicationSchedule>.of(
+      _recognizedMedicationScheduleList,
+    );
+    updatedScheduleList[scheduleIndex] = normalizedSchedule;
+    _recognizedMedicationScheduleList = updatedScheduleList;
+    _analyzedMedicationList = [];
+    _prescriptionChangeRadar = null;
+    _isPrescriptionChangeLoading = false;
+    _completedMedicationSaveIndexes.clear();
+    _analysisErrorMessage = '';
+    _statusMessage = _isEnglishSetting
+        ? 'The OCR result was updated.'
+        : 'OCR 인식 결과를 수정했습니다.';
+    notifyListeners();
+  }
+
+  // 함수이름: requestPrescriptionAnalysis
   // 함수역할:
   // - UC-1에서 인식된 약 목록 각각에 대해 공공데이터 기반 상세 정보를 요청한다.
   // - 저장은 하지 않고 분석 성공/실패 화면 상태까지만 변경한다.
+  // 매개변수:
+  // - 없음
   // 반환값:
   // - 없음
   Future<void> requestPrescriptionAnalysis() async {
@@ -318,13 +394,16 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
 
     final operationId = _beginPrescriptionOperation();
-    final recognizedSchedules =
-        List<MedicationSchedule>.of(_recognizedMedicationScheduleList);
+    final recognizedSchedules = List<MedicationSchedule>.of(
+      _recognizedMedicationScheduleList,
+    );
     _analysisProgressStep = AnalysisProgressStep.medicationAnalysis;
     _prescriptionFlowState = PrescriptionFlowState.analyzingMedication;
     _statusMessage = '약물 정보를 분석 중입니다...';
     _analysisErrorMessage = '';
     _analyzedMedicationList = [];
+    _prescriptionChangeRadar = null;
+    _isPrescriptionChangeLoading = false;
     notifyListeners();
 
     try {
@@ -357,9 +436,6 @@ class MedBuddyViewModel extends ChangeNotifier {
         return;
       }
 
-      _analysisProgressStep = AnalysisProgressStep.scheduleGeneration;
-      notifyListeners();
-
       _analyzedMedicationList = analyzedMedicationList;
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
       _statusMessage = failedAnalysisCount > 0
@@ -379,6 +455,36 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
   }
 
+  // 함수이름: _refreshPrescriptionChangeRadar
+  // 함수역할:
+  // - 결과 화면을 막지 않고 현재 처방과 이전 처방의 비교 결과를 요청한다.
+  // - 사용자가 화면을 벗어난 뒤 도착한 응답은 현재 상태에 반영하지 않는다.
+  // 매개변수:
+  // - operationId: 요청 시작 시점의 처방 작업 식별자
+  // - medications: 공공데이터 상세조회가 끝난 현재 처방 목록
+  // 반환값:
+  // - 없음
+  Future<void> _refreshPrescriptionChangeRadar(
+    int operationId,
+    List<AnalyzedMedication> medications,
+  ) async {
+    PrescriptionChangeRadar? radar;
+    try {
+      radar = await checkPrescriptionChange.requestPrescriptionChange(
+        medications,
+      );
+    } catch (_) {
+      radar = null;
+    }
+    if (!_isCurrentPrescriptionOperation(operationId) ||
+        _prescriptionFlowState != PrescriptionFlowState.resultReady) {
+      return;
+    }
+    _prescriptionChangeRadar = radar;
+    _isPrescriptionChangeLoading = false;
+    notifyListeners();
+  }
+
   // 함수명: showMedicationAnalysisResult
   // 함수역할:
   // - 분석 성공 화면에서 실제 결과 목록 화면으로 이동할 수 있도록 상태를 변경한다.
@@ -391,7 +497,14 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
 
     _prescriptionFlowState = PrescriptionFlowState.resultReady;
+    _isPrescriptionChangeLoading = true;
     notifyListeners();
+    unawaited(
+      _refreshPrescriptionChangeRadar(
+        _prescriptionOperationId,
+        List<AnalyzedMedication>.of(_analyzedMedicationList),
+      ),
+    );
   }
 
   // 함수명: requestMedicationSave
@@ -536,8 +649,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final savedMedicationInfoList =
-          await checkSavedMedication.requestSavedMedicationInfo();
+      final savedMedicationInfoList = await checkSavedMedication
+          .requestSavedMedicationInfo();
       _savedMedicationInfoList = savedMedicationInfoList;
     } on StateError catch (error) {
       _statusMessage = error.message;
@@ -666,10 +779,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final healthRecommendation =
-          await checkHealthRecommendation.requestHealthRecommendation(
-        language: userSetting.language,
-      );
+      final healthRecommendation = await checkHealthRecommendation
+          .requestHealthRecommendation(language: userSetting.language);
       _healthRecommendation = healthRecommendation;
       _statusMessage = _isEnglishSetting
           ? 'Health recommendations loaded.'
@@ -833,8 +944,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
     try {
-      final disabledSetting =
-          await setNotification.disableAlarmSetting(slotKey);
+      final disabledSetting = await setNotification.disableAlarmSetting(
+        slotKey,
+      );
       await _cancelMedicationReminder(disabledSetting);
       final preferences = await SharedPreferences.getInstance();
       await _cacheMedicationReminderSetting(
@@ -915,19 +1027,22 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> _loadMedicationReminderSettingsFromCache() async {
     final preferences = await SharedPreferences.getInstance();
     for (final slotKey in _reminderSlotKeys) {
-      final rawSetting = preferences.getString(_reminderStorageKey(slotKey)) ??
+      final rawSetting =
+          preferences.getString(_reminderStorageKey(slotKey)) ??
           preferences.getString(_legacyReminderStorageKey(slotKey));
       if (rawSetting == null || rawSetting.trim().isEmpty) {
-        _medicationReminderSettings[slotKey] =
-            MedicationAlarm.defaults(slotKey);
+        _medicationReminderSettings[slotKey] = MedicationAlarm.defaults(
+          slotKey,
+        );
         continue;
       }
 
       try {
         final decodedSetting = jsonDecode(rawSetting);
         if (decodedSetting is Map<String, dynamic>) {
-          _medicationReminderSettings[slotKey] =
-              MedicationAlarm.fromJson(decodedSetting);
+          _medicationReminderSettings[slotKey] = MedicationAlarm.fromJson(
+            decodedSetting,
+          );
           continue;
         }
       } catch (_) {
@@ -944,7 +1059,8 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     final preferences = await SharedPreferences.getInstance();
     for (final slotKey in _reminderSlotKeys) {
-      final setting = _medicationReminderSettings[slotKey] ??
+      final setting =
+          _medicationReminderSettings[slotKey] ??
           MedicationAlarm.defaults(slotKey);
       if (!setting.isEnabled) {
         await _cancelMedicationReminder(setting);
@@ -973,7 +1089,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   Future<void>
-      _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
+  _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
     if (!_lastTodayScheduleLoadSucceeded) {
       return;
     }
@@ -1032,9 +1148,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   List<MedicationSchedule> _schedulesForReminderSlot(String slotKey) {
-    return _todayMedicationScheduleList.where((schedule) {
-      return _slotKeysForSchedule(schedule).contains(slotKey);
-    }).toList(growable: false);
+    return _todayMedicationScheduleList
+        .where((schedule) {
+          return _slotKeysForSchedule(schedule).contains(slotKey);
+        })
+        .toList(growable: false);
   }
 
   String _reminderSlotTitle(String slotKey) {
@@ -1057,10 +1175,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - schedule: 확인할 복약 일정
   // 반환값:
   // - 해당 시간대가 완료 처리되어 있으면 True
-  bool isMedicationDoseCompleted(
-    String slotKey,
-    MedicationSchedule schedule,
-  ) {
+  bool isMedicationDoseCompleted(String slotKey, MedicationSchedule schedule) {
     return schedule.isSlotCompleted(slotKey);
   }
 
@@ -1130,6 +1245,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     _cancelPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
     _analyzedMedicationList = [];
+    _prescriptionChangeRadar = null;
+    _isPrescriptionChangeLoading = false;
     _completedMedicationSaveIndexes.clear();
     _isAllMedicationSaving = false;
     _savingMedicationIndex = null;
@@ -1167,12 +1284,15 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> _requestPrescriptionRecognition({
     required Future<List<MedicationSchedule>?> Function({
       VoidCallback? onImageSelected,
-    }) imageRequest,
+    })
+    imageRequest,
     required String cancelledMessage,
   }) async {
     final operationId = _beginPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
     _analyzedMedicationList = [];
+    _prescriptionChangeRadar = null;
+    _isPrescriptionChangeLoading = false;
     _analysisErrorMessage = '';
     _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
@@ -1261,8 +1381,9 @@ class MedBuddyViewModel extends ChangeNotifier {
 
     _lastPrescriptionParsedMedicationCount = parsedCount < 0 ? 0 : parsedCount;
     _lastPrescriptionRawMedicationCount = rawCount < 0 ? 0 : rawCount;
-    _lastPrescriptionSkippedMedicationCount =
-        skippedCount < 0 ? 0 : skippedCount;
+    _lastPrescriptionSkippedMedicationCount = skippedCount < 0
+        ? 0
+        : skippedCount;
   }
 
   void _showAnalysisFailure(String message) {
@@ -1315,6 +1436,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _cancelPrescriptionOperation();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
+    checkPrescriptionChange.dispose();
     checkSavedMedication.dispose();
     checkSchedule.dispose();
     checkTodayMedicationInfo.dispose();

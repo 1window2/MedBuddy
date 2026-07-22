@@ -40,12 +40,14 @@ class HomeScreen extends StatelessWidget {
           onBackRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.previewReady => PrescriptionAnalysisPreviewUI(
-          medicationScheduleList: viewModel.recognizedMedicationScheduleList,
-          recognitionNotice: viewModel.prescriptionRecognitionNotice,
-          userSetting: viewModel.userSetting,
-          onBackRequested: viewModel.clearAnalysisResult,
-          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
-        ),
+        medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+        recognitionNotice: viewModel.prescriptionRecognitionNotice,
+        userSetting: viewModel.userSetting,
+        onBackRequested: viewModel.clearAnalysisResult,
+        onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
+        onMedicationScheduleChanged:
+            viewModel.updateRecognizedMedicationSchedule,
+      ),
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,
@@ -53,36 +55,38 @@ class HomeScreen extends StatelessWidget {
           onBackRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.analysisSucceeded => PrescriptionAnalysisSuccessUI(
-          analyzedMedicationList: viewModel.analyzedMedicationList,
-          userSetting: viewModel.userSetting,
-          onResultRequested: viewModel.showMedicationAnalysisResult,
-        ),
+        analyzedMedicationList: viewModel.analyzedMedicationList,
+        userSetting: viewModel.userSetting,
+        onResultRequested: viewModel.showMedicationAnalysisResult,
+      ),
       PrescriptionFlowState.analysisFailed => PrescriptionAnalysisFailureUI(
-          message: viewModel.analysisErrorMessage,
-          userSetting: viewModel.userSetting,
-          failureStep: viewModel.analysisProgressStep,
-          onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
-              ? viewModel.requestPrescriptionAnalysis
-              : null,
-          onCameraRetryRequested: viewModel.requestPrescriptionImage,
-          onGalleryRetryRequested:
-              viewModel.requestPrescriptionImageFromGallery,
-          onHomeRequested: viewModel.clearAnalysisResult,
-        ),
+        message: viewModel.analysisErrorMessage,
+        userSetting: viewModel.userSetting,
+        failureStep: viewModel.analysisProgressStep,
+        onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
+            ? viewModel.requestPrescriptionAnalysis
+            : null,
+        onCameraRetryRequested: viewModel.requestPrescriptionImage,
+        onGalleryRetryRequested: viewModel.requestPrescriptionImageFromGallery,
+        onHomeRequested: viewModel.clearAnalysisResult,
+      ),
       PrescriptionFlowState.resultReady => CheckResultUI(
-          analyzedMedicationList: viewModel.analyzedMedicationList,
-          userSetting: viewModel.userSetting,
-          statusMessageProvider: () => viewModel.statusMessage,
-          savingMedicationIndex: viewModel.savingMedicationIndex,
-          completedMedicationSaveIndexes:
-              viewModel.completedMedicationSaveIndexes,
-          isAllMedicationSaving: viewModel.isAllMedicationSaving,
-          onCloseRequested:
-              isPrescriptionExitBlocked ? null : viewModel.clearAnalysisResult,
-          onAllMedicationSaveRequested:
-              viewModel.requestAllAnalyzedMedicationSave,
-          onMedicationSaveRequested: viewModel.requestMedicationSave,
-        ),
+        analyzedMedicationList: viewModel.analyzedMedicationList,
+        prescriptionChangeRadar: viewModel.prescriptionChangeRadar,
+        isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
+        userSetting: viewModel.userSetting,
+        statusMessageProvider: () => viewModel.statusMessage,
+        savingMedicationIndex: viewModel.savingMedicationIndex,
+        completedMedicationSaveIndexes:
+            viewModel.completedMedicationSaveIndexes,
+        isAllMedicationSaving: viewModel.isAllMedicationSaving,
+        onCloseRequested: isPrescriptionExitBlocked
+            ? null
+            : viewModel.clearAnalysisResult,
+        onAllMedicationSaveRequested:
+            viewModel.requestAllAnalyzedMedicationSave,
+        onMedicationSaveRequested: viewModel.requestMedicationSave,
+      ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
 
@@ -107,10 +111,7 @@ class HomeScreen extends StatelessWidget {
   // - viewModel: 홈 화면 상태와 사용자 요청 함수를 제공하는 ViewModel
   // 반환값:
   // - 홈 입력 화면 Widget
-  Widget _buildHomeInput(
-    BuildContext context,
-    MedBuddyViewModel viewModel,
-  ) {
+  Widget _buildHomeInput(BuildContext context, MedBuddyViewModel viewModel) {
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
     return InputPrescriptionUI(
@@ -127,21 +128,16 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PillIdentificationUI(
-              userSetting: viewModel.userSetting,
-            ),
+            builder: (context) =>
+                PillIdentificationUI(userSetting: viewModel.userSetting),
           ),
         );
       },
       onTodayScheduleRequested: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => const CheckScheduleUI(),
-          ),
-        ).then(
-          (_) => viewModel.fetchTodayMedicationSchedule(),
-        );
+          MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
+        ).then((_) => viewModel.fetchTodayMedicationSchedule());
       },
       onSavedMedicationRequested: () {
         Navigator.push(

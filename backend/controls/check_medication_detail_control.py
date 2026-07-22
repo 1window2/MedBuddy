@@ -869,25 +869,28 @@ class CheckMedicationDetail:
         self,
         medication_details: list[MedicationDetail],
     ) -> list[MedicationDetail]:
-        enriched_details: list[MedicationDetail] = []
-        for medication_detail in medication_details:
+        async def enrich_detail(
+            medication_detail: MedicationDetail,
+        ) -> MedicationDetail:
             if medication_detail.image_url.strip():
-                enriched_details.append(medication_detail)
-                continue
+                return medication_detail
 
             image_url = await self.pill_image_api.searchMedicationImage(
                 medication_detail.item_name,
                 medication_detail.item_seq,
             )
             if not image_url:
-                enriched_details.append(medication_detail)
-                continue
+                return medication_detail
 
-            enriched_detail = medication_detail.model_copy(
+            return medication_detail.model_copy(
                 update={"image_url": image_url}
             )
-            enriched_details.append(enriched_detail)
-        return enriched_details
+
+        return list(
+            await asyncio.gather(
+                *(enrich_detail(detail) for detail in medication_details),
+            )
+        )
 
     async def _fetch_public_drug_info(
         self,

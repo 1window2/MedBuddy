@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from api.dependencies import (
     get_check_medication_detail,
+    get_check_prescription_change,
     get_check_schedule,
     get_check_saved_medication,
     get_check_today_medication_info,
@@ -30,6 +31,7 @@ from boundaries.pill_identification_boundary import (
     PillVisionUnavailableError,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
@@ -60,6 +62,10 @@ from schemas.medication import (
     VoiceGuideRequest,
 )
 from schemas.pill_identification import PillIdentificationResponse
+from schemas.prescription_change import (
+    PrescriptionChangeRequest,
+    PrescriptionChangeResponse,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -102,6 +108,44 @@ async def identify_medication(
     except Exception as exc:
         logger.error("Identify API internal error: %s", type(exc).__name__)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
+
+
+# 함수이름: check_prescription_change
+# 함수역할:
+# - 현재 분석한 처방과 환자의 가장 최근 이전 처방을 비교한다.
+# - 의료 판단 없이 약품 구성과 복약 일정 필드의 객관적 차이만 반환한다.
+# 매개변수:
+# - request: 현재 처방 조제일자와 약품 목록
+# - check_prescription_change_control: 처방 변화 비교 Control
+# 반환값:
+# - 처방 변화 요약과 약품별 변화 목록
+@router.post(
+    "/prescription/change-radar",
+    response_model=PrescriptionChangeResponse,
+)
+def check_prescription_change(
+    request: PrescriptionChangeRequest,
+    check_prescription_change_control: CheckPrescriptionChange = Depends(
+        get_check_prescription_change
+    ),
+) -> PrescriptionChangeResponse:
+    try:
+        return check_prescription_change_control.request_prescription_change(
+            request
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Prescription change comparison failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="처방 변화를 비교하지 못했습니다.",
+        ) from exc
 
 
 # Function Name: save_medication

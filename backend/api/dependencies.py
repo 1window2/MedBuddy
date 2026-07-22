@@ -22,6 +22,7 @@ from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
 )
+from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -145,6 +146,19 @@ def get_check_medication_detail(
         public_drug_large_api=_public_drug_large_api,
         pill_image_api=_pill_image_api,
     )
+
+
+# 함수이름: get_check_prescription_change
+# 함수역할:
+# - 요청 단위 DB 세션을 포함한 처방 변화 비교 Control을 생성한다.
+# 매개변수:
+# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
+# 반환값:
+# - CheckPrescriptionChange 인스턴스
+def get_check_prescription_change(
+    db: Session = Depends(get_db),
+) -> CheckPrescriptionChange:
+    return CheckPrescriptionChange(db=db)
 
 
 # Function Name: get_check_saved_medication

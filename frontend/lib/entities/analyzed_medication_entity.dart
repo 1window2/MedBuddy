@@ -9,22 +9,24 @@ import 'medication_schedule_entity.dart';
 // 주요 책임:
 // - OCR에서 추출한 복약 스케줄을 유지한다.
 // - 공공데이터 API로 보강한 약 상세 정보를 유지한다.
-// - 화면 표시용 약 이름을 안정적으로 제공한다.
+// - 사용자 OCR 수정명과 공공데이터 약 이름의 우선순위를 적용한다.
 class AnalyzedMedication {
   final MedicationSchedule schedule;
   final MedicationDetail detail;
 
-  const AnalyzedMedication({
-    required this.schedule,
-    required this.detail,
-  });
+  const AnalyzedMedication({required this.schedule, required this.detail});
 
-  // 함수명: displayName
+  // 함수이름: displayName
   // 함수역할:
-  // - 상세 정보의 약 이름을 우선 사용하고, 없으면 OCR에서 추출한 이름을 사용한다.
+  // - 사용자가 OCR 약명을 수정한 경우 수정명을 가장 먼저 사용한다.
+  // - 그 외에는 상세 정보의 약 이름을 우선하고 없으면 OCR 약명을 사용한다.
   // 반환값:
   // - 화면에 표시할 약 이름
   String get displayName {
+    if (schedule.nameCorrectionSource == 'user_edit' &&
+        schedule.medicationName.trim().isNotEmpty) {
+      return schedule.medicationName.trim();
+    }
     if (detail.itemName.trim().isNotEmpty) {
       return detail.itemName.trim();
     }

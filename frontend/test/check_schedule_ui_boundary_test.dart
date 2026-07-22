@@ -62,6 +62,24 @@ class _ActiveCheckSchedule extends CheckSchedule {
   }
 }
 
+// 클래스명: _VisualScheduleCheckSchedule
+// 역할: 투약 단위와 약품 이미지 표시 테스트용 일정을 제공한다.
+class _VisualScheduleCheckSchedule extends CheckSchedule {
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    return const [
+      MedicationSchedule(
+        medicationID: 'visual-tablet',
+        medicationName: '테스트정',
+        dosage: '0.5',
+        intakeTime: '1회',
+        medicationTime: 1,
+        imageUrl: 'https://example.com/tablet.png',
+      ),
+    ];
+  }
+}
+
 class _EmptySetNotification extends SetNotification {
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
@@ -73,12 +91,7 @@ class _EnabledSetNotification extends SetNotification {
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
     return const [
-      MedicationAlarm(
-        slotKey: 'morning',
-        hour: 8,
-        minute: 0,
-        enabled: true,
-      ),
+      MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
     ];
   }
 }
@@ -136,8 +149,9 @@ void main() {
     expect(find.text('오늘 복용할 약이 없습니다'), findsOneWidget);
   });
 
-  testWidgets('valid empty schedule keeps the domain empty state',
-      (tester) async {
+  testWidgets('valid empty schedule keeps the domain empty state', (
+    tester,
+  ) async {
     final viewModel = MedBuddyViewModel(
       checkSchedule: _EmptyCheckSchedule(),
       setNotification: _EmptySetNotification(),
@@ -154,6 +168,31 @@ void main() {
 
     expect(find.byKey(const Key('schedule-load-error')), findsNothing);
     expect(find.text('오늘 복용할 약이 없습니다'), findsOneWidget);
+  });
+
+  testWidgets('오늘 일정에 투약 단위와 약품 이미지 영역을 표시한다', (tester) async {
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _VisualScheduleCheckSchedule(),
+      setNotification: _EmptySetNotification(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: CheckScheduleUI()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('0.5정'), findsOneWidget);
+    expect(
+      find.byKey(const Key('schedule-medication-thumbnail-visual-tablet')),
+      findsOneWidget,
+    );
+    expect(find.byType(Image), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test('failed refresh clears stale schedule data', () async {

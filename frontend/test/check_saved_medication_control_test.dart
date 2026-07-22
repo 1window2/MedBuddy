@@ -47,10 +47,40 @@ void main() {
     expect(result.isCompleted, isTrue);
     expect(requestBody['patient_hash'], 'patient-a');
     expect(requestBody['item_seq'], '200000001');
+    expect(requestBody['item_name'], 'test-tablet');
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');
     expect(requestBody['image_url'], 'https://example.com/medicine.jpg');
+  });
+
+  test('사용자가 수정한 OCR 약명을 저장 이름으로 우선한다', () async {
+    late Map<String, dynamic> requestBody;
+    final client = MockClient((http.Request request) async {
+      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response('{"success":true}', 200);
+    });
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    await control.saveMedicationDetail(
+      const MedicationDetail(
+        itemName: '에니코프캡슐',
+        efficacy: 'effect',
+        usageMethod: 'usage',
+        warning: 'warning',
+      ),
+      medicationSchedule: const MedicationSchedule(
+        medicationName: '애니코프캡슐',
+        rawMedicationName: '에니코프캡슐',
+        nameCorrectionSource: 'user_edit',
+      ),
+    );
+
+    expect(requestBody['item_name'], '애니코프캡슐');
   });
 
   test('saveMedicationDetail reports duplicate result', () async {
@@ -81,50 +111,52 @@ void main() {
     expect(result.message, '이미 추가된 약입니다.');
   });
 
-  test('requestSavedMedicationInfo scopes list request by patient hash',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/list');
-      expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': [
-            {
-              'id': 1,
-              'patient_hash': 'patient-a',
-              'item_seq': '200000001',
-              'item_name': 'test-tablet',
-              'efficacy': 'effect',
-              'use_method': 'usage',
-              'warning_message': 'warning',
-              'dosage_per_time': '1 tablet',
-              'daily_frequency': '3 times',
-              'total_days': '7 days',
-              'image_url': 'https://example.com/medicine.jpg',
-              'ai_guide': 'guide',
-            },
-          ],
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'requestSavedMedicationInfo scopes list request by patient hash',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/list');
+        expect(request.url.queryParameters['patient_hash'], 'patient-a');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'id': 1,
+                'patient_hash': 'patient-a',
+                'item_seq': '200000001',
+                'item_name': 'test-tablet',
+                'efficacy': 'effect',
+                'use_method': 'usage',
+                'warning_message': 'warning',
+                'dosage_per_time': '1 tablet',
+                'daily_frequency': '3 times',
+                'total_days': '7 days',
+                'image_url': 'https://example.com/medicine.jpg',
+                'ai_guide': 'guide',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckSavedMedication(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
       );
-    });
-    final control = CheckSavedMedication(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
 
-    final medications = await control.requestSavedMedicationInfo();
+      final medications = await control.requestSavedMedicationInfo();
 
-    expect(medications, hasLength(1));
-    expect(medications.first.patientHash, 'patient-a');
-    expect(medications.first.itemSeq, '200000001');
-    expect(medications.first.dosagePerTime, '1 tablet');
-    expect(medications.first.imageUrl, 'https://example.com/medicine.jpg');
-  });
+      expect(medications, hasLength(1));
+      expect(medications.first.patientHash, 'patient-a');
+      expect(medications.first.itemSeq, '200000001');
+      expect(medications.first.dosagePerTime, '1 tablet');
+      expect(medications.first.imageUrl, 'https://example.com/medicine.jpg');
+    },
+  );
 
   test('requestDelete scopes delete request by patient hash', () async {
     final client = MockClient((http.Request request) async {
