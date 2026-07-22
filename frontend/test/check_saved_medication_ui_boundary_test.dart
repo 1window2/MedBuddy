@@ -13,8 +13,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('patient saved list does not expose guardian alert control',
-      (tester) async {
+  testWidgets('patient saved list does not expose guardian alert control', (
+    tester,
+  ) async {
     final client = MockClient(_savedMedicationResponse);
     final viewModel = MedBuddyViewModel(
       checkSavedMedication: CheckSavedMedication(
@@ -36,8 +37,9 @@ void main() {
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
 
-  testWidgets('group delete reports mixed results instead of full success',
-      (tester) async {
+  testWidgets('group delete reports mixed results instead of full success', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient(_mixedDeleteResponse);
     final viewModel = MedBuddyViewModel(
@@ -81,6 +83,59 @@ void main() {
       [2],
     );
   });
+
+  testWidgets(
+    'saved medication list switches between registration and medication dates',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = MockClient(_sortableMedicationResponse);
+      final viewModel = MedBuddyViewModel(
+        checkSavedMedication: CheckSavedMedication(
+          baseUrl: 'http://medbuddy.test',
+          client: client,
+        ),
+        manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+        apiClient: client,
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: viewModel,
+          child: const MaterialApp(home: CheckSavedMedicationUI()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final newestRegistration = find.text('등록최신약');
+      final newestMedicationDate = find.text('복용최신약');
+      expect(find.text('등록일자순'), findsOneWidget);
+      expect(find.text('복용날짜순'), findsOneWidget);
+      expect(
+        tester.getTopLeft(newestRegistration).dy,
+        lessThan(tester.getTopLeft(newestMedicationDate).dy),
+      );
+
+      await tester.tap(find.text('복용날짜순'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(newestMedicationDate).dy,
+        lessThan(tester.getTopLeft(newestRegistration).dy),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+      expect(
+        tester.getTopLeft(newestRegistration).dy,
+        lessThan(tester.getTopLeft(newestMedicationDate).dy),
+      );
+    },
+  );
 }
 
 Future<http.Response> _savedMedicationResponse(http.Request request) async {
@@ -138,6 +193,31 @@ Future<http.Response> _mixedDeleteResponse(http.Request request) async {
     );
   }
   return http.Response('Not found', 404);
+}
+
+Future<http.Response> _sortableMedicationResponse(http.Request request) async {
+  if (request.method != 'GET' || request.url.path != '/list') {
+    return http.Response('Not found', 404);
+  }
+  return http.Response(
+    jsonEncode({
+      'success': true,
+      'data': [
+        {
+          ..._savedMedicationJson(request, 1, '등록최신약'),
+          'created_date': '2026-07-22',
+          'prescription_date': '2026-07-01',
+        },
+        {
+          ..._savedMedicationJson(request, 2, '복용최신약'),
+          'created_date': '2026-07-20',
+          'prescription_date': '2026-07-21',
+        },
+      ],
+    }),
+    200,
+    headers: {'content-type': 'application/json; charset=utf-8'},
+  );
 }
 
 Map<String, dynamic> _savedMedicationJson(
