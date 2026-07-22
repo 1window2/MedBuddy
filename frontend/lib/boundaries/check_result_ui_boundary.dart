@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/prescription_change_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'prescription_change_radar_ui_boundary.dart';
 
 // 파일명: check_result_ui_boundary.dart
 // 역할: 공공데이터 분석이 끝난 처방전 결과 목록 화면을 구성한다.
@@ -16,6 +18,8 @@ import '../theme/medbuddy_theme.dart';
 // - 저장 결과를 Snackbar로 사용자에게 알린다.
 class CheckResultUI extends StatelessWidget {
   final List<AnalyzedMedication> analyzedMedicationList;
+  final PrescriptionChangeRadar? prescriptionChangeRadar;
+  final bool isPrescriptionChangeLoading;
   final UserSetting userSetting;
   final String Function() statusMessageProvider;
   final int? savingMedicationIndex;
@@ -26,11 +30,14 @@ class CheckResultUI extends StatelessWidget {
   final Future<bool> Function(
     AnalyzedMedication analyzedMedication,
     int medicationIndex,
-  ) onMedicationSaveRequested;
+  )
+  onMedicationSaveRequested;
 
   const CheckResultUI({
     super.key,
     required this.analyzedMedicationList,
+    this.prescriptionChangeRadar,
+    this.isPrescriptionChangeLoading = false,
     required this.userSetting,
     required this.statusMessageProvider,
     required this.savingMedicationIndex,
@@ -66,21 +73,44 @@ class CheckResultUI extends StatelessWidget {
                 children: [
                   ListView.builder(
                     padding: const EdgeInsets.fromLTRB(40, 10, 40, 126),
-                    itemCount: analyzedMedicationList.length,
+                    itemCount:
+                        analyzedMedicationList.length +
+                        (prescriptionChangeRadar != null ||
+                                isPrescriptionChangeLoading
+                            ? 1
+                            : 0),
                     itemBuilder: (context, index) {
-                      final analyzedMedication = analyzedMedicationList[index];
+                      final hasRadarSlot =
+                          prescriptionChangeRadar != null ||
+                          isPrescriptionChangeLoading;
+                      if (hasRadarSlot && index == 0) {
+                        if (isPrescriptionChangeLoading) {
+                          return PrescriptionChangeRadarLoadingUI(
+                            userSetting: userSetting,
+                          );
+                        }
+                        return PrescriptionChangeRadarUI(
+                          radar: prescriptionChangeRadar!,
+                          userSetting: userSetting,
+                        );
+                      }
+
+                      final medicationIndex = hasRadarSlot ? index - 1 : index;
+                      final analyzedMedication =
+                          analyzedMedicationList[medicationIndex];
                       return _MedicationResultCard(
                         analyzedMedication: analyzedMedication,
                         text: text,
                         userSetting: userSetting,
-                        isMedicationSaving: savingMedicationIndex == index,
-                        isMedicationSaved:
-                            completedMedicationSaveIndexes.contains(index),
+                        isMedicationSaving:
+                            savingMedicationIndex == medicationIndex,
+                        isMedicationSaved: completedMedicationSaveIndexes
+                            .contains(medicationIndex),
                         isAllMedicationSaving: isAllMedicationSaving,
                         onMedicationSaveRequested: () async {
                           final success = await onMedicationSaveRequested(
                             analyzedMedication,
-                            index,
+                            medicationIndex,
                           );
                           if (!context.mounted) {
                             return;
@@ -105,7 +135,8 @@ class CheckResultUI extends StatelessWidget {
                       text: text,
                       userSetting: userSetting,
                       isSaving: isAllMedicationSaving,
-                      isCompleted: completedMedicationSaveIndexes.length >=
+                      isCompleted:
+                          completedMedicationSaveIndexes.length >=
                           analyzedMedicationList.length,
                       onPressed: () async {
                         final success = await onAllMedicationSaveRequested();
@@ -311,8 +342,8 @@ class _BulkSaveButton extends StatelessWidget {
             isCompleted
                 ? text.allSaved
                 : isSaving
-                    ? text.savingAll
-                    : text.saveAll,
+                ? text.savingAll
+                : text.saveAll,
           ),
           style: FilledButton.styleFrom(
             backgroundColor: MedBuddyColors.primary,
