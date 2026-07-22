@@ -73,7 +73,7 @@ async def test_large_api_search_medication_uses_approval_catalog_contract(
     ) -> tuple[list[dict[str, object]], int]:
         assert url == settings.ADVANCED_DRUG_API_BASE_URL
         assert params["item_name"] == "sample tablet"
-        assert params["numOfRows"] == 1
+        assert params["numOfRows"] == 5
         return ([{"ITEM_NAME": "sample tablet"}], 1)
 
     monkeypatch.setattr(transport, "request_items", fake_request_items)

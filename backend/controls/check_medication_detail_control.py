@@ -6,7 +6,8 @@ import json
 import logging
 import math
 import re
-from typing import Any
+from difflib import SequenceMatcher
+from typing import Any, Callable, TypeVar
 
 import redis.asyncio as redis
 from google import genai
@@ -30,6 +31,8 @@ from entities.medication_detail_entity import (
 from schemas.medication import MedicationResponse
 
 logger = logging.getLogger(__name__)
+
+_CandidateT = TypeVar("_CandidateT")
 
 
 def _read_text(value: Any, default: str = "정보 없음") -> str:
@@ -270,6 +273,214 @@ class _MedicationTextNormalizer:
         return deduplicated_keywords
 
 
+# 클래스명: _MedicationNameMatcher
+# 역할: OCR 검색어와 약품 후보 이름의 유사도를 계산하고 신뢰 가능한 후보를 선별한다.
+# 주요 책임:
+# - 기존 검색어 정규화 결과를 비교 가능한 문자열 키로 변환한다.
+# - 완전 일치, 포함 관계, 문자열 유사도를 조합해 이름 점수를 계산한다.
+# - 짧은 약 이름에는 더 엄격한 임계값을 적용해 오탐을 줄인다.
+class _MedicationNameMatcher:
+    _NON_NAME_CHARACTER_PATTERN = re.compile(r"[^0-9a-z가-힣]+", re.IGNORECASE)
+    _DOSAGE_VALUE_PATTERN = re.compile(
+        r"(\d+(?:\.\d+)?)\s*(mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
+        re.IGNORECASE,
+    )
+    _LONG_NAME_MIN_SCORE = 0.76
+    _MEDIUM_NAME_MIN_SCORE = 0.84
+    _SHORT_NAME_MIN_SCORE = 0.96
+
+    def __init__(
+        self,
+        text_normalizer: _MedicationTextNormalizer | None = None,
+    ) -> None:
+        self.text_normalizer = text_normalizer or _MedicationTextNormalizer()
+
+    # 함수이름: calculate_score
+    # 함수역할:
+    # - OCR 검색어와 공공데이터 약품명의 가장 높은 이름 유사도를 계산한다.
+    # 매개변수:
+    # - search_text: OCR 보정 과정을 거친 검색어
+    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # 반환값:
+    # - 0.0 이상 1.0 이하의 이름 유사도 점수
+    def calculate_score(self, search_text: str, candidate_name: str) -> float:
+        direct_search_key = self._normalize_match_key(search_text)
+        direct_candidate_key = self._normalize_match_key(candidate_name)
+        direct_score = self._calculate_pair_score(
+            direct_search_key,
+            direct_candidate_key,
+        )
+        search_keys = self._build_match_keys(search_text)
+        candidate_keys = self._build_match_keys(candidate_name)
+        if not search_keys or not candidate_keys:
+            return direct_score
+
+        variant_score = max(
+            self._calculate_pair_score(search_key, candidate_key)
+            for search_key in search_keys
+            for candidate_key in candidate_keys
+        )
+        name_score = max(direct_score, min(variant_score, 0.92))
+        return self._adjust_dosage_score(
+            name_score,
+            search_text,
+            candidate_name,
+        )
+
+    # 함수이름: is_confident_match
+    # 함수역할:
+    # - 검색어 길이에 따른 최소 점수를 적용해 후보를 사용할 수 있는지 판정한다.
+    # 매개변수:
+    # - search_text: OCR 보정 과정을 거친 검색어
+    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # 반환값:
+    # - 신뢰 가능한 이름 후보이면 True, 아니면 False
+    def is_confident_match(self, search_text: str, candidate_name: str) -> bool:
+        score = self.calculate_score(search_text, candidate_name)
+        return score >= self._required_score(search_text)
+
+    # 함수이름: rank_candidates
+    # 함수역할:
+    # - 여러 약품 후보 중 최소 유사도를 통과한 항목만 점수순으로 정렬한다.
+    # 매개변수:
+    # - search_text: OCR 보정 과정을 거친 검색어
+    # - candidates: DB 또는 API에서 조회한 원본 후보 목록
+    # - name_reader: 후보 객체에서 약품명을 읽는 함수
+    # - limit: 반환할 최대 후보 수
+    # 반환값:
+    # - 신뢰도 점수가 높은 순서로 정렬된 후보 목록
+    def rank_candidates(
+        self,
+        search_text: str,
+        candidates: list[_CandidateT],
+        name_reader: Callable[[_CandidateT], str],
+        limit: int,
+    ) -> list[_CandidateT]:
+        ranked_candidates: list[tuple[float, int, _CandidateT]] = []
+        required_score = self._required_score(search_text)
+        for candidate_index, candidate in enumerate(candidates):
+            score = self.calculate_score(search_text, name_reader(candidate))
+            if score < required_score:
+                continue
+            ranked_candidates.append((score, candidate_index, candidate))
+
+        ranked_candidates.sort(key=lambda item: (-item[0], item[1]))
+        return [item[2] for item in ranked_candidates[:limit]]
+
+    # 함수이름: _build_match_keys
+    # 함수역할:
+    # - 괄호, 용량, 제형, 제조사와 OCR 변형을 반영한 비교 키를 생성한다.
+    # 매개변수:
+    # - value: 비교할 원본 약품명
+    # 반환값:
+    # - 중복과 기호가 제거된 이름 비교 키 목록
+    def _build_match_keys(self, value: str) -> list[str]:
+        raw_candidates = self.text_normalizer.build_search_keywords(value)
+        normalized_keys = [
+            self._normalize_match_key(candidate) for candidate in raw_candidates
+        ]
+        return list(dict.fromkeys(key for key in normalized_keys if key))
+
+    # 함수이름: _normalize_match_key
+    # 함수역할:
+    # - 약품명에서 공백과 기호를 제거하고 영문 대소문자를 통일한다.
+    # 매개변수:
+    # - value: 정규화할 약품명
+    # 반환값:
+    # - 숫자, 영문, 한글만 남긴 비교 문자열
+    @classmethod
+    def _normalize_match_key(cls, value: str) -> str:
+        return cls._NON_NAME_CHARACTER_PATTERN.sub("", value).casefold()
+
+    # 함수이름: _calculate_pair_score
+    # 함수역할:
+    # - 두 비교 키의 완전 일치, 포함 관계, 문자열 배열 유사도를 계산한다.
+    # 매개변수:
+    # - left: 첫 번째 이름 비교 키
+    # - right: 두 번째 이름 비교 키
+    # 반환값:
+    # - 0.0 이상 1.0 이하의 두 문자열 유사도
+    @staticmethod
+    def _calculate_pair_score(left: str, right: str) -> float:
+        if not left or not right:
+            return 0.0
+        if left == right:
+            return 1.0
+
+        shorter_length = min(len(left), len(right))
+        longer_length = max(len(left), len(right))
+        containment_score = 0.0
+        if shorter_length >= 4 and (left in right or right in left):
+            containment_score = 0.90 + (0.10 * shorter_length / longer_length)
+
+        sequence_score = SequenceMatcher(
+            None,
+            left,
+            right,
+            autojunk=False,
+        ).ratio()
+        return max(containment_score, sequence_score)
+
+    # 함수이름: _required_score
+    # 함수역할:
+    # - 짧은 약품명의 오탐을 줄이기 위해 검색어 길이별 최소 점수를 선택한다.
+    # 매개변수:
+    # - search_text: OCR 보정 과정을 거친 검색어
+    # 반환값:
+    # - 해당 검색어에 적용할 최소 유사도 점수
+    def _required_score(self, search_text: str) -> float:
+        normalized_search = self._normalize_match_key(search_text)
+        if len(normalized_search) <= 3:
+            return self._SHORT_NAME_MIN_SCORE
+        if len(normalized_search) <= 5:
+            return self._MEDIUM_NAME_MIN_SCORE
+        return self._LONG_NAME_MIN_SCORE
+
+    # 함수이름: _adjust_dosage_score
+    # 함수역할:
+    # - 이름이 비슷한 다른 함량 제품보다 OCR 함량과 같은 후보를 우선한다.
+    # 매개변수:
+    # - name_score: 약품명 문자열만으로 계산한 유사도
+    # - search_text: OCR 보정 과정을 거친 검색어
+    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # 반환값:
+    # - 함량 일치 여부를 반영해 0.0 이상 1.0 이하로 보정한 점수
+    def _adjust_dosage_score(
+        self,
+        name_score: float,
+        search_text: str,
+        candidate_name: str,
+    ) -> float:
+        search_dosages = self._extract_dosage_values(search_text)
+        candidate_dosages = self._extract_dosage_values(candidate_name)
+        if not search_dosages or not candidate_dosages:
+            return name_score
+        if search_dosages & candidate_dosages:
+            return min(1.0, name_score + 0.03)
+        return max(0.0, name_score - 0.08)
+
+    # 함수이름: _extract_dosage_values
+    # 함수역할:
+    # - 영문과 한글 함량 단위를 공통 형식으로 바꿔 비교 가능한 값으로 추출한다.
+    # 매개변수:
+    # - value: 함량 표기가 포함될 수 있는 약품명
+    # 반환값:
+    # - 숫자와 표준화된 단위를 결합한 함량 값 집합
+    def _extract_dosage_values(self, value: str) -> set[str]:
+        unit_aliases = {
+            "밀리그램": "mg",
+            "밀리그람": "mg",
+            "그램": "g",
+            "그람": "g",
+            "밀리리터": "ml",
+        }
+        dosage_values: set[str] = set()
+        for amount, raw_unit in self._DOSAGE_VALUE_PATTERN.findall(value):
+            normalized_unit = unit_aliases.get(raw_unit.casefold(), raw_unit.casefold())
+            dosage_values.add(f"{amount}:{normalized_unit}")
+        return dosage_values
+
+
 # Class Name: _MedicationDetailCache
 # Role: Internal Redis cache boundary for medication detail lookup.
 # Responsibilities:
@@ -474,14 +685,18 @@ class _MedicationSummaryGenerator:
 #   - guide_generator: AI guide generator for missing local summaries.
 class _LocalMedicationCatalog:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
+    _FUZZY_ANCHOR_LENGTH = 3
+    _FUZZY_CANDIDATE_LIMIT = 30
 
     def __init__(
         self,
         db: Session | None,
         summary_generator: _MedicationSummaryGenerator,
+        name_matcher: _MedicationNameMatcher | None = None,
     ) -> None:
         self.db = db
         self.summary_generator = summary_generator
+        self.name_matcher = name_matcher or _MedicationNameMatcher()
 
     # Function Name: fetch_drug_info
     # Description:
@@ -509,6 +724,14 @@ class _LocalMedicationCatalog:
         logger.info("[Local DB] approval lookup succeeded.")
         return [await self._build_approval_detail(drug_name, approval_items[0])]
 
+    # 함수이름: _search_basic
+    # 함수역할:
+    # - 로컬 e약은요 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
+    # 매개변수:
+    # - drug_name: OCR 보정 검색어
+    # - limit: 반환할 최대 후보 수
+    # 반환값:
+    # - 이름 유사도 임계값을 통과한 e약은요 후보 목록
     def _search_basic(self, drug_name: str, limit: int = 3) -> list[_DrugBasicInfo]:
         keyword = self._normalize_name(drug_name)
         if not keyword:
@@ -523,24 +746,27 @@ class _LocalMedicationCatalog:
         if exact_matches:
             return exact_matches
 
-        return (
+        candidates = (
             self.db.query(_DrugBasicInfo)
-            .filter(
-                or_(
-                    _DrugBasicInfo.normalized_item_name.like(
-                        self._like_pattern(keyword, suffix="%"),
-                        escape="\\",
-                    ),
-                    _DrugBasicInfo.normalized_item_name.like(
-                        self._like_pattern(keyword, prefix="%", suffix="%"),
-                        escape="\\",
-                    ),
-                )
-            )
-            .limit(limit)
+            .filter(self._build_fuzzy_filter(_DrugBasicInfo, keyword))
+            .limit(self._FUZZY_CANDIDATE_LIMIT)
             .all()
         )
+        return self.name_matcher.rank_candidates(
+            drug_name,
+            candidates,
+            lambda item: item.item_name,
+            limit,
+        )
 
+    # 함수이름: _search_approval
+    # 함수역할:
+    # - 로컬 허가정보 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
+    # 매개변수:
+    # - drug_name: OCR 보정 검색어
+    # - limit: 반환할 최대 후보 수
+    # 반환값:
+    # - 이름 유사도 임계값을 통과한 허가정보 후보 목록
     def _search_approval(
         self,
         drug_name: str,
@@ -559,23 +785,62 @@ class _LocalMedicationCatalog:
         if exact_matches:
             return exact_matches
 
-        return (
+        candidates = (
             self.db.query(_DrugApprovalInfo)
-            .filter(
-                or_(
-                    _DrugApprovalInfo.normalized_item_name.like(
-                        self._like_pattern(keyword, suffix="%"),
-                        escape="\\",
-                    ),
-                    _DrugApprovalInfo.normalized_item_name.like(
-                        self._like_pattern(keyword, prefix="%", suffix="%"),
-                        escape="\\",
-                    ),
-                )
-            )
-            .limit(limit)
+            .filter(self._build_fuzzy_filter(_DrugApprovalInfo, keyword))
+            .limit(self._FUZZY_CANDIDATE_LIMIT)
             .all()
         )
+        return self.name_matcher.rank_candidates(
+            drug_name,
+            candidates,
+            lambda item: item.item_name,
+            limit,
+        )
+
+    # 함수이름: _build_fuzzy_filter
+    # 함수역할:
+    # - 전체 검색어와 부분 앵커 중 하나를 포함하는 로컬 DB 조회 조건을 만든다.
+    # 매개변수:
+    # - model: 조회할 로컬 약품 SQLAlchemy 모델
+    # - keyword: 공백을 제거한 검색어
+    # 반환값:
+    # - SQLAlchemy OR 검색 조건
+    def _build_fuzzy_filter(
+        self,
+        model: type[_DrugBasicInfo] | type[_DrugApprovalInfo],
+        keyword: str,
+    ) -> Any:
+        search_fragments = [keyword, *self._build_fuzzy_anchors(keyword)]
+        return or_(
+            *(
+                model.normalized_item_name.like(
+                    self._like_pattern(fragment, prefix="%", suffix="%"),
+                    escape="\\",
+                )
+                for fragment in search_fragments
+            )
+        )
+
+    # 함수이름: _build_fuzzy_anchors
+    # 함수역할:
+    # - 한두 글자 OCR 오류가 있어도 후보를 찾도록 검색어 앞·중간·뒤 조각을 만든다.
+    # 매개변수:
+    # - keyword: 공백을 제거한 검색어
+    # 반환값:
+    # - 중복이 제거된 세 글자 검색 조각 목록
+    def _build_fuzzy_anchors(self, keyword: str) -> list[str]:
+        if len(keyword) < self._FUZZY_ANCHOR_LENGTH + 2:
+            return []
+
+        anchor_length = self._FUZZY_ANCHOR_LENGTH
+        middle_start = max(0, (len(keyword) - anchor_length) // 2)
+        anchors = [
+            keyword[:anchor_length],
+            keyword[middle_start : middle_start + anchor_length],
+            keyword[-anchor_length:],
+        ]
+        return list(dict.fromkeys(anchor for anchor in anchors if anchor))
 
     async def _build_basic_details(
         self,
@@ -798,8 +1063,12 @@ class CheckMedicationDetail:
         pill_image_api: PillImageAPI | None = None,
         summary_generator: _MedicationSummaryGenerator | None = None,
         local_medication_catalog: _LocalMedicationCatalog | None = None,
+        name_matcher: _MedicationNameMatcher | None = None,
     ) -> None:
         self.text_normalizer = text_normalizer or _MedicationTextNormalizer()
+        self.name_matcher = name_matcher or _MedicationNameMatcher(
+            self.text_normalizer
+        )
         self.medication_cache = medication_cache or _MedicationDetailCache()
         self.public_drug_small_api = public_drug_small_api or PublicDrugSmallAPI()
         self.public_drug_large_api = public_drug_large_api or PublicDrugLargeAPI()
@@ -808,6 +1077,7 @@ class CheckMedicationDetail:
         self.local_medication_catalog = local_medication_catalog or _LocalMedicationCatalog(
             db=db,
             summary_generator=self.summary_generator,
+            name_matcher=self.name_matcher,
         )
 
     # Function Name: requestMedicationDetail
@@ -859,7 +1129,14 @@ class CheckMedicationDetail:
 
         cached_drugs = await self.medication_cache.get(drug_name)
         if cached_drugs is not None:
-            return await self._enrich_missing_image_urls(cached_drugs)
+            ranked_cached_drugs = self.name_matcher.rank_candidates(
+                drug_name,
+                cached_drugs,
+                lambda item: item.item_name,
+                limit=3,
+            )
+            if ranked_cached_drugs:
+                return await self._enrich_missing_image_urls(ranked_cached_drugs)
 
         medication_details = await self._fetch_public_drug_info(drug_name)
         await self.medication_cache.set(drug_name, medication_details)
@@ -897,6 +1174,12 @@ class CheckMedicationDetail:
         drug_name: str,
     ) -> list[MedicationDetail]:
         basic_items = await self.public_drug_small_api.searchMedication(drug_name)
+        basic_items = self.name_matcher.rank_candidates(
+            drug_name,
+            basic_items,
+            read_public_item_name,
+            limit=3,
+        )
         if basic_items:
             logger.info(
                 "[Basic API] search succeeded (%s items)",
@@ -907,6 +1190,12 @@ class CheckMedicationDetail:
 
         logger.info("[Basic API] no result. Trying Advanced API fallback.")
         advanced_items = await self.public_drug_large_api.searchMedication(drug_name)
+        advanced_items = self.name_matcher.rank_candidates(
+            drug_name,
+            advanced_items,
+            read_public_item_name,
+            limit=1,
+        )
         if not advanced_items:
             logger.warning("No drug information found in public drug databases.")
             return []

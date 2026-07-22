@@ -22,6 +22,7 @@ from core.config import settings
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
+    _MedicationNameMatcher,
     _MedicationSummaryGenerator,
     _MedicationTextNormalizer,
     _read_text,
@@ -125,6 +126,55 @@ def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
 
     assert "대웅바이오클래리트로마이신" in search_keywords
     assert "클래리트로마이신" in search_keywords
+
+
+def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
+    matcher = _MedicationNameMatcher()
+
+    score = matcher.calculate_score(
+        "켈로인정(펠루비프로펜)",
+        "켈로인정30밀리그램(펠루비프로펜)",
+    )
+
+    assert score >= 0.90
+    assert matcher.is_confident_match(
+        "켈로인정(펠루비프로펜)",
+        "켈로인정30밀리그램(펠루비프로펜)",
+    )
+
+
+def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
+    matcher = _MedicationNameMatcher()
+
+    assert matcher.is_confident_match(
+        "클래리트로마이산",
+        "클래리트로마이신정250밀리그램",
+    )
+
+
+def test_name_matcher_rejects_unrelated_medication_name() -> None:
+    matcher = _MedicationNameMatcher()
+
+    assert not matcher.is_confident_match("아스피린정", "타이레놀정")
+
+
+def test_name_matcher_ranks_best_candidate_first() -> None:
+    matcher = _MedicationNameMatcher()
+    candidates = [
+        {"itemName": "클래리트로마이신정500밀리그램"},
+        {"itemName": "아목시실린캡슐500밀리그램"},
+        {"itemName": "클래리트로마이산정250밀리그램"},
+    ]
+
+    ranked_candidates = matcher.rank_candidates(
+        "클래리트로마이신정250밀리그램",
+        candidates,
+        lambda item: item["itemName"],
+        limit=3,
+    )
+
+    assert ranked_candidates[0]["itemName"] == "클래리트로마이산정250밀리그램"
+    assert all("아목시실린" not in item["itemName"] for item in ranked_candidates)
 
 
 def test_read_text_replaces_missing_public_api_fields() -> None:
