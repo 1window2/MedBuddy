@@ -22,7 +22,7 @@ jobs:
       uses: actions/checkout@v7
 
     - name: Set up Python for FastAPI
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: '3.11' # 추후 v3.12로 migrate할 가능성 있음
         cache: 'pip'
