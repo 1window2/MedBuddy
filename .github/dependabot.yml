@@ -1,24 +1,33 @@
 version: 2
-updates:
-  - package-ecosystem: "pip" # pip update
-    directory: "/backend" # requirements.txt
+
+multi-ecosystem-groups:
+  all-dependencies:
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "backend"
+      - "github-actions"
+
+updates:
+  # Python backend dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+
     ignore:
-      # Backend CI currently targets Python 3.11; numpy 2.5+ requires Python 3.12.
+      # Backend CI currently targets Python 3.11;
+      # numpy 2.5+ requires Python 3.12.
       - dependency-name: "numpy"
         versions:
           - ">=2.5.0"
 
-  # GitHub Actions update settings
+  # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "monthly"
-    labels:
-      - "dependencies"
-      - "github-actions"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
+    
