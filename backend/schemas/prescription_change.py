@@ -6,7 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.patient_hash_entity import (
+    DEFAULT_PATIENT_HASH,
+    MAX_PATIENT_HASH_LENGTH,
+)
 
 
 # 클래스명: PrescriptionChangeMedication
@@ -15,12 +18,12 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 #   - 공공데이터 품목 식별자, 약품명과 효능 정보를 보관한다.
 #   - 용량, 횟수, 기간 비교에 필요한 값을 보관한다.
 class PrescriptionChangeMedication(BaseModel):
-    item_seq: str = ""
-    item_name: str
-    efficacy: str = ""
-    dosage_per_time: str = ""
-    daily_frequency: str = ""
-    total_days: str = ""
+    item_seq: str = Field(default="", max_length=64)
+    item_name: str = Field(min_length=1, max_length=500)
+    efficacy: str = Field(default="", max_length=20_000)
+    dosage_per_time: str = Field(default="", max_length=100)
+    daily_frequency: str = Field(default="", max_length=100)
+    total_days: str = Field(default="", max_length=100)
 
 
 # 클래스명: PrescriptionChangeRequest
@@ -29,7 +32,11 @@ class PrescriptionChangeMedication(BaseModel):
 #   - 비교 대상 환자와 현재 조제일자를 지정한다.
 #   - 한 번에 비교할 현재 처방 약품 목록을 제한한다.
 class PrescriptionChangeRequest(BaseModel):
-    patient_hash: str = DEFAULT_PATIENT_HASH
+    patient_hash: str = Field(
+        default=DEFAULT_PATIENT_HASH,
+        min_length=1,
+        max_length=MAX_PATIENT_HASH_LENGTH,
+    )
     prescription_date: date | None = None
     medications: list[PrescriptionChangeMedication] = Field(
         min_length=1,

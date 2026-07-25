@@ -1,0 +1,35 @@
+# 파일명: test_config_validation.py
+# 역할: 외부 API 주소와 제한 시간 환경설정이 서버 시작 전에 검증되는지 확인한다.
+
+import unittest
+
+from pydantic import ValidationError
+
+from core.config import Settings
+
+
+class ConfigValidationTest(unittest.TestCase):
+    def test_http_public_data_endpoint_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(
+                _env_file=None,
+                GEMINI_API_KEY="test-gemini-key",
+                PUBLIC_DATA_API_KEY="test-public-data-key",
+                PILL_IMAGE_API_BASE_URL=(
+                    "http://apis.data.go.kr/1471000/"
+                    "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
+                ),
+            )
+
+    def test_non_positive_timeout_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(
+                _env_file=None,
+                GEMINI_API_KEY="test-gemini-key",
+                PUBLIC_DATA_API_KEY="test-public-data-key",
+                PRESCRIPTION_OCR_TIMEOUT_SECONDS=0,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

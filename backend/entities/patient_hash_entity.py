@@ -7,6 +7,7 @@ import string
 from pydantic import BaseModel
 
 DEFAULT_PATIENT_HASH = "local_patient"
+MAX_PATIENT_HASH_LENGTH = 128
 PATIENT_LINK_CODE_LENGTH = 8
 _PATIENT_LINK_CODE_ALPHABET = string.ascii_uppercase + string.digits
 
