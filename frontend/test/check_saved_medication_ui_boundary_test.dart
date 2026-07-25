@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
@@ -13,6 +14,75 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('빈 저장 목록의 촬영 버튼은 처방전 분석과 낱알약 식별을 제공한다', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient(_emptySavedMedicationResponse);
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      ),
+      apiClient: client,
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: viewModel,
+        child: const MaterialApp(home: CheckSavedMedicationUI()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('처방전 촬영하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('처방전 분석'), findsOneWidget);
+    expect(find.text('낱알약 식별'), findsOneWidget);
+
+    await tester.tap(find.text('낱알약 식별'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PillIdentificationUI), findsOneWidget);
+  });
+
+  testWidgets('빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient(_emptySavedMedicationResponse);
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      ),
+      apiClient: client,
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: viewModel,
+        child: const MaterialApp(home: CheckSavedMedicationUI()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('처방전 촬영하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('처방전 분석'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('카메라로 촬영'), findsOneWidget);
+    expect(find.text('갤러리에서 선택'), findsOneWidget);
+  });
+
   testWidgets('patient saved list does not expose guardian alert control', (
     tester,
   ) async {
@@ -178,6 +248,19 @@ void main() {
     expect(find.text('Saved Medication'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<http.Response> _emptySavedMedicationResponse(
+  http.Request request,
+) async {
+  if (request.method == 'GET' && request.url.path == '/list') {
+    return http.Response(
+      jsonEncode({'success': true, 'data': <Map<String, dynamic>>[]}),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  }
+  return http.Response('Not found', 404);
 }
 
 Future<http.Response> _savedMedicationResponse(http.Request request) async {

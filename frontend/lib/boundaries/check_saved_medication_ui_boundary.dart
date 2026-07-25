@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'check_medication_detail_ui_boundary.dart';
+import 'medication_capture_options_ui_boundary.dart';
+import 'pill_identification_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -156,8 +158,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       return _SavedMedicationEmptyState(
         text: text,
         userSetting: viewModel.userSetting,
-        onPrescriptionInputRequested: () {
-          _showPrescriptionInputOptions(viewModel: viewModel, text: text);
+        onPrescriptionInputRequested: () async {
+          await _showMedicationCaptureOptions(viewModel: viewModel);
         },
       );
     }
@@ -238,70 +240,49 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // 함수명: _showPrescriptionInputOptions
+  // 함수이름: _showMedicationCaptureOptions
   // 함수역할:
-  // - 저장 목록이 비어 있을 때 처방전 입력 방식을 카메라/갤러리 중 선택하게 한다.
-  // - 선택 후 저장 목록 화면을 닫고 홈 화면의 분석 흐름으로 이어준다.
+  // - 저장 목록이 비어 있을 때 처방전 분석과 낱알약 식별 중 작업을 선택하게 한다.
+  // - 처방전 분석은 이미지 출처를 추가로 선택하고 낱알약 식별은 전용 화면으로 이동한다.
   // 매개변수:
-  // - viewModel: 처방전 입력 요청을 수행할 ViewModel
-  // - text: 현재 언어에 맞는 저장 목록 문구 묶음
+  // - viewModel: 사용자 설정과 처방전 입력 요청을 제공하는 ViewModel
   // 반환값:
   // - 없음
-  void _showPrescriptionInputOptions({
+  Future<void> _showMedicationCaptureOptions({
     required MedBuddyViewModel viewModel,
-    required _SavedMedicationText text,
-  }) {
-    showModalBottomSheet<void>(
+  }) async {
+    final task = await showMedicationCaptureTaskOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: MedBuddyColors.outline,
-                    borderRadius: MedBuddyRadii.pill,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _SavedMedicationInputOption(
-                  icon: Icons.photo_camera_outlined,
-                  title: text.cameraOption,
-                  subtitle: text.cameraOptionSubtitle,
-                  userSetting: viewModel.userSetting,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    Navigator.pop(context);
-                    viewModel.requestPrescriptionImage();
-                  },
-                ),
-                const SizedBox(height: 10),
-                _SavedMedicationInputOption(
-                  icon: Icons.photo_library_outlined,
-                  title: text.galleryOption,
-                  subtitle: text.galleryOptionSubtitle,
-                  userSetting: viewModel.userSetting,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    Navigator.pop(context);
-                    viewModel.requestPrescriptionImageFromGallery();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      userSetting: viewModel.userSetting,
     );
+    if (!mounted || task == null) {
+      return;
+    }
+    if (task == MedicationCaptureTask.pill) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              PillIdentificationUI(userSetting: viewModel.userSetting),
+        ),
+      );
+      return;
+    }
+
+    final source = await showPrescriptionImageSourceOptions(
+      context: context,
+      userSetting: viewModel.userSetting,
+    );
+    if (!mounted || source == null) {
+      return;
+    }
+
+    Navigator.pop(context);
+    if (source == PrescriptionImageSource.camera) {
+      viewModel.requestPrescriptionImage();
+      return;
+    }
+    viewModel.requestPrescriptionImageFromGallery();
   }
 
   // 함수명: _confirmAndDeleteMedicationGroup
@@ -549,87 +530,6 @@ class _SavedMedicationEmptyState extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-// 클래스명: _SavedMedicationInputOption
-// 역할: 저장 목록 빈 상태에서 카메라/갤러리 처방전 입력 선택지를 표시한다.
-// 주요 책임:
-// - 입력 방식의 아이콘, 제목, 설명을 한 행으로 보여준다.
-// - 사용자가 선택한 입력 방식 콜백을 실행한다.
-class _SavedMedicationInputOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final UserSetting userSetting;
-  final VoidCallback onTap;
-
-  const _SavedMedicationInputOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return Material(
-      color: const Color(0xFFF4FFF4),
-      borderRadius: MedBuddyRadii.card,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: MedBuddyColors.primary, size: 30),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13 * scale,
-                        height: 1.25,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                color: MedBuddyColors.primary,
-                size: 24,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1527,14 +1427,8 @@ class _SavedMedicationText {
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
   String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';
   String get scanSubtitle => isEnglish
-      ? 'Take a photo or choose one from your gallery'
-      : '카메라 또는 갤러리에서 처방전을 추가해주세요';
-  String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
-  String get cameraOptionSubtitle =>
-      isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
-  String get galleryOption => isEnglish ? 'Choose From Gallery' : '갤러리에서 선택';
-  String get galleryOptionSubtitle =>
-      isEnglish ? 'Load a saved prescription image.' : '저장된 처방전 이미지를 불러옵니다.';
+      ? 'Choose prescription analysis or loose-pill identification'
+      : '처방전 분석 또는 낱알약 식별을 선택해주세요';
   String get noInformation => isEnglish ? 'No information' : '정보 없음';
   String get registeredDate => isEnglish ? 'Registered' : '등록일자';
   String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';

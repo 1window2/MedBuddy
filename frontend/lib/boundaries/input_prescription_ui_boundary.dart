@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'check_today_medication_info_ui_boundary.dart';
+import 'medication_capture_options_ui_boundary.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -47,22 +48,20 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
-  const InputPrescriptionUI.analyzing({
-    super.key,
-    required this.statusMessage,
-  })  : userSetting = const UserSetting(),
-        todayMedicationScheduleList = const [],
-        todayMedicationCompletedCount = 0,
-        todayMedicationTotalCount = 0,
-        isTodayScheduleLoading = false,
-        onPrescriptionScanRequested = null,
-        onPrescriptionGalleryRequested = null,
-        onPillIdentificationRequested = null,
-        onTodayScheduleRequested = null,
-        onSavedMedicationRequested = null,
-        onPatientCaregiverLinkRequested = null,
-        onUserSettingRequested = null,
-        isAnalyzing = true;
+  const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
+    : userSetting = const UserSetting(),
+      todayMedicationScheduleList = const [],
+      todayMedicationCompletedCount = 0,
+      todayMedicationTotalCount = 0,
+      isTodayScheduleLoading = false,
+      onPrescriptionScanRequested = null,
+      onPrescriptionGalleryRequested = null,
+      onPillIdentificationRequested = null,
+      onTodayScheduleRequested = null,
+      onSavedMedicationRequested = null,
+      onPatientCaregiverLinkRequested = null,
+      onUserSettingRequested = null,
+      isAnalyzing = true;
 
   @override
   Widget build(BuildContext context) {
@@ -78,9 +77,7 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(
-              onSettingPressed: onUserSettingRequested,
-            ),
+            _HomeHeader(onSettingPressed: onUserSettingRequested),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
@@ -103,7 +100,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       subtitle: text.scanPrescriptionSubtitle,
                       filled: true,
                       userSetting: userSetting,
-                      onTap: () => _showAnalysisTaskOptions(context, text),
+                      onTap: () => _showAnalysisTaskOptions(context),
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
@@ -130,110 +127,39 @@ class InputPrescriptionUI extends StatelessWidget {
     );
   }
 
-  Future<void> _showAnalysisTaskOptions(
-    BuildContext context,
-    _HomeText text,
-  ) async {
-    final task = await showModalBottomSheet<_CameraAnalysisTask>(
+  // 함수이름: _showAnalysisTaskOptions
+  // 함수역할:
+  // - 공통 선택 화면에서 처방전 분석 또는 낱알약 식별 작업을 선택하게 한다.
+  // - 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
+  // 매개변수:
+  // - context: 선택 화면 표시와 화면 활성 상태 확인에 사용할 BuildContext
+  // 반환값:
+  // - 없음
+  Future<void> _showAnalysisTaskOptions(BuildContext context) async {
+    final task = await showMedicationCaptureTaskOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: MedBuddyColors.outline,
-                    borderRadius: MedBuddyRadii.pill,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _PrescriptionInputOption(
-                  icon: Icons.photo_camera_outlined,
-                  title: text.prescriptionTask,
-                  subtitle: text.prescriptionTaskSubtitle,
-                  userSetting: userSetting,
-                  onTap: () {
-                    Navigator.pop(context, _CameraAnalysisTask.prescription);
-                  },
-                ),
-                const SizedBox(height: 10),
-                _PrescriptionInputOption(
-                  icon: Icons.medication_outlined,
-                  title: text.pillTask,
-                  subtitle: text.pillTaskSubtitle,
-                  userSetting: userSetting,
-                  onTap: () {
-                    Navigator.pop(context, _CameraAnalysisTask.pill);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      userSetting: userSetting,
     );
 
     if (!context.mounted || task == null) {
       return;
     }
-    if (task == _CameraAnalysisTask.pill) {
+    if (task == MedicationCaptureTask.pill) {
       onPillIdentificationRequested?.call();
       return;
     }
-    _showPrescriptionSourceOptions(context, text);
-  }
-
-  void _showPrescriptionSourceOptions(
-    BuildContext context,
-    _HomeText text,
-  ) {
-    showModalBottomSheet<void>(
+    final source = await showPrescriptionImageSourceOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PrescriptionInputOption(
-                icon: Icons.photo_camera_outlined,
-                title: text.cameraOption,
-                subtitle: text.cameraOptionSubtitle,
-                userSetting: userSetting,
-                onTap: () {
-                  Navigator.pop(context);
-                  onPrescriptionScanRequested?.call();
-                },
-              ),
-              const SizedBox(height: 10),
-              _PrescriptionInputOption(
-                icon: Icons.photo_library_outlined,
-                title: text.galleryOption,
-                subtitle: text.galleryOptionSubtitle,
-                userSetting: userSetting,
-                onTap: () {
-                  Navigator.pop(context);
-                  onPrescriptionGalleryRequested?.call();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      userSetting: userSetting,
     );
+    if (!context.mounted || source == null) {
+      return;
+    }
+    if (source == PrescriptionImageSource.camera) {
+      onPrescriptionScanRequested?.call();
+      return;
+    }
+    onPrescriptionGalleryRequested?.call();
   }
 
   // 함수명: _buildAnalyzingScreen
@@ -324,9 +250,7 @@ class InputPrescriptionUI extends StatelessWidget {
 class _HomeHeader extends StatelessWidget {
   final VoidCallback? onSettingPressed;
 
-  const _HomeHeader({
-    required this.onSettingPressed,
-  });
+  const _HomeHeader({required this.onSettingPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -550,86 +474,6 @@ class _SurfaceCard extends StatelessWidget {
   }
 }
 
-class _PrescriptionInputOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final UserSetting userSetting;
-  final VoidCallback onTap;
-
-  const _PrescriptionInputOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return Material(
-      color: const Color(0xFFF4FFF4),
-      borderRadius: MedBuddyRadii.card,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: MedBuddyColors.primary,
-                size: 30,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13 * scale,
-                        height: 1.25,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                color: MedBuddyColors.primary,
-                size: 24,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HomeText {
   final String language;
 
@@ -651,23 +495,6 @@ class _HomeText {
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
   String get patientCaregiverLink =>
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
-  String get prescriptionTask =>
-      isEnglish ? 'Analyze a prescription' : '처방전 분석';
-  String get prescriptionTaskSubtitle => isEnglish
-      ? 'Extract medication names and schedules.'
-      : '처방전에서 약 이름과 복약 일정을 확인합니다.';
-  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
-  String get pillTaskSubtitle => isEnglish
-      ? 'Compare a photographed pill with MFDS candidates.'
-      : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
-  String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
-  String get cameraOptionSubtitle =>
-      isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
-  String get galleryOption => isEnglish ? 'Choose From Gallery' : '갤러리에서 선택';
-  String get galleryOptionSubtitle =>
-      isEnglish ? 'Load a saved prescription image.' : '저장된 처방전 이미지를 불러옵니다.';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
-
-enum _CameraAnalysisTask { prescription, pill }
