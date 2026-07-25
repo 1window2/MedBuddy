@@ -66,22 +66,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            _CloseButton(
-                              tooltip: text.close,
-                              onTap: () => Navigator.maybePop(context),
-                            ),
-                            const Spacer(),
-                            Container(
-                              width: 54,
-                              height: 54,
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
+                        _CloseButton(
+                          tooltip: text.close,
+                          onTap: () => Navigator.maybePop(context),
                         ),
                         const SizedBox(height: 22),
                         _SettingTitle(text.fontSizeTitle),
