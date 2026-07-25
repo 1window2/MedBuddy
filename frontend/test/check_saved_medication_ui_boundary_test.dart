@@ -136,6 +136,48 @@ void main() {
       );
     },
   );
+
+  testWidgets('영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient(_sortableMedicationResponse);
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      ),
+      manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+      apiClient: client,
+    );
+    addTearDown(viewModel.dispose);
+    await viewModel.requestUserSettingSave(
+      fontSizeOption: 'large',
+      readingSpeedOption: 'medium',
+      language: 'en',
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: viewModel,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
+          ),
+          home: const CheckSavedMedicationUI(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved Medication'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<http.Response> _savedMedicationResponse(http.Request request) async {

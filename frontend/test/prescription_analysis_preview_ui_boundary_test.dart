@@ -142,6 +142,62 @@ void main() {
     expect(updatedSchedule?.medicationTime, 5);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('OCR 수정 입력의 길이와 총 투약일 숫자를 제한한다', (tester) async {
+    await _setViewport(tester, const Size(320, 560));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: const [
+            MedicationSchedule(
+              medicationName: '테스트정',
+              dosage: '1정',
+              intakeTime: '1일 3회',
+              medicationTime: 3,
+            ),
+          ],
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () {},
+          onMedicationScheduleChanged: (_, _) {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('ocr-edit-0')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('ocr-edit-dosage')),
+      List.filled(50, '가').join(),
+    );
+    await tester.enterText(
+      find.byKey(const Key('ocr-edit-frequency')),
+      List.filled(50, '나').join(),
+    );
+    await tester.enterText(find.byKey(const Key('ocr-edit-days')), '12일345');
+    await tester.pump();
+
+    final dosageField = tester.widget<TextFormField>(
+      find.byKey(const Key('ocr-edit-dosage')),
+    );
+    final frequencyField = tester.widget<TextFormField>(
+      find.byKey(const Key('ocr-edit-frequency')),
+    );
+    final daysField = tester.widget<TextFormField>(
+      find.byKey(const Key('ocr-edit-days')),
+    );
+    expect(dosageField.controller?.text.length, 40);
+    expect(frequencyField.controller?.text.length, 40);
+    expect(daysField.controller?.text, '1234');
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {

@@ -456,81 +456,96 @@ class _SavedMedicationEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
 
-    return Column(
-      children: [
-        Expanded(
-          child: Center(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(22, 34, 22, 32),
-              decoration: BoxDecoration(
-                color: MedBuddyColors.surfaceSubtle,
-                borderRadius: MedBuddyRadii.card,
-                border: Border.all(color: MedBuddyColors.outline, width: 1.5),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.medication_outlined,
-                    color: MedBuddyColors.textLight,
-                    size: 42,
+    return CustomScrollView(
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(22, 34, 22, 32),
+                    decoration: BoxDecoration(
+                      color: MedBuddyColors.surfaceSubtle,
+                      borderRadius: MedBuddyRadii.card,
+                      border: Border.all(
+                        color: MedBuddyColors.outline,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.medication_outlined,
+                          color: MedBuddyColors.textLight,
+                          size: 42,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          text.emptyMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: MedBuddyColors.textMuted,
+                            fontSize: 16 * scale,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  Text(
-                    text.emptyMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: MedBuddyColors.textMuted,
-                      fontSize: 16 * scale,
-                      fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(minHeight: 178),
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: MedBuddyColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: MedBuddyRadii.card,
+                    ),
+                    textStyle: TextStyle(
+                      fontSize: 22 * scale,
+                      fontWeight: FontWeight.w800,
                       letterSpacing: 0,
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
-        SizedBox(
-          width: double.infinity,
-          height: 178,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: MedBuddyColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
-              textStyle: TextStyle(
-                fontSize: 22 * scale,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
-            onPressed: onPrescriptionInputRequested,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.photo_camera_outlined, size: 40),
-                const SizedBox(height: 18),
-                Text(text.scanPrescription, textAlign: TextAlign.center),
-                const SizedBox(height: 10),
-                Text(
-                  text.scanSubtitle,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: MedBuddyColors.mint,
-                    fontSize: 14 * scale,
-                    height: 1.35,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
+                  onPressed: onPrescriptionInputRequested,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.photo_camera_outlined, size: 40),
+                      const SizedBox(height: 18),
+                      Text(text.scanPrescription, textAlign: TextAlign.center),
+                      const SizedBox(height: 10),
+                      Text(
+                        text.scanSubtitle,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: MedBuddyColors.mint,
+                          fontSize: 14 * scale,
+                          height: 1.35,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],

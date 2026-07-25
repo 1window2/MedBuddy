@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -681,12 +682,14 @@ class _MedicationScheduleEditDialogState
               TextFormField(
                 key: const Key('ocr-edit-dosage'),
                 controller: _dosageController,
+                inputFormatters: [LengthLimitingTextInputFormatter(40)],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(labelText: text.dosage),
               ),
               TextFormField(
                 key: const Key('ocr-edit-frequency'),
                 controller: _frequencyController,
+                inputFormatters: [LengthLimitingTextInputFormatter(40)],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(labelText: text.dailyFrequency),
               ),
@@ -694,6 +697,10 @@ class _MedicationScheduleEditDialogState
                 key: const Key('ocr-edit-days'),
                 controller: _daysController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(labelText: text.totalDays),
                 validator: _validateMedicationDays,

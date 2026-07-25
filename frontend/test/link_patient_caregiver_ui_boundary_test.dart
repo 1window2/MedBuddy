@@ -11,15 +11,17 @@ import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   final List<Completer<List<PatientCaregiverLink>>> linkRequests = [];
   final List<Completer<PatientLinkCode>> codeRequests = [];
+  final List<Completer<PatientCaregiverLink>> registrationRequests = [];
+  final List<String> registrationCodes = [];
   int disposeCount = 0;
 
   _FakeLinkPatientCaregiver(String userHash)
-      : super(
-          userHash: userHash,
-          client: MockClient((http.Request request) async {
-            return http.Response('{}', 500);
-          }),
-        );
+    : super(
+        userHash: userHash,
+        client: MockClient((http.Request request) async {
+          return http.Response('{}', 500);
+        }),
+      );
 
   @override
   Future<List<PatientCaregiverLink>> requestLinkScreen() {
@@ -36,14 +38,23 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   }
 
   @override
+  Future<PatientCaregiverLink> requestPatientCaregiverLink(String patientCode) {
+    registrationCodes.add(patientCode);
+    final request = Completer<PatientCaregiverLink>();
+    registrationRequests.add(request);
+    return request.future;
+  }
+
+  @override
   void dispose() {
     disposeCount += 1;
   }
 }
 
 void main() {
-  testWidgets('link actions stay disabled while one request is in flight',
-      (tester) async {
+  testWidgets('link actions stay disabled while one request is in flight', (
+    tester,
+  ) async {
     _useLinkScreenViewport(tester);
     final control = _FakeLinkPatientCaregiver('caregiver-a');
 
@@ -73,12 +84,15 @@ void main() {
     await tester.pump();
 
     expect(control.codeRequests, hasLength(1));
-    for (final button
-        in tester.widgetList<OutlinedButton>(find.byType(OutlinedButton))) {
+    for (final button in tester.widgetList<OutlinedButton>(
+      find.byType(OutlinedButton),
+    )) {
       expect(button.onPressed, isNull);
     }
     expect(
-        tester.widget<TextButton>(find.byType(TextButton)).onPressed, isNull);
+      tester.widget<TextButton>(find.byType(TextButton)).onPressed,
+      isNull,
+    );
     expect(
       tester
           .widget<IconButton>(
@@ -121,8 +135,9 @@ void main() {
     expect(control.disposeCount, 1);
   });
 
-  testWidgets('stale identity response cannot replace the current link state',
-      (tester) async {
+  testWidgets('stale identity response cannot replace the current link state', (
+    tester,
+  ) async {
     _useLinkScreenViewport(tester);
     final oldControl = _FakeLinkPatientCaregiver('caregiver-old');
     final currentControl = _FakeLinkPatientCaregiver('caregiver-current');
@@ -162,29 +177,25 @@ void main() {
     expect(oldControl.disposeCount, 1);
     expect(currentControl.linkRequests, hasLength(1));
 
-    currentControl.linkRequests.single.complete(
-      const [
-        PatientCaregiverLink(
-          linkId: 2,
-          patientHash: 'patient-current',
-          caregiverHash: 'caregiver-current',
-          linkStatus: true,
-        ),
-      ],
-    );
+    currentControl.linkRequests.single.complete(const [
+      PatientCaregiverLink(
+        linkId: 2,
+        patientHash: 'patient-current',
+        caregiverHash: 'caregiver-current',
+        linkStatus: true,
+      ),
+    ]);
     await tester.pump();
     expect(find.text('patient-current'), findsOneWidget);
 
-    oldControl.linkRequests.single.complete(
-      const [
-        PatientCaregiverLink(
-          linkId: 1,
-          patientHash: 'patient-stale',
-          caregiverHash: 'caregiver-old',
-          linkStatus: true,
-        ),
-      ],
-    );
+    oldControl.linkRequests.single.complete(const [
+      PatientCaregiverLink(
+        linkId: 1,
+        patientHash: 'patient-stale',
+        caregiverHash: 'caregiver-old',
+        linkStatus: true,
+      ),
+    ]);
     await tester.pump();
 
     expect(find.text('patient-current'), findsOneWidget);
@@ -194,6 +205,101 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     expect(oldControl.disposeCount, 1);
     expect(currentControl.disposeCount, 1);
+  });
+
+  testWidgets('환자 코드를 검증하고 진행 중인 등록 요청을 중복 전송하지 않는다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('환자 관리 등록'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('patient-link-code')), 'abc');
+    await tester.tap(find.widgetWithText(FilledButton, '등록하기'));
+    await tester.pump();
+
+    expect(find.text('환자 코드는 영문과 숫자 8자리로 입력해 주세요.'), findsOneWidget);
+    expect(control.registrationRequests, isEmpty);
+
+    await tester.enterText(
+      find.byKey(const Key('patient-link-code')),
+      'abcd1234',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('patient-link-code')))
+          .controller
+          ?.text,
+      'ABCD1234',
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, '등록하기'));
+    await tester.pump();
+    expect(control.registrationCodes, ['ABCD1234']);
+
+    await tester.tap(find.byType(FilledButton), warnIfMissed: false);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(control.registrationRequests, hasLength(1));
+
+    const link = PatientCaregiverLink(
+      linkId: 3,
+      patientHash: 'patient-a',
+      caregiverHash: 'caregiver-a',
+      linkStatus: true,
+    );
+    control.registrationRequests.single.complete(link);
+    await tester.pump();
+    expect(control.linkRequests, hasLength(2));
+    control.linkRequests.last.complete(const [link]);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('patient-link-code')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('환자 등록 창은 작은 화면과 큰 글자에서도 넘치지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(320, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.4)),
+          child: child!,
+        ),
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('환자 관리 등록'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 
