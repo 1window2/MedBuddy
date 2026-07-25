@@ -43,5 +43,5 @@ jobs:
     - name: Run Flutter Tests
       run: flutter test --no-pub
 
-    - name: Android APK Build Test
-      run: flutter build apk --debug
+    - name: Android Release APK Build Test
+      run: flutter build apk --release --no-pub
