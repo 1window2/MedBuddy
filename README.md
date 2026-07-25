@@ -73,7 +73,10 @@
 
 ## Roadmap
 
-1. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
+1. **Android beta hardening:** Add authentication, server-derived authorization,
+   HTTPS deployment, durable migrations, protected Android release signing, and
+   authenticated end-to-end tests without changing the frozen feature scope.
+2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
 
@@ -85,7 +88,13 @@ MedBuddy is implemented around the project UML diagrams and follows a Boundary-C
 - **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-caregiver links.
 - Backend routers remain thin boundary adapters around control classes.
 
-Detailed design references are maintained in [`docs/`](docs/), and contribution rules for preserving the UML-aligned structure are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+The implementation-grounded class view is maintained in
+[`docs/MedBuddy - Class Diagram.md`](docs/MedBuddy%20-%20Class%20Diagram.md).
+The frozen Android beta boundary and planned security architecture are defined
+in [`docs/MedBuddy - Beta Scope.md`](docs/MedBuddy%20-%20Beta%20Scope.md) and
+[`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
+Contribution rules for preserving the UML-aligned structure are documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Tech Stack
 
