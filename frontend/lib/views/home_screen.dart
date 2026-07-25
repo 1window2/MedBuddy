@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
+import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
@@ -41,6 +43,8 @@ class HomeScreen extends StatelessWidget {
         ),
       PrescriptionFlowState.previewReady => PrescriptionAnalysisPreviewUI(
         medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+        recognizedTextRegions: viewModel.recognizedTextRegionList,
+        previewImagePath: viewModel.prescriptionPreviewImagePath,
         recognitionNotice: viewModel.prescriptionRecognitionNotice,
         userSetting: viewModel.userSetting,
         onBackRequested: viewModel.clearAnalysisResult,
@@ -66,7 +70,8 @@ class HomeScreen extends StatelessWidget {
         onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
             ? viewModel.requestPrescriptionAnalysis
             : null,
-        onCameraRetryRequested: viewModel.requestPrescriptionImage,
+        onCameraRetryRequested: () =>
+            _requestGuidedPrescriptionImage(context, viewModel),
         onGalleryRetryRequested: viewModel.requestPrescriptionImageFromGallery,
         onHomeRequested: viewModel.clearAnalysisResult,
       ),
@@ -121,7 +126,8 @@ class HomeScreen extends StatelessWidget {
       todayMedicationCompletedCount: todayMedicationProgress.completedCount,
       todayMedicationTotalCount: todayMedicationProgress.totalCount,
       isTodayScheduleLoading: viewModel.isTodayScheduleLoading,
-      onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
+      onPrescriptionScanRequested: () =>
+          _requestGuidedPrescriptionImage(context, viewModel),
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
       onPillIdentificationRequested: () {
@@ -167,5 +173,30 @@ class HomeScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  // 함수이름: _requestGuidedPrescriptionImage
+  // 함수역할:
+  // - 처방전 전용 카메라 화면을 열고 촬영된 파일을 ViewModel의 OCR 흐름에 전달한다.
+  // 매개변수:
+  // - context: 전용 카메라 화면을 표시할 BuildContext
+  // - viewModel: 촬영 파일을 분석할 MedBuddyViewModel
+  // 반환값:
+  // - 없음
+  Future<void> _requestGuidedPrescriptionImage(
+    BuildContext context,
+    MedBuddyViewModel viewModel,
+  ) async {
+    final image = await Navigator.push<XFile>(
+      context,
+      MaterialPageRoute<XFile>(
+        builder: (context) =>
+            GuidedPrescriptionCameraUI(userSetting: viewModel.userSetting),
+      ),
+    );
+    if (!context.mounted || image == null) {
+      return;
+    }
+    await viewModel.requestCapturedPrescriptionImage(image);
   }
 }

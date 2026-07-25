@@ -1,45 +1,50 @@
 # 파일명 : image_processing.py
 # 역할 : 처방전 이미지를 OCR에 적합한 형태로 전처리하는 유틸리티 함수들을 정의한다.
 
+from io import BytesIO
+
 import cv2
 import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-# 함수 이름 : preprocess_prescription_image
-# 기능 : 입력된 이미지(bytes)를 OCR 성능 향상을 위해 전처리하여 반환한다.
-# 파라미터 :
-#   - image_bytes (bytes) : 원본 처방전 이미지 데이터
-# 반환값 :
-#   - bytes : 전처리된 이미지 데이터 (이진화된 JPG)
-# 비고 :
-#   - OpenCV 기반으로 grayscale, blur, thresholding을 수행
-#   - OCR 인식률 향상을 위한 전처리 단계
+# 함수이름: preprocess_prescription_image
+# 함수역할:
+# - EXIF 촬영 방향을 실제 픽셀에 반영한다.
+# - 명암 변환, 노이즈 제거, 이진화를 적용해 OCR용 JPEG로 변환한다.
+# 매개변수:
+# - image_bytes: 원본 처방전 이미지 바이트
+# 반환값:
+# - 방향 보정과 이진화를 마친 JPEG 이미지 바이트
 def preprocess_prescription_image(image_bytes: bytes) -> bytes:
-    # Step 1 : bytes 데이터를 OpenCV 이미지 배열로 변환
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    # 1단계: EXIF 회전을 실제 픽셀에 반영하고 OpenCV 이미지 배열로 변환한다.
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            oriented = ImageOps.exif_transpose(source).convert("RGB")
+            img = cv2.cvtColor(np.asarray(oriented), cv2.COLOR_RGB2BGR)
+    except (OSError, UnidentifiedImageError) as exc:
+        raise ValueError(
+            "이미지를 읽을 수 없습니다. 올바른 파일인지 확인해주세요."
+        ) from exc
 
-    if img is None:
-        raise ValueError("이미지를 읽을 수 없습니다. 올바른 파일인지 확인해주세요.")
-
-    # Step 2 : 이미지를 grayscale로 변환 (색상 정보 제거)
+    # 2단계: 색상 정보를 제거해 회색조 이미지로 변환한다.
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Step 3 : GaussianBlur를 적용하여 노이즈 제거 및 이미지 부드럽게 처리
+    # 3단계: 가우시안 블러로 촬영 노이즈를 줄인다.
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Step 4 : Adaptive Thresholding으로 글자와 배경을 분리 (이진화)
+    # 4단계: 적응형 이진화로 글자와 배경을 분리한다.
     binary = cv2.adaptiveThreshold(
-        blurred, 
-        255,                                  # 최대값 (흰색)
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,       # 주변 픽셀 가중치 계산 방식
-        cv2.THRESH_BINARY,                    # 이진화 적용
-        15,                                   # 블록 크기 (영역 크기, 홀수)
-        5                                     # threshhold 보정값 (배경 날리는 parameter)
+        blurred,
+        255,  # 이진화 결과의 흰색 최댓값
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,  # 주변 픽셀의 가중 평균을 기준으로 사용
+        cv2.THRESH_BINARY,  # 기준값보다 큰 픽셀을 흰색으로 변환
+        15,  # 주변 밝기를 계산할 홀수 크기의 영역
+        5,  # 배경을 줄이기 위한 기준값 보정치
     )
 
-    # Step 5 : 전처리된 이미지를 다시 bytes 형태로 인코딩
-    success, encoded_img = cv2.imencode('.jpg', binary)
+    # 5단계: 전처리 결과를 전송 가능한 JPEG 바이트로 인코딩한다.
+    success, encoded_img = cv2.imencode(".jpg", binary)
     if not success:
         raise ValueError("이미지 인코딩 실패")
-        
-    return encoded_img.tobytes()  # 최종 전처리 결과 반환
+
+    return encoded_img.tobytes()

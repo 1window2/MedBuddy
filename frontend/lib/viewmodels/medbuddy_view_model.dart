@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_health_recommendation_control.dart';
@@ -22,6 +23,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/prescription_flow_entity.dart';
+import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 
@@ -176,6 +178,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> _recognizedMedicationScheduleList = [];
   List<MedicationSchedule> get recognizedMedicationScheduleList =>
       List.unmodifiable(_recognizedMedicationScheduleList);
+  List<RecognizedTextRegion> _recognizedTextRegionList = [];
+  List<RecognizedTextRegion> get recognizedTextRegionList =>
+      List.unmodifiable(_recognizedTextRegionList);
+  String _prescriptionPreviewImagePath = '';
+  String get prescriptionPreviewImagePath => _prescriptionPreviewImagePath;
 
   List<MedicationSchedule> get medicationScheduleList =>
       recognizedMedicationScheduleList;
@@ -300,10 +307,34 @@ class MedBuddyViewModel extends ChangeNotifier {
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
   }
 
+  // 함수이름: requestPrescriptionImage
+  // 함수역할:
+  // - 시스템 카메라 기반 처방전 OCR 흐름을 시작한다.
+  // - 전용 카메라를 사용할 수 없는 기존 호출과 테스트 호환성을 위해 유지한다.
+  // 반환값:
   // - 없음
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
       imageRequest: inputPrescription.requestPrescriptionImage,
+      cancelledMessage: '사진 촬영이 취소되었습니다.',
+    );
+  }
+
+  // 함수이름: requestCapturedPrescriptionImage
+  // 함수역할:
+  // - 전용 촬영 화면에서 반환한 처방전 파일의 OCR 흐름을 시작한다.
+  // 매개변수:
+  // - image: 전용 카메라 화면에서 촬영한 처방전 이미지
+  // 반환값:
+  // - 없음
+  Future<void> requestCapturedPrescriptionImage(XFile image) async {
+    await _requestPrescriptionRecognition(
+      imageRequest: ({onImageSelected}) {
+        return inputPrescription.requestCapturedPrescriptionImage(
+          image,
+          onImageSelected: onImageSelected,
+        );
+      },
       cancelledMessage: '사진 촬영이 취소되었습니다.',
     );
   }
@@ -1244,6 +1275,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   void clearAnalysisResult() {
     _cancelPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
+    _recognizedTextRegionList = [];
+    _prescriptionPreviewImagePath = '';
     _analyzedMedicationList = [];
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
@@ -1290,6 +1323,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   }) async {
     final operationId = _beginPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
+    _recognizedTextRegionList = [];
+    _prescriptionPreviewImagePath = '';
     _analyzedMedicationList = [];
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
@@ -1301,6 +1336,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       final result = await imageRequest(
         onImageSelected: () {
           if (_isCurrentPrescriptionOperation(operationId)) {
+            _prescriptionPreviewImagePath =
+                inputPrescription.lastSelectedImagePath;
             _showPrescriptionRecognitionProgress();
           }
         },
@@ -1321,6 +1358,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       }
 
       _recognizedMedicationScheduleList = result;
+      _recognizedTextRegionList = inputPrescription.lastRecognizedTextRegions;
       _recordPrescriptionRecognitionCounts(result);
       _prescriptionFlowState = PrescriptionFlowState.previewReady;
       _statusMessage = prescriptionRecognitionNotice.isEmpty

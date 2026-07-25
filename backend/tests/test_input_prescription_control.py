@@ -611,6 +611,21 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                             "total_days": "5",
                         },
                     ],
+                    "recognized_regions": [
+                        {
+                            "category": "medication_row",
+                            "text": (
+                                f"{canonical_name} "
+                                "900101-1234567 1정 1일 3회"
+                            ),
+                            "box_2d": [-10, 20, 400, 1100],
+                        },
+                        {
+                            "category": "patient_name",
+                            "text": "환자명 홍길동",
+                            "box_2d": [10, 10, 30, 200],
+                        },
+                    ],
                 },
                 ensure_ascii=False,
             )
@@ -635,6 +650,23 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(payload["medications"][0]["total_days"], "5")
+        self.assertEqual(len(payload["recognized_regions"]), 2)
+        self.assertEqual(
+            payload["recognized_regions"][0]["box_2d"],
+            [0, 20, 400, 1000],
+        )
+        self.assertNotIn(
+            "900101-1234567",
+            payload["recognized_regions"][0]["text"],
+        )
+        self.assertEqual(
+            payload["recognized_regions"][1],
+            {
+                "category": "sensitive_info",
+                "text": "",
+                "box_2d": [10, 10, 30, 200],
+            },
+        )
 
     def test_request_prescription_image_rejects_empty_input_before_ocr(self) -> None:
         ocr_boundary = _RecordingOCRServiceBoundary()
