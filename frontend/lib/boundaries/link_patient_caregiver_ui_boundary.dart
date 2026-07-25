@@ -9,9 +9,8 @@ import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 
-typedef LinkPatientCaregiverFactory = LinkPatientCaregiver Function(
-  String userHash,
-);
+typedef LinkPatientCaregiverFactory =
+    LinkPatientCaregiver Function(String userHash);
 
 // 파일명: link_patient_caregiver_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
@@ -127,10 +126,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
                 ),
               ),
               const SizedBox(height: 26),
-              _StatusCard(
-                statusMessage: _statusMessage,
-                isLoading: _isLoading,
-              ),
+              _StatusCard(statusMessage: _statusMessage, isLoading: _isLoading),
               const SizedBox(height: 24),
               Expanded(
                 child: _LinkListCard(
@@ -143,10 +139,12 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               ),
               const SizedBox(height: 20),
               _LinkActionFooter(
-                onGeneratePatientCodeRequested:
-                    _isLoading ? null : _generatePatientHash,
-                onRegisterPatientRequested:
-                    _isLoading ? null : _showRegisterPatientDialog,
+                onGeneratePatientCodeRequested: _isLoading
+                    ? null
+                    : _generatePatientHash,
+                onRegisterPatientRequested: _isLoading
+                    ? null
+                    : _showRegisterPatientDialog,
               ),
             ],
           ),
@@ -451,9 +449,7 @@ class _LinkActionButton extends StatelessWidget {
         foregroundColor: const Color(0xFF0A0A0A),
         backgroundColor: Colors.white,
         side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
       ),
       child: Column(
@@ -491,10 +487,7 @@ class _StatusCard extends StatelessWidget {
   final String statusMessage;
   final bool isLoading;
 
-  const _StatusCard({
-    required this.statusMessage,
-    required this.isLoading,
-  });
+  const _StatusCard({required this.statusMessage, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
@@ -558,114 +551,180 @@ class _RegisterPatientDialog extends StatefulWidget {
 }
 
 class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isRegistering = false;
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-      child: Container(
-        width: 328,
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.card,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+      backgroundColor: Colors.white,
+      clipBehavior: Clip.antiAlias,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 328),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+          child: Form(
+            key: _formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  tooltip: '닫기',
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 36,
-                    height: 36,
-                  ),
-                  onPressed:
-                      _isRegistering ? null : () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.close,
-                    color: MedBuddyColors.textMuted,
-                    size: 22,
-                  ),
-                ),
-                const Expanded(
-                  child: Text(
-                    '환자 관리 등록',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF0A0A0A),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '닫기',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 36,
+                        height: 36,
+                      ),
+                      onPressed: _isRegistering
+                          ? null
+                          : () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close,
+                        color: MedBuddyColors.textMuted,
+                        size: 22,
+                      ),
                     ),
+                    const Expanded(
+                      child: Text(
+                        '환자 관리 등록',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 36),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  key: const Key('caregiver-user-hash'),
+                  controller: widget.userHashController,
+                  enabled: !_isRegistering,
+                  inputFormatters: [
+                    LengthLimitingTextInputFormatter(
+                      PatientHash.maxPatientHashLength,
+                    ),
+                  ],
+                  decoration: _inputDecoration(
+                    '보호자 사용자 ID',
+                    PatientHash.defaultPatientHash,
+                  ),
+                  textInputAction: TextInputAction.next,
+                  validator: _validateUserHash,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('patient-link-code'),
+                  controller: widget.patientCodeController,
+                  enabled: !_isRegistering,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+                    LengthLimitingTextInputFormatter(
+                      PatientHash.patientLinkCodeLength,
+                    ),
+                    const _UpperCaseTextFormatter(),
+                  ],
+                  decoration: _inputDecoration('환자 코드', 'ABCD1234'),
+                  textInputAction: TextInputAction.done,
+                  validator: _validatePatientCode,
+                  onFieldSubmitted: (_) => _handleRegisterRequested(),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: _isRegistering ? null : _handleRegisterRequested,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    child: _isRegistering
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text('등록하기'),
                   ),
                 ),
-                const SizedBox(width: 36),
               ],
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: widget.userHashController,
-              enabled: !_isRegistering,
-              decoration: _inputDecoration(
-                '보호자 사용자 ID',
-                PatientHash.defaultPatientHash,
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: widget.patientCodeController,
-              enabled: !_isRegistering,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: _inputDecoration('환자 코드', 'ABCD1234'),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _handleRegisterRequested(),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton(
-                onPressed: _isRegistering ? null : _handleRegisterRequested,
-                style: FilledButton.styleFrom(
-                  backgroundColor: MedBuddyColors.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                child: _isRegistering
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : const Text('등록하기'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
+  // 함수이름: _validateUserHash
+  // 함수역할:
+  // - 보호자 식별자가 비어 있는 상태로 연동 요청이 전송되는 것을 막는다.
+  // 매개변수:
+  // - value: 사용자가 입력한 보호자 식별자
+  // 반환값:
+  // - 유효하면 null, 유효하지 않으면 화면에 표시할 오류 문구
+  String? _validateUserHash(String? value) {
+    if ((value ?? '').trim().isEmpty) {
+      return '보호자 사용자 ID를 입력해 주세요.';
+    }
+    return null;
+  }
+
+  // 함수이름: _validatePatientCode
+  // 함수역할:
+  // - 환자 연동 코드가 서버 규칙과 동일한 8자리 영문·숫자인지 검증한다.
+  // 매개변수:
+  // - value: 사용자가 입력한 환자 연동 코드
+  // 반환값:
+  // - 유효하면 null, 유효하지 않으면 화면에 표시할 오류 문구
+  String? _validatePatientCode(String? value) {
+    final patientCode = (value ?? '').trim();
+    if (!RegExp(r'^[A-Z0-9]{8}$').hasMatch(patientCode)) {
+      return '환자 코드는 영문과 숫자 8자리로 입력해 주세요.';
+    }
+    return null;
+  }
+
+  // 함수이름: _handleRegisterRequested
+  // 함수역할:
+  // - 입력값을 검증하고 같은 연동 요청이 연속으로 전송되지 않게 보호한다.
+  // 반환값:
+  // - 없음
   Future<void> _handleRegisterRequested() async {
+    if (_isRegistering || !(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
     setState(() => _isRegistering = true);
-    final success = await widget.onRegisterRequested();
+    var success = false;
+    try {
+      success = await widget.onRegisterRequested();
+    } catch (_) {
+      success = false;
+    }
     if (!mounted) {
       return;
     }
@@ -674,9 +733,23 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
       return;
     }
     setState(() => _isRegistering = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(widget.statusMessageProvider())),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(widget.statusMessageProvider())));
+  }
+}
+
+// 클래스명: _UpperCaseTextFormatter
+// 역할: 환자 연동 코드 입력을 커서 위치를 유지한 채 대문자로 정규화한다.
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  const _UpperCaseTextFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }
 
@@ -941,8 +1014,9 @@ class _LinkListCard extends StatelessWidget {
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
-          onPatientMedicationRequested:
-              isEnabled ? () => onPatientMedicationRequested(link) : null,
+          onPatientMedicationRequested: isEnabled
+              ? () => onPatientMedicationRequested(link)
+              : null,
           onUnlinkRequested: isEnabled ? () => onUnlinkRequested(link) : null,
         );
       },
@@ -1039,10 +1113,7 @@ class _LinkedIdentityField extends StatelessWidget {
   final String label;
   final String value;
 
-  const _LinkedIdentityField({
-    required this.label,
-    required this.value,
-  });
+  const _LinkedIdentityField({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

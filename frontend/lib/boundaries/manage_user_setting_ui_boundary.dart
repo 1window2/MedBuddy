@@ -18,7 +18,8 @@ class ManageUserSettingUI extends StatefulWidget {
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
-  }) onSettingSaveRequested;
+  })
+  onSettingSaveRequested;
 
   const ManageUserSettingUI({
     super.key,
@@ -47,9 +48,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final contentScale =
-        UserSetting(fontSize: UserSetting.fontSizeFromOption(_fontSize))
-            .contentTextScale;
+    final contentScale = UserSetting(
+      fontSize: UserSetting.fontSizeFromOption(_fontSize),
+    ).contentTextScale;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -88,10 +89,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         _OptionRow(
                           options: [
                             _SettingOption(value: 'small', label: text.small),
-                            _SettingOption(
-                              value: 'medium',
-                              label: text.medium,
-                            ),
+                            _SettingOption(value: 'medium', label: text.medium),
                             _SettingOption(value: 'large', label: text.large),
                           ],
                           selectedValue: _fontSize,
@@ -105,10 +103,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         _OptionRow(
                           options: [
                             _SettingOption(value: 'slow', label: text.slow),
-                            _SettingOption(
-                              value: 'medium',
-                              label: text.medium,
-                            ),
+                            _SettingOption(value: 'medium', label: text.medium),
                             _SettingOption(value: 'fast', label: text.fast),
                           ],
                           selectedValue: _readingSpeed,
@@ -153,22 +148,43 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
+  // 함수이름: _handleSaveRequested
+  // 함수역할:
+  // - 설정 저장 요청을 한 번만 실행하고 실패 시 버튼 상태를 복구한다.
+  // 반환값:
+  // - 없음
   Future<void> _handleSaveRequested() async {
-    setState(() => _isSaving = true);
-    await widget.onSettingSaveRequested(
-      fontSizeOption: _fontSize,
-      readingSpeedOption: _readingSpeed,
-      language: _language,
-    );
-    if (!mounted) {
+    if (_isSaving) {
       return;
     }
 
+    setState(() => _isSaving = true);
     final text = _SettingText(_language);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.saved)),
-    );
-    Navigator.maybePop(context);
+    try {
+      await widget.onSettingSaveRequested(
+        fontSizeOption: _fontSize,
+        readingSpeedOption: _readingSpeed,
+        language: _language,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saved)));
+      Navigator.maybePop(context);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saveFailed)));
+    }
   }
 }
 
@@ -176,10 +192,7 @@ class _CloseButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
 
-  const _CloseButton({
-    required this.tooltip,
-    required this.onTap,
-  });
+  const _CloseButton({required this.tooltip, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -189,11 +202,7 @@ class _CloseButton extends StatelessWidget {
       constraints: const BoxConstraints.tightFor(width: 44, height: 44),
       tooltip: tooltip,
       onPressed: onTap,
-      icon: const Icon(
-        Icons.close,
-        color: Color(0xFF4A5565),
-        size: 31,
-      ),
+      icon: const Icon(Icons.close, color: Color(0xFF4A5565), size: 31),
     );
   }
 }
@@ -226,9 +235,7 @@ class _SettingSaveFooter extends StatelessWidget {
             backgroundColor: MedBuddyColors.primary,
             foregroundColor: Colors.white,
             disabledBackgroundColor: MedBuddyColors.primary.withAlpha(150),
-            shape: RoundedRectangleBorder(
-              borderRadius: MedBuddyRadii.card,
-            ),
+            shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
             textStyle: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -435,10 +442,7 @@ class _SettingOption {
   final String value;
   final String label;
 
-  const _SettingOption({
-    required this.value,
-    required this.label,
-  });
+  const _SettingOption({required this.value, required this.label});
 }
 
 class _SettingText {
@@ -465,4 +469,6 @@ class _SettingText {
   String get save => isEnglish ? 'Save' : '저장하기';
   String get saving => isEnglish ? 'Saving...' : '저장 중...';
   String get saved => isEnglish ? 'Settings saved.' : '설정이 저장되었습니다.';
+  String get saveFailed =>
+      isEnglish ? 'Could not save settings.' : '설정을 저장하지 못했습니다.';
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -192,6 +193,45 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(Image), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('영문 일정 화면은 작은 화면과 큰 글자에서도 넘치지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _VisualScheduleCheckSchedule(),
+      setNotification: _EmptySetNotification(),
+      manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+    );
+    addTearDown(viewModel.dispose);
+    await viewModel.requestUserSettingSave(
+      fontSizeOption: 'large',
+      readingSpeedOption: 'medium',
+      language: 'en',
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
+          ),
+          home: const CheckScheduleUI(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text("Today's Medication Schedule"), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

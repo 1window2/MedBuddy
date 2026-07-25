@@ -298,6 +298,9 @@ class _HealthRecommendationFooter extends StatelessWidget {
         ),
         child: Text(
           text.healthRecommendation,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
       ),
@@ -346,12 +349,16 @@ class _ScheduleHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                text.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Text(
+                  text.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
