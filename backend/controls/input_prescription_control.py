@@ -755,7 +755,12 @@ class _PrescriptionMedicationNameVerifier:
 class InputPrescription:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
         "type": "OBJECT",
-        "required": ["hospital_name", "prescription_date", "medications"],
+        "required": [
+            "hospital_name",
+            "prescription_date",
+            "medications",
+            "recognized_regions",
+        ],
         "properties": {
             "hospital_name": {
                 "type": "STRING",
@@ -792,6 +797,41 @@ class InputPrescription:
                         "total_days": {
                             "type": "STRING",
                             "description": "Total duration, for example '7일'.",
+                        },
+                    },
+                },
+            },
+            "recognized_regions": {
+                "type": "ARRAY",
+                "description": (
+                    "복약 분석에 사용한 조제일자와 약품 행, "
+                    "미리보기에서 가릴 환자 민감정보의 위치"
+                ),
+                "items": {
+                    "type": "OBJECT",
+                    "required": ["category", "text", "box_2d"],
+                    "properties": {
+                        "category": {
+                            "type": "STRING",
+                            "description": (
+                                "prescription_date, medication_name 또는 "
+                                "sensitive_info"
+                            ),
+                        },
+                        "text": {
+                            "type": "STRING",
+                            "description": (
+                                "복약 관련 문구. sensitive_info이면 "
+                                "반드시 빈 문자열"
+                            ),
+                        },
+                        "box_2d": {
+                            "type": "ARRAY",
+                            "items": {"type": "INTEGER"},
+                            "description": (
+                                "[ymin, xmin, ymax, xmax] 순서의 "
+                                "0~1000 정규화 좌표"
+                            ),
                         },
                     },
                 },
@@ -850,13 +890,15 @@ class InputPrescription:
             )
             raise ValueError("AI returned an invalid JSON response.") from exc
 
+        masked_data = self._apply_secondary_masking(raw_data)
         (
             hospital_name,
             prescription_date,
             medication_candidates,
             raw_medication_count,
-        ) = normalize_prescription_candidates(
-            self._apply_secondary_masking(raw_data)
+        ) = normalize_prescription_candidates(masked_data)
+        recognized_regions = self._normalize_recognized_regions(
+            masked_data.get("recognized_regions")
         )
         safe_data = self.buildAnalysisResult(
             medication_candidates,
@@ -885,7 +927,73 @@ class InputPrescription:
             ),
             "parsed_medication_count": len(medication_schedules),
             "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
+            "recognized_regions": recognized_regions,
         }
+
+    # 함수이름: _normalize_recognized_regions
+    # 함수역할:
+    # - OCR이 반환한 복약 정보와 민감정보 마스킹 영역의 좌표를 검증한다.
+    # - 민감정보의 실제 문구는 제거하고 화면 마스킹에 필요한 좌표만 남긴다.
+    # 매개변수:
+    # - raw_regions: Gemini가 반환한 OCR 인식 영역 목록
+    # 반환값:
+    # - 안전한 문구와 0~1000 좌표만 포함한 최대 40개 영역 목록
+    def _normalize_recognized_regions(
+        self,
+        raw_regions: object,
+    ) -> list[dict[str, object]]:
+        if not isinstance(raw_regions, list):
+            return []
+
+        medication_categories = {
+            "prescription_date",
+            "medication_name",
+            "medication_row",
+        }
+        sensitive_categories = {
+            "sensitive_info",
+            "patient_name",
+            "resident_registration_number",
+            "birth_date",
+            "phone_number",
+            "address",
+            "patient_number",
+            "patient_identifier",
+            "medical_record_number",
+            "insurance_number",
+        }
+        normalized_regions: list[dict[str, object]] = []
+        for raw_region in raw_regions[:40]:
+            if not isinstance(raw_region, dict):
+                continue
+            category = str(raw_region.get("category") or "").strip()
+            text = str(raw_region.get("text") or "").strip()
+            raw_box = raw_region.get("box_2d")
+            is_sensitive = category in sensitive_categories
+            if (
+                (category not in medication_categories and not is_sensitive)
+                or (not is_sensitive and not text)
+                or not isinstance(raw_box, list)
+                or len(raw_box) != 4
+            ):
+                continue
+            try:
+                box = [
+                    max(0, min(1000, int(float(value))))
+                    for value in raw_box
+                ]
+            except (TypeError, ValueError):
+                continue
+            if box[0] >= box[2] or box[1] >= box[3]:
+                continue
+            normalized_regions.append(
+                {
+                    "category": "sensitive_info" if is_sensitive else category,
+                    "text": "" if is_sensitive else self.maskSensitiveInfo(text)[:300],
+                    "box_2d": box,
+                }
+            )
+        return normalized_regions
 
     @staticmethod
     def parse_prescription_text(text: str) -> dict[str, object]:

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/recognized_text_region_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 
@@ -30,19 +31,24 @@ class InputPrescription {
   int _lastRawMedicationCount = 0;
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
+  String _lastSelectedImagePath = '';
+  List<RecognizedTextRegion> _lastRecognizedTextRegions = [];
 
   int get lastRawMedicationCount => _lastRawMedicationCount;
   int get lastParsedMedicationCount => _lastParsedMedicationCount;
   int get lastSkippedMedicationCount => _lastSkippedMedicationCount;
+  String get lastSelectedImagePath => _lastSelectedImagePath;
+  List<RecognizedTextRegion> get lastRecognizedTextRegions =>
+      List.unmodifiable(_lastRecognizedTextRegions);
 
   InputPrescription({
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
     this.requestTimeout = const Duration(seconds: 45),
-  })  : _imagePicker = imagePicker ?? ImagePicker(),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null {
+  }) : _imagePicker = imagePicker ?? ImagePicker(),
+       _client = client ?? http.Client(),
+       _ownsClient = client == null {
     if (requestTimeout <= Duration.zero) {
       throw ArgumentError.value(
         requestTimeout,
@@ -52,13 +58,6 @@ class InputPrescription {
     }
   }
 
-  // 함수명: requestPrescriptionImage
-  // 함수역할:
-  // - 카메라로 처방전 이미지를 촬영하고 OCR 분석을 요청한다.
-  // 매개변수:
-  // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
-  // 반환값:
-  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   // 함수명: requestPrescriptionImageFromGallery
   // 함수역할:
   // - 갤러리에서 처방전 이미지를 선택하고 OCR 분석을 요청한다.
@@ -75,13 +74,29 @@ class InputPrescription {
     );
   }
 
-  // 함수명: _requestPrescriptionImage
+  // 함수이름: requestCapturedPrescriptionImage
   // 함수역할:
-  // - 이미지 소스별 공통 OCR 업로드 흐름을 처리한다.
-  // - 백엔드가 반환한 조제일자를 각 약 일정에 함께 실어 보존한다.
+  // - 전용 카메라 화면에서 촬영한 처방전 파일로 OCR 분석을 요청한다.
   // 매개변수:
-  // - imageSource: 카메라 또는 갤러리 이미지 소스
+  // - image: 전용 카메라 화면에서 생성된 이미지 파일
   // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
+  // 반환값:
+  // - OCR에서 추출한 복약 일정 목록
+  Future<List<MedicationSchedule>> requestCapturedPrescriptionImage(
+    XFile image, {
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    _prepareSelectedImage(image.path);
+    onImageSelected?.call();
+    return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
+  }
+
+  // 함수이름: requestPrescriptionImage
+  // 함수역할:
+  // - 시스템 카메라로 처방전 이미지를 촬영하고 OCR 분석을 요청한다.
+  // - 기존 호출부와 테스트 호환성을 위해 유지하며 앱 화면에서는 전용 카메라를 사용한다.
+  // 매개변수:
+  // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
   // 반환값:
   // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   Future<List<MedicationSchedule>?> requestPrescriptionImage({
@@ -93,10 +108,20 @@ class InputPrescription {
     );
   }
 
+  // 함수이름: _requestPrescriptionAnalysis
+  // 함수역할:
+  // - 선택 또는 촬영된 처방전 파일을 백엔드에 전송하고 OCR 응답을 변환한다.
+  // - 백엔드가 반환한 조제일자를 각 약 일정에 함께 실어 보존한다.
+  // 매개변수:
+  // - image: 업로드할 처방전 이미지 파일
+  // - imageSource: 파일 접근 오류 문구를 구분할 이미지 출처
+  // 반환값:
+  // - OCR에서 추출한 복약 일정 목록
   Future<List<MedicationSchedule>> _requestPrescriptionAnalysis(
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
   }) async {
+    _lastRecognizedTextRegions = [];
     try {
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
@@ -109,18 +134,18 @@ class InputPrescription {
 
       late final http.Response response;
       try {
-        response =
-            await _client.send(request).then(http.Response.fromStream).timeout(
-          requestTimeout,
-          onTimeout: () {
-            if (!abortTrigger.isCompleted) {
-              abortTrigger.complete();
-            }
-            throw StateError(
-              '처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.',
+        response = await _client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(
+              requestTimeout,
+              onTimeout: () {
+                if (!abortTrigger.isCompleted) {
+                  abortTrigger.complete();
+                }
+                throw StateError('처방전 분석 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+              },
             );
-          },
-        );
       } finally {
         _abortTriggers.remove(abortTrigger);
       }
@@ -134,6 +159,9 @@ class InputPrescription {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
+      _lastRecognizedTextRegions = RecognizedTextRegion.fromJsonList(
+        decodedData['recognized_regions'] ?? decodedData['recognizedRegions'],
+      );
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
@@ -142,11 +170,14 @@ class InputPrescription {
         return [];
       }
 
-      final medicationSchedules = rawMedications.whereType<Map>().map((item) {
-        final itemJson = Map<String, dynamic>.from(item);
-        itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
-        return MedicationSchedule.fromAnalysisJson(itemJson);
-      }).toList(growable: false);
+      final medicationSchedules = rawMedications
+          .whereType<Map>()
+          .map((item) {
+            final itemJson = Map<String, dynamic>.from(item);
+            itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
+            return MedicationSchedule.fromAnalysisJson(itemJson);
+          })
+          .toList(growable: false);
       _recordParseCounts(decodedData, medicationSchedules.length);
       return medicationSchedules;
     } on StateError {
@@ -170,10 +201,19 @@ class InputPrescription {
     }
   }
 
+  // 함수이름: _requestPrescriptionImage
+  // 함수역할:
+  // - 이미지 소스별 선택 화면을 열고 선택된 파일의 OCR 분석을 요청한다.
+  // 매개변수:
+  // - imageSource: 카메라 또는 갤러리 이미지 소스
+  // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
+  // 반환값:
+  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
   Future<List<MedicationSchedule>?> _requestPrescriptionImage(
     ImageSource imageSource, {
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
+    _prepareSelectedImage('');
     final image = await _imagePicker.pickImage(
       source: imageSource,
       imageQuality: 82,
@@ -184,8 +224,14 @@ class InputPrescription {
     if (image == null) {
       return null;
     }
+    _prepareSelectedImage(image.path);
     onImageSelected?.call();
     return _requestPrescriptionAnalysis(image, imageSource: imageSource);
+  }
+
+  void _prepareSelectedImage(String imagePath) {
+    _lastSelectedImagePath = imagePath;
+    _lastRecognizedTextRegions = [];
   }
 
   String _imageFileAccessErrorMessage(ImageSource imageSource) {

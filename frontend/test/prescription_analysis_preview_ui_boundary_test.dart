@@ -1,10 +1,101 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_preview_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 void main() {
+  testWidgets('OCR 영역을 표시하고 확대 화면에서 개인정보 처리를 안내한다', (tester) async {
+    await _setViewport(tester, const Size(376, 856));
+    var analysisRequested = false;
+    final tempDirectory = Directory.systemTemp.createTempSync(
+      'medbuddy-ocr-preview-test-',
+    );
+    final imageFile = File('${tempDirectory.path}/prescription.png');
+    addTearDown(() {
+      imageCache.evict(FileImage(imageFile));
+      if (tempDirectory.existsSync()) {
+        tempDirectory.deleteSync(recursive: true);
+      }
+    });
+    imageFile.writeAsBytesSync(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4'
+        'nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: const [
+            MedicationSchedule(medicationName: '테스트정'),
+          ],
+          recognizedTextRegions: const [
+            RecognizedTextRegion(
+              category: 'medication_row',
+              text: '테스트정 1정 1일 2회',
+              box2d: [100, 80, 260, 920],
+            ),
+            RecognizedTextRegion(
+              category: 'sensitive_info',
+              text: '',
+              box2d: [20, 40, 80, 400],
+            ),
+          ],
+          previewImagePath: imageFile.path,
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () => analysisRequested = true,
+          onMedicationScheduleChanged: (_, _) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byKey(const Key('ocr-region-0')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-sensitive-region-1')), findsOneWidget);
+    expect(find.textContaining('개인정보 마스킹 영역'), findsOneWidget);
+    expect(find.textContaining('인식 문구:'), findsNothing);
+    expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsNothing);
+    expect(find.byKey(const Key('ocr-image-canvas')), findsOneWidget);
+    expect(
+      find.byKey(const Key('prescription-analyze-button')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const Key('ocr-preview-image')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsOneWidget);
+    expect(
+      find.byKey(const Key('ocr-expanded-sensitive-region-1')),
+      findsOneWidget,
+    );
+    expect(find.text('인식 영역 상세보기'), findsOneWidget);
+    expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsOneWidget);
+    final interactiveViewer = tester.widget<InteractiveViewer>(
+      find.byKey(const Key('ocr-expanded-image-viewer')),
+    );
+    expect(interactiveViewer.maxScale, 5);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const Key('ocr-expanded-close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('prescription-analyze-button')));
+    expect(analysisRequested, isTrue);
+  });
+
   testWidgets('corrected medication rows fit the preview at large text size', (
     tester,
   ) async {
@@ -121,6 +212,8 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('ocr-edit-0')));
     await tester.pumpAndSettle();
     expect(find.text('OCR 인식 결과 수정'), findsOneWidget);
@@ -171,6 +264,8 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('ocr-edit-0')));
     await tester.pumpAndSettle();
     await tester.enterText(

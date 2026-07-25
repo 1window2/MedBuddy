@@ -59,37 +59,38 @@ class _AbortAwareClient extends http.BaseClient {
 }
 
 void main() {
-  test('requestPrescriptionImage preserves OCR metadata from backend',
-      () async {
+  test('촬영된 처방전 파일은 이미지 선택기 없이 OCR API로 전송한다', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
-      'medbuddy-prescription-test-',
+      'medbuddy-captured-prescription-test-',
     );
     addTearDown(() async {
       if (await tempDirectory.exists()) {
         await tempDirectory.delete(recursive: true);
       }
     });
-    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    final imageFile = File('${tempDirectory.path}/captured.jpg');
     await imageFile.writeAsBytes([1, 2, 3]);
+    var selectedCallbackCount = 0;
 
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
       expect(request.url.path, '/upload-prescription');
       return http.Response(
         jsonEncode({
-          'prescription_date': '2026-07-08',
-          'raw_medication_count': 2,
-          'parsed_medication_count': 1,
-          'skipped_medication_count': 1,
+          'prescription_date': '2026-07-25',
+          'recognized_regions': [
+            {
+              'category': 'medication_row',
+              'text': '테스트정 1정 1일 2회',
+              'box_2d': [120, 80, 240, 920],
+            },
+          ],
           'medications': [
             {
-              'drug_name': '프루코프정',
-              'raw_drug_name': '포루코프정',
-              'name_confidence': 0.92,
-              'name_correction_source': 'local_catalog_ocr_vowel_variant',
+              'drug_name': '테스트정',
               'dosage_per_time': '1',
-              'daily_frequency': '3',
-              'total_days': '5',
+              'daily_frequency': '2',
+              'total_days': '3',
             },
           ],
         }),
@@ -99,26 +100,88 @@ void main() {
     });
     final control = InputPrescription(
       baseUrl: 'http://localhost',
-      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      imagePicker: _FakeImagePicker(null),
       client: client,
     );
     addTearDown(control.dispose);
 
-    final schedules = await control.requestPrescriptionImageFromGallery();
-
-    expect(schedules, hasLength(1));
-    expect(schedules!.first.medicationName, '프루코프정');
-    expect(schedules.first.rawMedicationName, '포루코프정');
-    expect(schedules.first.nameConfidence, 0.92);
-    expect(
-      schedules.first.nameCorrectionSource,
-      'local_catalog_ocr_vowel_variant',
+    final schedules = await control.requestCapturedPrescriptionImage(
+      XFile(imageFile.path),
+      onImageSelected: () {
+        selectedCallbackCount += 1;
+      },
     );
-    expect(schedules.first.hasNameCorrection, isTrue);
-    expect(control.lastRawMedicationCount, 2);
-    expect(control.lastParsedMedicationCount, 1);
-    expect(control.lastSkippedMedicationCount, 1);
+
+    expect(selectedCallbackCount, 1);
+    expect(schedules, hasLength(1));
+    expect(schedules.first.medicationName, '테스트정');
+    expect(control.lastSelectedImagePath, imageFile.path);
+    expect(control.lastRecognizedTextRegions, hasLength(1));
+    expect(control.lastRecognizedTextRegions.first.text, '테스트정 1정 1일 2회');
   });
+
+  test(
+    'requestPrescriptionImage preserves OCR metadata from backend',
+    () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'medbuddy-prescription-test-',
+      );
+      addTearDown(() async {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDirectory.path}/prescription.jpg');
+      await imageFile.writeAsBytes([1, 2, 3]);
+
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/upload-prescription');
+        return http.Response(
+          jsonEncode({
+            'prescription_date': '2026-07-08',
+            'raw_medication_count': 2,
+            'parsed_medication_count': 1,
+            'skipped_medication_count': 1,
+            'medications': [
+              {
+                'drug_name': '프루코프정',
+                'raw_drug_name': '포루코프정',
+                'name_confidence': 0.92,
+                'name_correction_source': 'local_catalog_ocr_vowel_variant',
+                'dosage_per_time': '1',
+                'daily_frequency': '3',
+                'total_days': '5',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = InputPrescription(
+        baseUrl: 'http://localhost',
+        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+        client: client,
+      );
+      addTearDown(control.dispose);
+
+      final schedules = await control.requestPrescriptionImageFromGallery();
+
+      expect(schedules, hasLength(1));
+      expect(schedules!.first.medicationName, '프루코프정');
+      expect(schedules.first.rawMedicationName, '포루코프정');
+      expect(schedules.first.nameConfidence, 0.92);
+      expect(
+        schedules.first.nameCorrectionSource,
+        'local_catalog_ocr_vowel_variant',
+      );
+      expect(schedules.first.hasNameCorrection, isTrue);
+      expect(control.lastRawMedicationCount, 2);
+      expect(control.lastParsedMedicationCount, 1);
+      expect(control.lastSkippedMedicationCount, 1);
+    },
+  );
 
   test('requestPrescriptionImage derives skipped count fallback', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
@@ -158,99 +221,105 @@ void main() {
     expect(control.lastSkippedMedicationCount, 3);
   });
 
-  test('requestPrescriptionImage surfaces backend OCR timeout detail',
-      () async {
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'medbuddy-prescription-backend-timeout-test-',
-    );
-    addTearDown(() async {
-      if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
-      }
-    });
-    final imageFile = File('${tempDirectory.path}/prescription.jpg');
-    await imageFile.writeAsBytes([1, 2, 3]);
-
-    final client = MockClient((http.Request request) async {
-      return http.Response(
-        jsonEncode({'detail': '처방전 인식 서비스 응답 시간이 초과되었습니다.'}),
-        504,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'requestPrescriptionImage surfaces backend OCR timeout detail',
+    () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'medbuddy-prescription-backend-timeout-test-',
       );
-    });
-    final control = InputPrescription(
-      baseUrl: 'http://localhost',
-      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-      client: client,
-    );
-    addTearDown(control.dispose);
+      addTearDown(() async {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDirectory.path}/prescription.jpg');
+      await imageFile.writeAsBytes([1, 2, 3]);
 
-    expect(
-      () => control.requestPrescriptionImageFromGallery(),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          contains('분석 실패 (504)'),
+      final client = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode({'detail': '처방전 인식 서비스 응답 시간이 초과되었습니다.'}),
+          504,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = InputPrescription(
+        baseUrl: 'http://localhost',
+        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+        client: client,
+      );
+      addTearDown(control.dispose);
+
+      expect(
+        () => control.requestPrescriptionImageFromGallery(),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('분석 실패 (504)'),
+          ),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 
-  test('requestPrescriptionImage times out while reading a stalled body',
-      () async {
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'medbuddy-prescription-timeout-test-',
-    );
-    addTearDown(() async {
-      if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
-      }
-    });
-    final imageFile = File('${tempDirectory.path}/prescription.jpg');
-    await imageFile.writeAsBytes([1, 2, 3]);
+  test(
+    'requestPrescriptionImage times out while reading a stalled body',
+    () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'medbuddy-prescription-timeout-test-',
+      );
+      addTearDown(() async {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDirectory.path}/prescription.jpg');
+      await imageFile.writeAsBytes([1, 2, 3]);
 
-    final control = InputPrescription(
-      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-      client: _DelayedResponseBodyClient(),
-      requestTimeout: const Duration(milliseconds: 10),
-    );
-    addTearDown(control.dispose);
+      final control = InputPrescription(
+        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+        client: _DelayedResponseBodyClient(),
+        requestTimeout: const Duration(milliseconds: 10),
+      );
+      addTearDown(control.dispose);
 
-    expect(
-      () => control.requestPrescriptionImageFromGallery(),
-      throwsA(isA<StateError>()),
-    );
-  });
+      expect(
+        () => control.requestPrescriptionImageFromGallery(),
+        throwsA(isA<StateError>()),
+      );
+    },
+  );
 
-  test('requestPrescriptionImage aborts an in-flight upload after timeout',
-      () async {
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'medbuddy-prescription-abort-test-',
-    );
-    addTearDown(() async {
-      if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
-      }
-    });
-    final imageFile = File('${tempDirectory.path}/prescription.jpg');
-    await imageFile.writeAsBytes([1, 2, 3]);
-    final client = _AbortAwareClient();
-    final control = InputPrescription(
-      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-      client: client,
-      requestTimeout: const Duration(milliseconds: 10),
-    );
-    addTearDown(control.dispose);
+  test(
+    'requestPrescriptionImage aborts an in-flight upload after timeout',
+    () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'medbuddy-prescription-abort-test-',
+      );
+      addTearDown(() async {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDirectory.path}/prescription.jpg');
+      await imageFile.writeAsBytes([1, 2, 3]);
+      final client = _AbortAwareClient();
+      final control = InputPrescription(
+        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+        client: client,
+        requestTimeout: const Duration(milliseconds: 10),
+      );
+      addTearDown(control.dispose);
 
-    await expectLater(
-      control.requestPrescriptionImageFromGallery(),
-      throwsA(isA<StateError>()),
-    );
-    await Future<void>.delayed(Duration.zero);
+      await expectLater(
+        control.requestPrescriptionImageFromGallery(),
+        throwsA(isA<StateError>()),
+      );
+      await Future<void>.delayed(Duration.zero);
 
-    expect(client.wasAborted, isTrue);
-  });
+      expect(client.wasAborted, isTrue);
+    },
+  );
 
   test('dispose aborts an in-flight prescription upload', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(

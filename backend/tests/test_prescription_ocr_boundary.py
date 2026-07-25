@@ -146,3 +146,18 @@ async def test_structured_extraction_uses_low_latency_high_resolution_config() -
         == types.MediaResolution.MEDIA_RESOLUTION_HIGH
     )
     assert config.max_output_tokens == 2048
+
+
+# 함수이름: test_ocr_prompt_requests_tight_medication_name_regions
+# 함수역할:
+# - OCR 지시문이 약품 행 전체가 아닌 약품명 글자 영역만 요청하는지 검증한다.
+# 매개변수:
+# - 없음
+# 반환값:
+# - 없음
+def test_ocr_prompt_requests_tight_medication_name_regions() -> None:
+    prompt = OCRServiceBoundary._prescription_extraction_prompt()
+
+    assert "medication_name" in prompt
+    assert "약품 행 전체가 아니라" in prompt
+    assert "투약량·횟수·일수 열은 포함하지 마세요" in prompt

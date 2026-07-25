@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'check_medication_detail_ui_boundary.dart';
+import 'guided_prescription_camera_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
@@ -277,11 +279,22 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       return;
     }
 
-    Navigator.pop(context);
     if (source == PrescriptionImageSource.camera) {
-      viewModel.requestPrescriptionImage();
+      final image = await Navigator.push<XFile>(
+        context,
+        MaterialPageRoute<XFile>(
+          builder: (context) =>
+              GuidedPrescriptionCameraUI(userSetting: viewModel.userSetting),
+        ),
+      );
+      if (!mounted || image == null) {
+        return;
+      }
+      Navigator.pop(context);
+      await viewModel.requestCapturedPrescriptionImage(image);
       return;
     }
+    Navigator.pop(context);
     viewModel.requestPrescriptionImageFromGallery();
   }
 
