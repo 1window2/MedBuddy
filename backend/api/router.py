@@ -5,7 +5,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_check_medication_detail,
@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 # Attributes:
 #   - text: Raw OCR text from the frontend.
 class OCRParseRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=100_000)
 
 
 # Function Name: identify_medication

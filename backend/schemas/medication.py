@@ -4,10 +4,19 @@
 from datetime import date
 from typing import Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from entities.medication_detail_entity import MedicationDetail
-from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.patient_hash_entity import (
+    DEFAULT_PATIENT_HASH,
+    MAX_PATIENT_HASH_LENGTH,
+    PATIENT_LINK_CODE_LENGTH,
+)
+
+_MAX_MEDICATION_NAME_LENGTH = 500
+_MAX_DETAIL_TEXT_LENGTH = 20_000
+_MAX_SHORT_TEXT_LENGTH = 100
+_MAX_URL_LENGTH = 2_048
 
 
 # Class Name: MedicationRequest
@@ -15,7 +24,10 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 # Attributes:
 #   - extracted_text: Raw medication text extracted by the frontend or analysis flow.
 class MedicationRequest(BaseModel):
-    extracted_text: Optional[str] = None
+    extracted_text: Optional[str] = Field(
+        default=None,
+        max_length=_MAX_DETAIL_TEXT_LENGTH,
+    )
 
 
 # Class Name: SavedMedicationCreate
@@ -32,18 +44,37 @@ class MedicationRequest(BaseModel):
 #   - total_days: Optional total medication days from prescription analysis.
 #   - ai_guide: Optional AI-generated patient guide.
 class SavedMedicationCreate(BaseModel):
-    patient_hash: str = DEFAULT_PATIENT_HASH
+    patient_hash: str = Field(
+        default=DEFAULT_PATIENT_HASH,
+        min_length=1,
+        max_length=MAX_PATIENT_HASH_LENGTH,
+    )
     prescription_date: Optional[date] = None
-    item_seq: Optional[str] = None
-    item_name: str
-    efficacy: str
-    use_method: str
-    warning_message: str
-    dosage_per_time: Optional[str] = None
-    daily_frequency: Optional[str] = None
-    total_days: Optional[str] = None
-    image_url: Optional[str] = None
-    ai_guide: Optional[str] = None
+    item_seq: Optional[str] = Field(default=None, max_length=64)
+    item_name: str = Field(
+        min_length=1,
+        max_length=_MAX_MEDICATION_NAME_LENGTH,
+    )
+    efficacy: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
+    use_method: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
+    warning_message: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
+    dosage_per_time: Optional[str] = Field(
+        default=None,
+        max_length=_MAX_SHORT_TEXT_LENGTH,
+    )
+    daily_frequency: Optional[str] = Field(
+        default=None,
+        max_length=_MAX_SHORT_TEXT_LENGTH,
+    )
+    total_days: Optional[str] = Field(
+        default=None,
+        max_length=_MAX_SHORT_TEXT_LENGTH,
+    )
+    image_url: Optional[str] = Field(default=None, max_length=_MAX_URL_LENGTH)
+    ai_guide: Optional[str] = Field(
+        default=None,
+        max_length=_MAX_DETAIL_TEXT_LENGTH,
+    )
 
 
 # Class Name: MedicationStatusUpdate
@@ -53,7 +84,7 @@ class SavedMedicationCreate(BaseModel):
 #   - slot_key: Optional time-slot key for per-dose completion updates.
 class MedicationStatusUpdate(BaseModel):
     medication_status: bool
-    slot_key: Optional[str] = None
+    slot_key: Optional[str] = Field(default=None, max_length=32)
 
 
 # Class Name: MedicationAlarmUpdate
@@ -62,8 +93,8 @@ class MedicationStatusUpdate(BaseModel):
 #   - hour: 24-hour local alarm hour.
 #   - minute: Local alarm minute.
 class MedicationAlarmUpdate(BaseModel):
-    hour: int
-    minute: int = 0
+    hour: int = Field(ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
 
 
 # Class Name: CaregiverNotificationUpdate
@@ -83,6 +114,7 @@ class CaregiverNotificationUpdate(BaseModel):
     )
     notification_type: Optional[str] = Field(
         default=None,
+        max_length=32,
         validation_alias=AliasChoices(
             "notification_type",
             "notificationType",
@@ -100,9 +132,9 @@ class CaregiverNotificationUpdate(BaseModel):
 #   - reading_speed: Selected voice/reading speed multiplier.
 #   - language: Selected language code.
 class UserSettingUpdate(BaseModel):
-    font_size: int
-    reading_speed: float
-    language: str
+    font_size: int = Field(ge=12, le=24)
+    reading_speed: float = Field(ge=0.5, le=2.0)
+    language: str = Field(pattern=r"^(ko|en)$")
 
 
 # Class Name: VoiceGuideRequest
@@ -115,16 +147,18 @@ class UserSettingUpdate(BaseModel):
 class VoiceGuideRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    item_name: str = ""
+    item_name: str = Field(default="", max_length=_MAX_MEDICATION_NAME_LENGTH)
     usage_method: str = Field(
         default="",
+        max_length=_MAX_DETAIL_TEXT_LENGTH,
         validation_alias=AliasChoices("usage_method", "use_method"),
     )
     warning: str = Field(
         default="",
+        max_length=_MAX_DETAIL_TEXT_LENGTH,
         validation_alias=AliasChoices("warning", "warning_message"),
     )
-    language: str = "ko"
+    language: str = Field(default="ko", pattern=r"^(ko|en)$")
 
     def to_medication_detail(self) -> MedicationDetail:
         return MedicationDetail(
@@ -140,7 +174,11 @@ class VoiceGuideRequest(BaseModel):
 # Attributes:
 #   - patient_hash: Patient ownership key encoded in the generated link code.
 class PatientCodeCreate(BaseModel):
-    patient_hash: str = DEFAULT_PATIENT_HASH
+    patient_hash: str = Field(
+        default=DEFAULT_PATIENT_HASH,
+        min_length=1,
+        max_length=MAX_PATIENT_HASH_LENGTH,
+    )
 
 
 # Class Name: PatientCodeRegister
@@ -151,9 +189,29 @@ class PatientCodeCreate(BaseModel):
 class PatientCodeRegister(BaseModel):
     caregiver_hash: str = Field(
         default=DEFAULT_PATIENT_HASH,
+        min_length=1,
+        max_length=MAX_PATIENT_HASH_LENGTH,
         validation_alias=AliasChoices("caregiver_hash", "guardian_hash"),
     )
-    patient_code: str
+    patient_code: str = Field(
+        min_length=PATIENT_LINK_CODE_LENGTH,
+        max_length=PATIENT_LINK_CODE_LENGTH,
+        pattern=r"^[A-Z0-9]+$",
+    )
+
+    # 함수이름: normalize_patient_code
+    # 함수역할:
+    # - 환자 연동 코드의 공백을 제거하고 대문자로 통일한 뒤 형식 검증에 전달한다.
+    # 매개변수:
+    # - value: 요청 본문에서 전달된 환자 연동 코드
+    # 반환값:
+    # - 대문자로 정규화한 환자 연동 코드
+    @field_validator("patient_code", mode="before")
+    @classmethod
+    def normalize_patient_code(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
 
 # Class Name: MedicationResponse
