@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 // 파일명: manage_user_setting_ui_boundary_test.dart
@@ -12,11 +13,14 @@ void main() {
   testWidgets('환경설정 저장 실패 후 버튼을 복구하고 재시도를 허용한다', (tester) async {
     final saveRequest = Completer<void>();
     var requestCount = 0;
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
           onSettingSaveRequested:
               ({
                 required fontSizeOption,

@@ -28,6 +28,14 @@ from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisTimeoutError,
 )
+from controls.authorization_control import AuthorizationControl  # noqa: E402
+from entities.authenticated_principal_entity import (  # noqa: E402
+    AuthenticatedPrincipal,
+)
+
+
+_DEVELOPMENT_PRINCIPAL = AuthenticatedPrincipal.development_principal()
+_DEVELOPMENT_AUTHORIZATION = AuthorizationControl(db=None)  # type: ignore[arg-type]
 
 
 class _MissingSavedMedicationControl:
@@ -101,6 +109,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as context:
             await get_saved_medications(
                 patient_hash="patient-missing",
+                principal=_DEVELOPMENT_PRINCIPAL,
+                authorization=_DEVELOPMENT_AUTHORIZATION,
                 check_saved_medication=_MissingSavedMedicationControl(),
             )
 
@@ -110,6 +120,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as context:
             get_today_medication_schedule(
                 patient_hash="patient-missing",
+                principal=_DEVELOPMENT_PRINCIPAL,
+                authorization=_DEVELOPMENT_AUTHORIZATION,
                 check_schedule=_MissingScheduleControl(),
             )
 
@@ -120,6 +132,8 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         with self.assertRaises(HTTPException) as context:
             await get_saved_medications(
+                principal=_DEVELOPMENT_PRINCIPAL,
+                authorization=_DEVELOPMENT_AUTHORIZATION,
                 check_saved_medication=_FailingSavedMedicationControl(),
             )
 
