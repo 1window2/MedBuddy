@@ -2,8 +2,8 @@
 
 ## Project Status
 
-MedBuddy is in active alpha demo development. Current demo releases are
-pre-release builds, not production-ready stable releases.
+MedBuddy is preparing its first Android beta. Published alpha demos remain
+pre-release builds and are not production-ready stable releases.
 
 ## Supported Versions
 
@@ -84,33 +84,36 @@ as untrusted input:
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
 
-## Alpha Identity Boundary
+## Identity and Authorization Boundary
 
-Current alpha builds use patient and caregiver hashes to select demo data
-scopes. Those hashes are not authentication credentials and must not be treated
-as proof of identity. Do not expose the current backend directly to untrusted
-networks or use it for real multi-user medical data.
+Published alpha builds use patient and caregiver hashes to select demo data and
+must not be used for real multi-user medical data. The beta source supports
+Firebase ID-token verification at the FastAPI boundary and maps verified
+issuer/subject claims to an opaque internal user key. Medication, schedule,
+notification, settings, and link operations derive ownership from that
+principal. A requested patient hash is accepted only as a selector after an
+active caregiver link has been verified.
 
-Production deployment requires an authenticated principal at the API boundary,
-server-derived ownership scope, and authorization checks for every medication,
-schedule, notification, and patient-caregiver operation. Client-supplied hashes
-must not remain the authority for mutation access.
+Production configuration fails closed unless Firebase authentication, a
+Firebase project, a durable non-SQLite database, and external schema migrations
+are configured. The unauthenticated `/health` route returns only service status.
+Firebase App Check and distributed abuse-rate controls remain defense-in-depth
+work before accepting an unrestricted public audience; neither replaces user
+authentication or authorization.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
 
-## Alpha Release Integrity
+## Release Integrity
 
-Current Android release APKs use the repository's development signing setup and
-are intended only for explicitly labeled alpha-demo sideloading. They must not
-be presented as Play Store, production, or trusted-distribution artifacts. A
-stable release requires a protected release keystore, documented key custody,
-and verification of the signed artifact produced by the release pipeline.
+Published alpha artifacts remain development-signed sideloading builds. The
+beta source removes debug signing from the release build type, keeps release
+keystores ignored, and provides a protected GitHub Environment workflow that
+requires release signing credentials. Ordinary pull requests can compile an
+unsigned release artifact but never receive signing material.
 
-The Android alpha client permits clear-text HTTP so it can reach a developer-run
-backend on an emulator or trusted local network. The backend URL is compiled
-into the app, and a build without an explicit override uses the emulator-only
-`10.0.2.2` address. Do not expose this configuration to an untrusted network or
-embed a private LAN address in a generally distributed APK. Production delivery
-requires HTTPS, a deployed backend endpoint, and an Android network policy that
-does not allow unrestricted clear-text traffic.
+The main Android manifest rejects clear-text traffic. Only the debug manifest
+overlay permits HTTP for emulator or trusted-LAN development. Release runtime
+configuration additionally rejects a non-HTTPS API URL. The Cloud Run workflow
+uses Workload Identity Federation, Secret Manager values, a migration job, and
+Cloud SQL before deploying the API service.
