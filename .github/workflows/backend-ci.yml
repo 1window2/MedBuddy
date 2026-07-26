@@ -2,9 +2,9 @@ name: FastAPI CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "beta/**" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "beta/**" ]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Source Code Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@v6
 
     - name: Set up Python for FastAPI
       uses: actions/setup-python@v6
