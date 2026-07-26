@@ -1,10 +1,19 @@
 # File Name: config.py
 # Role: Loads backend environment variables and external service settings.
 
+from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_PROJECT_ROOT = _BACKEND_ROOT.parent
+_DEFAULT_DATABASE_URL = f"sqlite:///{(_BACKEND_ROOT / 'medbuddy.db').as_posix()}"
 
 
 # Class Name: Settings
@@ -33,10 +42,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS: Maximum health recommendation duration.
 #   - REDIS_URL: Optional Redis cache URL.
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(
+        env_file=(_PROJECT_ROOT / ".env", _BACKEND_ROOT / ".env"),
+        extra="ignore",
+    )
 
     GEMINI_API_KEY: str = Field(min_length=1)
     PUBLIC_DATA_API_KEY: str = Field(min_length=1)
+    APP_ENV: Literal["development", "test", "production"] = "development"
+    AUTH_MODE: Literal["disabled", "firebase"] = "disabled"
+    FIREBASE_PROJECT_ID: str = ""
+    FIREBASE_CHECK_REVOKED_TOKENS: bool = False
+    FIREBASE_REQUIRE_VERIFIED_EMAIL: bool = True
+    FIREBASE_ALLOW_PHONE_AUTH: bool = False
+    FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
+    DATABASE_URL: str = _DEFAULT_DATABASE_URL
+    AUTO_CREATE_SCHEMA: bool = True
     BASIC_DRUG_API_BASE_URL: str = (
         "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
     )
@@ -110,6 +131,24 @@ class Settings(BaseSettings):
         if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
+
+    @model_validator(mode="after")
+    def validate_security_configuration(self) -> "Settings":
+        if self.APP_ENV != "production":
+            return self
+        if self.AUTH_MODE != "firebase":
+            raise ValueError("Production requires AUTH_MODE=firebase.")
+        if not self.FIREBASE_PROJECT_ID.strip():
+            raise ValueError("Production requires FIREBASE_PROJECT_ID.")
+        try:
+            database_url = make_url(self.DATABASE_URL)
+        except ArgumentError as exc:
+            raise ValueError("Production DATABASE_URL is invalid.") from exc
+        if database_url.get_backend_name() != "postgresql":
+            raise ValueError("Production requires a PostgreSQL DATABASE_URL.")
+        if self.AUTO_CREATE_SCHEMA:
+            raise ValueError("Production requires AUTO_CREATE_SCHEMA=false.")
+        return self
 
 
 settings = Settings()

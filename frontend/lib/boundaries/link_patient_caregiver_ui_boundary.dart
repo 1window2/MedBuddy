@@ -36,7 +36,6 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 }
 
 class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
-  late final TextEditingController _userHashController;
   late final TextEditingController _patientCodeController;
   late String _committedUserHash;
   late LinkPatientCaregiver _control;
@@ -50,7 +49,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   @override
   void initState() {
     super.initState();
-    _userHashController = TextEditingController(text: widget.initialUserHash);
     _patientCodeController = TextEditingController();
     _committedUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
@@ -66,7 +64,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
 
-    _userHashController.text = widget.initialUserHash;
     final nextUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
     );
@@ -85,7 +82,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void dispose() {
     _requestGeneration += 1;
     _control.dispose();
-    _userHashController.dispose();
     _patientCodeController.dispose();
     super.dispose();
   }
@@ -206,7 +202,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return false;
     }
 
-    _commitUserHash();
     var registered = false;
     final request = await _runLinkAction((request) async {
       await request.control.requestPatientCaregiverLink(patientCode);
@@ -304,16 +299,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     });
   }
 
-  void _commitUserHash() {
-    final nextUserHash = PatientHash.normalizePatientHash(
-      _userHashController.text,
-    );
-    if (nextUserHash != _committedUserHash) {
-      _replaceControl(nextUserHash);
-      _links = const [];
-    }
-  }
-
   void _replaceControl(String userHash) {
     final previousControl = _control;
     final nextControl = _createControl(userHash);
@@ -375,7 +360,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => _RegisterPatientDialog(
-        userHashController: _userHashController,
         patientCodeController: _patientCodeController,
         onRegisterRequested: _requestPatientCaregiverLink,
         statusMessageProvider: () => _statusMessage,
@@ -534,13 +518,11 @@ class _StatusCard extends StatelessWidget {
 }
 
 class _RegisterPatientDialog extends StatefulWidget {
-  final TextEditingController userHashController;
   final TextEditingController patientCodeController;
   final Future<bool> Function() onRegisterRequested;
   final String Function() statusMessageProvider;
 
   const _RegisterPatientDialog({
-    required this.userHashController,
     required this.patientCodeController,
     required this.onRegisterRequested,
     required this.statusMessageProvider,
@@ -606,23 +588,6 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
-                  key: const Key('caregiver-user-hash'),
-                  controller: widget.userHashController,
-                  enabled: !_isRegistering,
-                  inputFormatters: [
-                    LengthLimitingTextInputFormatter(
-                      PatientHash.maxPatientHashLength,
-                    ),
-                  ],
-                  decoration: _inputDecoration(
-                    '보호자 사용자 ID',
-                    PatientHash.defaultPatientHash,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  validator: _validateUserHash,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
                   key: const Key('patient-link-code'),
                   controller: widget.patientCodeController,
                   enabled: !_isRegistering,
@@ -676,20 +641,6 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
         ),
       ),
     );
-  }
-
-  // 함수이름: _validateUserHash
-  // 함수역할:
-  // - 보호자 식별자가 비어 있는 상태로 연동 요청이 전송되는 것을 막는다.
-  // 매개변수:
-  // - value: 사용자가 입력한 보호자 식별자
-  // 반환값:
-  // - 유효하면 null, 유효하지 않으면 화면에 표시할 오류 문구
-  String? _validateUserHash(String? value) {
-    if ((value ?? '').trim().isEmpty) {
-      return '보호자 사용자 ID를 입력해 주세요.';
-    }
-    return null;
   }
 
   // 함수이름: _validatePatientCode

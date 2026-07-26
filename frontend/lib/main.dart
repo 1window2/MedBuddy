@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_schedule_ui_boundary.dart';
+import 'boundaries/authentication_ui_boundary.dart';
+import 'controls/authentication_control.dart';
 import 'services/notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
@@ -17,7 +19,8 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MedBuddyApp());
+  final authenticationControl = await AuthenticationControl.bootstrap();
+  runApp(MedBuddyApp(authenticationControl: authenticationControl));
   try {
     await NotificationService.instance.initialize();
   } catch (error, stackTrace) {
@@ -43,12 +46,14 @@ class MedBuddyApp extends StatefulWidget {
   final MedBuddyViewModel Function()? viewModelFactory;
   final void Function(MedicationNotificationSelectionHandler? handler)?
   notificationSelectionRegistrar;
+  final AuthenticationControl? authenticationControl;
 
   const MedBuddyApp({
     super.key,
     this.navigatorKey,
     this.viewModelFactory,
     this.notificationSelectionRegistrar,
+    this.authenticationControl,
   });
 
   @override
@@ -59,18 +64,29 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   static const String _scheduleRouteName = '/schedule';
 
   late final GlobalKey<NavigatorState> _navigatorKey;
+  late final AuthenticationControl _authenticationControl;
+  late final bool _ownsAuthenticationControl;
   bool _isScheduleRouteOpen = false;
+  bool _hasPendingScheduleNavigation = false;
 
   @override
   void initState() {
     super.initState();
     _navigatorKey = widget.navigatorKey ?? GlobalKey<NavigatorState>();
+    _ownsAuthenticationControl = widget.authenticationControl == null;
+    _authenticationControl =
+        widget.authenticationControl ?? AuthenticationControl.development();
+    _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
   }
 
   @override
   void dispose() {
     _registerNotificationSelectionHandler(null);
+    _authenticationControl.removeListener(_handleAuthenticationChange);
+    if (_ownsAuthenticationControl) {
+      _authenticationControl.dispose();
+    }
     super.dispose();
   }
 
@@ -91,6 +107,28 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     if (destination != MedicationNotificationDestination.schedule) {
       return;
     }
+    if (_authenticationControl.session == null) {
+      _hasPendingScheduleNavigation = true;
+      return;
+    }
+    _navigateToScheduleWhenReady();
+  }
+
+  void _handleAuthenticationChange() {
+    if (_authenticationControl.session == null) {
+      _hasPendingScheduleNavigation = false;
+      _isScheduleRouteOpen = false;
+      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      return;
+    }
+    if (!_hasPendingScheduleNavigation) {
+      return;
+    }
+    _hasPendingScheduleNavigation = false;
+    _navigateToScheduleWhenReady();
+  }
+
+  void _navigateToScheduleWhenReady() {
     final navigator = _navigatorKey.currentState;
     if (navigator != null) {
       _openSchedule(navigator);
@@ -128,27 +166,52 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(
-          create: (_) =>
-              (widget.viewModelFactory?.call() ?? MedBuddyViewModel())
-                ..loadUserSetting(),
-        ),
-      ],
-      child: MaterialApp(
-        navigatorKey: _navigatorKey,
-        title: 'MedBuddy',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: MedBuddyColors.primary),
-          primaryColor: MedBuddyColors.primary,
-          scaffoldBackgroundColor: MedBuddyColors.pageBackground,
-          useMaterial3: true,
-          fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
-        ),
-        home: const HomeScreen(),
+    return ChangeNotifierProvider<AuthenticationControl>.value(
+      value: _authenticationControl,
+      child: Consumer<AuthenticationControl>(
+        builder: (context, authentication, _) {
+          final session = authentication.session;
+          final application = MaterialApp(
+            navigatorKey: _navigatorKey,
+            title: 'MedBuddy',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: MedBuddyColors.primary,
+              ),
+              primaryColor: MedBuddyColors.primary,
+              scaffoldBackgroundColor: MedBuddyColors.pageBackground,
+              useMaterial3: true,
+              fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
+            ),
+            home: _authenticationHome(authentication),
+          );
+          if (session == null) {
+            return application;
+          }
+          return ChangeNotifierProvider<MedBuddyViewModel>(
+            key: ValueKey(session.userHash),
+            create: (_) =>
+                (widget.viewModelFactory?.call() ??
+                      MedBuddyViewModel(
+                        patientHash: session.userHash,
+                        apiClient: authentication.apiClient,
+                      ))
+                  ..loadUserSetting(),
+            child: application,
+          );
+        },
       ),
     );
+  }
+
+  Widget _authenticationHome(AuthenticationControl authentication) {
+    if (authentication.isInitializing) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (authentication.session == null) {
+      return AuthenticationUI(control: authentication);
+    }
+    return const HomeScreen();
   }
 }

@@ -7,6 +7,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 enum MedicationSaveStatus { saved, duplicate, failed }
@@ -43,7 +44,7 @@ class CheckSavedMedication {
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
   }) : patientHash = PatientHash.normalizePatientHash(patientHash),
-       _client = client ?? http.Client(),
+       _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
   // 함수명: saveMedicationDetail

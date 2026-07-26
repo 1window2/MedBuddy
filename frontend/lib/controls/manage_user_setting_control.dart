@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: manage_user_setting_control.dart
@@ -35,8 +36,8 @@ class ManageUserSetting {
     this.userHash = PatientHash.defaultPatientHash,
     this.useRemotePersistence = true,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: requestUserSetting
   // 함수역할:
@@ -56,8 +57,9 @@ class ManageUserSetting {
     }
 
     try {
-      final response =
-          await _client.get(_buildUserSettingUri()).timeout(_requestTimeout);
+      final response = await _client
+          .get(_buildUserSettingUri())
+          .timeout(_requestTimeout);
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
         throw StateError(
@@ -147,13 +149,16 @@ class ManageUserSetting {
 
     return UserSetting(
       userHash: fallbackSetting.userHash,
-      fontSize: preferences.getInt(_fontSizeKey) ??
+      fontSize:
+          preferences.getInt(_fontSizeKey) ??
           preferences.getInt(_legacyFontSizeKey) ??
           fallbackSetting.fontSize,
-      readingSpeed: preferences.getDouble(_readingSpeedKey) ??
+      readingSpeed:
+          preferences.getDouble(_readingSpeedKey) ??
           preferences.getDouble(_legacyReadingSpeedKey) ??
           fallbackSetting.readingSpeed,
-      language: preferences.getString(_languageKey) ??
+      language:
+          preferences.getString(_languageKey) ??
           preferences.getString(_legacyLanguageKey) ??
           fallbackSetting.language,
     );
@@ -176,9 +181,9 @@ class ManageUserSetting {
   }
 
   Uri _buildUserSettingUri() {
-    return Uri.parse('$baseUrl/settings/user').replace(
-      queryParameters: {'user_hash': _normalizedUserHash},
-    );
+    return Uri.parse(
+      '$baseUrl/settings/user',
+    ).replace(queryParameters: {'user_hash': _normalizedUserHash});
   }
 
   String get _normalizedUserHash => PatientHash.normalizePatientHash(userHash);

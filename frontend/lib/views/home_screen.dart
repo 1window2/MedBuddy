@@ -13,6 +13,7 @@ import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
 import '../boundaries/prescription_analysis_status_ui_boundary.dart';
+import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 
@@ -157,7 +158,8 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const LinkPatientCaregiverUI(),
+            builder: (context) =>
+                LinkPatientCaregiverUI(initialUserHash: viewModel.patientHash),
           ),
         );
       },
@@ -167,7 +169,9 @@ class HomeScreen extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => ManageUserSettingUI(
               initialSetting: viewModel.userSetting,
+              authenticationControl: context.read<AuthenticationControl>(),
               onSettingSaveRequested: viewModel.requestUserSettingSave,
+              onSignOutRequested: context.read<AuthenticationControl>().signOut,
             ),
           ),
         );

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../entities/health_recommendation_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: check_health_recommendation_control.dart
@@ -25,9 +26,9 @@ class CheckHealthRecommendation {
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: requestHealthRecommendation
   // 함수역할:
@@ -60,7 +61,8 @@ class CheckHealthRecommendation {
         );
       }
       throw StateError(
-          'Server response did not include health recommendation.');
+        'Server response did not include health recommendation.',
+      );
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -76,10 +78,7 @@ class CheckHealthRecommendation {
 
   Uri _buildHealthUri(String path, String language) {
     return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {
-        'patient_hash': patientHash,
-        'language': language,
-      },
+      queryParameters: {'patient_hash': patientHash, 'language': language},
     );
   }
 

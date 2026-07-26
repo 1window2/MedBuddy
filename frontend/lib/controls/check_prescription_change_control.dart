@@ -6,6 +6,7 @@ import '../entities/analyzed_medication_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: check_prescription_change_control.dart
@@ -28,7 +29,7 @@ class CheckPrescriptionChange {
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
   }) : patientHash = PatientHash.normalizePatientHash(patientHash),
-       _client = client ?? http.Client(),
+       _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
   // 함수이름: requestPrescriptionChange

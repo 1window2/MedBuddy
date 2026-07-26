@@ -5,7 +5,8 @@ import asyncio
 import logging
 from threading import Lock
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from boundaries.pill_identification_boundary import (
@@ -17,7 +18,13 @@ from boundaries.public_drug_api_boundary import (
     PublicDrugLargeAPI,
     PublicDrugSmallAPI,
 )
+from boundaries.oidc_token_verifier_boundary import (
+    OIDCTokenVerifier,
+    TokenVerificationError,
+)
+from core.config import settings
 from core.database import get_db
+from controls.authorization_control import AuthorizationControl
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
@@ -35,6 +42,7 @@ from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
+from entities.authenticated_principal_entity import AuthenticatedPrincipal
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
@@ -45,6 +53,75 @@ _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
 _pill_ranking_semaphore = asyncio.Semaphore(2)
+_oidc_token_verifier_lock = Lock()
+_oidc_token_verifier: OIDCTokenVerifier | None = None
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_oidc_token_verifier() -> OIDCTokenVerifier:
+    global _oidc_token_verifier
+    with _oidc_token_verifier_lock:
+        if _oidc_token_verifier is None:
+            _oidc_token_verifier = OIDCTokenVerifier(
+                settings.FIREBASE_PROJECT_ID,
+                check_revoked=settings.FIREBASE_CHECK_REVOKED_TOKENS,
+            )
+        return _oidc_token_verifier
+
+
+def get_authenticated_principal(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> AuthenticatedPrincipal:
+    if settings.AUTH_MODE == "disabled":
+        return AuthenticatedPrincipal.development_principal()
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail="A Firebase bearer token is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        claims = get_oidc_token_verifier().verifyIdToken(credentials.credentials)
+        principal = AuthenticatedPrincipal.from_verified_claims(claims)
+    except (TokenVerificationError, ValueError) as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="The Firebase bearer token is invalid or expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    if principal.anonymous and not settings.FIREBASE_ALLOW_ANONYMOUS_AUTH:
+        raise HTTPException(
+            status_code=403,
+            detail="Anonymous Firebase authentication is disabled.",
+        )
+    if (
+        principal.sign_in_provider == "phone"
+        and not settings.FIREBASE_ALLOW_PHONE_AUTH
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Phone Firebase authentication is disabled.",
+        )
+    provider_requires_verified_email = principal.sign_in_provider not in {
+        "anonymous",
+        "phone",
+    }
+    if (
+        settings.FIREBASE_REQUIRE_VERIFIED_EMAIL
+        and provider_requires_verified_email
+        and (not principal.email or not principal.email_verified)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="A verified email address is required.",
+        )
+    return principal
+
+
+def get_authorization_control(
+    db: Session = Depends(get_db),
+) -> AuthorizationControl:
+    return AuthorizationControl(db=db)
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:
