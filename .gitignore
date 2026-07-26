@@ -46,6 +46,10 @@ frontend/.flutter-plugins-dependencies
 frontend/build/
 frontend/coverage/
 frontend/android/local.properties
+frontend/android/key.properties
+frontend/android/app/google-services.json
+*.jks
+*.keystore
 frontend/android/app/debug/
 frontend/android/app/profile/
 frontend/android/app/release/
