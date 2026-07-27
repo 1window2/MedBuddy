@@ -45,6 +45,89 @@ jobs:
             | base64 --decode \
             > android/app/google-services.json
 
+      - name: Validate Firebase release configuration
+        shell: bash
+        env:
+          FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_ANDROID_CERT_SHA1: ${{ vars.ANDROID_SIGNING_CERT_SHA1 }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_package = "com.medbuddy.app"
+          config = json.loads(
+              Path("android/app/google-services.json").read_text(encoding="utf-8")
+          )
+          project = config["project_info"]
+          clients = [
+              client
+              for client in config.get("client", [])
+              if client.get("client_info", {})
+              .get("android_client_info", {})
+              .get("package_name")
+              == expected_package
+          ]
+          if len(clients) != 1:
+              raise SystemExit(
+                  "google-services.json must contain exactly one MedBuddy Android client."
+              )
+          client = clients[0]
+          checks = {
+              "project ID": (
+                  project.get("project_id"),
+                  os.environ["FIREBASE_PROJECT_ID"],
+              ),
+              "sender ID": (
+                  str(project.get("project_number", "")),
+                  os.environ["FIREBASE_MESSAGING_SENDER_ID"],
+              ),
+              "app ID": (
+                  client.get("client_info", {}).get("mobilesdk_app_id"),
+                  os.environ["FIREBASE_APP_ID"],
+              ),
+              "API key": (
+                  next(
+                      (
+                          item.get("current_key")
+                          for item in client.get("api_key", [])
+                          if item.get("current_key")
+                      ),
+                      None,
+                  ),
+                  os.environ["FIREBASE_API_KEY"],
+              ),
+          }
+          mismatches = [
+              name
+              for name, (actual, expected) in checks.items()
+              if not expected or actual != expected
+          ]
+          expected_sha1 = (
+              os.environ["FIREBASE_ANDROID_CERT_SHA1"]
+              .replace(":", "")
+              .strip()
+              .lower()
+          )
+          registered_sha1 = {
+              item.get("android_info", {}).get("certificate_hash", "").lower()
+              for item in client.get("oauth_client", [])
+              if item.get("client_type") == 1
+          }
+          if not expected_sha1 or expected_sha1 not in registered_sha1:
+              mismatches.append("release SHA-1")
+          if mismatches:
+              raise SystemExit(
+                  "Firebase release configuration mismatch: "
+                  + ", ".join(mismatches)
+              )
+          PY
+
       - name: Restore release keystore
         shell: bash
         env:
