@@ -19,7 +19,7 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final authenticationControl = await AuthenticationControl.bootstrap();
+  final authenticationControl = AuthenticationControl.bootstrap();
   runApp(MedBuddyApp(authenticationControl: authenticationControl));
   try {
     await NotificationService.instance.initialize();

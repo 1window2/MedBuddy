@@ -60,4 +60,22 @@ void main() {
 
     client.close();
   });
+
+  test('notifies the authentication control after a backend 401', () async {
+    var unauthorizedCount = 0;
+    final client = AuthenticatedApiClient(
+      inner: MockClient((request) async => http.Response('{}', 401)),
+      tokenProvider: () async => 'revoked-token',
+      onUnauthorized: () async {
+        unauthorizedCount += 1;
+      },
+      trustedBaseUri: Uri.parse('https://api.example.test'),
+    );
+
+    final response = await client.get(Uri.parse('https://api.example.test'));
+
+    expect(response.statusCode, 401);
+    expect(unauthorizedCount, 1);
+    client.close();
+  });
 }

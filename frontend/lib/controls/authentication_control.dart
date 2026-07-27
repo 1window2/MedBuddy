@@ -70,6 +70,7 @@ class AuthenticationControl extends ChangeNotifier {
   AuthenticationControl._() {
     apiClient = AuthenticatedApiClient(
       tokenProvider: () async => await _firebaseAuth?.currentUser?.getIdToken(),
+      onUnauthorized: _invalidateUnauthorizedSession,
     );
   }
 
@@ -83,43 +84,46 @@ class AuthenticationControl extends ChangeNotifier {
     return control;
   }
 
-  static Future<AuthenticationControl> bootstrap() async {
+  static AuthenticationControl bootstrap() {
     final control = AuthenticationControl._();
+    unawaited(control._initialize());
+    return control;
+  }
+
+  Future<void> _initialize() async {
     try {
       ApiConfig.validate();
       AuthConfig.validate();
       if (AuthConfig.mode == AuthenticationMode.disabled) {
-        control._session = const AuthSession(
+        _session = const AuthSession(
           userHash: PatientHash.defaultPatientHash,
           authenticated: false,
         );
-        return control;
+        return;
       }
       await Firebase.initializeApp(options: AuthConfig.firebaseOptions);
       final firebaseAuth = FirebaseAuth.instance;
-      control._firebaseAuth = firebaseAuth;
+      _firebaseAuth = firebaseAuth;
       if (AuthConfig.authEmulatorHost.isNotEmpty) {
         await firebaseAuth.useAuthEmulator(
           AuthConfig.authEmulatorHost,
           AuthConfig.authEmulatorPort,
         );
       }
-      control._authSubscription = firebaseAuth.idTokenChanges().listen(
-        control._synchronizeUser,
+      _authSubscription = firebaseAuth.idTokenChanges().listen(
+        _synchronizeUser,
         onError: (Object error, StackTrace stackTrace) {
-          control._setError('Authentication state could not be refreshed.');
+          _setError('Authentication state could not be refreshed.');
         },
       );
-      await control._synchronizeUser(firebaseAuth.currentUser);
+      await _synchronizeUser(firebaseAuth.currentUser);
     } catch (_) {
-      control._configurationFailed = true;
-      control._errorMessage =
-          'MedBuddy authentication is not configured correctly.';
+      _configurationFailed = true;
+      _errorMessage = 'MedBuddy authentication is not configured correctly.';
     } finally {
-      control._isInitializing = false;
-      control.notifyListeners();
+      _isInitializing = false;
+      notifyListeners();
     }
-    return control;
   }
 
   Future<void> signIn({required String email, required String password}) async {
@@ -411,6 +415,16 @@ class AuthenticationControl extends ChangeNotifier {
     }
   }
 
+  Future<void> _invalidateUnauthorizedSession() async {
+    final firebaseAuth = _firebaseAuth;
+    if (firebaseAuth == null) {
+      return;
+    }
+    _session = null;
+    _setError('Your secure session expired. Please sign in again.');
+    await firebaseAuth.signOut();
+  }
+
   FirebaseAuth _requireFirebaseAuth() {
     final firebaseAuth = _firebaseAuth;
     if (firebaseAuth == null) {
@@ -481,7 +495,7 @@ class AuthenticationControl extends ChangeNotifier {
     PhoneAuthCredential credential,
   ) async {
     try {
-      await _requireFirebaseAuth().signInWithCredential(credential);
+      await _signInOrUpgradeAnonymousUser(credential);
       _clearSmsChallenge(notify: false);
     } on FirebaseAuthException catch (error) {
       _setError(_messageForFirebaseError(error.code));
