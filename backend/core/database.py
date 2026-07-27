@@ -15,6 +15,13 @@ SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 _engine_options: dict[str, object] = {"pool_pre_ping": True}
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     _engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_options.update(
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+        pool_recycle=settings.DATABASE_POOL_RECYCLE_SECONDS,
+    )
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_options)
 

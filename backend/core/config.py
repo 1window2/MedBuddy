@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
     DATABASE_URL: str = _DEFAULT_DATABASE_URL
     AUTO_CREATE_SCHEMA: bool = True
+    DATABASE_POOL_SIZE: int = Field(default=5, gt=0, le=20)
+    DATABASE_MAX_OVERFLOW: int = Field(default=0, ge=0, le=20)
+    DATABASE_POOL_TIMEOUT_SECONDS: int = Field(default=10, gt=0, le=120)
+    DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1_800, gt=0, le=86_400)
     BASIC_DRUG_API_BASE_URL: str = (
         "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
     )

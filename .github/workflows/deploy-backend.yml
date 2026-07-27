@@ -81,6 +81,7 @@ jobs:
             --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
             --allow-unauthenticated \
             --port 8080 \
-            --concurrency 20 \
+            --memory 1Gi \
+            --concurrency 4 \
             --max-instances 5 \
             --timeout 120

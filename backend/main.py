@@ -5,12 +5,15 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
     close_medication_detail_cache,
     close_pill_identification_boundaries,
+    get_oidc_token_verifier,
 )
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from controls.input_prescription_control import MAX_PRESCRIPTION_IMAGE_BYTES
@@ -103,6 +106,20 @@ def create_app() -> FastAPI:
     @app.get("/health", include_in_schema=False)
     def health_check() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/ready", include_in_schema=False)
+    def readiness_check() -> dict[str, str]:
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            if settings.AUTH_MODE == "firebase":
+                get_oidc_token_verifier()
+        except (SQLAlchemyError, RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="MedBuddy dependencies are not ready.",
+            ) from exc
+        return {"status": "ready"}
 
     return app
 
