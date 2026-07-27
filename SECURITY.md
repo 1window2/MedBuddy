@@ -96,7 +96,8 @@ active caregiver link has been verified.
 
 Production configuration fails closed unless Firebase authentication, a
 Firebase project, a durable non-SQLite database, and external schema migrations
-are configured. The unauthenticated `/health` route returns only service status.
+are configured. The unauthenticated `/health` route returns only process
+liveness, while `/ready` returns only binary dependency readiness.
 Firebase App Check and distributed abuse-rate controls remain defense-in-depth
 work before accepting an unrestricted public audience; neither replaces user
 authentication or authorization.
@@ -116,4 +117,7 @@ The main Android manifest rejects clear-text traffic. Only the debug manifest
 overlay permits HTTP for emulator or trusted-LAN development. Release runtime
 configuration additionally rejects a non-HTTPS API URL. The Cloud Run workflow
 uses Workload Identity Federation, Secret Manager values, a migration job, and
-Cloud SQL before deploying the API service.
+Cloud SQL before deploying the API service. The signed Android workflow also
+requires the release SHA-1 to be registered in the restored Firebase
+configuration and rejects Firebase identifiers that differ from the compiled
+Dart configuration.

@@ -221,7 +221,11 @@ Job, and deploys that same image only after migration succeeds.
 
 The Cloud Run network endpoint permits unauthenticated invocation because a
 Firebase client token is not a Cloud Run IAM token. FastAPI still authenticates
-every application route; only `/health` is intentionally anonymous.
+every application route. `/health` and `/ready` are intentionally anonymous:
+the former reports process liveness, while the latter returns only a binary
+readiness result after checking database connectivity and verifier
+initialization. Production database pools and Cloud Run concurrency are bounded
+so image-processing requests cannot multiply connections without limit.
 
 ### Android Signing
 
@@ -229,13 +233,14 @@ The `beta-android` GitHub Environment supplies
 `FIREBASE_GOOGLE_SERVICES_JSON_BASE64`, `ANDROID_KEYSTORE_BASE64`,
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` as
 secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
-`MEDBUDDY_API_BASE_URL`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`,
+`ANDROID_SIGNING_CERT_SHA1`, `MEDBUDDY_API_BASE_URL`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`,
 `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_PROJECT_ID` as environment
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials; the
 protected environment prevents accidental cross-project builds rather than
 treating those values as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies
-the upload certificate fingerprint before building, builds both APK and AAB
-outputs, and publishes SHA-256 checksum files. Play distribution should use
-Play App Signing and retain the protected key as the upload key.
+the upload certificate fingerprint and cross-checks the restored Firebase
+Android configuration before building. It builds both APK and AAB outputs and
+publishes SHA-256 checksum files. Play distribution should use Play App Signing
+and retain the protected key as the upload key.
