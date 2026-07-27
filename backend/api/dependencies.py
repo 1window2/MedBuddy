@@ -21,6 +21,7 @@ from boundaries.public_drug_api_boundary import (
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
     TokenVerificationError,
+    TokenVerificationUnavailableError,
 )
 from core.config import settings
 from core.database import get_db
@@ -83,6 +84,16 @@ def get_authenticated_principal(
     try:
         claims = get_oidc_token_verifier().verifyIdToken(credentials.credentials)
         principal = AuthenticatedPrincipal.from_verified_claims(claims)
+    except TokenVerificationUnavailableError as exc:
+        logger.warning(
+            "Firebase token verification is unavailable: %s",
+            type(exc.__cause__).__name__ if exc.__cause__ else type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication verification is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
     except (TokenVerificationError, ValueError) as exc:
         raise HTTPException(
             status_code=401,

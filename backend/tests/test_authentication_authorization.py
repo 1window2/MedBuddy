@@ -9,6 +9,9 @@ from sqlalchemy.orm import sessionmaker
 
 from api.dependencies import get_authenticated_principal
 from api.router import check_prescription_change, router
+from boundaries.oidc_token_verifier_boundary import (
+    TokenVerificationUnavailableError,
+)
 from controls.authorization_control import AuthorizationControl
 from core.config import Settings
 from core.database import Base
@@ -275,6 +278,30 @@ def test_verified_firebase_token_creates_principal() -> None:
 
     assert principal.subject == "verified-user"
     assert principal.authentication_disabled is False
+
+
+def test_firebase_verifier_outage_returns_retryable_service_error() -> None:
+    class UnavailableVerifier:
+        def verifyIdToken(self, token: str) -> dict[str, object]:
+            raise TokenVerificationUnavailableError("unavailable")
+
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials="valid-token",
+    )
+
+    with (
+        patch("api.dependencies.settings.AUTH_MODE", "firebase"),
+        patch(
+            "api.dependencies.get_oidc_token_verifier",
+            return_value=UnavailableVerifier(),
+        ),
+    ):
+        with pytest.raises(HTTPException) as unavailable:
+            get_authenticated_principal(credentials)
+
+    assert unavailable.value.status_code == 503
+    assert unavailable.value.headers == {"Retry-After": "5"}
 
 
 @pytest.mark.parametrize(

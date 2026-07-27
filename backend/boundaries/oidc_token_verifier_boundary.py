@@ -11,6 +11,10 @@ class TokenVerificationError(Exception):
     """Raised when an external identity token cannot be trusted."""
 
 
+class TokenVerificationUnavailableError(Exception):
+    """Raised when the external identity verifier cannot complete its work."""
+
+
 class OIDCTokenVerifier:
     """Verifies Firebase ID tokens without exposing Firebase to use-case controls."""
 
@@ -39,6 +43,16 @@ class OIDCTokenVerifier:
                 app=self._app,
                 check_revoked=self._check_revoked,
             )
-        except Exception as exc:
+        except (
+            auth.ExpiredIdTokenError,
+            auth.InvalidIdTokenError,
+            auth.RevokedIdTokenError,
+            auth.UserDisabledError,
+            ValueError,
+        ) as exc:
             raise TokenVerificationError("Bearer token is invalid.") from exc
+        except Exception as exc:
+            raise TokenVerificationUnavailableError(
+                "Firebase token verification is unavailable."
+            ) from exc
         return dict(claims)
