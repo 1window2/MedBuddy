@@ -3,10 +3,11 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 def utc_now() -> datetime:
@@ -24,6 +25,7 @@ class _HealthRecommendationCache(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_hash = Column(
         String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
         index=True,
         nullable=False,
         default=DEFAULT_PATIENT_HASH,

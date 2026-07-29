@@ -3,9 +3,18 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 
 from core.database import Base
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 # 함수명: utc_now
@@ -27,7 +36,12 @@ class _DevicePushToken(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_hash = Column(String, nullable=False, index=True)
+    user_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     token = Column(String, nullable=False)
     platform = Column(String, nullable=False, default="android", server_default="android")
     enabled = Column(Boolean, nullable=False, default=True, server_default="1")

@@ -164,14 +164,19 @@ class HomeScreen extends StatelessWidget {
         );
       },
       onUserSettingRequested: () {
+        final authenticationControl = context.read<AuthenticationControl>();
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ManageUserSettingUI(
               initialSetting: viewModel.userSetting,
-              authenticationControl: context.read<AuthenticationControl>(),
+              authenticationControl: authenticationControl,
               onSettingSaveRequested: viewModel.requestUserSettingSave,
-              onSignOutRequested: context.read<AuthenticationControl>().signOut,
+              onSignOutRequested: authenticationControl.signOut,
+              onDeleteAccountRequested: () async {
+                await viewModel.requestAccountDataDeletion();
+                await authenticationControl.deleteCurrentUser();
+              },
             ),
           ),
         );

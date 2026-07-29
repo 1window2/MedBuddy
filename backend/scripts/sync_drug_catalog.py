@@ -18,7 +18,11 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from boundaries.public_drug_api_boundary import PublicDrugLargeAPI, PublicDrugSmallAPI
+from boundaries.public_drug_api_boundary import (
+    PublicDrugLargeAPI,
+    PublicDrugSmallAPI,
+    _PublicDrugTransport,
+)
 from core.database import Base, SessionLocal, engine
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
@@ -485,12 +489,13 @@ async def main() -> None:
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+    transport = _PublicDrugTransport(timeout_seconds=60.0)
     try:
         store = _DrugCatalogStore(db)
         sync_job = DrugCatalogSyncJob(
             store=store,
-            public_drug_small_api=PublicDrugSmallAPI(timeout_seconds=60.0),
-            public_drug_large_api=PublicDrugLargeAPI(timeout_seconds=60.0),
+            public_drug_small_api=PublicDrugSmallAPI(transport=transport),
+            public_drug_large_api=PublicDrugLargeAPI(transport=transport),
             page_size=args.page_size,
             start_page=args.start_page,
             max_pages=args.max_pages,
@@ -512,6 +517,7 @@ async def main() -> None:
             store.count_approval(),
         )
     finally:
+        await transport.close()
         db.close()
 
 

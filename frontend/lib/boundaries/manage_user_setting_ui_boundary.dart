@@ -17,6 +17,7 @@ class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
+  final Future<void> Function()? onDeleteAccountRequested;
   final Future<void> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -30,6 +31,7 @@ class ManageUserSettingUI extends StatefulWidget {
     required this.authenticationControl,
     required this.onSettingSaveRequested,
     this.onSignOutRequested,
+    this.onDeleteAccountRequested,
   });
 
   @override
@@ -154,6 +156,25 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                             ),
                           ),
                         ],
+                        if (widget.onDeleteAccountRequested != null) ...[
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: MedBuddyColors.danger,
+                                side: const BorderSide(
+                                  color: MedBuddyColors.danger,
+                                ),
+                              ),
+                              onPressed: _isSaving
+                                  ? null
+                                  : _confirmAccountDeletion,
+                              icon: const Icon(Icons.delete_forever_outlined),
+                              label: Text(text.deleteAccount),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -217,6 +238,53 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       builder: (context) =>
           _MfaEnrollmentDialog(control: widget.authenticationControl),
     );
+  }
+
+  // 함수명: _confirmAccountDeletion
+  // 역할:
+  // - 데이터 삭제의 비가역성을 알리고 명시적으로 확인한 경우에만 삭제한다.
+  Future<void> _confirmAccountDeletion() async {
+    final text = _SettingText(_language);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(text.deleteAccount),
+        content: Text(text.deleteAccountMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(text.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: MedBuddyColors.danger,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(text.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      await widget.onDeleteAccountRequested?.call();
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.deleteAccountFailed)));
+    }
   }
 }
 
@@ -677,4 +745,14 @@ class _SettingText {
   String get saveFailed =>
       isEnglish ? 'Could not save settings.' : '설정을 저장하지 못했습니다.';
   String get signOut => isEnglish ? 'Sign out' : '로그아웃';
+  String get deleteAccount => isEnglish ? 'Delete account' : '계정 데이터 삭제';
+  String get deleteAccountMessage => isEnglish
+      ? 'All medication, schedule, caregiver link, and settings data will be '
+            'deleted permanently. This cannot be undone.'
+      : '복약정보, 일정, 보호자 연동, 설정 데이터가 모두 영구 삭제됩니다. '
+            '삭제한 데이터는 복구할 수 없습니다.';
+  String get cancel => isEnglish ? 'Cancel' : '취소';
+  String get delete => isEnglish ? 'Delete' : '삭제';
+  String get deleteAccountFailed =>
+      isEnglish ? 'Could not delete account data.' : '계정 데이터를 삭제하지 못했습니다.';
 }

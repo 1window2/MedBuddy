@@ -347,6 +347,29 @@ class AuthenticationControl extends ChangeNotifier {
     });
   }
 
+  // 함수명: deleteCurrentUser
+  // 역할:
+  // - 서버의 MedBuddy 데이터 삭제가 끝난 뒤 Firebase 인증 계정을 삭제한다.
+  // - 인증을 사용하지 않는 로컬 데모에서는 현재 로컬 세션을 그대로 유지한다.
+  Future<void> deleteCurrentUser() async {
+    if (AuthConfig.mode == AuthenticationMode.disabled) {
+      _session = _createLocalSession();
+      notifyListeners();
+      return;
+    }
+    final firebaseAuth = _requireFirebaseAuth();
+    final user = firebaseAuth.currentUser;
+    if (user == null) {
+      throw StateError('삭제할 로그인 계정이 없습니다.');
+    }
+    await user.delete();
+    if (_googleSignInInitialized) {
+      await _googleSignIn.signOut();
+    }
+    _clearSmsChallenge(notify: false);
+    await _synchronizeUser(null);
+  }
+
   Future<void> _runAuthOperation(Future<void> Function() operation) async {
     if (_isBusy) {
       return;
