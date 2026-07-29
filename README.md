@@ -10,13 +10,14 @@
 
 ### Prescription and Pill-Envelope Analysis
 
-- The Flutter app captures or selects a prescription or pill-envelope image and sends it to FastAPI as multipart data.
-- The backend preprocesses the image through an OCR boundary, requests structured extraction from Gemini Vision, normalizes the response into UML-aligned prescription analysis entities, validates the response schema, and applies secondary masking before returning medication candidates.
+- The Flutter app captures or selects a prescription or pill-envelope image and performs Korean OCR on the device with Google ML Kit.
+- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. The original prescription image remains on the device during this text-analysis flow.
+- Only the de-identified OCR text is sent to FastAPI through the prescription-text endpoint. The backend parses and validates that text, normalizes the result into UML-aligned prescription analysis entities, and uses bounded Gemini text recovery only where the structured pipeline requires it.
 - Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
 - Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
-- OCR correction metadata, skipped item counts, and raw-name notices are surfaced in the Flutter preview so users can review imperfect OCR results before analysis.
-- The analysis result can be saved into the user's medication list while preserving prescription-derived schedule fields such as dose per time, daily frequency, and total days.
+- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
+- The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
 
 ### Medication Detail and Guidance
 
@@ -46,7 +47,7 @@
 ### Saved Medication and Schedule Management
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
-- Saved medications retain dosage schedule fields for today's medication schedule.
+- Saved medications retain the confirmed prescription date, dosage fields, medication period, and schedule slots used to build today's medication schedule.
 - Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
@@ -56,11 +57,15 @@
 
 - Patients can create a temporary link code.
 - Caregivers can register the code, view linked patient medication data, and unlink when needed.
-- Caregivers can enable or disable notification preferences for each linked patient through a persisted caregiver-patient setting.
+- Caregivers can configure each linked patient's morning, lunch, evening, and bedtime alert independently. Each slot supports alerts when a dose is completed or when it remains unchecked after a selected deadline.
 - Firebase Authentication establishes the user identity in beta mode, and the
   backend derives the user's internal scope from the verified token. A
   caregiver can select another patient only when an active server-side link
   authorizes that scope; client hashes are selectors, never credentials.
+- In Firebase beta mode, authenticated device tokens receive transition-based
+  FCM push alerts when a dose is newly completed. Missed-deadline checks remain
+  an authenticated Android background task. Local demo mode polls for both
+  completion and missed-deadline changes and displays local notifications.
 
 ### Health Recommendations and Reminders
 
@@ -68,7 +73,7 @@
 - The frontend includes health recommendation UI state and API controls.
 - Local notification support provides persisted per-slot medication reminder scheduling for demo use.
 - Reminder times can be selected with rotating time wheels before the existing alarm control persists and registers them.
-- Caregiver notification settings persist the UC-13 preference state per caregiver-patient scope.
+- Caregiver notification settings persist the UC-13 preference state per caregiver, patient, and schedule slot.
 - Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
 
 ## Roadmap
@@ -83,7 +88,7 @@
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
-- **Boundary** classes also wrap external OCR concerns such as prescription image preprocessing and Gemini Vision extraction, keeping `InputPrescription` focused on the UC-1/UC-2 control flow.
+- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, and privacy filtering. Backend boundaries receive de-identified prescription text and isolate public drug APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, and external services.
 - **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-caregiver links.
 - Backend routers remain thin boundary adapters around control classes.
