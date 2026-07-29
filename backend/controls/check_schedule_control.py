@@ -7,6 +7,10 @@ from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from boundaries.medication_completion_event_boundary import (
+    MedicationCompletionEventBoundary,
+)
+from core.application_clock import application_today
 from entities.medication_completion_entity import (
     MedicationCompletion,
     _MedicationCompletion,
@@ -14,6 +18,7 @@ from entities.medication_completion_entity import (
 )
 from entities.medication_schedule_entity import (
     MedicationSchedule,
+    decode_medication_schedule_slot_keys,
     medication_schedule_slot_keys_for_frequency,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
@@ -36,10 +41,12 @@ class CheckSchedule:
         self,
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
+        completion_event_boundary: MedicationCompletionEventBoundary | None = None,
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
+        self.completion_event_boundary = completion_event_boundary
 
     # Function Name: requestTodayMedicationSchedule
     # Description:
@@ -53,7 +60,7 @@ class CheckSchedule:
         patient_hash: str | None = None,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        today = date.today()
+        today = application_today()
         medications = (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == normalized_patient_hash)
@@ -106,9 +113,13 @@ class CheckSchedule:
             medication_id,
             normalized_patient_hash,
         )
-        today = date.today()
+        today = application_today()
         slot_keys = self._slot_keys_for_medication(medication)
         target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
+        previous_slot_statuses = self._slot_statuses_for_medication(
+            medication,
+            today,
+        )
 
         try:
             if (slot_key or "").strip() and self._is_legacy_completed_on(
@@ -147,11 +158,56 @@ class CheckSchedule:
                 detail="Medication status could not be updated.",
             ) from exc
 
+        self._dispatch_new_completion_events(
+            medication=medication,
+            patient_hash=normalized_patient_hash,
+            target_slot_keys=target_slot_keys,
+            previous_slot_statuses=previous_slot_statuses,
+            medication_status=medication_status,
+        )
         return {
             "success": True,
             "message": "Medication status was updated.",
             "data": self._to_schedule_dict(medication, today),
         }
+
+    # 함수명: _dispatch_new_completion_events
+    # 역할:
+    # - 미복용에서 복용 완료로 실제 변경된 시간대만 후속 알림 처리기에 전달한다.
+    # - 알림 장애가 환자의 복약 체크 저장을 되돌리지 않도록 예외를 격리한다.
+    # 매개변수:
+    # - medication: 저장이 완료된 복약 정보
+    # - patient_hash: 환자 소유권 hash
+    # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
+    # - previous_slot_statuses: 변경 전 시간대별 복약 상태
+    # - medication_status: 요청된 새 복약 상태
+    # 반환값:
+    # - 없음
+    def _dispatch_new_completion_events(
+        self,
+        *,
+        medication: _SavedMedication,
+        patient_hash: str,
+        target_slot_keys: list[str],
+        previous_slot_statuses: dict[str, bool],
+        medication_status: bool,
+    ) -> None:
+        if self.completion_event_boundary is None or not medication_status:
+            return
+        for target_slot_key in target_slot_keys:
+            if previous_slot_statuses.get(target_slot_key, False):
+                continue
+            try:
+                self.completion_event_boundary.notifyDoseCompleted(
+                    patient_hash=patient_hash,
+                    slot_key=target_slot_key,
+                    medication_name=medication.item_name or "약",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Caregiver push dispatch failed after medication commit: %s",
+                    type(exc).__name__,
+                )
 
     # Function Name: _get_existing_medication
     # Description:
@@ -195,7 +251,7 @@ class CheckSchedule:
         schedule_date: date | None = None,
         completion_rows: list[_MedicationCompletion] | None = None,
     ) -> dict[str, object]:
-        target_date = schedule_date or date.today()
+        target_date = schedule_date or application_today()
         schedule = self._to_schedule(
             medication,
             target_date,
@@ -209,6 +265,7 @@ class CheckSchedule:
             "medication_status": schedule.medcation_status,
             "slot_statuses": schedule.slot_statuses,
             "completed_slot_keys": schedule.completed_slot_keys,
+            "schedule_slot_keys": schedule.schedule_slot_keys,
             "schedule_date": target_date.isoformat(),
             "patient_hash": schedule.patient_id,
             "patient_id": schedule.patient_id,
@@ -238,7 +295,7 @@ class CheckSchedule:
         schedule_date: date | None = None,
         completion_rows: list[_MedicationCompletion] | None = None,
     ) -> MedicationSchedule:
-        target_date = schedule_date or date.today()
+        target_date = schedule_date or application_today()
         slot_statuses = self._slot_statuses_for_medication(
             medication,
             target_date,
@@ -261,6 +318,7 @@ class CheckSchedule:
             completed_slot_keys=[
                 key for key, completed in slot_statuses.items() if completed
             ],
+            schedule_slot_keys=self._slot_keys_for_medication(medication),
         )
 
     # Function Name: _slot_keys_for_medication
@@ -271,6 +329,11 @@ class CheckSchedule:
     # Returns:
     # - Ordered slot keys used by backend and Flutter schedule UI.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
+        confirmed_slot_keys = decode_medication_schedule_slot_keys(
+            medication.schedule_slot_keys
+        )
+        if confirmed_slot_keys:
+            return confirmed_slot_keys
         frequency_count = self.course_policy.read_frequency_count(
             medication.daily_frequency
         )

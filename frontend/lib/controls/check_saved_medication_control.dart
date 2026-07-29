@@ -149,6 +149,8 @@ class CheckSavedMedication {
       medicationSchedule?.medicationTimeLabel,
       medicationDetail.totalDays,
     );
+    savePayload['schedule_slot_keys'] =
+        medicationSchedule?.slotKeys ?? const <String>[];
     return savePayload;
   }
 

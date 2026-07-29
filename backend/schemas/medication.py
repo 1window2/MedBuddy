@@ -7,6 +7,9 @@ from typing import Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_schedule_entity import (
+    normalize_medication_schedule_slot_keys,
+)
 from entities.patient_hash_entity import (
     DEFAULT_PATIENT_HASH,
     MAX_PATIENT_HASH_LENGTH,
@@ -17,6 +20,7 @@ _MAX_MEDICATION_NAME_LENGTH = 500
 _MAX_DETAIL_TEXT_LENGTH = 20_000
 _MAX_SHORT_TEXT_LENGTH = 100
 _MAX_URL_LENGTH = 2_048
+_MAX_PUSH_TOKEN_LENGTH = 4_096
 
 
 # Class Name: MedicationRequest
@@ -70,11 +74,20 @@ class SavedMedicationCreate(BaseModel):
         default=None,
         max_length=_MAX_SHORT_TEXT_LENGTH,
     )
+    schedule_slot_keys: list[str] = Field(default_factory=list, max_length=4)
     image_url: Optional[str] = Field(default=None, max_length=_MAX_URL_LENGTH)
     ai_guide: Optional[str] = Field(
         default=None,
         max_length=_MAX_DETAIL_TEXT_LENGTH,
     )
+
+    @field_validator("schedule_slot_keys")
+    @classmethod
+    def validate_schedule_slot_keys(cls, value: list[str]) -> list[str]:
+        normalized_slot_keys = normalize_medication_schedule_slot_keys(value)
+        if value and not normalized_slot_keys:
+            raise ValueError("At least one supported schedule slot is required.")
+        return normalized_slot_keys
 
 
 # Class Name: MedicationStatusUpdate
@@ -85,6 +98,24 @@ class SavedMedicationCreate(BaseModel):
 class MedicationStatusUpdate(BaseModel):
     medication_status: bool
     slot_key: Optional[str] = Field(default=None, max_length=32)
+
+
+# 클래스명: PushTokenRegistration
+# 역할: 인증 사용자의 기기 푸시 토큰 등록·해제 요청을 검증한다.
+# 속성:
+# - token: Firebase Cloud Messaging이 발급한 기기 토큰
+# - platform: 토큰을 발급한 모바일 플랫폼
+class PushTokenRegistration(BaseModel):
+    token: str = Field(min_length=16, max_length=_MAX_PUSH_TOKEN_LENGTH)
+    platform: str = Field(default="android", pattern=r"^(android|ios)$")
+
+    @field_validator("token")
+    @classmethod
+    def validate_token(cls, value: str) -> str:
+        normalized_token = value.strip()
+        if not normalized_token:
+            raise ValueError("Push token must not be blank.")
+        return normalized_token
 
 
 # Class Name: MedicationAlarmUpdate

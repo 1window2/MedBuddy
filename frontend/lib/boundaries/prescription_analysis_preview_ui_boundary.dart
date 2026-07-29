@@ -1125,7 +1125,8 @@ class _CorrectionBadge extends StatelessWidget {
 // 클래스명: _MedicationScheduleEditDialog
 // 역할: OCR로 인식된 약명과 복약 정보를 사용자가 수정하는 입력 창을 제공한다.
 // 주요 책임:
-// - 약명, 투약량, 횟수, 투약일의 현재 값을 입력란에 표시한다.
+// - 약명, 조제일자, 투약량, 횟수, 투약일의 현재 값을 입력란에 표시한다.
+// - 실제 복약할 아침·점심·저녁·취침 전 시간대를 사용자가 확인하게 한다.
 // - 입력 형식을 검증한 뒤 변경된 복약 일정 객체를 반환한다.
 class _MedicationScheduleEditDialog extends StatefulWidget {
   final MedicationSchedule medicationSchedule;
@@ -1155,6 +1156,9 @@ class _MedicationScheduleEditDialogState
   late final TextEditingController _dosageController;
   late final TextEditingController _frequencyController;
   late final TextEditingController _daysController;
+  late final TextEditingController _prescriptionDateController;
+  late Set<String> _selectedSlotKeys;
+  bool _showSlotValidationError = false;
 
   @override
   void initState() {
@@ -1173,6 +1177,12 @@ class _MedicationScheduleEditDialogState
           ? ''
           : widget.medicationSchedule.medicationTime.toString(),
     );
+    _prescriptionDateController = TextEditingController(
+      text: _formatDate(
+        widget.medicationSchedule.prescriptionDate ?? DateTime.now(),
+      ),
+    );
+    _selectedSlotKeys = widget.medicationSchedule.slotKeys.toSet();
   }
 
   @override
@@ -1181,6 +1191,7 @@ class _MedicationScheduleEditDialogState
     _dosageController.dispose();
     _frequencyController.dispose();
     _daysController.dispose();
+    _prescriptionDateController.dispose();
     super.dispose();
   }
 
@@ -1217,6 +1228,26 @@ class _MedicationScheduleEditDialogState
                     : null,
               ),
               TextFormField(
+                key: const Key('ocr-edit-prescription-date'),
+                controller: _prescriptionDateController,
+                keyboardType: TextInputType.datetime,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9-]')),
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: text.prescriptionDate,
+                  hintText: 'YYYY-MM-DD',
+                  suffixIcon: IconButton(
+                    tooltip: text.chooseDate,
+                    onPressed: _selectPrescriptionDate,
+                    icon: const Icon(Icons.calendar_today_outlined),
+                  ),
+                ),
+                validator: _validatePrescriptionDate,
+              ),
+              TextFormField(
                 key: const Key('ocr-edit-dosage'),
                 controller: _dosageController,
                 inputFormatters: [LengthLimitingTextInputFormatter(40)],
@@ -1243,6 +1274,56 @@ class _MedicationScheduleEditDialogState
                 validator: _validateMedicationDays,
                 onFieldSubmitted: (_) => _submit(),
               ),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  text.scheduleSlots,
+                  style: TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final slotKey in medicationScheduleSlotKeys)
+                    FilterChip(
+                      key: Key('ocr-edit-slot-$slotKey'),
+                      label: Text(text.slotLabel(slotKey)),
+                      selected: _selectedSlotKeys.contains(slotKey),
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedSlotKeys.add(slotKey);
+                          } else {
+                            _selectedSlotKeys.remove(slotKey);
+                          }
+                          _showSlotValidationError = false;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              if (_showSlotValidationError) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    text.scheduleSlotRequired,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12 * scale,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1283,13 +1364,46 @@ class _MedicationScheduleEditDialogState
     return null;
   }
 
+  // 함수명: _validatePrescriptionDate
+  // 역할:
+  // - 조제일자가 실제 달력에 존재하는 YYYY-MM-DD 형식인지 확인한다.
+  String? _validatePrescriptionDate(String? value) {
+    return _parseDate(value?.trim() ?? '') == null
+        ? widget.previewText.invalidPrescriptionDate
+        : null;
+  }
+
+  // 함수명: _selectPrescriptionDate
+  // 역할:
+  // - 달력에서 조제일자를 선택하고 직접 입력 필드에 반영한다.
+  Future<void> _selectPrescriptionDate() async {
+    final initialDate =
+        _parseDate(_prescriptionDateController.text.trim()) ?? DateTime.now();
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (!mounted || selectedDate == null) {
+      return;
+    }
+    setState(() {
+      _prescriptionDateController.text = _formatDate(selectedDate);
+    });
+  }
+
   // 함수이름: _submit
   // 함수역할:
   // - 수정 입력값을 검증하고 변경된 복약 일정 객체를 호출 화면으로 반환한다.
   // 반환값:
   // - 없음
   void _submit() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
+    final hasSelectedSlot = _selectedSlotKeys.isNotEmpty;
+    if (!hasSelectedSlot) {
+      setState(() => _showSlotValidationError = true);
+    }
+    if (!(_formKey.currentState?.validate() ?? false) || !hasSelectedSlot) {
       return;
     }
 
@@ -1300,8 +1414,35 @@ class _MedicationScheduleEditDialogState
         dosage: _dosageController.text.trim(),
         intakeTime: _frequencyController.text.trim(),
         medicationTime: int.tryParse(_daysController.text.trim()) ?? 0,
+        prescriptionDate: _parseDate(_prescriptionDateController.text.trim()),
+        scheduleSlotKeys: medicationScheduleSlotKeys
+            .where(_selectedSlotKeys.contains)
+            .toList(growable: false),
       ),
     );
+  }
+
+  DateTime? _parseDate(String value) {
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+    if (match == null) {
+      return null;
+    }
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsedDate = DateTime(year, month, day);
+    if (parsedDate.year != year ||
+        parsedDate.month != month ||
+        parsedDate.day != day) {
+      return null;
+    }
+    return parsedDate;
+  }
+
+  String _formatDate(DateTime value) {
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
   }
 }
 
@@ -1351,9 +1492,38 @@ class _PreviewText {
   String get apply => isEnglish ? 'Apply' : '적용';
   String get medicationNameRequired =>
       isEnglish ? 'Enter a medication name.' : '약 이름을 입력해주세요.';
+  String get prescriptionDate => isEnglish ? 'Dispensing date' : '조제일자';
+  String get chooseDate => isEnglish ? 'Choose date' : '날짜 선택';
+  String get invalidPrescriptionDate => isEnglish
+      ? 'Enter a valid date as YYYY-MM-DD.'
+      : '올바른 날짜를 YYYY-MM-DD 형식으로 입력해주세요.';
+  String get scheduleSlots => isEnglish ? 'Medication times' : '실제 복약 시간대';
+  String get scheduleSlotRequired => isEnglish
+      ? 'Select at least one medication time.'
+      : '복약 시간대를 하나 이상 선택해주세요.';
   String get invalidTotalDays => isEnglish
       ? 'Enter a number between 1 and 3650.'
       : '1일 이상 3650일 이하의 숫자를 입력해주세요.';
+
+  String slotLabel(String slotKey) {
+    if (isEnglish) {
+      return switch (slotKey) {
+        'morning' => 'Morning',
+        'lunch' => 'Lunch',
+        'evening' => 'Evening',
+        'bedtime' => 'Bedtime',
+        _ => slotKey,
+      };
+    }
+    return switch (slotKey) {
+      'morning' => '아침',
+      'lunch' => '점심',
+      'evening' => '저녁',
+      'bedtime' => '취침 전',
+      _ => slotKey,
+    };
+  }
+
   String get recognizedRegionGuide => isEnglish
       ? 'Green boxes show medication text. Gray areas mask personal data.'
       : '초록색은 복약 정보 인식 영역이며 회색은 개인정보 마스킹 영역입니다.';
@@ -1363,11 +1533,10 @@ class _PreviewText {
       ? 'Region coordinates are unavailable. Review the list below.'
       : '인식 위치 정보가 없어 아래 추출 목록을 확인해주세요.';
   String get privacyNotice => isEnglish
-      ? 'The image is sent for analysis but is not stored in the MedBuddy '
-            'server database. Detected patient identifiers are masked in the '
-            'preview and their text is excluded from the response.'
-      : '원본 이미지는 분석을 위해 전송되지만 MedBuddy 서버 DB에는 저장하지 않습니다. '
-            '감지한 환자 식별정보는 미리보기에서 가리고 해당 문구는 응답에 포함하지 않습니다.';
+      ? 'The original image stays on this device. Only OCR text with detected '
+            'personal identifiers removed is sent for medication analysis.'
+      : '원본 이미지는 이 기기에만 남습니다. 기기에서 OCR한 뒤 감지된 개인정보를 제거한 '
+            '복약 관련 텍스트만 분석 서버로 전송합니다.';
   String get sensitiveMaskLabel =>
       isEnglish ? 'Personal information masked' : '개인정보 마스킹';
   String get openImagePreview => isEnglish ? 'Open image preview' : '이미지 크게 보기';

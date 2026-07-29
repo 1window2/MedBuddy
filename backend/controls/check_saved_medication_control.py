@@ -9,8 +9,14 @@ from typing import Protocol
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from entities.medication_schedule_entity import (
+    decode_medication_schedule_slot_keys,
+    encode_medication_schedule_slot_keys,
+    medication_schedule_slot_keys_for_frequency,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from schemas.medication import SavedMedicationCreate
@@ -88,6 +94,9 @@ class CheckSavedMedication:
                 dosage_per_time=medication.dosage_per_time,
                 daily_frequency=medication.daily_frequency,
                 total_days=medication.total_days,
+                schedule_slot_keys=encode_medication_schedule_slot_keys(
+                    medication.schedule_slot_keys
+                ),
                 image_url=medication.image_url,
                 ai_guide=medication.ai_guide,
             )
@@ -151,7 +160,7 @@ class CheckSavedMedication:
             .order_by(_SavedMedication.id.asc())
             .all()
         )
-        today = date.today()
+        today = application_today()
         return [
             medication
             for medication in medications
@@ -333,6 +342,9 @@ class CheckSavedMedication:
             "dosage_per_time": medication.dosage_per_time,
             "daily_frequency": medication.daily_frequency,
             "total_days": medication.total_days,
+            "schedule_slot_keys": decode_medication_schedule_slot_keys(
+                medication.schedule_slot_keys
+            ),
             "image_url": image_url_override or medication.image_url,
             "ai_guide": medication.ai_guide,
         }
@@ -404,13 +416,14 @@ class CheckSavedMedication:
             dosage_per_time=medication.dosage_per_time,
             daily_frequency=medication.daily_frequency,
             total_days=medication.total_days,
+            schedule_slot_keys=medication.schedule_slot_keys,
         )
 
         today_medications = (
             self.db.query(_SavedMedication)
             .filter(
                 _SavedMedication.patient_hash == patient_hash,
-                _SavedMedication.created_date == date.today(),
+                _SavedMedication.created_date == application_today(),
             )
             .all()
         )
@@ -421,6 +434,9 @@ class CheckSavedMedication:
                 dosage_per_time=medication.dosage_per_time,
                 daily_frequency=medication.daily_frequency,
                 total_days=medication.total_days,
+                schedule_slot_keys=decode_medication_schedule_slot_keys(
+                    medication.schedule_slot_keys
+                ),
             )
             if stored_signature == requested_signature:
                 return medication
@@ -446,8 +462,16 @@ class CheckSavedMedication:
         dosage_per_time: str | None,
         daily_frequency: str | None,
         total_days: str | None,
-    ) -> tuple[str, str, str, str, str, str]:
-        start_date = prescription_date or date.today()
+        schedule_slot_keys: object,
+    ) -> tuple[str, str, str, str, str, str, str]:
+        start_date = prescription_date or application_today()
+        normalized_slot_keys = decode_medication_schedule_slot_keys(
+            encode_medication_schedule_slot_keys(schedule_slot_keys)
+        )
+        if not normalized_slot_keys:
+            normalized_slot_keys = medication_schedule_slot_keys_for_frequency(
+                self.course_policy.read_frequency_count(daily_frequency)
+            )
         return (
             self._normalize_item_name(item_name),
             start_date.isoformat(),
@@ -455,6 +479,7 @@ class CheckSavedMedication:
             self._normalize_schedule_value(dosage_per_time),
             self._normalize_schedule_value(daily_frequency),
             self._normalize_schedule_value(total_days),
+            encode_medication_schedule_slot_keys(normalized_slot_keys),
         )
 
     # 함수명: _read_medication_end_date

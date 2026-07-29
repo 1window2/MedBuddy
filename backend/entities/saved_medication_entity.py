@@ -3,9 +3,10 @@
 
 from datetime import date
 
-from sqlalchemy import Boolean, Column, Date, Integer, String, inspect, text
+from sqlalchemy import Boolean, Column, Date, Integer, String, Text, inspect, text
 from sqlalchemy.engine import Engine
 
+from core.application_clock import application_today
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
@@ -29,7 +30,7 @@ class _SavedMedication(Base):
         default=DEFAULT_PATIENT_HASH,
         server_default=DEFAULT_PATIENT_HASH,
     )
-    created_date = Column(Date, nullable=True, default=date.today)
+    created_date = Column(Date, nullable=True, default=application_today)
     prescription_date = Column(Date, nullable=True)
     item_seq = Column(String, nullable=True, index=True)
     item_name = Column(String, index=True)
@@ -39,6 +40,7 @@ class _SavedMedication(Base):
     dosage_per_time = Column(String, nullable=True)
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
+    schedule_slot_keys = Column(Text, nullable=False, default="[]", server_default="[]")
     image_url = Column(String, nullable=True)
     medication_status = Column(
         Boolean,
@@ -74,12 +76,13 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
         "total_days": "VARCHAR",
+        "schedule_slot_keys": "TEXT DEFAULT '[]'",
         "image_url": "VARCHAR",
         "medication_status": "BOOLEAN DEFAULT 0",
         "medication_status_date": "DATE",
         "ai_guide": "VARCHAR",
     }
-    today = date.today().isoformat()
+    today = application_today().isoformat()
 
     with db_engine.begin() as connection:
         for column_name, column_type in optional_columns.items():

@@ -37,10 +37,7 @@ List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
     return medicationScheduleSlotKeys.sublist(0, 3);
   }
   if (frequencyCount == 2) {
-    return [
-      medicationScheduleSlotKeys[0],
-      medicationScheduleSlotKeys[2],
-    ];
+    return [medicationScheduleSlotKeys[0], medicationScheduleSlotKeys[2]];
   }
   return const [defaultMedicationScheduleSlotKey];
 }
@@ -61,6 +58,7 @@ class MedicationSchedule {
   final String intakeTime;
   final bool medicationStatus;
   final Map<String, bool> slotStatuses;
+  final List<String> scheduleSlotKeys;
   final String patientID;
   final int medicationTime;
   final String? efficacy;
@@ -81,6 +79,7 @@ class MedicationSchedule {
     this.intakeTime = '',
     this.medicationStatus = false,
     this.slotStatuses = const {},
+    this.scheduleSlotKeys = const [],
     this.patientID = '',
     this.medicationTime = 0,
     this.efficacy = '',
@@ -106,11 +105,15 @@ class MedicationSchedule {
       dosage: _readString(json['dosage_per_time']),
       intakeTime: _readString(json['daily_frequency']),
       medicationTime: _readInt(json['total_days']),
+      scheduleSlotKeys: _readScheduleSlotKeys(
+        json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
+      ),
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['use_method'] ?? json['usage_method']),
       warning: _readString(json['warning_message'] ?? json['warning']),
       imageUrl: _readString(
-          json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
+        json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
+      ),
       rawMedicationName: _readString(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
@@ -160,6 +163,9 @@ class MedicationSchedule {
         json['slot_statuses'] ?? json['slotStatuses'],
         json['completed_slot_keys'] ?? json['completedSlotKeys'],
       ),
+      scheduleSlotKeys: _readScheduleSlotKeys(
+        json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
+      ),
       patientID: _readString(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
@@ -168,7 +174,8 @@ class MedicationSchedule {
       usageMethod: _readString(json['use_method'] ?? json['usage_method']),
       warning: _readString(json['warning_message'] ?? json['warning']),
       imageUrl: _readString(
-          json['image_url'] ?? json['imageUrl'] ?? json['itemImage']),
+        json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
+      ),
       rawMedicationName: _readString(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
@@ -220,6 +227,9 @@ class MedicationSchedule {
   }
 
   List<String> get slotKeys {
+    if (scheduleSlotKeys.isNotEmpty) {
+      return List.unmodifiable(scheduleSlotKeys);
+    }
     return medicationScheduleSlotKeysForFrequency(dailyFrequencyCount);
   }
 
@@ -251,6 +261,7 @@ class MedicationSchedule {
           .where((entry) => entry.value)
           .map((entry) => entry.key)
           .toList(growable: false),
+      'schedule_slot_keys': slotKeys,
       'patient_id': patientID,
       'created_date': _formatDate(createdDate),
       'prescription_date': _formatDate(prescriptionDate),
@@ -280,6 +291,7 @@ class MedicationSchedule {
     String? intakeTime,
     bool? medicationStatus,
     Map<String, bool>? slotStatuses,
+    List<String>? scheduleSlotKeys,
     String? patientID,
     int? medicationTime,
     String? efficacy,
@@ -301,6 +313,7 @@ class MedicationSchedule {
       intakeTime: intakeTime ?? this.intakeTime,
       medicationStatus: medicationStatus ?? this.medicationStatus,
       slotStatuses: slotStatuses ?? this.slotStatuses,
+      scheduleSlotKeys: scheduleSlotKeys ?? this.scheduleSlotKeys,
       patientID: patientID ?? this.patientID,
       medicationTime: medicationTime ?? this.medicationTime,
       efficacy: efficacy ?? this.efficacy,
@@ -376,6 +389,23 @@ class MedicationSchedule {
       }
     }
     return Map.unmodifiable(statuses);
+  }
+
+  // 함수명: _readScheduleSlotKeys
+  // 역할:
+  // - 서버 또는 사용자 수정값에서 지원하는 복약 시간대만 정해진 순서로 읽는다.
+  static List<String> _readScheduleSlotKeys(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    final requestedSlotKeys = value
+        .map(_readString)
+        .map((slotKey) => slotKey.toLowerCase())
+        .where(medicationScheduleSlotKeys.contains)
+        .toSet();
+    return medicationScheduleSlotKeys
+        .where(requestedSlotKeys.contains)
+        .toList(growable: false);
   }
 
   static DateTime? _readDate(dynamic value) {
