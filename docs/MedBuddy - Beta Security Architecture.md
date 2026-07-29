@@ -30,15 +30,42 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend boundary | `AuthenticationUI` | Sign-in, email verification, password recovery, sign-out, and recoverable authentication state. |
 | Frontend control | `AuthenticationControl` | Coordinate the identity SDK and publish `AuthSession`. |
 | Frontend external boundary | `AuthenticatedApiClient` | Attach fresh bearer tokens to the existing HTTP control calls. |
+| Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
+| Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
 | Backend boundary | `OIDCTokenVerifier` | Verify signature, issuer, audience, expiry, and subject. |
+| Backend external boundary | `PushNotificationBoundary` | Isolate Firebase Admin multicast delivery from caregiver controls. |
 | Backend entity | `AuthenticatedPrincipal` | Verified subject and deterministic server-owned application identity. |
 | Backend control | `AuthorizationControl` | Resolve owned patient scope and validate active caregiver links. |
+| Backend control | `ManagePushToken` | Register or disable device tokens within the authenticated user scope. |
+| Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
 
 These names are the implementation contract. Authentication is centralized at
 the API and application composition boundaries rather than embedded separately
 in every existing use-case control.
+
+## Prescription Privacy Boundary
+
+Prescription analysis uses a different privacy boundary from loose-pill
+identification:
+
+1. Flutter runs Korean OCR locally with Google ML Kit and keeps the original
+   prescription image on the device.
+2. `PrescriptionLocalOcrService` removes patient-identifying lines and masks
+   inline resident numbers, phone numbers, and email addresses.
+3. The preview displays recognized regions, hides sensitive regions, and lets
+   the user correct medication names and confirm the prescription date and
+   schedule slots.
+4. Only the resulting privacy-filtered text is sent to
+   `/analyze-prescription-text`; the backend and Gemini text recovery do not
+   receive the original prescription image through this flow.
+
+The local filter is a best-effort data-minimization control, not a guarantee
+that every identifier will be detected. User-facing notices and release privacy
+review must disclose that privacy-filtered text can still be processed by an
+external model. Loose-pill photos remain a separate external
+visible-attribute-extraction flow and must not be persisted or logged.
 
 ## Target Request Flow
 
@@ -89,6 +116,27 @@ Router --> AuthenticatedApiClient : JSON response
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
 
+## Caregiver Notification Delivery
+
+Caregiver settings are persisted independently for morning, lunch, evening,
+and bedtime. Each slot supports disabled, newly completed-dose, or
+missed-deadline behavior.
+
+In Firebase mode, `PushNotificationService` registers the authenticated
+Android device token and follows Firebase token refresh. A patient's
+incomplete-to-complete transition invokes `DispatchCaregiverAlert`, which
+checks the active link and slot preference before sending FCM. Tokens rejected
+as unregistered or sender-mismatched are disabled instead of retried
+indefinitely. Signing out requests deactivation of the current token.
+
+Missed-deadline evaluation currently remains in the Android Workmanager
+monitor. Its background isolate initializes Firebase before making
+authenticated API requests. In local demo mode,
+`DisabledPushNotificationBoundary` prevents remote delivery and the same
+monitor polls for both completion and missed-deadline changes. A production
+beta still requires server-scheduled missed-deadline delivery and two-device
+FCM smoke testing.
+
 ## Migration Without Pipeline Breakage
 
 1. Derive an opaque, stable MedBuddy identity from the verified provider issuer
@@ -120,8 +168,8 @@ The deployment must provide:
   immutable snapshot. Otherwise, store the catalog in PostgreSQL or an
   object-backed versioned snapshot; do not assume container-local files are
   durable.
-- Versioned migrations, preferably Alembic, executed as a controlled release
-  step rather than implicitly by every web worker.
+- The existing versioned Alembic migration chain must run as a controlled
+  release step rather than implicitly by every web worker.
 - Secrets from a secret manager or protected deployment environment, never
   repository files or Flutter compile-time constants.
 - Bounded workers, request/body limits, timeouts, redacted logs, health probes,
@@ -185,6 +233,12 @@ operational release gates, not a second authentication path.
 7. Revocation checks are enabled in the deployment workflow; the runtime
    service account therefore needs the minimum Firebase Authentication
    permissions required to read user state.
+8. Firebase mode registers authenticated Android FCM tokens with the backend,
+   refreshes them when Firebase rotates a token, and disables the current token
+   during sign-out.
+9. Newly completed-dose transitions are delivered through FCM. Missed-deadline
+   checks remain an authenticated Workmanager task until a server scheduler is
+   deployed.
 
 ### Android Firebase Registration
 
@@ -219,13 +273,23 @@ uses SQLAlchemy's `postgresql+psycopg` scheme and the Cloud SQL Unix socket. The
 workflow builds one immutable image, runs `alembic upgrade head` as a Cloud Run
 Job, and deploys that same image only after migration succeeds.
 
+The current ordered Alembic chain records the beta data boundary:
+
+| Revision | Purpose |
+| --- | --- |
+| `a4f66c9a7d0b` | Establish the current baseline application schema. |
+| `c91f3a2b7d44` | Add per-slot caregiver alert settings and missed-dose deadline fields. |
+| `d74a8e52f1c0` | Add authenticated FCM device-token storage and active-token lookup. |
+| `e82bc4d1a930` | Persist user-confirmed schedule slots on saved medications. |
+
 The Cloud Run network endpoint permits unauthenticated invocation because a
 Firebase client token is not a Cloud Run IAM token. FastAPI still authenticates
 every application route. `/health` and `/ready` are intentionally anonymous:
 the former reports process liveness, while the latter returns only a binary
 readiness result after checking database connectivity and verifier
 initialization. Production database pools and Cloud Run concurrency are bounded
-so image-processing requests cannot multiply connections without limit.
+so prescription-text and loose-pill image requests cannot multiply connections
+without limit.
 
 ### Android Signing
 

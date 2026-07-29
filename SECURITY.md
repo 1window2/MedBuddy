@@ -79,10 +79,35 @@ as untrusted input:
 
 - Validate structured model/API responses before using them.
 - Do not log secrets or raw personal medical data.
-- Tell users that prescription and loose-pill images are processed by an
-  external AI service. Do not persist or log either image type.
+- Prescription analysis performs Korean OCR and best-effort privacy filtering
+  on the device. The original prescription image is not sent through the
+  prescription-text endpoint and is not stored in the backend database.
+- Only privacy-filtered OCR text is sent for prescription analysis and may be
+  processed by Gemini. Local masking reduces exposure but cannot guarantee
+  detection of every identifier; the UI and privacy notice must describe this
+  limitation accurately.
+- Loose-pill photos follow a separate flow and may be sent to an external AI
+  service for visible-attribute extraction. Do not persist or log those
+  images.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
+
+## Push Notification Data
+
+Firebase Cloud Messaging tokens are delivery addresses associated with a
+verified MedBuddy principal; they are not login or authorization credentials.
+The client registers the current token after authentication, replaces it when
+Firebase refreshes it, and requests deactivation on sign-out. The backend also
+disables tokens that Firebase reports as unregistered or associated with a
+different sender.
+
+Caregiver notification titles, bodies, and routing data can reveal medication
+context. Treat them as sensitive delivery data: minimize the payload, never log
+tokens or full notification bodies, and require an active caregiver link and
+per-slot preference before dispatch. Firebase mode sends newly completed-dose
+events through FCM. Missed-deadline checks currently run through the
+authenticated Android background monitor; local demo mode polls for both event
+types and displays local notifications without remote push delivery.
 
 ## Identity and Authorization Boundary
 

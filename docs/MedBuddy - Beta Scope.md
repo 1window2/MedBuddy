@@ -3,6 +3,7 @@
 ## Status
 
 - Scope frozen: 2026-07-20
+- Implementation review: 2026-07-29
 - Functional baseline: `v0.0.9-alpha`
 - Target release line: `v0.1.0-beta.*`
 - Target platform: Android
@@ -17,9 +18,10 @@ release-operability gap.
 
 The following implemented flows are frozen for beta hardening:
 
-1. Prescription and pill-envelope image input, OCR extraction, bounded
-   medication-name correction, result review, medication detail lookup, and
-   saved-medication creation.
+1. Prescription and pill-envelope image input, on-device Korean OCR,
+   best-effort privacy filtering, bounded medication-name correction, OCR
+   result editing, prescription-date and schedule-slot confirmation,
+   medication detail lookup, and saved-medication creation.
 2. Saved-medication listing, detail guidance, image enrichment, deletion, and
    medication-course retention.
 3. Today's schedule generation, per-slot completion, progress display, local
@@ -27,18 +29,22 @@ The following implemented flows are frozen for beta hardening:
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
 5. User display, language, and reading-speed settings.
-6. Patient-caregiver code linking, linked-patient medication views, unlinking,
-   and caregiver notification preference persistence.
+6. Patient-caregiver code linking, linked-patient per-slot schedule views,
+   unlinking, per-slot caregiver notification preferences, Firebase
+   dose-completion delivery, and background missed-deadline checks.
 7. Patient-scoped health recommendations.
 8. Experimental loose-pill candidate identification with explicit user
    confirmation and no automatic medication save.
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-07-20: P0 controls and release configuration
-are present in source. Cloud resources, protected environment values, signed
-physical-device testing, backup/restore, and abuse-control validation remain
-release gates.
+Implementation status as of 2026-07-29: P0 controls and release configuration
+are present in source. The source also includes versioned Alembic migrations,
+on-device prescription OCR and privacy filtering, authenticated FCM token
+management, dose-completion push delivery, and persisted per-slot caregiver
+settings. Cloud resources, protected environment values, scheduled
+server-side missed-deadline delivery, signed physical-device testing,
+backup/restore, and abuse-control validation remain release gates.
 
 ### P0: Identity and Transport Security
 
@@ -53,14 +59,18 @@ release gates.
 
 ### P1: Data and Operational Safety
 
-- Introduce versioned database migrations and a durable production database.
+- Validate the versioned Alembic migration chain against clean and upgraded
+  PostgreSQL databases, including rollback, and provision the durable
+  production database.
 - Define retention, deletion, consent, and incident-response behavior for
-  medical text and externally processed images.
+  de-identified prescription text, loose-pill images processed externally,
+  medication data, and push tokens.
 - Add structured, redacted operational logs, health checks, request tracing,
   timeout metrics, and error-rate monitoring.
 - Verify backup and restore procedures before accepting real user data.
-- Complete end-to-end caregiver alert delivery, or remove/rename any UI that
-  implies remote delivery. Persisting a preference alone is not delivery.
+- Complete scheduled server-side delivery for missed-deadline alerts and
+  validate dose-completion FCM delivery on two physical devices. Local Android
+  background checks remain a beta fallback, not proof of remote delivery.
 
 ### P1: Release Verification
 
