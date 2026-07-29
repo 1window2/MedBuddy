@@ -56,7 +56,7 @@ jobs:
             --image "${IMAGE}" \
             --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
             --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
             --command python \
             --args=-m,alembic,-c,alembic.ini,upgrade,head \
@@ -77,7 +77,7 @@ jobs:
             --image "${IMAGE}" \
             --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
             --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
             --allow-unauthenticated \
             --port 8080 \

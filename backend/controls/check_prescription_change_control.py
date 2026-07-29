@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
 from entities.medication_detail_entity import _DrugApprovalInfo
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
@@ -196,7 +197,7 @@ class CheckPrescriptionChange:
             for row in rows
             if self._effective_prescription_date(row) is not None
         ]
-        reference_date = current_date or date.today()
+        reference_date = current_date or application_today()
         previous_dates = sorted(
             {
                 prescription_date

@@ -5,6 +5,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 from services.medication_course_policy import MedicationCoursePolicy
@@ -40,7 +41,7 @@ class SavedMedicationRetentionPolicy:
         patient_hash: str,
         today: date | None = None,
     ) -> int:
-        reference_date = today or date.today()
+        reference_date = today or application_today()
         medications = (
             db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == patient_hash)

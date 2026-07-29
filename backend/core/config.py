@@ -4,6 +4,7 @@
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -62,6 +63,7 @@ class Settings(BaseSettings):
     DATABASE_MAX_OVERFLOW: int = Field(default=0, ge=0, le=20)
     DATABASE_POOL_TIMEOUT_SECONDS: int = Field(default=10, gt=0, le=120)
     DATABASE_POOL_RECYCLE_SECONDS: int = Field(default=1_800, gt=0, le=86_400)
+    APPLICATION_TIME_ZONE: str = "Asia/Seoul"
     BASIC_DRUG_API_BASE_URL: str = (
         "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
     )
@@ -135,6 +137,23 @@ class Settings(BaseSettings):
         if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
+
+    # 함수이름: validate_application_time_zone
+    # 함수역할:
+    # - 복약 일정 계산에 사용할 IANA 시간대 이름이 실제로 존재하는지 검증한다.
+    # 매개변수:
+    # - value: 환경변수에서 읽은 시간대 이름
+    # 반환값:
+    # - 앞뒤 공백을 제거한 유효한 IANA 시간대 이름
+    @field_validator("APPLICATION_TIME_ZONE")
+    @classmethod
+    def validate_application_time_zone(cls, value: str) -> str:
+        normalized_time_zone = value.strip()
+        try:
+            ZoneInfo(normalized_time_zone)
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
+        return normalized_time_zone
 
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":

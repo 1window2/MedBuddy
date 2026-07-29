@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from pydantic import BaseModel
 
+from core.application_clock import application_today
 from core.database import Base
 from entities.medication_schedule_entity import DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -64,7 +65,7 @@ class _MedicationCompletion(Base):
         default=DEFAULT_PATIENT_HASH,
         server_default=DEFAULT_PATIENT_HASH,
     )
-    schedule_date = Column(Date, index=True, nullable=False, default=date.today)
+    schedule_date = Column(Date, index=True, nullable=False, default=application_today)
     slot_key = Column(String, index=True, nullable=False)
     completed = Column(Boolean, nullable=False, default=True, server_default="1")
     completed_at = Column(DateTime, nullable=True, default=utc_now)
