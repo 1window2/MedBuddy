@@ -879,6 +879,50 @@ class InputPrescription:
         image_bytes = image
         self._validate_prescription_image(image_bytes)
         response_text = await self._extract_prescription_text(image_bytes)
+        return await self._build_prescription_response(response_text)
+
+    # 함수명: requestPrescriptionText
+    # 역할:
+    # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화 처방 정보로 변환한다.
+    # 매개변수:
+    # - masked_text: 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
+    # 반환값:
+    # - API 호환 복약 일정 분석 결과
+    async def requestPrescriptionText(
+        self,
+        masked_text: str,
+    ) -> dict[str, object]:
+        normalized_text = masked_text.strip()
+        if not normalized_text:
+            raise ValueError("Masked prescription text is empty.")
+        if len(normalized_text) > 100_000:
+            raise ValueError("Masked prescription text exceeds 100,000 characters.")
+        try:
+            response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
+                normalized_text
+            )
+        except TimeoutError as exc:
+            raise PrescriptionAnalysisTimeoutError(
+                "처방전 인식 서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+            ) from exc
+        return await self._build_prescription_response(
+            response_text,
+            recognized_regions=[],
+        )
+
+    # 함수명: _build_prescription_response
+    # 역할:
+    # - 이미지 또는 비식별 텍스트 분석 응답을 공통 복약 일정 응답으로 변환한다.
+    # 매개변수:
+    # - response_text: Gemini가 반환한 구조화 JSON 문자열
+    # - recognized_regions: 기기에서 별도로 관리할 때 덮어쓸 인식 영역 목록
+    # 반환값:
+    # - 검증된 복약 일정과 인식 통계를 포함한 API 응답
+    async def _build_prescription_response(
+        self,
+        response_text: str,
+        recognized_regions: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
         cleaned_text = self._clean_response_text(response_text)
 
         try:
@@ -897,8 +941,12 @@ class InputPrescription:
             medication_candidates,
             raw_medication_count,
         ) = normalize_prescription_candidates(masked_data)
-        recognized_regions = self._normalize_recognized_regions(
-            masked_data.get("recognized_regions")
+        normalized_regions = (
+            recognized_regions
+            if recognized_regions is not None
+            else self._normalize_recognized_regions(
+                masked_data.get("recognized_regions")
+            )
         )
         safe_data = self.buildAnalysisResult(
             medication_candidates,
@@ -927,7 +975,7 @@ class InputPrescription:
             ),
             "parsed_medication_count": len(medication_schedules),
             "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
-            "recognized_regions": recognized_regions,
+            "recognized_regions": normalized_regions,
         }
 
     # 함수이름: _normalize_recognized_regions

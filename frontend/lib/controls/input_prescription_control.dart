@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -10,6 +11,7 @@ import '../entities/recognized_text_region_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../services/prescription_local_ocr_service.dart';
 
 typedef PrescriptionImageSelectedCallback = void Function();
 
@@ -27,6 +29,8 @@ class InputPrescription {
   final ImagePicker _imagePicker;
   final http.Client _client;
   final bool _ownsClient;
+  PrescriptionLocalOcrBoundary? _localOcrBoundary;
+  final bool _ownsLocalOcrBoundary;
   final Duration requestTimeout;
   final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
   int _lastRawMedicationCount = 0;
@@ -46,10 +50,13 @@ class InputPrescription {
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
     http.Client? client,
+    PrescriptionLocalOcrBoundary? localOcrBoundary,
     this.requestTimeout = const Duration(seconds: 45),
   }) : _imagePicker = imagePicker ?? ImagePicker(),
        _client = client ?? AuthenticatedApiClient(),
-       _ownsClient = client == null {
+       _ownsClient = client == null,
+       _localOcrBoundary = localOcrBoundary,
+       _ownsLocalOcrBoundary = localOcrBoundary == null {
     if (requestTimeout <= Duration.zero) {
       throw ArgumentError.value(
         requestTimeout,
@@ -111,7 +118,7 @@ class InputPrescription {
 
   // 함수이름: _requestPrescriptionAnalysis
   // 함수역할:
-  // - 선택 또는 촬영된 처방전 파일을 백엔드에 전송하고 OCR 응답을 변환한다.
+  // - 기기에서 OCR과 개인정보 제거를 수행한 뒤 비식별 텍스트만 백엔드에 전송한다.
   // - 백엔드가 반환한 조제일자를 각 약 일정에 함께 실어 보존한다.
   // 매개변수:
   // - image: 업로드할 처방전 이미지 파일
@@ -124,14 +131,19 @@ class InputPrescription {
   }) async {
     _lastRecognizedTextRegions = [];
     try {
+      final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
+        image.path,
+      );
+      _lastRecognizedTextRegions = localOcrResult.regions;
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
-      final request = http.AbortableMultipartRequest(
+      final request = http.AbortableRequest(
         'POST',
-        Uri.parse('$baseUrl/upload-prescription'),
+        Uri.parse('$baseUrl/analyze-prescription-text'),
         abortTrigger: abortTrigger.future,
       );
-      request.files.add(await http.MultipartFile.fromPath('file', image.path));
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({'text': localOcrResult.maskedText});
 
       late final http.Response response;
       try {
@@ -160,9 +172,12 @@ class InputPrescription {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      _lastRecognizedTextRegions = RecognizedTextRegion.fromJsonList(
+      final serverRegions = RecognizedTextRegion.fromJsonList(
         decodedData['recognized_regions'] ?? decodedData['recognizedRegions'],
       );
+      if (serverRegions.isNotEmpty) {
+        _lastRecognizedTextRegions = serverRegions;
+      }
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
@@ -282,5 +297,23 @@ class InputPrescription {
     if (_ownsClient) {
       _client.close();
     }
+    final localOcrBoundary = _localOcrBoundary;
+    if (_ownsLocalOcrBoundary &&
+        localOcrBoundary is PrescriptionLocalOcrService) {
+      unawaited(
+        localOcrBoundary.dispose().catchError((Object error, StackTrace stack) {
+          developer.log(
+            '로컬 OCR 자원 해제에 실패했습니다.',
+            name: 'InputPrescription',
+            error: error,
+            stackTrace: stack,
+          );
+        }),
+      );
+    }
+  }
+
+  PrescriptionLocalOcrBoundary get _resolvedLocalOcrBoundary {
+    return _localOcrBoundary ??= PrescriptionLocalOcrService();
   }
 }

@@ -17,6 +17,7 @@ from api.dependencies import (
     get_check_today_medication_info,
     get_check_caregiver_medication,
     get_manage_user_setting,
+    get_manage_push_token,
     get_identify_pill,
     get_link_patient_caregiver_control,
     get_input_prescription,
@@ -46,6 +47,7 @@ from controls.input_prescription_control import (
 )
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
+from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.request_voice_guide_control import RequestVoiceGuide
@@ -61,6 +63,7 @@ from schemas.medication import (
     CaregiverNotificationUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
+    PushTokenRegistration,
     SavedMedicationCreate,
     UserSettingUpdate,
     VoiceGuideRequest,
@@ -97,6 +100,41 @@ def get_auth_session(
         "sign_in_provider": principal.sign_in_provider,
         "anonymous": principal.anonymous,
     }
+
+
+# 함수명: register_push_token
+# 역할:
+# - 현재 인증 사용자의 FCM 기기 토큰을 등록하거나 갱신한다.
+# 반환값:
+# - 토큰 등록 결과
+@auth_router.post("/push-token")
+def register_push_token(
+    request: PushTokenRegistration,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_push_token: ManagePushToken = Depends(get_manage_push_token),
+) -> dict[str, object]:
+    return manage_push_token.registerPushToken(
+        principal.user_hash,
+        request.token,
+        request.platform,
+    )
+
+
+# 함수명: unregister_push_token
+# 역할:
+# - 로그아웃하는 현재 기기의 FCM 토큰을 비활성화한다.
+# 반환값:
+# - 토큰 해제 결과
+@auth_router.delete("/push-token")
+def unregister_push_token(
+    request: PushTokenRegistration,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_push_token: ManagePushToken = Depends(get_manage_push_token),
+) -> dict[str, object]:
+    return manage_push_token.unregisterPushToken(
+        principal.user_hash,
+        request.token,
+    )
 
 
 # Function Name: identify_medication
@@ -829,6 +867,34 @@ def parse_prescription_endpoint(
         raise HTTPException(
             status_code=500,
             detail="처방전 텍스트를 파싱하지 못했습니다.",
+        ) from exc
+
+
+# 함수명: analyze_masked_prescription_text
+# 역할:
+# - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 분석한다.
+# 반환값:
+# - API 호환 처방 분석 결과
+@router.post("/analyze-prescription-text")
+async def analyze_masked_prescription_text(
+    request: OCRParseRequest,
+    input_prescription: InputPrescription = Depends(get_input_prescription),
+) -> dict[str, object]:
+    try:
+        return await input_prescription.requestPrescriptionText(request.text)
+    except PrescriptionAnalysisTimeoutError as exc:
+        logger.warning("De-identified prescription text analysis timed out.")
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "De-identified prescription text analysis failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
         ) from exc
 
 
