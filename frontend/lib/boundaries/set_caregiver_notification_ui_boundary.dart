@@ -2,144 +2,233 @@ import 'package:flutter/material.dart';
 
 import '../entities/caregiver_notification_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'set_notification_ui_boundary.dart';
 
 // 파일명: set_caregiver_notification_ui_boundary.dart
-// 역할: 보호자 알림 설정 UI boundary를 구성한다.
+// 역할: 보호자가 환자별 복약 알림 조건과 마감 시각을 선택하는 창을 제공한다.
 
-// 클래스명: SetCaregiverNotificationUI
-// 역할: 보호자가 환자별 알림 수신 여부를 확인하고 변경하는 UI를 제공한다.
-// 주요 책임:
-// - 현재 CaregiverNotification 상태를 시각화한다.
-// - 사용자의 enable/disable 선택을 상위 control 흐름으로 전달한다.
-class SetCaregiverNotificationUI extends StatelessWidget {
-  final CaregiverNotification setting;
-  final bool isLoading;
-  final String language;
-  final ValueChanged<bool> onNotificationOptionChanged;
+class SetCaregiverNotificationUI {
+  const SetCaregiverNotificationUI._();
 
-  const SetCaregiverNotificationUI({
-    super.key,
-    required this.setting,
-    required this.onNotificationOptionChanged,
-    this.isLoading = false,
-    this.language = 'ko',
-  });
-
-  static Future<bool?> showNotificationPopup(
+  static Future<CaregiverNotification?> showNotificationPopup(
     BuildContext context, {
     required CaregiverNotification setting,
-    bool isLoading = false,
     String language = 'ko',
+    String? slotLabel,
   }) {
     final isEnglish = language.trim().toLowerCase().startsWith('en');
-    return showDialog<bool>(
+    var selectedMode = setting.mode;
+    var deadline = TimeOfDay(
+      hour: setting.deadlineHour ?? 21,
+      minute: setting.deadlineMinute ?? 0,
+    );
+
+    return showDialog<CaregiverNotification>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      tooltip: isEnglish ? 'Close' : '닫기',
-                      onPressed: () => Navigator.pop(dialogContext),
-                      icon: const Icon(Icons.close),
-                    ),
-                    Expanded(
-                      child: Text(
-                        isEnglish
-                            ? 'Caregiver notification settings'
-                            : '보호자 알림 설정',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFF0A0A0A),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> selectDeadline() async {
+              final selectedTime =
+                  await SetNotificationUI.showNotificationPopup(
+                    dialogContext,
+                    language: language,
+                    slotTitle: slotLabel ?? (isEnglish ? 'Missed dose' : '미복용'),
+                    initialTime: deadline,
+                  );
+              if (selectedTime != null) {
+                setDialogState(() => deadline = selectedTime);
+              }
+            }
+
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: isEnglish ? 'Close' : '닫기',
+                            onPressed: () => Navigator.pop(dialogContext),
+                            icon: const Icon(Icons.close),
+                          ),
+                          Expanded(
+                            child: Text(
+                              slotLabel == null
+                                  ? (isEnglish
+                                        ? 'Caregiver notifications'
+                                        : '보호자 알림 설정')
+                                  : (isEnglish
+                                        ? '$slotLabel notifications'
+                                        : '$slotLabel 알림 설정'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: MedBuddyColors.textStrong,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 48),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _NotificationModeOption(
+                        title: isEnglish ? 'Off' : '끄기',
+                        description: isEnglish
+                            ? 'Do not receive medication updates.'
+                            : '환자의 복약 상태 알림을 받지 않습니다.',
+                        selected:
+                            selectedMode == CaregiverNotificationMode.disabled,
+                        onTap: () => setDialogState(
+                          () =>
+                              selectedMode = CaregiverNotificationMode.disabled,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 48),
-                  ],
+                      _NotificationModeOption(
+                        title: isEnglish
+                            ? 'When a dose is marked taken'
+                            : '복용 확인 즉시 알림',
+                        description: isEnglish
+                            ? 'Notify me whenever the patient marks a dose as taken.'
+                            : '환자가 약을 복용 완료로 표시하면 바로 알려줍니다.',
+                        selected:
+                            selectedMode ==
+                            CaregiverNotificationMode.doseCompleted,
+                        onTap: () => setDialogState(
+                          () => selectedMode =
+                              CaregiverNotificationMode.doseCompleted,
+                        ),
+                      ),
+                      _NotificationModeOption(
+                        title: isEnglish
+                            ? 'If doses remain unchecked'
+                            : '정해진 시각까지 미복용 시 알림',
+                        description: isEnglish
+                            ? 'Notify me if any scheduled dose is still unchecked at the selected time.'
+                            : '선택한 시각까지 복용하지 않은 약이 남아 있으면 알려줍니다.',
+                        selected:
+                            selectedMode ==
+                            CaregiverNotificationMode.missedDeadline,
+                        onTap: () => setDialogState(
+                          () => selectedMode =
+                              CaregiverNotificationMode.missedDeadline,
+                        ),
+                      ),
+                      if (selectedMode ==
+                          CaregiverNotificationMode.missedDeadline) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: selectDeadline,
+                          icon: const Icon(Icons.schedule_outlined),
+                          label: Text(
+                            '${isEnglish ? 'Check at' : '확인 시각'} '
+                            '${_formatTime(deadline)}',
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.pop(
+                            dialogContext,
+                            setting.updateNotificationSetting(
+                              selectedMode,
+                              deadlineHour: deadline.hour,
+                              deadlineMinute: deadline.minute,
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          backgroundColor: MedBuddyColors.primary,
+                        ),
+                        child: Text(isEnglish ? 'Save' : '저장하기'),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                SetCaregiverNotificationUI(
-                  setting: setting,
-                  isLoading: isLoading,
-                  language: language,
-                  onNotificationOptionChanged: (enabled) {
-                    Navigator.pop(dialogContext, enabled);
-                  },
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  void setNotificationOption(bool enabled) {
-    onNotificationOptionChanged(enabled);
+  static String _formatTime(TimeOfDay time) {
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}';
   }
+}
+
+class _NotificationModeOption extends StatelessWidget {
+  final String title;
+  final String description;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _NotificationModeOption({
+    required this.title,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: MedBuddyColors.divider),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            setting.notificationEnabled
-                ? Icons.notifications_active_outlined
-                : Icons.notifications_none_outlined,
-            color: setting.notificationEnabled
-                ? MedBuddyColors.primary
-                : MedBuddyColors.textLight,
-            size: 22,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              isEnglish ? 'Caregiver notification' : '보호자 알림',
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected
+                  ? MedBuddyColors.primary
+                  : MedBuddyColors.textLight,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textMuted,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          if (isLoading)
-            const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: MedBuddyColors.primary,
-              ),
-            )
-          else
-            Switch(
-              value: setting.notificationEnabled,
-              activeThumbColor: MedBuddyColors.primary,
-              onChanged: setNotificationOption,
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

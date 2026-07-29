@@ -542,22 +542,11 @@ async def get_health_recommendation(
         ) from exc
 
 
-# Function Name: get_caregiver_notification_setting
-# Description:
-# - Returns the notification setting for one linked caregiver-patient pair.
-# Parameters:
-# - patient_hash: Patient ownership key monitored by the caregiver.
-# - caregiver_hash: Caregiver ownership key requesting notification state.
-# - legacy_guardian_hash: Backward-compatible alias for older clients.
-# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
-# Returns:
-# - API-compatible caregiver notification setting dictionary.
-@router.get("/caregiver-notification/settings/{patient_hash}")
-@router.get(
-    "/guardian-alert/settings/{patient_hash}",
-    include_in_schema=False,
-)
-def get_caregiver_notification_setting(
+# 함수명: get_caregiver_notification_settings
+# 역할:
+# - 연동된 보호자-환자의 모든 시간대별 알림 설정을 한 번에 반환한다.
+@router.get("/caregiver-notification/settings/{patient_hash}/slots")
+def get_caregiver_notification_settings(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
@@ -576,23 +565,50 @@ def get_caregiver_notification_setting(
         principal,
         patient_hash,
     )
-    return set_caregiver_notification.requestCaregiverNotificationSetting(
+    return set_caregiver_notification.requestCaregiverNotificationSettings(
         requesting_caregiver_hash,
         authorized_patient_hash,
     )
 
 
-# Function Name: save_caregiver_notification_setting
-# Description:
-# - Saves caregiver notification state for one linked pair.
-# Parameters:
-# - patient_hash: Patient ownership key monitored by the caregiver.
-# - caregiver_hash: Caregiver ownership key requesting the update.
-# - legacy_guardian_hash: Backward-compatible alias for older clients.
-# - request: CaregiverNotificationUpdate request DTO.
-# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
-# Returns:
-# - API-compatible caregiver notification setting dictionary.
+# 함수명: get_caregiver_notification_setting
+# 역할:
+# - 연동된 보호자-환자의 지정 시간대 알림 설정을 반환한다.
+@router.get("/caregiver-notification/settings/{patient_hash}")
+@router.get(
+    "/guardian-alert/settings/{patient_hash}",
+    include_in_schema=False,
+)
+def get_caregiver_notification_setting(
+    patient_hash: str,
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    slot_key: str = "morning",
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    set_caregiver_notification: SetCaregiverNotification = Depends(
+        get_set_caregiver_notification
+    ),
+) -> dict[str, object]:
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
+    return set_caregiver_notification.requestCaregiverNotificationSetting(
+        requesting_caregiver_hash,
+        authorized_patient_hash,
+        slot_key,
+    )
+
+
+# 함수명: save_caregiver_notification_setting
+# 역할:
+# - 연동된 보호자-환자의 지정 시간대 알림 설정만 저장한다.
 @router.put("/caregiver-notification/settings/{patient_hash}")
 @router.put(
     "/guardian-alert/settings/{patient_hash}",
@@ -603,6 +619,7 @@ def save_caregiver_notification_setting(
     request: CaregiverNotificationUpdate,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    slot_key: str = "morning",
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
@@ -623,6 +640,9 @@ def save_caregiver_notification_setting(
         authorized_patient_hash,
         request.notification_enabled,
         request.notification_type,
+        request.deadline_hour,
+        request.deadline_minute,
+        slot_key=slot_key,
     )
 
 

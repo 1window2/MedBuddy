@@ -123,6 +123,8 @@ class CaregiverNotificationUpdate(BaseModel):
             "option",
         ),
     )
+    deadline_hour: Optional[int] = Field(default=None, ge=0, le=23)
+    deadline_minute: Optional[int] = Field(default=None, ge=0, le=59)
 
 
 # Class Name: UserSettingUpdate

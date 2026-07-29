@@ -119,6 +119,13 @@ class _FailingNotificationService implements NotificationService {
 
   @override
   Future<void> cancelReminder(int id) async {}
+
+  @override
+  Future<void> showCaregiverAlert({
+    required int id,
+    required String title,
+    required String body,
+  }) async {}
 }
 
 void main() {

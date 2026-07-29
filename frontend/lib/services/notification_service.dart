@@ -314,4 +314,36 @@ class NotificationService {
     await initialize();
     await _plugin.cancel(id: id);
   }
+
+  // 함수명: showCaregiverAlert
+  // 역할:
+  // - 환자의 복약 체크 변화를 보호자 기기의 즉시 로컬 알림으로 표시한다.
+  // 매개변수:
+  // - id: 중복 알림을 교체하기 위한 고정 알림 식별자
+  // - title: 보호자 알림 제목
+  // - body: 보호자에게 보여줄 복약 상태 설명
+  // 반환값:
+  // - 없음
+  Future<void> showCaregiverAlert({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    await initialize();
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medbuddy_caregiver_updates',
+          '보호자 복약 확인',
+          channelDescription: '연동된 환자의 복약 완료 및 미복용 상태 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
 }
