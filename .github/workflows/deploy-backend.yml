@@ -21,6 +21,8 @@ jobs:
       REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
       SERVICE: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
       MIGRATION_JOB: ${{ vars.GCP_MIGRATION_JOB }}
+      MAINTENANCE_JOB: ${{ vars.GCP_MAINTENANCE_JOB }}
+      CATALOG_SYNC_JOB: ${{ vars.GCP_CATALOG_SYNC_JOB }}
       RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
       CLOUD_SQL_CONNECTION: ${{ vars.GCP_CLOUD_SQL_CONNECTION }}
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
@@ -85,3 +87,46 @@ jobs:
             --concurrency 4 \
             --max-instances 5 \
             --timeout 120
+
+      - name: Deploy data maintenance job
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy "${MAINTENANCE_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --command python \
+            --args=-m,scripts.run_data_maintenance \
+            --max-retries 1 \
+            --task-timeout 10m
+
+      - name: Deploy drug catalog synchronization job
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy "${CATALOG_SYNC_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --command python \
+            --args=-m,scripts.sync_drug_catalog,--dataset,all,--page-size,500 \
+            --max-retries 1 \
+            --task-timeout 60m
+
+      - name: Seed the local drug catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute "${CATALOG_SYNC_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --wait
