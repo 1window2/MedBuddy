@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from core.config import settings
 from core.database import Base
 from entities import caregiver_notification_entity  # noqa: F401
+from entities import device_push_token_entity  # noqa: F401
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401

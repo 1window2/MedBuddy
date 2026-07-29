@@ -8,6 +8,8 @@ import 'boundaries/authentication_ui_boundary.dart';
 import 'controls/authentication_control.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
+import 'services/auth_config.dart';
+import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
@@ -84,6 +86,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   bool _isScheduleRouteOpen = false;
   bool _hasPendingScheduleNavigation = false;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
+  PushNotificationService? _pushNotificationService;
   String? _monitoredUserHash;
   int _monitorGeneration = 0;
 
@@ -103,6 +106,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void dispose() {
     _monitorGeneration += 1;
     _caregiverNotificationMonitor?.dispose();
+    unawaited(_pushNotificationService?.stop());
     unawaited(CaregiverNotificationBackgroundScheduler.cancel());
     _registerNotificationSelectionHandler(null);
     _authenticationControl.removeListener(_handleAuthenticationChange);
@@ -163,14 +167,24 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
     final generation = ++_monitorGeneration;
     final previousMonitor = _caregiverNotificationMonitor;
+    final previousPushService = _pushNotificationService;
     _caregiverNotificationMonitor = null;
+    _pushNotificationService = null;
     _monitoredUserHash = userHash;
     previousMonitor?.dispose();
+    if (previousPushService != null) {
+      unawaited(previousPushService.stop());
+    }
 
     if (userHash == null || userHash.isEmpty) {
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
       return;
     }
+    final pushService = PushNotificationService(
+      client: _authenticationControl.apiClient,
+    );
+    _pushNotificationService = pushService;
+    unawaited(pushService.start());
     unawaited(_startCaregiverNotificationMonitor(userHash, generation));
   }
 
@@ -181,6 +195,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     final monitor = CaregiverNotificationMonitorService.live(
       caregiverHash: userHash,
       client: _authenticationControl.apiClient,
+      monitorCompletionTransitions:
+          AuthConfig.mode != AuthenticationMode.firebase,
     );
     if (!mounted || generation != _monitorGeneration) {
       monitor.dispose();

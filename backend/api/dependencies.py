@@ -23,6 +23,11 @@ from boundaries.oidc_token_verifier_boundary import (
     TokenVerificationError,
     TokenVerificationUnavailableError,
 )
+from boundaries.push_notification_boundary import (
+    DisabledPushNotificationBoundary,
+    FirebasePushNotificationBoundary,
+    PushNotificationBoundary,
+)
 from core.config import settings
 from core.database import get_db
 from controls.authorization_control import AuthorizationControl
@@ -40,6 +45,8 @@ from controls.manage_user_setting_control import ManageUserSetting
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
+from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
+from controls.manage_push_token_control import ManagePushToken
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
@@ -56,6 +63,8 @@ _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
 _pill_ranking_semaphore = asyncio.Semaphore(2)
 _oidc_token_verifier_lock = Lock()
 _oidc_token_verifier: OIDCTokenVerifier | None = None
+_push_notification_boundary_lock = Lock()
+_push_notification_boundary: PushNotificationBoundary | None = None
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -127,6 +136,24 @@ def get_authenticated_principal(
             detail="A verified email address is required.",
         )
     return principal
+
+
+# 함수명: get_push_notification_boundary
+# 역할:
+# - 인증 모드에 맞는 푸시 전송 경계를 애플리케이션 단위로 생성하고 재사용한다.
+# 반환값:
+# - Firebase 또는 비활성 푸시 전송 경계
+def get_push_notification_boundary() -> PushNotificationBoundary:
+    global _push_notification_boundary
+    with _push_notification_boundary_lock:
+        if _push_notification_boundary is None:
+            if settings.AUTH_MODE == "firebase":
+                _push_notification_boundary = FirebasePushNotificationBoundary(
+                    settings.FIREBASE_PROJECT_ID
+                )
+            else:
+                _push_notification_boundary = DisabledPushNotificationBoundary()
+        return _push_notification_boundary
 
 
 def get_authorization_control(
@@ -274,8 +301,30 @@ def get_check_saved_medication(
 # - CheckSchedule instance.
 def get_check_schedule(
     db: Session = Depends(get_db),
+    push_boundary: PushNotificationBoundary = Depends(
+        get_push_notification_boundary
+    ),
 ) -> CheckSchedule:
-    return CheckSchedule(db=db)
+    return CheckSchedule(
+        db=db,
+        completion_event_boundary=DispatchCaregiverAlert(
+            db=db,
+            push_boundary=push_boundary,
+        ),
+    )
+
+
+# 함수명: get_manage_push_token
+# 역할:
+# - 요청 단위 DB 세션을 사용하는 기기 푸시 토큰 관리 Control을 생성한다.
+# 매개변수:
+# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
+# 반환값:
+# - ManagePushToken 인스턴스
+def get_manage_push_token(
+    db: Session = Depends(get_db),
+) -> ManagePushToken:
+    return ManagePushToken(db=db)
 
 
 # Function Name: get_check_today_medication_info

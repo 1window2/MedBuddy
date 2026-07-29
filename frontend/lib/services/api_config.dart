@@ -15,12 +15,28 @@ class ApiConfig {
   );
 
   static String get authSessionUrl {
+    return authUrl('/session');
+  }
+
+  static String get pushTokenUrl {
+    return authUrl('/push-token');
+  }
+
+  // 함수명: authUrl
+  // 역할:
+  // - 복약 API 기본 주소와 같은 서버의 인증 API 주소를 조합한다.
+  // 매개변수:
+  // - path: /api/v1/auth 뒤에 붙일 하위 경로
+  // 반환값:
+  // - 완성된 인증 API 주소
+  static String authUrl(String path) {
     const medicationPath = '/api/v1/medication';
     if (!baseUrl.endsWith(medicationPath)) {
       throw StateError('MEDBUDDY_API_BASE_URL has an unexpected path.');
     }
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
     return '${baseUrl.substring(0, baseUrl.length - medicationPath.length)}'
-        '/api/v1/auth/session';
+        '/api/v1/auth$normalizedPath';
   }
 
   static void validate() {

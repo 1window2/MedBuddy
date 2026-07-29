@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
@@ -16,6 +17,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import 'api_config.dart';
+import 'auth_config.dart';
 import 'notification_service.dart';
 
 typedef CaregiverLinkLoader = Future<List<PatientCaregiverLink>> Function();
@@ -56,11 +58,17 @@ void caregiverNotificationCallbackDispatcher() {
 
     CaregiverNotificationMonitorService? monitor;
     try {
+      if (AuthConfig.mode == AuthenticationMode.firebase &&
+          Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(options: AuthConfig.firebaseOptions);
+      }
       await NotificationService.instance.initialize();
       monitor = CaregiverNotificationMonitorService.live(
         caregiverHash: caregiverHash,
         baseUrl: baseUrl,
         requestPermission: false,
+        monitorCompletionTransitions:
+            AuthConfig.mode != AuthenticationMode.firebase,
       );
       await monitor.checkNow();
       return true;
@@ -166,6 +174,7 @@ class CaregiverNotificationMonitorService {
   final DateTime Function() _now;
   final Duration pollingInterval;
   final bool requestPermission;
+  final bool monitorCompletionTransitions;
   final VoidCallback? _onDispose;
 
   Timer? _timer;
@@ -184,6 +193,7 @@ class CaregiverNotificationMonitorService {
     DateTime Function()? now,
     this.pollingInterval = defaultPollingInterval,
     this.requestPermission = true,
+    this.monitorCompletionTransitions = true,
     VoidCallback? onDispose,
   }) : _loadLinks = loadLinks,
        _loadSettings = loadSettings,
@@ -200,6 +210,7 @@ class CaregiverNotificationMonitorService {
     http.Client? client,
     Duration pollingInterval = defaultPollingInterval,
     bool requestPermission = true,
+    bool monitorCompletionTransitions = true,
   }) {
     final linkControl = LinkPatientCaregiver(
       baseUrl: baseUrl,
@@ -242,6 +253,7 @@ class CaregiverNotificationMonitorService {
       permissionRequester: NotificationService.instance.requestPermission,
       pollingInterval: pollingInterval,
       requestPermission: requestPermission,
+      monitorCompletionTransitions: monitorCompletionTransitions,
       onDispose: () {
         linkControl.dispose();
         settingControl.dispose();
@@ -364,7 +376,8 @@ class CaregiverNotificationMonitorService {
     final isComparableSnapshot =
         previousDate == dateKey && previousMode == setting.mode.wireValue;
 
-    if (setting.mode == CaregiverNotificationMode.doseCompleted &&
+    if (monitorCompletionTransitions &&
+        setting.mode == CaregiverNotificationMode.doseCompleted &&
         isComparableSnapshot) {
       await _notifyCompletedDoses(
         patientHash: patientHash,

@@ -25,6 +25,7 @@ from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
+from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
