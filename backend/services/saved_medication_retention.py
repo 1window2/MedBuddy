@@ -38,15 +38,16 @@ class SavedMedicationRetentionPolicy:
     def cleanup_expired_medications(
         self,
         db: Session,
-        patient_hash: str,
+        patient_hash: str | None = None,
         today: date | None = None,
+        *,
+        commit: bool = True,
     ) -> int:
         reference_date = today or application_today()
-        medications = (
-            db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .all()
-        )
+        query = db.query(_SavedMedication)
+        if patient_hash is not None:
+            query = query.filter(_SavedMedication.patient_hash == patient_hash)
+        medications = query.all()
         expired_medications = [
             medication
             for medication in medications
@@ -56,11 +57,10 @@ class SavedMedicationRetentionPolicy:
         for medication in expired_medications:
             db.query(_MedicationCompletion).filter(
                 _MedicationCompletion.saved_medication_id == medication.id,
-                _MedicationCompletion.patient_hash == patient_hash,
             ).delete(synchronize_session=False)
             db.delete(medication)
 
-        if expired_medications:
+        if expired_medications and commit:
             db.commit()
         return len(expired_medications)
 

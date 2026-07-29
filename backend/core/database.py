@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from core.config import settings
@@ -24,6 +24,21 @@ else:
     )
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_options)
+
+
+# 함수명: _enable_sqlite_foreign_keys
+# 역할:
+# - 로컬 SQLite 연결에서도 운영 PostgreSQL과 동일하게 FK와 cascade를 적용한다.
+# - SQLite가 기본적으로 비활성화하는 외래키 검사를 연결마다 활성화한다.
+@event.listens_for(engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> None:
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
 
 # 변수이름: SessionLocal
 # 변수역할:

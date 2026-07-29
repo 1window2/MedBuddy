@@ -3,10 +3,11 @@
 
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import date
 from typing import Protocol
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
@@ -18,7 +19,10 @@ from entities.medication_schedule_entity import (
     medication_schedule_slot_keys_for_frequency,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
-from entities.saved_medication_entity import _SavedMedication
+from entities.saved_medication_entity import (
+    _SavedMedication,
+    build_saved_medication_deduplication_key,
+)
 from schemas.medication import SavedMedicationCreate
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
@@ -71,9 +75,12 @@ class CheckSavedMedication:
         try:
             patient_hash = normalize_patient_hash(medication.patient_hash)
             self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
+            registration_date = application_today()
+            deduplication_key = self._build_deduplication_key(medication)
             duplicate_medication = self._find_today_duplicate(
                 patient_hash,
-                medication,
+                registration_date,
+                deduplication_key,
             )
             if duplicate_medication is not None:
                 return {
@@ -85,6 +92,7 @@ class CheckSavedMedication:
 
             db_medication = _SavedMedication(
                 patient_hash=patient_hash,
+                created_date=registration_date,
                 prescription_date=medication.prescription_date,
                 item_seq=(medication.item_seq or "").strip() or None,
                 item_name=medication.item_name.strip(),
@@ -97,11 +105,28 @@ class CheckSavedMedication:
                 schedule_slot_keys=encode_medication_schedule_slot_keys(
                     medication.schedule_slot_keys
                 ),
+                deduplication_key=deduplication_key,
                 image_url=medication.image_url,
                 ai_guide=medication.ai_guide,
             )
             self.db.add(db_medication)
-            self.db.commit()
+            try:
+                self.db.commit()
+            except IntegrityError:
+                self.db.rollback()
+                duplicate_medication = self._find_today_duplicate(
+                    patient_hash,
+                    registration_date,
+                    deduplication_key,
+                )
+                if duplicate_medication is None:
+                    raise
+                return {
+                    "success": False,
+                    "duplicate": True,
+                    "message": "이미 추가된 약입니다.",
+                    "id": duplicate_medication.id,
+                }
             self.db.refresh(db_medication)
             return {
                 "success": True,
@@ -397,125 +422,46 @@ class CheckSavedMedication:
     # - 약 이름이 같아도 조제일자나 실제 복용기간이 다르면 별도 정보로 취급한다.
     # 매개변수:
     # - patient_hash: 저장 범위를 구분하는 환자 해시
-    # - medication: 저장하려는 복약 정보 DTO
+    # - registration_date: 등록일자
+    # - deduplication_key: 처방 핵심값을 정규화한 중복 키
     # 반환값:
     # - 중복 row가 있으면 _SavedMedication
     # - 중복이 없으면 None
     def _find_today_duplicate(
         self,
         patient_hash: str,
-        medication: SavedMedicationCreate,
+        registration_date: date,
+        deduplication_key: str,
     ) -> _SavedMedication | None:
-        normalized_item_name = self._normalize_item_name(medication.item_name)
-        if not normalized_item_name:
-            return None
+        return (
+            self.db.query(_SavedMedication)
+            .filter(
+                _SavedMedication.patient_hash == patient_hash,
+                _SavedMedication.created_date == registration_date,
+                _SavedMedication.deduplication_key == deduplication_key,
+            )
+            .first()
+        )
 
-        requested_signature = self._build_duplicate_signature(
+    # 함수명: _build_deduplication_key
+    # 역할:
+    # - DB 유니크 제약과 사전 중복 조회가 공유할 결정적 처방 키를 만든다.
+    def _build_deduplication_key(
+        self,
+        medication: SavedMedicationCreate,
+    ) -> str:
+        normalized_slot_keys = decode_medication_schedule_slot_keys(
+            encode_medication_schedule_slot_keys(medication.schedule_slot_keys)
+        )
+        if not normalized_slot_keys:
+            normalized_slot_keys = medication_schedule_slot_keys_for_frequency(
+                self.course_policy.read_frequency_count(medication.daily_frequency)
+            )
+        return build_saved_medication_deduplication_key(
             item_name=medication.item_name,
             prescription_date=medication.prescription_date,
             dosage_per_time=medication.dosage_per_time,
             daily_frequency=medication.daily_frequency,
             total_days=medication.total_days,
-            schedule_slot_keys=medication.schedule_slot_keys,
+            schedule_slot_keys=normalized_slot_keys,
         )
-
-        today_medications = (
-            self.db.query(_SavedMedication)
-            .filter(
-                _SavedMedication.patient_hash == patient_hash,
-                _SavedMedication.created_date == application_today(),
-            )
-            .all()
-        )
-        for medication in today_medications:
-            stored_signature = self._build_duplicate_signature(
-                item_name=medication.item_name or "",
-                prescription_date=medication.prescription_date,
-                dosage_per_time=medication.dosage_per_time,
-                daily_frequency=medication.daily_frequency,
-                total_days=medication.total_days,
-                schedule_slot_keys=decode_medication_schedule_slot_keys(
-                    medication.schedule_slot_keys
-                ),
-            )
-            if stored_signature == requested_signature:
-                return medication
-        return None
-
-    # 함수명: _build_duplicate_signature
-    # 함수역할:
-    # - 중복 판정에 사용할 복약 정보의 핵심 식별값을 만든다.
-    # - 등록일자는 조회 조건에서 오늘로 이미 제한하므로 실제 복용기간과 약 정보를 묶는다.
-    # 매개변수:
-    # - item_name: 약품명
-    # - prescription_date: 실제 복용 시작일로 쓰는 조제일자
-    # - dosage_per_time: 1회 투약량
-    # - daily_frequency: 1일 복용 횟수
-    # - total_days: 총 복용 일수
-    # 반환값:
-    # - 중복 비교용 tuple
-    def _build_duplicate_signature(
-        self,
-        *,
-        item_name: str,
-        prescription_date: date | None,
-        dosage_per_time: str | None,
-        daily_frequency: str | None,
-        total_days: str | None,
-        schedule_slot_keys: object,
-    ) -> tuple[str, str, str, str, str, str, str]:
-        start_date = prescription_date or application_today()
-        normalized_slot_keys = decode_medication_schedule_slot_keys(
-            encode_medication_schedule_slot_keys(schedule_slot_keys)
-        )
-        if not normalized_slot_keys:
-            normalized_slot_keys = medication_schedule_slot_keys_for_frequency(
-                self.course_policy.read_frequency_count(daily_frequency)
-            )
-        return (
-            self._normalize_item_name(item_name),
-            start_date.isoformat(),
-            self._read_medication_end_date(start_date, total_days).isoformat(),
-            self._normalize_schedule_value(dosage_per_time),
-            self._normalize_schedule_value(daily_frequency),
-            self._normalize_schedule_value(total_days),
-            encode_medication_schedule_slot_keys(normalized_slot_keys),
-        )
-
-    # 함수명: _read_medication_end_date
-    # 함수역할:
-    # - 조제일자와 총 복용 일수로 실제 복용 종료일을 계산한다.
-    # 매개변수:
-    # - start_date: 복용 시작일
-    # - total_days: "7일" 같은 총 복용 일수 문자열
-    # 반환값:
-    # - 복용 종료일
-    def _read_medication_end_date(
-        self,
-        start_date: date,
-        total_days: str | None,
-    ) -> date:
-        days = self.course_policy.read_total_days(total_days)
-        if days <= 0:
-            return start_date
-        return start_date + timedelta(days=days - 1)
-
-    # 함수명: _normalize_schedule_value
-    # 함수역할:
-    # - 복용량, 횟수, 기간 값의 공백 차이를 제거해 중복 비교를 안정화한다.
-    # 매개변수:
-    # - value: 원본 복용 정보 문자열
-    # 반환값:
-    # - 정규화된 문자열
-    def _normalize_schedule_value(self, value: str | None) -> str:
-        return " ".join((value or "").strip().lower().split())
-
-    # 함수명: _normalize_item_name
-    # 함수역할:
-    # - 중복 비교에 사용할 약품명을 공백 제거와 소문자 기준으로 정규화한다.
-    # 매개변수:
-    # - item_name: 원본 약품명
-    # 반환값:
-    # - 정규화된 약품명
-    def _normalize_item_name(self, item_name: str) -> str:
-        return " ".join(item_name.strip().lower().split())

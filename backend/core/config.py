@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     )
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
+    PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
+    PUBLIC_API_FAILURE_CACHE_SECONDS: int = Field(default=30, ge=1, le=300)
     PILL_IDENTIFICATION_MODEL_NAME: str = Field(
         default="gemini-3.1-flash-lite",
         min_length=1,
@@ -116,6 +118,18 @@ class Settings(BaseSettings):
         gt=0,
         le=120,
     )
+    PERIODIC_MAINTENANCE_ENABLED: bool = True
+    PERIODIC_MAINTENANCE_INTERVAL_SECONDS: int = Field(
+        default=21_600,
+        ge=300,
+        le=86_400,
+    )
+    HEALTH_RECOMMENDATION_CACHE_RETENTION_DAYS: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+    )
+    RATE_LIMIT_ENABLED: bool = True
     REDIS_URL: str = "redis://localhost:6379"
 
     # 함수이름: validate_external_api_url

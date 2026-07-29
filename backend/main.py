@@ -13,13 +13,18 @@ from api.router import auth_router, router as medication_router
 from api.dependencies import (
     close_medication_detail_cache,
     close_pill_identification_boundaries,
+    close_public_drug_boundaries,
     get_oidc_token_verifier,
 )
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from controls.input_prescription_control import MAX_PRESCRIPTION_IMAGE_BYTES
 from core.config import settings
-from core.database import Base, engine
+from core.database import Base, SessionLocal, engine
 from core.request_limits import RequestBodyLimitMiddleware
+from core.request_rate_limits import (
+    DEFAULT_RATE_LIMIT_RULES,
+    RequestRateLimitMiddleware,
+)
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
@@ -29,11 +34,13 @@ from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
+from entities import user_account_entity  # noqa: F401
 from entities.caregiver_notification_entity import ensure_caregiver_notification_schema
 from entities.medication_completion_entity import ensure_medication_completion_schema
 from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
+from services.data_maintenance import PeriodicDataMaintenanceRunner
 
 
 # Function Name: configure_logging
@@ -52,12 +59,21 @@ def configure_logging() -> None:
 
 
 @asynccontextmanager
-async def application_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
+    maintenance_runner: PeriodicDataMaintenanceRunner | None = None
+    if settings.PERIODIC_MAINTENANCE_ENABLED:
+        maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
+        maintenance_runner.start()
+        app.state.data_maintenance_runner = maintenance_runner
     try:
         yield
     finally:
+        if maintenance_runner is not None:
+            await maintenance_runner.stop()
+        await RequestRateLimitMiddleware.close_all()
         await close_pill_identification_boundaries()
         await close_medication_detail_cache()
+        await close_public_drug_boundaries()
 
 
 # Function Name: create_app
@@ -96,6 +112,12 @@ def create_app() -> FastAPI:
                 2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
             ),
         },
+    )
+    app.add_middleware(
+        RequestRateLimitMiddleware,
+        redis_url=settings.REDIS_URL,
+        rules=DEFAULT_RATE_LIMIT_RULES,
+        enabled=settings.RATE_LIMIT_ENABLED,
     )
     app.include_router(
         medication_router,

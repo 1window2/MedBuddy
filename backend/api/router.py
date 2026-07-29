@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_authenticated_principal,
+    get_registered_principal,
     get_authorization_control,
     get_check_medication_detail,
     get_check_prescription_change,
@@ -17,6 +18,7 @@ from api.dependencies import (
     get_check_today_medication_info,
     get_check_caregiver_medication,
     get_manage_user_setting,
+    get_manage_account,
     get_manage_push_token,
     get_identify_pill,
     get_link_patient_caregiver_control,
@@ -47,6 +49,7 @@ from controls.input_prescription_control import (
 )
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
+from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
@@ -74,8 +77,12 @@ from schemas.prescription_change import (
     PrescriptionChangeResponse,
 )
 
-router = APIRouter(dependencies=[Depends(get_authenticated_principal)])
-auth_router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = APIRouter(dependencies=[Depends(get_registered_principal)])
+auth_router = APIRouter(
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+    dependencies=[Depends(get_registered_principal)],
+)
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +107,28 @@ def get_auth_session(
         "sign_in_provider": principal.sign_in_provider,
         "anonymous": principal.anonymous,
     }
+
+
+# 함수명: export_account_data
+# 역할:
+# - 현재 로그인 사용자의 MedBuddy 저장 데이터를 JSON으로 반환한다.
+@auth_router.get("/account-data")
+def export_account_data(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_account: ManageAccount = Depends(get_manage_account),
+) -> dict[str, object]:
+    return manage_account.exportAccountData(principal.user_hash)
+
+
+# 함수명: delete_account_data
+# 역할:
+# - 현재 로그인 사용자의 복약정보, 연결, 알림, 캐시를 모두 삭제한다.
+@auth_router.delete("/account-data")
+def delete_account_data(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_account: ManageAccount = Depends(get_manage_account),
+) -> dict[str, object]:
+    return manage_account.deleteAccountData(principal.user_hash)
 
 
 # 함수명: register_push_token

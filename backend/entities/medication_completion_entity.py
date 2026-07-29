@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     UniqueConstraint,
@@ -21,6 +22,7 @@ from core.application_clock import application_today
 from core.database import Base
 from entities.medication_schedule_entity import DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 # Function Name: utc_now
@@ -57,9 +59,15 @@ class _MedicationCompletion(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    saved_medication_id = Column(Integer, index=True, nullable=False)
+    saved_medication_id = Column(
+        Integer,
+        ForeignKey("saved_medications.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     patient_hash = Column(
         String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
         index=True,
         nullable=False,
         default=DEFAULT_PATIENT_HASH,

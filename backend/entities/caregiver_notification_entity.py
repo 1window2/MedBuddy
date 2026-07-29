@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -19,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 from core.database import Base
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 CAREGIVER_NOTIFICATION_MODE_DISABLED = "disabled"
 CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED = "dose_completed"
@@ -51,8 +53,19 @@ class _CaregiverNotification(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    caregiver_hash = Column("guardian_hash", String, nullable=False, index=True)
-    patient_hash = Column(String, nullable=False, index=True)
+    caregiver_hash = Column(
+        "guardian_hash",
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    patient_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     enabled = Column(Boolean, nullable=False, default=False, server_default="0")
     alert_option = Column(
         String,

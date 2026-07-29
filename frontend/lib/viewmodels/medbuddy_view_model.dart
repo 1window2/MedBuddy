@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +15,7 @@ import '../controls/check_saved_medication_control.dart';
 import '../controls/check_today_medication_info_control.dart';
 import '../controls/input_prescription_control.dart';
 import '../controls/manage_user_setting_control.dart';
+import '../controls/manage_account_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/health_recommendation_entity.dart';
@@ -72,6 +74,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckHealthRecommendation checkHealthRecommendation;
   late final SetNotification setNotification;
   late final ManageUserSetting manageUserSetting;
+  late final ManageAccount manageAccount;
   final NotificationService notificationService;
   final String patientHash;
   final http.Client _apiClient;
@@ -244,6 +247,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     CheckHealthRecommendation? checkHealthRecommendation,
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
+    ManageAccount? manageAccount,
     NotificationService? notificationService,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? apiClient,
@@ -290,6 +294,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.manageUserSetting =
         manageUserSetting ??
         ManageUserSetting(userHash: this.patientHash, client: _apiClient);
+    this.manageAccount = manageAccount ?? ManageAccount(client: _apiClient);
   }
 
   // 함수명: loadUserSetting
@@ -457,20 +462,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final analysisResults = await Future.wait(
-        recognizedSchedules.map((schedule) async {
-          try {
-            final detail = await checkMedicationDetail.requestMedicationDetail(
-              schedule,
-            );
-            if (detail == null) {
-              return null;
-            }
-            return AnalyzedMedication(schedule: schedule, detail: detail);
-          } catch (_) {
-            return null;
-          }
-        }),
+      final analysisResults = await _analyzeMedicationSchedules(
+        recognizedSchedules,
       );
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
@@ -503,6 +496,42 @@ class MedBuddyViewModel extends ChangeNotifier {
       }
       _showAnalysisFailure('처방전 분석 중 오류가 발생했습니다.');
     }
+  }
+
+  // 함수이름: _analyzeMedicationSchedules
+  // 함수역할:
+  // - 처방 약 상세조회를 세 건씩 나누어 공공 API 순간 호출량을 제한한다.
+  // - 일부 조회가 실패해도 나머지 약의 분석 결과와 원래 순서를 유지한다.
+  // 매개변수:
+  // - schedules: OCR 결과에서 사용자가 확인한 복약 일정 목록
+  // 반환값:
+  // - 입력 순서와 같은 nullable 분석 결과 목록
+  Future<List<AnalyzedMedication?>> _analyzeMedicationSchedules(
+    List<MedicationSchedule> schedules,
+  ) async {
+    const batchSize = 3;
+    final results = <AnalyzedMedication?>[];
+    for (var start = 0; start < schedules.length; start += batchSize) {
+      final end = math.min(start + batchSize, schedules.length);
+      final batch = schedules.sublist(start, end);
+      final batchResults = await Future.wait(
+        batch.map((schedule) async {
+          try {
+            final detail = await checkMedicationDetail.requestMedicationDetail(
+              schedule,
+            );
+            if (detail == null) {
+              return null;
+            }
+            return AnalyzedMedication(schedule: schedule, detail: detail);
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      results.addAll(batchResults);
+    }
+    return results;
   }
 
   // 함수이름: _refreshPrescriptionChangeRadar
@@ -1321,6 +1350,17 @@ class MedBuddyViewModel extends ChangeNotifier {
       readingSpeedOption: readingSpeedOption,
       language: language,
     );
+    notifyListeners();
+  }
+
+  // 함수명: requestAccountDataDeletion
+  // 역할:
+  // - 현재 사용자에게 연결된 서버 데이터와 기기 캐시의 전체 삭제를 요청한다.
+  Future<void> requestAccountDataDeletion() async {
+    await manageAccount.deleteAccountData();
+    clearAnalysisResult();
+    _savedMedicationInfoList = [];
+    _todayMedicationScheduleList = [];
     notifyListeners();
   }
 

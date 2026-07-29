@@ -15,6 +15,7 @@ from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
+from entities import user_account_entity  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

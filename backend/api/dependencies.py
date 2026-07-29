@@ -17,6 +17,7 @@ from boundaries.public_drug_api_boundary import (
     PillImageAPI,
     PublicDrugLargeAPI,
     PublicDrugSmallAPI,
+    _PublicDrugTransport,
 )
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
@@ -42,6 +43,7 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
+from controls.manage_account_control import ManageAccount
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
@@ -54,9 +56,10 @@ from entities.authenticated_principal_entity import AuthenticatedPrincipal
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
-_public_drug_small_api = PublicDrugSmallAPI()
-_public_drug_large_api = PublicDrugLargeAPI()
-_pill_image_api = PillImageAPI()
+_public_drug_transport = _PublicDrugTransport()
+_public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
+_public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
+_pill_image_api = PillImageAPI(transport=_public_drug_transport)
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
@@ -138,6 +141,18 @@ def get_authenticated_principal(
     return principal
 
 
+# 함수명: get_registered_principal
+# 역할:
+# - 검증된 인증 주체를 내부 user_accounts 범위에 등록하고 반환한다.
+# - 보호된 모든 API에서 FK 기준 사용자가 먼저 존재하도록 보장한다.
+def get_registered_principal(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    db: Session = Depends(get_db),
+) -> AuthenticatedPrincipal:
+    ManageAccount(db).ensureAccount(principal.user_hash, commit=True)
+    return principal
+
+
 # 함수명: get_push_notification_boundary
 # 역할:
 # - 인증 모드에 맞는 푸시 전송 경계를 애플리케이션 단위로 생성하고 재사용한다.
@@ -162,6 +177,12 @@ def get_authorization_control(
     return AuthorizationControl(db=db)
 
 
+def get_manage_account(
+    db: Session = Depends(get_db),
+) -> ManageAccount:
+    return ManageAccount(db=db)
+
+
 async def get_medication_detail_cache() -> _MedicationDetailCache:
     global _medication_detail_cache
     if _medication_detail_cache is None:
@@ -180,6 +201,19 @@ async def close_medication_detail_cache() -> None:
     except Exception as exc:
         logger.warning(
             "Medication detail cache shutdown failed: %s",
+            type(exc).__name__,
+        )
+
+
+# 함수명: close_public_drug_boundaries
+# 역할:
+# - 공공데이터 API가 공유하는 HTTP 연결 풀을 서버 종료 시 정리한다.
+async def close_public_drug_boundaries() -> None:
+    try:
+        await _public_drug_transport.close()
+    except Exception as exc:
+        logger.warning(
+            "Public drug API transport shutdown failed: %s",
             type(exc).__name__,
         )
 

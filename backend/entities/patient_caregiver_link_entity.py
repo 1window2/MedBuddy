@@ -4,9 +4,18 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 
 from core.database import Base
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 def utc_now() -> datetime:
@@ -30,8 +39,18 @@ class _PatientCaregiverLink(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_hash = Column(String, nullable=False, index=True)
-    caregiver_hash = Column(String, nullable=False, index=True)
+    patient_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    caregiver_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     linked = Column(Boolean, nullable=False, default=True, server_default="1")
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
@@ -40,12 +59,22 @@ class _PatientLinkCode(Base):
     __tablename__ = "patient_link_codes"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_hash = Column(String, nullable=False, index=True)
+    patient_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     patient_code = Column(String, nullable=False, unique=True, index=True)
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, nullable=False, default=utc_now)
     used = Column(Boolean, nullable=False, default=False, server_default="0")
-    caregiver_hash = Column(String, nullable=True, index=True)
+    caregiver_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
 
 # Class Name: PatientLinkCode

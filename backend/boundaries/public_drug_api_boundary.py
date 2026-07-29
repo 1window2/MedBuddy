@@ -1,6 +1,8 @@
 """External boundaries for Korean public medication data services."""
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from typing import Any
@@ -75,25 +77,101 @@ class _PublicDrugTransport:
 
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+        self._client_lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(settings.PUBLIC_API_MAX_CONCURRENCY)
+        self._failed_until: dict[str, float] = {}
 
     async def request_items(
         self,
         url: str,
         params: dict[str, object],
     ) -> tuple[list[dict[str, Any]], int]:
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.get(url, params=params)
+        failure_key = self._build_failure_key(url, params)
+        if self._failed_until.get(failure_key, 0.0) > time.monotonic():
+            raise RuntimeError(
+                "The public medication API is temporarily unavailable."
+            )
+
+        try:
+            async with self._semaphore:
+                client = await self._get_client()
+                response = await client.get(url, params=params)
+        except Exception:
+            self._remember_failure(failure_key)
+            raise
 
         if response.status_code != 200:
+            self._remember_failure(failure_key)
             raise RuntimeError("The public medication API did not respond successfully.")
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            self._remember_failure(failure_key)
+            raise RuntimeError(
+                "The public medication API returned an invalid payload."
+            ) from None
         if not isinstance(data, dict):
+            self._remember_failure(failure_key)
             raise RuntimeError("The public medication API returned an invalid payload.")
-        self._validate_response_header(data)
+        try:
+            self._validate_response_header(data)
+        except RuntimeError:
+            self._remember_failure(failure_key)
+            raise
+        self._failed_until.pop(failure_key, None)
         body = self._extract_body(data)
         return self._normalize_items(body.get("items")), self._safe_int(
             body.get("totalCount")
+        )
+
+    async def close(self) -> None:
+        async with self._client_lock:
+            client = self._client
+            self._client = None
+        if client is not None:
+            await client.aclose()
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is not None:
+            return self._client
+        async with self._client_lock:
+            if self._client is None:
+                self._client = httpx.AsyncClient(
+                    timeout=self.timeout_seconds,
+                    limits=httpx.Limits(
+                        max_connections=settings.PUBLIC_API_MAX_CONCURRENCY,
+                        max_keepalive_connections=settings.PUBLIC_API_MAX_CONCURRENCY,
+                    ),
+                )
+        return self._client
+
+    @staticmethod
+    def _build_failure_key(url: str, params: dict[str, object]) -> str:
+        safe_params = {
+            key: value
+            for key, value in params.items()
+            if key.lower() != "servicekey"
+        }
+        payload = json.dumps(
+            [url, safe_params],
+            ensure_ascii=True,
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _remember_failure(self, failure_key: str) -> None:
+        if len(self._failed_until) >= 1_024:
+            now = time.monotonic()
+            self._failed_until = {
+                key: expires_at
+                for key, expires_at in self._failed_until.items()
+                if expires_at > now
+            }
+        self._failed_until[failure_key] = (
+            time.monotonic() + settings.PUBLIC_API_FAILURE_CACHE_SECONDS
         )
 
     @staticmethod
