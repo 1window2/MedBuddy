@@ -47,7 +47,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     super.initState();
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
-    _language = widget.initialSetting.language;
+    _language = widget.initialSetting.language == 'en'
+        ? 'ko'
+        : widget.initialSetting.language;
   }
 
   @override
@@ -109,7 +111,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         _OptionRow(
                           options: const [
                             _SettingOption(value: 'ko', label: '한국어'),
-                            _SettingOption(value: 'en', label: 'English'),
+                            _SettingOption(
+                              value: 'en',
+                              label: 'English',
+                              enabled: false,
+                              supportText: '추후 업데이트 예정',
+                            ),
                           ],
                           selectedValue: _language,
                           contentScale: contentScale,
@@ -451,7 +458,9 @@ class _OptionRow extends StatelessWidget {
               option: options[index],
               selected: options[index].value == selectedValue,
               contentScale: contentScale,
-              onTap: () => onSelected(options[index].value),
+              onTap: options[index].enabled
+                  ? () => onSelected(options[index].value)
+                  : null,
             ),
           ),
           if (index != options.length - 1) const SizedBox(width: 11),
@@ -465,7 +474,7 @@ class _SegmentButton extends StatelessWidget {
   final _SettingOption option;
   final bool selected;
   final double contentScale;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _SegmentButton({
     required this.option,
@@ -476,10 +485,22 @@ class _SegmentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = option.enabled;
+    final backgroundColor = selected
+        ? MedBuddyColors.primary
+        : enabled
+        ? Colors.white
+        : const Color(0xFFF3F4F6);
+    final foregroundColor = selected
+        ? Colors.white
+        : enabled
+        ? MedBuddyColors.textStrong
+        : MedBuddyColors.textLight;
+
     return Material(
-      color: selected ? MedBuddyColors.primary : Colors.white,
+      color: backgroundColor,
       borderRadius: MedBuddyRadii.card,
-      elevation: selected ? 7 : 0,
+      elevation: selected && enabled ? 7 : 0,
       shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
       child: InkWell(
         borderRadius: MedBuddyRadii.card,
@@ -490,20 +511,39 @@ class _SegmentButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.card,
             border: Border.all(
-              color: MedBuddyColors.primary,
+              color: enabled ? MedBuddyColors.primary : MedBuddyColors.divider,
               width: selected ? 0 : 2.7,
             ),
           ),
-          child: Text(
-            option.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: selected ? Colors.white : MedBuddyColors.textStrong,
-              fontSize: 16 * contentScale,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                option.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: foregroundColor,
+                  fontSize: 16 * contentScale,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+              if (option.supportText != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  option.supportText!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textLight,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -599,8 +639,15 @@ class _PreviewPanel extends StatelessWidget {
 class _SettingOption {
   final String value;
   final String label;
+  final bool enabled;
+  final String? supportText;
 
-  const _SettingOption({required this.value, required this.label});
+  const _SettingOption({
+    required this.value,
+    required this.label,
+    this.enabled = true,
+    this.supportText,
+  });
 }
 
 class _SettingText {
