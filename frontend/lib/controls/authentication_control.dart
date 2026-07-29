@@ -76,10 +76,7 @@ class AuthenticationControl extends ChangeNotifier {
 
   factory AuthenticationControl.development() {
     final control = AuthenticationControl._();
-    control._session = const AuthSession(
-      userHash: PatientHash.defaultPatientHash,
-      authenticated: false,
-    );
+    control._session = _createLocalSession();
     control._isInitializing = false;
     return control;
   }
@@ -95,10 +92,7 @@ class AuthenticationControl extends ChangeNotifier {
       ApiConfig.validate();
       AuthConfig.validate();
       if (AuthConfig.mode == AuthenticationMode.disabled) {
-        _session = const AuthSession(
-          userHash: PatientHash.defaultPatientHash,
-          authenticated: false,
-        );
+        _session = _createLocalSession();
         return;
       }
       await Firebase.initializeApp(options: AuthConfig.firebaseOptions);
@@ -124,6 +118,14 @@ class AuthenticationControl extends ChangeNotifier {
       _isInitializing = false;
       notifyListeners();
     }
+  }
+
+  // 인증을 사용하지 않는 로컬 연동 테스트에서는 실행 옵션으로 기기별 사용자를 구분한다.
+  static AuthSession _createLocalSession() {
+    return AuthSession(
+      userHash: PatientHash.normalizePatientHash(AuthConfig.localUserHash),
+      authenticated: false,
+    );
   }
 
   Future<void> signIn({required String email, required String password}) async {

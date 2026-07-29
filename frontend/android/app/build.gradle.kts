@@ -2,7 +2,11 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
+}
+
+// 로컬 인증 비활성화 환경에서는 Firebase 설정 파일 없이도 디버그 빌드를 허용한다.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 val releaseKeystorePath = System.getenv("MEDBUDDY_KEYSTORE_PATH")

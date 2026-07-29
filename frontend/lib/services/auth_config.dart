@@ -34,6 +34,9 @@ class AuthConfig {
     'MEDBUDDY_FIREBASE_AUTH_EMULATOR_PORT',
     defaultValue: 9099,
   );
+  static const String localUserHash = String.fromEnvironment(
+    'MEDBUDDY_LOCAL_USER_HASH',
+  );
 
   static void validate() {
     if (kReleaseMode && mode != AuthenticationMode.firebase) {
