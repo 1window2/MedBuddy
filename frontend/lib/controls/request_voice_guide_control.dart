@@ -6,14 +6,16 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_detail_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 import '../services/tts_service.dart';
 
-typedef VoiceGuideSpeaker = Future<void> Function(
-  String text,
-  UserSetting userSetting, {
-  void Function()? onComplete,
-});
+typedef VoiceGuideSpeaker =
+    Future<void> Function(
+      String text,
+      UserSetting userSetting, {
+      void Function()? onComplete,
+    });
 
 // 파일명: request_voice_guide_control.dart
 // 역할: 음성 안내 문구 요청과 TTS Service 호출을 조정한다.
@@ -36,10 +38,10 @@ class RequestVoiceGuide {
     TTSService? ttsService,
     VoiceGuideSpeaker? speaker,
     http.Client? client,
-  })  : _ttsService = ttsService ?? (speaker == null ? TTSService() : null),
-        _speaker = speaker,
-        _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _ttsService = ttsService ?? (speaker == null ? TTSService() : null),
+       _speaker = speaker,
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: requestVoiceGuide
   // 함수역할:

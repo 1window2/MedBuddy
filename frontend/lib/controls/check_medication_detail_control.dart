@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: check_medication_detail_control.dart
@@ -22,11 +23,9 @@ class CheckMedicationDetail {
   final http.Client _client;
   final bool _ownsClient;
 
-  CheckMedicationDetail({
-    this.baseUrl = ApiConfig.baseUrl,
-    http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  CheckMedicationDetail({this.baseUrl = ApiConfig.baseUrl, http.Client? client})
+    : _client = client ?? AuthenticatedApiClient(),
+      _ownsClient = client == null;
 
   // 함수명: requestMedicationDetail
   // 함수역할:
@@ -91,8 +90,9 @@ class CheckMedicationDetail {
 
     return rawItems
         .whereType<Map>()
-        .map((item) =>
-            MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList(growable: false);
   }
 

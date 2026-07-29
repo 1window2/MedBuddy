@@ -11,9 +11,8 @@ This is the canonical implementation-grounded class view for the
   using the classes and module boundaries that exist in the repository.
 - `docs/MedBuddy - v0.0.9 Pill Identification Extension.md` defines the UC-15
   extension that was not present in v5.
-- `docs/MedBuddy - Beta Security Architecture.md` defines planned beta security
-  types. Planned security types are intentionally not represented as already
-  implemented below.
+- `docs/MedBuddy - Beta Security Architecture.md` defines the implemented beta
+  identity, authorization, deployment, and signing boundaries shown below.
 
 Private Flutter widgets, private Python helper classes, Pydantic transport DTOs,
 SQLAlchemy row classes, exceptions, and framework-generated state classes are
@@ -47,6 +46,7 @@ hide empty members
 
 package "Flutter / Boundary" as FE_Boundary {
   class MedBuddyApp <<composition root>>
+  class AuthenticationUI <<boundary>>
   class HomeScreen <<boundary>>
   class InputPrescriptionUI <<boundary>>
   class PrescriptionAnalysisProgressUI <<boundary>>
@@ -69,6 +69,7 @@ package "Flutter / Boundary" as FE_Boundary {
 
 package "Flutter / Control" as FE_Control {
   class MedBuddyViewModel <<control, facade>>
+  class AuthenticationControl <<control>>
   class "InputPrescription" as FE_InputPrescription <<control>>
   class "CheckMedicationDetail" as FE_CheckMedicationDetail <<control>>
   class "CheckSavedMedication" as FE_CheckSavedMedication <<control>>
@@ -85,6 +86,7 @@ package "Flutter / Control" as FE_Control {
 }
 
 package "Flutter / Entity" as FE_Entity {
+  class AuthSession <<entity>>
   class "AnalyzedMedication" as FE_AnalyzedMedication <<entity>>
   class "MedicationDetail" as FE_MedicationDetail <<entity>>
   class "MedicationSchedule" as FE_MedicationSchedule <<entity>>
@@ -102,6 +104,9 @@ package "Flutter / Entity" as FE_Entity {
 
 package "Flutter / External and Shared Services" as FE_Service {
   class ApiConfig <<configuration>>
+  class AuthConfig <<configuration>>
+  class AuthenticatedApiClient <<external boundary>>
+  class FirebaseAuth <<external identity provider>>
   class ApiResponseParser <<boundary helper>>
   class NotificationService <<external boundary>>
   class TTSService <<external boundary>>
@@ -115,6 +120,7 @@ package "FastAPI / API Boundary" as BE_API {
 }
 
 package "FastAPI / Control" as BE_Control {
+  class AuthorizationControl <<control>>
   class "InputPrescription" as BE_InputPrescription <<control>>
   class "CheckMedicationDetail" as BE_CheckMedicationDetail <<control>>
   class "CheckSavedMedication" as BE_CheckSavedMedication <<control>>
@@ -131,6 +137,7 @@ package "FastAPI / Control" as BE_Control {
 }
 
 package "FastAPI / Entity" as BE_Entity {
+  class AuthenticatedPrincipal <<entity>>
   class PrescriptionText <<entity>>
   class MedicationCandidate <<entity>>
   class MedicationCandidateList <<entity>>
@@ -153,6 +160,7 @@ package "FastAPI / Entity" as BE_Entity {
 }
 
 package "FastAPI / External Boundary" as BE_Boundary {
+  class OIDCTokenVerifier <<external boundary>>
   class PrescriptionImageProcessor <<utility boundary>>
   class GeminiVisionClient <<external boundary>>
   class OCRServiceBoundary <<external boundary>>
@@ -175,12 +183,20 @@ package "FastAPI / Policy and Repository" as BE_Support {
 
 package "Persistence" {
   database "medbuddy.db\n(local/demo SQLite)" as MedicationDB
+  database "Cloud SQL PostgreSQL\n(beta production)" as ProductionDB
   database "pill_identification_catalog.db\n(reference SQLite)" as PillCatalogDB
   database "Redis\n(optional cache)" as RedisCache
 }
 
-' Main Flutter navigation and use-case coordination
-MedBuddyApp o-- MedBuddyViewModel
+' Main Flutter navigation, authentication, and use-case coordination
+MedBuddyApp o-- AuthenticationControl
+MedBuddyApp --> AuthenticationUI
+AuthenticationUI --> AuthenticationControl
+AuthenticationControl --> AuthConfig
+AuthenticationControl --> FirebaseAuth
+AuthenticationControl --> AuthSession
+AuthenticationControl o-- AuthenticatedApiClient
+MedBuddyApp o-- MedBuddyViewModel : authenticated session
 MedBuddyApp --> HomeScreen
 HomeScreen --> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
@@ -188,6 +204,7 @@ HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> CheckScheduleUI
 HomeScreen ..> LinkPatientCaregiverUI
 HomeScreen ..> PillIdentificationUI
+ManageUserSettingUI ..> AuthenticationControl : signOut()
 InputPrescriptionUI --> MedBuddyViewModel
 PrescriptionAnalysisPreviewUI --> MedBuddyViewModel
 CheckResultUI --> MedBuddyViewModel
@@ -224,14 +241,21 @@ FE_PillResult *-- FE_PillVisualFeatures
 FE_SetNotification ..> NotificationService
 FE_RequestVoiceGuide ..> TTSService
 
-' Every Flutter control reaches the backend only through HTTP
-FE_Control ..> APIRouter : HTTP JSON/multipart
+' Every Flutter control reaches the backend only through authenticated HTTP
+FE_Control ..> AuthenticatedApiClient
+AuthenticatedApiClient --> APIRouter : HTTPS + Bearer token
 FE_Control ..> ApiConfig
 FE_Control ..> ApiResponseParser
 
 ' FastAPI composition and use-case controls
 RequestBodyLimitMiddleware --> APIRouter
 APIRouter --> APIDependencies
+APIDependencies o-- OIDCTokenVerifier
+APIDependencies o-- AuthorizationControl
+OIDCTokenVerifier --> AuthenticatedPrincipal
+APIRouter --> AuthenticatedPrincipal
+APIRouter --> AuthorizationControl : resolve trusted scope
+AuthorizationControl --> BE_PatientCaregiverLink
 APIDependencies o-- BE_InputPrescription
 APIDependencies o-- BE_CheckMedicationDetail
 APIDependencies o-- BE_CheckSavedMedication
@@ -290,6 +314,8 @@ BE_PillCandidate --> PillCatalogEntry
 
 ' Persistence is logical; private ORM rows implement these mappings
 BE_Control ..> MedicationDB
+BE_Control ..> ProductionDB : production mapping
+AuthorizationControl ..> ProductionDB
 BE_CheckMedicationDetail ..> RedisCache
 MedicationDB ..> BE_MedicationSchedule
 MedicationDB ..> BE_MedicationAlarm
@@ -339,11 +365,12 @@ not expanded into separate diagram nodes:
 
 ## Known Beta Architecture Gaps
 
-- `PatientHash` and caregiver hashes are demo selectors, not authenticated
-  identity. The planned replacement is defined in the beta security document.
+- Firebase authentication and server-side authorization are implemented, but
+  the managed project, Cloud Run/Cloud SQL resources, protected signing
+  environment, and signed two-device smoke test remain deployment gates.
 - `CaregiverNotification` currently persists preference state; it does not by
   itself prove cross-device delivery.
-- `medbuddy.db` is suitable for local/demo execution, not a horizontally scaled
-  multi-user deployment.
-- Android release builds still require production HTTPS policy and protected
-  signing before beta distribution.
+- `medbuddy.db` remains local/demo storage; production uses the same ORM mapping
+  through Alembic-managed PostgreSQL.
+- App Check and distributed rate limiting remain defense-in-depth work before
+  opening an unrestricted public beta.

@@ -1,21 +1,29 @@
 from collections.abc import Generator
-from pathlib import Path
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-# 파일명: database.py
-# 역할: SQLite 데이터베이스 연결과 요청 단위 세션 생성을 담당한다.
+from core.config import settings
 
-DATABASE_PATH = Path(__file__).resolve().parents[1] / "medbuddy.db"
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
+# 파일명: database.py
+# 역할: 환경별 데이터베이스 연결과 요청 단위 세션 생성을 담당한다.
+
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
 # 변수이름: engine
 # 변수역할:
-# - FastAPI 요청에서 사용할 SQLite 연결 엔진
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# - 로컬 SQLite와 운영 PostgreSQL에서 공통으로 사용할 연결 엔진
+_engine_options: dict[str, object] = {"pool_pre_ping": True}
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    _engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_options.update(
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+        pool_recycle=settings.DATABASE_POOL_RECYCLE_SECONDS,
+    )
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_options)
 
 # 변수이름: SessionLocal
 # 변수역할:

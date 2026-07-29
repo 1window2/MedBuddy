@@ -6,6 +6,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 typedef CaregiverMedicationInfo = ({
@@ -27,8 +28,8 @@ class CheckCaregiverMedication {
     this.baseUrl = ApiConfig.baseUrl,
     this.caregiverHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // Function Name: requestPatientMedicationInfo
   // Description:
@@ -37,8 +38,9 @@ class CheckCaregiverMedication {
     required String patientHash,
   }) async {
     try {
-      final normalizedPatientHash =
-          PatientHash.normalizePatientHash(patientHash);
+      final normalizedPatientHash = PatientHash.normalizePatientHash(
+        patientHash,
+      );
       final response = await _client
           .get(
             Uri.parse(
@@ -46,8 +48,9 @@ class CheckCaregiverMedication {
               '${Uri.encodeComponent(normalizedPatientHash)}',
             ).replace(
               queryParameters: {
-                'caregiver_hash':
-                    PatientHash.normalizePatientHash(caregiverHash),
+                'caregiver_hash': PatientHash.normalizePatientHash(
+                  caregiverHash,
+                ),
               },
             ),
           )
@@ -100,9 +103,7 @@ class CheckCaregiverMedication {
     return rawItems
         .whereType<Map>()
         .map(
-          (item) => MedicationDetail.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
+          (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(growable: false);
   }

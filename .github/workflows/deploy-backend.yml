@@ -1,0 +1,87 @@
+name: Deploy Backend
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: beta-backend-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: beta-backend
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+      SERVICE: ${{ vars.GCP_CLOUD_RUN_SERVICE }}
+      MIGRATION_JOB: ${{ vars.GCP_MIGRATION_JOB }}
+      RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+      CLOUD_SQL_CONNECTION: ${{ vars.GCP_CLOUD_SQL_CONNECTION }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+
+    steps:
+      - name: Source Code Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Build backend image
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/medbuddy-backend:${GITHUB_SHA}"
+          echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+          gcloud builds submit backend --project "${PROJECT_ID}" --tag "${IMAGE}"
+
+      - name: Apply database migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs deploy "${MIGRATION_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --command python \
+            --args=-m,alembic,-c,alembic.ini,upgrade,head \
+            --max-retries 0 \
+            --task-timeout 10m
+          gcloud run jobs execute "${MIGRATION_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --wait
+
+      - name: Deploy authenticated API
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run deploy "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
+            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --allow-unauthenticated \
+            --port 8080 \
+            --memory 1Gi \
+            --concurrency 4 \
+            --max-instances 5 \
+            --timeout 120

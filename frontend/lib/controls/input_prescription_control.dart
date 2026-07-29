@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 typedef PrescriptionImageSelectedCallback = void Function();
@@ -47,7 +48,7 @@ class InputPrescription {
     http.Client? client,
     this.requestTimeout = const Duration(seconds: 45),
   }) : _imagePicker = imagePicker ?? ImagePicker(),
-       _client = client ?? http.Client(),
+       _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null {
     if (requestTimeout <= Duration.zero) {
       throw ArgumentError.value(

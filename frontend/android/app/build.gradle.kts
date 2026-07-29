@@ -2,6 +2,25 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
+}
+
+val releaseKeystorePath = System.getenv("MEDBUDDY_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("MEDBUDDY_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("MEDBUDDY_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("MEDBUDDY_KEY_PASSWORD")
+val releaseSigningValues = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val hasReleaseSigning = releaseSigningValues.all { !it.isNullOrBlank() }
+val requireReleaseSigning =
+    System.getenv("MEDBUDDY_REQUIRE_RELEASE_SIGNING")?.toBooleanStrictOrNull() == true
+
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw GradleException("MedBuddy release signing environment is incomplete.")
 }
 
 android {
@@ -27,9 +46,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

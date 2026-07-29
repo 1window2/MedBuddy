@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: link_patient_caregiver_control.dart
@@ -27,8 +28,8 @@ class LinkPatientCaregiver {
     this.baseUrl = ApiConfig.baseUrl,
     this.userHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // Function Name: requestLinkScreen
   // Description:
@@ -114,7 +115,8 @@ class LinkPatientCaregiver {
   // Returns:
   // - Created patient-caregiver link.
   Future<PatientCaregiverLink> requestPatientCaregiverLink(
-      String patientCode) async {
+    String patientCode,
+  ) async {
     try {
       final response = await _client
           .post(
@@ -136,7 +138,8 @@ class LinkPatientCaregiver {
       }
 
       return _decodeSingleLink(
-          ApiResponseParser.decodeMap(responseBody)['data']);
+        ApiResponseParser.decodeMap(responseBody)['data'],
+      );
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -172,7 +175,8 @@ class LinkPatientCaregiver {
       }
 
       return _decodeSingleLink(
-          ApiResponseParser.decodeMap(responseBody)['data']);
+        ApiResponseParser.decodeMap(responseBody)['data'],
+      );
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -200,15 +204,17 @@ class LinkPatientCaregiver {
 
     return rawItems
         .whereType<Map>()
-        .map((item) =>
-            PatientCaregiverLink.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) =>
+              PatientCaregiverLink.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList(growable: false);
   }
 
   Uri _buildLinkUri(String path) {
-    return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {'user_hash': userHash},
-    );
+    return Uri.parse(
+      '$baseUrl/$path',
+    ).replace(queryParameters: {'user_hash': userHash});
   }
 
   void dispose() {

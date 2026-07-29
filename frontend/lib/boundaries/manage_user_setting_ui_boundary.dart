@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -14,6 +15,8 @@ import '../theme/medbuddy_theme.dart';
 // - 저장 버튼을 통해 변경값을 ViewModel로 전달한다.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
+  final AuthenticationControl authenticationControl;
+  final Future<void> Function()? onSignOutRequested;
   final Future<void> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -24,7 +27,9 @@ class ManageUserSettingUI extends StatefulWidget {
   const ManageUserSettingUI({
     super.key,
     required this.initialSetting,
+    required this.authenticationControl,
     required this.onSettingSaveRequested,
+    this.onSignOutRequested,
   });
 
   @override
@@ -118,6 +123,30 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           readingSpeed: _readingSpeed,
                           language: _language,
                         ),
+                        const SizedBox(height: 28),
+                        ListenableBuilder(
+                          listenable: widget.authenticationControl,
+                          builder: (context, _) => _MfaSettingsPanel(
+                            enabled:
+                                widget.authenticationControl.hasEnrolledSmsMfa,
+                            available:
+                                widget.authenticationControl.canEnrollSmsMfa,
+                            onEnrollRequested: _showMfaEnrollment,
+                          ),
+                        ),
+                        if (widget.onSignOutRequested != null) ...[
+                          const SizedBox(height: 28),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _isSaving
+                                  ? null
+                                  : widget.onSignOutRequested,
+                              icon: const Icon(Icons.logout),
+                              label: Text(text.signOut),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -172,6 +201,148 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         context,
       ).showSnackBar(SnackBar(content: Text(text.saveFailed)));
     }
+  }
+
+  Future<void> _showMfaEnrollment() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) =>
+          _MfaEnrollmentDialog(control: widget.authenticationControl),
+    );
+  }
+}
+
+class _MfaSettingsPanel extends StatelessWidget {
+  final bool enabled;
+  final bool available;
+  final VoidCallback onEnrollRequested;
+
+  const _MfaSettingsPanel({
+    required this.enabled,
+    required this.available,
+    required this.onEnrollRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: MedBuddyColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'SMS two-step verification',
+            style: TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            enabled
+                ? 'An SMS second factor is enrolled.'
+                : available
+                ? 'Protect this account with a verified phone number.'
+                : 'Available for verified email or Google accounts.',
+            style: const TextStyle(color: MedBuddyColors.textMuted),
+          ),
+          if (available && !enabled) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onEnrollRequested,
+              icon: const Icon(Icons.security_outlined),
+              label: const Text('Enable SMS MFA'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MfaEnrollmentDialog extends StatefulWidget {
+  final AuthenticationControl control;
+
+  const _MfaEnrollmentDialog({required this.control});
+
+  @override
+  State<_MfaEnrollmentDialog> createState() => _MfaEnrollmentDialogState();
+}
+
+class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
+  final _phoneController = TextEditingController(text: '+82');
+  final _codeController = TextEditingController();
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.control,
+      builder: (context, _) {
+        final awaitingCode =
+            widget.control.smsChallengePurpose ==
+            SmsChallengePurpose.mfaEnrollment;
+        return AlertDialog(
+          title: Text(awaitingCode ? 'Verify phone' : 'Enable SMS MFA'),
+          content: TextField(
+            controller: awaitingCode ? _codeController : _phoneController,
+            autofocus: true,
+            keyboardType: TextInputType.phone,
+            maxLength: awaitingCode ? 6 : null,
+            decoration: InputDecoration(
+              labelText: awaitingCode
+                  ? 'Six-digit SMS code'
+                  : 'International phone number',
+              hintText: awaitingCode ? null : '+821012345678',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: widget.control.isBusy
+                  ? null
+                  : () {
+                      widget.control.cancelSmsChallenge();
+                      Navigator.pop(context);
+                    },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: widget.control.isBusy
+                  ? null
+                  : () async {
+                      if (!awaitingCode) {
+                        await widget.control.startSmsMfaEnrollment(
+                          _phoneController.text,
+                        );
+                        return;
+                      }
+                      await widget.control.submitSmsCode(_codeController.text);
+                      if (context.mounted &&
+                          !widget.control.smsCodeRequired &&
+                          widget.control.errorMessage == null) {
+                        Navigator.pop(context);
+                      }
+                    },
+              child: Text(awaitingCode ? 'Verify' : 'Send code'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -458,4 +629,5 @@ class _SettingText {
   String get saved => isEnglish ? 'Settings saved.' : '설정이 저장되었습니다.';
   String get saveFailed =>
       isEnglish ? 'Could not save settings.' : '설정을 저장하지 못했습니다.';
+  String get signOut => isEnglish ? 'Sign out' : '로그아웃';
 }

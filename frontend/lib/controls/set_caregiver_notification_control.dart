@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: set_caregiver_notification_control.dart
@@ -26,8 +27,8 @@ class SetCaregiverNotification {
     this.baseUrl = ApiConfig.baseUrl,
     this.caregiverHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: requestCaregiverNotificationSetting
   // 함수역할:

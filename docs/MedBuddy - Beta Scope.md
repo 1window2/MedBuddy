@@ -35,6 +35,11 @@ The following implemented flows are frozen for beta hardening:
 
 ## Required Beta Hardening
 
+Implementation status as of 2026-07-20: P0 controls and release configuration
+are present in source. Cloud resources, protected environment values, signed
+physical-device testing, backup/restore, and abuse-control validation remain
+release gates.
+
 ### P0: Identity and Transport Security
 
 - Authenticate every non-health-check API request with a verifiable principal.
@@ -94,4 +99,3 @@ The first beta may be published only when all of the following are true:
   versions.
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
-

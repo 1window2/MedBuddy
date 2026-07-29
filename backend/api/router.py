@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from api.dependencies import (
+    get_authenticated_principal,
+    get_authorization_control,
     get_check_medication_detail,
     get_check_prescription_change,
     get_check_schedule,
@@ -32,6 +34,7 @@ from boundaries.pill_identification_boundary import (
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
+from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
@@ -49,6 +52,7 @@ from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
@@ -67,7 +71,8 @@ from schemas.prescription_change import (
     PrescriptionChangeResponse,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_authenticated_principal)])
+auth_router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +82,21 @@ logger = logging.getLogger(__name__)
 #   - text: Raw OCR text from the frontend.
 class OCRParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
+
+
+@auth_router.get("/session")
+def get_auth_session(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+) -> dict[str, object]:
+    return {
+        "authenticated": not principal.authentication_disabled,
+        "user_hash": principal.user_hash,
+        "email": principal.email,
+        "email_verified": principal.email_verified,
+        "phone_number": principal.phone_number,
+        "sign_in_provider": principal.sign_in_provider,
+        "anonymous": principal.anonymous,
+    }
 
 
 # Function Name: identify_medication
@@ -125,13 +145,19 @@ async def identify_medication(
 )
 def check_prescription_change(
     request: PrescriptionChangeRequest,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_prescription_change_control: CheckPrescriptionChange = Depends(
         get_check_prescription_change
     ),
 ) -> PrescriptionChangeResponse:
     try:
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            request.patient_hash,
+        )
         return check_prescription_change_control.request_prescription_change(
-            request
+            request.model_copy(update={"patient_hash": authorized_patient_hash})
         )
     except HTTPException:
         raise
@@ -159,9 +185,18 @@ def check_prescription_change(
 @router.post("/save")
 def save_medication(
     medication: SavedMedicationCreate,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.saveMedicationDetail(medication)
+    patient_hash = authorization.resolvePatientScope(
+        principal,
+        medication.patient_hash,
+    )
+    trusted_medication = medication.model_copy(
+        update={"patient_hash": patient_hash},
+    )
+    return check_saved_medication.saveMedicationDetail(trusted_medication)
 
 
 # Function Name: get_saved_medications
@@ -175,11 +210,18 @@ def save_medication(
 @router.get("/list")
 async def get_saved_medications(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return await check_saved_medication.requestSavedMedicationInfoWithImages(
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
             patient_hash,
+            allow_caregiver=True,
+        )
+        return await check_saved_medication.requestSavedMedicationInfoWithImages(
+            authorized_patient_hash,
         )
     except HTTPException:
         raise
@@ -202,10 +244,17 @@ async def get_saved_medications(
 @router.get("/schedule/today")
 def get_today_medication_schedule(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
     try:
-        return check_schedule.requestTodayMedicationSchedule(patient_hash)
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_schedule.requestTodayMedicationSchedule(authorized_patient_hash)
     except HTTPException:
         raise
     except Exception as exc:
@@ -230,12 +279,21 @@ def get_today_medication_schedule(
 @router.get("/schedule/today/info")
 def get_today_medication_info(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_today_medication_info: CheckTodayMedicationInfo = Depends(
         get_check_today_medication_info
     ),
 ) -> dict[str, object]:
     try:
-        return check_today_medication_info.requestTodayMedicationInfo(patient_hash)
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_today_medication_info.requestTodayMedicationInfo(
+            authorized_patient_hash
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -264,12 +322,18 @@ def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
     return check_schedule.updateMedicationStatus(
         medication_id,
         request.medication_status,
-        patient_hash,
+        authorized_patient_hash,
         request.slot_key,
     )
 
@@ -285,9 +349,15 @@ def update_medication_status(
 @router.get("/notification/settings")
 def get_medication_alarms(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.requestMedicationAlarm(patient_hash)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.requestMedicationAlarm(authorized_patient_hash)
 
 
 # Function Name: get_medication_alarm
@@ -303,9 +373,15 @@ def get_medication_alarms(
 def get_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.requestAlarmToggle(patient_hash, slot_key)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.requestAlarmToggle(authorized_patient_hash, slot_key)
 
 
 # Function Name: save_medication_alarm
@@ -323,10 +399,16 @@ def save_medication_alarm(
     slot_key: str,
     request: MedicationAlarmUpdate,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.saveNotificationSetting(
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
         patient_hash,
+    )
+    return set_notification.saveNotificationSetting(
+        authorized_patient_hash,
         slot_key,
         request.hour,
         request.minute,
@@ -346,9 +428,15 @@ def save_medication_alarm(
 def disable_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.disableAlarmSetting(patient_hash, slot_key)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.disableAlarmSetting(authorized_patient_hash, slot_key)
 
 
 # Function Name: get_user_setting
@@ -362,9 +450,12 @@ def disable_medication_alarm(
 @router.get("/settings/user")
 def get_user_setting(
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
-    return manage_user_setting.requestUserSetting(user_hash)
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    return manage_user_setting.requestUserSetting(authorized_user_hash)
 
 
 # Function Name: save_user_setting
@@ -380,10 +471,13 @@ def get_user_setting(
 def save_user_setting(
     request: UserSettingUpdate,
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
     return manage_user_setting.saveUserSetting(
-        user_hash,
+        authorized_user_hash,
         request.font_size,
         request.reading_speed,
         request.language,
@@ -422,13 +516,20 @@ def request_voice_guide(
 async def get_health_recommendation(
     patient_hash: str | None = None,
     language: str = "ko",
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_health_recommendation: CheckHealthRecommendation = Depends(
         get_check_health_recommendation
     ),
 ) -> dict[str, object]:
     try:
-        return await check_health_recommendation.requestHealthRecommendation(
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
             patient_hash,
+            allow_caregiver=True,
+        )
+        return await check_health_recommendation.requestHealthRecommendation(
+            authorized_patient_hash,
             language,
         )
     except HTTPException:
@@ -460,16 +561,24 @@ def get_caregiver_notification_setting(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
     return set_caregiver_notification.requestCaregiverNotificationSetting(
         requesting_caregiver_hash,
-        patient_hash,
+        authorized_patient_hash,
     )
 
 
@@ -494,16 +603,24 @@ def save_caregiver_notification_setting(
     request: CaregiverNotificationUpdate,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
     return set_caregiver_notification.saveCaregiverNotificationSetting(
         requesting_caregiver_hash,
-        patient_hash,
+        authorized_patient_hash,
         request.notification_enabled,
         request.notification_type,
     )
@@ -520,11 +637,14 @@ def save_caregiver_notification_setting(
 @router.get("/link/list")
 def get_patient_caregiver_links(
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.requestLinkScreen(user_hash)
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    return link_patient_caregiver_control.requestLinkScreen(authorized_user_hash)
 
 
 # Function Name: get_caregiver_patient_medication_info
@@ -539,16 +659,24 @@ async def get_caregiver_patient_medication_info(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_caregiver_medication: CheckCaregiverMedication = Depends(
         get_check_caregiver_medication
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
     return await check_caregiver_medication.requestPatientMedicationInfo(
         requesting_caregiver_hash,
-        patient_hash,
+        authorized_patient_hash,
     )
 
 
@@ -563,11 +691,14 @@ async def get_caregiver_patient_medication_info(
 @router.post("/link/code")
 def create_patient_link_code(
     request: PatientCodeCreate,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.generatePatientHash(request.patient_hash)
+    patient_hash = authorization.resolveOwnUserHash(principal, request.patient_hash)
+    return link_patient_caregiver_control.generatePatientHash(patient_hash)
 
 
 # Function Name: register_patient_link_code
@@ -581,12 +712,18 @@ def create_patient_link_code(
 @router.post("/link/register")
 def register_patient_link_code(
     request: PatientCodeRegister,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.requestPatientCaregiverLink(
+    caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
         request.caregiver_hash,
+    )
+    return link_patient_caregiver_control.requestPatientCaregiverLink(
+        caregiver_hash,
         request.patient_code,
     )
 
@@ -604,13 +741,16 @@ def register_patient_link_code(
 def unlink_patient_caregiver(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
     return link_patient_caregiver_control.requestUnlink(
         link_id,
-        user_hash,
+        authorized_user_hash,
     )
 
 
@@ -627,9 +767,15 @@ def unlink_patient_caregiver(
 def delete_medication(
     drug_id: int,
     patient_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.requestDelete(drug_id, patient_hash)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return check_saved_medication.requestDelete(drug_id, authorized_patient_hash)
 
 
 # Function Name: parse_prescription_endpoint

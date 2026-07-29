@@ -7,18 +7,20 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 import '../services/notification_service.dart';
 
-typedef NotificationRegistrar = Future<void> Function({
-  required int id,
-  required String slotKey,
-  required String slotTitle,
-  required int hour,
-  required int minute,
-  required List<String> medicationNames,
-  String language,
-});
+typedef NotificationRegistrar =
+    Future<void> Function({
+      required int id,
+      required String slotKey,
+      required String slotTitle,
+      required int hour,
+      required int minute,
+      required List<String> medicationNames,
+      String language,
+    });
 
 // File Name: set_notification_control.dart
 // Role: Handles medication alarm API calls.
@@ -41,11 +43,12 @@ class SetNotification {
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
     NotificationRegistrar? notificationRegistrar,
-  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null,
-        _notificationRegistrar = notificationRegistrar ??
-            NotificationService.instance.registerNotification;
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null,
+       _notificationRegistrar =
+           notificationRegistrar ??
+           NotificationService.instance.registerNotification;
 
   // Function Name: requestMedicationAlarm
   // Description:
@@ -74,9 +77,7 @@ class SetNotification {
       return rawSettings
           .whereType<Map>()
           .map(
-            (item) => MedicationAlarm.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
+            (item) => MedicationAlarm.fromJson(Map<String, dynamic>.from(item)),
           )
           .toList(growable: false);
     } on StateError {
@@ -112,10 +113,7 @@ class SetNotification {
           .put(
             _buildNotificationUri('notification/settings/$normalizedSlotKey'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'hour': hour,
-              'minute': minute,
-            }),
+            body: jsonEncode({'hour': hour, 'minute': minute}),
           )
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
@@ -210,17 +208,15 @@ class SetNotification {
     final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
     if (rawSetting is Map) {
-      return MedicationAlarm.fromJson(
-        Map<String, dynamic>.from(rawSetting),
-      );
+      return MedicationAlarm.fromJson(Map<String, dynamic>.from(rawSetting));
     }
     throw StateError('Server response did not include a medication alarm.');
   }
 
   Uri _buildNotificationUri(String path) {
-    return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {'patient_hash': patientHash},
-    );
+    return Uri.parse(
+      '$baseUrl/$path',
+    ).replace(queryParameters: {'patient_hash': patientHash});
   }
 
   String _normalizeSlotKey(String slotKey) {

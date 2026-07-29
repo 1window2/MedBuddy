@@ -25,6 +25,7 @@ import '../entities/prescription_change_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/notification_service.dart';
 
 class TodayMedicationProgress {
@@ -72,6 +73,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final SetNotification setNotification;
   late final ManageUserSetting manageUserSetting;
   final NotificationService notificationService;
+  final String patientHash;
   final http.Client _apiClient;
   final bool _ownsApiClient;
 
@@ -243,8 +245,10 @@ class MedBuddyViewModel extends ChangeNotifier {
     SetNotification? setNotification,
     ManageUserSetting? manageUserSetting,
     NotificationService? notificationService,
+    String patientHash = PatientHash.defaultPatientHash,
     http.Client? apiClient,
-  }) : _apiClient = apiClient ?? http.Client(),
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _apiClient = apiClient ?? AuthenticatedApiClient(),
        _ownsApiClient = apiClient == null,
        notificationService =
            notificationService ?? NotificationService.instance {
@@ -253,24 +257,39 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.checkMedicationDetail =
         checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
     this.checkPrescriptionChange =
-        checkPrescriptionChange ?? CheckPrescriptionChange(client: _apiClient);
+        checkPrescriptionChange ??
+        CheckPrescriptionChange(
+          patientHash: this.patientHash,
+          client: _apiClient,
+        );
     this.checkSavedMedication =
-        checkSavedMedication ?? CheckSavedMedication(client: _apiClient);
-    this.checkSchedule = checkSchedule ?? CheckSchedule(client: _apiClient);
+        checkSavedMedication ??
+        CheckSavedMedication(patientHash: this.patientHash, client: _apiClient);
+    this.checkSchedule =
+        checkSchedule ??
+        CheckSchedule(patientHash: this.patientHash, client: _apiClient);
     this.checkTodayMedicationInfo =
         checkTodayMedicationInfo ??
-        CheckTodayMedicationInfo(client: _apiClient);
+        CheckTodayMedicationInfo(
+          patientHash: this.patientHash,
+          client: _apiClient,
+        );
     this.checkHealthRecommendation =
         checkHealthRecommendation ??
-        CheckHealthRecommendation(client: _apiClient);
+        CheckHealthRecommendation(
+          patientHash: this.patientHash,
+          client: _apiClient,
+        );
     this.setNotification =
         setNotification ??
         SetNotification(
+          patientHash: this.patientHash,
           client: _apiClient,
           notificationRegistrar: this.notificationService.registerNotification,
         );
     this.manageUserSetting =
-        manageUserSetting ?? ManageUserSetting(client: _apiClient);
+        manageUserSetting ??
+        ManageUserSetting(userHash: this.patientHash, client: _apiClient);
   }
 
   // 함수명: loadUserSetting
@@ -1002,8 +1021,8 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   String _reminderStorageKey(String slotKey) {
     return 'medbuddy_medication_reminder_'
-        'patient_${PatientHash.defaultPatientHash}_'
-        '${PatientHash.defaultPatientHash}_$slotKey';
+        'patient_${patientHash}_'
+        '${patientHash}_$slotKey';
   }
 
   String _legacyReminderStorageKey(String slotKey) {

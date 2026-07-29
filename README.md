@@ -57,10 +57,10 @@
 - Patients can create a temporary link code.
 - Caregivers can register the code, view linked patient medication data, and unlink when needed.
 - Caregivers can enable or disable notification preferences for each linked patient through a persisted caregiver-patient setting.
-- Patient/caregiver demo-data scope resolution is handled in control-layer
-  classes so UI screens do not bypass backend scope checks. The current
-  hash-based scope is not authentication and must not be used with real
-  multi-user medical data.
+- Firebase Authentication establishes the user identity in beta mode, and the
+  backend derives the user's internal scope from the verified token. A
+  caregiver can select another patient only when an active server-side link
+  authorizes that scope; client hashes are selectors, never credentials.
 
 ### Health Recommendations and Reminders
 
@@ -73,9 +73,9 @@
 
 ## Roadmap
 
-1. **Android beta hardening:** Add authentication, server-derived authorization,
-   HTTPS deployment, durable migrations, protected Android release signing, and
-   authenticated end-to-end tests without changing the frozen feature scope.
+1. **Android beta verification:** Provision the accepted Firebase/Cloud Run/
+   Cloud SQL topology, validate backup and restore, and complete signed
+   two-device authentication and authorization smoke tests.
 2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
@@ -108,6 +108,8 @@ Contribution rules for preserving the UML-aligned structure are documented in
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 ![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/postgresql-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
+![Firebase](https://img.shields.io/badge/firebase-%23FFCA28.svg?style=for-the-badge&logo=firebase&logoColor=black)
 
 ### AI and Data
 
@@ -157,6 +159,9 @@ Open `backend/.env` and set at least:
 ```dotenv
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
+APP_ENV=development
+AUTH_MODE=disabled
+AUTO_CREATE_SCHEMA=true
 PILL_IMAGE_API_ENABLED=true
 PILL_IMAGE_API_TIMEOUT_SECONDS=8
 PILL_IDENTIFICATION_MODEL_NAME=gemini-3.1-flash-lite
@@ -232,6 +237,27 @@ flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192
 without this value keeps the emulator-only `10.0.2.2` default. Do not publish an
 APK containing a private LAN address as a portable client. Current APKs are
 local alpha-demo artifacts and require a separately running backend.
+
+Local development defaults to `AUTH_MODE=disabled` and
+`MEDBUDDY_AUTH_MODE=disabled`. To test Firebase Authentication, register the
+Android package and certificate fingerprints, enable the intended providers,
+place the downloaded `google-services.json` in `frontend/android/app`, set
+`AUTH_MODE=firebase` and `FIREBASE_PROJECT_ID` in `backend/.env`, and provide
+the matching Flutter configuration as compile-time values:
+
+```powershell
+flutter run -d "[your-device-id]" `
+  --dart-define=MEDBUDDY_AUTH_MODE=firebase `
+  --dart-define=MEDBUDDY_API_BASE_URL=https://your-backend.example/api/v1/medication `
+  --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
+  --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
+  --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
+  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id
+```
+
+Release builds reject disabled authentication and non-HTTPS backend URLs at
+runtime. Production deployment and signing variables are documented in
+[`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
 
 ## Contributing
 
