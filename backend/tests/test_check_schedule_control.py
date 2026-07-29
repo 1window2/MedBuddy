@@ -29,6 +29,26 @@ from entities.saved_medication_entity import (  # noqa: E402
 )
 
 
+class _CompletionEventRecorder:
+    def __init__(self) -> None:
+        self.events: list[dict[str, str]] = []
+
+    def notifyDoseCompleted(
+        self,
+        *,
+        patient_hash: str,
+        slot_key: str,
+        medication_name: str,
+    ) -> None:
+        self.events.append(
+            {
+                "patient_hash": patient_hash,
+                "slot_key": slot_key,
+                "medication_name": medication_name,
+            }
+        )
+
+
 class CheckScheduleTest(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = create_engine(
@@ -168,6 +188,46 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(len(completions), 1)
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
+
+    def test_completion_event_is_emitted_only_on_new_completed_transition(
+        self,
+    ) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+        event_recorder = _CompletionEventRecorder()
+        control = CheckSchedule(
+            self.db,
+            completion_event_boundary=event_recorder,
+        )
+
+        control.updateMedicationStatus(
+            medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+        control.updateMedicationStatus(
+            medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+        control.updateMedicationStatus(
+            medication.id,
+            False,
+            "patient-a",
+            slot_key="morning",
+        )
+
+        self.assertEqual(
+            event_recorder.events,
+            [
+                {
+                    "patient_hash": "patient-a",
+                    "slot_key": "morning",
+                    "medication_name": "test-tablet",
+                }
+            ],
+        )
 
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
         schedule_date = date.today()

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/services/prescription_local_ocr_service.dart';
 
 class _FakeImagePicker extends ImagePicker {
   final XFile? image;
@@ -23,6 +24,17 @@ class _FakeImagePicker extends ImagePicker {
     bool requestFullMetadata = true,
   }) async {
     return image;
+  }
+}
+
+class _FakePrescriptionLocalOcrBoundary
+    implements PrescriptionLocalOcrBoundary {
+  @override
+  Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath) async {
+    return const LocalPrescriptionOcrResult(
+      maskedText: '조제일자 2026-07-25\n테스트정 1 2 3',
+      regions: [],
+    );
   }
 }
 
@@ -48,7 +60,7 @@ class _AbortAwareClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final abortableRequest = request as http.AbortableMultipartRequest;
+    final abortableRequest = request as http.AbortableRequest;
     if (!started.isCompleted) {
       started.complete();
     }
@@ -74,7 +86,8 @@ void main() {
 
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
-      expect(request.url.path, '/upload-prescription');
+      expect(request.url.path, '/analyze-prescription-text');
+      expect(request.body, contains('테스트정'));
       return http.Response(
         jsonEncode({
           'prescription_date': '2026-07-25',
@@ -102,6 +115,7 @@ void main() {
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(null),
       client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
     );
     addTearDown(control.dispose);
 
@@ -136,7 +150,7 @@ void main() {
 
       final client = MockClient((http.Request request) async {
         expect(request.method, 'POST');
-        expect(request.url.path, '/upload-prescription');
+        expect(request.url.path, '/analyze-prescription-text');
         return http.Response(
           jsonEncode({
             'prescription_date': '2026-07-08',
@@ -163,6 +177,7 @@ void main() {
         baseUrl: 'http://localhost',
         imagePicker: _FakeImagePicker(XFile(imageFile.path)),
         client: client,
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
       );
       addTearDown(control.dispose);
 
@@ -210,6 +225,7 @@ void main() {
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
     );
     addTearDown(control.dispose);
 
@@ -246,6 +262,7 @@ void main() {
         baseUrl: 'http://localhost',
         imagePicker: _FakeImagePicker(XFile(imageFile.path)),
         client: client,
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
       );
       addTearDown(control.dispose);
 
@@ -279,6 +296,7 @@ void main() {
       final control = InputPrescription(
         imagePicker: _FakeImagePicker(XFile(imageFile.path)),
         client: _DelayedResponseBodyClient(),
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
         requestTimeout: const Duration(milliseconds: 10),
       );
       addTearDown(control.dispose);
@@ -307,6 +325,7 @@ void main() {
       final control = InputPrescription(
         imagePicker: _FakeImagePicker(XFile(imageFile.path)),
         client: client,
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
         requestTimeout: const Duration(milliseconds: 10),
       );
       addTearDown(control.dispose);
@@ -336,6 +355,7 @@ void main() {
     final control = InputPrescription(
       imagePicker: _FakeImagePicker(XFile(imageFile.path)),
       client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
     );
 
     final request = control.requestPrescriptionImageFromGallery();

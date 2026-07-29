@@ -80,6 +80,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         *,
         patient_hash: str = "patient-a",
         item_name: str = "test-tablet",
+        schedule_slot_keys: list[str] | None = None,
     ) -> SavedMedicationCreate:
         return SavedMedicationCreate(
             patient_hash=patient_hash,
@@ -92,6 +93,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             dosage_per_time="1 tablet",
             daily_frequency="3 times",
             total_days="7 days",
+            schedule_slot_keys=schedule_slot_keys or [],
             image_url="https://example.com/medicine.jpg",
             ai_guide="guide",
         )
@@ -110,6 +112,23 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(saved_row.total_days, "7 days")
         self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
         self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
+
+    def test_save_preserves_user_confirmed_schedule_slots(self) -> None:
+        response = self.control.saveMedicationDetail(
+            self._saved_medication(
+                schedule_slot_keys=["morning", "bedtime"],
+            )
+        )
+
+        saved_row = self.db.get(_SavedMedication, response["id"])
+        self.assertIsNotNone(saved_row)
+        self.assertEqual(saved_row.schedule_slot_keys, '["morning","bedtime"]')
+
+        list_response = self.control.requestSavedMedicationInfo("patient-a")
+        self.assertEqual(
+            list_response["data"][0]["schedule_slot_keys"],
+            ["morning", "bedtime"],
+        )
 
     def test_schema_upgrade_adds_saved_metadata_to_legacy_table(self) -> None:
         engine = create_engine(
@@ -147,6 +166,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         }
         self.assertIn("ai_guide", existing_columns)
         self.assertIn("item_seq", existing_columns)
+        self.assertIn("schedule_slot_keys", existing_columns)
 
         session_factory = sessionmaker(
             autocommit=False,

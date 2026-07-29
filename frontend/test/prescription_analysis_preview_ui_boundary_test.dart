@@ -80,7 +80,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('인식 영역 상세보기'), findsOneWidget);
-    expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsOneWidget);
+    expect(find.textContaining('원본 이미지는 이 기기에만 남습니다'), findsOneWidget);
     final interactiveViewer = tester.widget<InteractiveViewer>(
       find.byKey(const Key('ocr-expanded-image-viewer')),
     );
@@ -225,6 +225,13 @@ void main() {
       '1일 2회',
     );
     await tester.enterText(find.byKey(const Key('ocr-edit-days')), '5');
+    await tester.enterText(
+      find.byKey(const Key('ocr-edit-prescription-date')),
+      '2026-08-01',
+    );
+    await tester.tap(find.byKey(const Key('ocr-edit-slot-lunch')));
+    await tester.tap(find.byKey(const Key('ocr-edit-slot-evening')));
+    await tester.tap(find.byKey(const Key('ocr-edit-slot-bedtime')));
     await tester.tap(find.byKey(const Key('ocr-edit-save')));
     await tester.pumpAndSettle();
 
@@ -233,6 +240,8 @@ void main() {
     expect(updatedSchedule?.dosage, '0.5정');
     expect(updatedSchedule?.intakeTime, '1일 2회');
     expect(updatedSchedule?.medicationTime, 5);
+    expect(updatedSchedule?.prescriptionDate, DateTime(2026, 8, 1));
+    expect(updatedSchedule?.scheduleSlotKeys, ['morning', 'bedtime']);
     expect(tester.takeException(), isNull);
   });
 
