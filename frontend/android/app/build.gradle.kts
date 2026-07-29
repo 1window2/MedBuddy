@@ -66,6 +66,10 @@ android {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
@@ -76,4 +80,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // 처방전 한글 OCR에 필요한 온디바이스 ML Kit 모델을 릴리스 앱에 포함한다.
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }
