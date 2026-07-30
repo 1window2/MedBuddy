@@ -25,6 +25,13 @@ typedef PrescriptionImageSelectedCallback = void Function();
 // - 이미지가 실제 선택된 뒤에만 진행 상태 콜백을 호출한다.
 // - 백엔드 OCR 응답을 MedicationSchedule 목록으로 변환한다.
 class InputPrescription {
+  static const double _medicationRegionSimilarityThreshold = 0.75;
+  static final RegExp _medicationFormPattern = RegExp(
+    r'(건조시럽|캡슐|시럽|과립|연고|크림|패치|주사|흡입|점안|좌약|필름|'
+    r'로션|스프레이|현탁액|정제|정|액|산|겔)',
+    caseSensitive: false,
+  );
+
   final String baseUrl;
   final ImagePicker _imagePicker;
   final http.Client _client;
@@ -134,7 +141,8 @@ class InputPrescription {
       final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
         image.path,
       );
-      _lastRecognizedTextRegions = localOcrResult.regions;
+      final localRegions = localOcrResult.regions;
+      _lastRecognizedTextRegions = localRegions;
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
       final request = http.AbortableRequest(
@@ -175,13 +183,15 @@ class InputPrescription {
       final serverRegions = RecognizedTextRegion.fromJsonList(
         decodedData['recognized_regions'] ?? decodedData['recognizedRegions'],
       );
-      if (serverRegions.isNotEmpty) {
-        _lastRecognizedTextRegions = serverRegions;
-      }
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
       if (rawMedications is! List) {
+        _lastRecognizedTextRegions = _resolvePreviewRegions(
+          localRegions: localRegions,
+          serverRegions: serverRegions,
+          medicationSchedules: const [],
+        );
         _recordParseCounts(decodedData, 0);
         return [];
       }
@@ -194,6 +204,11 @@ class InputPrescription {
             return MedicationSchedule.fromAnalysisJson(itemJson);
           })
           .toList(growable: false);
+      _lastRecognizedTextRegions = _resolvePreviewRegions(
+        localRegions: localRegions,
+        serverRegions: serverRegions,
+        medicationSchedules: medicationSchedules,
+      );
       _recordParseCounts(decodedData, medicationSchedules.length);
       return medicationSchedules;
     } on StateError {
@@ -285,6 +300,231 @@ class InputPrescription {
       return fallback < 0 ? 0 : fallback;
     }
     return parsedValue < 0 ? 0 : parsedValue;
+  }
+
+  // 함수이름: _resolvePreviewRegions
+  // 함수역할:
+  // - 로컬 개인정보 마스킹 영역을 보존하면서 약품 관련 OCR 영역만 미리보기에 남긴다.
+  // - 서버가 약품 좌표를 제공하면 이를 우선하고, 없으면 파싱된 약 이름으로 로컬 OCR 영역을 분류한다.
+  // 매개변수:
+  // - localRegions: 기기 내 OCR이 생성한 전체 텍스트 및 개인정보 영역
+  // - serverRegions: 서버가 선택적으로 반환한 복약 정보 영역
+  // - medicationSchedules: 서버가 구조화한 약품 일정 목록
+  // 반환값:
+  // - 약품 정보 영역과 개인정보 마스킹 영역만 포함한 정렬된 목록
+  List<RecognizedTextRegion> _resolvePreviewRegions({
+    required List<RecognizedTextRegion> localRegions,
+    required List<RecognizedTextRegion> serverRegions,
+    required List<MedicationSchedule> medicationSchedules,
+  }) {
+    final sensitiveRegions = [
+      ...localRegions.where((region) => region.isSensitive),
+      ...serverRegions.where((region) => region.isSensitive),
+    ];
+    final serverMedicationRegions = serverRegions
+        .where((region) => region.isMedication)
+        .toList(growable: false);
+    final medicationRegions = serverMedicationRegions.isNotEmpty
+        ? serverMedicationRegions
+        : _classifyLocalMedicationRegions(localRegions, medicationSchedules);
+    final uniqueRegions = <RecognizedTextRegion>[];
+    final seenRegionKeys = <String>{};
+
+    for (final region in [...sensitiveRegions, ...medicationRegions]) {
+      final regionKey =
+          '${region.category}:${region.box2d.map((value) => value.round()).join(',')}';
+      if (seenRegionKeys.add(regionKey)) {
+        uniqueRegions.add(region);
+      }
+    }
+    uniqueRegions.sort((left, right) {
+      final topComparison = left.box2d[0].compareTo(right.box2d[0]);
+      return topComparison != 0
+          ? topComparison
+          : left.box2d[1].compareTo(right.box2d[1]);
+    });
+    return List.unmodifiable(uniqueRegions);
+  }
+
+  // 함수이름: _classifyLocalMedicationRegions
+  // 함수역할:
+  // - 구조화된 약 이름과 일치하거나 충분히 유사한 로컬 OCR 문구만 약품 정보 영역으로 변환한다.
+  // 매개변수:
+  // - localRegions: 기기 내 OCR이 생성한 전체 영역
+  // - medicationSchedules: 비교할 파싱 완료 약품 목록
+  // 반환값:
+  // - 약 이름과 대응된 로컬 OCR 영역 목록
+  List<RecognizedTextRegion> _classifyLocalMedicationRegions(
+    List<RecognizedTextRegion> localRegions,
+    List<MedicationSchedule> medicationSchedules,
+  ) {
+    final medicationNames = <String>{
+      for (final schedule in medicationSchedules)
+        ...[
+          _normalizeRegionText(schedule.medicationName),
+          _normalizeRegionText(schedule.rawMedicationName),
+        ].where((name) => name.length >= 3),
+    };
+    if (medicationNames.isEmpty) {
+      return const [];
+    }
+
+    return localRegions
+        .where((region) {
+          if (region.isMedication) {
+            return true;
+          }
+          if (region.category != 'recognized_text') {
+            return false;
+          }
+          final regionText = _normalizeRegionText(region.text);
+          if (regionText.length < 3) {
+            return false;
+          }
+          return medicationNames.any(
+            (name) => _isMedicationRegionMatch(regionText, name),
+          );
+        })
+        .map(
+          (region) => region.isMedication
+              ? region
+              : RecognizedTextRegion(
+                  category: 'medication_name',
+                  text: region.text,
+                  box2d: region.box2d,
+                ),
+        )
+        .toList(growable: false);
+  }
+
+  // 함수이름: _isMedicationRegionMatch
+  // 함수역할:
+  // - 정확 포함 비교를 우선하고 OCR 한두 글자 오류는 편집거리 유사도로 보완한다.
+  // - 유사도 비교에는 약품 제형 문구가 있는 영역만 허용해 일반 안내 문구의 오탐을 줄인다.
+  // 매개변수:
+  // - regionText: 정규화된 로컬 OCR 문구
+  // - medicationName: 정규화된 파싱 완료 약 이름
+  // 반환값:
+  // - 약품 영역으로 볼 수 있으면 true
+  bool _isMedicationRegionMatch(String regionText, String medicationName) {
+    if (regionText.contains(medicationName) ||
+        medicationName.contains(regionText)) {
+      return true;
+    }
+    if (regionText.length < 4 ||
+        medicationName.length < 4 ||
+        !_medicationFormPattern.hasMatch(regionText)) {
+      return false;
+    }
+    return _bestWindowSimilarity(regionText, medicationName) >=
+        _medicationRegionSimilarityThreshold;
+  }
+
+  // 함수이름: _bestWindowSimilarity
+  // 함수역할:
+  // - 긴 문자열에 성분명이나 용량이 붙어도 약 이름과 가장 유사한 구간을 찾아 점수화한다.
+  // 매개변수:
+  // - left: 비교할 첫 번째 정규화 문자열
+  // - right: 비교할 두 번째 정규화 문자열
+  // 반환값:
+  // - 0.0부터 1.0 사이의 최고 편집거리 유사도
+  double _bestWindowSimilarity(String left, String right) {
+    final shorter = left.length <= right.length ? left : right;
+    final longer = left.length <= right.length ? right : left;
+    var bestScore = _editSimilarity(shorter, longer);
+    final minimumWindowLength = (shorter.length - 2).clamp(4, shorter.length);
+    final maximumWindowLength = (shorter.length + 2).clamp(
+      minimumWindowLength,
+      longer.length,
+    );
+
+    for (
+      var windowLength = minimumWindowLength;
+      windowLength <= maximumWindowLength;
+      windowLength++
+    ) {
+      for (var start = 0; start + windowLength <= longer.length; start++) {
+        final window = longer.substring(start, start + windowLength);
+        final score = _editSimilarity(shorter, window);
+        if (score > bestScore) {
+          bestScore = score;
+        }
+        if (bestScore >= 1) {
+          return 1;
+        }
+      }
+    }
+    return bestScore;
+  }
+
+  // 함수이름: _editSimilarity
+  // 함수역할:
+  // - 두 문자열의 레벤슈타인 편집거리를 길이 대비 유사도로 변환한다.
+  // 매개변수:
+  // - left: 비교할 첫 번째 문자열
+  // - right: 비교할 두 번째 문자열
+  // 반환값:
+  // - 완전히 같으면 1.0, 차이가 커질수록 0.0에 가까운 값
+  double _editSimilarity(String left, String right) {
+    final longestLength = left.length > right.length
+        ? left.length
+        : right.length;
+    if (longestLength == 0) {
+      return 1;
+    }
+    return 1 - (_levenshteinDistance(left, right) / longestLength);
+  }
+
+  // 함수이름: _levenshteinDistance
+  // 함수역할:
+  // - 삽입, 삭제, 치환으로 한 문자열을 다른 문자열로 바꾸는 최소 횟수를 계산한다.
+  // 매개변수:
+  // - left: 기준 문자열
+  // - right: 비교 문자열
+  // 반환값:
+  // - 최소 편집 횟수
+  int _levenshteinDistance(String left, String right) {
+    if (left == right) {
+      return 0;
+    }
+    if (left.isEmpty) {
+      return right.length;
+    }
+    if (right.isEmpty) {
+      return left.length;
+    }
+
+    var previousRow = List<int>.generate(right.length + 1, (index) => index);
+    for (var leftIndex = 1; leftIndex <= left.length; leftIndex++) {
+      final currentRow = List<int>.filled(right.length + 1, 0);
+      currentRow[0] = leftIndex;
+      for (var rightIndex = 1; rightIndex <= right.length; rightIndex++) {
+        final substitutionCost = left[leftIndex - 1] == right[rightIndex - 1]
+            ? 0
+            : 1;
+        final insertion = currentRow[rightIndex - 1] + 1;
+        final deletion = previousRow[rightIndex] + 1;
+        final substitution = previousRow[rightIndex - 1] + substitutionCost;
+        currentRow[rightIndex] = [
+          insertion,
+          deletion,
+          substitution,
+        ].reduce((minimum, value) => value < minimum ? value : minimum);
+      }
+      previousRow = currentRow;
+    }
+    return previousRow.last;
+  }
+
+  // 함수이름: _normalizeRegionText
+  // 함수역할:
+  // - OCR 문구와 파싱된 약 이름을 공백·기호 차이에 영향받지 않는 비교 문자열로 정리한다.
+  // 매개변수:
+  // - value: 비교할 OCR 문구 또는 약 이름
+  // 반환값:
+  // - 한글, 영문, 숫자만 남긴 소문자 문자열
+  String _normalizeRegionText(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
   }
 
   void dispose() {

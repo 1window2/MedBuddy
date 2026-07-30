@@ -46,6 +46,11 @@ void main() {
               text: '',
               box2d: [20, 40, 80, 400],
             ),
+            RecognizedTextRegion(
+              category: 'recognized_text',
+              text: '일반 복약 안내 문구',
+              box2d: [300, 80, 360, 920],
+            ),
           ],
           previewImagePath: imageFile.path,
           userSetting: const UserSetting(),
@@ -60,6 +65,7 @@ void main() {
 
     expect(find.byKey(const Key('ocr-region-0')), findsOneWidget);
     expect(find.byKey(const Key('ocr-sensitive-region-1')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-region-2')), findsNothing);
     expect(find.textContaining('개인정보 마스킹 영역'), findsOneWidget);
     expect(find.textContaining('인식 문구:'), findsNothing);
     expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsNothing);

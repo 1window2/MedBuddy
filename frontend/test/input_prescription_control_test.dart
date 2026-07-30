@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/services/prescription_local_ocr_service.dart';
 
 class _FakeImagePicker extends ImagePicker {
@@ -29,12 +30,18 @@ class _FakeImagePicker extends ImagePicker {
 
 class _FakePrescriptionLocalOcrBoundary
     implements PrescriptionLocalOcrBoundary {
-  @override
-  Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath) async {
-    return const LocalPrescriptionOcrResult(
+  final LocalPrescriptionOcrResult result;
+
+  _FakePrescriptionLocalOcrBoundary({
+    this.result = const LocalPrescriptionOcrResult(
       maskedText: '조제일자 2026-07-25\n테스트정 1 2 3',
       regions: [],
-    );
+    ),
+  });
+
+  @override
+  Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath) async {
+    return result;
   }
 }
 
@@ -132,6 +139,132 @@ void main() {
     expect(control.lastSelectedImagePath, imageFile.path);
     expect(control.lastRecognizedTextRegions, hasLength(1));
     expect(control.lastRecognizedTextRegions.first.text, '테스트정 1정 1일 2회');
+  });
+
+  test('서버 약품 영역을 사용해도 로컬 개인정보 마스킹 영역을 보존한다', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-region-merge-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/captured.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = MockClient(
+      (request) async => http.Response(
+        jsonEncode({
+          'prescription_date': '2026-07-25',
+          'recognized_regions': [
+            {
+              'category': 'medication_row',
+              'text': '테스트정 1정 1일 2회',
+              'box_2d': [120, 80, 240, 920],
+            },
+          ],
+          'medications': [
+            {
+              'drug_name': '테스트정',
+              'dosage_per_time': '1',
+              'daily_frequency': '2',
+              'total_days': '3',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(null),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(
+        result: const LocalPrescriptionOcrResult(
+          maskedText: '테스트정 1 2 3',
+          regions: [
+            RecognizedTextRegion(
+              category: 'sensitive_info',
+              text: '',
+              box2d: [20, 40, 80, 400],
+            ),
+          ],
+        ),
+      ),
+    );
+    addTearDown(control.dispose);
+
+    await control.requestCapturedPrescriptionImage(XFile(imageFile.path));
+
+    expect(control.lastRecognizedTextRegions, hasLength(2));
+    expect(
+      control.lastRecognizedTextRegions.any((region) => region.isSensitive),
+      isTrue,
+    );
+    expect(
+      control.lastRecognizedTextRegions.any((region) => region.isMedication),
+      isTrue,
+    );
+  });
+
+  test('서버 좌표가 없으면 OCR 오탈자가 있는 약품 영역만 유사도로 남긴다', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-local-region-filter-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/captured.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = MockClient(
+      (request) async => http.Response(
+        jsonEncode({
+          'prescription_date': '2026-07-25',
+          'medications': [
+            {
+              'drug_name': '엘타인캡슐(에르도스테인)',
+              'dosage_per_time': '1',
+              'daily_frequency': '2',
+              'total_days': '3',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(null),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(
+        result: const LocalPrescriptionOcrResult(
+          maskedText: '엘타인캡슐(에르도스테민) 1 2 3\n전문가와 상의하여 정해진 기간 복용하세요',
+          regions: [
+            RecognizedTextRegion(
+              category: 'recognized_text',
+              text: '엘타인캡슐(에르도스테민)',
+              box2d: [120, 80, 180, 500],
+            ),
+            RecognizedTextRegion(
+              category: 'recognized_text',
+              text: '전문가와 상의하여 정해진 기간 복용하세요',
+              box2d: [200, 80, 260, 500],
+            ),
+          ],
+        ),
+      ),
+    );
+    addTearDown(control.dispose);
+
+    await control.requestCapturedPrescriptionImage(XFile(imageFile.path));
+
+    expect(control.lastRecognizedTextRegions, hasLength(1));
+    expect(control.lastRecognizedTextRegions.single.isMedication, isTrue);
+    expect(control.lastRecognizedTextRegions.single.text, contains('엘타인캡슐'));
   });
 
   test(

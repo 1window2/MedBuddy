@@ -162,16 +162,19 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
 // - 안전한 복약 문구에 섞인 직접 식별자만 대체 문구로 치환한다.
 class PrescriptionPrivacyFilter {
   static final RegExp _sensitiveLabelPattern = RegExp(
-    r'(환자\s*(명|성명|이름|번호)|성\s*명|주민\s*(등록)?\s*번호|'
+    r'(환자\s*(명|성명|이름|번호|정보)|성\s*명|주민\s*(등록)?\s*번호|'
     r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
     r'차트\s*번호|의무\s*기록\s*번호)',
     caseSensitive: false,
   );
   static final RegExp _standaloneSensitiveLabelPattern = RegExp(
-    r'^\s*(환자\s*(명|성명|이름|번호)|성\s*명|주민\s*(등록)?\s*번호|'
+    r'^\s*(환자\s*(명|성명|이름|번호|정보)|성\s*명|주민\s*(등록)?\s*번호|'
     r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
     r'차트\s*번호|의무\s*기록\s*번호)\s*[:：]?\s*$',
     caseSensitive: false,
+  );
+  static final RegExp _ageGenderPattern = RegExp(
+    r'(?<!\d)(?:만\s*)?\d{1,3}\s*세\s*[/·,\s-]?\s*(?:남|여)(?:성)?(?![가-힣])',
   );
   static final RegExp _residentNumberPattern = RegExp(
     r'(?<!\d)\d{6}\s*[- ]?\s*[1-8]\d{6}(?!\d)',
@@ -199,6 +202,7 @@ class PrescriptionPrivacyFilter {
   // - 민감정보가 포함되면 true
   bool containsSensitiveInformation(String text) {
     return _sensitiveLabelPattern.hasMatch(text) ||
+        _ageGenderPattern.hasMatch(text) ||
         _residentNumberPattern.hasMatch(text) ||
         _phonePattern.hasMatch(text) ||
         _emailPattern.hasMatch(text);
