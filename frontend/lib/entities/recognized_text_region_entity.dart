@@ -7,7 +7,7 @@
 // - 백엔드 OCR 응답의 위치 좌표를 안전한 범위로 정규화한다.
 // - 원본 이미지 위에 표시할 인식 영역 또는 개인정보 마스킹 좌표를 보관한다.
 // 속성:
-// - category: 조제일자 또는 약품 행을 구분하는 영역 종류
+// - category: 약품 정보 또는 개인정보 마스킹을 구분하는 영역 종류
 // - text: 해당 영역에서 인식한 복약 관련 문구
 // - box2d: ymin, xmin, ymax, xmax 순서의 정규화 좌표
 class RecognizedTextRegion {
@@ -26,6 +26,11 @@ class RecognizedTextRegion {
   }
 
   bool get isSensitive => category == 'sensitive_info';
+
+  bool get isMedication =>
+      category == 'medication_name' || category == 'medication_row';
+
+  bool get isVisibleInPreview => isSensitive || isMedication;
 
   // 함수이름: fromJson
   // 함수역할:

@@ -41,5 +41,26 @@ void main() {
 
     expect(region, isNotNull);
     expect(region!.isSensitive, isTrue);
+    expect(region.isVisibleInPreview, isTrue);
+  });
+
+  test('약품 영역만 일반 OCR 문구와 구분해 미리보기 대상으로 사용한다', () {
+    final medicationRegion = RecognizedTextRegion.fromJson({
+      'category': 'medication_name',
+      'text': '테스트정',
+      'box_2d': [100, 50, 200, 500],
+    });
+    final genericRegion = RecognizedTextRegion.fromJson({
+      'category': 'recognized_text',
+      'text': '전문가와 상의 없이 복용하지 마세요',
+      'box_2d': [220, 50, 300, 700],
+    });
+
+    expect(medicationRegion, isNotNull);
+    expect(medicationRegion!.isMedication, isTrue);
+    expect(medicationRegion.isVisibleInPreview, isTrue);
+    expect(genericRegion, isNotNull);
+    expect(genericRegion!.isMedication, isFalse);
+    expect(genericRegion.isVisibleInPreview, isFalse);
   });
 }

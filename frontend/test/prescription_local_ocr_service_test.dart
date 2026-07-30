@@ -9,6 +9,8 @@ void main() {
     expect(filter.containsSensitiveInformation('주민번호 900101-1234567'), isTrue);
     expect(filter.containsSensitiveInformation('연락처 010-1234-5678'), isTrue);
     expect(filter.containsSensitiveInformation('메일 user@example.com'), isTrue);
+    expect(filter.containsSensitiveInformation('환자 정보'), isTrue);
+    expect(filter.containsSensitiveInformation('(만 25세 / 남)'), isTrue);
     expect(filter.containsSensitiveInformation('조제일자 2026-07-29'), isFalse);
     expect(filter.containsSensitiveInformation('아스피린 1정 1일 2회'), isFalse);
   });
