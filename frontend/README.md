@@ -15,6 +15,14 @@ UML diagrams:
 - `lib/viewmodels`: app state coordination for the screens.
 - `lib/services`: local services such as notifications and TTS.
 
+`MedBuddyViewModel` remains the screen-facing state facade, while its behavior
+is organized into feature-scoped parts for prescription analysis, saved
+medications, schedules, reminders, health recommendations, and user settings.
+Large UI boundaries keep route and screen state ownership in their primary
+files and move repeated list, empty-state, image-preview, and medication-row
+widgets into companion parts. This preserves the existing public screen API
+while limiting the change scope of each feature.
+
 ## Current Scope
 
 Prescription input uses on-device Google ML Kit Korean OCR. Before the
@@ -43,6 +51,14 @@ flutter pub get
 flutter analyze --no-pub
 flutter test --no-pub
 ```
+
+## Quality Assurance
+
+Automated widget tests cover compact viewports, large system text, accessibility
+labels, app pause/resume, and network recovery. Android behaviors that require
+real devices, including TalkBack, reboot persistence, battery saver, and
+patient-caregiver two-device synchronization, use the
+[`beta accessibility and device regression checklist`](../docs/qa/beta_accessibility_device_regression_checklist.md).
 
 For Android emulator testing, the default API base URL points to:
 

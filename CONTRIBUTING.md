@@ -226,6 +226,8 @@ Before committing, also check:
 - `frontend/pubspec.yaml` contains the intended app version when preparing a release.
 - UML-aligned boundary, control, and entity responsibilities are preserved for new features.
 - Backend and frontend tests cover changed use-case behavior when the change touches saved medications, schedules, reminders, patient-guardian links, or settings.
+- UI changes pass the accessibility layout regression tests for compact viewports, large system text, semantic labels, and scroll reachability.
+- Android release candidates are checked with the [`beta accessibility and device regression checklist`](docs/qa/beta_accessibility_device_regression_checklist.md); untested physical-device items must not be reported as passed.
 
 ---
 
