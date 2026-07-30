@@ -74,10 +74,17 @@ backup/restore, and abuse-control validation remain release gates.
 
 ### P1: Release Verification
 
-- Run backend and Flutter unit/widget suites on every pull request.
+- Run backend and Flutter unit/widget suites on every pull request. Automated
+  frontend coverage includes compact viewports, large system text, semantic
+  labels, app pause/resume, scroll reachability, and network recovery.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.
+- Complete the
+  [`beta accessibility and device regression checklist`](qa/beta_accessibility_device_regression_checklist.md)
+  for TalkBack, reboot persistence, battery saver, and other Android behaviors
+  that automated widget tests cannot prove. Untested physical-device items
+  remain release gates.
 - Add two-device Android smoke tests for link, schedule, reminder, and
   caregiver flows.
 - Validate prescription and loose-pill latency, timeout, offline, malformed
