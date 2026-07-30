@@ -732,6 +732,29 @@ class _ReminderIconButton extends StatelessWidget {
   }
 }
 
+// 클래스명: _ScrollableScheduleState
+// 역할: 작은 화면과 큰 글씨에서도 빈 상태와 오류 상태를 안전하게 스크롤한다.
+class _ScrollableScheduleState extends StatelessWidget {
+  final Widget child;
+
+  const _ScrollableScheduleState({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 32),
+            child: Center(child: child),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ScheduleEmptyState extends StatelessWidget {
   final _ScheduleText text;
 
@@ -739,7 +762,7 @@ class _ScheduleEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return _ScrollableScheduleState(
       child: Container(
         width: 320,
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
@@ -786,7 +809,7 @@ class _ScheduleLoadErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return _ScrollableScheduleState(
       child: Container(
         key: const Key('schedule-load-error'),
         width: 320,
