@@ -175,7 +175,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
 
   // 함수이름: _analyzeMedicationSchedules
   // 함수역할:
-  // - 처방 약 상세조회를 세 건씩 나누어 서버 공공 API 동시 호출 제한을 활용한다.
+  // - 처방 약 상세조회를 여섯 건씩 나누어 서버 공공 API 동시 호출 제한을 활용한다.
   // - 일부 조회가 실패해도 나머지 약의 분석 결과와 원래 순서를 유지한다.
   // 매개변수:
   // - schedules: OCR 결과에서 사용자가 확인한 복약 일정 목록
@@ -184,7 +184,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   Future<List<AnalyzedMedication?>> _analyzeMedicationSchedules(
     List<MedicationSchedule> schedules,
   ) async {
-    const batchSize = 3;
+    const batchSize = 6;
     final results = <AnalyzedMedication?>[];
     for (var start = 0; start < schedules.length; start += batchSize) {
       final end = math.min(start + batchSize, schedules.length);

@@ -125,6 +125,35 @@ class _RetryableCheckMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// 클래스명: _ConcurrencyTrackingCheckMedicationDetail
+// 역할: 약품 상세조회가 동시에 시작되는 최대 개수와 배치 전환 시점을 기록한다.
+class _ConcurrencyTrackingCheckMedicationDetail extends CheckMedicationDetail {
+  final Completer<void> firstBatchRelease = Completer<void>();
+  int activeRequestCount = 0;
+  int maximumActiveRequestCount = 0;
+  int startedRequestCount = 0;
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule medicationSchedule,
+  ) async {
+    startedRequestCount += 1;
+    activeRequestCount += 1;
+    if (activeRequestCount > maximumActiveRequestCount) {
+      maximumActiveRequestCount = activeRequestCount;
+    }
+
+    await firstBatchRelease.future;
+    activeRequestCount -= 1;
+    return MedicationDetail(
+      itemName: medicationSchedule.medicationName,
+      efficacy: 'effect',
+      usageMethod: 'usage',
+      warning: 'warning',
+    );
+  }
+}
+
 class _FakeCheckPrescriptionChange extends CheckPrescriptionChange {
   int requestCount = 0;
 
@@ -200,6 +229,35 @@ void main() {
       expect(viewModel.statusMessage, contains('1개 약 정보'));
     },
   );
+
+  test('처방 약 상세정보를 최대 여섯 건씩 병렬 조회한다', () async {
+    final detailControl = _ConcurrencyTrackingCheckMedicationDetail();
+    final schedules = List<MedicationSchedule>.generate(
+      7,
+      (index) => MedicationSchedule(medicationName: 'medicine-$index'),
+    );
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(schedules),
+      checkMedicationDetail: detailControl,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    final pendingAnalysis = viewModel.requestPrescriptionAnalysis();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(detailControl.startedRequestCount, 6);
+    expect(detailControl.maximumActiveRequestCount, 6);
+
+    detailControl.firstBatchRelease.complete();
+    await pendingAnalysis;
+
+    expect(detailControl.startedRequestCount, 7);
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+  });
 
   test('사용자가 수정한 OCR 결과로 약품 상세정보를 조회한다', () async {
     final detailControl = _CapturingCheckMedicationDetail();
