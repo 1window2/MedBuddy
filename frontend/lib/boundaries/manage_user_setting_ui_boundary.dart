@@ -429,13 +429,19 @@ class _CloseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-      tooltip: tooltip,
-      onPressed: onTap,
-      icon: const Icon(Icons.close, color: Color(0xFF4A5565), size: 31),
+    return Semantics(
+      label: tooltip,
+      button: true,
+      child: ExcludeSemantics(
+        child: IconButton(
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          tooltip: tooltip,
+          onPressed: onTap,
+          icon: const Icon(Icons.close, color: Color(0xFF4A5565), size: 31),
+        ),
+      ),
     );
   }
 }
@@ -463,20 +469,27 @@ class _SettingSaveFooter extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         height: 64,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: MedBuddyColors.primary,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: MedBuddyColors.primary.withAlpha(150),
-            shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
-            textStyle: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+        child: Semantics(
+          label: isSaving ? text.saving : text.save,
+          button: true,
+          enabled: !isSaving,
+          child: ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: MedBuddyColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: MedBuddyColors.primary.withAlpha(150),
+                shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+                textStyle: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+              onPressed: isSaving ? null : onSaveRequested,
+              child: Text(isSaving ? text.saving : text.save),
             ),
           ),
-          onPressed: isSaving ? null : onSaveRequested,
-          child: Text(isSaving ? text.saving : text.save),
         ),
       ),
     );
@@ -565,53 +578,69 @@ class _SegmentButton extends StatelessWidget {
         ? MedBuddyColors.textStrong
         : MedBuddyColors.textLight;
 
-    return Material(
-      color: backgroundColor,
-      borderRadius: MedBuddyRadii.card,
-      elevation: selected && enabled ? 7 : 0,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          height: 77,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
+    final semanticsLabel = option.supportText == null
+        ? option.label
+        : '${option.label}. ${option.supportText}';
+
+    return Semantics(
+      label: semanticsLabel,
+      button: true,
+      enabled: enabled,
+      selected: selected,
+      child: ExcludeSemantics(
+        child: Material(
+          color: backgroundColor,
+          borderRadius: MedBuddyRadii.card,
+          elevation: selected && enabled ? 7 : 0,
+          shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
+          child: InkWell(
             borderRadius: MedBuddyRadii.card,
-            border: Border.all(
-              color: enabled ? MedBuddyColors.primary : MedBuddyColors.divider,
-              width: selected ? 0 : 2.7,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                option.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: foregroundColor,
-                  fontSize: 16 * contentScale,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
+            onTap: onTap,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 77),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: MedBuddyRadii.card,
+                border: Border.all(
+                  color: enabled
+                      ? MedBuddyColors.primary
+                      : MedBuddyColors.divider,
+                  width: selected ? 0 : 2.7,
                 ),
               ),
-              if (option.supportText != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  option.supportText!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textLight,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    option.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foregroundColor,
+                      fontSize: 16 * contentScale,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
                   ),
-                ),
-              ],
-            ],
+                  if (option.supportText != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      option.supportText!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textLight,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
