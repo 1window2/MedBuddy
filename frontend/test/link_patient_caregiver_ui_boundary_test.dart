@@ -123,6 +123,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('TEST1234'), findsOneWidget);
+    final warningText = find.text(
+      '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678\n'
+      '\uB2E4\uB978 \uC0AC\uB78C\uACFC \uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
+    );
+    expect(warningText, findsOneWidget);
+    expect(tester.widget<Text>(warningText).maxLines, 2);
 
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pump();

@@ -235,10 +235,16 @@ void main() {
       find.byKey(const Key('ocr-edit-prescription-date')),
       '2026-08-01',
     );
-    await tester.tap(find.byKey(const Key('ocr-edit-slot-lunch')));
-    await tester.tap(find.byKey(const Key('ocr-edit-slot-evening')));
-    await tester.tap(find.byKey(const Key('ocr-edit-slot-bedtime')));
-    await tester.tap(find.byKey(const Key('ocr-edit-save')));
+    for (final slotKey in const ['lunch', 'evening', 'bedtime']) {
+      final slot = find.byKey(Key('ocr-edit-slot-$slotKey'));
+      await tester.ensureVisible(slot);
+      await tester.pumpAndSettle();
+      await tester.tap(slot);
+    }
+    final saveButton = find.byKey(const Key('ocr-edit-save'));
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
     await tester.pumpAndSettle();
 
     expect(updatedIndex, 0);
