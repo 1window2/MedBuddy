@@ -123,6 +123,43 @@ class MedicationDetail {
     return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
   }
 
+  DateTime? get medicationEndDate {
+    final startDate = prescriptionDate;
+    final dayCount = medicationScheduleCountFromText(totalDays);
+    if (startDate == null || dayCount <= 0) {
+      return null;
+    }
+    return DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    ).add(Duration(days: dayCount - 1));
+  }
+
+  // 함수명: isActiveOn
+  // 역할:
+  // - 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다.
+  // - 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
+  bool isActiveOn(DateTime referenceDate) {
+    final startDate = prescriptionDate;
+    final endDate = medicationEndDate;
+    if (startDate == null || endDate == null) {
+      return true;
+    }
+    final normalizedReference = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    final normalizedStart = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    return !normalizedReference.isBefore(normalizedStart) &&
+        !normalizedReference.isAfter(endDate);
+  }
+
   List<String> get detailedDosageGuideLines {
     final dosage = _normalizeOrFallback(dosagePerTime, '복용량 정보 없음');
     final slotLabels = _slotLabelsFromFrequency(dailyFrequency);

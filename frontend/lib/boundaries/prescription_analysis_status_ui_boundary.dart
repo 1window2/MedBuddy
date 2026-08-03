@@ -182,6 +182,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   final UserSetting userSetting;
   final AnalysisProgressStep failureStep;
   final VoidCallback? onAnalysisRetryRequested;
+  final VoidCallback? onOcrReviewRequested;
   final VoidCallback onCameraRetryRequested;
   final VoidCallback onGalleryRetryRequested;
   final VoidCallback onHomeRequested;
@@ -192,6 +193,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     required this.userSetting,
     required this.failureStep,
     this.onAnalysisRetryRequested,
+    this.onOcrReviewRequested,
     required this.onCameraRetryRequested,
     required this.onGalleryRetryRequested,
     required this.onHomeRequested,
@@ -292,6 +294,17 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                         onPressed: retryCallback,
                         icon: Icons.refresh,
                         label: text.analysisRetry,
+                        scale: scale,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (onOcrReviewRequested case final reviewCallback?) ...[
+                      _buildActionButton(
+                        key: const Key('prescription-ocr-review-button'),
+                        isPrimary: false,
+                        onPressed: reviewCallback,
+                        icon: Icons.fact_check_outlined,
+                        label: text.ocrReview,
                         scale: scale,
                       ),
                       const SizedBox(height: 12),
@@ -447,10 +460,7 @@ class _FailureReasonPanel extends StatelessWidget {
   final _StatusText text;
   final double scale;
 
-  const _FailureReasonPanel({
-    required this.text,
-    required this.scale,
-  });
+  const _FailureReasonPanel({required this.text, required this.scale});
 
   @override
   Widget build(BuildContext context) {
@@ -488,10 +498,7 @@ class _FailureReasonItem extends StatelessWidget {
   final String reason;
   final double scale;
 
-  const _FailureReasonItem({
-    required this.reason,
-    required this.scale,
-  });
+  const _FailureReasonItem({required this.reason, required this.scale});
 
   @override
   Widget build(BuildContext context) {
@@ -574,8 +581,10 @@ class _StatusText {
     ];
   }
 
-  String get analysisRetry => isEnglish ? 'Retry Analysis' : '분석 다시 시도하기';
-  String get cameraRetry => isEnglish ? 'Retake Photo' : '다시 촬영하기';
+  String get analysisRetry =>
+      isEnglish ? 'Retry medication lookup' : '약 정보 조회만 다시 시도';
+  String get ocrReview => isEnglish ? 'Review OCR results' : 'OCR 결과 다시 확인';
+  String get cameraRetry => isEnglish ? 'Retake Photo' : '다른 사진 촬영하기';
   String get galleryRetry => isEnglish ? 'Choose Another Image' : '이미지 다시 선택하기';
   String get home => isEnglish ? 'Back to Home' : '홈으로 돌아가기';
 }

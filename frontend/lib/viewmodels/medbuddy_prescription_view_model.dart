@@ -75,6 +75,8 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       return;
     }
 
+    final isOriginalNameReset =
+        medicationSchedule.nameCorrectionSource == 'ocr_reset';
     final isNameChanged = updatedName != currentSchedule.medicationName.trim();
     final originalOcrName = currentSchedule.rawMedicationName.trim().isEmpty
         ? currentSchedule.medicationName.trim()
@@ -83,13 +85,17 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       medicationName: updatedName,
       dosage: medicationSchedule.dosage.trim(),
       intakeTime: medicationSchedule.intakeTime.trim(),
-      rawMedicationName: isNameChanged
+      rawMedicationName: isOriginalNameReset
+          ? ''
+          : isNameChanged
           ? originalOcrName
-          : currentSchedule.rawMedicationName,
-      nameConfidence: isNameChanged ? 1.0 : currentSchedule.nameConfidence,
-      nameCorrectionSource: isNameChanged
+          : medicationSchedule.rawMedicationName,
+      nameConfidence: isOriginalNameReset ? 0 : 1,
+      nameCorrectionSource: isOriginalNameReset
+          ? 'unverified'
+          : isNameChanged
           ? 'user_edit'
-          : currentSchedule.nameCorrectionSource,
+          : 'user_review',
     );
 
     final updatedScheduleList = List<MedicationSchedule>.of(
@@ -105,6 +111,21 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _statusMessage = _isEnglishSetting
         ? 'The OCR result was updated.'
         : 'OCR 인식 결과를 수정했습니다.';
+    _notifyViewModelListeners();
+  }
+
+  // 함수명: returnToPrescriptionPreview
+  // 역할:
+  // - 약품 상세 조회에 실패한 뒤에도 현재 이미지와 OCR 수정 결과를 유지한 채 검토 화면으로 돌아간다.
+  void returnToPrescriptionPreview() {
+    if (_recognizedMedicationScheduleList.isEmpty) {
+      return;
+    }
+    _analysisErrorMessage = '';
+    _statusMessage = _isEnglishSetting
+        ? 'Review the recognized medication information.'
+        : '인식된 약 정보를 다시 확인해주세요.';
+    _prescriptionFlowState = PrescriptionFlowState.previewReady;
     _notifyViewModelListeners();
   }
 
@@ -137,20 +158,26 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _notifyViewModelListeners();
 
     try {
-      final analysisResults = await _analyzeMedicationSchedules(
+      final analysisBatch = await _analyzeMedicationSchedules(
         recognizedSchedules,
       );
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
-      final analyzedMedicationList = analysisResults
+      final analyzedMedicationList = analysisBatch.results
           .whereType<AnalyzedMedication>()
           .toList(growable: false);
       final failedAnalysisCount =
-          analysisResults.length - analyzedMedicationList.length;
+          analysisBatch.results.length - analyzedMedicationList.length;
 
       if (analyzedMedicationList.isEmpty) {
-        _showAnalysisFailure('약물 상세 정보를 찾지 못했습니다.');
+        _showAnalysisFailure(
+          analysisBatch.errorMessages.isNotEmpty
+              ? analysisBatch.errorMessages.first
+              : (_isEnglishSetting
+                    ? 'No matching medication was found. Review the OCR medication name.'
+                    : '일치하는 약 정보를 찾지 못했습니다. OCR 약 이름을 확인해주세요.'),
+        );
         return;
       }
 
@@ -164,12 +191,24 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
-      _showAnalysisFailure(error.message);
-    } catch (_) {
+      _showAnalysisFailure(
+        UserFacingErrorMessage.resolve(
+          error,
+          isEnglish: _isEnglishSetting,
+          context: UserFacingErrorContext.medicationLookup,
+        ),
+      );
+    } catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
-      _showAnalysisFailure('처방전 분석 중 오류가 발생했습니다.');
+      _showAnalysisFailure(
+        UserFacingErrorMessage.resolve(
+          error,
+          isEnglish: _isEnglishSetting,
+          context: UserFacingErrorContext.medicationLookup,
+        ),
+      );
     }
   }
 
@@ -181,11 +220,12 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   // - schedules: OCR 결과에서 사용자가 확인한 복약 일정 목록
   // 반환값:
   // - 입력 순서와 같은 nullable 분석 결과 목록
-  Future<List<AnalyzedMedication?>> _analyzeMedicationSchedules(
+  Future<_MedicationAnalysisBatch> _analyzeMedicationSchedules(
     List<MedicationSchedule> schedules,
   ) async {
     const batchSize = 6;
     final results = <AnalyzedMedication?>[];
+    final errorMessages = <String>[];
     for (var start = 0; start < schedules.length; start += batchSize) {
       final end = math.min(start + batchSize, schedules.length);
       final batch = schedules.sublist(start, end);
@@ -199,14 +239,24 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
               return null;
             }
             return AnalyzedMedication(schedule: schedule, detail: detail);
-          } catch (_) {
+          } catch (error) {
+            errorMessages.add(
+              UserFacingErrorMessage.resolve(
+                error,
+                isEnglish: _isEnglishSetting,
+                context: UserFacingErrorContext.medicationLookup,
+              ),
+            );
             return null;
           }
         }),
       );
       results.addAll(batchResults);
     }
-    return results;
+    return _MedicationAnalysisBatch(
+      results: results,
+      errorMessages: errorMessages,
+    );
   }
 
   // 함수이름: _refreshPrescriptionChangeRadar
@@ -419,12 +469,16 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
-      _showAnalysisFailure(error.message);
-    } catch (_) {
+      _showAnalysisFailure(
+        UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
+      );
+    } catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
-      _showAnalysisFailure('처방전 인식 중 오류가 발생했습니다.');
+      _showAnalysisFailure(
+        UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
+      );
     }
   }
 
@@ -518,4 +572,16 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     }
     return schedule.slotKeys;
   }
+}
+
+// 클래스명: _MedicationAnalysisBatch
+// 역할: 병렬 약품 조회 결과와 사용자에게 전달할 실패 원인을 함께 보관한다.
+class _MedicationAnalysisBatch {
+  final List<AnalyzedMedication?> results;
+  final List<String> errorMessages;
+
+  const _MedicationAnalysisBatch({
+    required this.results,
+    required this.errorMessages,
+  });
 }
