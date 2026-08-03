@@ -278,6 +278,7 @@ class _MedicationScheduleEditDialogState
     final scale = widget.userSetting.contentTextScale;
 
     return AlertDialog(
+      scrollable: true,
       title: Text(
         text.editTitle,
         style: TextStyle(

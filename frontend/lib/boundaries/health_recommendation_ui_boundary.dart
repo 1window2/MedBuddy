@@ -48,9 +48,7 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
             text: text,
             onBackRequested: () => Navigator.pop(context),
           ),
-          Expanded(
-            child: _buildContent(viewModel, text),
-          ),
+          Expanded(child: _buildContent(viewModel, text)),
         ],
       ),
     );
@@ -88,56 +86,60 @@ class _HealthRecommendationLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 326,
-        padding: const EdgeInsets.fromLTRB(28, 38, 28, 34),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.largeCard,
-          boxShadow: MedBuddyShadows.card,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              text.loadingTitle,
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 326),
+          padding: const EdgeInsets.fromLTRB(28, 38, 28, 34),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: MedBuddyRadii.largeCard,
+            boxShadow: MedBuddyShadows.card,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text.loadingTitle,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-            const SizedBox(height: 34),
-            const SizedBox(
-              width: 92,
-              height: 92,
-              child: CircularProgressIndicator(
-                color: MedBuddyColors.primary,
-                backgroundColor: MedBuddyColors.mint,
-                strokeWidth: 10,
+              const SizedBox(height: 34),
+              const SizedBox(
+                width: 92,
+                height: 92,
+                child: CircularProgressIndicator(
+                  color: MedBuddyColors.primary,
+                  backgroundColor: MedBuddyColors.mint,
+                  strokeWidth: 10,
+                ),
               ),
-            ),
-            const SizedBox(height: 34),
-            Text(
-              text.loadingMessage,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: MedBuddyColors.primary,
-                fontSize: 19,
-                fontWeight: FontWeight.w900,
+              const SizedBox(height: 34),
+              Text(
+                text.loadingMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: MedBuddyColors.primary,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              text.loadingWait,
-              style: const TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+              const SizedBox(height: 12),
+              Text(
+                text.loadingWait,
+                style: const TextStyle(
+                  color: MedBuddyColors.textMuted,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -172,12 +174,16 @@ class _HealthRecommendationHeader extends StatelessWidget {
             icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
           ),
           const SizedBox(width: 8),
-          Text(
-            text.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
+          Expanded(
+            child: Text(
+              text.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -260,12 +266,14 @@ class _RecommendationCard extends StatelessWidget {
                 children: [
                   Icon(icon, color: iconColor, size: 28),
                   const SizedBox(width: 10),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ],
@@ -294,10 +302,7 @@ class _CautionCard extends StatelessWidget {
   final String title;
   final List<String> cautionItems;
 
-  const _CautionCard({
-    required this.title,
-    required this.cautionItems,
-  });
+  const _CautionCard({required this.title, required this.cautionItems});
 
   @override
   Widget build(BuildContext context) {
@@ -325,12 +330,14 @@ class _CautionCard extends StatelessWidget {
                   size: 27,
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
@@ -403,54 +410,56 @@ class _HealthRecommendationError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 34),
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.largeCard,
-          boxShadow: MedBuddyShadows.card,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.health_and_safety_outlined,
-              color: MedBuddyColors.primary,
-              size: 52,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 17,
-                height: 1.45,
-                fontWeight: FontWeight.w700,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 24),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: MedBuddyRadii.largeCard,
+            boxShadow: MedBuddyShadows.card,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.health_and_safety_outlined,
+                color: MedBuddyColors.primary,
+                size: 52,
               ),
-            ),
-            const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: onRetryRequested,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: MedBuddyColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: Text(
-                text.retry,
+              const SizedBox(height: 14),
+              Text(
+                message,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
+                  color: MedBuddyColors.textMuted,
                   fontSize: 17,
-                  fontWeight: FontWeight.w800,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: onRetryRequested,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MedBuddyColors.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  text.retry,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

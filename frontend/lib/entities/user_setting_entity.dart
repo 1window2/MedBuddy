@@ -52,13 +52,44 @@ class UserSetting {
   }
 
   double get contentTextScale {
+    // 사용자 글씨 크기는 앱 최상단 MediaQuery에서 한 번만 적용한다.
+    // 기존 화면의 개별 배율 코드는 1.0을 받아 이중 확대를 방지한다.
+    return 1.0;
+  }
+
+  // 함수명: preferredTextScale
+  // 함수역할:
+  // - 환경설정에서 선택한 글씨 크기를 앱 전역 배율로 변환한다.
+  // 반환값:
+  // - 작게 0.92배, 중간 1.0배, 크게 1.30배 중 하나
+  double get preferredTextScale {
     if (fontSize <= 14) {
       return 0.92;
     }
     if (fontSize >= 20) {
-      return 1.12;
+      return 1.30;
     }
     return 1.0;
+  }
+
+  // 함수명: resolveTextScale
+  // 함수역할:
+  // - 앱 설정과 운영체제 접근성 글씨 크기 중 더 읽기 쉬운 값을 선택한다.
+  // - 운영체제 배율이 1배를 넘으면 사용자 설정으로 축소하지 않는다.
+  // - 과도한 확대에 따른 화면 붕괴를 막기 위해 최대 2배로 제한한다.
+  // 매개변수:
+  // - systemTextScale: 운영체제가 제공한 현재 글씨 배율
+  // 반환값:
+  // - 앱 전체 MediaQuery에 적용할 최종 글씨 배율
+  double resolveTextScale(double systemTextScale) {
+    final normalizedSystemScale =
+        systemTextScale.isFinite && systemTextScale > 0 ? systemTextScale : 1.0;
+    final resolvedScale = normalizedSystemScale > 1.0
+        ? (normalizedSystemScale > preferredTextScale
+              ? normalizedSystemScale
+              : preferredTextScale)
+        : preferredTextScale;
+    return resolvedScale.clamp(0.92, 2.0).toDouble();
   }
 
   // 함수명: copyWith
@@ -163,4 +194,18 @@ class UserSetting {
     }
     return null;
   }
+}
+
+// 클래스명: UserSettingSaveResult
+// 역할: 설정값과 서버 동기화 성공 여부를 함께 전달한다.
+// 주요 책임:
+// - 화면이 서버 저장과 기기 전용 저장을 구분해 안내할 수 있게 한다.
+class UserSettingSaveResult {
+  final UserSetting setting;
+  final bool synchronizedWithServer;
+
+  const UserSettingSaveResult({
+    required this.setting,
+    required this.synchronizedWithServer,
+  });
 }

@@ -13,9 +13,8 @@ import '../entities/user_setting_entity.dart';
 class TTSService {
   final FlutterTts _flutterTts;
 
-  TTSService({
-    FlutterTts? flutterTts,
-  }) : _flutterTts = flutterTts ?? FlutterTts();
+  TTSService({FlutterTts? flutterTts})
+    : _flutterTts = flutterTts ?? FlutterTts();
 
   // 함수명: speak
   // 함수역할:
@@ -36,17 +35,30 @@ class TTSService {
       return;
     }
 
+    // 이전 발화를 정리한 뒤 완료 시점까지 기다려 재생 상태와 실제 음성을 일치시킨다.
+    await _flutterTts.stop();
+    await _flutterTts.awaitSpeakCompletion(true);
+    String? platformError;
     _flutterTts.setCompletionHandler(() {
       onComplete?.call();
     });
     _flutterTts.setCancelHandler(() {
       onComplete?.call();
     });
+    _flutterTts.setErrorHandler((message) {
+      platformError = message;
+    });
     await _flutterTts.setLanguage(_languageCode(userSetting.language));
     await _flutterTts.setSpeechRate(_speechRate(userSetting.readingSpeed));
     await _flutterTts.setVolume(1.0);
     await _flutterTts.setPitch(1.0);
-    await _flutterTts.speak(normalizedText);
+    final result = await _flutterTts.speak(normalizedText, focus: true);
+    if (platformError != null) {
+      throw StateError('TTS playback failed: $platformError');
+    }
+    if (result != 1 && result != true) {
+      throw StateError('TTS engine did not start playback.');
+    }
   }
 
   Future<void> stop() async {
@@ -59,11 +71,11 @@ class TTSService {
 
   double _speechRate(double readingSpeed) {
     if (readingSpeed < 1.0) {
-      return 0.38;
+      return 0.34;
     }
     if (readingSpeed > 1.0) {
-      return 0.58;
+      return 0.66;
     }
-    return 0.48;
+    return 0.50;
   }
 }

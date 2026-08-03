@@ -91,8 +91,8 @@ class ManageUserSetting {
   // - readingSpeedOption: slow, medium, fast 중 선택된 읽기 속도 옵션
   // - language: ko 또는 en 언어 코드
   // 반환값:
-  // - 저장 완료된 새 UserSetting
-  Future<UserSetting> saveUserSetting({
+  // - 저장 완료된 설정과 서버 동기화 여부
+  Future<UserSettingSaveResult> saveUserSetting({
     required UserSetting currentSetting,
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -109,7 +109,10 @@ class ManageUserSetting {
     await _cacheUserSetting(nextSetting);
 
     if (!useRemotePersistence) {
-      return nextSetting;
+      return UserSettingSaveResult(
+        setting: nextSetting,
+        synchronizedWithServer: false,
+      );
     }
 
     try {
@@ -131,7 +134,10 @@ class ManageUserSetting {
 
       final savedSetting = _decodeUserSetting(responseBody);
       await _cacheUserSetting(savedSetting);
-      return savedSetting;
+      return UserSettingSaveResult(
+        setting: savedSetting,
+        synchronizedWithServer: true,
+      );
     } catch (error, stackTrace) {
       developer.log(
         'User setting save fell back to local cache.',
@@ -139,7 +145,10 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
-      return nextSetting;
+      return UserSettingSaveResult(
+        setting: nextSetting,
+        synchronizedWithServer: false,
+      );
     }
   }
 

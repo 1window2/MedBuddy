@@ -59,18 +59,20 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _notifyViewModelListeners();
   }
 
-  Future<void> requestUserSettingSave({
+  Future<UserSettingSaveResult> requestUserSettingSave({
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
   }) async {
-    _userSetting = await manageUserSetting.saveUserSetting(
+    final saveResult = await manageUserSetting.saveUserSetting(
       currentSetting: _userSetting,
       fontSizeOption: fontSizeOption,
       readingSpeedOption: readingSpeedOption,
       language: language,
     );
+    _userSetting = saveResult.setting;
     _notifyViewModelListeners();
+    return saveResult;
   }
 
   // 함수명: requestAccountDataDeletion
