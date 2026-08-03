@@ -58,7 +58,10 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
           .requestSavedMedicationInfo();
       _savedMedicationInfoList = savedMedicationInfoList;
     } on StateError catch (error) {
-      _statusMessage = error.message;
+      _statusMessage = UserFacingErrorMessage.resolve(
+        error,
+        isEnglish: _isEnglishSetting,
+      );
     } catch (_) {
       _statusMessage = '저장된 복약 정보를 불러오지 못했습니다.';
     } finally {

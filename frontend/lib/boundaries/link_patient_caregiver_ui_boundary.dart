@@ -7,6 +7,7 @@ import '../controls/link_patient_caregiver_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../services/user_facing_error_message.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 
 typedef LinkPatientCaregiverFactory =
@@ -276,7 +277,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     } catch (error) {
       if (_isCurrentRequest(request)) {
         setState(() {
-          _statusMessage = error.toString().replaceFirst('Bad state: ', '');
+          _statusMessage = UserFacingErrorMessage.resolve(
+            error,
+            isEnglish: false,
+          );
         });
       }
       return null;
@@ -395,16 +399,20 @@ class _LinkActionFooter extends StatelessWidget {
       children: [
         Expanded(
           child: _LinkActionButton(
+            icon: Icons.person_outline_rounded,
             title: '환자 코드 생성',
-            subtitle: '(환자 휴대폰)',
+            subtitle: '약을 복용하는 환자',
+            semanticLabel: '약을 복용하는 환자입니다. 보호자에게 전달할 연동 코드를 만듭니다.',
             onPressed: onGeneratePatientCodeRequested,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _LinkActionButton(
+            icon: Icons.health_and_safety_outlined,
             title: '환자 관리 등록',
-            subtitle: '(보호자 휴대폰)',
+            subtitle: '복약을 확인하는 보호자',
+            semanticLabel: '복약을 확인하는 보호자입니다. 환자에게 받은 연동 코드를 등록합니다.',
             onPressed: onRegisterPatientRequested,
           ),
         ),
@@ -414,54 +422,69 @@ class _LinkActionFooter extends StatelessWidget {
 }
 
 class _LinkActionButton extends StatelessWidget {
+  final IconData icon;
   final String title;
   final String subtitle;
+  final String semanticLabel;
   final VoidCallback? onPressed;
 
   const _LinkActionButton({
+    required this.icon,
     required this.title,
     required this.subtitle,
+    required this.semanticLabel,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(92),
-        foregroundColor: const Color(0xFF0A0A0A),
-        backgroundColor: Colors.white,
-        side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(92),
+          foregroundColor: const Color(0xFF0A0A0A),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
           ),
-          const SizedBox(height: 5),
-          Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: MedBuddyColors.primaryDark, size: 24),
+            const SizedBox(height: 5),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

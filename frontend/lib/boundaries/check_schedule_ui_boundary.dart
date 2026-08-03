@@ -139,26 +139,89 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             onGuideRequested: (schedule) {
               _showMedicationDetail(viewModel, schedule);
             },
-            onStatusChanged: (schedule, medicationStatus) async {
-              final success = await viewModel.requestMedicationDoseStatusUpdate(
-                slot.key,
-                schedule,
-                medicationStatus,
-              );
-              if (!mounted || success) {
-                return;
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(text.statusUpdateFailed),
-                  duration: const Duration(seconds: 1),
+            onStatusChanged: (schedule, medicationStatus) =>
+                _handleMedicationStatusChange(
+                  viewModel: viewModel,
+                  slot: slot,
+                  schedule: schedule,
+                  medicationStatus: medicationStatus,
+                  text: text,
                 ),
-              );
-            },
           ),
           const SizedBox(height: 16),
         ],
       ],
+    );
+  }
+
+  // 함수명: _handleMedicationStatusChange
+  // 역할:
+  // - 복용 완료 변경을 저장하고, 완료 직후에는 실수로 누른 상태를 되돌릴 기회를 제공한다.
+  // - 실행 취소 요청도 동일한 상태 변경 API를 사용해 화면과 서버 상태를 함께 복원한다.
+  Future<void> _handleMedicationStatusChange({
+    required MedBuddyViewModel viewModel,
+    required _ScheduleSlot slot,
+    required MedicationSchedule schedule,
+    required bool medicationStatus,
+    required _ScheduleText text,
+  }) async {
+    final success = await viewModel.requestMedicationDoseStatusUpdate(
+      slot.key,
+      schedule,
+      medicationStatus,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(text.statusUpdateFailed),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    if (!medicationStatus) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(text.completionCancelled(schedule.displayName)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          text.completionSaved(text.slotTitle(slot.key), schedule.displayName),
+        ),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: text.undo,
+          onPressed: () async {
+            final undoSucceeded = await viewModel
+                .requestMedicationDoseStatusUpdate(slot.key, schedule, false);
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  undoSucceeded
+                      ? text.completionCancelled(schedule.displayName)
+                      : text.statusUpdateFailed,
+                ),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -213,12 +276,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       minute: selectedTime.minute,
       schedules: slot.medications,
     );
-    if (!mounted || success) {
+    if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(viewModel.statusMessage)));
+    _showReminderResultMessage(viewModel.statusMessage, success: success);
   }
 
   Future<void> _handleReminderToggle(
@@ -238,12 +299,27 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       slotKey: slot.key,
       slotTitle: text.slotTitle(slot.key),
     );
-    if (!mounted || success) {
+    if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(viewModel.statusMessage)));
+    _showReminderResultMessage(viewModel.statusMessage, success: success);
+  }
+
+  // 함수명: _showReminderResultMessage
+  // 역할:
+  // - 알림 설정 또는 해제 요청의 성공 여부를 화면 하단 안내로 명확히 전달한다.
+  void _showReminderResultMessage(String message, {required bool success}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: success
+            ? MedBuddyColors.primaryDark
+            : Theme.of(context).colorScheme.error,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _showMedicationDetail(
@@ -907,6 +983,19 @@ class _ScheduleText {
       ? 'Could not load today\'s medication schedule.'
       : '오늘의 복약 일정을 불러오지 못했습니다.';
   String get retry => isEnglish ? 'Retry' : '다시 시도';
+  String get undo => isEnglish ? 'Undo' : '실행 취소';
+
+  String completionSaved(String slotTitle, String medicationName) {
+    return isEnglish
+        ? '$slotTitle · $medicationName marked as taken.'
+        : '$slotTitle · $medicationName 복용을 완료했습니다.';
+  }
+
+  String completionCancelled(String medicationName) {
+    return isEnglish
+        ? '$medicationName completion was undone.'
+        : '$medicationName 복용 완료를 취소했습니다.';
+  }
 
   // 함수이름: dosageLabel
   // 함수역할:

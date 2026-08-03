@@ -44,7 +44,10 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       if (loadEpoch == _todayScheduleEpoch) {
         _todayMedicationScheduleList = const [];
         _lastTodayScheduleLoadSucceeded = false;
-        _statusMessage = error.message;
+        _statusMessage = UserFacingErrorMessage.resolve(
+          error,
+          isEnglish: _isEnglishSetting,
+        );
         _hasTodayScheduleLoadError = true;
       }
     } catch (_) {
@@ -128,7 +131,10 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       _notifyViewModelListeners();
       return true;
     } on StateError catch (error) {
-      _statusMessage = error.message;
+      _statusMessage = UserFacingErrorMessage.resolve(
+        error,
+        isEnglish: _isEnglishSetting,
+      );
       _notifyViewModelListeners();
       return false;
     } catch (_) {

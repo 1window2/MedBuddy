@@ -9,6 +9,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../services/user_facing_error_message.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'set_caregiver_notification_ui_boundary.dart';
 
@@ -74,6 +75,7 @@ class _CheckCaregiverMedicationUIState
   Map<String, CaregiverNotification> _notificationSettings = const {};
   Timer? _refreshTimer;
   String? _errorMessage;
+  DateTime? _lastSynchronizedAt;
   String? _notificationSavingSlotKey;
   bool _isLoading = true;
   bool _isRefreshInFlight = false;
@@ -131,6 +133,13 @@ class _CheckCaregiverMedicationUIState
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
             onBack: () => Navigator.pop(context),
+          ),
+          _CaregiverSynchronizationBanner(
+            isEnglish: _isEnglish,
+            lastSynchronizedAt: _lastSynchronizedAt,
+            hasSynchronizationError: _errorMessage != null,
+            isRefreshing: _isRefreshInFlight && _isLoading,
+            onRefresh: _requestPatientMedicationInfo,
           ),
           Expanded(
             child: RefreshIndicator(
@@ -245,12 +254,16 @@ class _CheckCaregiverMedicationUIState
         setState(() {
           _medicationInfo = info;
           _errorMessage = null;
+          _lastSynchronizedAt = DateTime.now();
         });
       }
     } catch (error) {
-      if (mounted && !silent) {
+      if (mounted) {
         setState(() {
-          _errorMessage = error.toString().replaceFirst('Bad state: ', '');
+          _errorMessage = UserFacingErrorMessage.resolve(
+            error,
+            isEnglish: _isEnglish,
+          );
         });
       }
     } finally {
@@ -278,7 +291,9 @@ class _CheckCaregiverMedicationUIState
       return true;
     } catch (error) {
       if (mounted && showError) {
-        _showMessage(error.toString().replaceFirst('Bad state: ', ''));
+        _showMessage(
+          UserFacingErrorMessage.resolve(error, isEnglish: _isEnglish),
+        );
       }
       return false;
     } finally {
@@ -359,7 +374,9 @@ class _CheckCaregiverMedicationUIState
       }
     } catch (error) {
       if (mounted) {
-        _showMessage(error.toString().replaceFirst('Bad state: ', ''));
+        _showMessage(
+          UserFacingErrorMessage.resolve(error, isEnglish: _isEnglish),
+        );
       }
     } finally {
       if (mounted) {
@@ -400,6 +417,117 @@ class _CheckCaregiverMedicationUIState
       }
     }
     return (completedCount: completedCount, totalCount: totalCount);
+  }
+}
+
+// 클래스명: _CaregiverSynchronizationBanner
+// 역할: 보호자가 보고 있는 복약 상태의 동기화 시점과 지연 여부를 명확히 안내한다.
+class _CaregiverSynchronizationBanner extends StatelessWidget {
+  final bool isEnglish;
+  final DateTime? lastSynchronizedAt;
+  final bool hasSynchronizationError;
+  final bool isRefreshing;
+  final VoidCallback onRefresh;
+
+  const _CaregiverSynchronizationBanner({
+    required this.isEnglish,
+    required this.lastSynchronizedAt,
+    required this.hasSynchronizationError,
+    required this.isRefreshing,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDelayed = hasSynchronizationError && lastSynchronizedAt != null;
+    final color = isDelayed
+        ? const Color(0xFF9A6700)
+        : MedBuddyColors.primaryDark;
+    final backgroundColor = isDelayed
+        ? const Color(0xFFFFF4D6)
+        : MedBuddyColors.successSurface;
+
+    return Container(
+      width: double.infinity,
+      color: backgroundColor,
+      padding: const EdgeInsets.fromLTRB(20, 9, 12, 9),
+      child: Row(
+        children: [
+          Icon(
+            isDelayed ? Icons.sync_problem_rounded : Icons.sync_rounded,
+            color: color,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _message(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                height: 1.3,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (isRefreshing)
+            const Padding(
+              padding: EdgeInsets.all(10),
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: MedBuddyColors.primary,
+                ),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: isEnglish ? 'Refresh' : '새로고침',
+              onPressed: onRefresh,
+              icon: Icon(Icons.refresh_rounded, color: color),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _message() {
+    if (lastSynchronizedAt == null) {
+      return isEnglish
+          ? 'Loading the patient\'s latest medication status.'
+          : '환자의 최신 복약 상태를 불러오는 중입니다.';
+    }
+
+    final elapsed = DateTime.now().difference(lastSynchronizedAt!);
+    final elapsedLabel = _elapsedLabel(elapsed);
+    if (hasSynchronizationError) {
+      return isEnglish
+          ? 'Sync delayed · Last updated $elapsedLabel'
+          : '동기화 지연 · 마지막 업데이트 $elapsedLabel';
+    }
+    return isEnglish
+        ? 'Patient check status · Updated $elapsedLabel'
+        : '환자가 체크한 복약 상태 · $elapsedLabel 업데이트';
+  }
+
+  String _elapsedLabel(Duration elapsed) {
+    if (elapsed.inSeconds < 10) {
+      return isEnglish ? 'just now' : '방금';
+    }
+    if (elapsed.inMinutes < 1) {
+      return isEnglish
+          ? '${elapsed.inSeconds}s ago'
+          : '${elapsed.inSeconds}초 전';
+    }
+    if (elapsed.inHours < 1) {
+      return isEnglish
+          ? '${elapsed.inMinutes}m ago'
+          : '${elapsed.inMinutes}분 전';
+    }
+    return isEnglish ? '${elapsed.inHours}h ago' : '${elapsed.inHours}시간 전';
   }
 }
 
