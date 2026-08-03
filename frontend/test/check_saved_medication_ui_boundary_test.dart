@@ -139,7 +139,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Delete'));
+    final deleteButton = find.text('Delete');
+    await tester.ensureVisible(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yes'));
     await tester.pumpAndSettle();
@@ -157,6 +160,10 @@ void main() {
   testWidgets(
     'saved medication list switches between registration and medication dates',
     (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1600);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
       SharedPreferences.setMockInitialValues({});
       final client = MockClient(_sortableMedicationResponse);
       final viewModel = MedBuddyViewModel(

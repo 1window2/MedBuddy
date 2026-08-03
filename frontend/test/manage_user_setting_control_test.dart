@@ -17,13 +17,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final control = ManageUserSetting(useRemotePersistence: false);
 
-    final setting = await control.saveUserSetting(
+    final result = await control.saveUserSetting(
       currentSetting: const UserSetting(),
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
       language: 'en',
     );
+    final setting = result.setting;
 
+    expect(result.synchronizedWithServer, isFalse);
     expect(setting.fontSize, 20);
     expect(setting.readingSpeed, 1.2);
     expect(setting.language, 'en');
@@ -106,11 +108,23 @@ void main() {
     control.dispose();
   });
 
-  test('saveUserSetting falls back to local cache when backend fails',
-      () async {
+  test('saveUserSetting reports successful server synchronization', () async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((http.Request request) async {
-      return http.Response('{"detail":"down"}', 500);
+      expect(request.method, 'PUT');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'user_hash': 'user-a',
+            'font_size': 20,
+            'reading_speed': 1.2,
+            'language': 'ko',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
     });
     final control = ManageUserSetting(
       baseUrl: 'http://localhost',
@@ -118,19 +132,48 @@ void main() {
       client: client,
     );
 
-    final setting = await control.saveUserSetting(
+    final result = await control.saveUserSetting(
       currentSetting: const UserSetting(),
-      fontSizeOption: 'small',
-      readingSpeedOption: 'slow',
+      fontSizeOption: 'large',
+      readingSpeedOption: 'fast',
       language: 'ko',
     );
 
-    expect(setting.fontSize, 14);
-    expect(setting.readingSpeed, 0.8);
-    expect(setting.language, 'ko');
-    expect(setting.userHash, 'user-a');
-    final preferences = await SharedPreferences.getInstance();
-    expect(preferences.getInt('user_setting_user-a_font_size'), 14);
+    expect(result.synchronizedWithServer, isTrue);
+    expect(result.setting.fontSizeOption, 'large');
+    expect(result.setting.readingSpeedOption, 'fast');
     control.dispose();
   });
+
+  test(
+    'saveUserSetting falls back to local cache when backend fails',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final client = MockClient((http.Request request) async {
+        return http.Response('{"detail":"down"}', 500);
+      });
+      final control = ManageUserSetting(
+        baseUrl: 'http://localhost',
+        userHash: 'user-a',
+        client: client,
+      );
+
+      final result = await control.saveUserSetting(
+        currentSetting: const UserSetting(),
+        fontSizeOption: 'small',
+        readingSpeedOption: 'slow',
+        language: 'ko',
+      );
+      final setting = result.setting;
+
+      expect(result.synchronizedWithServer, isFalse);
+      expect(setting.fontSize, 14);
+      expect(setting.readingSpeed, 0.8);
+      expect(setting.language, 'ko');
+      expect(setting.userHash, 'user-a');
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getInt('user_setting_user-a_font_size'), 14);
+      control.dispose();
+    },
+  );
 }
