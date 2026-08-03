@@ -72,13 +72,16 @@ class _PrescriptionAnalysisPreviewUIState
     final scale = widget.userSetting.contentTextScale;
     final pageCount = _pageCount;
     final recognitionNotice = widget.recognitionNotice.trim();
-    final hasNameCorrection = widget.medicationScheduleList.any(
-      (schedule) => schedule.hasNameCorrection,
+    final hasSupplementalRowContent = widget.medicationScheduleList.any(
+      (schedule) =>
+          schedule.hasNameCorrection ||
+          schedule.nameCorrectionSource == 'unverified' ||
+          (schedule.nameConfidence > 0 && schedule.nameConfidence < 0.75),
     );
     final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
     final effectiveTextScale = scale * systemTextScale;
     final medicationPageHeight = _resolveMedicationPageHeight(
-      hasNameCorrection: hasNameCorrection,
+      hasSupplementalRowContent: hasSupplementalRowContent,
       effectiveTextScale: effectiveTextScale,
     );
 
@@ -234,12 +237,12 @@ class _PrescriptionAnalysisPreviewUIState
   // - 수정 버튼, 신뢰도 배지, OCR 원문을 포함한 최대 네 행의 필요 높이를 계산한다.
   // - 글자 크기가 커진 경우에도 PageView 내부가 넘치지 않도록 여유 높이를 반영한다.
   // 매개변수:
-  // - hasNameCorrection: OCR 원문을 추가로 표시할 항목이 있는지 여부
+  // - hasSupplementalRowContent: 보정 원문이나 신뢰도 배지를 추가로 표시하는지 여부
   // - effectiveTextScale: 앱 설정과 시스템 접근성 설정을 합친 글자 배율
   // 반환값:
   // - OCR 결과 PageView에 적용할 높이
   double _resolveMedicationPageHeight({
-    required bool hasNameCorrection,
+    required bool hasSupplementalRowContent,
     required double effectiveTextScale,
   }) {
     final medicationCount = widget.medicationScheduleList.length;
@@ -248,15 +251,20 @@ class _PrescriptionAnalysisPreviewUIState
         : medicationCount > _itemsPerPage
         ? _itemsPerPage
         : medicationCount;
-    final rowHeight = hasNameCorrection ? 52.0 : 44.0;
+    final appliedScale = effectiveTextScale > 1 ? effectiveTextScale : 1.0;
+    final usesStackedRow = effectiveTextScale > 1.5;
+    final rowBaseHeight = usesStackedRow
+        ? (hasSupplementalRowContent ? 92.0 : 58.0)
+        : (hasSupplementalRowContent ? 52.0 : 44.0);
+    final rowHeight = rowBaseHeight * appliedScale;
     final dividerHeight = (visibleRowCount - 1) * 22.0;
     final requiredHeight = visibleRowCount * rowHeight + dividerHeight;
-    final minimumHeight = hasNameCorrection ? 238.0 : 206.0;
+    final minimumHeight =
+        (hasSupplementalRowContent ? 238.0 : 206.0) * appliedScale;
     final baseHeight = requiredHeight > minimumHeight
         ? requiredHeight
         : minimumHeight;
-    final appliedScale = effectiveTextScale > 1 ? effectiveTextScale : 1.0;
-    return baseHeight * appliedScale + 24;
+    return baseHeight + 24;
   }
 
   void _animateToPage(int index) {

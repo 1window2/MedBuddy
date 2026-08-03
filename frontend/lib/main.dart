@@ -6,11 +6,13 @@ import 'package:provider/provider.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
 import 'boundaries/authentication_ui_boundary.dart';
 import 'controls/authentication_control.dart';
+import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
 import 'services/auth_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
+import 'theme/medbuddy_text_scale.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'views/home_screen.dart';
 
@@ -269,6 +271,15 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             navigatorKey: _navigatorKey,
             title: 'MedBuddy',
             debugShowCheckedModeBanner: false,
+            builder: (context, child) {
+              final userSetting = session == null
+                  ? const UserSetting()
+                  : context.watch<MedBuddyViewModel>().userSetting;
+              return MedBuddyTextScale(
+                userSetting: userSetting,
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(
                 seedColor: MedBuddyColors.primary,

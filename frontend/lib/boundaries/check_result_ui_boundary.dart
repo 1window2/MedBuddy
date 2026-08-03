@@ -179,7 +179,7 @@ class _ResultHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 94,
+      constraints: const BoxConstraints(minHeight: 94),
       width: double.infinity,
       color: MedBuddyColors.topBar,
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
@@ -197,6 +197,8 @@ class _ResultHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
@@ -565,6 +567,7 @@ class _DoseInfoRow extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.primary, size: 21),
         const SizedBox(width: 10),
         Expanded(
+          flex: 3,
           child: Text(
             label,
             style: TextStyle(
@@ -575,19 +578,23 @@ class _DoseInfoRow extends StatelessWidget {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          decoration: BoxDecoration(
-            color: MedBuddyColors.mint,
-            borderRadius: MedBuddyRadii.pill,
-          ),
-          child: Text(
-            value,
-            style: TextStyle(
-              color: MedBuddyColors.primaryDark,
-              fontSize: 15 * scale,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+        Flexible(
+          flex: 2,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            decoration: BoxDecoration(
+              color: MedBuddyColors.mint,
+              borderRadius: MedBuddyRadii.pill,
+            ),
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MedBuddyColors.primaryDark,
+                fontSize: 15 * scale,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
           ),
         ),

@@ -67,7 +67,8 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'MEDbuddy',
+                      'MedBuddy',
+                      textScaler: TextScaler.noScaling,
                       style: TextStyle(
                         color: MedBuddyColors.primary,
                         fontSize: 38,

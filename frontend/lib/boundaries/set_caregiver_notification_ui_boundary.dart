@@ -48,8 +48,11 @@ class SetCaregiverNotificationUI {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Padding(
+                constraints: BoxConstraints(
+                  maxWidth: 440,
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+                ),
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

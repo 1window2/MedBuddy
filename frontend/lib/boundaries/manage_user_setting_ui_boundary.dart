@@ -1,8 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+
+typedef SettingPreviewSpeaker =
+    Future<void> Function(
+      String text,
+      UserSetting userSetting, {
+      void Function()? onComplete,
+    });
+typedef SettingPreviewStopper = Future<void> Function();
 
 // 파일명: manage_user_setting_ui_boundary.dart
 // 역할: 글씨 크기, 읽기 속도, 언어 설정 화면을 구성한다.
@@ -18,7 +29,9 @@ class ManageUserSettingUI extends StatefulWidget {
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
   final Future<void> Function()? onDeleteAccountRequested;
-  final Future<void> Function({
+  final SettingPreviewSpeaker? previewSpeaker;
+  final SettingPreviewStopper? previewStopper;
+  final Future<UserSettingSaveResult> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
@@ -32,6 +45,8 @@ class ManageUserSettingUI extends StatefulWidget {
     required this.onSettingSaveRequested,
     this.onSignOutRequested,
     this.onDeleteAccountRequested,
+    this.previewSpeaker,
+    this.previewStopper,
   });
 
   @override
@@ -43,6 +58,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _readingSpeed;
   late String _language;
   bool _isSaving = false;
+  bool _isPreviewSpeaking = false;
+  TTSService? _ownedTtsService;
 
   @override
   void initState() {
@@ -52,6 +69,18 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _language = widget.initialSetting.language == 'en'
         ? 'ko'
         : widget.initialSetting.language;
+    if (widget.previewSpeaker == null) {
+      _ownedTtsService = TTSService();
+    }
+  }
+
+  @override
+  void dispose() {
+    final ownedTtsService = _ownedTtsService;
+    if (ownedTtsService != null) {
+      unawaited(ownedTtsService.stop());
+    }
+    super.dispose();
   }
 
   @override
@@ -84,9 +113,21 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         const SizedBox(height: 22),
                         _OptionRow(
                           options: [
-                            _SettingOption(value: 'small', label: text.small),
-                            _SettingOption(value: 'medium', label: text.medium),
-                            _SettingOption(value: 'large', label: text.large),
+                            _SettingOption(
+                              value: 'small',
+                              label: text.small,
+                              labelFontSize: 14,
+                            ),
+                            _SettingOption(
+                              value: 'medium',
+                              label: text.medium,
+                              labelFontSize: 17,
+                            ),
+                            _SettingOption(
+                              value: 'large',
+                              label: text.large,
+                              labelFontSize: 23,
+                            ),
                           ],
                           selectedValue: _fontSize,
                           contentScale: contentScale,
@@ -105,7 +146,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           selectedValue: _readingSpeed,
                           contentScale: contentScale,
                           onSelected: (value) =>
-                              setState(() => _readingSpeed = value),
+                              unawaited(_selectReadingSpeed(value)),
                         ),
                         const SizedBox(height: 45),
                         _SettingTitle(text.languageTitle),
@@ -130,7 +171,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           text: text,
                           fontSize: _fontSize,
                           readingSpeed: _readingSpeed,
-                          language: _language,
+                          isSpeaking: _isPreviewSpeaking,
+                          onVoicePreviewRequested: _toggleVoicePreview,
                         ),
                         const SizedBox(height: 28),
                         ListenableBuilder(
@@ -192,6 +234,88 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
+  // 함수명: _selectReadingSpeed
+  // 함수역할:
+  // - 재생 중인 미리보기를 중지한 뒤 새 읽기 속도를 선택한다.
+  // 매개변수:
+  // - value: slow, medium, fast 중 선택한 속도
+  // 반환값:
+  // - 없음
+  Future<void> _selectReadingSpeed(String value) async {
+    await _stopVoicePreview();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _readingSpeed = value);
+  }
+
+  // 함수명: _toggleVoicePreview
+  // 함수역할:
+  // - 현재 설정된 언어와 읽기 속도로 예시 문장을 재생하거나 중지한다.
+  // 반환값:
+  // - 없음
+  Future<void> _toggleVoicePreview() async {
+    if (_isPreviewSpeaking) {
+      await _stopVoicePreview();
+      return;
+    }
+
+    final text = _SettingText(_language);
+    final previewSetting = UserSetting(
+      fontSize: UserSetting.fontSizeFromOption(_fontSize),
+      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+      language: _language,
+    );
+    setState(() => _isPreviewSpeaking = true);
+
+    try {
+      final speaker = widget.previewSpeaker ?? _ownedTtsService!.speak;
+      await speaker(
+        text.previewSentence,
+        previewSetting,
+        onComplete: _finishVoicePreview,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isPreviewSpeaking = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.previewFailed)));
+    }
+  }
+
+  // 함수명: _stopVoicePreview
+  // 함수역할:
+  // - 미리보기 음성을 중지하고 버튼 상태를 재생 가능 상태로 되돌린다.
+  // 반환값:
+  // - 없음
+  Future<void> _stopVoicePreview() async {
+    final stopper = widget.previewStopper;
+    if (stopper != null) {
+      await stopper();
+    } else {
+      await _ownedTtsService?.stop();
+    }
+    if (!mounted || !_isPreviewSpeaking) {
+      return;
+    }
+    setState(() => _isPreviewSpeaking = false);
+  }
+
+  // 함수명: _finishVoicePreview
+  // 함수역할:
+  // - TTS 엔진이 재생 완료를 알리면 미리보기 버튼 상태를 복구한다.
+  // 반환값:
+  // - 없음
+  void _finishVoicePreview() {
+    if (!mounted || !_isPreviewSpeaking) {
+      return;
+    }
+    setState(() => _isPreviewSpeaking = false);
+  }
+
   // 함수이름: _handleSaveRequested
   // 함수역할:
   // - 설정 저장 요청을 한 번만 실행하고 실패 시 버튼 상태를 복구한다.
@@ -205,7 +329,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _isSaving = true);
     final text = _SettingText(_language);
     try {
-      await widget.onSettingSaveRequested(
+      final saveResult = await widget.onSettingSaveRequested(
         fontSizeOption: _fontSize,
         readingSpeedOption: _readingSpeed,
         language: _language,
@@ -215,9 +339,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       }
 
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(text.saved)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saveResult.synchronizedWithServer
+                ? text.saved
+                : text.savedOnDeviceOnly,
+          ),
+        ),
+      );
       Navigator.maybePop(context);
     } catch (_) {
       if (!mounted) {
@@ -617,9 +747,12 @@ class _SegmentButton extends StatelessWidget {
                     option.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textScaler: option.labelFontSize == null
+                        ? null
+                        : TextScaler.noScaling,
                     style: TextStyle(
                       color: foregroundColor,
-                      fontSize: 16 * contentScale,
+                      fontSize: option.labelFontSize ?? 16 * contentScale,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0,
                     ),
@@ -652,20 +785,19 @@ class _PreviewPanel extends StatelessWidget {
   final _SettingText text;
   final String fontSize;
   final String readingSpeed;
-  final String language;
+  final bool isSpeaking;
+  final VoidCallback onVoicePreviewRequested;
 
   const _PreviewPanel({
     required this.text,
     required this.fontSize,
     required this.readingSpeed,
-    required this.language,
+    required this.isSpeaking,
+    required this.onVoicePreviewRequested,
   });
 
   @override
   Widget build(BuildContext context) {
-    final sampleText = language == 'ko'
-        ? '아스피린 100mg을 하루 3회 식후 30분에 복용하세요.'
-        : 'Take aspirin 100mg three times daily after meals.';
     final speedLabel = switch (readingSpeed) {
       'slow' => text.slowLabel,
       'fast' => text.fastLabel,
@@ -673,7 +805,7 @@ class _PreviewPanel extends StatelessWidget {
     };
     final textSize = switch (fontSize) {
       'small' => 13.0,
-      'large' => 18.0,
+      'large' => 20.0,
       _ => 15.0,
     };
 
@@ -705,7 +837,7 @@ class _PreviewPanel extends StatelessWidget {
               borderRadius: MedBuddyRadii.card,
             ),
             child: Text(
-              sampleText,
+              text.previewSentence,
               style: TextStyle(
                 color: MedBuddyColors.textMuted,
                 fontSize: textSize,
@@ -727,6 +859,17 @@ class _PreviewPanel extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onVoicePreviewRequested,
+              icon: Icon(
+                isSpeaking ? Icons.stop_rounded : Icons.volume_up_outlined,
+              ),
+              label: Text(isSpeaking ? text.stopPreview : text.listenPreview),
+            ),
+          ),
         ],
       ),
     );
@@ -738,12 +881,14 @@ class _SettingOption {
   final String label;
   final bool enabled;
   final String? supportText;
+  final double? labelFontSize;
 
   const _SettingOption({
     required this.value,
     required this.label,
     this.enabled = true,
     this.supportText,
+    this.labelFontSize,
   });
 }
 
@@ -764,13 +909,23 @@ class _SettingText {
   String get slow => isEnglish ? 'Slow' : '느리게';
   String get fast => isEnglish ? 'Fast' : '빠르게';
   String get preview => isEnglish ? 'Preview' : '미리보기';
+  String get previewSentence => isEnglish
+      ? 'Take aspirin 100mg three times daily after meals.'
+      : '아스피린 100mg을 하루 3회 식후 30분에 복용하세요.';
   String get readingSpeedLabel => isEnglish ? 'Reading speed' : '읽기 속도';
   String get slowLabel => isEnglish ? 'Slow' : '느림';
   String get normalLabel => isEnglish ? 'Normal' : '보통';
   String get fastLabel => isEnglish ? 'Fast' : '빠름';
+  String get listenPreview => isEnglish ? 'Listen' : '음성으로 들어보기';
+  String get stopPreview => isEnglish ? 'Stop' : '듣기 중지';
+  String get previewFailed =>
+      isEnglish ? 'Could not play the voice preview.' : '음성 미리보기를 재생하지 못했습니다.';
   String get save => isEnglish ? 'Save' : '저장하기';
   String get saving => isEnglish ? 'Saving...' : '저장 중...';
   String get saved => isEnglish ? 'Settings saved.' : '설정이 저장되었습니다.';
+  String get savedOnDeviceOnly => isEnglish
+      ? 'Saved on this device only. Save again after reconnecting to the server.'
+      : '기기에만 저장했습니다. 서버 연결 후 다시 저장해주세요.';
   String get saveFailed =>
       isEnglish ? 'Could not save settings.' : '설정을 저장하지 못했습니다.';
   String get signOut => isEnglish ? 'Sign out' : '로그아웃';

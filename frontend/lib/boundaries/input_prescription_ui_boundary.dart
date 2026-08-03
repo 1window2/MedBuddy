@@ -264,19 +264,24 @@ class _HomeHeader extends StatelessWidget {
         children: [
           const Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'MedBuddy',
-                  maxLines: 1,
-                  overflow: TextOverflow.visible,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'MedBuddy',
+                    maxLines: 1,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
                 SizedBox(height: 3),
@@ -284,6 +289,7 @@ class _HomeHeader extends StatelessWidget {
                   '건강한 복약 관리 도우미',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textScaler: TextScaler.noScaling,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,

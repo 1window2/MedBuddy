@@ -49,7 +49,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(42, 32, 42, 104),
+              padding: const EdgeInsets.fromLTRB(42, 32, 42, 140),
               children: [
                 _DetailHeader(
                   title: '약 상세정보',
@@ -146,10 +146,7 @@ class _DetailHeader extends StatelessWidget {
   final String title;
   final VoidCallback onBackRequested;
 
-  const _DetailHeader({
-    required this.title,
-    required this.onBackRequested,
-  });
+  const _DetailHeader({required this.title, required this.onBackRequested});
 
   @override
   Widget build(BuildContext context) {
@@ -239,9 +236,7 @@ class _MedicationHeroCard extends StatelessWidget {
 class _MedicationImageBox extends StatelessWidget {
   final String imageUrl;
 
-  const _MedicationImageBox({
-    required this.imageUrl,
-  });
+  const _MedicationImageBox({required this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -345,10 +340,7 @@ class _DetailValueTile extends StatelessWidget {
   final String value;
   final double scale;
 
-  const _DetailValueTile({
-    required this.value,
-    required this.scale,
-  });
+  const _DetailValueTile({required this.value, required this.scale});
 
   @override
   Widget build(BuildContext context) {
@@ -664,10 +656,7 @@ class _TtsButton extends StatelessWidget {
   final bool isSpeaking;
   final Future<void> Function() onPressed;
 
-  const _TtsButton({
-    required this.isSpeaking,
-    required this.onPressed,
-  });
+  const _TtsButton({required this.isSpeaking, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -679,9 +668,7 @@ class _TtsButton extends StatelessWidget {
         minimumSize: const Size.fromHeight(60),
         backgroundColor: MedBuddyColors.primary,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w900,
