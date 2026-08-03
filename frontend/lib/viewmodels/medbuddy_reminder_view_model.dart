@@ -113,7 +113,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _medicationReminderSettings[setting.slotKey] = setting;
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder is set for ${setting.timeLabel}.'
-          : '$slotTitle 알림이 ${setting.timeLabel}에 설정되었습니다.';
+          : '$slotTitle 알림이 ${setting.timeLabel}으로 설정되었습니다.';
       _notifyViewModelListeners();
       return true;
     } on StateError catch (error) {
@@ -166,7 +166,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
-          : '$slotTitle 알림을 해제했습니다.';
+          : '$slotTitle 알림이 해제되었습니다.';
       _notifyViewModelListeners();
       return true;
     } catch (_) {

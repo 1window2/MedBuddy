@@ -222,6 +222,17 @@ class MedicationSchedule {
     return correctionSource.isNotEmpty && correctionSource != 'unverified';
   }
 
+  bool get isNameReviewRequired {
+    final source = nameCorrectionSource.trim();
+    return source == 'unverified' ||
+        (nameConfidence > 0 && nameConfidence < 0.75);
+  }
+
+  bool get isNameConfirmed {
+    final source = nameCorrectionSource.trim();
+    return source == 'user_edit' || source == 'user_review';
+  }
+
   int get dailyFrequencyCount {
     return _readInt(intakeTime);
   }

@@ -4,17 +4,13 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 역할: 정렬 제어와 약품 행, 가이드 및 이미지 버튼 위젯을 구성한다.
 
 class _SavedMedicationSortControl extends StatelessWidget {
-  final _SavedMedicationSortMode sortMode;
   final _SavedMedicationSortDirection sortDirection;
   final _SavedMedicationText text;
-  final ValueChanged<_SavedMedicationSortMode> onModeChanged;
   final ValueChanged<_SavedMedicationSortDirection> onDirectionChanged;
 
   const _SavedMedicationSortControl({
-    required this.sortMode,
     required this.sortDirection,
     required this.text,
-    required this.onModeChanged,
     required this.onDirectionChanged,
   });
 
@@ -23,93 +19,30 @@ class _SavedMedicationSortControl extends StatelessWidget {
     final isAscending =
         sortDirection == _SavedMedicationSortDirection.ascending;
     return SizedBox(
+      width: 44,
       height: 44,
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: MedBuddyColors.outline),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildOption(
-                      mode: _SavedMedicationSortMode.registeredDate,
-                      label: text.sortByRegisteredDate,
-                    ),
-                  ),
-                  Container(width: 1, color: MedBuddyColors.outline),
-                  Expanded(
-                    child: _buildOption(
-                      mode: _SavedMedicationSortMode.medicationDate,
-                      label: text.sortByMedicationDate,
-                    ),
-                  ),
-                ],
-              ),
+      child: Semantics(
+        button: true,
+        label: isAscending ? text.ascendingOrder : text.descendingOrder,
+        child: IconButton(
+          key: const ValueKey('savedMedicationSortDirectionButton'),
+          tooltip: text.changeSortDirection,
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(44),
+            maximumSize: const Size.square(44),
+            foregroundColor: MedBuddyColors.primary,
+            backgroundColor: MedBuddyColors.successSurface,
+            side: const BorderSide(color: MedBuddyColors.successBorder),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
           ),
-          const SizedBox(width: 8),
-          Semantics(
-            button: true,
-            label: isAscending ? text.ascendingOrder : text.descendingOrder,
-            child: IconButton(
-              key: const ValueKey('savedMedicationSortDirectionButton'),
-              tooltip: text.changeSortDirection,
-              style: IconButton.styleFrom(
-                foregroundColor: MedBuddyColors.primary,
-                backgroundColor: MedBuddyColors.successSurface,
-                side: const BorderSide(color: MedBuddyColors.successBorder),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: _toggleDirection,
-              icon: Icon(
-                isAscending
-                    ? Icons.arrow_upward_rounded
-                    : Icons.arrow_downward_rounded,
-                size: 22,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 함수명: _buildOption
-  // 함수역할:
-  // - 선택 여부에 따라 색상을 달리하는 정렬 기준 버튼을 만든다.
-  Widget _buildOption({
-    required _SavedMedicationSortMode mode,
-    required String label,
-  }) {
-    final isSelected = sortMode == mode;
-    return Semantics(
-      button: true,
-      selected: isSelected,
-      label: label,
-      child: Material(
-        color: isSelected ? MedBuddyColors.primary : Colors.white,
-        child: InkWell(
-          onTap: () => onModeChanged(mode),
-          child: Center(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isSelected ? Colors.white : MedBuddyColors.textStrong,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
+          onPressed: _toggleDirection,
+          icon: Icon(
+            isAscending
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded,
+            size: 22,
           ),
         ),
       ),
@@ -125,6 +58,39 @@ class _SavedMedicationSortControl extends StatelessWidget {
         ? _SavedMedicationSortDirection.ascending
         : _SavedMedicationSortDirection.descending;
     onDirectionChanged(nextDirection);
+  }
+}
+
+// 클래스명: _SavedMedicationSortMenuItem
+// 역할: 정렬 설정 메뉴에서 정렬 기준과 현재 선택 상태를 함께 보여준다.
+class _SavedMedicationSortMenuItem extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+
+  const _SavedMedicationSortMenuItem({
+    required this.label,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          isSelected ? Icons.check_rounded : Icons.calendar_today_outlined,
+          color: isSelected ? MedBuddyColors.primary : MedBuddyColors.textMuted,
+          size: 20,
+        ),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }
 
