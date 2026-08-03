@@ -72,11 +72,14 @@ class _PrescriptionAnalysisPreviewUIState
     final scale = widget.userSetting.contentTextScale;
     final pageCount = _pageCount;
     final recognitionNotice = widget.recognitionNotice.trim();
+    final hasReviewRequired = widget.medicationScheduleList.any(
+      (schedule) => schedule.isNameReviewRequired,
+    );
     final hasSupplementalRowContent = widget.medicationScheduleList.any(
       (schedule) =>
           schedule.hasNameCorrection ||
-          schedule.nameCorrectionSource == 'unverified' ||
-          (schedule.nameConfidence > 0 && schedule.nameConfidence < 0.75),
+          schedule.isNameReviewRequired ||
+          schedule.isNameConfirmed,
     );
     final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
     final effectiveTextScale = scale * systemTextScale;
@@ -88,7 +91,9 @@ class _PrescriptionAnalysisPreviewUIState
     return Scaffold(
       backgroundColor: Colors.white,
       bottomNavigationBar: _AnalysisBottomBar(
-        label: text.analyze,
+        label: hasReviewRequired
+            ? text.reviewBeforeAnalyze
+            : text.confirmAndAnalyze,
         scale: scale,
         onPressed: widget.onAnalysisRequested,
       ),

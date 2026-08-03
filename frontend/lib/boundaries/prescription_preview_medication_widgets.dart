@@ -62,15 +62,11 @@ class _PreviewMedicationRow extends StatelessWidget {
     final frequency = schedule.intakeTime.trim().isEmpty
         ? previewText.noInformation
         : schedule.intakeTime.trim();
-    final isUserEdited = schedule.nameCorrectionSource == 'user_edit';
-    final needsReview =
-        schedule.nameCorrectionSource == 'unverified' ||
-        (schedule.nameConfidence > 0 && schedule.nameConfidence < 0.75);
-    final correctionBadge = isUserEdited
-        ? _CorrectionBadge(label: previewText.userEdited, scale: scale)
+    final correctionBadge = schedule.isNameConfirmed
+        ? _CorrectionBadge(label: previewText.confirmed, scale: scale)
         : schedule.hasNameCorrection
         ? _CorrectionBadge(label: previewText.corrected, scale: scale)
-        : needsReview
+        : schedule.isNameReviewRequired
         ? _CorrectionBadge(
             label: previewText.reviewNeeded,
             scale: scale,
@@ -236,6 +232,7 @@ class _MedicationScheduleEditDialogState
   late final TextEditingController _prescriptionDateController;
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
+  bool _restoreOriginalName = false;
 
   @override
   void initState() {
@@ -305,6 +302,16 @@ class _MedicationScheduleEditDialogState
                     ? text.medicationNameRequired
                     : null,
               ),
+              if (_hasRestorableOriginalName)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const Key('ocr-restore-original-name'),
+                    onPressed: _restoreOriginalMedicationName,
+                    icon: const Icon(Icons.restore_rounded),
+                    label: Text(text.restoreOriginalName),
+                  ),
+                ),
               TextFormField(
                 key: const Key('ocr-edit-prescription-date'),
                 controller: _prescriptionDateController,
@@ -485,10 +492,16 @@ class _MedicationScheduleEditDialogState
       return;
     }
 
+    final medicationName = _nameController.text.trim();
+    final originalMedicationName = widget.medicationSchedule.rawMedicationName
+        .trim();
+    final restoresOriginalName =
+        _restoreOriginalName && medicationName == originalMedicationName;
+
     Navigator.pop(
       context,
       widget.medicationSchedule.copyWith(
-        medicationName: _nameController.text.trim(),
+        medicationName: medicationName,
         dosage: _dosageController.text.trim(),
         intakeTime: _frequencyController.text.trim(),
         medicationTime: int.tryParse(_daysController.text.trim()) ?? 0,
@@ -496,8 +509,34 @@ class _MedicationScheduleEditDialogState
         scheduleSlotKeys: medicationScheduleSlotKeys
             .where(_selectedSlotKeys.contains)
             .toList(growable: false),
+        rawMedicationName: restoresOriginalName
+            ? ''
+            : widget.medicationSchedule.rawMedicationName,
+        nameConfidence: restoresOriginalName ? 0 : 1,
+        nameCorrectionSource: restoresOriginalName
+            ? 'ocr_reset'
+            : 'user_review',
       ),
     );
+  }
+
+  bool get _hasRestorableOriginalName {
+    final originalName = widget.medicationSchedule.rawMedicationName.trim();
+    return originalName.isNotEmpty &&
+        originalName != widget.medicationSchedule.medicationName.trim();
+  }
+
+  // 함수명: _restoreOriginalMedicationName
+  // 역할:
+  // - 자동 보정 또는 사용자 수정 전의 최초 OCR 약명으로 입력값을 되돌린다.
+  void _restoreOriginalMedicationName() {
+    setState(() {
+      _nameController.text = widget.medicationSchedule.rawMedicationName.trim();
+      _nameController.selection = TextSelection.collapsed(
+        offset: _nameController.text.length,
+      );
+      _restoreOriginalName = true;
+    });
   }
 
   DateTime? _parseDate(String value) {
@@ -556,9 +595,13 @@ class _PreviewText {
 
   String get back => isEnglish ? 'Back' : '뒤로가기';
   String get analyze => isEnglish ? 'Analyze' : '분석하기';
+  String get reviewBeforeAnalyze =>
+      isEnglish ? 'Review and analyze' : '검토 후 분석하기';
+  String get confirmAndAnalyze =>
+      isEnglish ? 'Confirm and analyze' : '검토 완료 및 분석하기';
   String get noInformation => isEnglish ? 'No info' : '정보 없음';
   String get corrected => isEnglish ? 'Corrected' : '보정';
-  String get userEdited => isEnglish ? 'Edited' : '사용자 수정';
+  String get confirmed => isEnglish ? 'Confirmed' : '확인 완료';
   String get reviewNeeded => isEnglish ? 'Review' : '검토 필요';
   String get edit => isEnglish ? 'Edit OCR result' : 'OCR 인식 결과 수정';
   String get editTitle => isEnglish ? 'Edit OCR result' : 'OCR 인식 결과 수정';
@@ -568,6 +611,8 @@ class _PreviewText {
   String get totalDays => isEnglish ? 'Total days' : '총 투약일';
   String get cancel => isEnglish ? 'Cancel' : '취소';
   String get apply => isEnglish ? 'Apply' : '적용';
+  String get restoreOriginalName =>
+      isEnglish ? 'Restore the original OCR name' : '최초 인식 약명으로 되돌리기';
   String get medicationNameRequired =>
       isEnglish ? 'Enter a medication name.' : '약 이름을 입력해주세요.';
   String get prescriptionDate => isEnglish ? 'Dispensing date' : '조제일자';
