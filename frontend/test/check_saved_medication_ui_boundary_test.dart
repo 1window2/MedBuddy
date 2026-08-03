@@ -186,13 +186,32 @@ void main() {
 
       final newestRegistration = find.text('등록최신약');
       final newestMedicationDate = find.text('복용최신약');
-      expect(find.text('등록일자순'), findsOneWidget);
-      expect(find.text('복용날짜순'), findsOneWidget);
+      expect(find.byTooltip('정렬 기준 설정'), findsOneWidget);
+      expect(find.text('등록일자순'), findsNothing);
+      expect(find.text('복용날짜순'), findsNothing);
       expect(
         tester.getTopLeft(newestRegistration).dy,
         lessThan(tester.getTopLeft(newestMedicationDate).dy),
       );
+      final closeCenter = tester.getCenter(
+        find.byKey(const ValueKey('savedMedicationCloseButton')),
+      );
+      final sortModeCenter = tester.getCenter(
+        find.byKey(const ValueKey('savedMedicationSortModeButton')),
+      );
+      final filterCenter = tester.getCenter(find.text('복용 중'));
+      final sortDirectionCenter = tester.getCenter(
+        find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
+      );
+      expect((closeCenter.dy - sortModeCenter.dy).abs(), lessThan(1));
+      expect((filterCenter.dy - sortDirectionCenter.dy).abs(), lessThan(1));
 
+      await tester.tap(
+        find.byKey(const ValueKey('savedMedicationSortModeButton')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('등록일자순'), findsOneWidget);
+      expect(find.text('복용날짜순'), findsOneWidget);
       await tester.tap(find.text('복용날짜순'));
       await tester.pumpAndSettle();
 
