@@ -45,23 +45,21 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         self.db = db
         self.push_boundary = push_boundary
 
-    # 함수명: notifyDoseCompleted
+    # 함수명: notifySlotCompleted
     # 역할:
-    # - 새로 완료된 복약 시간대를 구독한 보호자 기기에 알린다.
+    # - 모든 약이 새로 완료된 복약 시간대를 구독한 보호자 기기에 알린다.
     # 매개변수:
     # - patient_hash: 복약을 완료한 환자의 식별 hash
     # - slot_key: 완료된 복약 시간대
-    # - medication_name: 알림 본문에 표시할 약 이름
     # 반환값:
     # - 없음
-    def notifyDoseCompleted(
+    def notifySlotCompleted(
         self,
         *,
         patient_hash: str,
         slot_key: str,
-        medication_name: str,
     ) -> None:
-        caregiver_hashes = self._caregivers_for_completed_dose(
+        caregiver_hashes = self._caregivers_for_completed_slot(
             patient_hash,
             slot_key,
         )
@@ -79,10 +77,10 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                 continue
             result = self.push_boundary.send_notification(
                 tokens=[str(row.token) for row in token_rows],
-                title="환자 복약 확인",
-                body=f"{slot_name} 복약에서 {medication_name}을(를) 체크했습니다.",
+                title="환자 복약 완료",
+                body=f"환자가 {slot_name}에 복용할 약을 모두 복용했습니다.",
                 data={
-                    "type": "caregiver_dose_completed",
+                    "type": "caregiver_slot_completed",
                     "patient_hash": patient_hash,
                     "slot_key": slot_key,
                 },
@@ -90,12 +88,12 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             if result.invalid_tokens:
                 self._disable_invalid_tokens(result.invalid_tokens)
 
-    # 함수명: _caregivers_for_completed_dose
+    # 함수명: _caregivers_for_completed_slot
     # 역할:
     # - 환자와 연결됐으며 해당 시간대 즉시 알림을 선택한 보호자만 찾는다.
     # 반환값:
     # - 알림을 받을 보호자 hash 목록
-    def _caregivers_for_completed_dose(
+    def _caregivers_for_completed_slot(
         self,
         patient_hash: str,
         slot_key: str,

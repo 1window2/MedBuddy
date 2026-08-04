@@ -148,17 +148,15 @@ class PushNotificationControlTest(unittest.TestCase):
         push_boundary = _RecordingPushBoundary(invalid_tokens=(invalid_token,))
         control = DispatchCaregiverAlert(self.db, push_boundary)
 
-        control.notifyDoseCompleted(
+        control.notifySlotCompleted(
             patient_hash="patient-a",
             slot_key="lunch",
-            medication_name="테스트정",
         )
         self.assertEqual(push_boundary.calls, [])
 
-        control.notifyDoseCompleted(
+        control.notifySlotCompleted(
             patient_hash="patient-a",
             slot_key="morning",
-            medication_name="테스트정",
         )
 
         self.assertEqual(len(push_boundary.calls), 1)
@@ -169,10 +167,15 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(
             push_boundary.calls[0]["data"],
             {
-                "type": "caregiver_dose_completed",
+                "type": "caregiver_slot_completed",
                 "patient_hash": "patient-a",
                 "slot_key": "morning",
             },
+        )
+        self.assertEqual(push_boundary.calls[0]["title"], "환자 복약 완료")
+        self.assertEqual(
+            push_boundary.calls[0]["body"],
+            "환자가 아침에 복용할 약을 모두 복용했습니다.",
         )
         invalid_row = (
             self.db.query(_DevicePushToken)

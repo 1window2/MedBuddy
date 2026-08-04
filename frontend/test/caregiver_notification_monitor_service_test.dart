@@ -26,9 +26,12 @@ void main() {
     expect(alerts, isEmpty);
   });
 
-  test('환자가 새로 체크한 시간대는 보호자에게 한 번만 알린다', () async {
+  test('시간대의 모든 약을 완료하면 보호자에게 한 번만 알린다', () async {
     final alerts = <_AlertRecord>[];
-    var schedules = [_schedule(morningCompleted: false)];
+    var schedules = [
+      _schedule(medicationID: 'medication-1', morningCompleted: false),
+      _schedule(medicationID: 'medication-2', morningCompleted: false),
+    ];
     final monitor = _buildMonitor(
       mode: CaregiverNotificationMode.doseCompleted,
       scheduleLoader: () async => schedules,
@@ -37,14 +40,23 @@ void main() {
     addTearDown(monitor.dispose);
 
     await monitor.checkNow();
-    schedules = [_schedule(morningCompleted: true)];
+    schedules = [
+      _schedule(medicationID: 'medication-1', morningCompleted: true),
+      _schedule(medicationID: 'medication-2', morningCompleted: false),
+    ];
+    await monitor.checkNow();
+    expect(alerts, isEmpty);
+
+    schedules = [
+      _schedule(medicationID: 'medication-1', morningCompleted: true),
+      _schedule(medicationID: 'medication-2', morningCompleted: true),
+    ];
     await monitor.checkNow();
     await monitor.checkNow();
 
     expect(alerts, hasLength(1));
-    expect(alerts.single.title, '환자 복약 확인');
-    expect(alerts.single.body, contains('아침'));
-    expect(alerts.single.body, contains('테스트정'));
+    expect(alerts.single.title, '환자 복약 완료');
+    expect(alerts.single.body, '환자가 아침에 복용할 약을 모두 복용했습니다.');
   });
 
   test('마감 시각 이후 미복용 일정은 같은 날 한 번만 알린다', () async {
@@ -160,11 +172,12 @@ CaregiverNotificationMonitorService _buildMonitor({
 }
 
 MedicationSchedule _schedule({
+  String medicationID = 'medication-1',
   required bool morningCompleted,
   bool eveningCompleted = false,
 }) {
   return MedicationSchedule(
-    medicationID: 'medication-1',
+    medicationID: medicationID,
     medicationName: '테스트정',
     dosage: '1',
     intakeTime: '1일 3회',
