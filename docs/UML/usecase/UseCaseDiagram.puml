@@ -1,0 +1,154 @@
+@startuml
+left to right direction
+
+actor "사용자" as U
+actor "환자" as P
+actor "보호자" as C
+
+actor "인증 API Client" as ApiClient
+
+actor "파이어베이스 인증" as FirebaseAuth
+actor "파이어베이스 클라우드 메시징" as FCM
+actor "구글 엠엘 키트 문자 인식" as MLKit
+actor "제미나이 인공지능 서비스" as Gemini
+actor "식품의약품안전처\n공공데이터 서비스" as MFDS
+actor "기기 카메라 및 사진첩" as Camera
+actor "운영체제 로컬 알림 서비스" as LocalNotification
+actor "운영체제 음성 합성 서비스" as TTS
+actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
+actor "운영 실행 환경" as Ops
+actor "시간 트리거" as Timer
+
+rectangle "메드버디" {
+    package "처방전 및 약 정보" {
+        usecase "UC-01\n처방전 이미지 입력 및 인식" as UC1
+        usecase "UC-02\n처방 약 분석 결과 확인" as UC2
+        usecase "UC-09\n약 상세 정보 확인" as UC9
+        usecase "UC-11\n음성 안내 재생" as UC11
+        usecase "UC-17\n문자 인식 결과 수정" as UC17
+        usecase "UC-18\n분석 약 저장" as UC18
+        usecase "UC-19\n처방 변경 비교 확인" as UC19
+        usecase "UC-20\n낱알 약 후보 식별" as UC20
+        usecase "UC-21\n가이드 기반 처방전 촬영" as UC21
+    }
+
+    package "복약 관리" {
+        usecase "UC-03U\n홈 오늘 복약 요약 확인" as UC3U
+        usecase "UC-03P\n환자 오늘 복약 일정 확인" as UC3P
+        usecase "UC-04P\n환자 저장 약 관리" as UC4P
+        usecase "UC-05\n저장 약 삭제" as UC5
+        usecase "UC-08\n시간대별 복약 완료 및 취소" as UC8
+        usecase "UC-10\n건강 추천 확인" as UC10
+        usecase "UC-12\n환자 복약 알림 설정" as UC12
+    }
+
+    package "환자 및 보호자 관리" {
+        usecase "UC-04C\n연결 환자의 복약 현황 확인" as UC4C
+        usecase "UC-06\n환자-보호자 연결" as UC6
+        usecase "UC-07\n환자-보호자 연결 해제" as UC7
+        usecase "UC-13\n보호자 복약 완료 알림 수신" as UC13
+        usecase "UC-22\n보호자 미복약 알림 정책\n설정 및 감지" as UC22
+    }
+
+    package "인증 및 사용자 설정" {
+        usecase "UC-14\n사용자 설정 관리" as UC14
+        usecase "UC-15\n인증 및 세션 생성" as UC15
+        usecase "UC-16\n계정 생명주기 관리" as UC16
+        usecase "UC-16A\n계정 데이터 내보내기" as UC16A
+    }
+
+    package "운영 및 유지관리" {
+        usecase "UC-23\n의약품 목록 동기화" as UC23
+        usecase "UC-24\n데이터 생명주기 정리" as UC24
+    }
+}
+
+P --|> U
+C --|> U
+
+note top of U
+환자와 보호자는 고정 계정 유형이 아니라
+데이터 소유권과 활성 연결에 따라 결정되는 역할이다.
+end note
+
+U -- UC1
+U -- UC2
+U -- UC3U
+U -- UC9
+U -- UC11
+U -- UC14
+U -- UC15
+U -- UC16
+U -- UC17
+U -- UC18
+U -- UC19
+U -- UC20
+U -- UC21
+
+P -- UC3P
+P -- UC4P
+P -- UC5
+P -- UC6
+P -- UC7
+P -- UC8
+P -- UC10
+P -- UC12
+
+C -- UC4C
+C -- UC6
+C -- UC7
+C -- UC9
+C -- UC13
+C -- UC22
+
+FirebaseAuth -- UC14
+FirebaseAuth -- UC15
+FirebaseAuth -- UC16
+
+FCM -- UC13
+
+MLKit -- UC1
+
+Gemini -- UC1
+Gemini -- UC2
+Gemini -- UC10
+Gemini -- UC20
+
+MFDS -- UC2
+MFDS -- UC20
+MFDS -- UC23
+
+Camera -- UC1
+Camera -- UC20
+Camera -- UC21
+
+LocalNotification -- UC12
+LocalNotification -- UC22
+
+TTS -- UC11
+TTS -- UC14
+
+Workmanager -- UC22
+
+Ops -- UC23
+Timer -- UC24
+
+ApiClient -- UC16A
+
+UC4P <.. UC5 : <<extend>>
+UC6 <.. UC7 : <<extend>>
+UC3P <.. UC8 : <<extend>>
+UC3P <.. UC9 : <<extend>>
+UC4P <.. UC9 : <<extend>>
+UC4C <.. UC9 : <<extend>>
+UC3P <.. UC10 : <<extend>>
+UC9 <.. UC11 : <<extend>>
+UC3P <.. UC12 : <<extend>>
+UC8 <.. UC13 : <<extend>>
+UC14 <.. UC16 : <<extend>>
+UC1 <.. UC17 : <<extend>>
+UC2 <.. UC18 : <<extend>>
+UC1 <.. UC21 : <<extend>>
+UC4C <.. UC22 : <<extend>>
+
+@enduml
