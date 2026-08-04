@@ -379,12 +379,13 @@ class CaregiverNotificationMonitorService {
     if (monitorCompletionTransitions &&
         setting.mode == CaregiverNotificationMode.doseCompleted &&
         isComparableSnapshot) {
-      await _notifyCompletedDoses(
+      await _notifyCompletedSlot(
+        preferences: preferences,
+        scope: scope,
         patientHash: patientHash,
         slotKey: slotKey,
         previousSnapshot: previousSnapshot,
         currentSnapshot: currentSnapshot,
-        schedules: schedules,
         dateKey: dateKey,
       );
     }
@@ -409,28 +410,30 @@ class CaregiverNotificationMonitorService {
     );
   }
 
-  Future<void> _notifyCompletedDoses({
+  // 함수명: _notifyCompletedSlot
+  // 역할:
+  // - 시간대에 포함된 약이 하나 이상이고 모두 완료된 순간 보호자에게 한 번만 알린다.
+  // - 약별 완료 변화는 알리지 않아 같은 시간대의 알림이 여러 번 울리지 않게 한다.
+  Future<void> _notifyCompletedSlot({
+    required SharedPreferences preferences,
+    required String scope,
     required String patientHash,
     required String slotKey,
     required Map<String, bool> previousSnapshot,
     required Map<String, bool> currentSnapshot,
-    required List<MedicationSchedule> schedules,
     required String dateKey,
   }) async {
-    final completedNames = <String>[];
-    for (final schedule in schedules) {
-      if (!schedule.slotKeys.contains(slotKey)) {
-        continue;
-      }
-      final entryKey = _scheduleEntryKey(schedule, slotKey);
-      final wasCompleted = previousSnapshot[entryKey] ?? false;
-      final isCompleted = currentSnapshot[entryKey] ?? false;
-      if (!wasCompleted && isCompleted) {
-        completedNames.add(schedule.displayName);
-      }
+    final wasSlotCompleted =
+        previousSnapshot.isNotEmpty &&
+        previousSnapshot.values.every((value) => value);
+    final isSlotCompleted =
+        currentSnapshot.isNotEmpty &&
+        currentSnapshot.values.every((value) => value);
+    if (wasSlotCompleted || !isSlotCompleted) {
+      return;
     }
-
-    if (completedNames.isEmpty) {
+    final noticeSignature = '$dateKey|$slotKey';
+    if (preferences.getString('$scope.completion_notice') == noticeSignature) {
       return;
     }
     final permissionGranted = await _ensureNotificationPermission();
@@ -438,14 +441,12 @@ class CaregiverNotificationMonitorService {
       return;
     }
     final slotName = _slotName(slotKey);
-    final medicationSummary = completedNames.length == 1
-        ? completedNames.first
-        : '${completedNames.first} 외 ${completedNames.length - 1}개';
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
-      title: '환자 복약 확인',
-      body: '$slotName 복약으로 $medicationSummary을(를) 체크했습니다.',
+      title: '환자 복약 완료',
+      body: '환자가 $slotName에 복용할 약을 모두 복용했습니다.',
     );
+    await preferences.setString('$scope.completion_notice', noticeSignature);
   }
 
   Future<void> _notifyMissedDeadline({

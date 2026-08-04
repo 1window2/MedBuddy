@@ -116,9 +116,10 @@ class CheckSchedule:
         today = application_today()
         slot_keys = self._slot_keys_for_medication(medication)
         target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
-        previous_slot_statuses = self._slot_statuses_for_medication(
-            medication,
+        previous_slot_completion_states = self._slot_completion_states_for_patient(
+            normalized_patient_hash,
             today,
+            target_slot_keys,
         )
 
         try:
@@ -158,12 +159,16 @@ class CheckSchedule:
                 detail="Medication status could not be updated.",
             ) from exc
 
-        self._dispatch_new_completion_events(
-            medication=medication,
+        current_slot_completion_states = self._slot_completion_states_for_patient(
+            normalized_patient_hash,
+            today,
+            target_slot_keys,
+        )
+        self._dispatch_new_slot_completion_events(
             patient_hash=normalized_patient_hash,
             target_slot_keys=target_slot_keys,
-            previous_slot_statuses=previous_slot_statuses,
-            medication_status=medication_status,
+            previous_slot_completion_states=previous_slot_completion_states,
+            current_slot_completion_states=current_slot_completion_states,
         )
         return {
             "success": True,
@@ -171,43 +176,105 @@ class CheckSchedule:
             "data": self._to_schedule_dict(medication, today),
         }
 
-    # 함수명: _dispatch_new_completion_events
+    # 함수명: _dispatch_new_slot_completion_events
     # 역할:
-    # - 미복용에서 복용 완료로 실제 변경된 시간대만 후속 알림 처리기에 전달한다.
+    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 후속 처리기에 전달한다.
     # - 알림 장애가 환자의 복약 체크 저장을 되돌리지 않도록 예외를 격리한다.
     # 매개변수:
-    # - medication: 저장이 완료된 복약 정보
     # - patient_hash: 환자 소유권 hash
     # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
-    # - previous_slot_statuses: 변경 전 시간대별 복약 상태
-    # - medication_status: 요청된 새 복약 상태
+    # - previous_slot_completion_states: 변경 전 시간대별 전체 완료 상태
+    # - current_slot_completion_states: 변경 후 시간대별 전체 완료 상태
     # 반환값:
     # - 없음
-    def _dispatch_new_completion_events(
+    def _dispatch_new_slot_completion_events(
         self,
         *,
-        medication: _SavedMedication,
         patient_hash: str,
         target_slot_keys: list[str],
-        previous_slot_statuses: dict[str, bool],
-        medication_status: bool,
+        previous_slot_completion_states: dict[str, bool],
+        current_slot_completion_states: dict[str, bool],
     ) -> None:
-        if self.completion_event_boundary is None or not medication_status:
+        if self.completion_event_boundary is None:
             return
         for target_slot_key in target_slot_keys:
-            if previous_slot_statuses.get(target_slot_key, False):
+            was_completed = previous_slot_completion_states.get(
+                target_slot_key,
+                False,
+            )
+            is_completed = current_slot_completion_states.get(
+                target_slot_key,
+                False,
+            )
+            if was_completed or not is_completed:
                 continue
             try:
-                self.completion_event_boundary.notifyDoseCompleted(
+                self.completion_event_boundary.notifySlotCompleted(
                     patient_hash=patient_hash,
                     slot_key=target_slot_key,
-                    medication_name=medication.item_name or "약",
                 )
             except Exception as exc:
                 logger.warning(
                     "Caregiver push dispatch failed after medication commit: %s",
                     type(exc).__name__,
                 )
+
+    # 함수명: _slot_completion_states_for_patient
+    # 역할:
+    # - 환자의 오늘 활성 약을 기준으로 각 시간대가 모두 완료되었는지 계산한다.
+    # - 대상 약이 하나도 없는 시간대는 완료로 간주하지 않는다.
+    # 매개변수:
+    # - patient_hash: 환자 소유권 hash
+    # - schedule_date: 완료 상태를 확인할 날짜
+    # - slot_keys: 확인할 복약 시간대 목록
+    # 반환값:
+    # - 시간대 키별 전체 완료 여부
+    def _slot_completion_states_for_patient(
+        self,
+        patient_hash: str,
+        schedule_date: date,
+        slot_keys: list[str],
+    ) -> dict[str, bool]:
+        medications = (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == patient_hash)
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+        active_medications = [
+            medication
+            for medication in medications
+            if self._is_active_today(medication, schedule_date)
+        ]
+        completion_rows_by_medication_id = self._completion_rows_by_medication_id(
+            active_medications,
+            patient_hash,
+            schedule_date,
+        )
+        medication_slot_keys = {
+            int(medication.id): self._slot_keys_for_medication(medication)
+            for medication in active_medications
+            if medication.id is not None
+        }
+
+        completion_states: dict[str, bool] = {}
+        for current_slot_key in slot_keys:
+            slot_medications = [
+                medication
+                for medication in active_medications
+                if medication.id is not None
+                and current_slot_key
+                in medication_slot_keys.get(int(medication.id), [])
+            ]
+            completion_states[current_slot_key] = bool(slot_medications) and all(
+                self._slot_statuses_for_medication(
+                    medication,
+                    schedule_date,
+                    completion_rows_by_medication_id.get(int(medication.id), []),
+                ).get(current_slot_key, False)
+                for medication in slot_medications
+            )
+        return completion_states
 
     # Function Name: _get_existing_medication
     # Description:

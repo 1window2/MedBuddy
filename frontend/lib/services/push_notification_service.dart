@@ -123,11 +123,15 @@ class PushNotificationService {
   // 역할:
   // - 앱 전경에서 받은 보호자 복약 알림을 로컬 알림 형태로 표시한다.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
-    if (message.data['type'] != 'caregiver_dose_completed') {
+    const supportedTypes = {
+      'caregiver_slot_completed',
+      'caregiver_dose_completed',
+    };
+    if (!supportedTypes.contains(message.data['type'])) {
       return;
     }
     final notification = message.notification;
-    final title = notification?.title ?? '환자 복약 확인';
+    final title = notification?.title ?? '환자 복약 완료';
     final body = notification?.body ?? '연동된 환자의 복약 상태가 변경되었습니다.';
     final source = message.messageId ?? '$title|$body';
     await NotificationService.instance.showCaregiverAlert(

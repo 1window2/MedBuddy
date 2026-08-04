@@ -33,18 +33,16 @@ class _CompletionEventRecorder:
     def __init__(self) -> None:
         self.events: list[dict[str, str]] = []
 
-    def notifyDoseCompleted(
+    def notifySlotCompleted(
         self,
         *,
         patient_hash: str,
         slot_key: str,
-        medication_name: str,
     ) -> None:
         self.events.append(
             {
                 "patient_hash": patient_hash,
                 "slot_key": slot_key,
-                "medication_name": medication_name,
             }
         )
 
@@ -189,10 +187,17 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
 
-    def test_completion_event_is_emitted_only_on_new_completed_transition(
+    def test_completion_event_is_emitted_only_when_slot_becomes_fully_completed(
         self,
     ) -> None:
-        medication = self._saved_medication(patient_hash="patient-a")
+        first_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="first-tablet",
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="second-tablet",
+        )
         event_recorder = _CompletionEventRecorder()
         control = CheckSchedule(
             self.db,
@@ -200,20 +205,22 @@ class CheckScheduleTest(unittest.TestCase):
         )
 
         control.updateMedicationStatus(
-            medication.id,
+            first_medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+        self.assertEqual(event_recorder.events, [])
+
+        control.updateMedicationStatus(
+            second_medication.id,
             True,
             "patient-a",
             slot_key="morning",
         )
         control.updateMedicationStatus(
-            medication.id,
+            second_medication.id,
             True,
-            "patient-a",
-            slot_key="morning",
-        )
-        control.updateMedicationStatus(
-            medication.id,
-            False,
             "patient-a",
             slot_key="morning",
         )
@@ -224,7 +231,6 @@ class CheckScheduleTest(unittest.TestCase):
                 {
                     "patient_hash": "patient-a",
                     "slot_key": "morning",
-                    "medication_name": "test-tablet",
                 }
             ],
         )
