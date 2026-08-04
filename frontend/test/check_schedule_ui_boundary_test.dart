@@ -64,6 +64,38 @@ class _ActiveCheckSchedule extends CheckSchedule {
   }
 }
 
+// 클래스명: _CompletableCheckSchedule
+// 역할: 복약 완료 안내와 실행 취소 SnackBar의 표시 시간을 검증할 일정을 제공한다.
+class _CompletableCheckSchedule extends CheckSchedule {
+  bool _completed = false;
+
+  MedicationSchedule get _schedule => MedicationSchedule(
+    medicationID: 'completion-tablet',
+    medicationName: '테스트정',
+    dosage: '1',
+    intakeTime: '1회',
+    medicationTime: 1,
+    scheduleSlotKeys: const ['morning'],
+    slotStatuses: {'morning': _completed},
+    medicationStatus: _completed,
+  );
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    return [_schedule];
+  }
+
+  @override
+  Future<MedicationSchedule> updateMedicationStatus(
+    String medicationId,
+    bool medicationStatus, {
+    String? slotKey,
+  }) async {
+    _completed = medicationStatus;
+    return _schedule;
+  }
+}
+
 // 클래스명: _VisualScheduleCheckSchedule
 // 역할: 투약 단위와 약품 이미지 표시 테스트용 일정을 제공한다.
 class _VisualScheduleCheckSchedule extends CheckSchedule {
@@ -349,6 +381,42 @@ void main() {
     await tester.tap(morningReminder);
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('아침 알림이 해제되었습니다.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('복약 완료 안내는 접근성 모드에서도 5초 뒤 자동으로 닫힌다', (tester) async {
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _CompletableCheckSchedule(),
+      setNotification: _EmptySetNotification(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(accessibleNavigation: true),
+              child: child!,
+            );
+          },
+          home: const CheckScheduleUI(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

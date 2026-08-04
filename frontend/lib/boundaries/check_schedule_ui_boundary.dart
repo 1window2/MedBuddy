@@ -27,6 +27,7 @@ class CheckScheduleUI extends StatefulWidget {
 }
 
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
+  static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
     _ScheduleSlotDefinition(
       key: 'morning',
@@ -57,6 +58,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       icon: Icons.nightlight_round,
     ),
   ];
+
+  int _completionSnackBarGeneration = 0;
 
   @override
   void initState() {
@@ -174,6 +177,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
     if (!success) {
+      _completionSnackBarGeneration += 1;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(text.statusUpdateFailed),
@@ -184,6 +188,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     }
 
     final messenger = ScaffoldMessenger.of(context);
+    _completionSnackBarGeneration += 1;
     messenger.hideCurrentSnackBar();
     if (!medicationStatus) {
       messenger.showSnackBar(
@@ -195,15 +200,17 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
 
+    final snackBarGeneration = _completionSnackBarGeneration;
     messenger.showSnackBar(
       SnackBar(
         content: Text(
           text.completionSaved(text.slotTitle(slot.key), schedule.displayName),
         ),
-        duration: const Duration(seconds: 5),
+        duration: _completionSnackBarDuration,
         action: SnackBarAction(
           label: text.undo,
           onPressed: () async {
+            _completionSnackBarGeneration += 1;
             final undoSucceeded = await viewModel
                 .requestMedicationDoseStatusUpdate(slot.key, schedule, false);
             if (!mounted) {
@@ -223,6 +230,15 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         ),
       ),
     );
+    Future<void>.delayed(_completionSnackBarDuration, () {
+      if (!mounted || snackBarGeneration != _completionSnackBarGeneration) {
+        return;
+      }
+      _completionSnackBarGeneration += 1;
+      ScaffoldMessenger.of(
+        context,
+      ).hideCurrentSnackBar(reason: SnackBarClosedReason.timeout);
+    });
   }
 
   void _openHealthRecommendation() {
