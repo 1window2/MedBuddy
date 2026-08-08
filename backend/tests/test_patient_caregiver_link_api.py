@@ -23,6 +23,21 @@ from controls.link_patient_caregiver_control import (  # noqa: E402
     LinkPatientCaregiver,
 )
 from core.database import Base  # noqa: E402
+from core.request_rate_limits import RequestRateLimitStore  # noqa: E402
+
+
+class _UnavailableRedis:
+    async def eval(
+        self,
+        script: str,
+        number_of_keys: int,
+        *keys_and_args: object,
+    ) -> object:
+        del script, number_of_keys, keys_and_args
+        raise ConnectionError("Redis is intentionally unavailable in this test.")
+
+    async def aclose(self) -> None:
+        return None
 
 
 def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
@@ -46,6 +61,11 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
             db.close()
 
     app = FastAPI()
+    request_rate_limit_store = RequestRateLimitStore(
+        redis_url="redis://localhost:6379",
+        redis_client=_UnavailableRedis(),
+    )
+    app.state.request_rate_limit_store = request_rate_limit_store
     app.include_router(router, prefix="/api/v1/medication")
     app.dependency_overrides[get_link_patient_caregiver_control] = (
         override_link_control

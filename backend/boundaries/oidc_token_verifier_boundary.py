@@ -3,8 +3,9 @@
 from collections.abc import Mapping
 from typing import Any
 
-import firebase_admin
 from firebase_admin import auth
+
+from boundaries.firebase_admin_boundary import get_firebase_admin_app
 
 
 class TokenVerificationError(Exception):
@@ -18,20 +19,9 @@ class TokenVerificationUnavailableError(Exception):
 class OIDCTokenVerifier:
     """Verifies Firebase ID tokens without exposing Firebase to use-case controls."""
 
-    _APP_NAME = "medbuddy-auth"
-
     def __init__(self, project_id: str, *, check_revoked: bool = False) -> None:
-        normalized_project_id = project_id.strip()
-        if not normalized_project_id:
-            raise ValueError("Firebase project ID is required.")
         self._check_revoked = check_revoked
-        try:
-            self._app = firebase_admin.get_app(self._APP_NAME)
-        except ValueError:
-            self._app = firebase_admin.initialize_app(
-                options={"projectId": normalized_project_id},
-                name=self._APP_NAME,
-            )
+        self._app = get_firebase_admin_app(project_id)
 
     def verifyIdToken(self, token: str) -> dict[str, object]:
         normalized_token = token.strip()

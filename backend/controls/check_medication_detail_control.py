@@ -146,23 +146,35 @@ class _MedicationTextNormalizer:
     def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
         outside_chars: list[str] = []
         parenthesized_candidates: list[str] = []
-        cursor = 0
-        while cursor < len(normalized_text):
-            if normalized_text[cursor] != "(":
-                outside_chars.append(normalized_text[cursor])
-                cursor += 1
+        parenthesized_chars: list[str] | None = None
+        parenthesis_depth = 0
+        for character in normalized_text:
+            if parenthesized_chars is None:
+                if character == "(":
+                    parenthesized_chars = []
+                    parenthesis_depth = 1
+                else:
+                    outside_chars.append(character)
                 continue
-
-            closing_index = normalized_text.find(")", cursor + 1)
-            if closing_index == -1:
-                outside_chars.append(normalized_text[cursor])
-                cursor += 1
+            if character == "(":
+                parenthesis_depth += 1
+                parenthesized_chars.append(character)
                 continue
+            if character == ")":
+                parenthesis_depth -= 1
+                if parenthesis_depth > 0:
+                    parenthesized_chars.append(character)
+                    continue
+                inner_text = "".join(parenthesized_chars).strip()
+                if 1 <= len(inner_text) <= 80:
+                    parenthesized_candidates.append(inner_text)
+                parenthesized_chars = None
+                continue
+            parenthesized_chars.append(character)
 
-            inner_text = normalized_text[cursor + 1 : closing_index].strip()
-            if 1 <= len(inner_text) <= 80:
-                parenthesized_candidates.append(inner_text)
-            cursor = closing_index + 1
+        if parenthesized_chars is not None:
+            outside_chars.append("(")
+            outside_chars.extend(parenthesized_chars)
 
         return self.normalize_raw_text("".join(outside_chars)), parenthesized_candidates
 

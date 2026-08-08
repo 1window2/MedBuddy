@@ -5,8 +5,9 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
-import firebase_admin
 from firebase_admin import messaging
+
+from boundaries.firebase_admin_boundary import get_firebase_admin_app
 
 logger = logging.getLogger(__name__)
 
@@ -59,23 +60,13 @@ class DisabledPushNotificationBoundary:
 #   - 최대 500개 단위로 토큰을 묶어 알림을 전송한다.
 #   - 더 이상 유효하지 않은 토큰을 Control 계층에 반환한다.
 class FirebasePushNotificationBoundary:
-    _APP_NAME = "medbuddy-push"
     _MAX_MULTICAST_TOKENS = 500
 
     # 함수명: __init__
     # 역할:
     # - Firebase Admin 앱을 생성하거나 기존 전용 앱을 재사용한다.
     def __init__(self, project_id: str) -> None:
-        normalized_project_id = project_id.strip()
-        if not normalized_project_id:
-            raise ValueError("Firebase project ID is required for push notifications.")
-        try:
-            self._app = firebase_admin.get_app(self._APP_NAME)
-        except ValueError:
-            self._app = firebase_admin.initialize_app(
-                options={"projectId": normalized_project_id},
-                name=self._APP_NAME,
-            )
+        self._app = get_firebase_admin_app(project_id)
 
     # 함수명: send_notification
     # 역할:

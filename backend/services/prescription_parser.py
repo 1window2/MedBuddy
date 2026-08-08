@@ -125,9 +125,9 @@ def normalize_date(text: str) -> str | None:
 def extract_patient_name(line: str) -> str | None:
     normalized_line = normalize_text(line)
     for label in ("\ud658\uc790\uba85", "patient name", "patient"):
-        if label not in normalized_line.lower():
+        cleaned = _remove_literal_case_insensitive(normalized_line, label)
+        if cleaned == normalized_line:
             continue
-        cleaned = re.sub(label, "", normalized_line, flags=re.IGNORECASE)
         cleaned = cleaned.strip(": ").strip()
         return cleaned if cleaned else None
     return None
@@ -333,8 +333,27 @@ def _clean_medication_name(name: str) -> str:
         "medication name",
         "medicine name",
     ):
-        cleaned_name = re.sub(label, "", cleaned_name, flags=re.IGNORECASE)
-    return cleaned_name.strip(": ").strip()
+        cleaned_name = _remove_literal_case_insensitive(cleaned_name, label)
+    return normalize_text(cleaned_name).strip(": ").strip()
+
+
+def _remove_literal_case_insensitive(text: str, literal: str) -> str:
+    """Remove ASCII/Korean labels without transformed-string index drift."""
+
+    if not literal:
+        return text
+    literal_length = len(literal)
+    folded_literal = literal.casefold()
+    output: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        candidate = text[cursor : cursor + literal_length]
+        if len(candidate) == literal_length and candidate.casefold() == folded_literal:
+            cursor += literal_length
+            continue
+        output.append(text[cursor])
+        cursor += 1
+    return "".join(output)
 
 
 def _is_unknown(value: str) -> bool:

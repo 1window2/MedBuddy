@@ -4,7 +4,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
@@ -18,6 +18,8 @@ import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
+import 'authenticated_api_client.dart';
+import 'firebase_runtime_service.dart';
 import 'notification_service.dart';
 
 typedef CaregiverLinkLoader = Future<List<PatientCaregiverLink>> Function();
@@ -38,6 +40,23 @@ const String caregiverNotificationBackgroundTask =
     'medbuddy_caregiver_notification_check';
 const String _caregiverNotificationBackgroundTag =
     'medbuddy_caregiver_notification';
+const Duration _backgroundAuthRestoreTimeout = Duration(seconds: 5);
+
+Future<User?> _restoreBackgroundFirebaseUser() async {
+  final firebaseAuth = FirebaseAuth.instance;
+  final currentUser = firebaseAuth.currentUser;
+  if (currentUser != null) {
+    return currentUser;
+  }
+  try {
+    return await firebaseAuth
+        .idTokenChanges()
+        .firstWhere((user) => user != null)
+        .timeout(_backgroundAuthRestoreTimeout);
+  } on TimeoutException {
+    return null;
+  }
+}
 
 // 함수명: caregiverNotificationCallbackDispatcher
 // 역할:
@@ -57,21 +76,27 @@ void caregiverNotificationCallbackDispatcher() {
     }
 
     CaregiverNotificationMonitorService? monitor;
+    AuthenticatedApiClient? authenticatedClient;
     try {
-      if (AuthConfig.mode == AuthenticationMode.firebase &&
-          Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(options: AuthConfig.firebaseOptions);
+      if (AuthConfig.mode == AuthenticationMode.firebase) {
+        await FirebaseRuntimeService.initialize();
+        final currentUser = await _restoreBackgroundFirebaseUser();
+        if (currentUser == null) {
+          return false;
+        }
+        await currentUser.getIdToken();
+        authenticatedClient = AuthenticatedApiClient();
       }
       await NotificationService.instance.initialize();
       monitor = CaregiverNotificationMonitorService.live(
         caregiverHash: caregiverHash,
         baseUrl: baseUrl,
+        client: authenticatedClient,
         requestPermission: false,
         monitorCompletionTransitions:
             AuthConfig.mode != AuthenticationMode.firebase,
       );
-      await monitor.checkNow();
-      return true;
+      return await monitor.checkNow();
     } catch (error, stackTrace) {
       developer.log(
         '보호자 백그라운드 알림 확인에 실패했습니다.',
@@ -82,6 +107,7 @@ void caregiverNotificationCallbackDispatcher() {
       return false;
     } finally {
       monitor?.dispose();
+      authenticatedClient?.close();
     }
   });
 }

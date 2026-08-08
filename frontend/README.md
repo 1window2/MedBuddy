@@ -40,7 +40,7 @@ background monitor checks missed-dose deadlines. Local demo mode uses
 hash-scoped data and polling-based local caregiver notifications instead of
 remote push delivery.
 
-The experimental v0.0.9 flow presents loose-pill identification candidates
+The experimental loose-pill flow introduced in v0.0.9 presents identification candidates
 with mandatory user confirmation. It follows a separate image-analysis path
 and does not save a candidate automatically or assert a diagnosis.
 

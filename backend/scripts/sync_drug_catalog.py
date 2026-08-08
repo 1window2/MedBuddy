@@ -1,17 +1,19 @@
 # File Name: sync_drug_catalog.py
-# Role: Synchronizes Korean public medication APIs into the local SQLite catalog.
+# Role: Synchronizes Korean public medication APIs into the shared catalog.
 
 import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import contextmanager
 import json
 import logging
 import math
 from pathlib import Path
 import re
 import sys
-from typing import Any
+from typing import Any, Iterator
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -23,17 +25,64 @@ from boundaries.public_drug_api_boundary import (
     PublicDrugSmallAPI,
     _PublicDrugTransport,
 )
-from core.database import Base, SessionLocal, engine
+from boundaries.pill_identification_boundary import MFDSPillAPI
+from core.database import SessionLocal
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from repositories.pill_identification_catalog_repository import (
+    PillIdentificationCatalogRepository,
+)
 
 logger = logging.getLogger(__name__)
 
+_CATALOG_SYNC_ADVISORY_LOCK_ID = 0x4D45444255444459
+
+
+class CatalogSyncAlreadyRunningError(RuntimeError):
+    """Raised when another PostgreSQL catalog synchronization owns the lock."""
+
+
+class CatalogSyncIncompleteError(RuntimeError):
+    """Raised when an upstream catalog response would publish partial data."""
+
+
+@contextmanager
+def _exclusive_catalog_sync_lock(db: Session) -> Iterator[None]:
+    """Serializes the complete catalog job across PostgreSQL-backed workers."""
+
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql":
+        yield
+        return
+
+    connect = getattr(bind, "connect", None)
+    if not callable(connect):
+        raise RuntimeError("Catalog synchronization requires an engine-bound session.")
+
+    with connect() as lock_connection:
+        acquired = lock_connection.execute(
+            text("SELECT pg_try_advisory_lock(:lock_id)"),
+            {"lock_id": _CATALOG_SYNC_ADVISORY_LOCK_ID},
+        ).scalar_one()
+        if not acquired:
+            raise CatalogSyncAlreadyRunningError(
+                "Another drug catalog synchronization is already running."
+            )
+        try:
+            yield
+        finally:
+            released = lock_connection.execute(
+                text("SELECT pg_advisory_unlock(:lock_id)"),
+                {"lock_id": _CATALOG_SYNC_ADVISORY_LOCK_ID},
+            ).scalar_one()
+            if not released:
+                logger.error("PostgreSQL catalog synchronization lock was not owned.")
+
 
 # Class Name: _DrugCatalogStore
-# Role: Internal persistence helper for local drug catalog synchronization.
+# Role: Internal persistence helper for shared drug catalog synchronization.
 # Responsibilities:
-#   - Upsert e약은요 and approval API records into SQLite.
+#   - Upsert e약은요 and approval API records into the shared database.
 #   - Preserve raw API payloads for traceability.
 #   - Keep table-specific normalization in one sync-only helper.
 # Attributes:
@@ -51,7 +100,12 @@ class _DrugCatalogStore:
     # - items: Raw public API item dictionaries.
     # Returns:
     # - Number of rows processed.
-    def upsert_basic_items(self, items: list[dict[str, Any]]) -> int:
+    def upsert_basic_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        commit: bool = True,
+    ) -> int:
         processed_count = 0
         batch_targets_by_seq: dict[str, _DrugBasicInfo] = {}
         batch_targets_by_name: dict[str, _DrugBasicInfo] = {}
@@ -96,7 +150,10 @@ class _DrugCatalogStore:
             batch_targets_by_name[normalized_item_name] = target_item
             processed_count += 1
 
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
         return processed_count
 
     # Function Name: upsert_approval_items
@@ -106,7 +163,12 @@ class _DrugCatalogStore:
     # - items: Raw public API item dictionaries.
     # Returns:
     # - Number of rows processed.
-    def upsert_approval_items(self, items: list[dict[str, Any]]) -> int:
+    def upsert_approval_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        commit: bool = True,
+    ) -> int:
         processed_count = 0
         batch_targets_by_seq: dict[str, _DrugApprovalInfo] = {}
         batch_targets_by_name: dict[str, _DrugApprovalInfo] = {}
@@ -163,7 +225,10 @@ class _DrugCatalogStore:
             batch_targets_by_name[normalized_item_name] = target_item
             processed_count += 1
 
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
         return processed_count
 
     # Function Name: count_basic
@@ -276,13 +341,13 @@ class _DrugCatalogStore:
 
 
 # Class Name: DrugCatalogSyncJob
-# Role: Control class for public drug API to local DB synchronization.
+# Role: Control class for public drug API to shared DB synchronization.
 # Responsibilities:
 #   - Fetch paginated e약은요 records.
 #   - Fetch paginated approval detail records.
 #   - Upsert fetched records into the local catalog tables.
 # Attributes:
-#   - store: _DrugCatalogStore used for local persistence.
+#   - store: _DrugCatalogStore used for shared persistence.
 #   - public_drug_small_api: eDrug API boundary used for basic catalog pages.
 #   - public_drug_large_api: Approval API boundary used for complete catalog pages.
 #   - page_size: Number of API rows fetched per request.
@@ -296,6 +361,7 @@ class DrugCatalogSyncJob:
         store: _DrugCatalogStore,
         public_drug_small_api: PublicDrugSmallAPI,
         public_drug_large_api: PublicDrugLargeAPI,
+        pill_catalog_api: MFDSPillAPI,
         page_size: int,
         start_page: int = 1,
         max_pages: int | None = None,
@@ -305,6 +371,7 @@ class DrugCatalogSyncJob:
         self.store = store
         self.public_drug_small_api = public_drug_small_api
         self.public_drug_large_api = public_drug_large_api
+        self.pill_catalog_api = pill_catalog_api
         self.page_size = page_size
         self.start_page = start_page
         self.max_pages = max_pages
@@ -316,24 +383,88 @@ class DrugCatalogSyncJob:
     # - Synchronizes the full e약은요 API dataset into drug_basic_infos.
     # Returns:
     # - Number of rows processed.
-    async def sync_basic(self) -> int:
-        return await self._sync_pages(
-            dataset_name="e약은요",
-            fetch_page=self.public_drug_small_api.fetchPage,
-            upsert_items=self.store.upsert_basic_items,
-        )
+    async def sync_basic(self, *, commit: bool = True) -> int:
+        try:
+            processed = await self._sync_pages(
+                dataset_name="e약은요",
+                fetch_page=self.public_drug_small_api.fetchPage,
+                upsert_items=lambda items: self.store.upsert_basic_items(
+                    items,
+                    commit=False,
+                ),
+            )
+            if processed == 0:
+                raise CatalogSyncIncompleteError(
+                    "The basic medication catalog returned no usable rows."
+                )
+            if commit:
+                self.store.db.commit()
+            return processed
+        except Exception:
+            if commit:
+                self.store.db.rollback()
+            raise
 
     # Function Name: sync_approval
     # Description:
     # - Synchronizes the full approval detail API dataset into drug_approval_infos.
     # Returns:
     # - Number of rows processed.
-    async def sync_approval(self) -> int:
-        return await self._sync_pages(
-            dataset_name="허가정보",
-            fetch_page=self.public_drug_large_api.fetchPage,
-            upsert_items=self.store.upsert_approval_items,
-        )
+    async def sync_approval(self, *, commit: bool = True) -> int:
+        try:
+            processed = await self._sync_pages(
+                dataset_name="허가정보",
+                fetch_page=self.public_drug_large_api.fetchPage,
+                upsert_items=lambda items: self.store.upsert_approval_items(
+                    items,
+                    commit=False,
+                ),
+            )
+            if processed == 0:
+                raise CatalogSyncIncompleteError(
+                    "The approval medication catalog returned no usable rows."
+                )
+            if commit:
+                self.store.db.commit()
+            return processed
+        except Exception:
+            if commit:
+                self.store.db.rollback()
+            raise
+
+    async def sync_pill_identification(self, *, commit: bool = True) -> int:
+        try:
+            catalog = await self.pill_catalog_api.requestCatalog()
+            if not catalog:
+                raise CatalogSyncIncompleteError(
+                    "The pill-identification catalog returned no rows."
+                )
+            PillIdentificationCatalogRepository(self.store.db).replace_all(
+                catalog,
+                commit=False,
+            )
+            if commit:
+                self.store.db.commit()
+            return len(catalog)
+        except Exception:
+            if commit:
+                self.store.db.rollback()
+            raise
+
+    async def sync_all(self) -> dict[str, int]:
+        """Synchronizes every catalog as one caller-owned transaction."""
+
+        try:
+            synchronized_counts = {
+                "basic": await self.sync_basic(commit=False),
+                "approval": await self.sync_approval(commit=False),
+                "pill": await self.sync_pill_identification(commit=False),
+            }
+            self.store.db.commit()
+            return synchronized_counts
+        except Exception:
+            self.store.db.rollback()
+            raise
 
     async def _sync_pages(
         self,
@@ -365,6 +496,11 @@ class DrugCatalogSyncJob:
                 )
 
             if not items:
+                if total_pages is not None and page_no <= total_pages:
+                    raise CatalogSyncIncompleteError(
+                        f"{dataset_name} ended at page {page_no} before the "
+                        f"reported final page {total_pages}."
+                    )
                 logger.info("[%s] page %s returned no items. stopping.", dataset_name, page_no)
                 break
 
@@ -428,11 +564,11 @@ class DrugCatalogSyncJob:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Synchronize public drug API datasets into local SQLite tables.",
+        description="Synchronize public drug API datasets into shared catalog tables.",
     )
     parser.add_argument(
         "--dataset",
-        choices=["basic", "approval", "all"],
+        choices=["basic", "approval", "pill", "all"],
         default="all",
         help="Dataset to synchronize.",
     )
@@ -487,7 +623,6 @@ async def main() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     transport = _PublicDrugTransport(timeout_seconds=60.0)
     try:
@@ -496,6 +631,7 @@ async def main() -> None:
             store=store,
             public_drug_small_api=PublicDrugSmallAPI(transport=transport),
             public_drug_large_api=PublicDrugLargeAPI(transport=transport),
+            pill_catalog_api=MFDSPillAPI(),
             page_size=args.page_size,
             start_page=args.start_page,
             max_pages=args.max_pages,
@@ -503,19 +639,36 @@ async def main() -> None:
             retry_delay_seconds=args.retry_delay_seconds,
         )
 
-        if args.dataset in {"basic", "all"}:
-            basic_count = await sync_job.sync_basic()
-            logger.info("[e약은요] synchronized rows: %s", basic_count)
+        with _exclusive_catalog_sync_lock(db):
+            if args.dataset == "all":
+                synchronized_counts = await sync_job.sync_all()
+                logger.info(
+                    "[e약은요] synchronized rows: %s",
+                    synchronized_counts["basic"],
+                )
+                logger.info(
+                    "[허가정보] synchronized rows: %s",
+                    synchronized_counts["approval"],
+                )
+                logger.info(
+                    "[알약 식별정보] synchronized rows: %s",
+                    synchronized_counts["pill"],
+                )
+            elif args.dataset == "basic":
+                basic_count = await sync_job.sync_basic()
+                logger.info("[e약은요] synchronized rows: %s", basic_count)
+            elif args.dataset == "approval":
+                approval_count = await sync_job.sync_approval()
+                logger.info("[허가정보] synchronized rows: %s", approval_count)
+            elif args.dataset == "pill":
+                pill_count = await sync_job.sync_pill_identification()
+                logger.info("[알약 식별정보] synchronized rows: %s", pill_count)
 
-        if args.dataset in {"approval", "all"}:
-            approval_count = await sync_job.sync_approval()
-            logger.info("[허가정보] synchronized rows: %s", approval_count)
-
-        logger.info(
-            "local catalog counts: basic=%s, approval=%s",
-            store.count_basic(),
-            store.count_approval(),
-        )
+            logger.info(
+                "shared catalog counts: basic=%s, approval=%s",
+                store.count_basic(),
+                store.count_approval(),
+            )
     finally:
         await transport.close()
         db.close()

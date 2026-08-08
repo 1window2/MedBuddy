@@ -175,10 +175,8 @@ class OCRServiceBoundary:
             raise TimeoutError("Prescription OCR service timed out.") from exc
 
         logger.info(
-            "Prescription OCR completed: model=%s, input_bytes=%d, "
-            "processed_bytes=%d, preprocessing_seconds=%.2f, "
-            "extraction_seconds=%.2f",
-            self.model_name,
+            "Prescription OCR completed: input_bytes=%d, processed_bytes=%d, "
+            "preprocessing_seconds=%.2f, extraction_seconds=%.2f",
             len(image),
             len(processed_image),
             preprocessing_seconds,
@@ -212,9 +210,8 @@ class OCRServiceBoundary:
         except TimeoutError as exc:
             raise TimeoutError("Prescription OCR text service timed out.") from exc
         logger.info(
-            "De-identified prescription text analysis completed: model=%s, "
+            "De-identified prescription text analysis completed: "
             "input_characters=%d, extraction_seconds=%.2f",
-            self.model_name,
             len(normalized_text),
             time.perf_counter() - extraction_started_at,
         )

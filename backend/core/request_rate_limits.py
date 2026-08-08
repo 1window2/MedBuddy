@@ -1,17 +1,25 @@
 # 파일명: request_rate_limits.py
 # 역할: 비용이 크거나 반복 대입 위험이 있는 API의 호출 횟수를 제한한다.
 
-import hashlib
 import logging
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from redis.asyncio import Redis
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
+
+_ATOMIC_INCREMENT_SCRIPT = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+"""
 
 
 @dataclass(frozen=True)
@@ -20,101 +28,66 @@ class RateLimitRule:
     window_seconds: int
 
 
-# 클래스명: RequestRateLimitMiddleware
-# 역할: 경로별 고정 시간창 제한을 사용자 토큰과 IP에 각각 적용한다.
-# 주요 책임:
-# - Redis가 연결된 환경에서는 여러 서버 인스턴스가 같은 카운터를 공유한다.
-# - 로컬 개발에서 Redis를 사용할 수 없으면 프로세스 메모리 카운터로 대체한다.
-# - 인증 토큰 원문은 저장하지 않고 SHA-256 지문만 제한 키에 사용한다.
-class RequestRateLimitMiddleware:
-    _instances: set["RequestRateLimitMiddleware"] = set()
+class AsyncRateLimitRedis(Protocol):
+    async def eval(
+        self,
+        script: str,
+        number_of_keys: int,
+        *keys_and_args: object,
+    ) -> object: ...
+
+    async def aclose(self) -> None: ...
+
+
+class RequestRateLimitStore:
+    """Owns atomic Redis counters with a bounded local-development fallback."""
 
     def __init__(
         self,
-        app: ASGIApp,
         *,
         redis_url: str,
-        rules: Mapping[tuple[str, str], RateLimitRule],
-        enabled: bool = True,
+        require_redis: bool = False,
+        redis_client: AsyncRateLimitRedis | None = None,
     ) -> None:
-        self.app = app
-        self.enabled = enabled
-        self.rules = dict(rules)
-        self._redis = Redis.from_url(
-            redis_url,
-            encoding="utf-8",
-            decode_responses=True,
-            socket_connect_timeout=0.3,
-            socket_timeout=0.3,
-        )
+        self._redis_url = redis_url
+        self._injected_redis = redis_client is not None
+        self.require_redis = require_redis
+        self._redis: AsyncRateLimitRedis | None = redis_client
         self._redis_available = True
         self._redis_retry_at = 0.0
         self._redis_warning_logged = False
         self._memory_counters: dict[str, tuple[int, float]] = {}
-        self._instances.add(self)
 
-    async def __call__(
+    async def consume(
         self,
-        scope: Scope,
-        receive: Receive,
-        send: Send,
-    ) -> None:
-        if not self.enabled or scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        rule = self.rules.get(
-            (
-                str(scope.get("method", "")).upper(),
-                str(scope.get("path", "")),
-            )
-        )
-        if rule is None:
-            await self.app(scope, receive, send)
-            return
-
-        retry_after = 0
-        for identity in self._request_identities(scope):
-            allowed, identity_retry_after = await self._consume(identity, rule)
-            retry_after = max(retry_after, identity_retry_after)
-            if not allowed:
-                response = JSONResponse(
-                    status_code=429,
-                    content={
-                        "detail": (
-                            "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
-                        )
-                    },
-                    headers={"Retry-After": str(max(1, retry_after))},
-                )
-                await response(scope, receive, send)
-                return
-
-        await self.app(scope, receive, send)
-
-    async def close(self) -> None:
-        await self._redis.aclose()
-        self._instances.discard(self)
-
-    @classmethod
-    async def close_all(cls) -> None:
-        for instance in tuple(cls._instances):
-            await instance.close()
-
-    async def _consume(
-        self,
+        *,
         identity: str,
+        request_scope: str,
         rule: RateLimitRule,
     ) -> tuple[bool, int]:
         window_number = int(time.time()) // rule.window_seconds
-        key = f"medbuddy:rate:{identity}:{window_number}"
+        key = (
+            f"medbuddy:rate:{request_scope}:{identity}:{window_number}"
+        )
+        if (
+            self.require_redis
+            and not self._redis_available
+            and time.monotonic() < self._redis_retry_at
+        ):
+            raise RuntimeError("Distributed request-rate storage is unavailable.")
         if not self._redis_available and time.monotonic() >= self._redis_retry_at:
             self._redis_available = True
         if self._redis_available:
             try:
-                count = await self._redis.incr(key)
-                if count == 1:
-                    await self._redis.expire(key, rule.window_seconds + 1)
+                redis = self._get_redis()
+                count = int(
+                    await redis.eval(
+                        _ATOMIC_INCREMENT_SCRIPT,
+                        1,
+                        key,
+                        rule.window_seconds + 1,
+                    )
+                )
                 retry_after = rule.window_seconds - (
                     int(time.time()) % rule.window_seconds
                 )
@@ -124,11 +97,39 @@ class RequestRateLimitMiddleware:
                 self._redis_retry_at = time.monotonic() + 30.0
                 if not self._redis_warning_logged:
                     logger.warning(
-                        "Redis rate limiter unavailable; using process memory: %s",
+                        "Redis rate limiter unavailable: %s",
                         type(exc).__name__,
                     )
                     self._redis_warning_logged = True
+                if self.require_redis:
+                    raise RuntimeError(
+                        "Distributed request-rate storage is unavailable."
+                    ) from exc
         return self._consume_memory(key, rule)
+
+    async def close(self) -> None:
+        redis = self._redis
+        if redis is None:
+            return
+        await redis.aclose()
+        if not self._injected_redis:
+            self._redis = None
+            self._redis_available = True
+            self._redis_retry_at = 0.0
+
+    def _get_redis(self) -> AsyncRateLimitRedis:
+        redis = self._redis
+        if redis is not None:
+            return redis
+        redis = Redis.from_url(
+            self._redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=0.3,
+            socket_timeout=0.3,
+        )
+        self._redis = redis
+        return redis
 
     def _consume_memory(
         self,
@@ -154,18 +155,98 @@ class RequestRateLimitMiddleware:
         retry_after = max(1, int(expires_at - now))
         return count <= rule.max_requests, retry_after
 
+
+# 클래스명: RequestRateLimitMiddleware
+# 역할: 경로별 고정 시간창의 광범위한 요청 IP 제한을 적용한다.
+# 주요 책임:
+# - Redis가 연결된 환경에서는 여러 서버 인스턴스가 같은 카운터를 공유한다.
+# - 로컬 개발에서 Redis를 사용할 수 없으면 프로세스 메모리 카운터로 대체한다.
+# - 운영에서 Redis가 필수이면 저장소 장애를 재시도 가능한 503으로 변환한다.
+# - 검증된 사용자별 제한은 인증 의존성이 같은 저장소에 별도로 적용한다.
+class RequestRateLimitMiddleware:
+    _IP_LIMIT_MULTIPLIER = 20
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        store: RequestRateLimitStore,
+        rules: Mapping[tuple[str, str], RateLimitRule],
+        enabled: bool = True,
+    ) -> None:
+        self.app = app
+        self.enabled = enabled
+        self.rules = dict(rules)
+        self.store = store
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        if not self.enabled or scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        rule = self.rules.get(
+            (
+                str(scope.get("method", "")).upper(),
+                str(scope.get("path", "")),
+            )
+        )
+        if rule is None:
+            await self.app(scope, receive, send)
+            return
+
+        retry_after = 0
+        try:
+            identity_rule = RateLimitRule(
+                max_requests=rule.max_requests * self._IP_LIMIT_MULTIPLIER,
+                window_seconds=rule.window_seconds,
+            )
+            allowed, retry_after = await self.store.consume(
+                identity=self._request_ip_identity(scope),
+                request_scope=self._request_scope(scope),
+                rule=identity_rule,
+            )
+            if not allowed:
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": (
+                            "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
+                        )
+                    },
+                    headers={"Retry-After": str(max(1, retry_after))},
+                )
+                await response(scope, receive, send)
+                return
+        except RuntimeError:
+            response = JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "Request quota storage is temporarily unavailable."
+                },
+                headers={"Retry-After": "5"},
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
     @staticmethod
-    def _request_identities(scope: Scope) -> tuple[str, ...]:
+    def _request_ip_identity(scope: Scope) -> str:
         client = scope.get("client")
         client_host = str(client[0]) if client else "unknown"
-        identities = [f"ip:{client_host}"]
-        for name, value in scope.get("headers", ()):
-            if name.lower() != b"authorization":
-                continue
-            token_hash = hashlib.sha256(value).hexdigest()
-            identities.append(f"user:{token_hash}")
-            break
-        return tuple(identities)
+        return f"ip:{client_host}"
+
+    @staticmethod
+    def _request_scope(scope: Scope) -> str:
+        return (
+            f"{str(scope.get('method', '')).upper()}:"
+            f"{str(scope.get('path', ''))}"
+        )
 
 
 DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {

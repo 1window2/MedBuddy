@@ -19,6 +19,18 @@ jobs:
       - name: Source Code Checkout
         uses: actions/checkout@v6
 
+      - name: Validate release ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in
+            refs/heads/main|refs/heads/beta/*|refs/tags/v*) ;;
+            *)
+              echo "Android releases are restricted to main, beta branches, and version tags." >&2
+              exit 1
+              ;;
+          esac
+
       - name: Java Setup
         uses: actions/setup-java@v5
         with:
@@ -34,6 +46,82 @@ jobs:
 
       - name: Package Get
         run: flutter pub get
+
+      - name: Validate standalone backend endpoint
+        shell: bash
+        env:
+          MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ipaddress
+          import os
+          from urllib.parse import urlsplit
+
+          raw_url = os.environ.get("MEDBUDDY_API_BASE_URL", "").strip()
+          parsed = urlsplit(raw_url)
+          if (
+              parsed.scheme != "https"
+              or not parsed.hostname
+              or parsed.username
+              or parsed.password
+              or parsed.query
+              or parsed.fragment
+              or parsed.path != "/api/v1/medication"
+          ):
+              raise SystemExit(
+                  "MEDBUDDY_API_BASE_URL must be a public HTTPS URL ending in "
+                  "/api/v1/medication."
+              )
+          if parsed.hostname.lower() == "localhost":
+              raise SystemExit("The signed release cannot target localhost.")
+          try:
+              address = ipaddress.ip_address(parsed.hostname)
+          except ValueError:
+              pass
+          else:
+              if not address.is_global:
+                  raise SystemExit(
+                      "The signed release cannot target a private or loopback IP."
+                  )
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"BACKEND_ORIGIN={parsed.scheme}://{parsed.netloc}\n")
+          PY
+          BACKEND_ORIGIN="$(python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+          parsed = urlsplit(os.environ["MEDBUDDY_API_BASE_URL"].strip())
+          print(f"{parsed.scheme}://{parsed.netloc}")
+          PY
+          )"
+          curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            "${BACKEND_ORIGIN}/health" > "${RUNNER_TEMP}/backend-health.json"
+          curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            "${BACKEND_ORIGIN}/ready" > "${RUNNER_TEMP}/backend-ready.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_contract = (
+              Path("../backend/API_CONTRACT_VERSION")
+              .read_text(encoding="utf-8")
+              .strip()
+          )
+          for probe_name in ("backend-health.json", "backend-ready.json"):
+              payload = json.loads(
+                  Path(os.environ["RUNNER_TEMP"])
+                  .joinpath(probe_name)
+                  .read_text(encoding="utf-8")
+              )
+              if payload.get("api_contract") != expected_contract:
+                  raise SystemExit(
+                      "The standalone backend API contract does not match the "
+                      "Android release contract."
+                  )
+          PY
 
       - name: Restore Firebase Android configuration
         shell: bash
@@ -177,6 +265,34 @@ jobs:
           flutter build appbundle --release --no-pub "${DEFINES[@]}"
           sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app-release.apk.sha256
           sha256sum build/app/outputs/bundle/release/app-release.aab > build/app-release.aab.sha256
+
+      - name: Verify signed release artifacts
+        shell: bash
+        env:
+          EXPECTED_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "${EXPECTED_CERT}"
+          test -x "${APKSIGNER}"
+
+          APK_CERT="$(${APKSIGNER} verify --verbose --print-certs "${APK}" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+            | head -n 1 \
+            | tr -d ':[:space:]' \
+            | tr '[:lower:]' '[:upper:]')"
+          jarsigner -verify -strict "${AAB}"
+          AAB_CERT="$(keytool -printcert -jarfile "${AAB}" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | head -n 1 \
+            | tr -d ':[:space:]' \
+            | tr '[:lower:]' '[:upper:]')"
+
+          test "${APK_CERT}" = "${EXPECTED_CERT}"
+          test "${AAB_CERT}" = "${EXPECTED_CERT}"
 
       - name: Upload signed release artifacts
         uses: actions/upload-artifact@v4

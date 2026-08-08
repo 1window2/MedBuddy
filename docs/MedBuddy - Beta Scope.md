@@ -38,13 +38,15 @@ The following implemented flows are frozen for beta hardening:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-07-29: P0 controls and release configuration
+Implementation status as of 2026-07-30: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
-on-device prescription OCR and privacy filtering, authenticated FCM token
-management, dose-completion push delivery, and persisted per-slot caregiver
-settings. Cloud resources, protected environment values, scheduled
-server-side missed-deadline delivery, signed physical-device testing,
-backup/restore, and abuse-control validation remain release gates.
+Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
+catalog, on-device prescription OCR and privacy filtering, authenticated FCM
+token management, dose-completion push delivery, and persisted per-slot
+caregiver settings. Provisioned Cloud Run, Cloud SQL, Redis/VPC, Firebase and
+protected environment values, scheduled server-side missed-deadline delivery,
+signed physical-device testing, backup/restore, and operational abuse-control
+validation remain release gates.
 
 ### P0: Identity and Transport Security
 
@@ -67,6 +69,10 @@ backup/restore, and abuse-control validation remain release gates.
   medication data, and push tokens.
 - Add structured, redacted operational logs, health checks, request tracing,
   timeout metrics, and error-rate monitoring.
+- Provision managed Redis through private VPC egress and verify that fail-closed
+  quotas remain available under the selected Redis TLS/network topology.
+- Seed and validate the shared PostgreSQL medication and pill-reference catalog
+  before routing traffic to a new API revision.
 - Verify backup and restore procedures before accepting real user data.
 - Complete scheduled server-side delivery for missed-deadline alerts and
   validate dose-completion FCM delivery on two physical devices. Local Android

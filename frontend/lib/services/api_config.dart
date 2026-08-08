@@ -44,8 +44,10 @@ class ApiConfig {
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
       throw StateError('MEDBUDDY_API_BASE_URL is invalid.');
     }
-    if (kReleaseMode && uri.scheme != 'https') {
-      throw StateError('Release builds require an HTTPS backend URL.');
+    if ((kReleaseMode || kProfileMode) && uri.scheme != 'https') {
+      throw StateError(
+        'Release and profile builds require an HTTPS backend URL.',
+      );
     }
   }
 }

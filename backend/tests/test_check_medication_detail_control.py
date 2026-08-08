@@ -97,6 +97,17 @@ def test_split_parenthesized_text_ignores_oversized_parentheses() -> None:
     assert parenthesized_candidates == []
 
 
+def test_split_parenthesized_text_preserves_nested_groups() -> None:
+    normalizer = _MedicationTextNormalizer()
+
+    outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
+        "Drug((ingredient)) 20mg"
+    )
+
+    assert outside_text == "Drug 20mg"
+    assert parenthesized_candidates == ["(ingredient)"]
+
+
 def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     normalizer = _MedicationTextNormalizer()
 

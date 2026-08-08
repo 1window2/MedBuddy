@@ -1,48 +1,22 @@
 # File Name: pill_identification_catalog_repository.py
-# Role: Persists public MFDS pill-identification metadata in an isolated cache DB.
+# Role: Persists public MFDS pill-identification metadata in the shared DB.
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import Session, sessionmaker
+from core.database import SessionLocal
 
 from entities.pill_identification_entity import (
     PillCatalogEntry,
     PillIdentificationReference,
 )
 
-PILL_CATALOG_DATABASE_PATH = (
-    Path(__file__).resolve().parents[1] / "pill_identification_catalog.db"
-)
-PILL_CATALOG_DATABASE_URL = (
-    f"sqlite:///{PILL_CATALOG_DATABASE_PATH.as_posix()}"
-)
-pill_catalog_engine = create_engine(
-    PILL_CATALOG_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-)
-_PillCatalogSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=pill_catalog_engine,
-)
-
-
-def _initialize_pill_identification_catalog() -> None:
-    """Creates the isolated public-reference cache table when absent."""
-
-    PillIdentificationReference.__table__.create(
-        bind=pill_catalog_engine,
-        checkfirst=True,
-    )
-
 
 def open_pill_catalog_session() -> Session:
-    """Opens a catalog session after lazily ensuring its isolated schema."""
+    """Opens the shared application-database session used by the catalog."""
 
-    _initialize_pill_identification_catalog()
-    return _PillCatalogSessionLocal()
+    return SessionLocal()
 
 
 class PillIdentificationCatalogRepository:
@@ -91,16 +65,21 @@ class PillIdentificationCatalogRepository:
         if row_count < minimum_rows:
             return False
 
-        latest_update = self.db.query(
-            func.max(PillIdentificationReference.updated_at)
+        oldest_update = self.db.query(
+            func.min(PillIdentificationReference.updated_at)
         ).scalar()
-        if latest_update is None:
+        if oldest_update is None:
             return False
 
         cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
-        return latest_update >= cutoff
+        return oldest_update >= cutoff
 
-    def replace_all(self, entries: list[PillCatalogEntry]) -> None:
+    def replace_all(
+        self,
+        entries: list[PillCatalogEntry],
+        *,
+        commit: bool = True,
+    ) -> None:
         mappings = [
             {
                 "item_seq": entry.item_seq,
@@ -123,7 +102,11 @@ class PillIdentificationCatalogRepository:
                 synchronize_session=False
             )
             self.db.bulk_insert_mappings(PillIdentificationReference, mappings)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
         except Exception:
-            self.db.rollback()
+            if commit:
+                self.db.rollback()
             raise

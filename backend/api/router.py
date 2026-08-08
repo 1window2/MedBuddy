@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_authenticated_principal,
+    verify_app_check_token,
     get_registered_principal,
     get_authorization_control,
     get_check_medication_detail,
@@ -77,11 +78,15 @@ from schemas.prescription_change import (
     PrescriptionChangeResponse,
 )
 
-router = APIRouter(dependencies=[Depends(get_registered_principal)])
+_authenticated_app_dependencies = [
+    Depends(verify_app_check_token),
+    Depends(get_registered_principal),
+]
+router = APIRouter(dependencies=_authenticated_app_dependencies)
 auth_router = APIRouter(
     prefix="/api/v1/auth",
     tags=["Authentication"],
-    dependencies=[Depends(get_registered_principal)],
+    dependencies=_authenticated_app_dependencies,
 )
 logger = logging.getLogger(__name__)
 

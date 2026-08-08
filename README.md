@@ -34,7 +34,7 @@
 
 - Users can provide a front photo and an optional reverse-side photo of one loose pill.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
-- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached in the isolated `backend/pill_identification_catalog.db` reference store with completeness checks and stale-cache fallback.
+- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
 - This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
 
@@ -143,7 +143,7 @@ Contribution rules for preserving the UML-aligned structure are documented in
 - A running Android emulator or physical Android device
 - Gemini API key
 - Korean public data portal API key for the drug APIs
-- Redis server, optional for faster repeated drug lookups
+- Redis server, optional for local cache and rate-limit testing; required for distributed production quotas
 - Optional local medication catalog database at `backend/medbuddy.db`
 
 ### Backend Setup
@@ -198,7 +198,7 @@ Use `0.0.0.0` when testing with an Android emulator, because the Flutter app rea
 
 ### Optional Local Drug Catalog
 
-If a local medication catalog database exists at `backend/medbuddy.db`, the backend uses it before Redis and public API fallback. Generated `.db` files are intentionally ignored by Git.
+Local development stores medication and pill-reference catalog rows in `backend/medbuddy.db`; the backend uses those records before Redis and public API fallback. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
 
 Build or refresh the optional local medication catalog from the public drug APIs:
 

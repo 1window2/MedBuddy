@@ -2,6 +2,7 @@
 # 역할: 자동 정리, 계정 삭제, 호출 제한의 핵심 수명주기 정책을 검증한다.
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -9,7 +10,11 @@ from sqlalchemy.orm import sessionmaker
 
 from controls.manage_account_control import ManageAccount
 from core.database import Base
-from core.request_rate_limits import RateLimitRule, RequestRateLimitMiddleware
+from core.request_rate_limits import (
+    RateLimitRule,
+    RequestRateLimitMiddleware,
+    RequestRateLimitStore,
+)
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientLinkCode
@@ -117,21 +122,222 @@ async def _empty_asgi_app(scope, receive, send) -> None:
     return None
 
 
+class _AtomicRedisStub:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, tuple[object, ...]]] = []
+        self.closed = False
+
+    async def eval(
+        self,
+        script: str,
+        number_of_keys: int,
+        *keys_and_args: object,
+    ) -> int:
+        self.calls.append((script, number_of_keys, keys_and_args))
+        return 1
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 # 함수명: test_rate_limiter_blocks_after_memory_limit
 # 역할:
 # - Redis를 사용할 수 없는 로컬 환경에서도 호출 제한이 동일하게 적용되는지 검증한다.
 @pytest.mark.anyio
 async def test_rate_limiter_blocks_after_memory_limit() -> None:
     rule = RateLimitRule(max_requests=2, window_seconds=60)
+    store = RequestRateLimitStore(
+        redis_url="redis://localhost:6379",
+    )
+    store._redis_available = False
+    try:
+        assert (
+            await store.consume(
+                identity="user:test-user",
+                request_scope="POST:/limited",
+                rule=rule,
+            )
+        )[0] is True
+        assert (
+            await store.consume(
+                identity="user:test-user",
+                request_scope="POST:/limited",
+                rule=rule,
+            )
+        )[0] is True
+        assert (
+            await store.consume(
+                identity="user:test-user",
+                request_scope="POST:/limited",
+                rule=rule,
+            )
+        )[0] is False
+    finally:
+        await store.close()
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_fails_closed_when_redis_is_required() -> None:
+    store = RequestRateLimitStore(
+        redis_url="redis://localhost:6379",
+        require_redis=True,
+    )
+    store._redis_available = False
+    try:
+        with pytest.raises(RuntimeError, match="Distributed request-rate storage"):
+            await store.consume(
+                identity="user:test-user",
+                request_scope="POST:/limited",
+                rule=RateLimitRule(max_requests=2, window_seconds=60),
+            )
+    finally:
+        await store.close()
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_keeps_failing_closed_during_redis_retry_delay() -> None:
+    responses: list[dict[str, object]] = []
+
+    async def send(message: dict[str, object]) -> None:
+        responses.append(message)
+
+    store = RequestRateLimitStore(
+        redis_url="redis://localhost:6379",
+        require_redis=True,
+    )
     middleware = RequestRateLimitMiddleware(
         _empty_asgi_app,
-        redis_url="redis://localhost:6379",
-        rules={},
+        store=store,
+        rules={
+            ("POST", "/limited"): RateLimitRule(
+                max_requests=2,
+                window_seconds=60,
+            )
+        },
     )
-    middleware._redis_available = False
+    store._redis_available = False
+    store._redis_retry_at = float("inf")
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/limited",
+        "client": ("127.0.0.1", 12345),
+        "headers": [],
+    }
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
     try:
-        assert (await middleware._consume("test-user", rule))[0] is True
-        assert (await middleware._consume("test-user", rule))[0] is True
-        assert (await middleware._consume("test-user", rule))[0] is False
+        await middleware(scope, receive, send)  # type: ignore[arg-type]
+        await middleware(scope, receive, send)  # type: ignore[arg-type]
     finally:
-        await middleware.close()
+        await store.close()
+
+    response_starts = [
+        message
+        for message in responses
+        if message.get("type") == "http.response.start"
+    ]
+    assert [message["status"] for message in response_starts] == [503, 503]
+    assert all(
+        (b"retry-after", b"5") in message["headers"]
+        for message in response_starts
+    )
+
+
+def test_rate_limiter_uses_ip_identity_and_route_specific_scope() -> None:
+    scope = {
+        "client": ("203.0.113.5", 12345),
+        "headers": [(b"authorization", b"Bearer private-token")],
+    }
+
+    assert (
+        RequestRateLimitMiddleware._request_ip_identity(scope)  # type: ignore[arg-type]
+        == "ip:203.0.113.5"
+    )
+    assert (
+        RequestRateLimitMiddleware._request_scope(  # type: ignore[arg-type]
+            {**scope, "method": "POST", "path": "/limited"}
+        )
+        == "POST:/limited"
+    )
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_separates_endpoint_buckets() -> None:
+    rule = RateLimitRule(max_requests=1, window_seconds=60)
+    store = RequestRateLimitStore(redis_url="redis://localhost:6379")
+    store._redis_available = False
+    try:
+        first_route = await store.consume(
+            identity="user:test-user",
+            request_scope="POST:/first",
+            rule=rule,
+        )
+        second_route = await store.consume(
+            identity="user:test-user",
+            request_scope="POST:/second",
+            rule=rule,
+        )
+    finally:
+        await store.close()
+
+    assert first_route[0] is True
+    assert second_route[0] is True
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_sets_counter_and_expiry_atomically() -> None:
+    redis = _AtomicRedisStub()
+    store = RequestRateLimitStore(
+        redis_url="redis://unused",
+        redis_client=redis,
+    )
+    try:
+        allowed, _ = await store.consume(
+            identity="user:test-user",
+            request_scope="POST:/limited",
+            rule=RateLimitRule(max_requests=2, window_seconds=60),
+        )
+    finally:
+        await store.close()
+
+    assert allowed is True
+    assert len(redis.calls) == 1
+    script, number_of_keys, keys_and_args = redis.calls[0]
+    assert "INCR" in script and "EXPIRE" in script
+    assert number_of_keys == 1
+    assert keys_and_args[-1] == 61
+    assert redis.closed is True
+
+
+@pytest.mark.anyio
+async def test_rate_limiter_recreates_owned_redis_after_repeated_close() -> None:
+    first_redis = _AtomicRedisStub()
+    second_redis = _AtomicRedisStub()
+    store = RequestRateLimitStore(redis_url="redis://unused")
+    rule = RateLimitRule(max_requests=2, window_seconds=60)
+
+    with patch(
+        "core.request_rate_limits.Redis.from_url",
+        side_effect=[first_redis, second_redis],
+    ) as redis_factory:
+        await store.consume(
+            identity="user:test-user",
+            request_scope="POST:/limited",
+            rule=rule,
+        )
+        await store.close()
+        await store.consume(
+            identity="user:test-user",
+            request_scope="POST:/limited",
+            rule=rule,
+        )
+        await store.close()
+
+    assert redis_factory.call_count == 2
+    assert len(first_redis.calls) == 1
+    assert len(second_redis.calls) == 1
+    assert first_redis.closed is True
+    assert second_redis.closed is True
