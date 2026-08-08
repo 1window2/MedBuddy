@@ -363,6 +363,15 @@ class PillVisionBoundary:
         "occluded",
         "multiple pill",
         "more than one pill",
+        "two pill",
+        "three pill",
+        "several pill",
+        "multiple tablet",
+        "more than one tablet",
+        "two tablet",
+        "multiple capsule",
+        "more than one capsule",
+        "two capsule",
         "no pill",
         "missing pill",
         "not visible",
@@ -1071,7 +1080,7 @@ class MFDSPillAPI:
 
 
 class MFDSPillCatalogBoundary:
-    """Coordinates memory, SQLite, and MFDS sources for the pill catalog."""
+    """Coordinates memory, shared persistence, and MFDS catalog sources."""
 
     _STALE_RETRY_SECONDS = 300.0
     _FAILED_REFRESH_RETRY_SECONDS = 15.0
@@ -1082,6 +1091,7 @@ class MFDSPillCatalogBoundary:
         catalog_api: MFDSPillAPI | None = None,
         cache_ttl: timedelta | None = None,
         refresh_timeout_seconds: float | None = None,
+        allow_inline_refresh: bool | None = None,
         session_factory: Callable[[], Session] | None = None,
     ) -> None:
         resolved_cache_ttl = (
@@ -1102,6 +1112,11 @@ class MFDSPillCatalogBoundary:
         self.cache_ttl = resolved_cache_ttl
         self.refresh_timeout_seconds = resolved_refresh_timeout
         self.minimum_catalog_rows = self.catalog_api.minimum_catalog_rows
+        self.allow_inline_refresh = (
+            allow_inline_refresh
+            if allow_inline_refresh is not None
+            else settings.PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH
+        )
         self.session_factory = session_factory or open_pill_catalog_session
         self._catalog: tuple[PillCatalogEntry, ...] | None = None
         self._catalog_loaded_at = 0.0
@@ -1113,17 +1128,7 @@ class MFDSPillCatalogBoundary:
     async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         if self._is_memory_cache_fresh():
             return self._catalog or ()
-
-        try:
-            async with asyncio.timeout(self.refresh_timeout_seconds):
-                return await self._get_catalog_with_lock()
-        except TimeoutError as exc:
-            self._last_refresh_failure_at = time.monotonic()
-            if self._catalog is not None and self._catalog_is_stale:
-                return self._catalog
-            raise PillCatalogUnavailableError(
-                "The public pill catalog request timed out."
-            ) from exc
+        return await self._get_catalog_with_lock()
 
     async def _get_catalog_with_lock(self) -> tuple[PillCatalogEntry, ...]:
         async with self._catalog_lock:
@@ -1153,6 +1158,12 @@ class MFDSPillCatalogBoundary:
                 # Publish a complete stale snapshot before remote refresh so
                 # timeout and cancellation paths can still serve known data.
                 self._set_memory_catalog(stale_catalog, stale=True)
+            if not self.allow_inline_refresh:
+                if stale_catalog:
+                    return self._catalog or ()
+                raise PillCatalogUnavailableError(
+                    "The shared pill catalog has not been synchronized."
+                )
             if self._is_refresh_backoff_active():
                 if stale_catalog:
                     return self._catalog or ()
@@ -1160,9 +1171,17 @@ class MFDSPillCatalogBoundary:
                     "The public pill catalog is temporarily unavailable."
                 )
             try:
-                catalog = await self.catalog_api.requestCatalog()
+                async with asyncio.timeout(self.refresh_timeout_seconds):
+                    catalog = await self.catalog_api.requestCatalog()
                 if len(catalog) < self.minimum_catalog_rows:
                     raise RuntimeError("MFDS pill catalog download was incomplete.")
+            except TimeoutError as exc:
+                self._last_refresh_failure_at = time.monotonic()
+                if stale_catalog:
+                    return self._catalog or ()
+                raise PillCatalogUnavailableError(
+                    "The public pill catalog request timed out."
+                ) from exc
             except asyncio.CancelledError:
                 # A sibling use-case failure or client cancellation is not an
                 # upstream outage and must not poison the next refresh attempt.
@@ -1196,7 +1215,7 @@ class MFDSPillCatalogBoundary:
         self,
         operation: Callable[[], _CatalogIOResult],
     ) -> _CatalogIOResult:
-        """Keeps SQLite capacity reserved until a timed-out worker exits."""
+        """Keeps persistence capacity reserved until a timed-out worker exits."""
 
         await self._cache_io_semaphore.acquire()
         worker = asyncio.create_task(asyncio.to_thread(operation))
@@ -1216,7 +1235,7 @@ class MFDSPillCatalogBoundary:
         self,
         worker: asyncio.Task[_CatalogIOResult],
     ) -> None:
-        """Consumes a detached SQLite result and releases its capacity slot."""
+        """Consumes a detached persistence result and releases its capacity slot."""
 
         try:
             worker.exception()

@@ -15,6 +15,9 @@ from sqlalchemy.exc import ArgumentError
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 _PROJECT_ROOT = _BACKEND_ROOT.parent
 _DEFAULT_DATABASE_URL = f"sqlite:///{(_BACKEND_ROOT / 'medbuddy.db').as_posix()}"
+_DEFAULT_API_CONTRACT_VERSION = (
+    (_BACKEND_ROOT / "API_CONTRACT_VERSION").read_text(encoding="utf-8").strip()
+)
 
 
 # Class Name: Settings
@@ -48,15 +51,19 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    GEMINI_API_KEY: str = Field(min_length=1)
-    PUBLIC_DATA_API_KEY: str = Field(min_length=1)
+    GEMINI_API_KEY: str = ""
+    PUBLIC_DATA_API_KEY: str = ""
     APP_ENV: Literal["development", "test", "production"] = "development"
+    RUNTIME_ROLE: Literal["api", "migration", "maintenance", "catalog_sync"] = (
+        "api"
+    )
     AUTH_MODE: Literal["disabled", "firebase"] = "disabled"
     FIREBASE_PROJECT_ID: str = ""
     FIREBASE_CHECK_REVOKED_TOKENS: bool = False
     FIREBASE_REQUIRE_VERIFIED_EMAIL: bool = True
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
+    FIREBASE_APP_CHECK_REQUIRED: bool = False
     DATABASE_URL: str = _DEFAULT_DATABASE_URL
     AUTO_CREATE_SCHEMA: bool = True
     DATABASE_POOL_SIZE: int = Field(default=5, gt=0, le=20)
@@ -98,6 +105,7 @@ class Settings(BaseSettings):
         gt=0,
         le=600,
     )
+    PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: bool = True
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = Field(
         default=30.0,
         gt=0,
@@ -130,7 +138,9 @@ class Settings(BaseSettings):
         le=365,
     )
     RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
+    API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
 
     # 함수이름: validate_external_api_url
     # 함수역할:
@@ -173,10 +183,37 @@ class Settings(BaseSettings):
     def validate_security_configuration(self) -> "Settings":
         if self.APP_ENV != "production":
             return self
-        if self.AUTH_MODE != "firebase":
-            raise ValueError("Production requires AUTH_MODE=firebase.")
-        if not self.FIREBASE_PROJECT_ID.strip():
-            raise ValueError("Production requires FIREBASE_PROJECT_ID.")
+        if self.RUNTIME_ROLE == "api":
+            if not self.GEMINI_API_KEY.strip():
+                raise ValueError("Production API requires GEMINI_API_KEY.")
+            if not self.PUBLIC_DATA_API_KEY.strip():
+                raise ValueError("Production API requires PUBLIC_DATA_API_KEY.")
+            if self.AUTH_MODE != "firebase":
+                raise ValueError("Production API requires AUTH_MODE=firebase.")
+            if not self.FIREBASE_PROJECT_ID.strip():
+                raise ValueError("Production API requires FIREBASE_PROJECT_ID.")
+            if not self.FIREBASE_APP_CHECK_REQUIRED:
+                raise ValueError(
+                    "Production API requires FIREBASE_APP_CHECK_REQUIRED=true."
+                )
+            if not self.RATE_LIMIT_ENABLED:
+                raise ValueError("Production API requires RATE_LIMIT_ENABLED=true.")
+            if not self.RATE_LIMIT_REQUIRE_REDIS:
+                raise ValueError(
+                    "Production API requires RATE_LIMIT_REQUIRE_REDIS=true."
+                )
+            if self.PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH:
+                raise ValueError(
+                    "Production API requires "
+                    "PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH=false."
+                )
+        if (
+            self.RUNTIME_ROLE == "catalog_sync"
+            and not self.PUBLIC_DATA_API_KEY.strip()
+        ):
+            raise ValueError(
+                "Production catalog synchronization requires PUBLIC_DATA_API_KEY."
+            )
         try:
             database_url = make_url(self.DATABASE_URL)
         except ArgumentError as exc:

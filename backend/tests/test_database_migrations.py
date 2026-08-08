@@ -36,6 +36,7 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "patient_link_codes",
         "user_settings",
         "user_accounts",
+        "pill_identification_references",
     }.issubset(tables)
     assert "deduplication_key" in saved_columns
     assert any(

@@ -3,7 +3,7 @@
 ## Document Contract
 
 This is the canonical implementation-grounded class view for the
-`v0.0.9-alpha` baseline and the Android beta hardening branch.
+`v0.1.0-beta` candidate and its `v0.0.9-alpha` functional baseline.
 
 - `docs/temp/class diagram v5.png` remains the authoritative first-semester
   conceptual baseline.
@@ -15,9 +15,10 @@ This is the canonical implementation-grounded class view for the
   identity, authorization, deployment, and signing boundaries shown below.
 
 Private Flutter widgets, private Python helper classes, Pydantic transport DTOs,
-SQLAlchemy row classes, exceptions, and framework-generated state classes are
-implementation details. They remain valid code but are omitted from the primary
-diagram so the use-case architecture remains readable.
+most SQLAlchemy row mappings, exceptions, and framework-generated state classes
+are implementation details. They remain valid code but are omitted from the
+primary diagram so the use-case architecture remains readable. Public adapters,
+controls, and protocol boundaries that participate in a use case are retained.
 
 ## Naming and Layer Rules
 
@@ -29,9 +30,11 @@ diagram so the use-case architecture remains readable.
    and shared boundaries; domain controls do not construct the API router.
 4. Cross-tier calls use HTTP through `api.router`. No Flutter class directly
    invokes a backend Python class.
-5. SQLite ORM rows prefixed with `_` are persistence mappings, not domain
-   entities. Relationships shown to databases are logical because current ORM
-   tables do not declare all relationships as SQL foreign keys.
+5. ORM rows prefixed with `_` are persistence mappings, not domain entities.
+   Ownership and lifecycle-critical references use database foreign keys, while
+   the ORM intentionally does not expose SQLAlchemy `relationship()` navigation
+   for every association. Database links below therefore summarize both enforced
+   foreign keys and logical repository access.
 6. Patient and caregiver are current domain roles. The alpha hashes select demo
    scopes but are not authentication credentials.
 
@@ -54,6 +57,7 @@ package "Flutter / Boundary" as FE_Boundary {
   class PrescriptionAnalysisSuccessUI <<boundary>>
   class PrescriptionAnalysisFailureUI <<boundary>>
   class CheckResultUI <<boundary>>
+  class PrescriptionChangeRadarUI <<boundary>>
   class CheckMedicationDetailUI <<boundary>>
   class CheckSavedMedicationUI <<boundary>>
   class CheckTodayMedicationInfoUI <<boundary>>
@@ -70,7 +74,9 @@ package "Flutter / Boundary" as FE_Boundary {
 package "Flutter / Control" as FE_Control {
   class MedBuddyViewModel <<control, facade>>
   class AuthenticationControl <<control>>
+  class "ManageAccount" as FE_ManageAccount <<control>>
   class "InputPrescription" as FE_InputPrescription <<control>>
+  class "CheckPrescriptionChange" as FE_CheckPrescriptionChange <<control>>
   class "CheckMedicationDetail" as FE_CheckMedicationDetail <<control>>
   class "CheckSavedMedication" as FE_CheckSavedMedication <<control>>
   class "CheckTodayMedicationInfo" as FE_CheckTodayMedicationInfo <<control>>
@@ -103,25 +109,39 @@ package "Flutter / Entity" as FE_Entity {
 }
 
 package "Flutter / External and Shared Services" as FE_Service {
-  class ApiConfig <<configuration>>
+  class ApiConfig <<configuration>> {
+    + validateUrl(value, requirePublicHttps) {static}
+  }
   class AuthConfig <<configuration>>
+  class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<egress policy>>
   class AuthenticatedApiClient <<external boundary>>
+  class FirebaseRuntimeService <<runtime service>>
   class FirebaseAuth <<external identity provider>>
+  class FirebaseAppCheck <<external attestation provider>>
   class ApiResponseParser <<boundary helper>>
   class NotificationService <<external boundary>>
   class TTSService <<external boundary>>
+  class PrescriptionLocalOcrService <<privacy boundary>>
+  class PushNotificationService <<external boundary>>
+  class CaregiverNotificationMonitorService <<application service>>
+  class CaregiverNotificationBackgroundScheduler <<runtime scheduler>>
 }
 
 package "FastAPI / API Boundary" as BE_API {
   component "api.router" as APIRouter <<boundary>>
   component "api.dependencies" as APIDependencies <<composition root>>
   class RequestBodyLimitMiddleware <<middleware>>
+  class RequestRateLimitMiddleware <<middleware>>
   class Settings <<configuration>>
 }
 
 package "FastAPI / Control" as BE_Control {
   class AuthorizationControl <<control>>
+  class "ManageAccount" as BE_ManageAccount <<control>>
+  class ManagePushToken <<control>>
+  class DispatchCaregiverAlert <<control>>
   class "InputPrescription" as BE_InputPrescription <<control>>
+  class "CheckPrescriptionChange" as BE_CheckPrescriptionChange <<control>>
   class "CheckMedicationDetail" as BE_CheckMedicationDetail <<control>>
   class "CheckSavedMedication" as BE_CheckSavedMedication <<control>>
   class "CheckTodayMedicationInfo" as BE_CheckTodayMedicationInfo <<control>>
@@ -161,7 +181,15 @@ package "FastAPI / Entity" as BE_Entity {
 
 package "FastAPI / External Boundary" as BE_Boundary {
   class OIDCTokenVerifier <<external boundary>>
-  class PrescriptionImageProcessor <<utility boundary>>
+  class AppCheckTokenVerifier <<external boundary>>
+  component "boundaries.firebase_admin_boundary\nget_firebase_admin_app()" as FirebaseAdminModule <<module boundary>>
+  interface MedicationCompletionEventBoundary <<protocol boundary>>
+  interface PushNotificationBoundary <<protocol boundary>>
+  class FirebasePushNotificationBoundary <<external boundary>>
+  class PrescriptionImageProcessor <<utility boundary>> {
+    + maxPixels: 24000000 {static}
+    + processPrescriptionImage(imageBytes)
+  }
   class GeminiVisionClient <<external boundary>>
   class OCRServiceBoundary <<external boundary>>
   class LLMService <<external boundary>>
@@ -184,16 +212,20 @@ package "FastAPI / Policy and Repository" as BE_Support {
 package "Persistence" {
   database "medbuddy.db\n(local/demo SQLite)" as MedicationDB
   database "Cloud SQL PostgreSQL\n(beta production)" as ProductionDB
-  database "pill_identification_catalog.db\n(reference SQLite)" as PillCatalogDB
-  database "Redis\n(optional cache)" as RedisCache
+  database "Redis\n(cache + distributed quota)" as RedisCache
 }
 
 ' Main Flutter navigation, authentication, and use-case coordination
 MedBuddyApp o-- AuthenticationControl
+MedBuddyApp o-- PushNotificationService
+MedBuddyApp o-- CaregiverNotificationMonitorService
+MedBuddyApp ..> CaregiverNotificationBackgroundScheduler
 MedBuddyApp --> AuthenticationUI
 AuthenticationUI --> AuthenticationControl
 AuthenticationControl --> AuthConfig
 AuthenticationControl --> FirebaseAuth
+AuthenticationControl --> FirebaseRuntimeService
+FirebaseRuntimeService --> FirebaseAppCheck
 AuthenticationControl --> AuthSession
 AuthenticationControl o-- AuthenticatedApiClient
 MedBuddyApp o-- MedBuddyViewModel : authenticated session
@@ -208,10 +240,13 @@ ManageUserSettingUI ..> AuthenticationControl : signOut()
 InputPrescriptionUI --> MedBuddyViewModel
 PrescriptionAnalysisPreviewUI --> MedBuddyViewModel
 CheckResultUI --> MedBuddyViewModel
+PrescriptionChangeRadarUI --> MedBuddyViewModel
 CheckSavedMedicationUI --> MedBuddyViewModel
 CheckScheduleUI --> MedBuddyViewModel
 HealthRecommendationUI --> MedBuddyViewModel
 MedBuddyViewModel o-- FE_InputPrescription
+MedBuddyViewModel o-- FE_ManageAccount
+MedBuddyViewModel o-- FE_CheckPrescriptionChange
 MedBuddyViewModel o-- FE_CheckSavedMedication
 MedBuddyViewModel o-- FE_CheckSchedule
 MedBuddyViewModel o-- FE_CheckHealthRecommendation
@@ -219,6 +254,8 @@ MedBuddyViewModel o-- FE_ManageUserSetting
 LinkPatientCaregiverUI --> FE_LinkPatientCaregiver
 CheckCaregiverMedicationUI --> FE_CheckCaregiverMedication
 CheckCaregiverMedicationUI --> FE_SetCaregiverNotification
+CheckCaregiverMedicationUI ..> SetCaregiverNotificationUI : opens dialog
+SetCaregiverNotificationUI ..> SetNotificationUI : selects deadline
 SetNotificationUI --> FE_SetNotification
 CheckMedicationDetailUI --> FE_CheckMedicationDetail
 CheckMedicationDetailUI --> FE_RequestVoiceGuide
@@ -226,6 +263,7 @@ PillIdentificationUI --> FE_IdentifyPill
 
 ' Frontend entities and local external services
 FE_InputPrescription --> FE_AnalyzedMedication
+FE_InputPrescription --> PrescriptionLocalOcrService
 FE_CheckMedicationDetail --> FE_MedicationDetail
 FE_CheckSavedMedication --> FE_MedicationDetail
 FE_CheckSchedule --> FE_MedicationSchedule
@@ -238,25 +276,48 @@ FE_ManageUserSetting --> FE_UserSetting
 FE_IdentifyPill --> FE_PillResult
 FE_PillResult *-- "0..*" FE_PillCandidate
 FE_PillResult *-- FE_PillVisualFeatures
+FE_MedicationDetail ..> MedicationImageUrlPolicy : sanitize API and stored value
+FE_MedicationSchedule ..> MedicationImageUrlPolicy : sanitize API and stored value
+FE_PillCandidate ..> MedicationImageUrlPolicy : sanitize API value
+CheckMedicationDetailUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckSavedMedicationUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckScheduleUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckCaregiverMedicationUI ..> MedicationImageUrlPolicy : revalidate before fetch
+PillIdentificationUI ..> MedicationImageUrlPolicy : revalidate before fetch
 FE_SetNotification ..> NotificationService
 FE_RequestVoiceGuide ..> TTSService
+PushNotificationService --> AuthenticatedApiClient : token lifecycle
+CaregiverNotificationMonitorService --> AuthenticatedApiClient : adherence polling
+CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorService
 
 ' Every Flutter control reaches the backend only through authenticated HTTP
 FE_Control ..> AuthenticatedApiClient
-AuthenticatedApiClient --> APIRouter : HTTPS + Bearer token
+AuthenticatedApiClient --> APIRouter : HTTPS + Bearer + App Check
 FE_Control ..> ApiConfig
 FE_Control ..> ApiResponseParser
 
 ' FastAPI composition and use-case controls
 RequestBodyLimitMiddleware --> APIRouter
+RequestRateLimitMiddleware --> APIRouter
+RequestRateLimitMiddleware --> RedisCache : distributed quota
 APIRouter --> APIDependencies
 APIDependencies o-- OIDCTokenVerifier
+APIDependencies o-- AppCheckTokenVerifier
+OIDCTokenVerifier --> FirebaseAdminModule : get_firebase_admin_app()
+AppCheckTokenVerifier --> FirebaseAdminModule : get_firebase_admin_app()
+FirebasePushNotificationBoundary --> FirebaseAdminModule : get_firebase_admin_app()
+FirebasePushNotificationBoundary ..|> PushNotificationBoundary
 APIDependencies o-- AuthorizationControl
+APIDependencies o-- BE_ManageAccount
+APIDependencies o-- ManagePushToken
+APIDependencies o-- DispatchCaregiverAlert
+APIDependencies o-- PushNotificationBoundary
 OIDCTokenVerifier --> AuthenticatedPrincipal
 APIRouter --> AuthenticatedPrincipal
 APIRouter --> AuthorizationControl : resolve trusted scope
 AuthorizationControl --> BE_PatientCaregiverLink
 APIDependencies o-- BE_InputPrescription
+APIDependencies o-- BE_CheckPrescriptionChange
 APIDependencies o-- BE_CheckMedicationDetail
 APIDependencies o-- BE_CheckSavedMedication
 APIDependencies o-- BE_CheckTodayMedicationInfo
@@ -279,6 +340,7 @@ BE_InputPrescription --> MedicationCandidateList
 MedicationCandidateList *-- "0..*" MedicationCandidate
 BE_InputPrescription --> PrescriptionAnalysisResult
 PrescriptionAnalysisResult *-- "0..*" MedicationCandidate
+BE_CheckPrescriptionChange --> BE_MedicationSchedule
 
 ' Medication, schedule, setting, and link pipelines
 BE_CheckMedicationDetail --> PublicDrugSmallAPI
@@ -290,12 +352,20 @@ BE_CheckSchedule --> MedicationCoursePolicy
 BE_CheckSchedule --> BE_MedicationSchedule
 BE_SetNotification --> BE_MedicationAlarm
 BE_CheckSchedule --> MedicationCompletion
+BE_CheckSchedule --> MedicationCompletionEventBoundary
+DispatchCaregiverAlert ..|> MedicationCompletionEventBoundary
+DispatchCaregiverAlert --> PushNotificationBoundary
+DispatchCaregiverAlert --> BE_CaregiverNotification
 BE_SetCaregiverNotification --> BE_CaregiverNotification
 BE_LinkPatientCaregiver --> BE_PatientLinkCode
 BE_LinkPatientCaregiver --> BE_PatientCaregiverLink
 BE_CheckHealthRecommendation --> LLMService
 BE_CheckHealthRecommendation --> BE_HealthRecommendation
 BE_ManageUserSetting --> BE_UserSetting
+BE_ManageAccount ..> MedicationDB : local account lifecycle
+BE_ManageAccount ..> ProductionDB : beta account lifecycle
+ManagePushToken ..> MedicationDB : local device-token lifecycle
+ManagePushToken ..> ProductionDB : beta device-token lifecycle
 
 ' UC-15 loose-pill extension
 BE_IdentifyPill --> PillVisionBoundary
@@ -304,9 +374,9 @@ PillVisionBoundary --> GeminiPillVisionAPI
 BE_IdentifyPill --> MFDSPillCatalogBoundary
 MFDSPillCatalogBoundary --> MFDSPillAPI
 MFDSPillCatalogBoundary --> PillIdentificationCatalogRepository
-PillIdentificationCatalogRepository --> PillCatalogDB
 PillIdentificationCatalogRepository --> PillIdentificationReference
-PillIdentificationReference --> PillCatalogDB
+PillIdentificationReference --> MedicationDB : local table
+PillIdentificationReference --> ProductionDB : beta table
 BE_IdentifyPill --> BE_PillResult
 BE_PillResult *-- "0..*" BE_PillCandidate
 BE_PillResult *-- BE_PillVisualFeatures
@@ -326,11 +396,67 @@ MedicationDB ..> BE_UserSetting
 @enduml
 ```
 
+## Deployment Runtime Role View
+
+Runtime roles are deployment entry points configured through `Settings`; they
+are not additional domain classes. All four roles execute the same immutable
+backend image while exposing different processes and dependencies.
+
+```plantuml
+@startuml MedBuddy_Runtime_Roles
+left to right direction
+skinparam packageStyle rectangle
+
+artifact "MedBuddy backend image" as BackendImage
+
+package "Cloud Run service" {
+  component "API process\nRUNTIME_ROLE=api" as ApiRuntime
+  component "api.router" as RuntimeRouter <<boundary>>
+  component RequestRateLimitMiddleware as RuntimeRateLimit <<middleware>>
+}
+
+package "Cloud Run jobs" {
+  component "Migration process\nRUNTIME_ROLE=migration" as MigrationRuntime
+  component "Maintenance process\nRUNTIME_ROLE=maintenance" as MaintenanceRuntime
+  component "Catalog sync process\nRUNTIME_ROLE=catalog_sync" as CatalogRuntime
+  component "Alembic CLI" as AlembicRuntime <<migration tool>>
+  class DataMaintenanceService <<service>>
+  class DrugCatalogSyncJob <<job>>
+}
+
+database "Cloud SQL PostgreSQL" as RuntimeDatabase
+database "Managed Redis" as RuntimeRedis
+cloud "Firebase Auth / App Check / FCM" as RuntimeFirebase
+cloud "Public medication APIs" as RuntimePublicAPIs
+
+BackendImage ..> ApiRuntime
+BackendImage ..> MigrationRuntime
+BackendImage ..> MaintenanceRuntime
+BackendImage ..> CatalogRuntime
+
+ApiRuntime --> RuntimeRouter
+ApiRuntime --> RuntimeRateLimit
+ApiRuntime --> RuntimeDatabase
+RuntimeRateLimit --> RuntimeRedis
+ApiRuntime --> RuntimeFirebase
+
+MigrationRuntime --> AlembicRuntime
+AlembicRuntime --> RuntimeDatabase : upgrade head
+MaintenanceRuntime --> DataMaintenanceService
+DataMaintenanceService --> RuntimeDatabase
+CatalogRuntime --> DrugCatalogSyncJob
+DrugCatalogSyncJob --> RuntimePublicAPIs
+DrugCatalogSyncJob --> RuntimeDatabase : shared catalog writer
+@enduml
+```
+
 ## Public Architectural Type Inventory
 
-The primary diagram includes every public production type that participates in
-a use case or architectural boundary. The following categories are intentionally
-not expanded into separate diagram nodes:
+The primary and runtime diagrams include architecturally significant public
+production types that own a use case, external integration, or process
+lifecycle. They are not intended to duplicate every public source declaration.
+The following categories are intentionally not expanded into separate diagram
+nodes:
 
 | Category | Examples | Reason |
 | --- | --- | --- |
@@ -339,7 +465,7 @@ not expanded into separate diagram nodes:
 | View-model result/projection types | `TodayMedicationProgress`, `SavedMedicationBatchDeleteResult`, `MedicationSaveResult` | Typed return/state projections owned by their control or view model. |
 | Theme tokens | `MedBuddyColors`, `MedBuddyRadii`, `MedBuddyShadows` | Shared presentation constants without use-case behavior. |
 | Transport DTOs | `OCRParseRequest`, `MedicationRequest`, `MedicationResponse`, `PillIdentificationResponse` | API serialization contracts, not domain coordinators. |
-| Private ORM rows | `_SavedMedication`, `_MedicationAlarm`, `_PatientCaregiverLink` | Persistence mapping for public entities and controls. |
+| Private ORM rows | `_SavedMedication`, `_MedicationAlarm`, `_PatientCaregiverLink` | Persistence mappings; lifecycle-critical references are enforced with database foreign keys even though ORM navigation relationships are generally omitted. |
 | Private control helpers | `_MedicationTextNormalizer`, `_PrescriptionMedicationNameVerifier` | Cohesive algorithms owned by their public control module. |
 | Exceptions | `PillImageQualityError`, `PrescriptionAnalysisTimeoutError` | Error contracts, not stateful architectural collaborators. |
 
@@ -355,12 +481,16 @@ not expanded into separate diagram nodes:
 | `LinkUI` | `LinkPatientCaregiverUI` | Uses the final patient-caregiver terminology. |
 | `UserSettingUI` | `ManageUserSettingUI` | Matches the implemented UC-14 control/UI pair. |
 | `PrescriptionAnalysisControl` | frontend/backend `InputPrescription` | v5 responsibility preserved across the HTTP boundary. |
+| Prescription comparison extension | frontend/backend `CheckPrescriptionChange`, `PrescriptionChangeRadarUI` | Compares a confirmed prescription with related saved history without expanding `InputPrescription` beyond analysis. |
 | `MedicationSaveControl` | `CheckMedicationDetail` plus `CheckSavedMedication` | Detail enrichment and persistence remain separate cohesive controls. |
 | `SavedMedicationControl` | `CheckSavedMedication` | Direct implementation mapping. |
 | `TodayMedicationControl` | `CheckTodayMedicationInfo`, `CheckSchedule`, `SetNotification`, `CheckHealthRecommendation`, `RequestVoiceGuide` | Split by the original UC-3/8/10/11/12 responsibilities. |
 | `PatientGuardianLinkControl` | `LinkPatientCaregiver` | Terminology reconciled to the final code/document language. |
 | `GuardianAlertSetting` | `CaregiverNotification` | Preference persistence is implemented; remote delivery remains a beta gap. |
+| Account and device lifecycle | frontend/backend `ManageAccount`, backend `ManagePushToken` | Beta authentication adds explicit account-data and FCM-token lifecycle controls outside the original v5 scope. |
+| Caregiver alert delivery | `MedicationCompletionEventBoundary`, `DispatchCaregiverAlert`, `PushNotificationBoundary` | Completion persistence remains in `CheckSchedule`; downstream delivery is isolated behind protocol boundaries. |
 | `MedicationAPIBoundary` | `api.router` module | The real FastAPI boundary is documented without inventing a class. |
+| Firebase Admin SDK ownership | `boundaries.firebase_admin_boundary` module | A locked module-level `get_firebase_admin_app()` factory owns the shared SDK application; no helper class is invented. |
 | UC-15 types | `IdentifyPill`, `PillVisionBoundary`, pill entities/repository | Deliberate v0.0.9 extension documented separately. |
 
 ## Known Beta Architecture Gaps
@@ -368,9 +498,12 @@ not expanded into separate diagram nodes:
 - Firebase authentication and server-side authorization are implemented, but
   the managed project, Cloud Run/Cloud SQL resources, protected signing
   environment, and signed two-device smoke test remain deployment gates.
-- `CaregiverNotification` currently persists preference state; it does not by
-  itself prove cross-device delivery.
+- `CaregiverNotification` persists preference state and the FCM boundaries
+  implement delivery, but source structure alone does not prove signed
+  cross-device delivery against provisioned Firebase resources.
 - `medbuddy.db` remains local/demo storage; production uses the same ORM mapping
   through Alembic-managed PostgreSQL.
-- App Check and distributed rate limiting remain defense-in-depth work before
-  opening an unrestricted public beta.
+- App Check, Redis-backed distributed rate limiting, shared catalog
+  persistence, and deployment runtime roles are implemented in source.
+  Provisioned Firebase/GCP resources and signed two-device tests remain
+  operational beta gates.

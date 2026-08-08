@@ -30,10 +30,13 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend boundary | `AuthenticationUI` | Sign-in, email verification, password recovery, sign-out, and recoverable authentication state. |
 | Frontend control | `AuthenticationControl` | Coordinate the identity SDK and publish `AuthSession`. |
 | Frontend external boundary | `AuthenticatedApiClient` | Attach fresh bearer tokens to the existing HTTP control calls. |
+| Frontend external boundary | `FirebaseRuntimeService` | Initialize Firebase and Android App Check once in foreground and background isolates. |
 | Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
 | Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
 | Backend boundary | `OIDCTokenVerifier` | Verify signature, issuer, audience, expiry, and subject. |
+| Backend boundary | `AppCheckTokenVerifier` | Verify first-party Android attestation independently of user identity. |
+| Backend boundary module | `boundaries.firebase_admin_boundary` | Own the process-wide Firebase Admin application shared by auth, attestation, and FCM adapters through `get_firebase_admin_app()`. |
 | Backend external boundary | `PushNotificationBoundary` | Isolate Firebase Admin multicast delivery from caregiver controls. |
 | Backend entity | `AuthenticatedPrincipal` | Verified subject and deterministic server-owned application identity. |
 | Backend control | `AuthorizationControl` | Resolve owned patient scope and validate active caregiver links. |
@@ -87,7 +90,7 @@ AuthenticationUI -> AuthenticationControl : requestSignIn()
 AuthenticationControl --> AuthenticationUI : AuthSession
 
 User -> AuthenticatedApiClient : request use case
-AuthenticatedApiClient -> Router : HTTPS + Bearer token
+AuthenticatedApiClient -> Router : HTTPS + Bearer + App Check tokens
 Router -> OIDCTokenVerifier : verify(token)
 OIDCTokenVerifier --> Router : AuthenticatedPrincipal
 Router -> AuthorizationControl : resolveScope(principal, selectedPatientId?)
@@ -161,13 +164,13 @@ The deployment must provide:
 - TLS termination with automatic certificate renewal and HTTP-to-HTTPS redirect.
 - A private application-to-database network path.
 - A managed PostgreSQL database with connection pooling, backups, and tested
-  restore. SQLite remains valid only for local/demo execution and isolated
-  reference catalogs.
-- The pill reference catalog may use a disposable per-instance SQLite cache
-  only when cold-start refresh is bounded and failure falls back to an
-  immutable snapshot. Otherwise, store the catalog in PostgreSQL or an
-  object-backed versioned snapshot; do not assume container-local files are
-  durable.
+  restore. SQLite remains valid only for local/demo execution.
+- The pill reference catalog uses the shared application database. Production
+  API instances are read-only consumers; a controlled catalog synchronization
+  job is the sole production writer and runs before the new API revision is
+  deployed.
+- Managed Redis is reached through private VPC egress and is required for
+  distributed production quotas. Production fails closed when it is unavailable.
 - The existing versioned Alembic migration chain must run as a controlled
   release step rather than implicitly by every web worker.
 - Secrets from a secret manager or protected deployment environment, never
@@ -179,6 +182,27 @@ A managed container runtime with an HTTPS load balancer and managed PostgreSQL
 is the preferred topology. Cloud Run plus Cloud SQL aligns with the current
 Google/Firebase integrations, but the interfaces above keep the domain layer
 provider-independent.
+
+## Client Egress and Resource-Safety Policy
+
+- `ApiConfig` keeps emulator and explicitly selected trusted-LAN endpoints in
+  debug mode, while release/profile mode rejects clear-text, localhost,
+  private-network, credentialed, query-bearing, and non-contract API URLs.
+- The convenience `python backend/main.py` entry point binds to `127.0.0.1`.
+  Listening on every interface is an explicit trusted-LAN test action, never a
+  default.
+- Medication images are external content. Flutter loads them only from the
+  documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
+  value immediately before every `Image.network` call.
+- Prescription image processing rejects decoded dimensions above 24 megapixels
+  from the image header and uses a dedicated single-worker executor before
+  OpenCV allocation. Multipart byte limits remain a separate outer control.
+- Search-keyword expansion, frequency parsing, model fallback caches, and save
+  actions have explicit bounds or serialization. Completed-only dose records
+  cannot redefine the expected daily schedule.
+- Pull-request CI uses deterministic fake API keys. Public issue templates
+  accept only synthetic or fully redacted examples and route vulnerabilities or
+  real-data masking failures to the private `SECURITY.md` process.
 
 ## Android Release Signing and Network Policy
 
@@ -204,10 +228,12 @@ provider-independent.
 
 ## Implemented Beta Configuration
 
-The source now implements the application portions of delivery items 2-6 and
-the Firebase client adapter for item 1. Firebase/GCP resources, protected
-environments, production secrets, and signed-device smoke testing remain
-operational release gates, not a second authentication path.
+The source implements authentication adapters, authorization controls,
+deployment jobs, and signed-build safeguards for delivery items 1-6. Runtime
+monitoring, Firebase/GCP provisioning, least-privilege IAM assignment,
+production secrets, backup/restore rehearsal, and signed-device smoke testing
+remain operational release gates, not completed application features or a
+second authentication path.
 
 ### Firebase
 
@@ -262,16 +288,22 @@ remain in Google Secret Manager or protected GitHub Environments.
 `deploy-backend.yml` expects these protected GitHub Environment variables:
 
 - `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ARTIFACT_REPOSITORY`
-- `GCP_CLOUD_RUN_SERVICE`, `GCP_MIGRATION_JOB`
-- `GCP_RUNTIME_SERVICE_ACCOUNT`, `GCP_DEPLOY_SERVICE_ACCOUNT`
+- `GCP_CLOUD_RUN_SERVICE`, `GCP_MIGRATION_JOB`, `GCP_MAINTENANCE_JOB`
+- `GCP_CATALOG_SYNC_JOB`, `GCP_VPC_CONNECTOR`
+- `GCP_API_SERVICE_ACCOUNT`, `GCP_MIGRATION_SERVICE_ACCOUNT`
+- `GCP_CATALOG_SERVICE_ACCOUNT`, `GCP_MAINTENANCE_SERVICE_ACCOUNT`
+- `GCP_DEPLOY_SERVICE_ACCOUNT`
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_CLOUD_SQL_CONNECTION`
 - `FIREBASE_PROJECT_ID`
 
 Google Secret Manager must contain `medbuddy-database-url`,
-`medbuddy-gemini-api-key`, and `medbuddy-public-data-api-key`. The database URL
+`medbuddy-redis-url`, `medbuddy-gemini-api-key`, and
+`medbuddy-public-data-api-key`. The database URL
 uses SQLAlchemy's `postgresql+psycopg` scheme and the Cloud SQL Unix socket. The
-workflow builds one immutable image, runs `alembic upgrade head` as a Cloud Run
-Job, and deploys that same image only after migration succeeds.
+workflow builds one immutable image, runs `alembic upgrade head`, seeds the
+shared medication and pill catalog, and deploys that same image only after both
+database steps succeed. The API uses a Serverless VPC Access connector with
+private-range egress to reach managed Redis.
 
 The current ordered Alembic chain records the beta data boundary:
 
@@ -281,13 +313,16 @@ The current ordered Alembic chain records the beta data boundary:
 | `c91f3a2b7d44` | Add per-slot caregiver alert settings and missed-dose deadline fields. |
 | `d74a8e52f1c0` | Add authenticated FCM device-token storage and active-token lookup. |
 | `e82bc4d1a930` | Persist user-confirmed schedule slots on saved medications. |
+| `f93ac76b2e11` | Strengthen account lifecycle and relationship integrity. |
+| `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
 
 The Cloud Run network endpoint permits unauthenticated invocation because a
 Firebase client token is not a Cloud Run IAM token. FastAPI still authenticates
 every application route. `/health` and `/ready` are intentionally anonymous:
 the former reports process liveness, while the latter returns only a binary
-readiness result after checking database connectivity and verifier
-initialization. Production database pools and Cloud Run concurrency are bounded
+readiness result after checking database connectivity and Alembic revision,
+OIDC and App Check verifier initialization, and Redis connectivity. Production
+database pools and Cloud Run concurrency are bounded
 so prescription-text and loose-pill image requests cannot multiply connections
 without limit.
 

@@ -112,7 +112,9 @@ class CheckResultUI extends StatelessWidget {
                             savingMedicationIndex == medicationIndex,
                         isMedicationSaved: completedMedicationSaveIndexes
                             .contains(medicationIndex),
-                        isAllMedicationSaving: isAllMedicationSaving,
+                        isAllMedicationSaving:
+                            isAllMedicationSaving ||
+                            savingMedicationIndex != null,
                         onMedicationSaveRequested: () async {
                           final success = await onMedicationSaveRequested(
                             analyzedMedication,
@@ -138,7 +140,9 @@ class CheckResultUI extends StatelessWidget {
                     child: _BulkSaveButton(
                       text: text,
                       userSetting: userSetting,
-                      isSaving: isAllMedicationSaving,
+                      isSaving:
+                          isAllMedicationSaving ||
+                          savingMedicationIndex != null,
                       isCompleted:
                           completedMedicationSaveIndexes.length >=
                           analyzedMedicationList.length,

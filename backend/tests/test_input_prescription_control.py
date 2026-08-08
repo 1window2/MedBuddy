@@ -77,7 +77,6 @@ class _TimedOutOCRServiceBoundary:
 
 class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     def setUp(self) -> None:
-        _PrescriptionMedicationNameVerifier.clear_ai_fallback_cache()
         self.engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -94,7 +93,6 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
-        _PrescriptionMedicationNameVerifier.clear_ai_fallback_cache()
 
     def test_corrects_hangul_ocr_vowel_variant_from_local_catalog(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
@@ -257,7 +255,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
         self.assertEqual(config.max_output_tokens, 1024)
 
-    def test_reuses_cached_llm_fallback_result(self) -> None:
+    def test_llm_fallback_cache_does_not_cross_verifier_instances(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
@@ -287,10 +285,69 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
 
         self.assertEqual(first_verification.source, "llm_catalog_candidate")
-        self.assertEqual(medication_schedule.medication_name, canonical_name)
-        self.assertEqual(second_verification.source, "llm_catalog_candidate")
+        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(second_verification.source, "unverified")
         self.assertEqual(first_client.models.call_count, 1)
-        self.assertEqual(second_client.models.call_count, 0)
+        self.assertEqual(second_client.models.call_count, 1)
+
+    def test_llm_fallback_cache_reuses_result_within_one_verifier(self) -> None:
+        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
+        ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
+        self._save_basic_drug(canonical_name)
+        client = _FakeGeminiClient(
+            json.dumps(
+                {
+                    "corrections": [
+                        {
+                            "index": 0,
+                            "corrected_name": canonical_name,
+                            "confidence": 0.94,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+        self.control = InputPrescription(client=client, db=self.db)
+
+        first_schedule, _ = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+        second_schedule, _ = self._verify_medication_item(
+            self._medication_item(ocr_name)
+        )
+
+        self.assertEqual(first_schedule.medication_name, canonical_name)
+        self.assertEqual(second_schedule.medication_name, canonical_name)
+        self.assertEqual(client.models.call_count, 1)
+
+    def test_prefix_match_checks_distinct_names_before_limiting_rows(self) -> None:
+        verifier = _PrescriptionMedicationNameVerifier(self.db)
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq="prefix-a-1",
+                    item_name="A",
+                    normalized_item_name="alpha-1",
+                    raw_json="{}",
+                ),
+                _DrugBasicInfo(
+                    item_seq="prefix-a-2",
+                    item_name="A",
+                    normalized_item_name="alpha-2",
+                    raw_json="{}",
+                ),
+                _DrugBasicInfo(
+                    item_seq="prefix-b-1",
+                    item_name="B",
+                    normalized_item_name="alpha-3",
+                    raw_json="{}",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        self.assertIsNone(verifier._find_unique_catalog_prefix_match("alpha"))
 
     def test_llm_fallback_cache_is_separated_by_model_name(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
@@ -392,7 +449,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(verification.confidence, 0.0)
         self.assertEqual(fake_client.models.call_count, 1)
 
-    def test_reuses_cached_rejected_llm_fallback(self) -> None:
+    def test_rejected_llm_fallback_does_not_cross_verifier_instances(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
@@ -440,11 +497,11 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             self._medication_item(ocr_name)
         )
 
-        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(medication_schedule.medication_name, canonical_name)
         self.assertEqual(first_verification.source, "unverified")
-        self.assertEqual(second_verification.source, "unverified")
+        self.assertEqual(second_verification.source, "llm_catalog_candidate")
         self.assertEqual(low_confidence_client.models.call_count, 1)
-        self.assertEqual(high_confidence_client.models.call_count, 0)
+        self.assertEqual(high_confidence_client.models.call_count, 1)
 
     def test_does_not_cache_failed_llm_fallback_request(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"

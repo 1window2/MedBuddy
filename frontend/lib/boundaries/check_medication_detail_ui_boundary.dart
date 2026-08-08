@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controls/request_voice_guide_control.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -240,7 +241,7 @@ class _MedicationImageBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedImageUrl = imageUrl.trim();
+    final normalizedImageUrl = safeMedicationImageUrl(imageUrl);
 
     return Container(
       width: 112,
@@ -302,7 +303,6 @@ class _DetailQuestionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final visibleValues = values
         .map((value) => _summaryValue(value))
-        .take(2)
         .toList(growable: false);
 
     return Column(
@@ -318,16 +318,11 @@ class _DetailQuestionSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           children: [
             for (int index = 0; index < visibleValues.length; index++) ...[
-              Expanded(
-                child: _DetailValueTile(
-                  value: visibleValues[index],
-                  scale: scale,
-                ),
-              ),
-              if (index != visibleValues.length - 1) const SizedBox(width: 12),
+              _DetailValueTile(value: visibleValues[index], scale: scale),
+              if (index != visibleValues.length - 1) const SizedBox(height: 12),
             ],
           ],
         ),
@@ -345,6 +340,7 @@ class _DetailValueTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       constraints: const BoxConstraints(minHeight: 86),
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
@@ -355,8 +351,6 @@ class _DetailValueTile extends StatelessWidget {
       ),
       child: Text(
         value,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
         textAlign: TextAlign.center,
         style: TextStyle(
           color: MedBuddyColors.textLight,
@@ -618,7 +612,6 @@ List<String> _summaryValues(String value) {
       .split(RegExp(r'[,/;·\n]+'))
       .map((item) => item.trim())
       .where((item) => item.isNotEmpty)
-      .take(2)
       .toList(growable: false);
   return values.isEmpty ? [normalizedValue] : values;
 }

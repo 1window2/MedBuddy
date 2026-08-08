@@ -359,6 +359,37 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('약 상세정보는 효능과 복용법 전체 문장을 생략하지 않는다', (tester) async {
+      const efficacy = '첫 번째 효능, 두 번째 효능, 반드시 표시할 세 번째 효능';
+      const usage = '식후 충분한 물과 함께 복용하고 임의로 중단하지 마세요. 마지막 안내 문장';
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 1,
+          home: const CheckMedicationDetailUI(
+            medicationDetail: MedicationDetail(
+              itemName: '테스트정',
+              efficacy: efficacy,
+              usageMethod: usage,
+              warning: '주의사항',
+              dailyFrequency: '1일 1회',
+            ),
+            userSetting: UserSetting(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('반드시 표시할 세 번째 효능'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text(usage),
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final usageText = tester.widget<Text>(find.text(usage));
+      expect(usageText.maxLines, isNull);
+      expect(usageText.overflow, isNot(TextOverflow.ellipsis));
+    });
+
     testWidgets('처방 분석 결과는 긴 약 이름과 2배 글씨에서도 저장 명령을 유지한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       const schedule = MedicationSchedule(

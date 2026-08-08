@@ -17,6 +17,7 @@ class _MedicationImageDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
+    final imageUrl = safeMedicationImageUrl(medication.imageUrl);
 
     return Dialog(
       insetPadding: const EdgeInsets.all(28),
@@ -52,7 +53,7 @@ class _MedicationImageDialog extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.network(
-                medication.imageUrl.trim(),
+                imageUrl,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return Padding(

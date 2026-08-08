@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
 import 'package:medbuddy_frontend/controls/check_prescription_change_control.dart';
+import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
@@ -101,6 +102,23 @@ class _DeferredCheckMedicationDetail extends CheckMedicationDetail {
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule medicationSchedule,
   ) {
+    return completer.future;
+  }
+}
+
+// Class Name: _DeferredCheckSavedMedication
+// Role: Holds the first save open so overlapping save attempts can be tested.
+class _DeferredCheckSavedMedication extends CheckSavedMedication {
+  final Completer<MedicationSaveResult> completer =
+      Completer<MedicationSaveResult>();
+  int requestCount = 0;
+
+  @override
+  Future<MedicationSaveResult> saveMedicationDetail(
+    MedicationDetail medicationDetail, {
+    MedicationSchedule? medicationSchedule,
+  }) {
+    requestCount += 1;
     return completer.future;
   }
 }
@@ -431,5 +449,54 @@ void main() {
 
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
     expect(viewModel.analyzedMedicationList, isEmpty);
+  });
+
+  test('overlapping per-card medication saves are rejected', () async {
+    final saveControl = _DeferredCheckSavedMedication();
+    final viewModel = MedBuddyViewModel(checkSavedMedication: saveControl);
+    addTearDown(viewModel.dispose);
+    const firstMedication = AnalyzedMedication(
+      schedule: MedicationSchedule(medicationName: 'first-tablet'),
+      detail: MedicationDetail(
+        itemName: 'first-tablet',
+        efficacy: 'effect',
+        usageMethod: 'usage',
+        warning: 'warning',
+      ),
+    );
+    const secondMedication = AnalyzedMedication(
+      schedule: MedicationSchedule(medicationName: 'second-tablet'),
+      detail: MedicationDetail(
+        itemName: 'second-tablet',
+        efficacy: 'effect',
+        usageMethod: 'usage',
+        warning: 'warning',
+      ),
+    );
+
+    final firstSave = viewModel.requestMedicationSave(firstMedication, 0);
+    await Future<void>.delayed(Duration.zero);
+    final secondResult = await viewModel.requestMedicationSave(
+      secondMedication,
+      1,
+    );
+
+    expect(secondResult, isFalse);
+    expect(saveControl.requestCount, 1);
+    expect(viewModel.savingMedicationIndex, 0);
+
+    final bulkResult = await viewModel.requestAllAnalyzedMedicationSave();
+    expect(bulkResult, isFalse);
+    expect(saveControl.requestCount, 1);
+    expect(viewModel.isAllMedicationSaving, isFalse);
+    expect(viewModel.statusMessage, '다른 복약 정보를 저장하고 있습니다.');
+
+    saveControl.completer.complete(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.failed,
+        message: 'simulated failure',
+      ),
+    );
+    await firstSave;
   });
 }

@@ -25,10 +25,10 @@ to verify the package or consult a pharmacist before taking an unknown pill.
 - User photos are normalized in memory and sent for analysis, but are not
   persisted or logged. Path-specific body limits reject oversized multipart
   requests before Starlette parses them.
-- Public MFDS metadata is cached for seven days in an isolated local SQLite
-  reference database, so a catalog refresh cannot lock or enlarge the core
-  medication/schedule database. A stale complete cache remains available
-  during an MFDS outage.
+- Public MFDS metadata is cached for seven days in the shared application
+  database. Local development uses `backend/medbuddy.db`; beta deployment uses
+  the same Alembic-managed table in PostgreSQL. A stale complete catalog remains
+  available during an MFDS outage.
 - The published Korean pill-identification reference implementation expects
   trained shape-specific model weights and a large offline image corpus. Those
   assets are not publicly bundled, so v0.0.9 uses a replaceable vision boundary
@@ -119,11 +119,11 @@ MFDSPillCatalogBoundary --> PillCatalogEntry
 
 `PillIdentificationCatalogRepository` is an infrastructure adapter, not a new
 domain use case. `MFDSPillCatalogBoundary` owns its short-lived session factory
-and runs synchronous SQLite access outside the event loop. Its isolated
-reference database keeps catalog replacement independent from core MedBuddy
-transactions and keeps SQLAlchemy concerns out of the `IdentifyPill` control.
-The repository initializes this optional database lazily on first catalog
-access, so the extension adds no catalog I/O to the baseline app startup.
+and runs synchronous ORM access outside the event loop. Reference rows share
+the application database so every API instance observes one catalog, while the
+repository keeps SQLAlchemy concerns out of the `IdentifyPill` control. In beta
+production, the catalog synchronization job is the sole writer; API instances
+consume the shared snapshot without attempting an inline full refresh.
 `api.dependencies` is the runtime composition module: it owns the reusable
 vision/catalog boundary instances, constructs a request-scoped `IdentifyPill`
 control from those boundaries, injects that control into `api.router`, and
@@ -147,7 +147,7 @@ boundary PillVisionBoundary
 boundary MFDSPillCatalogBoundary
 external GeminiPillVisionAPI
 external MFDSPillAPI
-database PillCatalogSQLite
+database SharedApplicationDatabase
 
 User -> InputPrescriptionUI : click camera analysis
 InputPrescriptionUI -> User : choose prescription or loose pill
@@ -171,11 +171,11 @@ par Visual attributes
   PillVisionBoundary --> IdentifyPill : PillVisualFeatures
 and Public catalog
   IdentifyPill -> MFDSPillCatalogBoundary : getCatalog()
-  MFDSPillCatalogBoundary -> PillCatalogSQLite : read fresh cache
+  MFDSPillCatalogBoundary -> SharedApplicationDatabase : read fresh catalog table
   alt cache missing or expired
     MFDSPillCatalogBoundary -> MFDSPillAPI : fetch bounded pages concurrently
     MFDSPillAPI --> MFDSPillCatalogBoundary : public product rows
-    MFDSPillCatalogBoundary -> PillCatalogSQLite : replace complete cache atomically
+    MFDSPillCatalogBoundary -> SharedApplicationDatabase : replace complete catalog atomically (local only)
   end
   MFDSPillCatalogBoundary --> IdentifyPill : PillCatalogEntry[]
 end

@@ -5,9 +5,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
-from sqlalchemy.orm import declarative_base
+from core.database import Base
 
-PillCatalogBase = declarative_base()
 
 
 @dataclass(frozen=True)
@@ -75,12 +74,12 @@ class PillIdentificationResult:
             raise ValueError("An empty pill result cannot be confident.")
 
 
-class PillIdentificationReference(PillCatalogBase):
-    """Locally cached copy of public MFDS pill-identification metadata."""
+class PillIdentificationReference(Base):
+    """Shared cached copy of public MFDS pill-identification metadata."""
 
     __tablename__ = "pill_identification_references"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     item_seq = Column(String, unique=True, index=True, nullable=False)
     item_name = Column(String, index=True, nullable=False)
     entp_name = Column(String, nullable=True)

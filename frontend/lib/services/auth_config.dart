@@ -39,8 +39,10 @@ class AuthConfig {
   );
 
   static void validate() {
-    if (kReleaseMode && mode != AuthenticationMode.firebase) {
-      throw StateError('Release builds require MEDBUDDY_AUTH_MODE=firebase.');
+    if ((kReleaseMode || kProfileMode) && mode != AuthenticationMode.firebase) {
+      throw StateError(
+        'Release and profile builds require MEDBUDDY_AUTH_MODE=firebase.',
+      );
     }
     if (mode != AuthenticationMode.firebase) {
       return;

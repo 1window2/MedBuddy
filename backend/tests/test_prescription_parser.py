@@ -8,6 +8,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 from services.prescription_parser import (  # noqa: E402
     MAX_MEDICATION_NAME_LENGTH,
+    _clean_medication_name,
+    extract_patient_name,
     normalize_date,
     normalize_prescription_candidates,
     parse_prescription,
@@ -114,6 +116,28 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertEqual(parsed_payload["medicines"], [])
         self.assertEqual(parsed_payload["medications"], [])
 
+    def test_fixed_labels_are_removed_in_linear_literal_passes(self) -> None:
+        repeated_labels = ("medication name " * 5000) + "safe tablet"
+
+        self.assertEqual(extract_patient_name("Patient Name: Test User"), "Test User")
+        _, _, candidates, _ = normalize_prescription_candidates(
+            {
+                "medications": [
+                    {
+                        "drug_name": repeated_labels,
+                        "dosage_per_time": "1",
+                        "daily_frequency": "3",
+                        "total_days": "5",
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(
+            [candidate.drug_name for candidate in candidates.candidates],
+            ["safe tablet"],
+        )
+
     def test_parse_prescription_keeps_names_with_spaces(self) -> None:
         parsed_payload = parse_prescription(["compound cold tablet 1 3 5"])
 
@@ -124,6 +148,22 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertEqual(parsed_payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(parsed_payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(parsed_payload["medications"][0]["total_days"], "5")
+
+    def test_medication_label_removal_preserves_unicode_before_ascii_label(
+        self,
+    ) -> None:
+        self.assertEqual(
+            _clean_medication_name("Straße Patient Medication Name Safe Tablet"),
+            "Straße Patient Safe Tablet",
+        )
+
+    def test_medication_label_removal_preserves_expanding_casefold_prefix(
+        self,
+    ) -> None:
+        self.assertEqual(
+            _clean_medication_name("İ Medication Name Safe Tablet"),
+            "İ Safe Tablet",
+        )
 
     def test_parse_prescription_rejects_nonpositive_schedule_values(self) -> None:
         parsed_payload = parse_prescription(

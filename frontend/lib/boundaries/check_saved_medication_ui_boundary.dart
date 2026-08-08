@@ -7,6 +7,7 @@ import 'guided_prescription_camera_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -517,7 +518,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     required _SavedMedicationText text,
     required UserSetting userSetting,
   }) {
-    if (medication.imageUrl.trim().isEmpty) {
+    if (safeMedicationImageUrl(medication.imageUrl).isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(text.noImage)));

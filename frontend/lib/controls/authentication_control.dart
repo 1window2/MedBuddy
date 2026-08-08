@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -11,6 +10,7 @@ import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/firebase_runtime_service.dart';
 
 enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 
@@ -95,7 +95,7 @@ class AuthenticationControl extends ChangeNotifier {
         _session = _createLocalSession();
         return;
       }
-      await Firebase.initializeApp(options: AuthConfig.firebaseOptions);
+      await FirebaseRuntimeService.initialize();
       final firebaseAuth = FirebaseAuth.instance;
       _firebaseAuth = firebaseAuth;
       if (AuthConfig.authEmulatorHost.isNotEmpty) {

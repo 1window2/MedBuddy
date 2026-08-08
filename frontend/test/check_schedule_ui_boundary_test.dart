@@ -108,7 +108,7 @@ class _VisualScheduleCheckSchedule extends CheckSchedule {
         dosage: '0.5',
         intakeTime: '1회',
         medicationTime: 1,
-        imageUrl: 'https://example.com/tablet.png',
+        imageUrl: 'https://nedrug.mfds.go.kr/tablet.png',
       ),
     ];
   }

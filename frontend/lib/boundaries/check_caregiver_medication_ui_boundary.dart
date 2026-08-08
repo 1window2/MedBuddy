@@ -6,6 +6,7 @@ import '../controls/check_caregiver_medication_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -864,7 +865,7 @@ class _MedicationThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = schedule.imageUrl?.trim() ?? '';
+    final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
     return Container(
       width: 48,
       height: 48,

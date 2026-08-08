@@ -123,6 +123,33 @@ void main() {
     expect(alerts, hasLength(1));
     expect(alerts.single.body, contains('저녁'));
   });
+  test('returns false when a background data request fails', () async {
+    var loadAttemptCount = 0;
+    final monitor = CaregiverNotificationMonitorService(
+      caregiverHash: 'caregiver_test',
+      loadLinks: () async {
+        loadAttemptCount += 1;
+        if (loadAttemptCount == 1) {
+          throw StateError('backend unavailable');
+        }
+        return const <PatientCaregiverLink>[];
+      },
+      loadSettings: (_) async => const <String, CaregiverNotification>{},
+      loadSchedules: (_) async => const <MedicationSchedule>[],
+      sendAlert:
+          ({
+            required int id,
+            required String title,
+            required String body,
+          }) async {},
+      permissionRequester: () async => true,
+    );
+    addTearDown(monitor.dispose);
+
+    expect(await monitor.checkNow(), isFalse);
+    expect(await monitor.checkNow(), isTrue);
+    expect(loadAttemptCount, 2);
+  });
 }
 
 CaregiverNotificationMonitorService _buildMonitor({

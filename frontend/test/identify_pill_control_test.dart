@@ -47,7 +47,7 @@ void main() {
               'item_seq': '200808877',
               'item_name': '페라트라정2.5밀리그램(레트로졸)',
               'entp_name': '영풍제약',
-              'image_url': 'https://example.test/pill.jpg',
+              'image_url': 'https://nedrug.mfds.go.kr/pill.jpg',
               'shape': '원형',
               'colors': ['노랑'],
               'print_front': 'YH',

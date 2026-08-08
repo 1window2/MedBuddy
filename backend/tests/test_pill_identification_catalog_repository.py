@@ -69,8 +69,23 @@ def test_repository_replaces_and_reads_complete_catalog(db: Session) -> None:
     )
 
 
+def test_repository_requires_every_catalog_row_to_be_fresh(db: Session) -> None:
+    repository = PillIdentificationCatalogRepository(db)
+    repository.replace_all([_entry("1", "old"), _entry("2", "new")])
+    stale_timestamp = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=2)
+    db.query(PillIdentificationReference).filter(
+        PillIdentificationReference.item_seq == "1"
+    ).update({PillIdentificationReference.updated_at: stale_timestamp})
+    db.commit()
+
+    assert not repository.is_fresh(
+        minimum_rows=2,
+        max_age=timedelta(hours=1),
+    )
+
+
 def test_reference_entity_is_isolated_from_core_medication_metadata() -> None:
-    assert PillIdentificationReference.metadata is not Base.metadata
+    assert PillIdentificationReference.metadata is Base.metadata
 
 
 def test_repository_rolls_back_failed_replacement(
@@ -88,6 +103,34 @@ def test_repository_rolls_back_failed_replacement(
     with pytest.raises(RuntimeError, match="insert failed"):
         repository.replace_all([_entry("2", "새정")])
 
+    assert [entry.item_seq for entry in repository.list_all()] == ["1"]
+
+
+def test_repository_leaves_caller_owned_transaction_for_caller_rollback(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = PillIdentificationCatalogRepository(db)
+    repository.replace_all([_entry("1", "existing")])
+    original_rollback = db.rollback
+    rollback_calls = 0
+
+    def count_rollback() -> None:
+        nonlocal rollback_calls
+        rollback_calls += 1
+        original_rollback()
+
+    def fail_insert(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(db, "rollback", count_rollback)
+    monkeypatch.setattr(db, "bulk_insert_mappings", fail_insert)
+
+    with pytest.raises(RuntimeError, match="insert failed"):
+        repository.replace_all([_entry("2", "replacement")], commit=False)
+
+    assert rollback_calls == 0
+    original_rollback()
     assert [entry.item_seq for entry in repository.list_all()] == ["1"]
 
 
@@ -153,6 +196,28 @@ async def test_catalog_boundary_rejects_incomplete_stale_cache(db: Session) -> N
 
     with pytest.raises(PillCatalogUnavailableError):
         await boundary.getCatalog()
+
+
+@pytest.mark.anyio
+async def test_production_catalog_boundary_never_refreshes_inline(db: Session) -> None:
+    PillIdentificationCatalogRepository(db).replace_all([_entry("1", "shared")])
+
+    class _UnexpectedCatalogAPI:
+        minimum_catalog_rows = 1
+
+        async def requestCatalog(self) -> list[PillCatalogEntry]:
+            raise AssertionError("production API must not refresh the shared catalog")
+
+    boundary = MFDSPillCatalogBoundary(
+        catalog_api=_UnexpectedCatalogAPI(),  # type: ignore[arg-type]
+        cache_ttl=timedelta(seconds=0.001),
+        allow_inline_refresh=False,
+        session_factory=sessionmaker(bind=db.get_bind()),
+    )
+
+    catalog = await boundary.getCatalog()
+
+    assert [entry.item_seq for entry in catalog] == ["1"]
 
 
 @pytest.mark.anyio
@@ -251,7 +316,7 @@ async def test_catalog_boundary_cancellation_does_not_trigger_refresh_backoff(
 
 
 @pytest.mark.anyio
-async def test_catalog_boundary_retains_cache_io_capacity_after_timeout(
+async def test_catalog_boundary_serializes_cache_io_before_remote_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     worker_started = threading.Event()
@@ -278,22 +343,21 @@ async def test_catalog_boundary_retains_cache_io_capacity_after_timeout(
 
     monkeypatch.setattr(boundary, "_load_persisted_catalog", slow_load)
     try:
-        with pytest.raises(PillCatalogUnavailableError):
-            await boundary.getCatalog()
-        assert worker_started.is_set()
-
-        with pytest.raises(PillCatalogUnavailableError):
-            await boundary.getCatalog()
-
+        first_request = asyncio.create_task(boundary.getCatalog())
+        assert await asyncio.to_thread(worker_started.wait, 1)
+        second_request = asyncio.create_task(boundary.getCatalog())
+        await asyncio.sleep(0.05)
         assert load_attempts == 1
     finally:
         release_worker.set()
-        await asyncio.sleep(0.05)
+    first_result, second_result = await asyncio.gather(
+        first_request,
+        second_request,
+    )
 
-    recovered = await boundary.getCatalog()
-
-    assert [entry.item_seq for entry in recovered] == ["recovered"]
-    assert load_attempts == 2
+    assert [entry.item_seq for entry in first_result] == ["recovered"]
+    assert second_result == first_result
+    assert load_attempts == 1
 
 
 @pytest.mark.anyio

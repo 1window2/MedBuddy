@@ -7,6 +7,7 @@
 // - API 응답 JSON을 안전하게 변환한다.
 // - 저장 요청에 필요한 JSON payload를 생성한다.
 // - 음성 안내에 사용할 텍스트를 조합한다.
+import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
 
 class MedicationDetail {
@@ -78,7 +79,7 @@ class MedicationDetail {
       dosagePerTime: _readString(json['dosage_per_time']),
       dailyFrequency: _readString(json['daily_frequency']),
       totalDays: _readString(json['total_days']),
-      imageUrl: _readString(json['image_url'] ?? json['itemImage']),
+      imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
       aiGuide: _readString(json['ai_guide']),
     );
   }
@@ -92,7 +93,7 @@ class MedicationDetail {
       dosagePerTime: schedule.dosage,
       dailyFrequency: schedule.intakeTime,
       totalDays: schedule.medicationTimeLabel,
-      imageUrl: schedule.imageUrl ?? '',
+      imageUrl: safeMedicationImageUrl(schedule.imageUrl),
     );
   }
 
@@ -113,7 +114,7 @@ class MedicationDetail {
       'dosage_per_time': dosagePerTime,
       'daily_frequency': dailyFrequency,
       'total_days': totalDays,
-      'image_url': imageUrl,
+      'image_url': safeMedicationImageUrl(imageUrl),
       'ai_guide': aiGuide,
     };
   }
