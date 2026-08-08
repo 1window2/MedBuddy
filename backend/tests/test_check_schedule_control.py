@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     MedicationCompletion,
@@ -81,7 +82,7 @@ class CheckScheduleTest(unittest.TestCase):
     ) -> _SavedMedication:
         medication = _SavedMedication(
             patient_hash=patient_hash,
-            created_date=created_date or date.today(),
+            created_date=created_date or application_today(),
             prescription_date=prescription_date,
             item_name=item_name,
             efficacy="effect",
@@ -101,7 +102,7 @@ class CheckScheduleTest(unittest.TestCase):
         return medication
 
     def test_today_schedule_is_scoped_and_filters_expired_medications(self) -> None:
-        today = date.today()
+        today = application_today()
         old_saved_date = today - timedelta(days=20)
         active_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -156,7 +157,7 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["data"]["medication_status"])
         self.db.refresh(medication)
         self.assertTrue(medication.medication_status)
-        self.assertEqual(medication.medication_status_date, date.today())
+        self.assertEqual(medication.medication_status_date, application_today())
 
     def test_slot_status_update_only_marks_requested_dose(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
@@ -236,7 +237,7 @@ class CheckScheduleTest(unittest.TestCase):
         )
 
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
-        schedule_date = date.today()
+        schedule_date = application_today()
         completed_at = datetime(2026, 1, 1, 8, 0)
         completion = MedicationCompletion(
             patient_hash="patient-a",
@@ -303,7 +304,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(
             patient_hash="patient-a",
             medication_status=True,
-            medication_status_date=date.today(),
+            medication_status_date=application_today(),
         )
 
         response = self.control.updateMedicationStatus(
@@ -338,7 +339,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(
             patient_hash="patient-a",
             medication_status=True,
-            medication_status_date=date.today() - timedelta(days=1),
+            medication_status_date=application_today() - timedelta(days=1),
         )
 
         response = self.control.requestTodayMedicationSchedule("patient-a")
@@ -361,14 +362,14 @@ class CheckScheduleTest(unittest.TestCase):
                 _MedicationCompletion(
                     saved_medication_id=first_medication.id,
                     patient_hash="patient-a",
-                    schedule_date=date.today(),
+                    schedule_date=application_today(),
                     slot_key="morning",
                     completed=True,
                 ),
                 _MedicationCompletion(
                     saved_medication_id=second_medication.id,
                     patient_hash="patient-a",
-                    schedule_date=date.today(),
+                    schedule_date=application_today(),
                     slot_key="lunch",
                     completed=True,
                 ),

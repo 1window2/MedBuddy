@@ -3,7 +3,6 @@
 
 import sys
 import unittest
-from datetime import date
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -17,6 +16,7 @@ from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from controls.check_today_medication_info_control import (  # noqa: E402
     CheckTodayMedicationInfo,
 )
+from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
@@ -62,8 +62,8 @@ class CheckTodayMedicationInfoTest(unittest.TestCase):
     ) -> _SavedMedication:
         medication = _SavedMedication(
             patient_hash=patient_hash,
-            created_date=date.today(),
-            prescription_date=date.today(),
+            created_date=application_today(),
+            prescription_date=application_today(),
             item_name=item_name,
             dosage_per_time="1 tablet",
             daily_frequency=daily_frequency,
@@ -81,7 +81,7 @@ class CheckTodayMedicationInfoTest(unittest.TestCase):
             _MedicationCompletion(
                 saved_medication_id=medication.id,
                 patient_hash="patient-a",
-                schedule_date=date.today(),
+                schedule_date=application_today(),
                 slot_key="morning",
                 completed=True,
             )
