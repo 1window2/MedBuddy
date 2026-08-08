@@ -49,6 +49,7 @@ def _read_text(value: Any, default: str = "정보 없음") -> str:
 #   - Normalize OCR or UI-provided medication text.
 #   - Strip dosage and dosage-form suffixes from search keywords.
 class _MedicationTextNormalizer:
+    MAX_SEARCH_KEYWORDS = 24
     _DOSAGE_PATTERN = re.compile(
         r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
         flags=re.IGNORECASE,
@@ -141,7 +142,9 @@ class _MedicationTextNormalizer:
         for candidate in raw_candidates:
             search_keywords.extend(self._candidate_variants(candidate))
 
-        return self._deduplicate_keywords(search_keywords)
+        return self._deduplicate_keywords(search_keywords)[
+            : self.MAX_SEARCH_KEYWORDS
+        ]
 
     def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
         outside_chars: list[str] = []

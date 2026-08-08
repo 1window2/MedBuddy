@@ -401,7 +401,7 @@ class _MedicationImageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = medication.imageUrl.trim();
+    final imageUrl = safeMedicationImageUrl(medication.imageUrl);
     if (imageUrl.isEmpty) {
       return Tooltip(
         message: text.noImage,

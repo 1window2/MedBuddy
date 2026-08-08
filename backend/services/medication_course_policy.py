@@ -7,6 +7,7 @@ from typing import Any
 
 _SCHEDULE_COUNT_PATTERN = re.compile(r"-?\d+")
 _FREQUENCY_COUNT_PATTERN = re.compile(
+    r"(?<!\d)"
     r"(-?\d+)\s*(?:회|번|times?|x)",
     re.IGNORECASE,
 )

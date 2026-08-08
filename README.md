@@ -190,7 +190,7 @@ loose-pill flow still requires the MFDS identification catalog.
 Start the API server:
 
 ```powershell
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 API documentation is available at:
@@ -199,7 +199,8 @@ API documentation is available at:
 http://127.0.0.1:8000/docs
 ```
 
-Use `0.0.0.0` when testing with an Android emulator, because the Flutter app reaches the host machine through `10.0.2.2`.
+The Android emulator reaches this loopback-only service through `10.0.2.2`.
+Do not bind the unauthenticated development configuration to every interface.
 
 ### Optional Local Drug Catalog
 
@@ -236,7 +237,12 @@ http://10.0.2.2:8000/api/v1/medication
 
 For a physical Android device on the same trusted network, replace the example
 host with your development machine's LAN IP address. Supply the backend URL when
-building or launching the app:
+building or launching the app. This requires an explicit trusted-LAN backend
+binding and must use synthetic data only:
+
+```powershell
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
 ```powershell
 flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
@@ -265,8 +271,8 @@ flutter run -d "[your-device-id]" `
   --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id
 ```
 
-Release builds reject disabled authentication and non-HTTPS backend URLs at
-runtime. Production deployment and signing variables are documented in
+Release builds reject disabled authentication, non-HTTPS URLs, localhost, and
+private-network backend addresses at runtime. Production deployment and signing variables are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
 
 ## Contributing

@@ -109,8 +109,11 @@ package "Flutter / Entity" as FE_Entity {
 }
 
 package "Flutter / External and Shared Services" as FE_Service {
-  class ApiConfig <<configuration>>
+  class ApiConfig <<configuration>> {
+    + validateUrl(value, requirePublicHttps) {static}
+  }
   class AuthConfig <<configuration>>
+  class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<egress policy>>
   class AuthenticatedApiClient <<external boundary>>
   class FirebaseRuntimeService <<runtime service>>
   class FirebaseAuth <<external identity provider>>
@@ -183,7 +186,10 @@ package "FastAPI / External Boundary" as BE_Boundary {
   interface MedicationCompletionEventBoundary <<protocol boundary>>
   interface PushNotificationBoundary <<protocol boundary>>
   class FirebasePushNotificationBoundary <<external boundary>>
-  class PrescriptionImageProcessor <<utility boundary>>
+  class PrescriptionImageProcessor <<utility boundary>> {
+    + maxPixels: 24000000 {static}
+    + processPrescriptionImage(imageBytes)
+  }
   class GeminiVisionClient <<external boundary>>
   class OCRServiceBoundary <<external boundary>>
   class LLMService <<external boundary>>
@@ -270,6 +276,14 @@ FE_ManageUserSetting --> FE_UserSetting
 FE_IdentifyPill --> FE_PillResult
 FE_PillResult *-- "0..*" FE_PillCandidate
 FE_PillResult *-- FE_PillVisualFeatures
+FE_MedicationDetail ..> MedicationImageUrlPolicy : sanitize API and stored value
+FE_MedicationSchedule ..> MedicationImageUrlPolicy : sanitize API and stored value
+FE_PillCandidate ..> MedicationImageUrlPolicy : sanitize API value
+CheckMedicationDetailUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckSavedMedicationUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckScheduleUI ..> MedicationImageUrlPolicy : revalidate before fetch
+CheckCaregiverMedicationUI ..> MedicationImageUrlPolicy : revalidate before fetch
+PillIdentificationUI ..> MedicationImageUrlPolicy : revalidate before fetch
 FE_SetNotification ..> NotificationService
 FE_RequestVoiceGuide ..> TTSService
 PushNotificationService --> AuthenticatedApiClient : token lifecycle

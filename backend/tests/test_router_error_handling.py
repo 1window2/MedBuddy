@@ -24,6 +24,9 @@ from boundaries.pill_identification_boundary import (  # noqa: E402
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
+from boundaries.prescription_ocr_boundary import (  # noqa: E402
+    PrescriptionPreprocessingCapacityError,
+)
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisTimeoutError,
@@ -74,6 +77,11 @@ class _RecordingUploadFile:
         return b"image"
 
 
+class _NonImageUploadFile(_RecordingUploadFile):
+    filename = "prescription.pdf"
+    content_type = "application/pdf"
+
+
 class _RecordingInputPrescription:
     async def requestPrescriptionImage(
         self,
@@ -88,6 +96,16 @@ class _TimedOutInputPrescription:
         image_bytes: bytes,
     ) -> dict[str, object]:
         raise PrescriptionAnalysisTimeoutError("OCR request timed out.")
+
+
+class _CapacityLimitedInputPrescription:
+    async def requestPrescriptionImage(
+        self,
+        image_bytes: bytes,
+    ) -> dict[str, object]:
+        raise PrescriptionPreprocessingCapacityError(
+            "Prescription image preprocessing is temporarily busy."
+        )
 
 
 class _RecordingPillIdentificationControl:
@@ -169,6 +187,29 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 504)
         self.assertEqual(context.exception.detail, "OCR request timed out.")
+
+    async def test_prescription_upload_rejects_non_image_content_type_early(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await upload_and_parse_prescription(
+                file=_NonImageUploadFile(),
+                input_prescription=_RecordingInputPrescription(),
+            )
+
+        self.assertEqual(context.exception.status_code, 415)
+
+    async def test_prescription_upload_maps_capacity_to_service_unavailable(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await upload_and_parse_prescription(
+                file=_RecordingUploadFile(),
+                input_prescription=_CapacityLimitedInputPrescription(),
+            )
+
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(context.exception.headers, {"Retry-After": "1"})
 
     async def test_pill_upload_reads_only_the_validated_size_window(self) -> None:
         upload_file = _RecordingUploadFile()

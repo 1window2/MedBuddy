@@ -341,42 +341,85 @@ void main() {
     },
   );
 
-  test('slotKeysForSchedule prefers backend slot status keys', () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': [
-            {
-              'medication_id': '7',
-              'drug_name': 'test-tablet',
-              'daily_frequency': '1 time',
-              'slot_statuses': {'lunch': false},
-              'patient_hash': 'patient-a',
-            },
-          ],
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'slotKeysForSchedule prefers explicit backend schedule slot keys',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '1 time',
+                'slot_statuses': {'lunch': false},
+                'schedule_slot_keys': ['lunch'],
+                'patient_hash': 'patient-a',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
       );
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: CheckSchedule(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: client,
-      ),
-    );
-    addTearDown(viewModel.dispose);
+      addTearDown(viewModel.dispose);
 
-    await viewModel.fetchTodayMedicationSchedule();
-    final schedule = viewModel.todayMedicationScheduleList.single;
+      await viewModel.fetchTodayMedicationSchedule();
+      final schedule = viewModel.todayMedicationScheduleList.single;
 
-    expect(viewModel.slotKeysForSchedule(schedule), ['lunch']);
-    expect(viewModel.todayMedicationProgress.totalCount, 1);
-  });
+      expect(viewModel.slotKeysForSchedule(schedule), ['lunch']);
+      expect(viewModel.todayMedicationProgress.totalCount, 1);
+    },
+  );
+
+  test(
+    'completed-only slot status does not shrink the expected daily schedule',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '3 times',
+                'completed_slot_keys': ['morning'],
+                'patient_hash': 'patient-a',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.fetchTodayMedicationSchedule();
+
+      expect(viewModel.todayMedicationProgress.totalCount, 3);
+      expect(viewModel.todayMedicationProgress.completedCount, 1);
+    },
+  );
 
   test('today progress parses Korean daily frequency labels', () async {
     final client = MockClient((http.Request request) async {

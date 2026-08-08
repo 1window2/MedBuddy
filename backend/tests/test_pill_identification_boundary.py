@@ -284,6 +284,24 @@ async def test_visual_boundary_still_rejects_small_blurred_pill() -> None:
 
 
 @pytest.mark.anyio
+async def test_visual_boundary_rejects_two_pills_even_when_one_is_small() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(
+                quality="poor",
+                quality_issues=["two pills are visible and one pill is small"],
+            )
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="retake"):
+        await boundary.extractVisualFeatures(b"front")
+
+
+@pytest.mark.anyio
 async def test_visual_boundary_preserves_front_and_back_features() -> None:
     vision_api = _FakeVisionAPI(_valid_visual_payload())
     boundary = PillVisionBoundary(

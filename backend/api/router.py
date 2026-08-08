@@ -36,6 +36,9 @@ from boundaries.pill_identification_boundary import (
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
+from boundaries.prescription_ocr_boundary import (
+    PrescriptionPreprocessingCapacityError,
+)
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
@@ -1015,6 +1018,12 @@ async def upload_and_parse_prescription(
         get_input_prescription
     ),
 ) -> dict[str, object]:
+    content_type = (file.content_type or "").strip().casefold()
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail="Prescription uploads must use an image content type.",
+        )
     try:
         image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
         logger.info(
@@ -1028,6 +1037,13 @@ async def upload_and_parse_prescription(
     except PrescriptionAnalysisTimeoutError as exc:
         logger.warning("Prescription OCR request timed out.")
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except PrescriptionPreprocessingCapacityError as exc:
+        logger.warning("Prescription preprocessing capacity is occupied.")
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "1"},
+        ) from exc
     except ValueError as exc:
         logger.warning("Prescription image upload rejected: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

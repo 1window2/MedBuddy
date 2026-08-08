@@ -305,7 +305,7 @@ Future<http.Response> _savedMedicationResponse(http.Request request) async {
           'efficacy': 'effect',
           'use_method': 'usage',
           'warning_message': 'warning',
-          'image_url': 'https://example.com/tablet.jpg',
+          'image_url': 'https://nedrug.mfds.go.kr/tablet.jpg',
         },
       ],
     }),
@@ -387,6 +387,6 @@ Map<String, dynamic> _savedMedicationJson(
     'efficacy': 'effect',
     'use_method': 'usage',
     'warning_message': 'warning',
-    'image_url': 'https://example.com/tablet.jpg',
+    'image_url': 'https://nedrug.mfds.go.kr/tablet.jpg',
   };
 }

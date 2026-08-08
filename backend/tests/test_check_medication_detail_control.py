@@ -139,6 +139,17 @@ def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
     assert "클래리트로마이신" in search_keywords
 
 
+def test_build_search_keywords_caps_parenthesized_request_amplification() -> None:
+    normalizer = _MedicationTextNormalizer()
+    crafted_name = "drug" + "".join(
+        f"({chr(codepoint)})" for codepoint in range(ord("a"), ord("z") + 1)
+    )
+
+    search_keywords = normalizer.build_search_keywords(crafted_name)
+
+    assert len(search_keywords) <= 24
+
+
 def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
     matcher = _MedicationNameMatcher()
 

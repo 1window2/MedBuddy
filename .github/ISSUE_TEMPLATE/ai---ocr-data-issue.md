@@ -7,6 +7,11 @@ assignees: ''
 
 ---
 
+> **Privacy and security:** Do not attach real medical or personal data,
+> prescription images, names, identifiers, credentials, or raw logs. Use only
+> synthetic or fully redacted examples. Report vulnerabilities or real-data
+> masking failures privately through the process in [SECURITY.md](../../SECURITY.md).
+
 **Type of Issue (Check all that apply)**
 - [ ] OCR Failed to read text correctly (e.g., Typo in drug name)
 - [ ] AI Pharmacist generated incorrect/weird summary
@@ -14,7 +19,7 @@ assignees: ''
 - [ ] Masking failed (Sensitive data was exposed)
 
 **Input Data**
-What did you input into the app? (Please provide the extracted text from the image, or the original drug name you tried to search).
+What synthetic or fully redacted input did you use? Do not paste text copied from a real prescription.
 > e.g., "The OCR extracted '파모터' instead of '파모티딘'"
 
 **Output Data**
@@ -26,4 +31,4 @@ What should have been the correct result?
 > e.g., "It should have automatically corrected to '파모티딘' and showed the summary."
 
 **Additional context**
-Add any other context, such as the quality of the image uploaded or specific Gemini API error logs if available.
+Describe the synthetic image quality or a redacted error category. Do not paste API keys, authentication tokens, or raw service logs.

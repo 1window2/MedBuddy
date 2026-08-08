@@ -223,6 +223,13 @@ package "Flutter Frontend" {
 
     package "Service Layer" {
 
+        class "ApiConfig" as ApiConfig <<Configuration: API endpoint>> {
+            + {static} validate(): void
+            + {static} validateUrl(value, requirePublicHttps): void
+        }
+
+        class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<Policy: image egress>>
+
         class "AuthenticatedApiClient" as AuthenticatedApiClient <<API Client: 인증 HTTP>> {
             - _inner: http.Client
             - _tokenProvider: IdTokenProvider
@@ -590,6 +597,11 @@ package "FastAPI Backend" {
 
     package "External Integration Layer" {
 
+        class "PrescriptionImageProcessor" as PrescriptionImageProcessor <<Utility: bounded image decode>> {
+            + {static} maxPixels: 24000000
+            + processPrescriptionImage(imageBytes): ndarray
+        }
+
         class "OIDCTokenVerifier" as OIDCTokenVerifier <<Wrapper: Firebase Token 검증>> {
             - _check_revoked: bool
             + verifyIdToken(token): dict
@@ -882,6 +894,7 @@ FSetCaregiverNotification ..> AuthenticatedApiClient
 FManageUserSetting ..> AuthenticatedApiClient
 FManageAccount ..> AuthenticatedApiClient
 FRequestVoiceGuide ..> AuthenticatedApiClient
+AuthenticatedApiClient ..> ApiConfig
 
 FSetNotification ..> NotificationService
 FRequestVoiceGuide o-- TTSService
@@ -895,6 +908,14 @@ FInputPrescription ..> FMedicationSchedule
 FCheckMedicationDetail ..> FMedicationDetail
 FCheckSavedMedication ..> FMedicationDetail
 FCheckSchedule ..> FMedicationSchedule
+FMedicationDetail ..> MedicationImageUrlPolicy : sanitize
+FMedicationSchedule ..> MedicationImageUrlPolicy : sanitize
+FPillIdentificationResult ..> MedicationImageUrlPolicy : sanitize candidates
+CheckMedicationDetailUI ..> MedicationImageUrlPolicy : fetch guard
+CheckSavedMedicationUI ..> MedicationImageUrlPolicy : fetch guard
+CheckScheduleUI ..> MedicationImageUrlPolicy : fetch guard
+CheckCaregiverMedicationUI ..> MedicationImageUrlPolicy : fetch guard
+PillIdentificationUI ..> MedicationImageUrlPolicy : fetch guard
 FCheckPrescriptionChange ..> FPrescriptionChangeRadar
 FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
@@ -908,6 +929,7 @@ FAnalyzedMedication *-- FMedicationSchedule
 FAnalyzedMedication *-- FMedicationDetail
 
 BInputPrescription o-- OCRServiceBoundary
+OCRServiceBoundary --> PrescriptionImageProcessor
 BInputPrescription *-- MedicationNameVerifier
 BInputPrescription ..> BMedicationSchedule
 

@@ -1,3 +1,5 @@
+import 'medication_image_url_entity.dart';
+
 class PillVisualFeatures {
   final String shape;
   final List<String> colors;
@@ -72,7 +74,7 @@ class PillIdentificationCandidate {
       itemSeq: _readString(json['item_seq']),
       itemName: _readString(json['item_name']),
       manufacturer: _readString(json['entp_name']),
-      imageUrl: _safeNetworkUrl(json['image_url']),
+      imageUrl: safeMedicationImageUrl(json['image_url']),
       shape: _readString(json['shape']),
       colors: _readStrings(json['colors']),
       printFront: _readString(json['print_front']),
@@ -214,13 +216,4 @@ double _readScore(dynamic value) {
     return 0.0;
   }
   return score.clamp(0.0, 1.0).toDouble();
-}
-
-String _safeNetworkUrl(dynamic value) {
-  final text = _readString(value);
-  final uri = Uri.tryParse(text);
-  if (uri == null || !uri.hasAuthority) {
-    return '';
-  }
-  return uri.scheme == 'http' || uri.scheme == 'https' ? text : '';
 }

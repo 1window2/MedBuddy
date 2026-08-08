@@ -8,6 +8,7 @@ from google.genai import types
 from boundaries.prescription_ocr_boundary import (
     GeminiVisionClient,
     OCRServiceBoundary,
+    PrescriptionPreprocessingCapacityError,
 )
 
 
@@ -32,6 +33,26 @@ class _RecordingGeminiVisionClient:
     ) -> str:
         assert processed_image == b"processed-image"
         return "{}"
+
+
+class _ConcurrentPrescriptionImageProcessor:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.release = threading.Event()
+        self.active_count = 0
+        self.max_active_count = 0
+
+    def preprocess_prescription_image(self, image: bytes) -> bytes:
+        with self._lock:
+            self.active_count += 1
+            self.max_active_count = max(
+                self.max_active_count,
+                self.active_count,
+            )
+        self.release.wait(timeout=2)
+        with self._lock:
+            self.active_count -= 1
+        return b"processed-image"
 
 
 class _SlowGeminiVisionClient:
@@ -84,6 +105,39 @@ async def test_image_preprocessing_runs_outside_the_event_loop_thread() -> None:
     assert response == "{}"
     assert image_processor.thread_id is not None
     assert image_processor.thread_id != event_loop_thread_id
+
+
+@pytest.mark.anyio
+async def test_image_preprocessing_rejects_excess_work_before_queueing() -> None:
+    image_processor = _ConcurrentPrescriptionImageProcessor()
+    boundaries = [
+        OCRServiceBoundary(
+            client=object(),  # type: ignore[arg-type]
+            model_name="test-model",
+            response_schema={},
+            prescription_image_processor=image_processor,
+            gemini_vision_client=_RecordingGeminiVisionClient(),  # type: ignore[arg-type]
+        )
+        for _ in range(2)
+    ]
+    first_task = asyncio.create_task(
+        boundaries[0].extractPrescriptionData(b"source-image")
+    )
+
+    for _ in range(50):
+        if image_processor.active_count > 0:
+            break
+        await asyncio.sleep(0.01)
+    try:
+        with pytest.raises(
+            PrescriptionPreprocessingCapacityError,
+            match="temporarily busy",
+        ):
+            await boundaries[1].extractPrescriptionData(b"source-image")
+        assert image_processor.max_active_count == 1
+    finally:
+        image_processor.release.set()
+        await first_task
 
 
 @pytest.mark.anyio

@@ -3,17 +3,37 @@
 
 from io import BytesIO
 import sys
+import struct
+import zlib
 from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
+import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from utils.image_processing import preprocess_prescription_image
+from utils.image_processing import (
+    MAX_PRESCRIPTION_IMAGE_PIXELS,
+    preprocess_prescription_image,
+)
+
+
+def _png_with_dimensions(width: int, height: int) -> bytes:
+    def chunk(chunk_type: bytes, payload: bytes) -> bytes:
+        checksum = zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
+        return (
+            struct.pack(">I", len(payload))
+            + chunk_type
+            + payload
+            + struct.pack(">I", checksum)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IEND", b"")
 
 
 def test_prescription_preprocessing_applies_exif_orientation() -> None:
@@ -32,3 +52,11 @@ def test_prescription_preprocessing_applies_exif_orientation() -> None:
 
     assert processed is not None
     assert processed.shape == (12, 8)
+
+
+def test_prescription_preprocessing_rejects_oversized_decoded_dimensions() -> None:
+    width = 6_000
+    height = (MAX_PRESCRIPTION_IMAGE_PIXELS // width) + 1
+
+    with pytest.raises(ValueError, match="pixel limit"):
+        preprocess_prescription_image(_png_with_dimensions(width, height))

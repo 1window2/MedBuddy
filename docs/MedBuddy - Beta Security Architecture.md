@@ -183,6 +183,27 @@ is the preferred topology. Cloud Run plus Cloud SQL aligns with the current
 Google/Firebase integrations, but the interfaces above keep the domain layer
 provider-independent.
 
+## Client Egress and Resource-Safety Policy
+
+- `ApiConfig` keeps emulator and explicitly selected trusted-LAN endpoints in
+  debug mode, while release/profile mode rejects clear-text, localhost,
+  private-network, credentialed, query-bearing, and non-contract API URLs.
+- The convenience `python backend/main.py` entry point binds to `127.0.0.1`.
+  Listening on every interface is an explicit trusted-LAN test action, never a
+  default.
+- Medication images are external content. Flutter loads them only from the
+  documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
+  value immediately before every `Image.network` call.
+- Prescription image processing rejects decoded dimensions above 24 megapixels
+  from the image header and uses a dedicated single-worker executor before
+  OpenCV allocation. Multipart byte limits remain a separate outer control.
+- Search-keyword expansion, frequency parsing, model fallback caches, and save
+  actions have explicit bounds or serialization. Completed-only dose records
+  cannot redefine the expected daily schedule.
+- Pull-request CI uses deterministic fake API keys. Public issue templates
+  accept only synthetic or fully redacted examples and route vulnerabilities or
+  real-data masking failures to the private `SECURITY.md` process.
+
 ## Android Release Signing and Network Policy
 
 - Use Play App Signing for store distribution and protect the upload key.
