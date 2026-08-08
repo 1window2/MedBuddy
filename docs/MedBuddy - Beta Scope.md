@@ -3,7 +3,7 @@
 ## Status
 
 - Scope frozen: 2026-07-20
-- Implementation review: 2026-07-29
+- Implementation review: 2026-08-03
 - Functional baseline: `v0.0.9-alpha`
 - Target release line: `v0.1.0-beta.*`
 - Target platform: Android
@@ -21,11 +21,14 @@ The following implemented flows are frozen for beta hardening:
 1. Prescription and pill-envelope image input, on-device Korean OCR,
    best-effort privacy filtering, bounded medication-name correction, OCR
    result editing, prescription-date and schedule-slot confirmation,
-   medication detail lookup, and saved-medication creation.
+   medication detail lookup, actionable failure recovery back to OCR review,
+   and saved-medication creation with post-save navigation.
 2. Saved-medication listing, detail guidance, image enrichment, deletion, and
-   medication-course retention.
+   medication-course retention, with active/completed filtering and
+   registration- or medication-date sorting in either direction.
 3. Today's schedule generation, per-slot completion, progress display, local
-   medication reminders, and notification-to-schedule navigation.
+   medication reminders, notification-to-schedule navigation, next-dose home
+   summaries, completion undo, and reminder setup or cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
 5. User display, language, and reading-speed settings.
@@ -38,15 +41,16 @@ The following implemented flows are frozen for beta hardening:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-07-30: P0 controls and release configuration
+Implementation status as of 2026-08-03: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
-token management, dose-completion push delivery, and persisted per-slot
-caregiver settings. Provisioned Cloud Run, Cloud SQL, Redis/VPC, Firebase and
-protected environment values, scheduled server-side missed-deadline delivery,
-signed physical-device testing, backup/restore, and operational abuse-control
-validation remain release gates.
+token management, dose-completion push delivery, persisted per-slot caregiver
+settings, and tested recovery and feedback paths for the medication workflow.
+Provisioned Cloud Run, Cloud SQL, Redis/VPC, Firebase and protected environment
+values, scheduled server-side missed-deadline delivery, signed physical-device
+testing, backup/restore, and operational abuse-control validation remain
+release gates.
 
 ### P0: Identity and Transport Security
 
@@ -82,7 +86,9 @@ validation remain release gates.
 
 - Run backend and Flutter unit/widget suites on every pull request. Automated
   frontend coverage includes compact viewports, large system text, semantic
-  labels, app pause/resume, scroll reachability, and network recovery.
+  labels, app pause/resume, scroll reachability, network recovery, OCR-review
+  recovery, post-save navigation, saved-list filtering and sorting,
+  dose-completion undo, and reminder result feedback.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.

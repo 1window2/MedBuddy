@@ -17,7 +17,9 @@
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
 - Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
 - Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
+- When parsing or medication lookup fails, the UI replaces technical exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to the OCR review, retake the photo, or select another image as appropriate.
 - The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
+- After saving all analyzed medications, users can continue directly to today's schedule or the saved-medication list.
 
 ### Medication Detail and Guidance
 
@@ -48,8 +50,11 @@
 
 - Users can save, list, and delete medications in a patient-scoped pillbox.
 - Saved medications retain the confirmed prescription date, dosage fields, medication period, and schedule slots used to build today's medication schedule.
+- The saved-medication list can be filtered by active, completed, or all courses and sorted by registration date or medication date in either direction.
+- The home schedule card summarizes the next medication slot, the number of medications due, and today's completion progress.
 - Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
+- Completing a dose provides immediate feedback and an undo action, while reminder setup and cancellation display a clear result message at the bottom of the schedule screen.
 - Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
 - Saved medication records are retained through their medication period and cleaned up after the configured retention window.
 

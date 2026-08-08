@@ -29,6 +29,7 @@ import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/notification_service.dart';
+import '../services/user_facing_error_message.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_view_model.dart';

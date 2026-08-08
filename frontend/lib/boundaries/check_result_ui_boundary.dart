@@ -26,6 +26,9 @@ class CheckResultUI extends StatelessWidget {
   final Set<int> completedMedicationSaveIndexes;
   final bool isAllMedicationSaving;
   final VoidCallback? onCloseRequested;
+  final VoidCallback? onTodayScheduleRequested;
+  final VoidCallback? onSavedMedicationRequested;
+  final VoidCallback? onHomeRequested;
   final Future<bool> Function() onAllMedicationSaveRequested;
   final Future<bool> Function(
     AnalyzedMedication analyzedMedication,
@@ -44,6 +47,9 @@ class CheckResultUI extends StatelessWidget {
     required this.completedMedicationSaveIndexes,
     required this.isAllMedicationSaving,
     required this.onCloseRequested,
+    this.onTodayScheduleRequested,
+    this.onSavedMedicationRequested,
+    this.onHomeRequested,
     required this.onAllMedicationSaveRequested,
     required this.onMedicationSaveRequested,
   });
@@ -115,16 +121,14 @@ class CheckResultUI extends StatelessWidget {
                           if (!context.mounted) {
                             return;
                           }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(statusMessageProvider()),
-                              backgroundColor: success
-                                  ? const Color(0xFF059669)
-                                  : const Color(0xFFDC2626),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                          final allSaved =
+                              completedMedicationSaveIndexes.length >=
+                              analyzedMedicationList.length;
+                          if (success && allSaved) {
+                            await _showSaveCompletedSheet(context, text);
+                            return;
+                          }
+                          _showSaveResultMessage(context, success);
                         },
                       );
                     },
@@ -143,15 +147,11 @@ class CheckResultUI extends StatelessWidget {
                         if (!context.mounted) {
                           return;
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(statusMessageProvider()),
-                            backgroundColor: success
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
+                        if (success) {
+                          await _showSaveCompletedSheet(context, text);
+                          return;
+                        }
+                        _showSaveResultMessage(context, false);
                       },
                     ),
                   ),
@@ -160,6 +160,139 @@ class CheckResultUI extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showSaveResultMessage(BuildContext context, bool success) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(statusMessageProvider()),
+        backgroundColor: success
+            ? const Color(0xFF059669)
+            : const Color(0xFFDC2626),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // 함수명: _showSaveCompletedSheet
+  // 역할:
+  // - 전체 복약 일정 저장이 끝난 뒤 사용자가 확인할 다음 화면을 바로 선택하게 한다.
+  Future<void> _showSaveCompletedSheet(BuildContext context, _ResultText text) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => _SaveCompletedSheet(
+        text: text,
+        userSetting: userSetting,
+        onTodayScheduleRequested: onTodayScheduleRequested == null
+            ? null
+            : () {
+                Navigator.pop(sheetContext);
+                onTodayScheduleRequested!.call();
+              },
+        onSavedMedicationRequested: onSavedMedicationRequested == null
+            ? null
+            : () {
+                Navigator.pop(sheetContext);
+                onSavedMedicationRequested!.call();
+              },
+        onHomeRequested: onHomeRequested == null
+            ? null
+            : () {
+                Navigator.pop(sheetContext);
+                onHomeRequested!.call();
+              },
+      ),
+    );
+  }
+}
+
+class _SaveCompletedSheet extends StatelessWidget {
+  final _ResultText text;
+  final UserSetting userSetting;
+  final VoidCallback? onTodayScheduleRequested;
+  final VoidCallback? onSavedMedicationRequested;
+  final VoidCallback? onHomeRequested;
+
+  const _SaveCompletedSheet({
+    required this.text,
+    required this.userSetting,
+    required this.onTodayScheduleRequested,
+    required this.onSavedMedicationRequested,
+    required this.onHomeRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = userSetting.contentTextScale;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        26,
+        24,
+        MediaQuery.paddingOf(context).bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.check_circle_rounded,
+            color: MedBuddyColors.primary,
+            size: 58,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            text.saveCompletedTitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 22 * scale,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text.saveCompletedDescription,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14 * scale,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 22),
+          if (onTodayScheduleRequested != null)
+            FilledButton.icon(
+              onPressed: onTodayScheduleRequested,
+              icon: const Icon(Icons.event_available_outlined),
+              label: Text(text.openTodaySchedule),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+                backgroundColor: MedBuddyColors.primary,
+              ),
+            ),
+          if (onSavedMedicationRequested != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onSavedMedicationRequested,
+              icon: const Icon(Icons.medication_outlined),
+              label: Text(text.openSavedMedication),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+              ),
+            ),
+          ],
+          if (onHomeRequested != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: onHomeRequested,
+              child: Text(text.returnHome),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -179,7 +312,7 @@ class _ResultHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 94,
+      constraints: const BoxConstraints(minHeight: 94),
       width: double.infinity,
       color: MedBuddyColors.topBar,
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
@@ -197,6 +330,8 @@ class _ResultHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
@@ -565,6 +700,7 @@ class _DoseInfoRow extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.primary, size: 21),
         const SizedBox(width: 10),
         Expanded(
+          flex: 3,
           child: Text(
             label,
             style: TextStyle(
@@ -575,19 +711,23 @@ class _DoseInfoRow extends StatelessWidget {
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-          decoration: BoxDecoration(
-            color: MedBuddyColors.mint,
-            borderRadius: MedBuddyRadii.pill,
-          ),
-          child: Text(
-            value,
-            style: TextStyle(
-              color: MedBuddyColors.primaryDark,
-              fontSize: 15 * scale,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+        Flexible(
+          flex: 2,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            decoration: BoxDecoration(
+              color: MedBuddyColors.mint,
+              borderRadius: MedBuddyRadii.pill,
+            ),
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: MedBuddyColors.primaryDark,
+                fontSize: 15 * scale,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
           ),
         ),
@@ -620,4 +760,14 @@ class _ResultText {
       isEnglish ? 'Save Medication Schedule' : '복약 일정 저장하기';
   String get saved => isEnglish ? 'Saved' : '저장 완료';
   String get saving => isEnglish ? 'Saving...' : '저장 중...';
+  String get saveCompletedTitle =>
+      isEnglish ? 'Medication schedule saved' : '복약 일정 저장 완료';
+  String get saveCompletedDescription => isEnglish
+      ? 'Review the saved schedule now or return home.'
+      : '저장한 약을 오늘 일정이나 저장 목록에서 바로 확인할 수 있습니다.';
+  String get openTodaySchedule =>
+      isEnglish ? 'View today\'s schedule' : '오늘 일정 확인';
+  String get openSavedMedication =>
+      isEnglish ? 'View saved medication' : '저장된 정보 보기';
+  String get returnHome => isEnglish ? 'Return home' : '홈으로 돌아가기';
 }

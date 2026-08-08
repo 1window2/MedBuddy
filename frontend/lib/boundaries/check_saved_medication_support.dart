@@ -241,10 +241,24 @@ class _SavedMedicationText {
   String get done => isEnglish ? 'Done' : '완료';
   String get sortByRegisteredDate => isEnglish ? 'Registration date' : '등록일자순';
   String get sortByMedicationDate => isEnglish ? 'Medication date' : '복용날짜순';
+  String get sortSettings => isEnglish ? 'Sort settings' : '정렬 기준 설정';
   String get ascendingOrder => isEnglish ? 'Oldest first' : '오름차순';
   String get descendingOrder => isEnglish ? 'Newest first' : '내림차순';
   String get changeSortDirection =>
       isEnglish ? 'Change sort direction' : '정렬 방향 변경';
+  String get activeMedication => isEnglish ? 'Active' : '복용 중';
+  String get endedMedication => isEnglish ? 'Ended' : '복용 종료';
+  String get allMedication => isEnglish ? 'All' : '전체';
+  String filteredEmptyMessage(_SavedMedicationFilterMode filterMode) {
+    return switch (filterMode) {
+      _SavedMedicationFilterMode.active =>
+        isEnglish ? 'No medication is active today.' : '현재 복용 중인 약이 없습니다.',
+      _SavedMedicationFilterMode.ended =>
+        isEnglish ? 'No completed medication history.' : '복용이 끝난 약이 없습니다.',
+      _SavedMedicationFilterMode.all => emptyMessage,
+    };
+  }
+
   String get emptyMessage =>
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
   String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';

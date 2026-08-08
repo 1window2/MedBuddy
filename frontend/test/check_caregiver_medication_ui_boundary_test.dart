@@ -81,27 +81,42 @@ void main() {
 
     expect(find.text('환자 오늘의 복약 일정'), findsOneWidget);
     expect(find.text('1/3'), findsOneWidget);
-    expect(find.text('아침'), findsOneWidget);
-    expect(find.text('점심'), findsOneWidget);
-    expect(find.text('저녁'), findsOneWidget);
-    expect(find.text('테스트정'), findsNWidgets(3));
     expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
     expect(
       find.byKey(const ValueKey('caregiver-notification-morning')),
       findsOneWidget,
     );
     expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+    for (final slotLabel in const ['아침', '점심', '저녁']) {
+      await tester.scrollUntilVisible(
+        find.text(slotLabel),
+        220,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text(slotLabel), findsOneWidget);
+    }
+    expect(find.text('테스트정'), findsWidgets);
 
-    await tester.tap(
-      find.byKey(const ValueKey('caregiver-notification-morning')),
+    final morningNotification = find.byKey(
+      const ValueKey('caregiver-notification-morning'),
     );
+    await tester.scrollUntilVisible(
+      morningNotification,
+      -220,
+      scrollable: find.byType(Scrollable),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(morningNotification);
     await tester.pumpAndSettle();
 
     expect(find.text('아침 알림 설정'), findsOneWidget);
 
     await tester.tap(find.text('정해진 시각까지 미복용 시 알림'));
     await tester.pump();
-    await tester.tap(find.text('확인 시각 21:00'));
+    final missedDoseTime = find.text('확인 시각 21:00');
+    await tester.ensureVisible(missedDoseTime);
+    await tester.pumpAndSettle();
+    await tester.tap(missedDoseTime);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('notification-hour-wheel')), findsOneWidget);
@@ -112,5 +127,36 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  testWidgets('보호자 일정은 작은 화면과 2배 글씨에서도 시간대별 상태를 스크롤한다', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 568);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: CheckCaregiverMedicationUI(
+          caregiverHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          control: _FakeCaregiverMedicationControl(),
+          notificationControl: _FakeCaregiverNotificationControl(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('환자 오늘의 복약 일정'), findsOneWidget);
+    expect(find.byType(ListView), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -260));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }

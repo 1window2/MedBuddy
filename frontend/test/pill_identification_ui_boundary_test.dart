@@ -115,6 +115,20 @@ class _DelayedReplacementIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// 함수명: _tapVisible
+// 함수역할:
+// - 큰 글씨로 화면 아래에 배치된 검사 대상을 먼저 스크롤한 뒤 누른다.
+// 매개변수:
+// - tester: 위젯 테스트 제어기
+// - finder: 화면에서 누를 위젯 탐색기
+// 반환값:
+// - 탭 처리 완료 상태
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+}
+
 void main() {
   testWidgets('pill candidate flow requires explicit user confirmation', (
     tester,
@@ -135,7 +149,7 @@ void main() {
     expect(find.text('알약 식별'), findsOneWidget);
     expect(find.textContaining('외부 AI'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('카메라로 촬영'));
     await tester.pumpAndSettle();
@@ -144,7 +158,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('페라트라정2.5밀리그램(레트로졸)'), findsOneWidget);
 
-    await tester.tap(find.text('페라트라정2.5밀리그램(레트로졸)'));
+    final candidateName = find.text('페라트라정2.5밀리그램(레트로졸)');
+    await tester.ensureVisible(candidateName);
+    await tester.pumpAndSettle();
+    await tester.tap(candidateName);
     await tester.pump();
     final confirmButton = find.byKey(
       const Key('confirm-pill-candidate-button'),
@@ -170,7 +187,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Take a photo'));
     await tester.pumpAndSettle();
@@ -201,7 +218,7 @@ void main() {
       Key('pill-front-image-slot'),
       Key('pill-back-image-slot'),
     ]) {
-      await tester.tap(find.byKey(slotKey));
+      await _tapVisible(tester, find.byKey(slotKey));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Take a photo'));
       await tester.pumpAndSettle();
@@ -265,7 +282,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Take a photo'));
     await tester.pumpAndSettle();
@@ -295,7 +312,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Take a photo'));
     await tester.pumpAndSettle();
@@ -324,7 +341,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('pill-front-image-slot')));
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Take a photo'));
     await tester.pumpAndSettle();

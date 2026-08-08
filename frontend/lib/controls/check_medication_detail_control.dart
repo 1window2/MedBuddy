@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:async';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -55,10 +57,7 @@ class CheckMedicationDetail {
 
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          '약품 정보 조회 실패 (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
-        );
+        throw StateError(_messageForStatus(response.statusCode, responseBody));
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
@@ -70,6 +69,12 @@ class CheckMedicationDetail {
         decodedData['data'],
       );
       return medicationDetailList.isEmpty ? null : medicationDetailList.first;
+    } on TimeoutException {
+      throw StateError('약품 정보 서버의 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+    } on SocketException {
+      throw StateError('인터넷 연결을 확인한 뒤 다시 시도해주세요.');
+    } on http.ClientException {
+      throw StateError('인터넷 연결을 확인한 뒤 다시 시도해주세요.');
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -81,6 +86,26 @@ class CheckMedicationDetail {
       );
       throw StateError('약품 정보를 불러오지 못했습니다.');
     }
+  }
+
+  String _messageForStatus(int statusCode, dynamic responseBody) {
+    if (statusCode == 401 || statusCode == 403) {
+      return '로그인 정보가 만료되었습니다. 다시 로그인해주세요.';
+    }
+    if (statusCode == 404) {
+      return '일치하는 약 정보를 찾지 못했습니다. OCR 약 이름을 확인해주세요.';
+    }
+    if (statusCode == 408 || statusCode == 504) {
+      return '약품 정보 서버의 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
+    }
+    if (statusCode == 429) {
+      return '현재 약품 조회 요청이 많습니다. 잠시 후 다시 시도해주세요.';
+    }
+    if (statusCode >= 500) {
+      return '공공데이터 약품 정보 서비스가 일시적으로 응답하지 않습니다.';
+    }
+    return '약품 정보 조회 실패 ($statusCode): '
+        '${ApiResponseParser.extractErrorDetail(responseBody)}';
   }
 
   List<MedicationDetail> _decodeMedicationDetailList(dynamic rawItems) {

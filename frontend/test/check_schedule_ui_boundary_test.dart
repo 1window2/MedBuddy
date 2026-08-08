@@ -58,8 +58,41 @@ class _ActiveCheckSchedule extends CheckSchedule {
         medicationName: 'active-tablet',
         intakeTime: '1 time',
         medicationTime: 1,
+        scheduleSlotKeys: ['morning'],
       ),
     ];
+  }
+}
+
+// 클래스명: _CompletableCheckSchedule
+// 역할: 복약 완료 안내와 실행 취소 SnackBar의 표시 시간을 검증할 일정을 제공한다.
+class _CompletableCheckSchedule extends CheckSchedule {
+  bool _completed = false;
+
+  MedicationSchedule get _schedule => MedicationSchedule(
+    medicationID: 'completion-tablet',
+    medicationName: '테스트정',
+    dosage: '1',
+    intakeTime: '1회',
+    medicationTime: 1,
+    scheduleSlotKeys: const ['morning'],
+    slotStatuses: {'morning': _completed},
+    medicationStatus: _completed,
+  );
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    return [_schedule];
+  }
+
+  @override
+  Future<MedicationSchedule> updateMedicationStatus(
+    String medicationId,
+    bool medicationStatus, {
+    String? slotKey,
+  }) async {
+    _completed = medicationStatus;
+    return _schedule;
   }
 }
 
@@ -95,6 +128,83 @@ class _EnabledSetNotification extends SetNotification {
       MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
     ];
   }
+}
+
+// 클래스명: _MutableSetNotification
+// 역할: 일정 화면에서 알림 설정과 해제 성공 안내를 검증할 수 있도록 상태를 저장한다.
+class _MutableSetNotification extends SetNotification {
+  MedicationAlarm _setting = const MedicationAlarm(
+    slotKey: 'morning',
+    hour: 8,
+    minute: 0,
+    enabled: false,
+  );
+
+  @override
+  Future<List<MedicationAlarm>> requestMedicationAlarm() async => [_setting];
+
+  @override
+  Future<MedicationAlarm> saveNotificationSetting({
+    required String slotKey,
+    required int hour,
+    required int minute,
+  }) async {
+    _setting = MedicationAlarm(
+      slotKey: slotKey,
+      hour: hour,
+      minute: minute,
+      enabled: true,
+    );
+    return _setting;
+  }
+
+  @override
+  Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
+    _setting = _setting.copyWith(enabled: false);
+    return _setting;
+  }
+
+  @override
+  Future<void> registerNotification({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<String> medicationNames,
+    String language = 'ko',
+  }) async {}
+}
+
+// 클래스명: _SuccessfulNotificationService
+// 역할: 플랫폼 알림 예약과 취소가 성공한 상황을 일정 화면 테스트에 제공한다.
+class _SuccessfulNotificationService implements NotificationService {
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> registerNotification({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<String> medicationNames,
+    String language = 'ko',
+  }) async {}
+
+  @override
+  Future<void> cancelReminder(int id) async {}
+
+  @override
+  Future<void> showCaregiverAlert({
+    required int id,
+    required String title,
+    required String body,
+  }) async {}
 }
 
 class _FailingNotificationService implements NotificationService {
@@ -239,6 +349,74 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text("Today's Medication Schedule"), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('알림 설정과 해제 완료 결과를 화면 하단에 안내한다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _ActiveCheckSchedule(),
+      setNotification: _MutableSetNotification(),
+      notificationService: _SuccessfulNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: CheckScheduleUI()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final morningReminder = find.byTooltip('아침 알림 설정');
+    await tester.tap(morningReminder);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-time-confirm')));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(viewModel.statusMessage, '아침 알림이 08:00으로 설정되었습니다.');
+    expect(find.text(viewModel.statusMessage), findsOneWidget);
+
+    await tester.tap(morningReminder);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('아침 알림이 해제되었습니다.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('복약 완료 안내는 접근성 모드에서도 5초 뒤 자동으로 닫힌다', (tester) async {
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _CompletableCheckSchedule(),
+      setNotification: _EmptySetNotification(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(accessibleNavigation: true),
+              child: child!,
+            );
+          },
+          home: const CheckScheduleUI(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

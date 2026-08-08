@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'check_today_medication_info_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -19,6 +20,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
+  final Map<String, MedicationAlarm> medicationReminderSettings;
   final int todayMedicationCompletedCount;
   final int todayMedicationTotalCount;
   final bool isTodayScheduleLoading;
@@ -36,6 +38,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
     required this.userSetting,
     this.todayMedicationScheduleList = const [],
+    this.medicationReminderSettings = const {},
     this.todayMedicationCompletedCount = 0,
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
@@ -51,6 +54,7 @@ class InputPrescriptionUI extends StatelessWidget {
   const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
     : userSetting = const UserSetting(),
       todayMedicationScheduleList = const [],
+      medicationReminderSettings = const {},
       todayMedicationCompletedCount = 0,
       todayMedicationTotalCount = 0,
       isTodayScheduleLoading = false,
@@ -88,6 +92,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       noMedicationLabel: text.noMedication,
                       userSetting: userSetting,
                       schedules: todayMedicationScheduleList,
+                      reminderSettings: medicationReminderSettings,
                       completedCount: todayMedicationCompletedCount,
                       totalCount: todayMedicationTotalCount,
                       isLoading: isTodayScheduleLoading,
@@ -95,6 +100,7 @@ class InputPrescriptionUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     _HomeActionCard(
+                      cardKey: const ValueKey('homeCaptureCard'),
                       icon: Icons.photo_camera_outlined,
                       title: text.scanPrescription,
                       subtitle: text.scanPrescriptionSubtitle,
@@ -104,6 +110,7 @@ class InputPrescriptionUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
+                      cardKey: const ValueKey('homeSavedMedicationCard'),
                       icon: Icons.medication_outlined,
                       title: text.savedMedication,
                       subtitle: text.savedMedicationSubtitle,
@@ -112,8 +119,12 @@ class InputPrescriptionUI extends StatelessWidget {
                       onTap: onSavedMedicationRequested,
                     ),
                     const SizedBox(height: 22),
-                    _LinkCard(
+                    _HomeActionCard(
+                      cardKey: const ValueKey('homePatientCaregiverLinkCard'),
+                      icon: Icons.people_alt_outlined,
                       title: text.patientCaregiverLink,
+                      subtitle: text.patientCaregiverLinkSubtitle,
+                      filled: false,
                       userSetting: userSetting,
                       onTap: onPatientCaregiverLinkRequested,
                     ),
@@ -264,19 +275,24 @@ class _HomeHeader extends StatelessWidget {
         children: [
           const Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'MedBuddy',
-                  maxLines: 1,
-                  overflow: TextOverflow.visible,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'MedBuddy',
+                    maxLines: 1,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
                 SizedBox(height: 3),
@@ -284,6 +300,7 @@ class _HomeHeader extends StatelessWidget {
                   '건강한 복약 관리 도우미',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textScaler: TextScaler.noScaling,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -320,6 +337,7 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _HomeActionCard extends StatelessWidget {
+  final Key? cardKey;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -328,6 +346,7 @@ class _HomeActionCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _HomeActionCard({
+    this.cardKey,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -352,6 +371,7 @@ class _HomeActionCard extends StatelessWidget {
         borderRadius: MedBuddyRadii.card,
         onTap: onTap,
         child: Container(
+          key: cardKey,
           width: double.infinity,
           constraints: BoxConstraints(minHeight: filled ? 176 : 182),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
@@ -399,81 +419,6 @@ class _HomeActionCard extends StatelessWidget {
   }
 }
 
-class _LinkCard extends StatelessWidget {
-  final String title;
-  final UserSetting userSetting;
-  final VoidCallback? onTap;
-
-  const _LinkCard({
-    required this.title,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return _SurfaceCard(
-      minHeight: 92,
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-      child: Center(
-        child: Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: MedBuddyColors.primaryDark,
-            fontSize: 22 * scale,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SurfaceCard extends StatelessWidget {
-  final Widget child;
-  final double minHeight;
-  final EdgeInsetsGeometry padding;
-  final VoidCallback? onTap;
-
-  const _SurfaceCard({
-    required this.child,
-    required this.minHeight,
-    required this.onTap,
-    this.padding = const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: MedBuddyRadii.card,
-      elevation: 7,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.16),
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          constraints: BoxConstraints(minHeight: minHeight),
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 2.7),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
 class _HomeText {
   final String language;
 
@@ -495,6 +440,9 @@ class _HomeText {
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
   String get patientCaregiverLink =>
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
+  String get patientCaregiverLinkSubtitle => isEnglish
+      ? 'Connect patient and caregiver medication schedules'
+      : '환자와 보호자의 복약 일정을 연결';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }

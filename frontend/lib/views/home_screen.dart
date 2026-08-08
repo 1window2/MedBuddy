@@ -71,6 +71,9 @@ class HomeScreen extends StatelessWidget {
         onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
             ? viewModel.requestPrescriptionAnalysis
             : null,
+        onOcrReviewRequested: viewModel.canRetryPrescriptionAnalysis
+            ? viewModel.returnToPrescriptionPreview
+            : null,
         onCameraRetryRequested: () =>
             _requestGuidedPrescriptionImage(context, viewModel),
         onGalleryRetryRequested: viewModel.requestPrescriptionImageFromGallery,
@@ -92,6 +95,23 @@ class HomeScreen extends StatelessWidget {
         onAllMedicationSaveRequested:
             viewModel.requestAllAnalyzedMedicationSave,
         onMedicationSaveRequested: viewModel.requestMedicationSave,
+        onTodayScheduleRequested: () {
+          viewModel.clearAnalysisResult();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
+          ).then((_) => viewModel.fetchTodayMedicationSchedule());
+        },
+        onSavedMedicationRequested: () {
+          viewModel.clearAnalysisResult();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CheckSavedMedicationUI(),
+            ),
+          );
+        },
+        onHomeRequested: viewModel.clearAnalysisResult,
       ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
@@ -124,6 +144,7 @@ class HomeScreen extends StatelessWidget {
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
+      medicationReminderSettings: viewModel.medicationReminderSettings,
       todayMedicationCompletedCount: todayMedicationProgress.completedCount,
       todayMedicationTotalCount: todayMedicationProgress.totalCount,
       isTodayScheduleLoading: viewModel.isTodayScheduleLoading,
