@@ -2,7 +2,8 @@
 
 Audit date: 2026-08-09
 
-Target: beta/v0.1.0 working tree and `codex/beta-v0.1.0-security-hardening`
+Target: beta/v0.1.0 working tree, `codex/beta-v0.1.0-security-hardening`,
+and the verified follow-up branch `codex/beta-v0.1.0-postscan-hardening`
 
 Scope: all 34 supplied Codex Security reports and every available Patch tab
 
@@ -14,10 +15,10 @@ findings exposed a Patch tab; those patches were reviewed as proposals rather
 than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
-The result is 16 findings that required a change in this branch and 18 findings
-whose reported vulnerable state had already been removed by the recovered beta
-work. "Already resolved" means the current tree contains the relevant control;
-it does not mean the original report was invalid.
+The result is 17 findings that required a change in the hardening branches and
+17 findings whose reported vulnerable state had already been removed by the
+recovered beta work. "Already resolved" means the current tree contains the
+relevant control; it does not mean the original report was invalid.
 
 ## High severity
 
@@ -36,12 +37,12 @@ it does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
-| `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Already resolved in beta | Saved reads use persisted medication detail and do not enrich each record through third parties. |
+| `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Fixed after verified review | Saved-list and caregiver reads return persisted image metadata only; they no longer call MFDS or commit enrichment as a GET side effect. |
 | `8d0d695912108191a19a8311c5153486` | Unauthenticated health recommendation LLM endpoint | Already resolved in beta | Recommendation generation is protected by the verified request principal and bounded request policy. |
 | `1b4134d204dc81918ea1d955c21b0c71` | Medication detail screen loads untrusted image URLs | Fixed in this branch | All medication images require HTTPS on the exact MFDS image host with no credentials or alternate port. |
 | `1856320722e481918620380d6ae93f7c` | Saved-medication UI auto-loads untrusted image URLs | Fixed in this branch | Saved-list thumbnails and dialogs use the same centralized image trust policy. |
 | `dcc311db1c688191a0a60c655156e67a` | Unbounded medication keyword expansion enables request amplification | Fixed in this branch | Normalized lookup variants are deduplicated and capped at 24. |
-| `9baed3ca490881919a292eadd0a4b388` | Prescription upload logs leak user-controlled filenames | Already resolved in beta | Upload logs contain content type and bounded byte count, not the client filename or OCR text. |
+| `9baed3ca490881919a292eadd0a4b388` | Prescription upload logs leak user-controlled filenames | Already resolved in beta | Upload logs contain only the bounded byte count, not the client filename, media type, or OCR text. |
 | `3e237f97ed488191b154269bc1574f93` | Release Android app enables cleartext medical-data API traffic | Already resolved in beta | Release manifest disables cleartext; release/profile URL validation requires a public HTTPS origin. |
 | `6f09c0c2172c8191b2f60c29acc34a43` | Issue templates solicit unredacted medical data | Fixed in this branch | Templates prohibit real medical/personal data and route sensitive reports to the private security channel. |
 | `d3b69f10ca4081919e13b6e8e230cdaa` | Oversized identify input bypasses raw length guard | Already resolved in beta | Request schemas and normalized-name validation bound the identify input. |
@@ -80,18 +81,30 @@ it does not mean the original report was invalid.
 - UML: PlantUML `-checkonly` passed and the class diagram PNG was regenerated.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
   HTTPS placeholder; manifest reports `usesCleartextTraffic=false`.
-- Physical device: Samsung SM-N976N / Android 12. Synthetic prescription OCR,
-  analysis, save, 3-slot schedule, reversible completion, medication detail,
-  health guidance, notification dialog, settings, caregiver view, and pill
-  rejection path passed. No Flutter/Android fatal error appeared in app logs.
-- Cleanup: the synthetic saved record/completion and image were removed, ADB
-  reverse tunnels were removed, the loopback backend was stopped, and the
-  original v0.0.9 app was restored in place.
+- Physical device: Samsung SM-N976N / Android 12. The installed v0.1.0+10
+  Firebase-enabled debug build exposes email/password, Google, phone, and guest
+  authentication. Anonymous sign-in acquired a client Firebase identity, then
+  failed closed because the local backend lacked Firebase Admin application
+  credentials. Earlier synthetic-data checks on the same merged beta code
+  covered prescription OCR/analysis/save, 3-slot schedules, reversible
+  completion, medication detail, health guidance, notifications, settings,
+  caregiver restrictions, and pill rejection without fatal app logs.
+- Standalone boundary: the APK targets the LAN host rather than localhost, all
+  ADB forward/reverse tunnels were removed, and wireless ADB was disconnected.
+  Direct phone-to-PC traffic remained blocked because domain policy ignores
+  local Windows Firewall rules; a GPO-authorized phone-scoped rule or public
+  HTTPS backend is still required for cable-free end-to-end proof.
+- Cleanup: synthetic Firebase test users and local test data were removed, and
+  the temporary backend was stopped. One earlier anonymous Firebase UID may
+  still require deletion in the Firebase Authentication console if present.
+  The ignored local phone-only firewall rule also remains because this process
+  could not obtain administrator elevation; an administrator must delete it.
 
 ## Remaining release gates
 
-No release was made. A signed beta still requires the real public HTTPS backend,
-Firebase project/App Check configuration, release keystore/certificate match,
-PostgreSQL migration integration tests, CI success, and a final signed-artifact
-device pass. These are deployment proofs, not reasons to weaken the local or
-release fail-closed controls.
+No release was made. A signed beta still requires a Firebase Admin credential on
+the backend (or an attached runtime service account), the real public HTTPS
+backend, App Check configuration, release keystore/certificate match, PostgreSQL
+migration integration tests, CI success, and a final signed-artifact device
+pass. These are deployment proofs, not reasons to weaken the local or release
+fail-closed controls.

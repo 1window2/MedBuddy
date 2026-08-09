@@ -447,7 +447,6 @@ package "FastAPI Backend" {
             - db: Session
             + saveMedicationDetail(patient_hash, detail): dict
             + requestSavedMedicationInfo(patient_hash): dict
-            + requestSavedMedicationInfoWithImages(patient_hash): dict
             + requestDelete(patient_hash, drug_id): dict
         }
 

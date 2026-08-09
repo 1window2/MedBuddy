@@ -1,7 +1,6 @@
 # 파일명: test_check_saved_medication_control.py
 # 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
 
-import asyncio
 import unittest
 import sys
 from datetime import date, timedelta
@@ -21,36 +20,12 @@ from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
     ensure_medication_completion_schema,
 )
-from entities.medication_detail_entity import _DrugApprovalInfo  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
     ensure_saved_medication_schema,
 )
 from schemas.medication import SavedMedicationCreate  # noqa: E402
-
-
-class _RecordingMedicationImageLookup:
-    def __init__(self, image_url: str) -> None:
-        self.image_url = image_url
-        self.requests: list[tuple[str, str]] = []
-
-    async def searchMedicationImage(
-        self,
-        item_name: str,
-        item_seq: str = "",
-    ) -> str:
-        self.requests.append((item_name, item_seq))
-        return self.image_url
-
-
-class _FailingMedicationImageLookup:
-    async def searchMedicationImage(
-        self,
-        item_name: str,
-        item_seq: str = "",
-    ) -> str:
-        raise TimeoutError("optional image service timed out")
 
 
 class CheckSavedMedicationTest(unittest.TestCase):
@@ -240,7 +215,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             "https://example.com/medicine.jpg",
         )
 
-    def test_list_enriches_and_persists_legacy_missing_image(self) -> None:
+    def test_list_does_not_enrich_or_mutate_legacy_missing_image(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
             item_name="catalog-tablet",
@@ -248,62 +223,13 @@ class CheckSavedMedicationTest(unittest.TestCase):
         medication.item_seq = None
         medication.image_url = None
         save_response = self.control.saveMedicationDetail(medication)
-        self.db.add(
-            _DrugApprovalInfo(
-                item_seq="201907237",
-                item_name="catalog-tablet",
-                normalized_item_name="catalog-tablet",
-                raw_json="{}",
-            )
-        )
-        self.db.commit()
-        image_lookup = _RecordingMedicationImageLookup(
-            "https://example.com/catalog-tablet.jpg"
-        )
-        control = CheckSavedMedication(
-            self.db,
-            medication_image_lookup=image_lookup,
-        )
+        response = self.control.requestSavedMedicationInfo("patient-a")
 
-        response = asyncio.run(
-            control.requestSavedMedicationInfoWithImages("patient-a")
-        )
-
-        self.assertEqual(
-            image_lookup.requests,
-            [("catalog-tablet", "201907237")],
-        )
-        self.assertEqual(response["data"][0]["item_seq"], "201907237")
-        self.assertEqual(
-            response["data"][0]["image_url"],
-            "https://example.com/catalog-tablet.jpg",
-        )
-        saved_row = self.db.get(_SavedMedication, save_response["id"])
-        self.assertEqual(saved_row.item_seq, "201907237")
-        self.assertEqual(
-            saved_row.image_url,
-            "https://example.com/catalog-tablet.jpg",
-        )
-
-    def test_list_survives_optional_image_lookup_failure(self) -> None:
-        medication = self._saved_medication(
-            patient_hash="patient-a",
-            item_name="no-image-tablet",
-        )
-        medication.image_url = None
-        self.control.saveMedicationDetail(medication)
-        control = CheckSavedMedication(
-            self.db,
-            medication_image_lookup=_FailingMedicationImageLookup(),
-        )
-
-        response = asyncio.run(
-            control.requestSavedMedicationInfoWithImages("patient-a")
-        )
-
-        self.assertTrue(response["success"])
-        self.assertEqual(response["data"][0]["item_name"], "no-image-tablet")
+        self.assertFalse(response["data"][0]["item_seq"])
         self.assertFalse(response["data"][0]["image_url"])
+        saved_row = self.db.get(_SavedMedication, save_response["id"])
+        self.assertIsNone(saved_row.item_seq)
+        self.assertIsNone(saved_row.image_url)
 
     def test_list_filters_expired_medications_without_mutating_storage(self) -> None:
         expired_medication = self._saved_medication(

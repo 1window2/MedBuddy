@@ -397,10 +397,7 @@ def get_check_prescription_change(
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
-    return CheckSavedMedication(
-        db=db,
-        medication_image_lookup=_pill_image_api,
-    )
+    return CheckSavedMedication(db=db)
 
 
 # Function Name: get_check_schedule
