@@ -1,10 +1,8 @@
 # File Name: check_saved_medication_control.py
 # Role: Control class for saved medication persistence workflows.
 
-import asyncio
 import logging
 from datetime import date
-from typing import Protocol
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
-from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.medication_schedule_entity import (
     decode_medication_schedule_slot_keys,
     encode_medication_schedule_slot_keys,
@@ -30,14 +27,6 @@ from services.saved_medication_retention import SavedMedicationRetentionPolicy
 logger = logging.getLogger(__name__)
 
 
-class _MedicationImageLookup(Protocol):
-    async def searchMedicationImage(
-        self,
-        item_name: str,
-        item_seq: str = "",
-    ) -> str: ...
-
-
 # Class Name: CheckSavedMedication
 # Role: Coordinates saved medication CRUD use cases.
 # Responsibilities:
@@ -47,19 +36,14 @@ class _MedicationImageLookup(Protocol):
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
 class CheckSavedMedication:
-    _MAX_IMAGE_ENRICHMENTS_PER_REQUEST = 4
-    _IMAGE_ENRICHMENT_CONCURRENCY = 2
-
     def __init__(
         self,
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
-        medication_image_lookup: _MedicationImageLookup | None = None,
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
-        self.medication_image_lookup = medication_image_lookup
 
     # Function Name: saveMedicationDetail
     # Description:
@@ -160,21 +144,6 @@ class CheckSavedMedication:
         saved_medications = self._load_saved_medications(normalized_patient_hash)
         return self._build_list_response(saved_medications)
 
-    # Function Name: requestSavedMedicationInfoWithImages
-    # Description:
-    # - HTTP-boundary extension that enriches missing image metadata without
-    #   changing the synchronous UML control contract.
-    async def requestSavedMedicationInfoWithImages(
-        self,
-        patient_hash: str | None = None,
-    ) -> dict[str, object]:
-        normalized_patient_hash = normalize_patient_hash(patient_hash)
-        saved_medications = self._load_saved_medications(normalized_patient_hash)
-        enrichment = await self._enrich_missing_medication_images(
-            saved_medications
-        )
-        return self._build_list_response(saved_medications, enrichment)
-
     def _load_saved_medications(
         self,
         patient_hash: str,
@@ -195,110 +164,17 @@ class CheckSavedMedication:
     def _build_list_response(
         self,
         saved_medications: list[_SavedMedication],
-        enrichment: dict[int, tuple[str, str]] | None = None,
     ) -> dict[str, object]:
-        enrichment = enrichment or {}
         return {
             "success": True,
             "message": "Saved medication lookup succeeded.",
             "data": [
                 self._to_response_dict(
                     medication,
-                    item_seq_override=enrichment.get(medication.id, ("", ""))[0],
-                    image_url_override=enrichment.get(medication.id, ("", ""))[1],
                 )
                 for medication in saved_medications
             ],
         }
-
-    async def _enrich_missing_medication_images(
-        self,
-        saved_medications: list[_SavedMedication],
-    ) -> dict[int, tuple[str, str]]:
-        if self.medication_image_lookup is None:
-            return {}
-
-        candidates = [
-            medication
-            for medication in saved_medications
-            if not (medication.image_url or "").strip()
-        ][: self._MAX_IMAGE_ENRICHMENTS_PER_REQUEST]
-        if not candidates:
-            return {}
-
-        semaphore = asyncio.Semaphore(self._IMAGE_ENRICHMENT_CONCURRENCY)
-        resolved_item_sequences: dict[int, str] = {}
-
-        async def resolve_image(medication: _SavedMedication) -> str:
-            item_seq = (medication.item_seq or "").strip()
-            if not item_seq:
-                item_seq = self._resolve_catalog_item_seq(
-                    medication.item_name or ""
-                )
-                if item_seq:
-                    resolved_item_sequences[medication.id] = item_seq
-            async with semaphore:
-                return await self.medication_image_lookup.searchMedicationImage(
-                    medication.item_name or "",
-                    item_seq,
-                )
-
-        results = await asyncio.gather(
-            *(resolve_image(medication) for medication in candidates),
-            return_exceptions=True,
-        )
-        enrichment: dict[int, tuple[str, str]] = {}
-        has_persistence_changes = False
-        for medication, result in zip(candidates, results, strict=True):
-            if isinstance(result, asyncio.CancelledError):
-                raise result
-            item_seq = resolved_item_sequences.get(
-                medication.id,
-                (medication.item_seq or "").strip(),
-            )
-            image_url = "" if isinstance(result, Exception) else result.strip()
-            if isinstance(result, Exception):
-                logger.warning(
-                    "Saved medication image lookup failed: %s",
-                    type(result).__name__,
-                )
-            if item_seq and not (medication.item_seq or "").strip():
-                medication.item_seq = item_seq
-                has_persistence_changes = True
-            if image_url:
-                medication.image_url = image_url
-                has_persistence_changes = True
-            enrichment[medication.id] = (item_seq, image_url)
-
-        if has_persistence_changes:
-            try:
-                self.db.commit()
-            except Exception as exc:
-                self.db.rollback()
-                logger.warning(
-                    "Saved medication image metadata persistence failed: %s",
-                    type(exc).__name__,
-                )
-        return enrichment
-
-    def _resolve_catalog_item_seq(self, item_name: str) -> str:
-        normalized_name = "".join(item_name.strip().lower().split())
-        if not normalized_name:
-            return ""
-
-        item_sequences: set[str] = set()
-        for model in (_DrugApprovalInfo, _DrugBasicInfo):
-            rows = (
-                self.db.query(model.item_seq)
-                .filter(model.normalized_item_name == normalized_name)
-                .all()
-            )
-            item_sequences.update(
-                str(row[0]).strip()
-                for row in rows
-                if row[0] is not None and str(row[0]).strip()
-            )
-        return next(iter(item_sequences)) if len(item_sequences) == 1 else ""
 
     # Function Name: requestDelete
     # Description:
@@ -342,9 +218,6 @@ class CheckSavedMedication:
     def _to_response_dict(
         self,
         medication: _SavedMedication,
-        *,
-        item_seq_override: str = "",
-        image_url_override: str = "",
     ) -> dict[str, object]:
         return {
             "id": medication.id,
@@ -359,7 +232,7 @@ class CheckSavedMedication:
                 if medication.prescription_date
                 else ""
             ),
-            "item_seq": item_seq_override or medication.item_seq or "",
+            "item_seq": medication.item_seq or "",
             "item_name": medication.item_name,
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
@@ -370,7 +243,7 @@ class CheckSavedMedication:
             "schedule_slot_keys": decode_medication_schedule_slot_keys(
                 medication.schedule_slot_keys
             ),
-            "image_url": image_url_override or medication.image_url,
+            "image_url": medication.image_url,
             "ai_guide": medication.ai_guide,
         }
 

@@ -36,7 +36,7 @@ class CheckCaregiverMedication:
     # Function Name: requestPatientMedicationInfo
     # Description:
     # - Returns medication information for an explicitly selected linked patient.
-    async def requestPatientMedicationInfo(
+    def requestPatientMedicationInfo(
         self,
         caregiver_hash: str,
         patient_hash: str,
@@ -47,8 +47,8 @@ class CheckCaregiverMedication:
             patient_hash,
         )
         saved_medication_response = (
-            await self.check_saved_medication.requestSavedMedicationInfoWithImages(
-                normalized_patient_hash,
+            self.check_saved_medication.requestSavedMedicationInfo(
+                normalized_patient_hash
             )
         )
         today_info_response = (

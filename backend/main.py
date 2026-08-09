@@ -152,6 +152,7 @@ def create_app() -> FastAPI:
                 2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
             ),
         },
+        default_limit=1024 * 1024,
     )
     app.add_middleware(
         RequestRateLimitMiddleware,

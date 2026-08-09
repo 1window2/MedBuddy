@@ -42,7 +42,7 @@ _DEVELOPMENT_AUTHORIZATION = AuthorizationControl(db=None)  # type: ignore[arg-t
 
 
 class _MissingSavedMedicationControl:
-    async def requestSavedMedicationInfoWithImages(
+    def requestSavedMedicationInfo(
         self,
         patient_hash: str | None,
     ) -> dict[str, object]:
@@ -58,7 +58,7 @@ class _MissingScheduleControl:
 
 
 class _FailingSavedMedicationControl:
-    async def requestSavedMedicationInfoWithImages(
+    def requestSavedMedicationInfo(
         self,
         patient_hash: str | None,
     ) -> dict[str, object]:
@@ -123,9 +123,9 @@ class _RecordingPillIdentificationControl:
 
 
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
-    async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
+    def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 patient_hash="patient-missing",
                 principal=_DEVELOPMENT_PRINCIPAL,
                 authorization=_DEVELOPMENT_AUTHORIZATION,
@@ -145,11 +145,11 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    async def test_saved_medication_lookup_hides_internal_exception_details(
+    def test_saved_medication_lookup_hides_internal_exception_details(
         self,
     ) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 principal=_DEVELOPMENT_PRINCIPAL,
                 authorization=_DEVELOPMENT_AUTHORIZATION,
                 check_saved_medication=_FailingSavedMedicationControl(),
@@ -175,6 +175,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response["received_bytes"], 5)
         self.assertNotIn(upload_file.filename, "\n".join(captured_logs.output))
+        self.assertNotIn(upload_file.content_type, "\n".join(captured_logs.output))
 
     async def test_prescription_upload_maps_ocr_timeout_to_gateway_timeout(
         self,

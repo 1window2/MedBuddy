@@ -283,7 +283,7 @@ def save_medication(
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
-async def get_saved_medications(
+def get_saved_medications(
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -295,8 +295,8 @@ async def get_saved_medications(
             patient_hash,
             allow_caregiver=True,
         )
-        return await check_saved_medication.requestSavedMedicationInfoWithImages(
-            authorized_patient_hash,
+        return check_saved_medication.requestSavedMedicationInfo(
+            authorized_patient_hash
         )
     except HTTPException:
         raise
@@ -750,7 +750,7 @@ def get_patient_caregiver_links(
     "/guardian/medications/{patient_hash}",
     include_in_schema=False,
 )
-async def get_caregiver_patient_medication_info(
+def get_caregiver_patient_medication_info(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
@@ -769,7 +769,7 @@ async def get_caregiver_patient_medication_info(
         principal,
         patient_hash,
     )
-    return await check_caregiver_medication.requestPatientMedicationInfo(
+    return check_caregiver_medication.requestPatientMedicationInfo(
         requesting_caregiver_hash,
         authorized_patient_hash,
     )
@@ -1027,8 +1027,7 @@ async def upload_and_parse_prescription(
     try:
         image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
         logger.info(
-            "Prescription image upload received: content_type=%s, bytes=%d",
-            file.content_type,
+            "Prescription image upload received: bytes=%d",
             len(image_bytes),
         )
         return await input_prescription.requestPrescriptionImage(
