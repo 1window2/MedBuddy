@@ -271,6 +271,11 @@ package "Flutter Frontend" {
             + analyze(luminanceBytes, width, height): PrescriptionCameraGuideResult
         }
 
+        class "CameraLifecycleCoordinator" as CameraLifecycleCoordinator <<Service: camera lifecycle serialization>> {
+            - _tail: Future<void>
+            + schedule(transition): Future<void>
+        }
+
         class "NotificationService" as NotificationService <<Service: Local Notification>> {
             + instance: NotificationService
             + initialize(): Future<void>
@@ -871,6 +876,7 @@ CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
 CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 ManageUserSettingUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
+GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
 
 PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
 CheckResultUI --> "0..*" FAnalyzedMedication

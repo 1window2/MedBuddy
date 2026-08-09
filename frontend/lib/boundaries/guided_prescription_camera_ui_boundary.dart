@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../entities/prescription_camera_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/camera_lifecycle_coordinator.dart';
 import '../services/prescription_frame_analyzer.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -36,6 +37,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
 
   final PrescriptionFrameAnalyzer _frameAnalyzer =
       const PrescriptionFrameAnalyzer();
+  final CameraLifecycleCoordinator _cameraLifecycleCoordinator =
+      CameraLifecycleCoordinator();
   CameraController? _cameraController;
   PrescriptionCameraGuideStatus _guideStatus =
       PrescriptionCameraGuideStatus.searching;
@@ -83,7 +86,17 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // - 사용 가능한 후면 카메라를 찾아 미리보기와 프레임 분석을 시작한다.
   // 반환값:
   // - 없음
-  Future<void> _initializeCamera() async {
+  Future<void> _initializeCamera() {
+    return _cameraLifecycleCoordinator.schedule(_initializeCameraNow);
+  }
+
+  // Function Name: _initializeCameraNow
+  // Description:
+  // - Replaces the current controller and starts the back-camera preview.
+  // - Runs only through CameraLifecycleCoordinator to avoid permission lifecycle races.
+  // Returns:
+  // - Completes after the camera is ready or a recoverable error is shown.
+  Future<void> _initializeCameraNow() async {
     final generation = ++_cameraGeneration;
     await _disposeCurrentController();
     if (!mounted || generation != _cameraGeneration) {
@@ -141,7 +154,17 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // - 앱이 백그라운드로 이동하거나 화면이 닫힐 때 카메라 자원을 해제한다.
   // 반환값:
   // - 없음
-  Future<void> _releaseCamera() async {
+  Future<void> _releaseCamera() {
+    return _cameraLifecycleCoordinator.schedule(_releaseCameraNow);
+  }
+
+  // Function Name: _releaseCameraNow
+  // Description:
+  // - Invalidates the active generation and releases the current camera controller.
+  // - Runs only after earlier queued camera transitions have completed.
+  // Returns:
+  // - Completes after camera resources are released.
+  Future<void> _releaseCameraNow() async {
     _cameraGeneration += 1;
     await _disposeCurrentController();
   }
