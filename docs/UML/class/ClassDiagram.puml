@@ -11,6 +11,18 @@ package "Flutter Frontend" {
 
     package "UI Layer" {
 
+        interface "AuthenticationGateState" as AuthenticationGateState <<State contract>> {
+            + isInitializing: bool
+            + isAuthenticated: bool
+        }
+
+        class "AuthenticationGate" as AuthenticationGate <<Boundary: authenticated root route>> {
+            + state: AuthenticationGateState
+            + unauthenticatedChild: Widget
+            + authenticatedChild: Widget
+            + build(context): Widget
+        }
+
         class "MedBuddyApp" as MedBuddyApp <<UI: 앱 Composition Root>> {
             + navigatorKey: GlobalKey<NavigatorState>?
             + viewModelFactory: MedBuddyViewModel Function()?
@@ -829,11 +841,15 @@ package "FastAPI Backend" {
 }
 
 MedBuddyApp ..> AuthenticationUI
+MedBuddyApp ..> AuthenticationGate
 MedBuddyApp ..> HomeScreen
 MedBuddyApp ..> MedBuddyViewModel
 MedBuddyApp ..> CaregiverNotificationBackgroundScheduler
 MedBuddyApp ..> PushNotificationService
 AuthenticationUI --> FAuthenticationControl
+AuthenticationGate --> AuthenticationGateState
+AuthenticationGate ..> AuthenticationUI
+AuthenticationGate ..> HomeScreen
 HomeScreen ..> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
 HomeScreen ..> GuidedPrescriptionCameraUI
@@ -863,6 +879,7 @@ CheckMedicationDetailUI --> FMedicationDetail
 
 FAuthenticationControl *-- AuthenticatedApiClient
 FAuthenticationControl --> "0..1" FAuthSession
+FAuthenticationControl ..|> AuthenticationGateState
 
 MedBuddyViewModel *-- FInputPrescription
 MedBuddyViewModel *-- FCheckMedicationDetail

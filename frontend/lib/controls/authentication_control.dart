@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../entities/auth_session_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../boundaries/authentication_gate.dart';
 import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
@@ -14,7 +15,8 @@ import '../services/firebase_runtime_service.dart';
 
 enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 
-class AuthenticationControl extends ChangeNotifier {
+class AuthenticationControl extends ChangeNotifier
+    implements AuthenticationGateState {
   static const Duration _backendSessionTimeout = Duration(seconds: 20);
 
   FirebaseAuth? _firebaseAuth;
@@ -25,6 +27,7 @@ class AuthenticationControl extends ChangeNotifier {
   int _sessionGeneration = 0;
 
   bool _isInitializing = true;
+  @override
   bool get isInitializing => _isInitializing;
 
   bool _isBusy = false;
@@ -32,6 +35,9 @@ class AuthenticationControl extends ChangeNotifier {
 
   AuthSession? _session;
   AuthSession? get session => _session;
+
+  @override
+  bool get isAuthenticated => _session != null;
 
   String? _signedInEmail;
   String? get signedInEmail => _signedInEmail;
@@ -130,16 +136,20 @@ class AuthenticationControl extends ChangeNotifier {
 
   Future<void> signIn({required String email, required String password}) async {
     await _runAuthOperation(() async {
-      await _requireFirebaseAuth().signInWithEmailAndPassword(
+      final firebaseAuth = _requireFirebaseAuth();
+      final credential = await firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
+      await _synchronizeUser(credential.user ?? firebaseAuth.currentUser);
     });
   }
 
   Future<void> signInAnonymously() async {
     await _runAuthOperation(() async {
-      await _requireFirebaseAuth().signInAnonymously();
+      final firebaseAuth = _requireFirebaseAuth();
+      final credential = await firebaseAuth.signInAnonymously();
+      await _synchronizeUser(credential.user ?? firebaseAuth.currentUser);
     });
   }
 
@@ -156,7 +166,12 @@ class AuthenticationControl extends ChangeNotifier {
         throw StateError('Google did not return an identity token.');
       }
       final credential = GoogleAuthProvider.credential(idToken: idToken);
-      await _signInOrUpgradeAnonymousUser(credential);
+      final firebaseCredential = await _signInOrUpgradeAnonymousUser(
+        credential,
+      );
+      await _synchronizeUser(
+        firebaseCredential.user ?? _requireFirebaseAuth().currentUser,
+      );
     });
   }
 
@@ -520,8 +535,13 @@ class AuthenticationControl extends ChangeNotifier {
     PhoneAuthCredential credential,
   ) async {
     try {
-      await _signInOrUpgradeAnonymousUser(credential);
+      final firebaseCredential = await _signInOrUpgradeAnonymousUser(
+        credential,
+      );
       _clearSmsChallenge(notify: false);
+      await _synchronizeUser(
+        firebaseCredential.user ?? _requireFirebaseAuth().currentUser,
+      );
     } on FirebaseAuthException catch (error) {
       _setError(_messageForFirebaseError(error.code));
     }

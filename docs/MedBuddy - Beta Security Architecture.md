@@ -27,6 +27,7 @@ responsibilities without improving MedBuddy's medication domain.
 
 | Layer | Type | Responsibility |
 | --- | --- | --- |
+| Frontend boundary | `AuthenticationGate` | Keep the Navigator root stable while replacing bootstrap, signed-out, and authenticated content from observable session state. |
 | Frontend boundary | `AuthenticationUI` | Sign-in, email verification, password recovery, sign-out, and recoverable authentication state. |
 | Frontend control | `AuthenticationControl` | Coordinate the identity SDK and publish `AuthSession`. |
 | Frontend external boundary | `AuthenticatedApiClient` | Attach fresh bearer tokens to the existing HTTP control calls. |
