@@ -255,6 +255,7 @@ jobs:
           test "${ACTUAL_CERT}" = "${EXPECTED_CERT}"
           DEFINES=(
             --dart-define=MEDBUDDY_AUTH_MODE=firebase
+            --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
             "--dart-define=MEDBUDDY_API_BASE_URL=${MEDBUDDY_API_BASE_URL}"
             "--dart-define=MEDBUDDY_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
             "--dart-define=MEDBUDDY_FIREBASE_APP_ID=${FIREBASE_APP_ID}"

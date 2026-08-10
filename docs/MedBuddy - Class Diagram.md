@@ -211,7 +211,7 @@ package "FastAPI / Policy and Repository" as BE_Support {
 
 package "Persistence" {
   database "medbuddy.db\n(local/demo SQLite)" as MedicationDB
-  database "Cloud SQL PostgreSQL\n(beta production)" as ProductionDB
+  database "Self-hosted PostgreSQL\n(beta production)" as ProductionDB
   database "Redis\n(cache + distributed quota)" as RedisCache
 }
 
@@ -409,13 +409,13 @@ skinparam packageStyle rectangle
 
 artifact "MedBuddy backend image" as BackendImage
 
-package "Cloud Run service" {
+package "Self-hosted API container" {
   component "API process\nRUNTIME_ROLE=api" as ApiRuntime
   component "api.router" as RuntimeRouter <<boundary>>
   component RequestRateLimitMiddleware as RuntimeRateLimit <<middleware>>
 }
 
-package "Cloud Run jobs" {
+package "Controlled maintenance commands" {
   component "Migration process\nRUNTIME_ROLE=migration" as MigrationRuntime
   component "Maintenance process\nRUNTIME_ROLE=maintenance" as MaintenanceRuntime
   component "Catalog sync process\nRUNTIME_ROLE=catalog_sync" as CatalogRuntime
@@ -424,8 +424,8 @@ package "Cloud Run jobs" {
   class DrugCatalogSyncJob <<job>>
 }
 
-database "Cloud SQL PostgreSQL" as RuntimeDatabase
-database "Managed Redis" as RuntimeRedis
+database "Self-hosted PostgreSQL" as RuntimeDatabase
+database "Private-network Redis" as RuntimeRedis
 cloud "Firebase Auth / App Check / FCM" as RuntimeFirebase
 cloud "Public medication APIs" as RuntimePublicAPIs
 
@@ -496,14 +496,14 @@ nodes:
 ## Known Beta Architecture Gaps
 
 - Firebase authentication and server-side authorization are implemented, but
-  the managed project, Cloud Run/Cloud SQL resources, protected signing
-  environment, and signed two-device smoke test remain deployment gates.
+  self-hosted public HTTPS, protected host secrets, backup/restore, and the
+  signed two-device smoke test remain deployment gates.
 - `CaregiverNotification` persists preference state and the FCM boundaries
   implement delivery, but source structure alone does not prove signed
   cross-device delivery against provisioned Firebase resources.
 - `medbuddy.db` remains local/demo storage; production uses the same ORM mapping
   through Alembic-managed PostgreSQL.
 - App Check, Redis-backed distributed rate limiting, shared catalog
-  persistence, and deployment runtime roles are implemented in source.
-  Provisioned Firebase/GCP resources and signed two-device tests remain
-  operational beta gates.
+  persistence, and self-hosted runtime roles are implemented in source.
+  Public ingress, provisioned Firebase configuration, and signed two-device
+  tests remain operational beta gates.

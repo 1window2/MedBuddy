@@ -18,6 +18,8 @@ enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 class AuthenticationControl extends ChangeNotifier
     implements AuthenticationGateState {
   static const Duration _backendSessionTimeout = Duration(seconds: 20);
+  static const Duration _authenticationOperationTimeout = Duration(seconds: 30);
+  static const Duration _mfaStatusTimeout = Duration(seconds: 10);
 
   FirebaseAuth? _firebaseAuth;
   StreamSubscription<User?>? _authSubscription;
@@ -51,6 +53,18 @@ class AuthenticationControl extends ChangeNotifier
   bool _configurationFailed = false;
   bool get configurationFailed => _configurationFailed;
 
+  bool _initializationFailed = false;
+  bool get initializationFailed => _initializationFailed;
+  bool get phoneAuthenticationEnabled => AuthConfig.phoneAuthenticationEnabled;
+
+  bool get canRetryBackendSession {
+    final user = _firebaseAuth?.currentUser;
+    return user != null &&
+        !_emailVerificationRequired &&
+        _session == null &&
+        !_initializationFailed;
+  }
+
   String? _smsVerificationId;
   String? _smsDestination;
   SmsChallengePurpose? _smsChallengePurpose;
@@ -62,6 +76,9 @@ class AuthenticationControl extends ChangeNotifier
   SmsChallengePurpose? get smsChallengePurpose => _smsChallengePurpose;
 
   bool get canEnrollSmsMfa {
+    if (!phoneAuthenticationEnabled) {
+      return false;
+    }
     final user = _firebaseAuth?.currentUser;
     if (user == null || user.isAnonymous || !user.emailVerified) {
       return false;
@@ -94,9 +111,19 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   Future<void> _initialize() async {
+    _configurationFailed = false;
+    _initializationFailed = false;
     try {
       ApiConfig.validate();
       AuthConfig.validate();
+    } catch (_) {
+      _configurationFailed = true;
+      _errorMessage = 'MedBuddy authentication is not configured correctly.';
+      _finishInitialization();
+      return;
+    }
+
+    try {
       if (AuthConfig.mode == AuthenticationMode.disabled) {
         _session = _createLocalSession();
         return;
@@ -105,11 +132,14 @@ class AuthenticationControl extends ChangeNotifier
       final firebaseAuth = FirebaseAuth.instance;
       _firebaseAuth = firebaseAuth;
       if (AuthConfig.authEmulatorHost.isNotEmpty) {
-        await firebaseAuth.useAuthEmulator(
-          AuthConfig.authEmulatorHost,
-          AuthConfig.authEmulatorPort,
-        );
+        await firebaseAuth
+            .useAuthEmulator(
+              AuthConfig.authEmulatorHost,
+              AuthConfig.authEmulatorPort,
+            )
+            .timeout(_authenticationOperationTimeout);
       }
+      await _authSubscription?.cancel();
       _authSubscription = firebaseAuth.idTokenChanges().listen(
         _synchronizeUser,
         onError: (Object error, StackTrace stackTrace) {
@@ -118,12 +148,50 @@ class AuthenticationControl extends ChangeNotifier
       );
       await _synchronizeUser(firebaseAuth.currentUser);
     } catch (_) {
-      _configurationFailed = true;
-      _errorMessage = 'MedBuddy authentication is not configured correctly.';
+      _initializationFailed = true;
+      _session = null;
+      _errorMessage =
+          'MedBuddy could not initialize its secure services. Check the network and retry.';
     } finally {
-      _isInitializing = false;
-      notifyListeners();
+      _finishInitialization();
     }
+  }
+
+  // Function Name: retryInitialization
+  // Description:
+  // - Repeats Firebase and App Check bootstrap after a recoverable startup
+  //   failure without enabling an unauthenticated local fallback.
+  // Returns:
+  // - Completes after the retry succeeds or publishes a new recoverable error.
+  Future<void> retryInitialization() async {
+    if (_isInitializing || _isBusy || _configurationFailed) {
+      return;
+    }
+    _isInitializing = true;
+    _errorMessage = null;
+    notifyListeners();
+    await _initialize();
+  }
+
+  // Function Name: retryBackendSession
+  // Description:
+  // - Reuses the current Firebase identity to retry only the authenticated
+  //   backend session handshake after connectivity is restored.
+  // Returns:
+  // - Completes after the session is synchronized or a bounded error is shown.
+  Future<void> retryBackendSession() async {
+    await _runAuthOperation(() async {
+      final user = _requireFirebaseAuth().currentUser;
+      if (user == null) {
+        throw StateError('Sign in before retrying the secure session.');
+      }
+      await _synchronizeUser(user);
+    });
+  }
+
+  void _finishInitialization() {
+    _isInitializing = false;
+    notifyListeners();
   }
 
   // 인증을 사용하지 않는 로컬 연동 테스트에서는 실행 옵션으로 기기별 사용자를 구분한다.
@@ -172,10 +240,14 @@ class AuthenticationControl extends ChangeNotifier
       await _synchronizeUser(
         firebaseCredential.user ?? _requireFirebaseAuth().currentUser,
       );
-    });
+    }, timeout: null);
   }
 
   Future<void> startPhoneSignIn(String phoneNumber) async {
+    if (!phoneAuthenticationEnabled) {
+      _setError('Phone authentication is unavailable in this beta build.');
+      return;
+    }
     final normalizedPhoneNumber = phoneNumber.trim();
     if (!normalizedPhoneNumber.startsWith('+')) {
       _setError('Use an international phone number such as +821012345678.');
@@ -208,6 +280,10 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   Future<void> startSmsMfaEnrollment(String phoneNumber) async {
+    if (!phoneAuthenticationEnabled) {
+      _setError('SMS verification is unavailable in this beta build.');
+      return;
+    }
     final user = _requireFirebaseAuth().currentUser;
     final normalizedPhoneNumber = phoneNumber.trim();
     if (user == null || !canEnrollSmsMfa) {
@@ -239,6 +315,11 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   Future<void> submitSmsCode(String smsCode) async {
+    if (!phoneAuthenticationEnabled) {
+      _clearSmsChallenge(notify: false);
+      _setError('SMS verification is unavailable in this beta build.');
+      return;
+    }
     final verificationId = _smsVerificationId;
     final purpose = _smsChallengePurpose;
     if (verificationId == null || purpose == null) {
@@ -385,7 +466,10 @@ class AuthenticationControl extends ChangeNotifier
     await _synchronizeUser(null);
   }
 
-  Future<void> _runAuthOperation(Future<void> Function() operation) async {
+  Future<void> _runAuthOperation(
+    Future<void> Function() operation, {
+    Duration? timeout = _authenticationOperationTimeout,
+  }) async {
     if (_isBusy) {
       return;
     }
@@ -393,7 +477,12 @@ class AuthenticationControl extends ChangeNotifier
     _errorMessage = null;
     notifyListeners();
     try {
-      await operation();
+      final pendingOperation = operation();
+      if (timeout == null) {
+        await pendingOperation;
+      } else {
+        await pendingOperation.timeout(timeout);
+      }
     } on FirebaseAuthMultiFactorException catch (error) {
       await _beginMfaSignIn(error.resolver);
     } on FirebaseAuthException catch (error) {
@@ -402,6 +491,8 @@ class AuthenticationControl extends ChangeNotifier
       _setError(error.description ?? 'Google sign-in was not completed.');
     } on StateError catch (error) {
       _setError(error.message);
+    } on TimeoutException {
+      _setError('Authentication timed out. Check the network and try again.');
     } catch (_) {
       _setError('Authentication request failed. Please try again.');
     } finally {
@@ -479,9 +570,13 @@ class AuthenticationControl extends ChangeNotifier
     final firebaseAuth = _requireFirebaseAuth();
     final currentUser = firebaseAuth.currentUser;
     if (currentUser?.isAnonymous == true) {
-      return currentUser!.linkWithCredential(credential);
+      return currentUser!
+          .linkWithCredential(credential)
+          .timeout(_authenticationOperationTimeout);
     }
-    return firebaseAuth.signInWithCredential(credential);
+    return firebaseAuth
+        .signInWithCredential(credential)
+        .timeout(_authenticationOperationTimeout);
   }
 
   bool _requiresEmailVerification(User? user) {
@@ -499,14 +594,22 @@ class AuthenticationControl extends ChangeNotifier
       return;
     }
     try {
-      final factors = await user.multiFactor.getEnrolledFactors();
+      final factors = await user.multiFactor.getEnrolledFactors().timeout(
+        _mfaStatusTimeout,
+      );
       _hasEnrolledSmsMfa = factors.whereType<PhoneMultiFactorInfo>().isNotEmpty;
-    } on FirebaseAuthException {
+    } on FirebaseAuthException catch (_) {
+      _hasEnrolledSmsMfa = false;
+    } on TimeoutException catch (_) {
       _hasEnrolledSmsMfa = false;
     }
   }
 
   Future<void> _beginMfaSignIn(MultiFactorResolver resolver) async {
+    if (!phoneAuthenticationEnabled) {
+      _setError('SMS verification is unavailable in this beta build.');
+      return;
+    }
     final phoneHint = resolver.hints
         .whereType<PhoneMultiFactorInfo>()
         .firstOrNull;

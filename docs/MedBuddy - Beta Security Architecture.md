@@ -49,6 +49,13 @@ These names are the implementation contract. Authentication is centralized at
 the API and application composition boundaries rather than embedded separately
 in every existing use-case control.
 
+Authentication bootstrap and identity operations use bounded waits. A Firebase
+or App Check startup failure leaves the application signed out and offers an
+explicit secure-startup retry. If Firebase identity succeeds but the HTTPS
+backend handshake fails, AuthenticationControl retains the Firebase identity
+and exposes a backend-session-only retry. Neither recovery path creates a local
+release-mode identity or bypasses bearer-token and App Check enforcement.
+
 ## Prescription Privacy Boundary
 
 Prescription analysis uses a different privacy boundary from loose-pill
@@ -160,29 +167,29 @@ FCM smoke testing.
 
 ## HTTPS and Deployment
 
-The deployment must provide:
+The self-hosted deployment must provide:
 
-- TLS termination with automatic certificate renewal and HTTP-to-HTTPS redirect.
-- A private application-to-database network path.
-- A managed PostgreSQL database with connection pooling, backups, and tested
-  restore. SQLite remains valid only for local/demo execution.
-- The pill reference catalog uses the shared application database. Production
-  API instances are read-only consumers; a controlled catalog synchronization
-  job is the sole production writer and runs before the new API revision is
-  deployed.
-- Managed Redis is reached through private VPC egress and is required for
-  distributed production quotas. Production fails closed when it is unavailable.
-- The existing versioned Alembic migration chain must run as a controlled
-  release step rather than implicitly by every web worker.
-- Secrets from a secret manager or protected deployment environment, never
-  repository files or Flutter compile-time constants.
-- Bounded workers, request/body limits, timeouts, redacted logs, health probes,
-  and metrics for external API latency/failure.
+- TLS termination with automatic certificate renewal and HTTP-to-HTTPS redirect
+  when direct router forwarding is used.
+- A private Docker network between FastAPI, PostgreSQL, and Redis.
+- PostgreSQL with a persistent volume, bounded connection pooling, external
+  backups, and a tested restore. SQLite remains valid only for local/demo use.
+- The pill reference catalog in the shared PostgreSQL database. Catalog changes
+  run as a controlled maintenance operation rather than from API request paths.
+- Redis on the private Docker network for distributed quotas. Production fails
+  closed when Redis is unavailable.
+- The versioned Alembic migration chain before the API starts accepting traffic.
+- Secrets in an ignored host environment file or mounted read-only secret file,
+  never repository files or Flutter compile-time constants.
+- One bounded API container on the 8 GB beta host, with request/body limits,
+  timeouts, redacted logs, health probes, and external API failure monitoring.
 
-A managed container runtime with an HTTPS load balancer and managed PostgreSQL
-is the preferred topology. Cloud Run plus Cloud SQL aligns with the current
-Google/Firebase integrations, but the interfaces above keep the domain layer
-provider-independent.
+The beta topology is one team-controlled container host. A temporary Tailscale
+Funnel can publish loopback FastAPI over HTTPS during the two-week bridge.
+Permanent direct hosting requires a public IPv4 address, router TCP 80/443
+forwarding, DNS or DDNS, and Caddy TLS termination. PostgreSQL, Redis, and the
+FastAPI development port must never be forwarded. The Boundary-Control-Entity
+interfaces remain provider-independent if managed hosting is revisited later.
 
 ## Client Egress and Resource-Safety Policy
 
@@ -230,46 +237,46 @@ provider-independent.
 ## Implemented Beta Configuration
 
 The source implements authentication adapters, authorization controls,
-deployment jobs, and signed-build safeguards for delivery items 1-6. Runtime
-monitoring, Firebase/GCP provisioning, least-privilege IAM assignment,
-production secrets, backup/restore rehearsal, and signed-device smoke testing
-remain operational release gates, not completed application features or a
-second authentication path.
+self-hosted container configuration, disabled historical GCP workflows, and
+signed-build safeguards for delivery items 1-6. Runtime monitoring,
+least-privilege Firebase IAM assignment, host secrets, backup/restore rehearsal,
+public HTTPS verification, and signed-device smoke testing remain operational
+release gates, not completed application features or a second authentication
+path.
 
 ### Firebase
 
-1. Create one Firebase Android application for `com.medbuddy.app`. Enable
-   Email/Password, Google, Phone, and Anonymous providers only after their
-   corresponding application flows and abuse controls are enabled.
-2. Backend production uses `AUTH_MODE=firebase`, `FIREBASE_PROJECT_ID`, and
-   Application Default Credentials from the Cloud Run runtime service account.
-3. Flutter release builds receive `MEDBUDDY_AUTH_MODE=firebase` plus the Firebase
-   API key, app ID, sender ID, and project ID through protected build variables.
-4. Email verification is required by default for password and Google first
-   factors. Phone and anonymous identities have no email claim and therefore
-   require explicit backend opt-in through `FIREBASE_ALLOW_PHONE_AUTH` and
-   `FIREBASE_ALLOW_ANONYMOUS_AUTH`.
-5. SMS MFA is offered only to verified email or Google accounts. Firebase does
-   not support phone or anonymous sign-in as the first factor for MFA. Enabling
-   SMS MFA requires Firebase Authentication with Identity Platform and phone
-   verification is a billed service; billing activation is an owner-operated
-   release decision, not an automated setup step.
+1. Keep one Firebase Android application for `com.medbuddy.app`. Enable
+   Email/Password, Google, and Anonymous providers with their abuse controls.
+   Phone remains disabled for the no-billing beta.
+2. Backend production uses `AUTH_MODE=firebase`, `FIREBASE_PROJECT_ID`, and a
+   minimum-permission Firebase Admin credential mounted read-only from outside
+   the repository on the self-hosted server.
+3. Flutter release builds receive `MEDBUDDY_AUTH_MODE=firebase`, Firebase
+   identifiers, and `MEDBUDDY_PHONE_AUTH_ENABLED=false` through protected build
+   variables.
+4. Email verification is required by default for password and Google identities.
+   Anonymous identities have no email claim and require explicit backend opt-in
+   through `FIREBASE_ALLOW_ANONYMOUS_AUTH`.
+5. Phone sign-in and SMS MFA implementation is retained behind both the frontend
+   `MEDBUDDY_PHONE_AUTH_ENABLED` and backend
+   `FIREBASE_ALLOW_PHONE_AUTH` flags. The default beta hides the UI and rejects
+   direct method calls because real SMS verification is a billed service.
 6. Password recovery uses Firebase email reset links. Enable Firebase email
    enumeration protection and configure authorized action domains before beta
    distribution.
-7. Revocation checks are enabled in the deployment workflow; the runtime
-   service account therefore needs the minimum Firebase Authentication
-   permissions required to read user state.
+7. Revocation checks require the mounted service account to have only the
+   minimum Firebase Authentication permission needed to read user state.
 8. Firebase mode registers authenticated Android FCM tokens with the backend,
    refreshes them when Firebase rotates a token, and disables the current token
    during sign-out.
 9. Newly completed-dose transitions are delivered through FCM. Missed-deadline
-   checks remain an authenticated Workmanager task until a server scheduler is
-   deployed.
+   checks remain an authenticated Workmanager task; periodic server maintenance
+   runs inside the single self-hosted FastAPI process.
 
 ### Android Firebase Registration
 
-Register both debug fingerprints while testing phone and Google sign-in:
+Register both debug fingerprints while testing Google sign-in and App Check:
 
 - Debug SHA-1: `9C:E0:30:DB:15:5B:54:F3:A7:8A:E7:CA:C6:6B:46:73:B5:40:E0:25`
 - Debug SHA-256: `78:AF:ED:C9:BE:90:3B:15:B6:18:1B:C5:09:08:A6:92:D6:41:9D:D0:C9:91:6F:3E:70:63:27:76:B8:B1:F8:D1`
@@ -280,31 +287,30 @@ protected release keystore is created. Download a refreshed
 `google-services.json` after registering fingerprints and enabling Google
 sign-in; keep the real file out of Git.
 
-Firebase configuration identifiers are not authorization secrets. Deployment
-credentials, API credentials, database credentials, and signing material must
-remain in Google Secret Manager or protected GitHub Environments.
+Firebase configuration identifiers are not authorization secrets. Firebase
+Admin, API, database, and signing credentials stay outside the repository in
+mounted host secret files or protected GitHub Environments. They must never be
+stored in the Compose file or Flutter compile-time constants.
 
-### Cloud Run and Cloud SQL
+### Self-hosted FastAPI, PostgreSQL, and Redis
 
-`deploy-backend.yml` expects these protected GitHub Environment variables:
+`compose.self-hosted.yml` builds the existing backend image and runs:
 
-- `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_ARTIFACT_REPOSITORY`
-- `GCP_CLOUD_RUN_SERVICE`, `GCP_MIGRATION_JOB`, `GCP_MAINTENANCE_JOB`
-- `GCP_CATALOG_SYNC_JOB`, `GCP_VPC_CONNECTOR`
-- `GCP_API_SERVICE_ACCOUNT`, `GCP_MIGRATION_SERVICE_ACCOUNT`
-- `GCP_CATALOG_SERVICE_ACCOUNT`, `GCP_MAINTENANCE_SERVICE_ACCOUNT`
-- `GCP_DEPLOY_SERVICE_ACCOUNT`
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_CLOUD_SQL_CONNECTION`
-- `FIREBASE_PROJECT_ID`
+- PostgreSQL 16 with a persistent private volume.
+- Redis with a memory bound and no published host port.
+- One FastAPI container with production fail-closed settings.
+- An optional Caddy profile for direct public HTTPS.
 
-Google Secret Manager must contain `medbuddy-database-url`,
-`medbuddy-redis-url`, `medbuddy-gemini-api-key`, and
-`medbuddy-public-data-api-key`. The database URL
-uses SQLAlchemy's `postgresql+psycopg` scheme and the Cloud SQL Unix socket. The
-workflow builds one immutable image, runs `alembic upgrade head`, seeds the
-shared medication and pill catalog, and deploys that same image only after both
-database steps succeed. The API uses a Serverless VPC Access connector with
-private-range egress to reach managed Redis.
+The host copies `backend/.env.self-hosted.example` to the ignored
+`backend/.env.self-hosted` file. A Firebase Admin credential remains outside
+the repository and is mounted read-only into the backend container. The
+container waits for PostgreSQL and Redis, runs `alembic upgrade head`, and only
+then starts Uvicorn. The temporary Funnel path publishes loopback port 8000;
+the direct-public profile publishes only Caddy ports 80 and 443.
+
+The historical GCP deployment, catalog-sync, and maintenance workflows retain
+their source but every job has `if: false`. They cannot provision or invoke
+Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
 The current ordered Alembic chain records the beta data boundary:
 
@@ -317,15 +323,15 @@ The current ordered Alembic chain records the beta data boundary:
 | `f93ac76b2e11` | Strengthen account lifecycle and relationship integrity. |
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
 
-The Cloud Run network endpoint permits unauthenticated invocation because a
-Firebase client token is not a Cloud Run IAM token. FastAPI still authenticates
-every application route. `/health` and `/ready` are intentionally anonymous:
-the former reports process liveness, while the latter returns only a binary
-readiness result after checking database connectivity and Alembic revision,
-OIDC and App Check verifier initialization, and Redis connectivity. Production
-database pools and Cloud Run concurrency are bounded
-so prescription-text and loose-pill image requests cannot multiply connections
-without limit.
+The public HTTPS endpoint reaches FastAPI without host-level user authentication
+because Firebase client tokens are application credentials. FastAPI still
+authenticates every application route. `/health` and `/ready` are intentionally
+anonymous: the former reports process liveness, while the latter returns only a
+binary readiness result after checking database connectivity and Alembic
+revision, OIDC and App Check verifier initialization, and Redis connectivity.
+The single API container, database pool, request limits, and image-processing
+semaphores keep prescription-text and loose-pill image requests from multiplying
+resource use without limit.
 
 ### Android Signing
 

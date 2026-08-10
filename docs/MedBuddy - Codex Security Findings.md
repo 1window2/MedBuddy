@@ -77,13 +77,15 @@ relevant control; it does not mean the original report was invalid.
 ## Verification evidence
 
 - Backend: 336 passed, 2 PostgreSQL-gated tests skipped, 4 subtests passed.
-- Flutter: 212 tests passed; `flutter analyze` reported no issues.
-- UML: PlantUML `-checkonly` passed and the class diagram PNG was regenerated.
+- Flutter: 219 tests passed; `flutter analyze` reported no issues.
+- UML: PlantUML rendering passed and the class and overall sequence PNGs were regenerated.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
   HTTPS placeholder; manifest reports `usesCleartextTraffic=false`.
-- Physical device: Samsung SM-N976N / Android 12. The installed v0.1.0+10
-  Firebase-enabled debug build exposes email/password, Google, phone, and guest
-  authentication. Anonymous sign-in acquired a client Firebase identity, then
+- Physical device: Samsung SM-N976N / Android 12. The previously installed
+  v0.1.0+10 Firebase-enabled debug build exposed email/password, Google, phone,
+  and guest authentication. The current no-billing beta source hides phone and
+  SMS MFA behind disabled frontend and backend flags. Anonymous sign-in acquired
+  a client Firebase identity, then
   failed closed because the local backend lacked Firebase Admin application
   credentials. Earlier synthetic-data checks on the same merged beta code
   covered prescription OCR/analysis/save, 3-slot schedules, reversible

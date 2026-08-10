@@ -1,4 +1,5 @@
 @startuml
+scale max 4096*4096
 left to right direction
 
 title beta/v0.1.0 핵심 Class Diagram
@@ -114,10 +115,15 @@ package "Flutter Frontend" {
             + apiClient: AuthenticatedApiClient
             + isBusy: bool
             + session: AuthSession?
+            + initializationFailed: bool
+            + canRetryBackendSession: bool
+            + phoneAuthenticationEnabled: bool
+            + retryInitialization(): Future<void>
+            + retryBackendSession(): Future<void>
             + signIn(email, password): Future<void>
             + signInWithGoogle(): Future<void>
             + signInAnonymously(): Future<void>
-            + startPhoneSignIn(phoneNumber): Future<void>
+            + startPhoneSignIn(phoneNumber): Future<void> <<dormant>>
             + signOut(): Future<void>
             + deleteCurrentUser(): Future<void>
         }

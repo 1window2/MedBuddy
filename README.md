@@ -83,9 +83,10 @@
 
 ## Roadmap
 
-1. **Android beta verification:** Provision the accepted Firebase/Cloud Run/
-   Cloud SQL topology, validate backup and restore, and complete signed
-   two-device authentication and authorization smoke tests.
+1. **Android beta verification:** Run the self-hosted FastAPI/PostgreSQL/Redis
+   topology behind public HTTPS, validate backup and restore, and complete
+   signed two-device authentication, authorization, Wi-Fi, and cellular smoke
+   tests.
 2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
@@ -202,6 +203,10 @@ http://127.0.0.1:8000/docs
 The Android emulator reaches this loopback-only service through `10.0.2.2`.
 Do not bind the unauthenticated development configuration to every interface.
 
+For the production-like Docker Compose stack, temporary Tailscale Funnel, and
+direct-router HTTPS setup, see
+[MedBuddy Self-Hosted Beta Backend](docs/Self%20Hosted%20Beta%20Backend.md).
+
 ### Optional Local Drug Catalog
 
 Local development stores medication and pill-reference catalog rows in `backend/medbuddy.db`; the backend uses those records before Redis and public API fallback. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
@@ -268,7 +273,8 @@ flutter run -d "[your-device-id]" `
   --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
   --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
   --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
-  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id
+  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id `
+  --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
 ```
 
 Release builds reject disabled authentication, non-HTTPS URLs, localhost, and

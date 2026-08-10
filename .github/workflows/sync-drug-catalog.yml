@@ -15,6 +15,9 @@ concurrency:
 
 jobs:
   synchronize:
+    # Disabled while the beta backend is self-hosted. Keep the source for a
+    # later managed deployment without allowing scheduled GCP execution.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: beta-backend
     steps:

@@ -13,6 +13,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Retained for a possible post-beta managed-cloud deployment. The current
+    # beta is self-hosted and must not provision billable Google Cloud resources.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: beta-backend
     env:
@@ -116,7 +119,7 @@ jobs:
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
             --vpc-connector "${VPC_CONNECTOR}" \
             --vpc-egress private-ranges-only \
-            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=api,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,FIREBASE_APP_CHECK_REQUIRED=true,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,RATE_LIMIT_ENABLED=true,RATE_LIMIT_REQUIRE_REDIS=true,PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=api,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=false,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,FIREBASE_APP_CHECK_REQUIRED=true,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,RATE_LIMIT_ENABLED=true,RATE_LIMIT_REQUIRE_REDIS=true,PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
             --set-secrets "DATABASE_URL=medbuddy-database-url:latest,REDIS_URL=medbuddy-redis-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
             --allow-unauthenticated \
             --port 8080 \

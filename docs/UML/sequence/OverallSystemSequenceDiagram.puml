@@ -1,4 +1,5 @@
 @startuml
+scale max 4096*4096
 
 title beta/v0.1.0 전체 시스템 주요 동작 Sequence Diagram
 
@@ -52,15 +53,16 @@ alt Firebase Session이 없는 경우
     FirebaseAuth --> AuthControl : 인증 사용자 없음
     AuthControl --> UI : session = null
     UI --> User : AuthenticationUI 출력
-    User -> UI : Email, Google, Phone 또는 Guest 인증 선택
-    UI -> AuthControl : signIn() / signInWithGoogle()\nsignInAnonymously() / startPhoneSignIn()
+    User -> UI : Email, Google 또는 Guest 인증 선택
+    UI -> AuthControl : signIn() / signInWithGoogle()\nsignInAnonymously()
+    note over UI, FirebaseAuth : Phone sign-in and SMS MFA are dormant in the no-billing beta.
     AuthControl -> FirebaseAuth : 사용자 인증 요청
 
-    alt Email 인증, SMS 인증 또는 MFA가 필요한 경우
-        FirebaseAuth --> AuthControl : 인증 코드 또는 Email 검증 요구
+    alt Email 인증이 필요한 경우
+        FirebaseAuth --> AuthControl : Email 검증 요구
         AuthControl --> UI : 인증 확인 화면 출력
-        User -> UI : 인증 코드 입력 또는 Email 인증 완료
-        UI -> AuthControl : submitSmsCode()\nrefreshEmailVerification()
+        User -> UI : Email 인증 완료
+        UI -> AuthControl : refreshEmailVerification()
         AuthControl -> FirebaseAuth : 인증 검증 요청
         FirebaseAuth --> AuthControl : 인증 완료
     else 추가 인증이 필요하지 않은 경우
@@ -83,6 +85,18 @@ BackControl --> Router : 계정 동기화 완료
 Router --> ApiClient : 인증 Session 응답
 ApiClient --> AuthControl : AuthSession
 AuthControl --> UI : HomeScreen 출력
+
+alt Firebase or App Check startup exceeds the bounded timeout
+    AuthControl --> UI : recoverable startup error
+    User -> UI : Retry secure startup
+    UI -> AuthControl : retryInitialization()
+else Firebase identity succeeds but backend session is unavailable
+    ApiClient --> AuthControl : timeout or transport error
+    AuthControl --> UI : session = null, retain Firebase identity
+    User -> UI : Retry secure session
+    UI -> AuthControl : retryBackendSession()
+    AuthControl -> ApiClient : GET /api/v1/auth/session
+end
 
 AuthControl -> FrontService : PushNotificationService.start()
 FrontService -> FCM : 기기 FCM Token 요청

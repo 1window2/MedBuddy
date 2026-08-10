@@ -29,6 +29,39 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   @override
   Widget build(BuildContext context) {
     final control = widget.control;
+    if (control.initializationFailed) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    control.errorMessage ??
+                        'MedBuddy secure services are temporarily unavailable.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    key: const Key(
+                      'authentication-initialization-retry-button',
+                    ),
+                    onPressed: control.isBusy
+                        ? null
+                        : control.retryInitialization,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry secure startup'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (control.configurationFailed) {
       return Scaffold(
         body: SafeArea(
@@ -131,6 +164,17 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
                         style: const TextStyle(color: Colors.redAccent),
                       ),
                     ],
+                    if (control.canRetryBackendSession) ...[
+                      const SizedBox(height: 14),
+                      FilledButton.tonalIcon(
+                        key: const Key('backend-session-retry-button'),
+                        onPressed: control.isBusy
+                            ? null
+                            : control.retryBackendSession,
+                        icon: const Icon(Icons.sync),
+                        label: const Text('Retry secure session'),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: control.isBusy ? null : _submit,
@@ -184,12 +228,14 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
                       icon: const Icon(Icons.account_circle_outlined),
                       label: const Text('Continue with Google'),
                     ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: control.isBusy ? null : _startPhoneSignIn,
-                      icon: const Icon(Icons.sms_outlined),
-                      label: const Text('Continue with phone'),
-                    ),
+                    if (control.phoneAuthenticationEnabled) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: control.isBusy ? null : _startPhoneSignIn,
+                        icon: const Icon(Icons.sms_outlined),
+                        label: const Text('Continue with phone'),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     TextButton.icon(
                       onPressed: control.isBusy ? null : _continueAsGuest,

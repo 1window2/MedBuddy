@@ -141,9 +141,12 @@ unsigned release artifact but never receive signing material.
 
 The main Android manifest rejects clear-text traffic. Only the debug manifest
 overlay permits HTTP for emulator or trusted-LAN development. Release runtime
-configuration additionally rejects a non-HTTPS API URL. The Cloud Run workflow
-uses Workload Identity Federation, Secret Manager values, a migration job, and
-Cloud SQL before deploying the API service. The signed Android workflow also
-requires the release SHA-1 to be registered in the restored Firebase
-configuration and rejects Firebase identifiers that differ from the compiled
-Dart configuration.
+configuration additionally rejects a non-HTTPS API URL. The beta backend runs
+FastAPI, PostgreSQL, and Redis on a team-controlled host. PostgreSQL and Redis
+remain on a private container network, and only a TLS reverse proxy or temporary
+Tailscale Funnel publishes the API. Retained Google Cloud deployment and
+scheduled-job workflows are disabled so they cannot provision billable
+resources. The signed Android workflow still requires the release SHA-1 to be
+registered in Firebase and rejects identifiers that differ from the compiled
+Dart configuration. Phone sign-in and SMS MFA are hidden and fail closed unless
+an owner explicitly enables their build and backend feature flags.
