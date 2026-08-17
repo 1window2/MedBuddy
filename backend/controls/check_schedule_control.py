@@ -47,6 +47,7 @@ class CheckSchedule:
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
         self.completion_event_boundary = completion_event_boundary
+        self._pending_completion_events: list[dict[str, str]] = []
 
     # Function Name: requestTodayMedicationSchedule
     # Description:
@@ -108,6 +109,7 @@ class CheckSchedule:
         patient_hash: str | None = None,
         slot_key: str | None = None,
     ) -> dict[str, object]:
+        self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         medication = self._get_existing_medication(
             medication_id,
@@ -178,7 +180,8 @@ class CheckSchedule:
 
     # 함수명: _dispatch_new_slot_completion_events
     # 역할:
-    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 후속 처리기에 전달한다.
+    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 이벤트로 기록한다.
+    # - 직접 주입된 후속 처리기는 테스트와 내부 호출의 호환성을 위해 함께 실행한다.
     # - 알림 장애가 환자의 복약 체크 저장을 되돌리지 않도록 예외를 격리한다.
     # 매개변수:
     # - patient_hash: 환자 소유권 hash
@@ -195,8 +198,6 @@ class CheckSchedule:
         previous_slot_completion_states: dict[str, bool],
         current_slot_completion_states: dict[str, bool],
     ) -> None:
-        if self.completion_event_boundary is None:
-            return
         for target_slot_key in target_slot_keys:
             was_completed = previous_slot_completion_states.get(
                 target_slot_key,
@@ -208,6 +209,14 @@ class CheckSchedule:
             )
             if was_completed or not is_completed:
                 continue
+            self._pending_completion_events.append(
+                {
+                    "patient_hash": patient_hash,
+                    "slot_key": target_slot_key,
+                }
+            )
+            if self.completion_event_boundary is None:
+                continue
             try:
                 self.completion_event_boundary.notifySlotCompleted(
                     patient_hash=patient_hash,
@@ -218,6 +227,16 @@ class CheckSchedule:
                     "Caregiver push dispatch failed after medication commit: %s",
                     type(exc).__name__,
                 )
+
+    # 함수명: consumeCompletionEvents
+    # 역할:
+    # - 이번 상태 변경에서 새로 완료된 시간대 이벤트를 반환하고 내부 대기 목록을 비운다.
+    # 반환값:
+    # - 환자 hash와 시간대 키를 담은 이벤트 목록
+    def consumeCompletionEvents(self) -> list[dict[str, str]]:
+        completion_events = list(self._pending_completion_events)
+        self._pending_completion_events.clear()
+        return completion_events
 
     # 함수명: _slot_completion_states_for_patient
     # 역할:

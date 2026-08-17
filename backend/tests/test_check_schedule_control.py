@@ -219,6 +219,15 @@ class CheckScheduleTest(unittest.TestCase):
             "patient-a",
             slot_key="morning",
         )
+        self.assertEqual(
+            control.consumeCompletionEvents(),
+            [
+                {
+                    "patient_hash": "patient-a",
+                    "slot_key": "morning",
+                }
+            ],
+        )
         control.updateMedicationStatus(
             second_medication.id,
             True,
@@ -235,6 +244,7 @@ class CheckScheduleTest(unittest.TestCase):
                 }
             ],
         )
+        self.assertEqual(control.consumeCompletionEvents(), [])
 
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
         schedule_date = application_today()

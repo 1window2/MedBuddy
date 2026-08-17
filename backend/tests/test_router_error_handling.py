@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -16,6 +16,7 @@ from api.router import (  # noqa: E402
     get_saved_medications,
     get_today_medication_schedule,
     identify_loose_pill,
+    update_medication_status,
     upload_and_parse_prescription,
 )
 from boundaries.pill_identification_boundary import (  # noqa: E402
@@ -35,6 +36,7 @@ from controls.authorization_control import AuthorizationControl  # noqa: E402
 from entities.authenticated_principal_entity import (  # noqa: E402
     AuthenticatedPrincipal,
 )
+from schemas.medication import MedicationStatusUpdate  # noqa: E402
 
 
 _DEVELOPMENT_PRINCIPAL = AuthenticatedPrincipal.development_principal()
@@ -63,6 +65,28 @@ class _FailingSavedMedicationControl:
         patient_hash: str | None,
     ) -> dict[str, object]:
         raise RuntimeError("sensitive database details")
+
+
+class _RecordingStatusControl:
+    def updateMedicationStatus(
+        self,
+        medication_id: int,
+        medication_status: bool,
+        patient_hash: str,
+        slot_key: str | None,
+    ) -> dict[str, object]:
+        return {
+            "success": True,
+            "data": {"medication_id": medication_id},
+        }
+
+    def consumeCompletionEvents(self) -> list[dict[str, str]]:
+        return [
+            {
+                "patient_hash": "local_patient",
+                "slot_key": "morning",
+            }
+        ]
 
 
 class _RecordingUploadFile:
@@ -157,6 +181,26 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 500)
         self.assertNotIn("sensitive", str(context.exception.detail))
+
+    def test_medication_status_response_queues_caregiver_push_in_background(
+        self,
+    ) -> None:
+        background_tasks = BackgroundTasks()
+
+        response = update_medication_status(
+            medication_id=7,
+            request=MedicationStatusUpdate(
+                medication_status=True,
+                slot_key="morning",
+            ),
+            background_tasks=background_tasks,
+            principal=_DEVELOPMENT_PRINCIPAL,
+            authorization=_DEVELOPMENT_AUTHORIZATION,
+            check_schedule=_RecordingStatusControl(),  # type: ignore[arg-type]
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(len(background_tasks.tasks), 1)
 
     async def test_prescription_upload_reads_only_the_validated_size_window(
         self,

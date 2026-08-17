@@ -4,7 +4,14 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from api.dependencies import (
@@ -28,6 +35,7 @@ from api.dependencies import (
     get_request_voice_guide,
     get_set_caregiver_notification,
     get_set_notification,
+    get_push_notification_boundary,
 )
 from boundaries.pill_identification_boundary import (
     MAX_PILL_IMAGE_BYTES,
@@ -57,11 +65,13 @@ from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
+from core.database import SessionLocal
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
@@ -382,20 +392,40 @@ def get_today_medication_info(
         ) from exc
 
 
-# Function Name: update_medication_status
-# Description:
-# - Updates today's medication completion status for one saved medication.
-# Parameters:
-# - medication_id: Saved medication primary key from route path.
-# - request: MedicationStatusUpdate request DTO.
-# - patient_hash: Patient ownership key used to scope status update.
-# - check_schedule: CheckSchedule injected by FastAPI.
-# Returns:
-# - API-compatible status update dictionary.
+# 함수명: _dispatch_caregiver_completion_alert
+# 역할:
+# - 복약 체크 응답이 끝난 뒤 별도 DB 세션으로 보호자 FCM 알림을 전송한다.
+# - 푸시 장애가 환자의 복약 상태 저장 결과에 영향을 주지 않도록 예외를 격리한다.
+def _dispatch_caregiver_completion_alert(
+    patient_hash: str,
+    slot_key: str,
+) -> None:
+    db = SessionLocal()
+    try:
+        DispatchCaregiverAlert(
+            db=db,
+            push_boundary=get_push_notification_boundary(),
+        ).notifySlotCompleted(
+            patient_hash=patient_hash,
+            slot_key=slot_key,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Caregiver push background dispatch failed: %s",
+            type(exc).__name__,
+        )
+    finally:
+        db.close()
+
+
+# 함수명: update_medication_status
+# 역할:
+# - 오늘의 복약 완료 상태를 저장하고 보호자 알림은 응답 이후 작업으로 예약한다.
 @router.patch("/schedule/{medication_id}/status")
 def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
+    background_tasks: BackgroundTasks,
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -405,12 +435,19 @@ def update_medication_status(
         principal,
         patient_hash,
     )
-    return check_schedule.updateMedicationStatus(
+    response = check_schedule.updateMedicationStatus(
         medication_id,
         request.medication_status,
         authorized_patient_hash,
         request.slot_key,
     )
+    for completion_event in check_schedule.consumeCompletionEvents():
+        background_tasks.add_task(
+            _dispatch_caregiver_completion_alert,
+            completion_event["patient_hash"],
+            completion_event["slot_key"],
+        )
+    return response
 
 
 # Function Name: get_medication_alarms

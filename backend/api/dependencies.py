@@ -56,7 +56,6 @@ from controls.manage_account_control import ManageAccount
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
-from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from controls.manage_push_token_control import ManagePushToken
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
@@ -409,17 +408,8 @@ def get_check_saved_medication(
 # - CheckSchedule instance.
 def get_check_schedule(
     db: Session = Depends(get_db),
-    push_boundary: PushNotificationBoundary = Depends(
-        get_push_notification_boundary
-    ),
 ) -> CheckSchedule:
-    return CheckSchedule(
-        db=db,
-        completion_event_boundary=DispatchCaregiverAlert(
-            db=db,
-            push_boundary=push_boundary,
-        ),
-    )
+    return CheckSchedule(db=db)
 
 
 # 함수명: get_manage_push_token
