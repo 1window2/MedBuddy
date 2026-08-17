@@ -9,8 +9,8 @@ pre-release builds and are not production-ready stable releases.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.0.9-alpha` | Current alpha release | Security fixes should be applied here first. |
-| `v0.0.8-alpha` and earlier | Published alpha demos | Use the newest published alpha; superseded demos receive no routine backports. |
+| `v0.1.0-beta` source | Beta candidate | Security fixes are applied to the beta branch before publication. |
+| `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.
 Superseded alpha demos are not supported release lines.
@@ -51,7 +51,8 @@ text from the repository after exposure is not sufficient by itself.
 
 The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
-`backend/medbuddy.db` or `backend/pill_identification_catalog.db`.
+`backend/medbuddy.db`. Production catalog rows belong in the shared,
+Alembic-managed PostgreSQL database rather than a container-local file.
 
 Do not commit local SDK paths, generated Flutter build files, tool telemetry
 state, emulator-specific configuration, Python virtual environments, pytest
@@ -119,13 +120,13 @@ notification, settings, and link operations derive ownership from that
 principal. A requested patient hash is accepted only as a selector after an
 active caregiver link has been verified.
 
-Production configuration fails closed unless Firebase authentication, a
-Firebase project, a durable non-SQLite database, and external schema migrations
-are configured. The unauthenticated `/health` route returns only process
-liveness, while `/ready` returns only binary dependency readiness.
-Firebase App Check and distributed abuse-rate controls remain defense-in-depth
-work before accepting an unrestricted public audience; neither replaces user
-authentication or authorization.
+Production configuration fails closed unless Firebase authentication and App
+Check, a Firebase project, a durable non-SQLite database, external schema
+migrations, and Redis-backed distributed quotas are configured. The
+unauthenticated `/health` route returns only process liveness, while `/ready`
+returns only binary database-revision, Firebase-verifier, App Check, and Redis
+readiness. App Check and rate limiting are defense in depth; neither replaces
+user authentication or authorization.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
@@ -140,9 +141,12 @@ unsigned release artifact but never receive signing material.
 
 The main Android manifest rejects clear-text traffic. Only the debug manifest
 overlay permits HTTP for emulator or trusted-LAN development. Release runtime
-configuration additionally rejects a non-HTTPS API URL. The Cloud Run workflow
-uses Workload Identity Federation, Secret Manager values, a migration job, and
-Cloud SQL before deploying the API service. The signed Android workflow also
-requires the release SHA-1 to be registered in the restored Firebase
-configuration and rejects Firebase identifiers that differ from the compiled
-Dart configuration.
+configuration additionally rejects a non-HTTPS API URL. The beta backend runs
+FastAPI, PostgreSQL, and Redis on a team-controlled host. PostgreSQL and Redis
+remain on a private container network, and only a TLS reverse proxy or temporary
+Tailscale Funnel publishes the API. Retained Google Cloud deployment and
+scheduled-job workflows are disabled so they cannot provision billable
+resources. The signed Android workflow still requires the release SHA-1 to be
+registered in Firebase and rejects identifiers that differ from the compiled
+Dart configuration. Phone sign-in and SMS MFA are hidden and fail closed unless
+an owner explicitly enables their build and backend feature flags.

@@ -6,6 +6,7 @@ import 'check_medication_detail_ui_boundary.dart';
 import '../boundaries/set_notification_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -724,12 +725,8 @@ class _MedicationThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = schedule.imageUrl?.trim() ?? '';
-    final imageUri = Uri.tryParse(imageUrl);
-    final hasNetworkImage =
-        imageUri != null &&
-        (imageUri.scheme == 'http' || imageUri.scheme == 'https') &&
-        imageUri.host.isNotEmpty;
+    final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
+    final hasNetworkImage = imageUrl.isNotEmpty;
     final thumbnailKey = schedule.medicationID.trim().isNotEmpty
         ? schedule.medicationID.trim()
         : schedule.displayName;

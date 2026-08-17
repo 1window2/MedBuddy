@@ -1,0 +1,119 @@
+name: medbuddy-beta
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medbuddy
+      POSTGRES_USER: medbuddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medbuddy -d medbuddy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.self-hosted
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: api
+      AUTH_MODE: firebase
+      FIREBASE_ALLOW_PHONE_AUTH: "false"
+      FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
+      FIREBASE_APP_CHECK_REQUIRED: "true"
+      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      AUTO_CREATE_SCHEMA: "false"
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUIRE_REDIS: "true"
+      PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: "false"
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-admin.json
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        python -m alembic upgrade head
+        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=*
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - source: firebase_admin
+        target: firebase-admin.json
+    ports:
+      - "127.0.0.1:${MEDBUDDY_BACKEND_PORT:-8000}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [backend]
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: [direct-public]
+    restart: unless-stopped
+    environment:
+      MEDBUDDY_PUBLIC_HOSTNAME: ${MEDBUDDY_PUBLIC_HOSTNAME:?Set MEDBUDDY_PUBLIC_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [backend]
+
+secrets:
+  firebase_admin:
+    file: ${FIREBASE_ADMIN_CREDENTIALS_PATH:?Set FIREBASE_ADMIN_CREDENTIALS_PATH}
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

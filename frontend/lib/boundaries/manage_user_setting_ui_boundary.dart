@@ -174,17 +174,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           isSpeaking: _isPreviewSpeaking,
                           onVoicePreviewRequested: _toggleVoicePreview,
                         ),
-                        const SizedBox(height: 28),
-                        ListenableBuilder(
-                          listenable: widget.authenticationControl,
-                          builder: (context, _) => _MfaSettingsPanel(
-                            enabled:
-                                widget.authenticationControl.hasEnrolledSmsMfa,
-                            available:
-                                widget.authenticationControl.canEnrollSmsMfa,
-                            onEnrollRequested: _showMfaEnrollment,
+                        if (widget
+                            .authenticationControl
+                            .phoneAuthenticationEnabled) ...[
+                          const SizedBox(height: 28),
+                          ListenableBuilder(
+                            listenable: widget.authenticationControl,
+                            builder: (context, _) => _MfaSettingsPanel(
+                              enabled: widget
+                                  .authenticationControl
+                                  .hasEnrolledSmsMfa,
+                              available:
+                                  widget.authenticationControl.canEnrollSmsMfa,
+                              onEnrollRequested: _showMfaEnrollment,
+                            ),
                           ),
-                        ),
+                        ],
                         if (widget.onSignOutRequested != null) ...[
                           const SizedBox(height: 28),
                           SizedBox(

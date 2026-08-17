@@ -49,7 +49,7 @@ completed-dose pushes. The authenticated background monitor checks missed-dose
 deadlines. Local demo mode uses hash-scoped data and polling-based local
 caregiver notifications instead of remote push delivery.
 
-The experimental v0.0.9 flow presents loose-pill identification candidates
+The experimental loose-pill flow introduced in v0.0.9 presents identification candidates
 with mandatory user confirmation. It follows a separate image-analysis path
 and does not save a candidate automatically or assert a diagnosis.
 
@@ -80,11 +80,21 @@ http://10.0.2.2:8000/api/v1/medication
 
 Use the device id reported by `flutter devices`. For a physical Android device
 on the same network, replace the example host with the development machine's
-LAN IP address:
+LAN IP address. Start the backend with an explicit trusted-LAN binding and use
+synthetic data only; the default backend command remains loopback-only:
+
+```powershell
+cd ../backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+cd ../frontend
+```
 
 ```powershell
 flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
 ```
+
+Release and profile builds reject localhost, private-network addresses, and
+non-HTTPS API endpoints.
 
 See the repository-level [`README.md`](../README.md) for complete backend and
 device setup, and [`CONTRIBUTING.md`](../CONTRIBUTING.md) for release

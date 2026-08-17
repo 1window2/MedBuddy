@@ -1,0 +1,1066 @@
+@startuml
+scale max 4096*4096
+left to right direction
+
+title beta/v0.1.0 핵심 Class Diagram
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+package "Flutter Frontend" {
+
+    package "UI Layer" {
+
+        interface "AuthenticationGateState" as AuthenticationGateState <<State contract>> {
+            + isInitializing: bool
+            + isAuthenticated: bool
+        }
+
+        class "AuthenticationGate" as AuthenticationGate <<Boundary: authenticated root route>> {
+            + state: AuthenticationGateState
+            + unauthenticatedChild: Widget
+            + authenticatedChild: Widget
+            + build(context): Widget
+        }
+
+        class "MedBuddyApp" as MedBuddyApp <<UI: 앱 Composition Root>> {
+            + navigatorKey: GlobalKey<NavigatorState>?
+            + viewModelFactory: MedBuddyViewModel Function()?
+            + authenticationControl: AuthenticationControl?
+            + createState(): State<MedBuddyApp>
+        }
+
+        class "AuthenticationUI" as AuthenticationUI <<UI: 인증 화면>> {
+            + control: AuthenticationControl
+            + createState(): State
+        }
+
+        class "HomeScreen" as HomeScreen <<Screen: 홈 탐색>> {
+            + build(context): Widget
+        }
+
+        class "InputPrescriptionUI" as InputPrescriptionUI <<Component: 홈 콘텐츠>> {
+            + statusMessage: String
+            + userSetting: UserSetting
+            + todayMedicationScheduleList: List<MedicationSchedule>
+            + build(context): Widget
+        }
+
+        class "GuidedPrescriptionCameraUI" as GuidedPrescriptionCameraUI <<UI: 처방전 촬영>> {
+            + userSetting: UserSetting
+            + createState(): State
+        }
+
+        class "PrescriptionAnalysisPreviewUI" as PrescriptionAnalysisPreviewUI <<UI: OCR 검토>> {
+            + medicationScheduleList: List<MedicationSchedule>
+            + recognizedTextRegions: List<RecognizedTextRegion>
+            + previewImagePath: String
+            + createState(): State
+        }
+
+        class "CheckResultUI" as CheckResultUI <<UI: 분석 결과>> {
+            + analyzedMedicationList: List<AnalyzedMedication>
+            + prescriptionChangeRadar: PrescriptionChangeRadar?
+            + build(context): Widget
+        }
+
+        class "CheckScheduleUI" as CheckScheduleUI <<UI: 오늘 복약 일정>> {
+            + createState(): State
+        }
+
+        class "CheckSavedMedicationUI" as CheckSavedMedicationUI <<UI: 저장 약 관리>> {
+            + createState(): State
+        }
+
+        class "CheckMedicationDetailUI" as CheckMedicationDetailUI <<UI: 약 상세>> {
+            + medicationDetail: MedicationDetail
+            + userSetting: UserSetting
+            + createState(): State
+        }
+
+        class "HealthRecommendationUI" as HealthRecommendationUI <<UI: 건강 추천>> {
+            + createState(): State
+        }
+
+        class "PillIdentificationUI" as PillIdentificationUI <<UI: 낱알 식별>> {
+            + userSetting: UserSetting
+            + control: IdentifyPill?
+            + createState(): State
+        }
+
+        class "LinkPatientCaregiverUI" as LinkPatientCaregiverUI <<UI: 환자-보호자 연결>> {
+            + initialUserHash: String
+            + controlFactory: LinkPatientCaregiverFactory
+            + createState(): State
+        }
+
+        class "CheckCaregiverMedicationUI" as CheckCaregiverMedicationUI <<UI: 보호자 복약 조회>> {
+            + caregiverHash: String
+            + patientHash: String
+            + userSetting: UserSetting
+            + createState(): State
+        }
+
+        class "ManageUserSettingUI" as ManageUserSettingUI <<UI: 사용자 설정>> {
+            + initialSetting: UserSetting
+            + authenticationControl: AuthenticationControl
+            + createState(): State
+        }
+    }
+
+    package "Business Layer" {
+
+        class "AuthenticationControl" as FAuthenticationControl <<Controller: 인증 상태 관리>> {
+            + apiClient: AuthenticatedApiClient
+            + isBusy: bool
+            + session: AuthSession?
+            + initializationFailed: bool
+            + canRetryBackendSession: bool
+            + phoneAuthenticationEnabled: bool
+            + retryInitialization(): Future<void>
+            + retryBackendSession(): Future<void>
+            + signIn(email, password): Future<void>
+            + signInWithGoogle(): Future<void>
+            + signInAnonymously(): Future<void>
+            + startPhoneSignIn(phoneNumber): Future<void> <<dormant>>
+            + signOut(): Future<void>
+            + deleteCurrentUser(): Future<void>
+        }
+
+        class "MedBuddyViewModel" as MedBuddyViewModel <<ViewModel: 애플리케이션 상태>> {
+            + patientHash: String
+            + inputPrescription: InputPrescription
+            + checkMedicationDetail: CheckMedicationDetail
+            + checkSavedMedication: CheckSavedMedication
+            + checkSchedule: CheckSchedule
+            + requestPrescriptionAnalysis(): Future<void> {extension}
+            + fetchTodayMedicationSchedule(): Future<void> {extension}
+            + requestMedicationDoseStatusUpdate(): Future<bool> {extension}
+            + requestAllAnalyzedMedicationSave(): Future<bool> {extension}
+        }
+
+        class "InputPrescription" as FInputPrescription <<Controller: 처방전 입력>> {
+            + baseUrl: String
+            + requestTimeout: Duration
+            + lastSelectedImagePath: String
+            + requestPrescriptionImageFromGallery(): Future<List<MedicationSchedule>>
+            + requestCapturedPrescriptionImage(image): Future<List<MedicationSchedule>>
+            + dispose(): void
+        }
+
+        class "CheckMedicationDetail" as FCheckMedicationDetail <<Controller: 약 상세 요청>> {
+            + baseUrl: String
+            + requestMedicationDetail(schedule): Future<MedicationDetail>
+            + dispose(): void
+        }
+
+        class "CheckSavedMedication" as FCheckSavedMedication <<Controller: 저장 약 관리>> {
+            + baseUrl: String
+            + patientHash: String
+            + saveMedicationDetail(detail): Future<MedicationSaveResult>
+            + requestSavedMedicationInfo(): Future<List<MedicationDetail>>
+            + requestDelete(id): Future<bool>
+        }
+
+        class "CheckSchedule" as FCheckSchedule <<Controller: 복약 일정 관리>> {
+            + baseUrl: String
+            + patientHash: String
+            + requestTodayMedicationSchedule(): Future<List<MedicationSchedule>>
+            + updateMedicationStatus(id, status): Future<MedicationSchedule>
+        }
+
+        class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Controller: 처방 변경 요청>> {
+            + baseUrl: String
+            + patientHash: String
+            + requestPrescriptionChange(schedules): Future<PrescriptionChangeRadar>
+        }
+
+        class "CheckHealthRecommendation" as FCheckHealthRecommendation <<Controller: 건강 추천 요청>> {
+            + baseUrl: String
+            + patientHash: String
+            + requestHealthRecommendation(language): Future<HealthRecommendation>
+        }
+
+        class "IdentifyPill" as FIdentifyPill <<Controller: 낱알 식별 요청>> {
+            + baseUrl: String
+            + requestPillImage(source): Future<Uint8List?>
+            + requestPillIdentification(front, back): Future<PillIdentificationResult>
+            + dispose(): void
+        }
+
+        class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Controller: 연결 관리>> {
+            + baseUrl: String
+            + userHash: String
+            + requestLinkScreen(): Future<List<PatientCaregiverLink>>
+            + generatePatientHash(): Future<PatientLinkCode>
+            + requestPatientCaregiverLink(code): Future<PatientCaregiverLink>
+            + requestUnlink(linkId): Future<PatientCaregiverLink>
+        }
+
+        class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Controller: 연결 환자 조회>> {
+            + baseUrl: String
+            + caregiverHash: String
+            + requestPatientMedicationInfo(patientHash): Future<CaregiverMedicationInfo>
+        }
+
+        class "SetNotification" as FSetNotification <<Controller: 환자 알림 관리>> {
+            + baseUrl: String
+            + patientHash: String
+            + requestMedicationAlarm(): Future<List<MedicationAlarm>>
+            + saveNotificationSetting(slotKey, hour, minute): Future<MedicationAlarm>
+            + disableAlarmSetting(slotKey): Future<MedicationAlarm>
+        }
+
+        class "SetCaregiverNotification" as FSetCaregiverNotification <<Controller: 보호자 알림 관리>> {
+            + baseUrl: String
+            + caregiverHash: String
+            + requestCaregiverNotificationSettings(patientHash): Future<Map>
+            + saveCaregiverNotificationSetting(patientHash, slotKey, mode, deadlineHour, deadlineMinute): Future<CaregiverNotification>
+        }
+
+        class "ManageUserSetting" as FManageUserSetting <<Controller: 설정 저장>> {
+            + baseUrl: String
+            + userHash: String
+            + requestUserSetting(): Future<UserSetting>
+            + saveUserSetting(fontSize, speed, language): Future<UserSettingSaveResult>
+        }
+
+        class "ManageAccount" as FManageAccount <<Controller: 계정 데이터 삭제>> {
+            + client: http.Client
+            + deleteAccountData(): Future<void>
+        }
+
+        class "RequestVoiceGuide" as FRequestVoiceGuide <<Controller: 음성 안내>> {
+            + baseUrl: String
+            + requestVoiceGuide(detail, language): Future<String>
+            + requestTTS(detail, setting): Future<void>
+            + stop(): Future<void>
+        }
+    }
+
+    package "Service Layer" {
+
+        class "ApiConfig" as ApiConfig <<Configuration: API endpoint>> {
+            + {static} validate(): void
+            + {static} validateUrl(value, requirePublicHttps): void
+        }
+
+        class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<Policy: image egress>>
+
+        class "AuthenticatedApiClient" as AuthenticatedApiClient <<API Client: 인증 HTTP>> {
+            - _inner: http.Client
+            - _tokenProvider: IdTokenProvider
+            - _trustedBaseUri: Uri
+            + send(request): Future<StreamedResponse>
+            + close(): void
+        }
+
+        interface "PrescriptionLocalOcrBoundary" as PrescriptionLocalOcrBoundary {
+            + recognizeAndMask(imagePath): Future<LocalPrescriptionOcrResult>
+        }
+
+        class "PrescriptionLocalOcrService" as PrescriptionLocalOcrService <<Service: 기기 OCR>> {
+            - _textRecognizer: TextRecognizer
+            - _privacyFilter: PrescriptionPrivacyFilter
+            + recognizeAndMask(imagePath): Future<LocalPrescriptionOcrResult>
+            + dispose(): Future<void>
+        }
+
+        class "PrescriptionPrivacyFilter" as PrescriptionPrivacyFilter <<Service: 개인정보 Masking>> {
+            + containsSensitiveInformation(text): bool
+            + shouldMaskFollowingLine(text): bool
+            + maskInlineIdentifiers(text): String
+        }
+
+        class "PrescriptionFrameAnalyzer" as PrescriptionFrameAnalyzer <<Service: 촬영 품질 분석>> {
+            + analyze(luminanceBytes, width, height): PrescriptionCameraGuideResult
+        }
+
+        class "CameraLifecycleCoordinator" as CameraLifecycleCoordinator <<Service: camera lifecycle serialization>> {
+            - _tail: Future<void>
+            + schedule(transition): Future<void>
+        }
+
+        class "NotificationService" as NotificationService <<Service: Local Notification>> {
+            + instance: NotificationService
+            + initialize(): Future<void>
+            + requestPermission(): Future<bool>
+            + registerNotification(setting, medications): Future<void>
+            + cancelReminder(id): Future<void>
+            + showCaregiverAlert(): Future<void>
+        }
+
+        class "TTSService" as TTSService <<Service: 기기 음성 합성>> {
+            - _flutterTts: FlutterTts
+            + speak(text, language, speed): Future<void>
+            + stop(): Future<void>
+        }
+
+        class "PushNotificationService" as PushNotificationService <<Service: FCM 수신>> {
+            - _client: http.Client
+            - _started: bool
+            + start(): Future<void>
+            + stop(): Future<void>
+        }
+
+        class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 미복약 감지>> {
+            + caregiverHash: String
+            + pollingInterval: Duration
+            + start(): Future<void>
+            + checkNow(): Future<bool>
+            + dispose(): void
+        }
+
+        class "CaregiverNotificationBackgroundScheduler" as CaregiverNotificationBackgroundScheduler <<Service: Android 주기 작업 등록>> {
+            + {static} initialize(): Future<void>
+            + {static} register(caregiverHash): Future<void>
+            + {static} cancel(): Future<void>
+        }
+    }
+
+    package "Data Layer" {
+
+        class "AuthSession" as FAuthSession <<Entity: 인증 Session>> {
+            + userHash: String
+            + email: String
+            + emailVerified: bool
+            + authenticated: bool
+            + fromJson(json): AuthSession
+        }
+
+        class "MedicationSchedule" as FMedicationSchedule <<Entity: 복약 일정>> {
+            + medicationID: String
+            + medicationName: String
+            + dosage: String
+            + medicationStatus: bool
+            + slotStatuses: Map<String, bool>
+            + scheduleSlotKeys: List<String>
+            + fromAnalysisJson(json): MedicationSchedule
+            + fromScheduleJson(json): MedicationSchedule
+            + toJson(): Map
+        }
+
+        class "MedicationDetail" as FMedicationDetail <<Entity: 약 상세>> {
+            + id: int
+            + patientHash: String
+            + itemSeq: String
+            + itemName: String
+            + efficacy: String
+            + usageMethod: String
+            + warning: String
+            + imageUrl: String
+            + aiGuide: String
+            + fromJson(json): MedicationDetail
+        }
+
+        class "AnalyzedMedication" as FAnalyzedMedication <<Entity: 분석 약>> {
+            + schedule: MedicationSchedule
+            + detail: MedicationDetail
+            + displayName: String
+        }
+
+        class "PrescriptionChangeRadar" as FPrescriptionChangeRadar <<Entity: 처방 변경 결과>> {
+            + hasPreviousPrescription: bool
+            + similarityScore: double
+            + summary: PrescriptionChangeSummary
+            + changes: List<PrescriptionMedicationChange>
+            + fromJson(json): PrescriptionChangeRadar
+        }
+
+        class "PatientCaregiverLink" as FPatientCaregiverLink <<Entity: 환자-보호자 연결>> {
+            + linkId: int
+            + patientHash: String
+            + caregiverHash: String
+            + linkStatus: bool
+            + fromJson(json): PatientCaregiverLink
+        }
+
+        class "PatientLinkCode" as FPatientLinkCode <<Entity: 연결 코드>> {
+            + code: String
+            + patientHash: String
+            + expiresAt: DateTime
+            + fromJson(json): PatientLinkCode
+        }
+
+        class "MedicationAlarm" as FMedicationAlarm <<Entity: 환자 알림>> {
+            + patientHash: String
+            + slotKey: String
+            + hour: int
+            + minute: int
+            + enabled: bool
+            + fromJson(json): MedicationAlarm
+        }
+
+        class "CaregiverNotification" as FCaregiverNotification <<Entity: 보호자 알림 설정>> {
+            + caregiverHash: String
+            + patientHash: String
+            + slotKey: String
+            + mode: CaregiverNotificationMode
+            + deadlineHour: int
+            + deadlineMinute: int
+        }
+
+        class "UserSetting" as FUserSetting <<Entity: 사용자 설정>> {
+            + userHash: String
+            + fontSize: int
+            + readingSpeed: double
+            + language: String
+            + fromJson(json): UserSetting
+            + toJson(): Map
+        }
+
+        class "PillIdentificationResult" as FPillIdentificationResult <<Entity: 낱알 식별 결과>> {
+            + isConfident: bool
+            + requiresConfirmation: bool
+            + observedFeatures: PillVisualFeatures
+            + candidates: List<PillIdentificationCandidate>
+            + fromJson(json): PillIdentificationResult
+        }
+
+        class "HealthRecommendation" as FHealthRecommendation <<Entity: 건강 추천>> {
+            + dietRecommendation: String
+            + exerciseRecommendation: String
+            + cautionItems: List<String>
+            + medicationNames: List<String>
+            + fromJson(json): HealthRecommendation
+        }
+    }
+}
+
+package "FastAPI Backend" {
+
+    package "Business Layer" {
+
+        class "InputPrescription" as BInputPrescription <<Control: 처방전 분석>> {
+            + model_name: str
+            + requestPrescriptionImage(image): dict
+            + requestPrescriptionText(masked_text): dict
+            + parse_prescription_text(text): dict
+            + maskSensitiveInfo(rawText): str
+        }
+
+        class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service: 약명 검증>> {
+            + verify_many(raw_names): list
+            + verify(raw_name): _MedicationNameVerification
+        }
+
+        class "CheckMedicationDetail" as BCheckMedicationDetail <<Control: 약 상세 조회>> {
+            + requestMedicationDetail(raw_text): MedicationResponse
+        }
+
+        class "_MedicationDetailCache" as MedicationDetailCache <<Service: Redis Cache>> {
+            - redis_client: Redis
+            + get(drug_name): list<MedicationDetail>
+            + set(drug_name, details): void
+            + close(): void
+        }
+
+        class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
+            - db: Session
+            + fetch_drug_info(drug_name): list<MedicationDetail>
+        }
+
+        class "_MedicationSummaryGenerator" as MedicationSummaryGenerator <<Service: 허가정보 요약>> {
+            + model_name: str
+            + summarize_advanced_item(item): MedicationDetail
+        }
+
+        class "CheckSavedMedication" as BCheckSavedMedication <<Control: 저장 약 관리>> {
+            - db: Session
+            + saveMedicationDetail(patient_hash, detail): dict
+            + requestSavedMedicationInfo(patient_hash): dict
+            + requestDelete(patient_hash, drug_id): dict
+        }
+
+        class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
+            - db: Session
+            + requestTodayMedicationSchedule(patient_hash): dict
+            + updateMedicationStatus(patient_hash, medication_id, status): dict
+        }
+
+        class "CheckTodayMedicationInfo" as BCheckTodayMedicationInfo <<Control: 오늘 복약 요약>> {
+            - db: Session
+            + requestTodayMedicationInfo(patient_hash): dict
+        }
+
+        class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control: 처방 변경 비교>> {
+            - db: Session
+            + request_prescription_change(patient_hash, request): dict
+        }
+
+        class "CheckHealthRecommendation" as BCheckHealthRecommendation <<Control: 건강 추천>> {
+            - db: Session
+            + requestHealthRecommendation(patient_hash, language): dict
+        }
+
+        class "IdentifyPill" as BIdentifyPill <<Control: 낱알 후보 순위화>> {
+            + candidate_limit: int
+            + requestPillIdentification(front, back): PillIdentificationResult
+        }
+
+        class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control: 연결 권한 관리>> {
+            - db: Session
+            + requestLinkScreen(user_hash): dict
+            + generatePatientHash(patient_hash): dict
+            + requestPatientCaregiverLink(caregiver_hash, code): dict
+            + requestUnlink(user_hash, link_id): dict
+            + getLinkedPatientHash(caregiver_hash, patient_hash): str
+        }
+
+        class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control: 보호자 읽기 전용 조회>> {
+            + requestPatientMedicationInfo(caregiver_hash, patient_hash): dict
+        }
+
+        class "SetNotification" as BSetNotification <<Control: 환자 알림 저장>> {
+            - db: Session
+            + requestMedicationAlarm(patient_hash): dict
+            + saveNotificationSetting(patient_hash, slot_key, hour, minute): dict
+            + disableAlarmSetting(patient_hash, slot_key): dict
+        }
+
+        class "SetCaregiverNotification" as BSetCaregiverNotification <<Control: 보호자 알림 저장>> {
+            - db: Session
+            + requestCaregiverNotificationSettings(caregiver_hash, patient_hash): dict
+            + saveCaregiverNotificationSetting(caregiver_hash, patient_hash): dict
+        }
+
+        class "ManageUserSetting" as BManageUserSetting <<Control: 사용자 설정 관리>> {
+            - db: Session
+            + requestUserSetting(user_hash): dict
+            + saveUserSetting(user_hash, font_size, speed, language): dict
+        }
+
+        class "ManageAccount" as BManageAccount <<Control: 계정 Data Lifecycle>> {
+            - db: Session
+            + ensureAccount(user_hash): str
+            + exportAccountData(user_hash): dict
+            + deleteAccountData(user_hash): dict
+        }
+
+        class "ManagePushToken" as BManagePushToken <<Control: FCM Token 관리>> {
+            - db: Session
+            + registerPushToken(user_hash, token, platform): dict
+            + unregisterPushToken(user_hash, token): dict
+        }
+
+        class "RequestVoiceGuide" as BRequestVoiceGuide <<Control: 음성 안내문 생성>> {
+            + requestVoiceGuide(detail, language): dict
+        }
+
+        class "AuthorizationControl" as BAuthorizationControl <<Control: 접근 범위 검증>> {
+            - db: Session
+            + resolveOwnUserHash(principal, requested_hash): str
+            + resolvePatientScope(principal, patient_hash): str
+            + requireLinkedPatient(caregiver_hash, patient_hash): str
+        }
+
+        interface "MedicationCompletionEventBoundary" as MedicationCompletionEventBoundary {
+            + notifyDoseCompleted(patient_hash, medication, slot_key): void
+        }
+
+        class "DispatchCaregiverAlert" as DispatchCaregiverAlert <<Control: 보호자 완료 알림>> {
+            - db: Session
+            + notifyDoseCompleted(patient_hash, medication, slot_key): void
+        }
+    }
+
+    package "Service and Repository Layer" {
+
+        class "PrescriptionSimilarityService" as PrescriptionSimilarityService <<Service: 처방 유사도 계산>> {
+            + compare(previous, current): PrescriptionSimilarityResult
+        }
+
+        class "MedicationCoursePolicy" as MedicationCoursePolicy <<Service: 복약 기간 정책>> {
+            + is_active_on(medication, target_date): bool
+            + is_expired_after(medication, target_date, days): bool
+            + read_total_days(raw_total_days): int
+            + read_frequency_count(raw_frequency): int
+        }
+
+        class "SavedMedicationRetentionPolicy" as SavedMedicationRetentionPolicy <<Service: 저장 약 보존 정책>> {
+            + cleanup_expired_medications(db, patient_hash, today): int
+            + is_expired(medication, today): bool
+        }
+
+        class "DataMaintenanceService" as DataMaintenanceService <<Service: 만료 Data 정리>> {
+            + runOnce(db): dict
+        }
+
+        class "PeriodicDataMaintenanceRunner" as PeriodicDataMaintenanceRunner <<Service: 주기적 Data 정리 실행>> {
+            - session_factory: sessionmaker
+            - service: DataMaintenanceService
+            + start(): void
+            + stop(): None
+        }
+
+        class "PillIdentificationCatalogRepository" as PillCatalogRepository <<Repository: 낱알 Catalog 저장>> {
+            - db: Session
+            + list_all(): list<PillCatalogEntry>
+            + is_fresh(minimum_rows, max_age): bool
+            + replace_all(entries): void
+        }
+
+        class "_DrugCatalogStore" as DrugCatalogStore <<Repository Helper: 의약품 Catalog 동기화>> {
+            - db: Session
+            + upsert_basic_items(items): int
+            + upsert_approval_items(items): int
+            + normalize_name(item_name): str
+        }
+
+        class "DrugCatalogSyncJob" as DrugCatalogSyncJob <<Service: 의약품 Catalog 동기화>> {
+            - store: _DrugCatalogStore
+            - public_drug_small_api: PublicDrugSmallAPI
+            - public_drug_large_api: PublicDrugLargeAPI
+            + sync_basic(): int
+            + sync_approval(): int
+        }
+    }
+
+    package "External Integration Layer" {
+
+        class "PrescriptionImageProcessor" as PrescriptionImageProcessor <<Utility: bounded image decode>> {
+            + {static} maxPixels: 24000000
+            + processPrescriptionImage(imageBytes): ndarray
+        }
+
+        class "OIDCTokenVerifier" as OIDCTokenVerifier <<Wrapper: Firebase Token 검증>> {
+            - _check_revoked: bool
+            + verifyIdToken(token): dict
+        }
+
+        class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
+            + model_name: str
+            + extractPrescriptionData(image): str
+            + extractPrescriptionTextData(masked_text): str
+        }
+
+        class "LLMService" as LLMService <<Wrapper: Gemini 건강 추천>> {
+            + model_name: str
+            + timeout_seconds: float
+            + requestHealthRecommendation(medications, language): HealthRecommendation
+        }
+
+        class "PublicDrugSmallAPI" as PublicDrugSmallAPI <<Wrapper: 의약품 기본정보 API>> {
+            + searchMedication(medication_name): list
+            + fetchPage(page_no, num_of_rows): list
+        }
+
+        class "PublicDrugLargeAPI" as PublicDrugLargeAPI <<Wrapper: 의약품 허가정보 API>> {
+            + searchMedication(medication_name): list
+            + fetchPage(page_no, num_of_rows): list
+        }
+
+        class "PillImageAPI" as PillImageAPI <<Wrapper: 의약품 이미지 API>> {
+            + searchMedicationImage(item_name, item_seq): str
+        }
+
+        class "GeminiPillVisionAPI" as GeminiPillVisionAPI <<Wrapper: 낱알 시각 특징 추출>> {
+            + requestVisualFeatures(client, model, images): dict
+        }
+
+        class "PillVisionBoundary" as PillVisionBoundary <<Wrapper: 낱알 Vision 조정>> {
+            + model_name: str
+            + extractVisualFeatures(front_image, back_image): PillVisualFeatures
+            + close(): void
+        }
+
+        class "MFDSPillAPI" as MFDSPillAPI <<Wrapper: 낱알식별정보 API>> {
+            + base_url: str
+            + page_size: int
+            + requestCatalog(): list<PillCatalogEntry>
+        }
+
+        class "MFDSPillCatalogBoundary" as MFDSPillCatalogBoundary <<Wrapper: 낱알 Catalog Cache>> {
+            + getCatalog(): tuple<PillCatalogEntry>
+            + invalidateMemoryCache(): void
+        }
+
+        interface "PushNotificationBoundary" as PushNotificationBoundary {
+            + send_notification(tokens, title, body, data): PushDeliveryResult
+        }
+
+        class "FirebasePushNotificationBoundary" as FirebasePushNotificationBoundary <<Wrapper: FCM 전송>> {
+            + send_notification(tokens, title, body, data): PushDeliveryResult
+        }
+    }
+
+    package "Domain Entity Layer" {
+
+        class "MedicationSchedule" as BMedicationSchedule <<Entity: 복약 일정 DTO>> {
+            + medication_name: str
+            + dosage: str
+            + medcation_status: bool
+            + slot_statuses: dict
+            + schedule_slot_keys: list
+        }
+
+        class "MedicationDetail" as BMedicationDetail <<Entity: 약 상세 DTO>> {
+            + item_seq: str
+            + item_name: str
+            + efficacy: str
+            + usage_method: str
+            + warning: str
+            + ai_guide: str
+            + getMedicationDetail(): dict
+            + getVoiceGuideText(language): str
+        }
+
+        class "HealthRecommendation" as BHealthRecommendation <<Entity: 건강 추천 DTO>> {
+            + diet_recommendation: str
+            + exercise_recommendation: str
+            + caution_items: list
+            + medication_names: list
+            + from_payload(payload): HealthRecommendation
+        }
+
+        class "PillVisualFeatures" as BPillVisualFeatures <<Entity: 낱알 시각 특징>> {
+            + shape: str
+            + colors: tuple
+            + front_imprint: str
+            + back_imprint: str
+            + quality: str
+        }
+
+        class "PillCatalogEntry" as BPillCatalogEntry <<Entity: 낱알 Catalog 항목>> {
+            + item_seq: str
+            + item_name: str
+            + shape: str
+            + print_front: str
+            + print_back: str
+        }
+
+        class "PillIdentificationResult" as BPillIdentificationResult <<Entity: 낱알 후보 결과>> {
+            + observed_features: PillVisualFeatures
+            + candidates: tuple
+            + is_confident: bool
+            + requires_confirmation: bool
+        }
+    }
+
+    package "Database Layer" {
+
+        class "_UserAccount" as DBUserAccount <<ORM: user_accounts>> {
+            + user_hash: String
+            + created_at: DateTime
+            + updated_at: DateTime
+        }
+
+        class "_SavedMedication" as DBSavedMedication <<ORM: saved_medications>> {
+            + id: Integer
+            + patient_hash: String
+            + item_seq: String
+            + item_name: String
+            + prescription_date: Date
+            + schedule_slot_keys: Text
+            + medication_status: Boolean
+        }
+
+        class "_MedicationCompletion" as DBMedicationCompletion <<ORM: medication_completions>> {
+            + id: Integer
+            + saved_medication_id: Integer
+            + patient_hash: String
+            + schedule_date: Date
+            + slot_key: String
+            + completed: Boolean
+        }
+
+        class "_MedicationAlarm" as DBMedicationAlarm <<ORM: notification_settings>> {
+            + id: Integer
+            + patient_hash: String
+            + slot_key: String
+            + hour: Integer
+            + minute: Integer
+            + enabled: Boolean
+        }
+
+        class "_PatientCaregiverLink" as DBPatientCaregiverLink <<ORM: patient_caregiver_links>> {
+            + id: Integer
+            + patient_hash: String
+            + caregiver_hash: String
+            + linked: Boolean
+            + created_at: DateTime
+        }
+
+        class "_PatientLinkCode" as DBPatientLinkCode <<ORM: patient_link_codes>> {
+            + id: Integer
+            + patient_hash: String
+            + patient_code: String
+            + expires_at: DateTime
+            + used: Boolean
+            + caregiver_hash: String
+        }
+
+        class "_CaregiverNotification" as DBCaregiverNotification <<ORM: guardian_alert_settings>> {
+            + id: Integer
+            + caregiver_hash: String
+            + patient_hash: String
+            + enabled: Boolean
+            + alert_option: String
+            + slot_settings: Text
+        }
+
+        class "_UserSetting" as DBUserSetting <<ORM: user_settings>> {
+            + id: Integer
+            + user_hash: String
+            + font_size: Integer
+            + reading_speed: Float
+            + language: String
+        }
+
+        class "_DevicePushToken" as DBDevicePushToken <<ORM: device_push_tokens>> {
+            + id: Integer
+            + user_hash: String
+            + token: String
+            + platform: String
+            + enabled: Boolean
+        }
+
+        class "_HealthRecommendationCache" as DBHealthRecommendationCache <<ORM: health_recommendation_cache>> {
+            + id: Integer
+            + patient_hash: String
+            + recommendation_key: String
+            + payload: Text
+            + created_at: DateTime
+        }
+
+        class "_DrugBasicInfo" as DBDrugBasicInfo <<ORM: drug_basic_infos>> {
+            + id: Integer
+            + item_seq: String
+            + item_name: String
+            + normalized_item_name: String
+            + raw_json: Text
+        }
+
+        class "_DrugApprovalInfo" as DBDrugApprovalInfo <<ORM: drug_approval_infos>> {
+            + id: Integer
+            + item_seq: String
+            + item_name: String
+            + main_ingredient: Text
+            + raw_json: Text
+        }
+
+        class "PillIdentificationReference" as DBPillIdentificationReference <<ORM: pill_identification_references>> {
+            + id: Integer
+            + item_seq: String
+            + item_name: String
+            + shape: String
+            + print_front: String
+            + print_back: String
+        }
+    }
+}
+
+MedBuddyApp ..> AuthenticationUI
+MedBuddyApp ..> AuthenticationGate
+MedBuddyApp ..> HomeScreen
+MedBuddyApp ..> MedBuddyViewModel
+MedBuddyApp ..> CaregiverNotificationBackgroundScheduler
+MedBuddyApp ..> PushNotificationService
+AuthenticationUI --> FAuthenticationControl
+AuthenticationGate --> AuthenticationGateState
+AuthenticationGate ..> AuthenticationUI
+AuthenticationGate ..> HomeScreen
+HomeScreen ..> MedBuddyViewModel
+HomeScreen ..> InputPrescriptionUI
+HomeScreen ..> GuidedPrescriptionCameraUI
+HomeScreen ..> PrescriptionAnalysisPreviewUI
+HomeScreen ..> CheckResultUI
+HomeScreen ..> CheckScheduleUI
+HomeScreen ..> CheckSavedMedicationUI
+HomeScreen ..> PillIdentificationUI
+HomeScreen ..> LinkPatientCaregiverUI
+HomeScreen ..> ManageUserSettingUI
+
+CheckScheduleUI ..> MedBuddyViewModel
+CheckSavedMedicationUI ..> MedBuddyViewModel
+HealthRecommendationUI ..> MedBuddyViewModel
+CheckMedicationDetailUI ..> FRequestVoiceGuide
+PillIdentificationUI o-- FIdentifyPill
+LinkPatientCaregiverUI ..> FLinkPatientCaregiver
+CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
+CheckCaregiverMedicationUI o-- FSetCaregiverNotification
+ManageUserSettingUI --> FAuthenticationControl
+GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
+GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
+
+PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
+CheckResultUI --> "0..*" FAnalyzedMedication
+CheckResultUI --> "0..1" FPrescriptionChangeRadar
+CheckMedicationDetailUI --> FMedicationDetail
+
+FAuthenticationControl *-- AuthenticatedApiClient
+FAuthenticationControl --> "0..1" FAuthSession
+FAuthenticationControl ..|> AuthenticationGateState
+
+MedBuddyViewModel *-- FInputPrescription
+MedBuddyViewModel *-- FCheckMedicationDetail
+MedBuddyViewModel *-- FCheckSavedMedication
+MedBuddyViewModel *-- FCheckSchedule
+MedBuddyViewModel *-- FCheckPrescriptionChange
+MedBuddyViewModel *-- FCheckHealthRecommendation
+MedBuddyViewModel *-- FSetNotification
+MedBuddyViewModel *-- FManageUserSetting
+MedBuddyViewModel *-- FManageAccount
+MedBuddyViewModel o-- NotificationService
+
+FInputPrescription o-- PrescriptionLocalOcrBoundary
+PrescriptionLocalOcrService ..|> PrescriptionLocalOcrBoundary
+PrescriptionLocalOcrService *-- PrescriptionPrivacyFilter
+
+FInputPrescription ..> AuthenticatedApiClient
+FCheckMedicationDetail ..> AuthenticatedApiClient
+FCheckSavedMedication ..> AuthenticatedApiClient
+FCheckSchedule ..> AuthenticatedApiClient
+FCheckPrescriptionChange ..> AuthenticatedApiClient
+FCheckHealthRecommendation ..> AuthenticatedApiClient
+FIdentifyPill ..> AuthenticatedApiClient
+FLinkPatientCaregiver ..> AuthenticatedApiClient
+FCheckCaregiverMedication ..> AuthenticatedApiClient
+FSetNotification ..> AuthenticatedApiClient
+FSetCaregiverNotification ..> AuthenticatedApiClient
+FManageUserSetting ..> AuthenticatedApiClient
+FManageAccount ..> AuthenticatedApiClient
+FRequestVoiceGuide ..> AuthenticatedApiClient
+AuthenticatedApiClient ..> ApiConfig
+
+FSetNotification ..> NotificationService
+FRequestVoiceGuide o-- TTSService
+PushNotificationService ..> NotificationService
+CaregiverNotificationMonitorService ..> NotificationService
+CaregiverNotificationMonitorService ..> FLinkPatientCaregiver
+CaregiverNotificationMonitorService ..> FCheckCaregiverMedication
+CaregiverNotificationMonitorService ..> FSetCaregiverNotification
+
+FInputPrescription ..> FMedicationSchedule
+FCheckMedicationDetail ..> FMedicationDetail
+FCheckSavedMedication ..> FMedicationDetail
+FCheckSchedule ..> FMedicationSchedule
+FMedicationDetail ..> MedicationImageUrlPolicy : sanitize
+FMedicationSchedule ..> MedicationImageUrlPolicy : sanitize
+FPillIdentificationResult ..> MedicationImageUrlPolicy : sanitize candidates
+CheckMedicationDetailUI ..> MedicationImageUrlPolicy : fetch guard
+CheckSavedMedicationUI ..> MedicationImageUrlPolicy : fetch guard
+CheckScheduleUI ..> MedicationImageUrlPolicy : fetch guard
+CheckCaregiverMedicationUI ..> MedicationImageUrlPolicy : fetch guard
+PillIdentificationUI ..> MedicationImageUrlPolicy : fetch guard
+FCheckPrescriptionChange ..> FPrescriptionChangeRadar
+FCheckHealthRecommendation ..> FHealthRecommendation
+FIdentifyPill ..> FPillIdentificationResult
+FLinkPatientCaregiver ..> FPatientCaregiverLink
+FLinkPatientCaregiver ..> FPatientLinkCode
+FSetNotification ..> FMedicationAlarm
+FSetCaregiverNotification ..> FCaregiverNotification
+FManageUserSetting ..> FUserSetting
+
+FAnalyzedMedication *-- FMedicationSchedule
+FAnalyzedMedication *-- FMedicationDetail
+
+BInputPrescription o-- OCRServiceBoundary
+OCRServiceBoundary --> PrescriptionImageProcessor
+BInputPrescription *-- MedicationNameVerifier
+BInputPrescription ..> BMedicationSchedule
+
+BCheckMedicationDetail o-- MedicationDetailCache
+BCheckMedicationDetail o-- LocalMedicationCatalog
+BCheckMedicationDetail o-- MedicationSummaryGenerator
+BCheckMedicationDetail o-- PublicDrugSmallAPI
+BCheckMedicationDetail o-- PublicDrugLargeAPI
+BCheckMedicationDetail o-- PillImageAPI
+BCheckMedicationDetail ..> BMedicationDetail
+
+LocalMedicationCatalog --> DBDrugBasicInfo
+LocalMedicationCatalog --> DBDrugApprovalInfo
+MedicationSummaryGenerator ..> DBDrugApprovalInfo
+
+BCheckSavedMedication *-- MedicationCoursePolicy
+BCheckSavedMedication *-- SavedMedicationRetentionPolicy
+BCheckSavedMedication --> DBSavedMedication
+
+BCheckSchedule *-- MedicationCoursePolicy
+BCheckSchedule *-- SavedMedicationRetentionPolicy
+BCheckSchedule --> DBSavedMedication
+BCheckSchedule --> DBMedicationCompletion
+BCheckSchedule o-- MedicationCompletionEventBoundary
+
+BCheckTodayMedicationInfo *-- BCheckSchedule
+
+BCheckPrescriptionChange *-- PrescriptionSimilarityService
+BCheckPrescriptionChange --> DBSavedMedication
+BCheckPrescriptionChange --> DBDrugApprovalInfo
+
+BCheckHealthRecommendation o-- LLMService
+BCheckHealthRecommendation *-- MedicationCoursePolicy
+BCheckHealthRecommendation --> DBSavedMedication
+BCheckHealthRecommendation --> DBHealthRecommendationCache
+BCheckHealthRecommendation ..> BHealthRecommendation
+
+BIdentifyPill o-- PillVisionBoundary
+BIdentifyPill o-- MFDSPillCatalogBoundary
+BIdentifyPill ..> BPillIdentificationResult
+
+PillVisionBoundary *-- GeminiPillVisionAPI
+PillVisionBoundary ..> BPillVisualFeatures
+MFDSPillCatalogBoundary o-- MFDSPillAPI
+MFDSPillCatalogBoundary ..> PillCatalogRepository
+MFDSPillCatalogBoundary ..> BPillCatalogEntry
+PillCatalogRepository --> DBPillIdentificationReference
+
+BLinkPatientCaregiver --> DBPatientCaregiverLink
+BLinkPatientCaregiver --> DBPatientLinkCode
+BLinkPatientCaregiver --> DBCaregiverNotification
+
+BCheckCaregiverMedication *-- BCheckSavedMedication
+BCheckCaregiverMedication *-- BCheckTodayMedicationInfo
+BCheckCaregiverMedication *-- BLinkPatientCaregiver
+
+BSetNotification --> DBMedicationAlarm
+BSetCaregiverNotification --> DBCaregiverNotification
+BManageUserSetting --> DBUserSetting
+BManagePushToken --> DBDevicePushToken
+
+BManageAccount --> DBUserAccount
+BManageAccount --> DBSavedMedication
+BManageAccount --> DBMedicationCompletion
+BManageAccount --> DBPatientCaregiverLink
+BManageAccount --> DBUserSetting
+
+DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
+DispatchCaregiverAlert o-- PushNotificationBoundary
+DispatchCaregiverAlert --> DBPatientCaregiverLink
+DispatchCaregiverAlert --> DBCaregiverNotification
+DispatchCaregiverAlert --> DBDevicePushToken
+
+FirebasePushNotificationBoundary ..> PushNotificationBoundary : 구조적 Protocol 충족
+
+BAuthorizationControl --> DBUserAccount
+BAuthorizationControl --> DBPatientCaregiverLink
+SavedMedicationRetentionPolicy *-- MedicationCoursePolicy
+SavedMedicationRetentionPolicy --> DBSavedMedication
+SavedMedicationRetentionPolicy --> DBMedicationCompletion
+DataMaintenanceService *-- SavedMedicationRetentionPolicy
+DataMaintenanceService --> DBPatientLinkCode
+DataMaintenanceService --> DBHealthRecommendationCache
+
+PeriodicDataMaintenanceRunner *-- DataMaintenanceService
+DrugCatalogSyncJob o-- DrugCatalogStore
+DrugCatalogSyncJob o-- PublicDrugSmallAPI
+DrugCatalogSyncJob o-- PublicDrugLargeAPI
+DrugCatalogStore --> DBDrugBasicInfo
+DrugCatalogStore --> DBDrugApprovalInfo
+
+DBUserAccount "1" -- "0..*" DBSavedMedication : {FK, CASCADE}
+DBSavedMedication "1" -- "0..*" DBMedicationCompletion : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBMedicationAlarm : {FK, CASCADE}
+DBUserAccount "1" -- "0..1" DBUserSetting : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBDevicePushToken : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBHealthRecommendationCache : {FK, CASCADE}
+
+DBUserAccount "1" -- "0..*" DBPatientCaregiverLink : patient {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBPatientCaregiverLink : caregiver {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBPatientLinkCode : patient {FK, CASCADE}
+DBUserAccount "0..1" -- "0..*" DBPatientLinkCode : caregiver {FK, SET NULL}
+DBUserAccount "1" -- "0..*" DBCaregiverNotification : patient {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBCaregiverNotification : caregiver {FK, CASCADE}
+
+@enduml

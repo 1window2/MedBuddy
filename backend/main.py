@@ -4,8 +4,15 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
 from fastapi import FastAPI, HTTPException
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,6 +21,7 @@ from api.dependencies import (
     close_medication_detail_cache,
     close_pill_identification_boundaries,
     close_public_drug_boundaries,
+    get_app_check_token_verifier,
     get_oidc_token_verifier,
 )
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
@@ -24,6 +32,7 @@ from core.request_limits import RequestBodyLimitMiddleware
 from core.request_rate_limits import (
     DEFAULT_RATE_LIMIT_RULES,
     RequestRateLimitMiddleware,
+    RequestRateLimitStore,
 )
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
@@ -32,6 +41,7 @@ from entities import medication_alarm_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
+from entities import pill_identification_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401
@@ -41,6 +51,31 @@ from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
 from services.data_maintenance import PeriodicDataMaintenanceRunner
+
+
+_BACKEND_ROOT = Path(__file__).resolve().parent
+
+
+def _verify_database_revision(connection: object) -> None:
+    alembic_config = Config(str(_BACKEND_ROOT / "alembic.ini"))
+    script = ScriptDirectory.from_config(alembic_config)
+    expected_heads = set(script.get_heads())
+    current_heads = set(MigrationContext.configure(connection).get_current_heads())
+    if current_heads != expected_heads:
+        raise RuntimeError("Database migration revision does not match Alembic head.")
+
+
+async def _ping_required_redis() -> None:
+    redis = Redis.from_url(
+        settings.REDIS_URL,
+        socket_connect_timeout=0.3,
+        socket_timeout=0.3,
+    )
+    try:
+        if not await redis.ping():
+            raise RuntimeError("Redis readiness ping was rejected.")
+    finally:
+        await redis.aclose()
 
 
 # Function Name: configure_logging
@@ -70,7 +105,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if maintenance_runner is not None:
             await maintenance_runner.stop()
-        await RequestRateLimitMiddleware.close_all()
+        await app.state.request_rate_limit_store.close()
         await close_pill_identification_boundaries()
         await close_medication_detail_cache()
         await close_public_drug_boundaries()
@@ -95,12 +130,17 @@ def create_app() -> FastAPI:
             ensure_user_setting_schema(engine)
     app = FastAPI(
         title="MedBuddy API",
-        version="0.0.9-alpha",
+        version="0.1.0-beta",
         lifespan=application_lifespan,
         docs_url=None if settings.APP_ENV == "production" else "/docs",
         redoc_url=None if settings.APP_ENV == "production" else "/redoc",
         openapi_url=None if settings.APP_ENV == "production" else "/openapi.json",
     )
+    rate_limit_store = RequestRateLimitStore(
+        redis_url=settings.REDIS_URL,
+        require_redis=settings.RATE_LIMIT_REQUIRE_REDIS,
+    )
+    app.state.request_rate_limit_store = rate_limit_store
     multipart_overhead_bytes = 512 * 1024
     app.add_middleware(
         RequestBodyLimitMiddleware,
@@ -112,10 +152,11 @@ def create_app() -> FastAPI:
                 2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
             ),
         },
+        default_limit=1024 * 1024,
     )
     app.add_middleware(
         RequestRateLimitMiddleware,
-        redis_url=settings.REDIS_URL,
+        store=rate_limit_store,
         rules=DEFAULT_RATE_LIMIT_RULES,
         enabled=settings.RATE_LIMIT_ENABLED,
     )
@@ -128,21 +169,40 @@ def create_app() -> FastAPI:
 
     @app.get("/health", include_in_schema=False)
     def health_check() -> dict[str, str]:
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "api_contract": settings.API_CONTRACT_VERSION,
+        }
 
     @app.get("/ready", include_in_schema=False)
-    def readiness_check() -> dict[str, str]:
+    async def readiness_check() -> dict[str, str]:
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
+                if settings.APP_ENV == "production":
+                    _verify_database_revision(connection)
             if settings.AUTH_MODE == "firebase":
                 get_oidc_token_verifier()
-        except (SQLAlchemyError, RuntimeError, ValueError) as exc:
+            if settings.FIREBASE_APP_CHECK_REQUIRED:
+                get_app_check_token_verifier()
+            if settings.RATE_LIMIT_REQUIRE_REDIS:
+                await _ping_required_redis()
+        except (
+            SQLAlchemyError,
+            CommandError,
+            RedisError,
+            RuntimeError,
+            ValueError,
+            OSError,
+        ) as exc:
             raise HTTPException(
                 status_code=503,
                 detail="MedBuddy dependencies are not ready.",
             ) from exc
-        return {"status": "ready"}
+        return {
+            "status": "ready",
+            "api_contract": settings.API_CONTRACT_VERSION,
+        }
 
     return app
 
@@ -153,4 +213,4 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

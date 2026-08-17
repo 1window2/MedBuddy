@@ -9,7 +9,7 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, ClassVar
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -111,13 +111,6 @@ class _PrescriptionMedicationNameVerifier:
         ("㎎", "밀리그람"),
     )
 
-    _AI_FALLBACK_CACHE: ClassVar[
-        OrderedDict[
-            _MedicationNameFallbackCacheKey,
-            tuple[_CatalogMedicationName, float] | None,
-        ]
-    ] = OrderedDict()
-
     def __init__(
         self,
         db: Session | None = None,
@@ -127,10 +120,10 @@ class _PrescriptionMedicationNameVerifier:
             raise ValueError("AI fallback timeout must be greater than zero.")
         self.db = db
         self.ai_timeout_seconds = ai_timeout_seconds
-
-    @classmethod
-    def clear_ai_fallback_cache(cls) -> None:
-        cls._AI_FALLBACK_CACHE.clear()
+        self._ai_fallback_cache: OrderedDict[
+            _MedicationNameFallbackCacheKey,
+            tuple[_CatalogMedicationName, float] | None,
+        ] = OrderedDict()
 
     async def verify_many(
         self,
@@ -187,7 +180,7 @@ class _PrescriptionMedicationNameVerifier:
     ]:
         corrections: dict[int, tuple[_CatalogMedicationName, float]] = {}
         uncached_fallback_requests: list[_MedicationNameFallbackRequest] = []
-        cache = type(self)._AI_FALLBACK_CACHE
+        cache = self._ai_fallback_cache
 
         for request in fallback_requests:
             cache_key = self._ai_fallback_cache_key(request, model_name)
@@ -208,7 +201,7 @@ class _PrescriptionMedicationNameVerifier:
         corrections: dict[int, tuple[_CatalogMedicationName, float]],
         model_name: str,
     ) -> None:
-        cache = type(self)._AI_FALLBACK_CACHE
+        cache = self._ai_fallback_cache
         for request in fallback_requests:
             cache_key = self._ai_fallback_cache_key(request, model_name)
             cache[cache_key] = corrections.get(request.index)
@@ -468,30 +461,27 @@ class _PrescriptionMedicationNameVerifier:
             return None
 
         prefix_upper_bound = self._prefix_upper_bound(normalized_name)
-        matches_by_name: dict[str, str] = {}
+        matching_item_names: set[str] = set()
         for model in (_DrugBasicInfo, _DrugApprovalInfo):
             for row in (
-                self.db.query(
-                    model.normalized_item_name,
-                    model.item_name,
-                )
+                self.db.query(model.item_name)
                 .filter(
                     model.normalized_item_name >= normalized_name,
                     model.normalized_item_name < prefix_upper_bound,
                 )
+                .distinct()
                 .order_by(model.item_name.asc())
                 .limit(2)
                 .all()
             ):
-                if row.item_name and row.normalized_item_name:
-                    matches_by_name[row.normalized_item_name] = row.item_name
-                if len(set(matches_by_name.values())) > 1:
+                if row.item_name:
+                    matching_item_names.add(row.item_name)
+                if len(matching_item_names) > 1:
                     return None
 
-        unique_item_names = sorted(set(matches_by_name.values()))
-        if len(unique_item_names) != 1:
+        if len(matching_item_names) != 1:
             return None
-        return unique_item_names[0]
+        return next(iter(matching_item_names))
 
     def _prefix_match_candidate(
         self,

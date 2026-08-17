@@ -5,7 +5,7 @@ import asyncio
 import logging
 from threading import Lock
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,11 @@ from boundaries.oidc_token_verifier_boundary import (
     TokenVerificationError,
     TokenVerificationUnavailableError,
 )
+from boundaries.app_check_token_verifier_boundary import (
+    AppCheckTokenVerificationError,
+    AppCheckTokenVerificationUnavailableError,
+    AppCheckTokenVerifier,
+)
 from boundaries.push_notification_boundary import (
     DisabledPushNotificationBoundary,
     FirebasePushNotificationBoundary,
@@ -31,6 +36,10 @@ from boundaries.push_notification_boundary import (
 )
 from core.config import settings
 from core.database import get_db
+from core.request_rate_limits import (
+    DEFAULT_RATE_LIMIT_RULES,
+    RequestRateLimitStore,
+)
 from controls.authorization_control import AuthorizationControl
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
@@ -66,6 +75,8 @@ _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
 _pill_ranking_semaphore = asyncio.Semaphore(2)
 _oidc_token_verifier_lock = Lock()
 _oidc_token_verifier: OIDCTokenVerifier | None = None
+_app_check_token_verifier_lock = Lock()
+_app_check_token_verifier: AppCheckTokenVerifier | None = None
 _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -80,6 +91,41 @@ def get_oidc_token_verifier() -> OIDCTokenVerifier:
                 check_revoked=settings.FIREBASE_CHECK_REVOKED_TOKENS,
             )
         return _oidc_token_verifier
+
+
+def get_app_check_token_verifier() -> AppCheckTokenVerifier:
+    global _app_check_token_verifier
+    with _app_check_token_verifier_lock:
+        if _app_check_token_verifier is None:
+            _app_check_token_verifier = AppCheckTokenVerifier(
+                settings.FIREBASE_PROJECT_ID
+            )
+        return _app_check_token_verifier
+
+
+def verify_app_check_token(
+    x_firebase_appcheck: str | None = Header(default=None),
+) -> None:
+    if not settings.FIREBASE_APP_CHECK_REQUIRED:
+        return
+    if x_firebase_appcheck is None or not x_firebase_appcheck.strip():
+        raise HTTPException(
+            status_code=403,
+            detail="A Firebase App Check token is required.",
+        )
+    try:
+        get_app_check_token_verifier().verifyToken(x_firebase_appcheck)
+    except AppCheckTokenVerificationUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="App attestation verification is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
+    except AppCheckTokenVerificationError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="The Firebase App Check token is invalid or expired.",
+        ) from exc
 
 
 def get_authenticated_principal(
@@ -145,12 +191,43 @@ def get_authenticated_principal(
 # 역할:
 # - 검증된 인증 주체를 내부 user_accounts 범위에 등록하고 반환한다.
 # - 보호된 모든 API에서 FK 기준 사용자가 먼저 존재하도록 보장한다.
-def get_registered_principal(
+async def get_registered_principal(
+    request: Request,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     db: Session = Depends(get_db),
 ) -> AuthenticatedPrincipal:
+    rule = DEFAULT_RATE_LIMIT_RULES.get(
+        (request.method.upper(), request.url.path)
+    )
+    if settings.RATE_LIMIT_ENABLED and rule is not None:
+        try:
+            rate_limit_store = get_request_rate_limit_store(request)
+            allowed, retry_after = await rate_limit_store.consume(
+                identity=f"user:{principal.user_hash}",
+                request_scope=f"{request.method.upper()}:{request.url.path}",
+                rule=rule,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Request quota storage is temporarily unavailable.",
+                headers={"Retry-After": "5"},
+            ) from exc
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+                headers={"Retry-After": str(max(1, retry_after))},
+            )
     ManageAccount(db).ensureAccount(principal.user_hash, commit=True)
     return principal
+
+
+def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
+    rate_limit_store = getattr(request.app.state, "request_rate_limit_store", None)
+    if not isinstance(rate_limit_store, RequestRateLimitStore):
+        raise RuntimeError("Request rate-limit store is not initialized.")
+    return rate_limit_store
 
 
 # 함수명: get_push_notification_boundary
@@ -320,10 +397,7 @@ def get_check_prescription_change(
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
-    return CheckSavedMedication(
-        db=db,
-        medication_image_lookup=_pill_image_api,
-    )
+    return CheckSavedMedication(db=db)
 
 
 # Function Name: get_check_schedule

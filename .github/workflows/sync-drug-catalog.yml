@@ -10,11 +10,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: beta-drug-catalog-sync
+  group: beta-drug-catalog-writer
   cancel-in-progress: false
 
 jobs:
   synchronize:
+    # Disabled while the beta backend is self-hosted. Keep the source for a
+    # later managed deployment without allowing scheduled GCP execution.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: beta-backend
     steps:

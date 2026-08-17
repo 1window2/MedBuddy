@@ -8,11 +8,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: beta-backend-deployment
+  group: beta-drug-catalog-writer
   cancel-in-progress: false
 
 jobs:
   deploy:
+    # Retained for a possible post-beta managed-cloud deployment. The current
+    # beta is self-hosted and must not provision billable Google Cloud resources.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: beta-backend
     env:
@@ -23,11 +26,27 @@ jobs:
       MIGRATION_JOB: ${{ vars.GCP_MIGRATION_JOB }}
       MAINTENANCE_JOB: ${{ vars.GCP_MAINTENANCE_JOB }}
       CATALOG_SYNC_JOB: ${{ vars.GCP_CATALOG_SYNC_JOB }}
-      RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+      API_SERVICE_ACCOUNT: ${{ vars.GCP_API_SERVICE_ACCOUNT }}
+      MIGRATION_SERVICE_ACCOUNT: ${{ vars.GCP_MIGRATION_SERVICE_ACCOUNT }}
+      CATALOG_SERVICE_ACCOUNT: ${{ vars.GCP_CATALOG_SERVICE_ACCOUNT }}
+      MAINTENANCE_SERVICE_ACCOUNT: ${{ vars.GCP_MAINTENANCE_SERVICE_ACCOUNT }}
       CLOUD_SQL_CONNECTION: ${{ vars.GCP_CLOUD_SQL_CONNECTION }}
+      VPC_CONNECTOR: ${{ vars.GCP_VPC_CONNECTOR }}
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
 
     steps:
+      - name: Validate deployment ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in
+            refs/heads/main|refs/heads/beta/*|refs/tags/v*) ;;
+            *)
+              echo "Backend deployment is restricted to main, beta branches, and version tags." >&2
+              exit 1
+              ;;
+          esac
+
       - name: Source Code Checkout
         uses: actions/checkout@v6
 
@@ -56,10 +75,10 @@ jobs:
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --image "${IMAGE}" \
-            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --service-account "${MIGRATION_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
-            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=migration,AUTH_MODE=disabled,AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest" \
             --command python \
             --args=-m,alembic,-c,alembic.ini,upgrade,head \
             --max-retries 0 \
@@ -69,24 +88,134 @@ jobs:
             --region "${REGION}" \
             --wait
 
-      - name: Deploy authenticated API
+      - name: Deploy drug catalog synchronization job
         shell: bash
         run: |
           set -euo pipefail
+          gcloud run jobs deploy "${CATALOG_SYNC_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${CATALOG_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=catalog_sync,AUTH_MODE=disabled,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --command python \
+            --args=-m,scripts.sync_drug_catalog,--dataset,all,--page-size,500 \
+            --max-retries 1 \
+            --task-timeout 60m
+
+      - name: Deploy authenticated API candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_TAG="candidate-${GITHUB_SHA:0:12}"
+          echo "CANDIDATE_TAG=${CANDIDATE_TAG}" >> "${GITHUB_ENV}"
           gcloud run deploy "${SERVICE}" \
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --image "${IMAGE}" \
-            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --service-account "${API_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=true,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
-            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --vpc-connector "${VPC_CONNECTOR}" \
+            --vpc-egress private-ranges-only \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=api,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIREBASE_CHECK_REVOKED_TOKENS=true,FIREBASE_ALLOW_PHONE_AUTH=false,FIREBASE_ALLOW_ANONYMOUS_AUTH=true,FIREBASE_APP_CHECK_REQUIRED=true,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,RATE_LIMIT_ENABLED=true,RATE_LIMIT_REQUIRE_REDIS=true,PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,REDIS_URL=medbuddy-redis-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
             --allow-unauthenticated \
             --port 8080 \
             --memory 1Gi \
             --concurrency 4 \
             --max-instances 5 \
-            --timeout 120
+            --timeout 120 \
+            --no-traffic \
+            --tag "${CANDIDATE_TAG}"
+
+          gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format=json > "${RUNNER_TEMP}/candidate-service.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          service = json.loads(
+              Path(os.environ["RUNNER_TEMP"])
+              .joinpath("candidate-service.json")
+              .read_text(encoding="utf-8")
+          )
+          revision = service.get("status", {}).get("latestCreatedRevisionName", "")
+          tag = f"candidate-{os.environ['GITHUB_SHA'][:12]}"
+          candidate_url = next(
+              (
+                  target.get("url", "")
+                  for target in service.get("status", {}).get("traffic", [])
+                  if target.get("tag") == tag
+              ),
+              "",
+          )
+          if not revision or not candidate_url:
+              raise SystemExit("Cloud Run did not expose the tagged candidate revision.")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"CANDIDATE_REVISION={revision}\n")
+              output.write(f"CANDIDATE_URL={candidate_url}\n")
+          PY
+
+      - name: Verify API candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 5 --retry-all-errors --retry-delay 3 \
+            "${CANDIDATE_URL}/health" > "${RUNNER_TEMP}/candidate-health.json"
+          curl --fail --silent --show-error \
+            --retry 5 --retry-all-errors --retry-delay 3 \
+            "${CANDIDATE_URL}/ready" > "${RUNNER_TEMP}/candidate-ready.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_contract = (
+              Path("backend/API_CONTRACT_VERSION")
+              .read_text(encoding="utf-8")
+              .strip()
+          )
+          expected_statuses = {
+              "candidate-health.json": "ok",
+              "candidate-ready.json": "ready",
+          }
+          for file_name, expected_status in expected_statuses.items():
+              payload = json.loads(
+                  Path(os.environ["RUNNER_TEMP"])
+                  .joinpath(file_name)
+                  .read_text(encoding="utf-8")
+              )
+              if payload.get("status") != expected_status:
+                  raise SystemExit(f"{file_name} returned an unexpected status.")
+              if payload.get("api_contract") != expected_contract:
+                  raise SystemExit(
+                      "The candidate API contract does not match the deployment source."
+                  )
+          PY
+
+      - name: Seed the shared drug catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute "${CATALOG_SYNC_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --wait
+
+      - name: Promote verified API revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --to-revisions "${CANDIDATE_REVISION}=100"
 
       - name: Deploy data maintenance job
         shell: bash
@@ -96,37 +225,21 @@ jobs:
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
             --image "${IMAGE}" \
-            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --service-account "${MAINTENANCE_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
-            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=maintenance,AUTH_MODE=disabled,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-secrets "DATABASE_URL=medbuddy-database-url:latest" \
             --command python \
             --args=-m,scripts.run_data_maintenance \
             --max-retries 1 \
             --task-timeout 10m
 
-      - name: Deploy drug catalog synchronization job
+      - name: Remove API candidate tag
+        if: ${{ always() && env.CANDIDATE_TAG != '' }}
         shell: bash
         run: |
           set -euo pipefail
-          gcloud run jobs deploy "${CATALOG_SYNC_JOB}" \
+          gcloud run services update-traffic "${SERVICE}" \
             --project "${PROJECT_ID}" \
             --region "${REGION}" \
-            --image "${IMAGE}" \
-            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
-            --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,AUTH_MODE=firebase,FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},AUTO_CREATE_SCHEMA=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
-            --set-secrets "DATABASE_URL=medbuddy-database-url:latest,GEMINI_API_KEY=medbuddy-gemini-api-key:latest,PUBLIC_DATA_API_KEY=medbuddy-public-data-api-key:latest" \
-            --command python \
-            --args=-m,scripts.sync_drug_catalog,--dataset,all,--page-size,500 \
-            --max-retries 1 \
-            --task-timeout 60m
-
-      - name: Seed the local drug catalog
-        shell: bash
-        run: |
-          set -euo pipefail
-          gcloud run jobs execute "${CATALOG_SYNC_JOB}" \
-            --project "${PROJECT_ID}" \
-            --region "${REGION}" \
-            --wait
+            --remove-tags "${CANDIDATE_TAG}"

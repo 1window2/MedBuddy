@@ -33,7 +33,7 @@ void main() {
         efficacy: 'effect',
         usageMethod: 'usage',
         warning: 'warning',
-        imageUrl: 'https://example.com/medicine.jpg',
+        imageUrl: 'https://nedrug.mfds.go.kr/medicine.jpg',
       ),
       medicationSchedule: const MedicationSchedule(
         medicationName: 'test-tablet',
@@ -51,7 +51,7 @@ void main() {
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');
-    expect(requestBody['image_url'], 'https://example.com/medicine.jpg');
+    expect(requestBody['image_url'], 'https://nedrug.mfds.go.kr/medicine.jpg');
   });
 
   test('사용자가 수정한 OCR 약명을 저장 이름으로 우선한다', () async {
@@ -133,7 +133,7 @@ void main() {
                 'dosage_per_time': '1 tablet',
                 'daily_frequency': '3 times',
                 'total_days': '7 days',
-                'image_url': 'https://example.com/medicine.jpg',
+                'image_url': 'https://nedrug.mfds.go.kr/medicine.jpg',
                 'ai_guide': 'guide',
               },
             ],
@@ -154,7 +154,10 @@ void main() {
       expect(medications.first.patientHash, 'patient-a');
       expect(medications.first.itemSeq, '200000001');
       expect(medications.first.dosagePerTime, '1 tablet');
-      expect(medications.first.imageUrl, 'https://example.com/medicine.jpg');
+      expect(
+        medications.first.imageUrl,
+        'https://nedrug.mfds.go.kr/medicine.jpg',
+      );
     },
   );
 

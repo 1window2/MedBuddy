@@ -37,10 +37,16 @@ class AuthConfig {
   static const String localUserHash = String.fromEnvironment(
     'MEDBUDDY_LOCAL_USER_HASH',
   );
+  static const bool phoneAuthenticationEnabled = bool.fromEnvironment(
+    'MEDBUDDY_PHONE_AUTH_ENABLED',
+    defaultValue: false,
+  );
 
   static void validate() {
-    if (kReleaseMode && mode != AuthenticationMode.firebase) {
-      throw StateError('Release builds require MEDBUDDY_AUTH_MODE=firebase.');
+    if ((kReleaseMode || kProfileMode) && mode != AuthenticationMode.firebase) {
+      throw StateError(
+        'Release and profile builds require MEDBUDDY_AUTH_MODE=firebase.',
+      );
     }
     if (mode != AuthenticationMode.firebase) {
       return;

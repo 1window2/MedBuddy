@@ -323,6 +323,11 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     AnalyzedMedication analyzedMedication,
     int medicationIndex,
   ) async {
+    if (_savingMedicationIndex != null || _isAllMedicationSaving) {
+      _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
+      _notifyViewModelListeners();
+      return false;
+    }
     if (_completedMedicationSaveIndexes.contains(medicationIndex)) {
       _statusMessage = '이미 추가된 약입니다.';
       _notifyViewModelListeners();
@@ -348,6 +353,11 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   }
 
   Future<bool> requestAllAnalyzedMedicationSave() async {
+    if (_savingMedicationIndex != null || _isAllMedicationSaving) {
+      _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
+      _notifyViewModelListeners();
+      return false;
+    }
     if (_analyzedMedicationList.isEmpty) {
       _statusMessage = '저장할 분석 결과가 없습니다.';
       _notifyViewModelListeners();
@@ -562,6 +572,14 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   }
 
   List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
+    if (schedule.scheduleSlotKeys.isNotEmpty) {
+      return schedule.slotKeys;
+    }
+    if (schedule.dailyFrequencyCount > 0) {
+      return medicationScheduleSlotKeysForFrequency(
+        schedule.dailyFrequencyCount,
+      );
+    }
     if (schedule.slotStatuses.isNotEmpty) {
       final slotKeys = medicationScheduleSlotKeys
           .where((slotKey) => schedule.slotStatuses.containsKey(slotKey))

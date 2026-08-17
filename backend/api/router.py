@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_authenticated_principal,
+    verify_app_check_token,
     get_registered_principal,
     get_authorization_control,
     get_check_medication_detail,
@@ -34,6 +35,9 @@ from boundaries.pill_identification_boundary import (
     PillImageQualityError,
     PillVisionResponseError,
     PillVisionUnavailableError,
+)
+from boundaries.prescription_ocr_boundary import (
+    PrescriptionPreprocessingCapacityError,
 )
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
@@ -77,11 +81,15 @@ from schemas.prescription_change import (
     PrescriptionChangeResponse,
 )
 
-router = APIRouter(dependencies=[Depends(get_registered_principal)])
+_authenticated_app_dependencies = [
+    Depends(verify_app_check_token),
+    Depends(get_registered_principal),
+]
+router = APIRouter(dependencies=_authenticated_app_dependencies)
 auth_router = APIRouter(
     prefix="/api/v1/auth",
     tags=["Authentication"],
-    dependencies=[Depends(get_registered_principal)],
+    dependencies=_authenticated_app_dependencies,
 )
 logger = logging.getLogger(__name__)
 
@@ -275,7 +283,7 @@ def save_medication(
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
-async def get_saved_medications(
+def get_saved_medications(
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -287,8 +295,8 @@ async def get_saved_medications(
             patient_hash,
             allow_caregiver=True,
         )
-        return await check_saved_medication.requestSavedMedicationInfoWithImages(
-            authorized_patient_hash,
+        return check_saved_medication.requestSavedMedicationInfo(
+            authorized_patient_hash
         )
     except HTTPException:
         raise
@@ -742,7 +750,7 @@ def get_patient_caregiver_links(
     "/guardian/medications/{patient_hash}",
     include_in_schema=False,
 )
-async def get_caregiver_patient_medication_info(
+def get_caregiver_patient_medication_info(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
@@ -761,7 +769,7 @@ async def get_caregiver_patient_medication_info(
         principal,
         patient_hash,
     )
-    return await check_caregiver_medication.requestPatientMedicationInfo(
+    return check_caregiver_medication.requestPatientMedicationInfo(
         requesting_caregiver_hash,
         authorized_patient_hash,
     )
@@ -1010,11 +1018,16 @@ async def upload_and_parse_prescription(
         get_input_prescription
     ),
 ) -> dict[str, object]:
+    content_type = (file.content_type or "").strip().casefold()
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail="Prescription uploads must use an image content type.",
+        )
     try:
         image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
         logger.info(
-            "Prescription image upload received: content_type=%s, bytes=%d",
-            file.content_type,
+            "Prescription image upload received: bytes=%d",
             len(image_bytes),
         )
         return await input_prescription.requestPrescriptionImage(
@@ -1023,6 +1036,13 @@ async def upload_and_parse_prescription(
     except PrescriptionAnalysisTimeoutError as exc:
         logger.warning("Prescription OCR request timed out.")
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except PrescriptionPreprocessingCapacityError as exc:
+        logger.warning("Prescription preprocessing capacity is occupied.")
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "1"},
+        ) from exc
     except ValueError as exc:
         logger.warning("Prescription image upload rejected: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

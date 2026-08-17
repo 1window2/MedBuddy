@@ -1,6 +1,8 @@
 // 파일명: medication_schedule_entity.dart
 // 역할: 처방전 OCR 결과와 저장된 오늘 복약 일정 정보를 표현하는 모델을 정의한다.
 
+import 'medication_image_url_entity.dart';
+
 const List<String> medicationScheduleSlotKeys = [
   'morning',
   'lunch',
@@ -111,7 +113,7 @@ class MedicationSchedule {
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['use_method'] ?? json['usage_method']),
       warning: _readString(json['warning_message'] ?? json['warning']),
-      imageUrl: _readString(
+      imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
       rawMedicationName: _readString(
@@ -173,7 +175,7 @@ class MedicationSchedule {
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['use_method'] ?? json['usage_method']),
       warning: _readString(json['warning_message'] ?? json['warning']),
-      imageUrl: _readString(
+      imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
       rawMedicationName: _readString(
@@ -280,7 +282,7 @@ class MedicationSchedule {
       'efficacy': efficacy ?? '',
       'use_method': usageMethod ?? '',
       'warning_message': warning ?? '',
-      'image_url': imageUrl ?? '',
+      'image_url': safeMedicationImageUrl(imageUrl),
       'raw_drug_name': rawMedicationName,
       'name_confidence': nameConfidence,
       'name_correction_source': nameCorrectionSource,

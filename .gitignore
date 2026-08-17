@@ -60,3 +60,4 @@ frontend/ios/Flutter/ephemeral/
 # Outputs
 *.apk
 *.aab
+backend/.env.self-hosted

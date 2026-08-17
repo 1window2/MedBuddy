@@ -15,10 +15,14 @@ from services.medication_course_policy import (
     MAX_DAILY_FREQUENCY,
     MAX_MEDICATION_COURSE_DAYS,
     MedicationCoursePolicy,
+    _FREQUENCY_COUNT_PATTERN,
 )
 
 
 class MedicationCoursePolicyTest(unittest.TestCase):
+    def test_frequency_pattern_does_not_restart_inside_digit_runs(self) -> None:
+        self.assertTrue(_FREQUENCY_COUNT_PATTERN.pattern.startswith(r"(?<!\d)"))
+
     def setUp(self) -> None:
         self.policy = MedicationCoursePolicy()
 

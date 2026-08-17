@@ -97,6 +97,17 @@ def test_split_parenthesized_text_ignores_oversized_parentheses() -> None:
     assert parenthesized_candidates == []
 
 
+def test_split_parenthesized_text_preserves_nested_groups() -> None:
+    normalizer = _MedicationTextNormalizer()
+
+    outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
+        "Drug((ingredient)) 20mg"
+    )
+
+    assert outside_text == "Drug 20mg"
+    assert parenthesized_candidates == ["(ingredient)"]
+
+
 def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     normalizer = _MedicationTextNormalizer()
 
@@ -126,6 +137,17 @@ def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
 
     assert "대웅바이오클래리트로마이신" in search_keywords
     assert "클래리트로마이신" in search_keywords
+
+
+def test_build_search_keywords_caps_parenthesized_request_amplification() -> None:
+    normalizer = _MedicationTextNormalizer()
+    crafted_name = "drug" + "".join(
+        f"({chr(codepoint)})" for codepoint in range(ord("a"), ord("z") + 1)
+    )
+
+    search_keywords = normalizer.build_search_keywords(crafted_name)
+
+    assert len(search_keywords) <= 24
 
 
 def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:

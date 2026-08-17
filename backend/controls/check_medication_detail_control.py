@@ -49,6 +49,7 @@ def _read_text(value: Any, default: str = "정보 없음") -> str:
 #   - Normalize OCR or UI-provided medication text.
 #   - Strip dosage and dosage-form suffixes from search keywords.
 class _MedicationTextNormalizer:
+    MAX_SEARCH_KEYWORDS = 24
     _DOSAGE_PATTERN = re.compile(
         r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
         flags=re.IGNORECASE,
@@ -141,28 +142,42 @@ class _MedicationTextNormalizer:
         for candidate in raw_candidates:
             search_keywords.extend(self._candidate_variants(candidate))
 
-        return self._deduplicate_keywords(search_keywords)
+        return self._deduplicate_keywords(search_keywords)[
+            : self.MAX_SEARCH_KEYWORDS
+        ]
 
     def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
         outside_chars: list[str] = []
         parenthesized_candidates: list[str] = []
-        cursor = 0
-        while cursor < len(normalized_text):
-            if normalized_text[cursor] != "(":
-                outside_chars.append(normalized_text[cursor])
-                cursor += 1
+        parenthesized_chars: list[str] | None = None
+        parenthesis_depth = 0
+        for character in normalized_text:
+            if parenthesized_chars is None:
+                if character == "(":
+                    parenthesized_chars = []
+                    parenthesis_depth = 1
+                else:
+                    outside_chars.append(character)
                 continue
-
-            closing_index = normalized_text.find(")", cursor + 1)
-            if closing_index == -1:
-                outside_chars.append(normalized_text[cursor])
-                cursor += 1
+            if character == "(":
+                parenthesis_depth += 1
+                parenthesized_chars.append(character)
                 continue
+            if character == ")":
+                parenthesis_depth -= 1
+                if parenthesis_depth > 0:
+                    parenthesized_chars.append(character)
+                    continue
+                inner_text = "".join(parenthesized_chars).strip()
+                if 1 <= len(inner_text) <= 80:
+                    parenthesized_candidates.append(inner_text)
+                parenthesized_chars = None
+                continue
+            parenthesized_chars.append(character)
 
-            inner_text = normalized_text[cursor + 1 : closing_index].strip()
-            if 1 <= len(inner_text) <= 80:
-                parenthesized_candidates.append(inner_text)
-            cursor = closing_index + 1
+        if parenthesized_chars is not None:
+            outside_chars.append("(")
+            outside_chars.extend(parenthesized_chars)
 
         return self.normalize_raw_text("".join(outside_chars)), parenthesized_candidates
 

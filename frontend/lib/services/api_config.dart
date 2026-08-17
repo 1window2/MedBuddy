@@ -40,12 +40,89 @@ class ApiConfig {
   }
 
   static void validate() {
-    final uri = Uri.tryParse(baseUrl);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    validateUrl(baseUrl, requirePublicHttps: kReleaseMode || kProfileMode);
+  }
+
+  // 함수명: validateUrl
+  // 역할:
+  // - API URL의 계약 경로와 기본 네트워크 안전 조건을 검증한다.
+  // - 릴리스 및 프로필 모드에서는 공인 HTTPS 호스트만 허용한다.
+  // 매개변수:
+  // - value: 검증할 API 기본 URL
+  // - requirePublicHttps: 공인 HTTPS 엔드포인트를 강제할지 여부
+  // 반환값:
+  // - 없음. 조건을 충족하지 않으면 StateError를 발생시킨다.
+  static void validateUrl(String value, {required bool requirePublicHttps}) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null ||
+        !uri.hasScheme ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.path != '/api/v1/medication' ||
+        uri.hasQuery ||
+        uri.hasFragment) {
       throw StateError('MEDBUDDY_API_BASE_URL is invalid.');
     }
-    if (kReleaseMode && uri.scheme != 'https') {
-      throw StateError('Release builds require an HTTPS backend URL.');
+    if (!requirePublicHttps) {
+      return;
     }
+    if (uri.scheme.toLowerCase() != 'https' ||
+        (uri.hasPort && uri.port != 443)) {
+      throw StateError(
+        'Release and profile builds require an HTTPS backend URL.',
+      );
+    }
+    if (_isPrivateOrLocalHost(uri.host)) {
+      throw StateError(
+        'Release and profile builds require a public backend host.',
+      );
+    }
+  }
+
+  static bool _isPrivateOrLocalHost(String rawHost) {
+    final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+    if (host == 'localhost' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.local') ||
+        host.endsWith('.internal')) {
+      return true;
+    }
+
+    final ipv4Parts = host.split('.');
+    if (ipv4Parts.length == 4) {
+      final octets = ipv4Parts.map(int.tryParse).toList(growable: false);
+      if (octets.every(
+        (octet) => octet != null && octet >= 0 && octet <= 255,
+      )) {
+        final first = octets[0]!;
+        final second = octets[1]!;
+        return first == 0 ||
+            first == 10 ||
+            first == 127 ||
+            (first == 100 && second >= 64 && second <= 127) ||
+            (first == 169 && second == 254) ||
+            (first == 172 && second >= 16 && second <= 31) ||
+            (first == 192 && (second == 0 || second == 168)) ||
+            (first == 198 && (second == 18 || second == 19)) ||
+            (first == 198 && second == 51 && octets[2] == 100) ||
+            (first == 203 && second == 0 && octets[2] == 113) ||
+            first >= 224;
+      }
+    }
+
+    final compactIpv6 = host.replaceAll('[', '').replaceAll(']', '');
+    return compactIpv6 == '::' ||
+        compactIpv6 == '::1' ||
+        compactIpv6.startsWith('fc') ||
+        compactIpv6.startsWith('fd') ||
+        RegExp(r'^fe[89ab]').hasMatch(compactIpv6) ||
+        RegExp(r'^fe[c-f]').hasMatch(compactIpv6) ||
+        compactIpv6.startsWith('ff') ||
+        compactIpv6.startsWith('2001:db8:') ||
+        compactIpv6.startsWith('::ffff:10.') ||
+        compactIpv6.startsWith('::ffff:127.') ||
+        compactIpv6.startsWith('::ffff:169.254.') ||
+        RegExp(r'^::ffff:172\.(1[6-9]|2\d|3[01])\.').hasMatch(compactIpv6) ||
+        compactIpv6.startsWith('::ffff:192.168.');
   }
 }

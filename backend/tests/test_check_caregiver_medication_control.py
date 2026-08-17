@@ -1,4 +1,3 @@
-import asyncio
 import sys
 import unittest
 from datetime import date
@@ -73,11 +72,9 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
         self._link("caregiver-a", "patient-a")
         self._link("caregiver-a", "patient-b")
 
-        response = asyncio.run(
-            self.control.requestPatientMedicationInfo(
-                "caregiver-a",
-                "patient-b",
-            )
+        response = self.control.requestPatientMedicationInfo(
+            "caregiver-a",
+            "patient-b",
         )
 
         self.assertTrue(response["success"])
@@ -99,11 +96,9 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
         self._link("caregiver-a", "patient-a")
 
         with self.assertRaises(HTTPException) as context:
-            asyncio.run(
-                self.control.requestPatientMedicationInfo(
-                    "caregiver-a",
-                    "patient-b",
-                )
+            self.control.requestPatientMedicationInfo(
+                "caregiver-a",
+                "patient-b",
             )
 
         self.assertEqual(context.exception.status_code, 404)

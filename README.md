@@ -36,7 +36,7 @@
 
 - Users can provide a front photo and an optional reverse-side photo of one loose pill.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
-- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog, cached in the isolated `backend/pill_identification_catalog.db` reference store with completeness checks and stale-cache fallback.
+- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
 - This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
 
@@ -83,9 +83,10 @@
 
 ## Roadmap
 
-1. **Android beta verification:** Provision the accepted Firebase/Cloud Run/
-   Cloud SQL topology, validate backup and restore, and complete signed
-   two-device authentication and authorization smoke tests.
+1. **Android beta verification:** Run the self-hosted FastAPI/PostgreSQL/Redis
+   topology behind public HTTPS, validate backup and restore, and complete
+   signed two-device authentication, authorization, Wi-Fi, and cellular smoke
+   tests.
 2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
@@ -148,7 +149,7 @@ Contribution rules for preserving the UML-aligned structure are documented in
 - A running Android emulator or physical Android device
 - Gemini API key
 - Korean public data portal API key for the drug APIs
-- Redis server, optional for faster repeated drug lookups
+- Redis server, optional for local cache and rate-limit testing; required for distributed production quotas
 - Optional local medication catalog database at `backend/medbuddy.db`
 
 ### Backend Setup
@@ -190,7 +191,7 @@ loose-pill flow still requires the MFDS identification catalog.
 Start the API server:
 
 ```powershell
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 API documentation is available at:
@@ -199,11 +200,16 @@ API documentation is available at:
 http://127.0.0.1:8000/docs
 ```
 
-Use `0.0.0.0` when testing with an Android emulator, because the Flutter app reaches the host machine through `10.0.2.2`.
+The Android emulator reaches this loopback-only service through `10.0.2.2`.
+Do not bind the unauthenticated development configuration to every interface.
+
+For the production-like Docker Compose stack, temporary Tailscale Funnel, and
+direct-router HTTPS setup, see
+[MedBuddy Self-Hosted Beta Backend](docs/Self%20Hosted%20Beta%20Backend.md).
 
 ### Optional Local Drug Catalog
 
-If a local medication catalog database exists at `backend/medbuddy.db`, the backend uses it before Redis and public API fallback. Generated `.db` files are intentionally ignored by Git.
+Local development stores medication and pill-reference catalog rows in `backend/medbuddy.db`; the backend uses those records before Redis and public API fallback. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
 
 Build or refresh the optional local medication catalog from the public drug APIs:
 
@@ -236,7 +242,12 @@ http://10.0.2.2:8000/api/v1/medication
 
 For a physical Android device on the same trusted network, replace the example
 host with your development machine's LAN IP address. Supply the backend URL when
-building or launching the app:
+building or launching the app. This requires an explicit trusted-LAN backend
+binding and must use synthetic data only:
+
+```powershell
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
 ```powershell
 flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
@@ -262,11 +273,12 @@ flutter run -d "[your-device-id]" `
   --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
   --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
   --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
-  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id
+  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id `
+  --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
 ```
 
-Release builds reject disabled authentication and non-HTTPS backend URLs at
-runtime. Production deployment and signing variables are documented in
+Release builds reject disabled authentication, non-HTTPS URLs, localhost, and
+private-network backend addresses at runtime. Production deployment and signing variables are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
 
 ## Contributing

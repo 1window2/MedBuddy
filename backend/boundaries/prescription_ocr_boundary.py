@@ -2,7 +2,9 @@
 # 역할: 처방전 이미지 전처리와 Gemini OCR 요청 경계를 정의한다.
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
+import threading
 import time
 from typing import Any
 
@@ -12,6 +14,20 @@ from google.genai import types
 from utils.image_processing import preprocess_prescription_image
 
 logger = logging.getLogger(__name__)
+
+_PRESCRIPTION_PREPROCESSING_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="medbuddy-prescription-preprocess",
+)
+_PRESCRIPTION_PREPROCESSING_ADMISSION = threading.BoundedSemaphore(value=1)
+
+
+# Class Name: PrescriptionPreprocessingCapacityError
+# Role: Signals that the bounded prescription preprocessing worker is occupied.
+# Responsibilities:
+#   - Reject excess work before encoded image buffers enter an executor queue.
+class PrescriptionPreprocessingCapacityError(RuntimeError):
+    pass
 
 
 # 클래스명: PrescriptionImageProcessor
@@ -153,11 +169,23 @@ class OCRServiceBoundary:
     # 반환값:
     # - 구조화된 처방 정보 JSON 문자열
     async def extractPrescriptionData(self, image: bytes) -> str:
+        if not _PRESCRIPTION_PREPROCESSING_ADMISSION.acquire(blocking=False):
+            raise PrescriptionPreprocessingCapacityError(
+                "Prescription image preprocessing is temporarily busy."
+            )
         preprocessing_started_at = time.perf_counter()
-        processed_image = await asyncio.to_thread(
-            self.prescription_image_processor.preprocess_prescription_image,
-            image,
+        try:
+            preprocessing_future = _PRESCRIPTION_PREPROCESSING_EXECUTOR.submit(
+                self.prescription_image_processor.preprocess_prescription_image,
+                image,
+            )
+        except Exception:
+            _PRESCRIPTION_PREPROCESSING_ADMISSION.release()
+            raise
+        preprocessing_future.add_done_callback(
+            lambda _future: _PRESCRIPTION_PREPROCESSING_ADMISSION.release()
         )
+        processed_image = await asyncio.wrap_future(preprocessing_future)
         preprocessing_seconds = time.perf_counter() - preprocessing_started_at
         extraction_started_at = time.perf_counter()
         try:
@@ -175,10 +203,8 @@ class OCRServiceBoundary:
             raise TimeoutError("Prescription OCR service timed out.") from exc
 
         logger.info(
-            "Prescription OCR completed: model=%s, input_bytes=%d, "
-            "processed_bytes=%d, preprocessing_seconds=%.2f, "
-            "extraction_seconds=%.2f",
-            self.model_name,
+            "Prescription OCR completed: input_bytes=%d, processed_bytes=%d, "
+            "preprocessing_seconds=%.2f, extraction_seconds=%.2f",
             len(image),
             len(processed_image),
             preprocessing_seconds,
@@ -212,9 +238,8 @@ class OCRServiceBoundary:
         except TimeoutError as exc:
             raise TimeoutError("Prescription OCR text service timed out.") from exc
         logger.info(
-            "De-identified prescription text analysis completed: model=%s, "
+            "De-identified prescription text analysis completed: "
             "input_characters=%d, extraction_seconds=%.2f",
-            self.model_name,
             len(normalized_text),
             time.perf_counter() - extraction_started_at,
         )

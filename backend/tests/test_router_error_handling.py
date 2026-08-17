@@ -24,6 +24,9 @@ from boundaries.pill_identification_boundary import (  # noqa: E402
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
+from boundaries.prescription_ocr_boundary import (  # noqa: E402
+    PrescriptionPreprocessingCapacityError,
+)
 from controls.input_prescription_control import (  # noqa: E402
     MAX_PRESCRIPTION_IMAGE_BYTES,
     PrescriptionAnalysisTimeoutError,
@@ -39,7 +42,7 @@ _DEVELOPMENT_AUTHORIZATION = AuthorizationControl(db=None)  # type: ignore[arg-t
 
 
 class _MissingSavedMedicationControl:
-    async def requestSavedMedicationInfoWithImages(
+    def requestSavedMedicationInfo(
         self,
         patient_hash: str | None,
     ) -> dict[str, object]:
@@ -55,7 +58,7 @@ class _MissingScheduleControl:
 
 
 class _FailingSavedMedicationControl:
-    async def requestSavedMedicationInfoWithImages(
+    def requestSavedMedicationInfo(
         self,
         patient_hash: str | None,
     ) -> dict[str, object]:
@@ -74,6 +77,11 @@ class _RecordingUploadFile:
         return b"image"
 
 
+class _NonImageUploadFile(_RecordingUploadFile):
+    filename = "prescription.pdf"
+    content_type = "application/pdf"
+
+
 class _RecordingInputPrescription:
     async def requestPrescriptionImage(
         self,
@@ -88,6 +96,16 @@ class _TimedOutInputPrescription:
         image_bytes: bytes,
     ) -> dict[str, object]:
         raise PrescriptionAnalysisTimeoutError("OCR request timed out.")
+
+
+class _CapacityLimitedInputPrescription:
+    async def requestPrescriptionImage(
+        self,
+        image_bytes: bytes,
+    ) -> dict[str, object]:
+        raise PrescriptionPreprocessingCapacityError(
+            "Prescription image preprocessing is temporarily busy."
+        )
 
 
 class _RecordingPillIdentificationControl:
@@ -105,9 +123,9 @@ class _RecordingPillIdentificationControl:
 
 
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
-    async def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
+    def test_saved_medication_lookup_preserves_control_http_error(self) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 patient_hash="patient-missing",
                 principal=_DEVELOPMENT_PRINCIPAL,
                 authorization=_DEVELOPMENT_AUTHORIZATION,
@@ -127,11 +145,11 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    async def test_saved_medication_lookup_hides_internal_exception_details(
+    def test_saved_medication_lookup_hides_internal_exception_details(
         self,
     ) -> None:
         with self.assertRaises(HTTPException) as context:
-            await get_saved_medications(
+            get_saved_medications(
                 principal=_DEVELOPMENT_PRINCIPAL,
                 authorization=_DEVELOPMENT_AUTHORIZATION,
                 check_saved_medication=_FailingSavedMedicationControl(),
@@ -157,6 +175,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response["received_bytes"], 5)
         self.assertNotIn(upload_file.filename, "\n".join(captured_logs.output))
+        self.assertNotIn(upload_file.content_type, "\n".join(captured_logs.output))
 
     async def test_prescription_upload_maps_ocr_timeout_to_gateway_timeout(
         self,
@@ -169,6 +188,29 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 504)
         self.assertEqual(context.exception.detail, "OCR request timed out.")
+
+    async def test_prescription_upload_rejects_non_image_content_type_early(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await upload_and_parse_prescription(
+                file=_NonImageUploadFile(),
+                input_prescription=_RecordingInputPrescription(),
+            )
+
+        self.assertEqual(context.exception.status_code, 415)
+
+    async def test_prescription_upload_maps_capacity_to_service_unavailable(
+        self,
+    ) -> None:
+        with self.assertRaises(HTTPException) as context:
+            await upload_and_parse_prescription(
+                file=_RecordingUploadFile(),
+                input_prescription=_CapacityLimitedInputPrescription(),
+            )
+
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(context.exception.headers, {"Retry-After": "1"})
 
     async def test_pill_upload_reads_only_the_validated_size_window(self) -> None:
         upload_file = _RecordingUploadFile()

@@ -2,10 +2,29 @@
 # 역할 : 처방전 이미지를 OCR에 적합한 형태로 전처리하는 유틸리티 함수들을 정의한다.
 
 from io import BytesIO
+import warnings
 
 import cv2
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+MAX_PRESCRIPTION_IMAGE_PIXELS = 24_000_000
+
+
+# Function Name: _validate_prescription_image_dimensions
+# Description:
+# - Rejects malformed or oversized image dimensions from the encoded header.
+# - Runs before Pillow or OpenCV allocate decoded prescription pixel buffers.
+# Parameters:
+# - source: Pillow image opened from the uploaded encoded bytes.
+# Returns:
+# - None when the encoded image dimensions are safe to decode.
+def _validate_prescription_image_dimensions(source: Image.Image) -> None:
+    width, height = source.size
+    if width <= 0 or height <= 0:
+        raise ValueError("Prescription image dimensions are invalid.")
+    if width * height > MAX_PRESCRIPTION_IMAGE_PIXELS:
+        raise ValueError("Prescription image exceeds the 24 megapixel limit.")
 
 # 함수이름: preprocess_prescription_image
 # 함수역할:
@@ -18,10 +37,18 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 def preprocess_prescription_image(image_bytes: bytes) -> bytes:
     # 1단계: EXIF 회전을 실제 픽셀에 반영하고 OpenCV 이미지 배열로 변환한다.
     try:
-        with Image.open(BytesIO(image_bytes)) as source:
-            oriented = ImageOps.exif_transpose(source).convert("RGB")
-            img = cv2.cvtColor(np.asarray(oriented), cv2.COLOR_RGB2BGR)
-    except (OSError, UnidentifiedImageError) as exc:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(image_bytes)) as source:
+                _validate_prescription_image_dimensions(source)
+                oriented = ImageOps.exif_transpose(source).convert("RGB")
+                img = cv2.cvtColor(np.asarray(oriented), cv2.COLOR_RGB2BGR)
+    except (
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+        OSError,
+        UnidentifiedImageError,
+    ) as exc:
         raise ValueError(
             "이미지를 읽을 수 없습니다. 올바른 파일인지 확인해주세요."
         ) from exc

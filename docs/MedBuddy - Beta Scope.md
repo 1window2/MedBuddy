@@ -43,12 +43,14 @@ The following implemented flows are frozen for beta hardening:
 
 Implementation status as of 2026-08-03: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
-on-device prescription OCR and privacy filtering, authenticated FCM token
-management, dose-completion push delivery, persisted per-slot caregiver
+Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
+catalog, on-device prescription OCR and privacy filtering, authenticated FCM
+token management, dose-completion push delivery, persisted per-slot caregiver
 settings, and tested recovery and feedback paths for the medication workflow.
-Cloud resources, protected environment values, scheduled server-side
-missed-deadline delivery, signed physical-device testing, backup/restore, and
-abuse-control validation remain release gates.
+The self-hosted FastAPI/PostgreSQL/Redis stack, public HTTPS ingress, protected
+host secrets, scheduled server-side missed-deadline delivery, signed
+physical-device testing, backup/restore, and operational abuse-control
+validation remain release gates. Historical Google Cloud workflows are disabled.
 
 ### P0: Identity and Transport Security
 
@@ -71,6 +73,10 @@ abuse-control validation remain release gates.
   medication data, and push tokens.
 - Add structured, redacted operational logs, health checks, request tracing,
   timeout metrics, and error-rate monitoring.
+- Run Redis only on the private Compose network and verify that fail-closed
+  quotas remain available during restart and outage tests.
+- Seed and validate the shared PostgreSQL medication and pill-reference catalog
+  before routing traffic to a new API revision.
 - Verify backup and restore procedures before accepting real user data.
 - Complete scheduled server-side delivery for missed-deadline alerts and
   validate dose-completion FCM delivery on two physical devices. Local Android

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_schedule_ui_boundary.dart';
+import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
 import 'controls/authentication_control.dart';
 import 'entities/user_setting_entity.dart';
@@ -289,7 +290,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
               useMaterial3: true,
               fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
             ),
-            home: _authenticationHome(authentication),
+            home: AuthenticationGate(
+              state: authentication,
+              unauthenticatedChild: AuthenticationUI(control: authentication),
+              authenticatedChild: const HomeScreen(),
+            ),
           );
           if (session == null) {
             return application;
@@ -308,15 +313,5 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         },
       ),
     );
-  }
-
-  Widget _authenticationHome(AuthenticationControl authentication) {
-    if (authentication.isInitializing) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (authentication.session == null) {
-      return AuthenticationUI(control: authentication);
-    }
-    return const HomeScreen();
   }
 }

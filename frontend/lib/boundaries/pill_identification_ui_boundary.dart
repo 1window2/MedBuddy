@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../controls/identify_pill_control.dart';
 import '../entities/pill_identification_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -772,6 +773,7 @@ class _CandidateImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final normalizedUrl = safeMedicationImageUrl(url);
     const placeholder = ColoredBox(
       color: MedBuddyColors.surfaceSubtle,
       child: Center(
@@ -782,10 +784,10 @@ class _CandidateImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: SizedBox.square(
         dimension: 76,
-        child: url.isEmpty
+        child: normalizedUrl.isEmpty
             ? placeholder
             : Image.network(
-                url,
+                normalizedUrl,
                 fit: BoxFit.contain,
                 cacheWidth: 228,
                 cacheHeight: 228,

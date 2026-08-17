@@ -15,6 +15,9 @@ concurrency:
 
 jobs:
   cleanup:
+    # Disabled while the beta backend is self-hosted. Periodic maintenance runs
+    # inside FastAPI and must not execute a billable Cloud Run job.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: beta-backend
     steps:

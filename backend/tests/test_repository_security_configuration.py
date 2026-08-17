@@ -1,0 +1,51 @@
+# File Name: test_repository_security_configuration.py
+# Role: Guards security-sensitive repository and development defaults.
+
+from pathlib import Path
+
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+# Function Name: test_direct_backend_entrypoint_binds_to_loopback
+# Description:
+# - Prevents the convenience Python entrypoint from exposing the alpha API on
+#   every network interface by default.
+# Returns:
+# - None; pytest reports a failure when the safe default regresses.
+def test_direct_backend_entrypoint_binds_to_loopback() -> None:
+    main_source = (_REPOSITORY_ROOT / "backend" / "main.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'host="127.0.0.1"' in main_source
+
+
+# Function Name: test_pull_request_ci_does_not_inject_repository_api_secrets
+# Description:
+# - Ensures pull-request-controlled code receives deterministic fake keys, not
+#   repository API secrets.
+# Returns:
+# - None; pytest reports a failure when a secret expression is reintroduced.
+def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
+    workflow = (
+        _REPOSITORY_ROOT / ".github" / "workflows" / "backend-ci.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "secrets.GEMINI_API_KEY" not in workflow
+    assert "secrets.PUBLIC_DATA_API_KEY" not in workflow
+    assert workflow.count("test-key-for-ci") >= 4
+
+
+# Function Name: test_issue_templates_forbid_real_medical_data
+# Description:
+# - Keeps public bug intake from soliciting prescription images, personal
+#   medical text, identifiers, credentials, or raw logs.
+# Returns:
+# - None; pytest reports a failure when the privacy warning is absent.
+def test_issue_templates_forbid_real_medical_data() -> None:
+    template_directory = _REPOSITORY_ROOT / ".github" / "ISSUE_TEMPLATE"
+    for filename in ("ai---ocr-data-issue.md", "bug-report.md"):
+        template = (template_directory / filename).read_text(encoding="utf-8")
+        assert "Do not attach real medical or personal data" in template
+        assert "SECURITY.md" in template
