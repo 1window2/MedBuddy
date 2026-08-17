@@ -314,6 +314,47 @@ void main() {
     expect(daysField.controller?.text, '1234');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('직접 입력한 조제일자도 달력과 같은 허용 범위를 검증한다', (tester) async {
+    await _setViewport(tester, const Size(376, 856));
+    MedicationSchedule? updatedSchedule;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: const [
+            MedicationSchedule(
+              medicationName: '테스트정',
+              dosage: '1정',
+              intakeTime: '1일 1회',
+              medicationTime: 3,
+            ),
+          ],
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () {},
+          onMedicationScheduleChanged: (_, schedule) {
+            updatedSchedule = schedule;
+          },
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
+    await tester.tap(find.byKey(const Key('ocr-edit-0')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('ocr-edit-prescription-date')),
+      '1999-12-31',
+    );
+    final saveButton = find.byKey(const Key('ocr-edit-save'));
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(updatedSchedule, isNull);
+    expect(find.text('2000-01-01부터 오늘 기준 1년 이내 날짜를 입력해주세요.'), findsOneWidget);
+  });
 }
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {

@@ -451,24 +451,42 @@ class _MedicationScheduleEditDialogState
 
   // 함수명: _validatePrescriptionDate
   // 역할:
-  // - 조제일자가 실제 달력에 존재하는 YYYY-MM-DD 형식인지 확인한다.
+  // - 조제일자가 실제 달력에 존재하고 허용 범위 안의 날짜인지 확인한다.
   String? _validatePrescriptionDate(String? value) {
-    return _parseDate(value?.trim() ?? '') == null
-        ? widget.previewText.invalidPrescriptionDate
-        : null;
+    final parsedDate = _parseDate(value?.trim() ?? '');
+    if (parsedDate == null) {
+      return widget.previewText.invalidPrescriptionDate;
+    }
+    if (parsedDate.isBefore(_minimumPrescriptionDate) ||
+        parsedDate.isAfter(_maximumPrescriptionDate)) {
+      return widget.previewText.prescriptionDateOutOfRange;
+    }
+    return null;
+  }
+
+  DateTime get _minimumPrescriptionDate => DateTime(2000);
+
+  DateTime get _maximumPrescriptionDate {
+    final maximumDate = DateTime.now().add(const Duration(days: 365));
+    return DateTime(maximumDate.year, maximumDate.month, maximumDate.day);
   }
 
   // 함수명: _selectPrescriptionDate
   // 역할:
   // - 달력에서 조제일자를 선택하고 직접 입력 필드에 반영한다.
   Future<void> _selectPrescriptionDate() async {
-    final initialDate =
+    final parsedInitialDate =
         _parseDate(_prescriptionDateController.text.trim()) ?? DateTime.now();
+    final initialDate = parsedInitialDate.isBefore(_minimumPrescriptionDate)
+        ? _minimumPrescriptionDate
+        : parsedInitialDate.isAfter(_maximumPrescriptionDate)
+        ? _maximumPrescriptionDate
+        : parsedInitialDate;
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: _minimumPrescriptionDate,
+      lastDate: _maximumPrescriptionDate,
     );
     if (!mounted || selectedDate == null) {
       return;
@@ -620,6 +638,9 @@ class _PreviewText {
   String get invalidPrescriptionDate => isEnglish
       ? 'Enter a valid date as YYYY-MM-DD.'
       : '올바른 날짜를 YYYY-MM-DD 형식으로 입력해주세요.';
+  String get prescriptionDateOutOfRange => isEnglish
+      ? 'Enter a date from 2000-01-01 through one year from today.'
+      : '2000-01-01부터 오늘 기준 1년 이내 날짜를 입력해주세요.';
   String get scheduleSlots => isEnglish ? 'Medication times' : '실제 복약 시간대';
   String get scheduleSlotRequired => isEnglish
       ? 'Select at least one medication time.'

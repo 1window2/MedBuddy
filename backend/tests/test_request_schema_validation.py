@@ -2,9 +2,11 @@
 # 역할: 비정상적으로 크거나 범위를 벗어난 API 요청이 경계에서 거절되는지 검증한다.
 
 import unittest
+from datetime import date, timedelta
 
 from pydantic import ValidationError
 
+from core.application_clock import application_today
 from schemas.medication import (
     MedicationAlarmUpdate,
     MedicationRequest,
@@ -68,6 +70,35 @@ class RequestSchemaValidationTest(unittest.TestCase):
                 use_method="",
                 warning_message="",
             )
+
+    def test_prescription_date_outside_supported_range_is_rejected(self) -> None:
+        common_fields = {
+            "item_name": "테스트정",
+            "efficacy": "",
+            "use_method": "",
+            "warning_message": "",
+        }
+
+        with self.assertRaises(ValidationError):
+            SavedMedicationCreate(
+                prescription_date=date(1999, 12, 31),
+                **common_fields,
+            )
+
+        with self.assertRaises(ValidationError):
+            SavedMedicationCreate(
+                prescription_date=application_today() + timedelta(days=366),
+                **common_fields,
+            )
+
+        valid_request = SavedMedicationCreate(
+            prescription_date=application_today() + timedelta(days=365),
+            **common_fields,
+        )
+        self.assertEqual(
+            valid_request.prescription_date,
+            application_today() + timedelta(days=365),
+        )
 
     def test_prescription_change_payload_limits_each_medication(self) -> None:
         with self.assertRaises(ValidationError):

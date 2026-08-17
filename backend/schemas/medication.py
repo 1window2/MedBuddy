@@ -1,11 +1,12 @@
 # File Name: medication.py
 # Role: Defines medication request and response DTOs.
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from core.application_clock import application_today
 from entities.medication_detail_entity import MedicationDetail
 from entities.medication_schedule_entity import (
     normalize_medication_schedule_slot_keys,
@@ -21,6 +22,8 @@ _MAX_DETAIL_TEXT_LENGTH = 20_000
 _MAX_SHORT_TEXT_LENGTH = 100
 _MAX_URL_LENGTH = 2_048
 _MAX_PUSH_TOKEN_LENGTH = 4_096
+_MIN_PRESCRIPTION_DATE = date(2000, 1, 1)
+_MAX_PRESCRIPTION_DATE_OFFSET_DAYS = 365
 
 
 # Class Name: MedicationRequest
@@ -88,6 +91,24 @@ class SavedMedicationCreate(BaseModel):
         if value and not normalized_slot_keys:
             raise ValueError("At least one supported schedule slot is required.")
         return normalized_slot_keys
+
+    # 함수명: validate_prescription_date
+    # 역할:
+    # - 직접 구성한 요청도 화면 달력과 같은 조제일자 범위를 따르도록 검증한다.
+    @field_validator("prescription_date")
+    @classmethod
+    def validate_prescription_date(cls, value: date | None) -> date | None:
+        if value is None:
+            return value
+        maximum_date = application_today() + timedelta(
+            days=_MAX_PRESCRIPTION_DATE_OFFSET_DAYS
+        )
+        if value < _MIN_PRESCRIPTION_DATE or value > maximum_date:
+            raise ValueError(
+                "Prescription date must be between 2000-01-01 and "
+                "one year from today."
+            )
+        return value
 
 
 # Class Name: MedicationStatusUpdate
