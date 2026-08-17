@@ -18,60 +18,76 @@ class _MedicationImageDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
     final imageUrl = safeMedicationImageUrl(medication.imageUrl);
+    final screenSize = MediaQuery.sizeOf(context);
 
     return Dialog(
+      key: const Key('medication-image-dialog'),
       insetPadding: const EdgeInsets.all(28),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    medication.itemName.trim(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 17 * scale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: text.close,
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Padding(
-                    padding: const EdgeInsets.all(28),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: screenSize.height * 0.85,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      text.imageLoadFailed,
-                      textAlign: TextAlign.center,
+                      medication.itemName.trim(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 14 * scale,
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 17 * scale,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: 0,
                       ),
                     ),
-                  );
-                },
+                  ),
+                  IconButton(
+                    tooltip: text.close,
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Flexible(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: InteractiveViewer(
+                    key: const Key('medication-image-viewer'),
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Padding(
+                          padding: const EdgeInsets.all(28),
+                          child: Text(
+                            text.imageLoadFailed,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: MedBuddyColors.textMuted,
+                              fontSize: 14 * scale,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

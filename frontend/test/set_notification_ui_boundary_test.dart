@@ -203,4 +203,46 @@ void main() {
     expect(pickerTheme.brightness, Brightness.light);
     expect(selectedHourText.style?.color, MedBuddyColors.textStrong);
   });
+
+  testWidgets('알림 팝업은 작은 화면과 2배 글자에서도 시간 휠을 스크롤한다', (tester) async {
+    tester.view.physicalSize = const Size(320, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => SetNotificationUI.showNotificationPopup(
+              context,
+              language: 'ko',
+              slotTitle: '취침 전 복약 시간',
+              initialTime: const TimeOfDay(hour: 22, minute: 0),
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('notification-hour-wheel')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

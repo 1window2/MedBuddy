@@ -118,34 +118,42 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF344054), width: 1.6),
-          boxShadow: const [
-            BoxShadow(
-              color: Color.fromRGBO(0, 0, 0, 0.18),
-              blurRadius: 16,
-              offset: Offset(0, 8),
-            ),
-          ],
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 360,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(context),
-            const SizedBox(height: 14),
-            Semantics(
-              label: _isEnglish ? 'Medication reminder time' : '복약 알림 시간',
-              hint: _isEnglish
-                  ? 'Scroll the wheels or tap the selected hour and minute to type.'
-                  : '휠을 돌리거나 선택된 시와 분을 눌러 직접 입력하세요.',
-              child: _buildTimePicker(),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF344054), width: 1.6),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.18),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 14),
+                Semantics(
+                  label: _isEnglish ? 'Medication reminder time' : '복약 알림 시간',
+                  hint: _isEnglish
+                      ? 'Scroll the wheels or tap the selected hour and minute to type.'
+                      : '휠을 돌리거나 선택된 시와 분을 눌러 직접 입력하세요.',
+                  child: _buildTimePicker(),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -177,6 +185,8 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                 ? '${widget.slotTitle} Reminder'
                 : '${widget.slotTitle} 알림',
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 20,
@@ -221,10 +231,8 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
             ),
           ),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                width: 92,
+              Expanded(
                 child: _buildWheel(
                   key: const Key('notification-hour-wheel'),
                   controller: _hourController,
@@ -249,8 +257,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 92,
+              Expanded(
                 child: _buildWheel(
                   key: const Key('notification-minute-wheel'),
                   controller: _minuteController,

@@ -107,6 +107,49 @@ void main() {
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
 
+  testWidgets('약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다', (tester) async {
+    tester.view.physicalSize = const Size(320, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient(_savedMedicationResponse);
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: CheckSavedMedication(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      ),
+      apiClient: client,
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: viewModel,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: const CheckSavedMedicationUI(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final imageButton = find.byKey(const ValueKey('savedMedicationImage-1'));
+    await tester.ensureVisible(imageButton);
+    await tester.pumpAndSettle();
+    await tester.tap(imageButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('medication-image-dialog')), findsOneWidget);
+    expect(find.byKey(const Key('medication-image-viewer')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('group delete reports mixed results instead of full success', (
     tester,
   ) async {

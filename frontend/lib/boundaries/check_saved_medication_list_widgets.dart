@@ -422,6 +422,7 @@ class _MedicationImageButton extends StatelessWidget {
     }
 
     return InkWell(
+      key: ValueKey('savedMedicationImage-${medication.id}'),
       onTap: onPressed,
       borderRadius: BorderRadius.circular(12),
       child: Container(

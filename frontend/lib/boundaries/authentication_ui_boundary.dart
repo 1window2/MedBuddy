@@ -365,67 +365,57 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
   Widget build(BuildContext context) {
     final control = widget.control;
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.sms_outlined,
-                    size: 64,
-                    color: MedBuddyColors.primary,
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Enter verification code',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'A code was sent to '
-                    '${control.smsDestination ?? 'your phone'}.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _codeController,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    autofillHints: const [AutofillHints.oneTimeCode],
-                    maxLength: 6,
-                    decoration: const InputDecoration(
-                      labelText: 'SMS code',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (control.errorMessage != null)
-                    Text(
-                      control.errorMessage!,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: control.isBusy
-                        ? null
-                        : () => control.submitSmsCode(_codeController.text),
-                    child: const Text('Verify'),
-                  ),
-                  TextButton(
-                    onPressed: control.isBusy
-                        ? null
-                        : control.cancelSmsChallenge,
-                    child: const Text('Cancel'),
-                  ),
-                ],
+      body: _ScrollableAuthenticationBody(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.sms_outlined,
+              size: 64,
+              color: MedBuddyColors.primary,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Enter verification code',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'A code was sent to '
+              '${control.smsDestination ?? 'your phone'}.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _codeController,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'SMS code',
+                border: OutlineInputBorder(),
               ),
             ),
-          ),
+            if (control.errorMessage != null)
+              Text(
+                control.errorMessage!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: control.isBusy
+                  ? null
+                  : () => control.submitSmsCode(_codeController.text),
+              child: const Text('Verify'),
+            ),
+            TextButton(
+              onPressed: control.isBusy ? null : control.cancelSmsChallenge,
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
       ),
     );
@@ -440,63 +430,98 @@ class _EmailVerificationView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
+      body: _ScrollableAuthenticationBody(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.mark_email_unread_outlined,
+              size: 64,
+              color: MedBuddyColors.primary,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Verify your email',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'A verification link was sent to '
+              '${control.signedInEmail ?? 'your email address'}.',
+              textAlign: TextAlign.center,
+            ),
+            if (control.errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                control.errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ],
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: control.isBusy
+                  ? null
+                  : control.refreshEmailVerification,
+              child: const Text('I verified my email'),
+            ),
+            TextButton(
+              onPressed: control.isBusy
+                  ? null
+                  : control.resendEmailVerification,
+              child: const Text('Resend verification email'),
+            ),
+            TextButton(
+              onPressed: control.isBusy ? null : control.signOut,
+              child: const Text('Use another account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 클래스명: _ScrollableAuthenticationBody
+// 역할: 키보드와 큰 글씨가 차지하는 공간이 커져도 인증 명령에 접근할 수 있게 한다.
+// 주요 책임:
+// - 인증 내용을 읽기 좋은 최대 너비로 제한한다.
+// - 남은 화면 높이를 채우되 공간이 부족하면 세로 스크롤을 제공한다.
+class _ScrollableAuthenticationBody extends StatelessWidget {
+  final Widget child;
+
+  const _ScrollableAuthenticationBody({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const horizontalPadding = 32.0;
+          const verticalPadding = 24.0;
+          final minimumHeight = constraints.maxHeight > verticalPadding * 2
+              ? constraints.maxHeight - verticalPadding * 2
+              : 0.0;
+
+          return SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.mark_email_unread_outlined,
-                    size: 64,
-                    color: MedBuddyColors.primary,
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Verify your email',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'A verification link was sent to '
-                    '${control.signedInEmail ?? 'your email address'}.',
-                    textAlign: TextAlign.center,
-                  ),
-                  if (control.errorMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      control.errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: control.isBusy
-                        ? null
-                        : control.refreshEmailVerification,
-                    child: const Text('I verified my email'),
-                  ),
-                  TextButton(
-                    onPressed: control.isBusy
-                        ? null
-                        : control.resendEmailVerification,
-                    child: const Text('Resend verification email'),
-                  ),
-                  TextButton(
-                    onPressed: control.isBusy ? null : control.signOut,
-                    child: const Text('Use another account'),
-                  ),
-                ],
+              constraints: BoxConstraints(minHeight: minimumHeight),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: child,
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
