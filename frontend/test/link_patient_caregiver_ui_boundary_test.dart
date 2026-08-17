@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   final List<Completer<List<PatientCaregiverLink>>> linkRequests = [];
@@ -52,6 +53,10 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('link actions stay disabled while one request is in flight', (
     tester,
   ) async {
@@ -213,6 +218,81 @@ void main() {
     expect(currentControl.disposeCount, 1);
   });
 
+  testWidgets('환자 표시 이름 편집을 취소해도 화면이 유지된다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const [
+      PatientCaregiverLink(
+        linkId: 1,
+        patientHash: 'patient-a',
+        caregiverHash: 'caregiver-a',
+        linkStatus: true,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('환자 표시 이름 수정'));
+    await tester.pumpAndSettle();
+    expect(find.text('환자 표시 이름'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '취소'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('환자 표시 이름'), findsNothing);
+    expect(find.text('환자 NT-A'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('환자 표시 이름 저장 결과는 하단에 잠시 안내한다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const [
+      PatientCaregiverLink(
+        linkId: 1,
+        patientHash: 'patient-a',
+        caregiverHash: 'caregiver-a',
+        linkStatus: true,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('총 1개의 연동이 있습니다.'), findsOneWidget);
+    await tester.tap(find.byTooltip('환자 표시 이름 수정'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '어머니');
+    await tester.tap(find.widgetWithText(FilledButton, '저장'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('총 1개의 연동이 있습니다.'), findsOneWidget);
+    expect(find.text('어머니 표시 이름을 저장했습니다.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('어머니 표시 이름을 저장했습니다.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('환자 코드를 검증하고 진행 중인 등록 요청을 중복 전송하지 않는다', (tester) async {
     _useLinkScreenViewport(tester);
     final control = _FakeLinkPatientCaregiver('caregiver-a');
@@ -304,7 +384,63 @@ void main() {
     await tester.tap(find.text('환자 관리 등록'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('연동 화면과 환자 코드 창은 작은 화면과 2배 글자에서도 스크롤된다', (tester) async {
+    tester.view.physicalSize = const Size(320, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final control = _FakeLinkPatientCaregiver('patient-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'patient-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+
+    final generateButton = find.text('환자 코드 생성');
+    await tester.ensureVisible(generateButton);
+    await tester.pumpAndSettle();
+    await tester.tap(generateButton);
+    await tester.pump();
+    control.codeRequests.single.complete(
+      PatientLinkCode(
+        code: 'TEST1234',
+        patientHash: 'patient-a',
+        expiresAt: DateTime.utc(2100),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('TEST1234'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

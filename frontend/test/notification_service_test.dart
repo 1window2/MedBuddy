@@ -40,17 +40,19 @@ class _NoopNotificationService implements NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {}
 
   @override
-  Future<void> cancelReminder(int id) async {}
+  Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
   @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
     required String body,
+    String? patientHash,
   }) async {}
 }
 
@@ -77,21 +79,40 @@ void main() {
   });
 
   test('a selected schedule notification reaches the registered handler', () {
-    final destinations = <MedicationNotificationDestination>[];
-    NotificationService.setNotificationSelectionHandler(destinations.add);
+    final selections = <MedicationNotificationSelection>[];
+    NotificationService.setNotificationSelectionHandler(selections.add);
 
     NotificationService.handleNotificationPayload('schedule:evening:29');
 
-    expect(destinations, [MedicationNotificationDestination.schedule]);
+    expect(
+      selections.single.destination,
+      MedicationNotificationDestination.schedule,
+    );
+    expect(selections.single.patientHash, isNull);
   });
 
   test('a cold-start notification is delivered after handler registration', () {
     NotificationService.handleNotificationPayload('schedule:morning:31');
 
-    final destinations = <MedicationNotificationDestination>[];
-    NotificationService.setNotificationSelectionHandler(destinations.add);
+    final selections = <MedicationNotificationSelection>[];
+    NotificationService.setNotificationSelectionHandler(selections.add);
 
-    expect(destinations, [MedicationNotificationDestination.schedule]);
+    expect(
+      selections.single.destination,
+      MedicationNotificationDestination.schedule,
+    );
+  });
+
+  test('caregiver payload keeps the selected patient hash', () {
+    final selection = NotificationService.selectionFromPayload(
+      'caregiver:patient_test',
+    );
+
+    expect(
+      selection?.destination,
+      MedicationNotificationDestination.caregiverSchedule,
+    );
+    expect(selection?.patientHash, 'patient_test');
   });
 
   testWidgets('the notification selection handler opens the dose screen', (
@@ -118,7 +139,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selectionHandler, isNotNull);
-    selectionHandler!(MedicationNotificationDestination.schedule);
+    selectionHandler!(
+      const MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 

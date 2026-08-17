@@ -172,6 +172,7 @@ class _MutableSetNotification extends SetNotification {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {}
 }
@@ -193,17 +194,19 @@ class _SuccessfulNotificationService implements NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {}
 
   @override
-  Future<void> cancelReminder(int id) async {}
+  Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
   @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
     required String body,
+    String? patientHash,
   }) async {}
 }
 
@@ -222,19 +225,21 @@ class _FailingNotificationService implements NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {
     throw StateError('Notification registration failed.');
   }
 
   @override
-  Future<void> cancelReminder(int id) async {}
+  Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
   @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
     required String body,
+    String? patientHash,
   }) async {}
 }
 

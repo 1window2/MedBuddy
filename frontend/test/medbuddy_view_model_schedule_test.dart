@@ -17,6 +17,19 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('비동기 일정 조회가 끝나기 전에 ViewModel을 폐기해도 예외가 발생하지 않는다', () async {
+    final scheduleCompleter = Completer<List<MedicationSchedule>>();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _DelayedCheckSchedule(scheduleCompleter.future),
+    );
+
+    final loadFuture = viewModel.fetchTodayMedicationSchedule();
+    viewModel.dispose();
+    scheduleCompleter.complete(const <MedicationSchedule>[]);
+
+    await expectLater(loadFuture, completes);
+  });
+
   test('dose status update uses slot-scoped backend status flow', () async {
     var patchCalled = false;
     late Map<String, dynamic> patchBody;
@@ -507,8 +520,64 @@ void main() {
       expect(notificationService.registeredMedicationNames.single, [
         'test-tablet',
       ]);
+      expect(notificationService.registeredActiveDates, hasLength(1));
+      final activeDate =
+          notificationService.registeredActiveDates.single.single;
+      final now = DateTime.now();
+      expect(
+        DateTime(activeDate.year, activeDate.month, activeDate.day),
+        DateTime(now.year, now.month, now.day),
+      );
     },
   );
+
+  test('복약 알림 날짜는 처방된 복용 종료일을 넘지 않는다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = _FakeNotificationService();
+    final client = MockClient((http.Request request) async {
+      if (request.method == 'PUT') {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'slot_key': 'morning',
+            'hour': 8,
+            'minute': 30,
+            'is_enabled': true,
+          },
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final result = await viewModel.requestMedicationReminderSave(
+      slotKey: 'morning',
+      slotTitle: '아침',
+      hour: 8,
+      minute: 30,
+      schedules: [
+        MedicationSchedule(
+          medicationName: '테스트정',
+          prescriptionDate: today,
+          medicationTime: 3,
+        ),
+      ],
+    );
+
+    expect(result, isTrue);
+    expect(notificationService.registeredActiveDates.single, [
+      today,
+      today.add(const Duration(days: 1)),
+      today.add(const Duration(days: 2)),
+    ]);
+  });
 
   test(
     'failed local registration rolls persisted reminder back to disabled',
@@ -589,6 +658,19 @@ void main() {
   );
 }
 
+// 클래스명: _DelayedCheckSchedule
+// 역할: ViewModel 폐기 이후 완료되는 일정 조회를 재현한다.
+class _DelayedCheckSchedule extends CheckSchedule {
+  final Future<List<MedicationSchedule>> responseFuture;
+
+  _DelayedCheckSchedule(this.responseFuture);
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() {
+    return responseFuture;
+  }
+}
+
 http.Response _scheduleResponse({
   required bool morningCompleted,
   bool wrapInList = true,
@@ -640,6 +722,7 @@ class _FakeNotificationService implements NotificationService {
   final List<int> canceledIds = [];
   final List<String> registeredSlotKeys = [];
   final List<List<String>> registeredMedicationNames = [];
+  final List<List<DateTime>> registeredActiveDates = [];
 
   _FakeNotificationService({this.failRegistration = false});
 
@@ -657,17 +740,19 @@ class _FakeNotificationService implements NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {
     registeredSlotKeys.add(slotKey);
     registeredMedicationNames.add(medicationNames);
+    registeredActiveDates.add(activeDates);
     if (failRegistration) {
       throw StateError('Simulated local notification failure.');
     }
   }
 
   @override
-  Future<void> cancelReminder(int id) async {
+  Future<void> cancelReminder(int id, {String? slotKey}) async {
     canceledIds.add(id);
   }
 
@@ -676,5 +761,6 @@ class _FakeNotificationService implements NotificationService {
     required int id,
     required String title,
     required String body,
+    String? patientHash,
   }) async {}
 }

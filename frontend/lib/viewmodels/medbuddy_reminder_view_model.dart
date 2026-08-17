@@ -1,5 +1,7 @@
 part of 'medbuddy_view_model.dart';
 
+const int _maximumReminderDatesPerSlot = 14;
+
 // 파일명: medbuddy_reminder_view_model.dart
 // 역할: 시간대별 복약 알림의 조회, 저장, 취소, 로컬 동기화를 관리한다.
 
@@ -340,12 +342,59 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
           .map((schedule) => schedule.displayName)
           .where((name) => name.trim().isNotEmpty)
           .toList(growable: false),
+      activeDates: _activeReminderDates(schedules),
       language: userSetting.language,
     );
   }
 
+  // 함수명: _activeReminderDates
+  // 함수역할:
+  // - 복용 시작일과 총 투약일을 기준으로 알림을 예약할 날짜를 계산한다.
+  // - 플랫폼의 대기 알림 개수 제한을 고려해 앱 실행 시점부터 최대 14일만 예약한다.
+  List<DateTime> _activeReminderDates(List<MedicationSchedule> schedules) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastReservableDate = today.add(
+      const Duration(days: _maximumReminderDatesPerSlot - 1),
+    );
+    final activeDateKeys = <String, DateTime>{};
+
+    for (final schedule in schedules) {
+      final rawStartDate =
+          schedule.prescriptionDate ?? schedule.createdDate ?? today;
+      final startDate = DateTime(
+        rawStartDate.year,
+        rawStartDate.month,
+        rawStartDate.day,
+      );
+      final courseDays = schedule.medicationTime;
+      final endDate = courseDays > 0
+          ? startDate.add(Duration(days: courseDays - 1))
+          : today;
+      var candidateDate = startDate.isAfter(today) ? startDate : today;
+      final boundedEndDate = endDate.isBefore(lastReservableDate)
+          ? endDate
+          : lastReservableDate;
+
+      while (!candidateDate.isAfter(boundedEndDate)) {
+        final dateKey =
+            '${candidateDate.year.toString().padLeft(4, '0')}-'
+            '${candidateDate.month.toString().padLeft(2, '0')}-'
+            '${candidateDate.day.toString().padLeft(2, '0')}';
+        activeDateKeys[dateKey] = candidateDate;
+        candidateDate = candidateDate.add(const Duration(days: 1));
+      }
+    }
+
+    final activeDates = activeDateKeys.values.toList(growable: false)..sort();
+    return activeDates;
+  }
+
   Future<void> _cancelMedicationReminder(MedicationAlarm setting) async {
-    await notificationService.cancelReminder(setting.notificationId);
+    await notificationService.cancelReminder(
+      setting.notificationId,
+      slotKey: setting.slotKey,
+    );
     await _cancelLegacyMedicationReminder(setting);
   }
 

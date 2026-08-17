@@ -19,6 +19,7 @@ typedef NotificationRegistrar =
       required int hour,
       required int minute,
       required List<String> medicationNames,
+      required List<DateTime> activeDates,
       String language,
     });
 
@@ -139,11 +140,10 @@ class SetNotification {
     }
   }
 
-  // Function Name: registerNotification
-  // Description:
-  // - Delegates platform notification registration after the setting is saved.
-  // - Keeps the use-case operation in SetNotification while the plugin details
-  //   remain isolated in NotificationService.
+  // 함수명: registerNotification
+  // 역할:
+  // - 서버 설정 저장 후 복용 기간 날짜 목록을 플랫폼 알림 서비스에 전달한다.
+  // - 알림 플러그인 세부 구현은 NotificationService 안에 유지한다.
   Future<void> registerNotification({
     required int id,
     required String slotKey,
@@ -151,6 +151,7 @@ class SetNotification {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) {
     return _notificationRegistrar(
@@ -160,6 +161,7 @@ class SetNotification {
       hour: hour,
       minute: minute,
       medicationNames: medicationNames,
+      activeDates: activeDates,
       language: language,
     );
   }

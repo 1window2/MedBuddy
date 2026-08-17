@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_caregiver_medication_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
@@ -11,6 +12,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
+import '../services/caregiver_patient_local_state_service.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'set_caregiver_notification_ui_boundary.dart';
 
@@ -20,6 +22,7 @@ import 'set_caregiver_notification_ui_boundary.dart';
 class CheckCaregiverMedicationUI extends StatefulWidget {
   final String caregiverHash;
   final String patientHash;
+  final String? patientLabel;
   final UserSetting userSetting;
   final CheckCaregiverMedication? control;
   final SetCaregiverNotification? notificationControl;
@@ -28,6 +31,7 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
     super.key,
     required this.caregiverHash,
     required this.patientHash,
+    this.patientLabel,
     this.userSetting = const UserSetting(),
     this.control,
     this.notificationControl,
@@ -81,6 +85,8 @@ class _CheckCaregiverMedicationUIState
   bool _isLoading = true;
   bool _isRefreshInFlight = false;
   bool _isNotificationLoading = true;
+  bool _isNotificationRefreshInFlight = false;
+  late String _patientLabel;
 
   bool get _isEnglish {
     return widget.userSetting.language.trim().toLowerCase().startsWith('en');
@@ -90,6 +96,9 @@ class _CheckCaregiverMedicationUIState
   void initState() {
     super.initState();
     _ownsControl = widget.control == null;
+    _patientLabel = widget.patientLabel?.trim().isNotEmpty == true
+        ? widget.patientLabel!.trim()
+        : CaregiverPatientLocalStateService.fallbackLabel(widget.patientHash);
     _control =
         widget.control ??
         CheckCaregiverMedication(caregiverHash: widget.caregiverHash);
@@ -99,9 +108,10 @@ class _CheckCaregiverMedicationUIState
         SetCaregiverNotification(caregiverHash: widget.caregiverHash);
     _requestPatientMedicationInfo();
     _requestCaregiverNotificationSettings();
+    unawaited(_loadPatientLabel());
     _refreshTimer = Timer.periodic(
       _refreshInterval,
-      (_) => _requestPatientMedicationInfo(silent: true),
+      (_) => unawaited(_refreshCaregiverData()),
     );
   }
 
@@ -130,7 +140,7 @@ class _CheckCaregiverMedicationUIState
         children: [
           _CaregiverScheduleHeader(
             isEnglish: _isEnglish,
-            patientHash: widget.patientHash,
+            patientLabel: _patientLabel,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
             onBack: () => Navigator.pop(context),
@@ -236,6 +246,36 @@ class _CheckCaregiverMedicationUIState
     );
   }
 
+  // 함수이름: _refreshCaregiverData
+  // 함수역할:
+  // - 선택 환자의 복약 일정과 보호자 알림 설정을 같은 주기로 갱신한다.
+  // 반환값:
+  // - 없음
+  Future<void> _refreshCaregiverData() async {
+    await Future.wait([
+      _requestPatientMedicationInfo(silent: true),
+      _requestCaregiverNotificationSettings(silent: true),
+    ]);
+  }
+
+  // 함수이름: _loadPatientLabel
+  // 함수역할:
+  // - 현재 보호자가 지정한 환자 표시 이름을 로컬 저장소에서 읽어 헤더에 반영한다.
+  // 반환값:
+  // - 없음
+  Future<void> _loadPatientLabel() async {
+    final preferences = await SharedPreferences.getInstance();
+    final label = CaregiverPatientLocalStateService.resolveLabel(
+      preferences,
+      caregiverHash: widget.caregiverHash,
+      patientHash: widget.patientHash,
+    );
+    if (!mounted || label == _patientLabel) {
+      return;
+    }
+    setState(() => _patientLabel = label);
+  }
+
   Future<void> _requestPatientMedicationInfo({bool silent = false}) async {
     if (_isRefreshInFlight) {
       return;
@@ -277,8 +317,13 @@ class _CheckCaregiverMedicationUIState
 
   Future<bool> _requestCaregiverNotificationSettings({
     bool showError = false,
+    bool silent = false,
   }) async {
-    if (mounted) {
+    if (_isNotificationRefreshInFlight) {
+      return false;
+    }
+    _isNotificationRefreshInFlight = true;
+    if (mounted && !silent) {
       setState(() => _isNotificationLoading = true);
     }
     try {
@@ -298,7 +343,8 @@ class _CheckCaregiverMedicationUIState
       }
       return false;
     } finally {
-      if (mounted) {
+      _isNotificationRefreshInFlight = false;
+      if (mounted && !silent) {
         setState(() => _isNotificationLoading = false);
       }
     }
@@ -534,14 +580,14 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
 
 class _CaregiverScheduleHeader extends StatelessWidget {
   final bool isEnglish;
-  final String patientHash;
+  final String patientLabel;
   final int completedCount;
   final int totalCount;
   final VoidCallback onBack;
 
   const _CaregiverScheduleHeader({
     required this.isEnglish,
-    required this.patientHash,
+    required this.patientLabel,
     required this.completedCount,
     required this.totalCount,
     required this.onBack,
@@ -585,7 +631,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      patientHash,
+                      patientLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

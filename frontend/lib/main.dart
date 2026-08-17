@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
@@ -82,12 +83,14 @@ class MedBuddyApp extends StatefulWidget {
 
 class _MedBuddyAppState extends State<MedBuddyApp> {
   static const String _scheduleRouteName = '/schedule';
+  static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
 
   late final GlobalKey<NavigatorState> _navigatorKey;
   late final AuthenticationControl _authenticationControl;
   late final bool _ownsAuthenticationControl;
   bool _isScheduleRouteOpen = false;
-  bool _hasPendingScheduleNavigation = false;
+  String? _openCaregiverScheduleRouteName;
+  MedicationNotificationSelection? _pendingNotificationSelection;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
   PushNotificationService? _pushNotificationService;
   String? _monitoredUserHash;
@@ -130,32 +133,29 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     NotificationService.setNotificationSelectionHandler(handler);
   }
 
-  void _handleNotificationSelection(
-    MedicationNotificationDestination destination,
-  ) {
-    if (destination != MedicationNotificationDestination.schedule) {
-      return;
-    }
+  void _handleNotificationSelection(MedicationNotificationSelection selection) {
     if (_authenticationControl.session == null) {
-      _hasPendingScheduleNavigation = true;
+      _pendingNotificationSelection = selection;
       return;
     }
-    _navigateToScheduleWhenReady();
+    _navigateForNotificationWhenReady(selection);
   }
 
   void _handleAuthenticationChange() {
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
-      _hasPendingScheduleNavigation = false;
+      _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
+      _openCaregiverScheduleRouteName = null;
       _navigatorKey.currentState?.popUntil((route) => route.isFirst);
       return;
     }
-    if (!_hasPendingScheduleNavigation) {
+    final pendingSelection = _pendingNotificationSelection;
+    if (pendingSelection == null) {
       return;
     }
-    _hasPendingScheduleNavigation = false;
-    _navigateToScheduleWhenReady();
+    _pendingNotificationSelection = null;
+    _navigateForNotificationWhenReady(pendingSelection);
   }
 
   // 함수명: _synchronizeCaregiverNotificationMonitor
@@ -184,6 +184,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       return;
     }
     final pushService = PushNotificationService(
+      userHash: userHash,
       client: _authenticationControl.apiClient,
     );
     _pushNotificationService = pushService;
@@ -200,6 +201,15 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       client: _authenticationControl.apiClient,
       monitorCompletionTransitions:
           AuthConfig.mode != AuthenticationMode.firebase,
+      onCaregiverStatusChanged: (hasCaregiverLinks) {
+        unawaited(
+          _synchronizeBackgroundCaregiverMonitoring(
+            userHash,
+            generation,
+            hasCaregiverLinks,
+          ),
+        );
+      },
     );
     if (!mounted || generation != _monitorGeneration) {
       monitor.dispose();
@@ -211,8 +221,36 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       monitor.dispose();
       return;
     }
+    await _synchronizeBackgroundCaregiverMonitoring(
+      userHash,
+      generation,
+      monitor.hasCaregiverLinks,
+    );
+  }
+
+  // 함수이름: _synchronizeBackgroundCaregiverMonitoring
+  // 함수역할:
+  // - 보호자로 연결된 환자가 있을 때만 Android 백그라운드 확인 작업을 유지한다.
+  // 매개변수:
+  // - userHash: 현재 로그인 사용자 식별 hash
+  // - generation: 로그인이 바뀐 뒤 도착한 오래된 요청을 차단하는 세대 번호
+  // - hasCaregiverLinks: 현재 사용자가 보호자인 활성 연동을 보유했는지 여부
+  // 반환값:
+  // - 없음
+  Future<void> _synchronizeBackgroundCaregiverMonitoring(
+    String userHash,
+    int generation,
+    bool hasCaregiverLinks,
+  ) async {
+    if (!mounted || generation != _monitorGeneration) {
+      return;
+    }
     try {
-      await CaregiverNotificationBackgroundScheduler.register(userHash);
+      if (hasCaregiverLinks) {
+        await CaregiverNotificationBackgroundScheduler.register(userHash);
+      } else {
+        await CaregiverNotificationBackgroundScheduler.cancel();
+      }
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(
@@ -243,6 +281,40 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     });
   }
 
+  // 함수이름: _navigateForNotificationWhenReady
+  // 함수역할:
+  // - 일반 복약 알림은 본인 일정으로, 보호자 알림은 선택 환자 일정으로 이동시킨다.
+  // 매개변수:
+  // - selection: 알림 payload에서 해석한 이동 대상과 환자 hash
+  // 반환값:
+  // - 없음
+  void _navigateForNotificationWhenReady(
+    MedicationNotificationSelection selection,
+  ) {
+    if (selection.destination == MedicationNotificationDestination.schedule) {
+      _navigateToScheduleWhenReady();
+      return;
+    }
+    final patientHash = selection.patientHash?.trim() ?? '';
+    if (patientHash.isEmpty) {
+      return;
+    }
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null) {
+      _openCaregiverSchedule(navigator, patientHash);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final mountedNavigator = _navigatorKey.currentState;
+      if (mountedNavigator != null) {
+        _openCaregiverSchedule(mountedNavigator, patientHash);
+      }
+    });
+  }
+
   void _openSchedule(NavigatorState navigator) {
     if (_isScheduleRouteOpen) {
       navigator.popUntil(
@@ -259,6 +331,45 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
           ),
         )
         .whenComplete(() => _isScheduleRouteOpen = false);
+  }
+
+  // 함수이름: _openCaregiverSchedule
+  // 함수역할:
+  // - 보호자 알림에 포함된 환자의 오늘 복약 일정 화면을 중복 없이 연다.
+  // 매개변수:
+  // - navigator: 앱 전역 Navigator 상태
+  // - patientHash: 알림을 발생시킨 환자 식별 hash
+  // 반환값:
+  // - 없음
+  void _openCaregiverSchedule(NavigatorState navigator, String patientHash) {
+    final session = _authenticationControl.session;
+    if (session == null) {
+      return;
+    }
+    final routeName =
+        '$_caregiverScheduleRoutePrefix${Uri.encodeComponent(patientHash)}';
+    if (_openCaregiverScheduleRouteName == routeName) {
+      navigator.popUntil(
+        (route) => route.settings.name == routeName || route.isFirst,
+      );
+      return;
+    }
+    _openCaregiverScheduleRouteName = routeName;
+    navigator
+        .push(
+          MaterialPageRoute<void>(
+            settings: RouteSettings(name: routeName),
+            builder: (context) => CheckCaregiverMedicationUI(
+              caregiverHash: session.userHash,
+              patientHash: patientHash,
+            ),
+          ),
+        )
+        .whenComplete(() {
+          if (_openCaregiverScheduleRouteName == routeName) {
+            _openCaregiverScheduleRouteName = null;
+          }
+        });
   }
 
   @override

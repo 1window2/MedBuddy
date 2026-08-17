@@ -19,6 +19,7 @@ import '../entities/patient_hash_entity.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
 import 'authenticated_api_client.dart';
+import 'caregiver_patient_local_state_service.dart';
 import 'firebase_runtime_service.dart';
 import 'notification_service.dart';
 
@@ -32,6 +33,7 @@ typedef CaregiverAlertSender =
       required int id,
       required String title,
       required String body,
+      required String patientHash,
     });
 typedef NotificationPermissionRequester = Future<bool> Function();
 typedef PreferencesLoader = Future<SharedPreferences> Function();
@@ -189,6 +191,8 @@ class CaregiverNotificationBackgroundScheduler {
 // - 같은 상태에 대한 중복 알림을 차단한다.
 class CaregiverNotificationMonitorService {
   static const Duration defaultPollingInterval = Duration(seconds: 5);
+  static const Duration defaultIdlePollingInterval = Duration(seconds: 60);
+  static const int maximumParallelPatientChecks = 4;
 
   final String caregiverHash;
   final CaregiverLinkLoader _loadLinks;
@@ -199,14 +203,21 @@ class CaregiverNotificationMonitorService {
   final PreferencesLoader _loadPreferences;
   final DateTime Function() _now;
   final Duration pollingInterval;
+  final Duration idlePollingInterval;
   final bool requestPermission;
   final bool monitorCompletionTransitions;
+  final ValueChanged<bool>? _onCaregiverStatusChanged;
   final VoidCallback? _onDispose;
 
   Timer? _timer;
   bool _isChecking = false;
   bool _permissionRequested = false;
   bool _notificationPermissionGranted = true;
+  Future<bool>? _permissionRequestFuture;
+  bool _hasCaregiverLinks = false;
+  bool _isDisposed = false;
+
+  bool get hasCaregiverLinks => _hasCaregiverLinks;
 
   CaregiverNotificationMonitorService({
     required this.caregiverHash,
@@ -218,8 +229,10 @@ class CaregiverNotificationMonitorService {
     PreferencesLoader preferencesLoader = SharedPreferences.getInstance,
     DateTime Function()? now,
     this.pollingInterval = defaultPollingInterval,
+    this.idlePollingInterval = defaultIdlePollingInterval,
     this.requestPermission = true,
     this.monitorCompletionTransitions = true,
+    ValueChanged<bool>? onCaregiverStatusChanged,
     VoidCallback? onDispose,
   }) : _loadLinks = loadLinks,
        _loadSettings = loadSettings,
@@ -228,6 +241,7 @@ class CaregiverNotificationMonitorService {
        _requestPermission = permissionRequester,
        _loadPreferences = preferencesLoader,
        _now = now ?? DateTime.now,
+       _onCaregiverStatusChanged = onCaregiverStatusChanged,
        _onDispose = onDispose;
 
   factory CaregiverNotificationMonitorService.live({
@@ -235,8 +249,10 @@ class CaregiverNotificationMonitorService {
     String baseUrl = ApiConfig.baseUrl,
     http.Client? client,
     Duration pollingInterval = defaultPollingInterval,
+    Duration idlePollingInterval = defaultIdlePollingInterval,
     bool requestPermission = true,
     bool monitorCompletionTransitions = true,
+    ValueChanged<bool>? onCaregiverStatusChanged,
   }) {
     final linkControl = LinkPatientCaregiver(
       baseUrl: baseUrl,
@@ -269,17 +285,25 @@ class CaregiverNotificationMonitorService {
         return info.todayMedicationScheduleList;
       },
       sendAlert:
-          ({required int id, required String title, required String body}) {
+          ({
+            required int id,
+            required String title,
+            required String body,
+            required String patientHash,
+          }) {
             return NotificationService.instance.showCaregiverAlert(
               id: id,
               title: title,
               body: body,
+              patientHash: patientHash,
             );
           },
       permissionRequester: NotificationService.instance.requestPermission,
       pollingInterval: pollingInterval,
+      idlePollingInterval: idlePollingInterval,
       requestPermission: requestPermission,
       monitorCompletionTransitions: monitorCompletionTransitions,
+      onCaregiverStatusChanged: onCaregiverStatusChanged,
       onDispose: () {
         linkControl.dispose();
         settingControl.dispose();
@@ -296,7 +320,7 @@ class CaregiverNotificationMonitorService {
   Future<void> start() async {
     _timer?.cancel();
     await checkNow();
-    _timer = Timer.periodic(pollingInterval, (_) => unawaited(checkNow()));
+    _scheduleNextCheck();
   }
 
   // 함수명: checkNow
@@ -325,14 +349,39 @@ class CaregiverNotificationMonitorService {
           })
           .toList(growable: false);
       final preferences = await _loadPreferences();
+      final patientHashes = caregiverLinks
+          .map((link) => PatientHash.normalizePatientHash(link.patientHash))
+          .toSet()
+          .toList(growable: false);
+      await CaregiverPatientLocalStateService.synchronizeLinkedPatients(
+        preferences,
+        caregiverHash: normalizedCaregiverHash,
+        patientHashes: patientHashes,
+      );
+      _updateCaregiverStatus(patientHashes.isNotEmpty);
 
-      for (final link in caregiverLinks) {
-        await _checkPatient(
-          preferences,
-          PatientHash.normalizePatientHash(link.patientHash),
+      var allPatientChecksSucceeded = true;
+      for (
+        var start = 0;
+        start < patientHashes.length;
+        start += maximumParallelPatientChecks
+      ) {
+        final proposedEnd = start + maximumParallelPatientChecks;
+        final end = proposedEnd < patientHashes.length
+            ? proposedEnd
+            : patientHashes.length;
+        final results = await Future.wait(
+          patientHashes
+              .sublist(start, end)
+              .map(
+                (patientHash) => _checkPatientSafely(preferences, patientHash),
+              ),
         );
+        if (results.any((succeeded) => !succeeded)) {
+          allPatientChecksSucceeded = false;
+        }
       }
-      return true;
+      return allPatientChecksSucceeded;
     } catch (error, stackTrace) {
       developer.log(
         '보호자 알림 상태 확인에 실패했습니다.',
@@ -344,6 +393,59 @@ class CaregiverNotificationMonitorService {
     } finally {
       _isChecking = false;
     }
+  }
+
+  // 함수이름: _checkPatientSafely
+  // 함수역할:
+  // - 한 환자 조회 실패를 격리해 같은 묶음의 다른 환자 확인을 계속 진행한다.
+  // 매개변수:
+  // - preferences: 보호자 알림 상태를 기록할 로컬 저장소
+  // - patientHash: 확인할 환자 식별 hash
+  // 반환값:
+  // - 해당 환자 확인이 정상 완료됐으면 true
+  Future<bool> _checkPatientSafely(
+    SharedPreferences preferences,
+    String patientHash,
+  ) async {
+    try {
+      await _checkPatient(preferences, patientHash);
+      return true;
+    } catch (error, stackTrace) {
+      developer.log(
+        '연동 환자 한 명의 알림 상태 확인에 실패했습니다.',
+        name: 'CaregiverNotificationMonitorService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  // 함수이름: _scheduleNextCheck
+  // 함수역할:
+  // - 보호자 연결이 있으면 짧은 주기, 없으면 저빈도 주기로 다음 확인을 예약한다.
+  // 반환값:
+  // - 없음
+  void _scheduleNextCheck() {
+    if (_isDisposed) {
+      return;
+    }
+    _timer?.cancel();
+    final nextInterval = _hasCaregiverLinks
+        ? pollingInterval
+        : idlePollingInterval;
+    _timer = Timer(nextInterval, () async {
+      await checkNow();
+      _scheduleNextCheck();
+    });
+  }
+
+  void _updateCaregiverStatus(bool hasCaregiverLinks) {
+    if (_hasCaregiverLinks == hasCaregiverLinks) {
+      return;
+    }
+    _hasCaregiverLinks = hasCaregiverLinks;
+    _onCaregiverStatusChanged?.call(hasCaregiverLinks);
   }
 
   Future<void> _checkPatient(
@@ -387,6 +489,10 @@ class CaregiverNotificationMonitorService {
   }) async {
     final scope = _preferenceScope(patientHash, slotKey);
     if (setting.mode == CaregiverNotificationMode.disabled) {
+      await preferences.remove('$scope.snapshot_date');
+      await preferences.remove('$scope.snapshot_data');
+      await preferences.remove('$scope.completion_notice');
+      await preferences.remove('$scope.deadline_notice');
       await preferences.setString('$scope.mode', setting.mode.wireValue);
       return;
     }
@@ -467,10 +573,16 @@ class CaregiverNotificationMonitorService {
       return;
     }
     final slotName = _slotName(slotKey);
+    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
+      preferences,
+      caregiverHash: caregiverHash,
+      patientHash: patientHash,
+    );
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
-      title: '환자 복약 완료',
-      body: '환자가 $slotName에 복용할 약을 모두 복용했습니다.',
+      title: '$patientLabel 복약 완료',
+      body: '$patientLabel의 $slotName 복약이 모두 완료되었습니다.',
+      patientHash: patientHash,
     );
     await preferences.setString('$scope.completion_notice', noticeSignature);
   }
@@ -505,13 +617,15 @@ class CaregiverNotificationMonitorService {
     if (preferences.getString('$scope.deadline_notice') == noticeSignature) {
       return;
     }
-    final remainingCount = schedules.fold<int>(0, (count, schedule) {
-      if (!schedule.slotKeys.contains(slotKey) ||
-          schedule.isSlotCompleted(slotKey)) {
-        return count;
-      }
-      return count + 1;
-    });
+    final slotSchedules = schedules
+        .where((schedule) => schedule.slotKeys.contains(slotKey))
+        .toList(growable: false);
+    if (slotSchedules.isEmpty) {
+      return;
+    }
+    final remainingCount = slotSchedules
+        .where((schedule) => !schedule.isSlotCompleted(slotKey))
+        .length;
     if (remainingCount == 0) {
       await preferences.setString('$scope.deadline_notice', noticeSignature);
       return;
@@ -525,12 +639,19 @@ class CaregiverNotificationMonitorService {
         '${setting.deadlineHour!.toString().padLeft(2, '0')}:'
         '${setting.deadlineMinute!.toString().padLeft(2, '0')}';
     final slotName = _slotName(slotKey);
+    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
+      preferences,
+      caregiverHash: caregiverHash,
+      patientHash: patientHash,
+    );
     await _sendAlert(
       id: _stableNotificationId('missed|$patientHash|$noticeSignature'),
-      title: '미복용 일정 확인',
+      title: '$patientLabel 미복용 일정 확인',
       body:
-          '$deadlineLabel 기준으로 아직 체크되지 않은 $slotName 복약 일정이 '
+          '$patientLabel의 $slotName 복약 중 $deadlineLabel 기준으로 '
+          '아직 체크되지 않은 일정이 '
           '$remainingCount건 있습니다.',
+      patientHash: patientHash,
     );
     await preferences.setString('$scope.deadline_notice', noticeSignature);
   }
@@ -540,11 +661,21 @@ class CaregiverNotificationMonitorService {
       return true;
     }
     if (_permissionRequested) {
+      final pendingRequest = _permissionRequestFuture;
+      if (pendingRequest != null) {
+        return pendingRequest;
+      }
       return _notificationPermissionGranted;
     }
     _permissionRequested = true;
-    _notificationPermissionGranted = await _requestPermission();
-    return _notificationPermissionGranted;
+    final requestFuture = _requestPermission();
+    _permissionRequestFuture = requestFuture;
+    try {
+      _notificationPermissionGranted = await requestFuture;
+      return _notificationPermissionGranted;
+    } finally {
+      _permissionRequestFuture = null;
+    }
   }
 
   Map<String, bool> _buildSnapshot(
@@ -622,6 +753,7 @@ class CaregiverNotificationMonitorService {
   // 반환값:
   // - 없음
   void dispose() {
+    _isDisposed = true;
     _timer?.cancel();
     _timer = null;
     _onDispose?.call();

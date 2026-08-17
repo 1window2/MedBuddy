@@ -4,9 +4,11 @@ import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
 import 'auth_config.dart';
+import 'caregiver_patient_local_state_service.dart';
 import 'notification_service.dart';
 
 // 파일명: push_notification_service.dart
@@ -22,15 +24,18 @@ import 'notification_service.dart';
 class PushNotificationService {
   static const Duration _requestTimeout = Duration(seconds: 10);
 
+  final String userHash;
   final http.Client _client;
   FirebaseMessaging? _messaging;
 
   StreamSubscription<String>? _tokenRefreshSubscription;
   StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
+  StreamSubscription<RemoteMessage>? _openedMessageSubscription;
   String? _registeredToken;
   bool _started = false;
 
   PushNotificationService({
+    required this.userHash,
     required http.Client client,
     FirebaseMessaging? messaging,
   }) : _client = client,
@@ -63,6 +68,14 @@ class PushNotificationService {
       ) {
         unawaited(_showForegroundMessage(message));
       }, onError: _reportPushError);
+      _openedMessageSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
+        _handleOpenedMessage,
+        onError: _reportPushError,
+      );
+      final initialMessage = await messaging.getInitialMessage();
+      if (initialMessage != null) {
+        _handleOpenedMessage(initialMessage);
+      }
     } catch (error, stackTrace) {
       _started = false;
       _reportPushError(error, stackTrace);
@@ -80,8 +93,10 @@ class PushNotificationService {
     _started = false;
     await _tokenRefreshSubscription?.cancel();
     await _foregroundMessageSubscription?.cancel();
+    await _openedMessageSubscription?.cancel();
     _tokenRefreshSubscription = null;
     _foregroundMessageSubscription = null;
+    _openedMessageSubscription = null;
     if (token == null || token.isEmpty) {
       return;
     }
@@ -130,15 +145,55 @@ class PushNotificationService {
     if (!supportedTypes.contains(message.data['type'])) {
       return;
     }
+    final patientHash = message.data['patient_hash']?.trim() ?? '';
+    final preferences = await SharedPreferences.getInstance();
+    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
+      preferences,
+      caregiverHash: userHash,
+      patientHash: patientHash,
+    );
+    final slotName = _slotName(message.data['slot_key']);
     final notification = message.notification;
-    final title = notification?.title ?? '환자 복약 완료';
-    final body = notification?.body ?? '연동된 환자의 복약 상태가 변경되었습니다.';
-    final source = message.messageId ?? '$title|$body';
+    final title = patientHash.isEmpty
+        ? notification?.title ?? '환자 복약 완료'
+        : '$patientLabel 복약 완료';
+    final body = patientHash.isEmpty
+        ? notification?.body ?? '연동된 환자의 복약 상태가 변경되었습니다.'
+        : '$patientLabel의 $slotName 복약이 모두 완료되었습니다.';
+    final source = message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       id: source.hashCode & 0x7fffffff,
       title: title,
       body: body,
+      patientHash: patientHash,
     );
+  }
+
+  // 함수명: _handleOpenedMessage
+  // 역할:
+  // - 보호자가 시스템 푸시를 누르면 해당 환자의 복약 일정으로 이동시킨다.
+  // 매개변수:
+  // - message: 사용자가 선택한 FCM 메시지
+  // 반환값:
+  // - 없음
+  void _handleOpenedMessage(RemoteMessage message) {
+    final patientHash = message.data['patient_hash']?.trim() ?? '';
+    if (patientHash.isEmpty) {
+      return;
+    }
+    NotificationService.handleNotificationPayload(
+      'caregiver:${Uri.encodeComponent(patientHash)}',
+    );
+  }
+
+  String _slotName(String? slotKey) {
+    return switch (slotKey) {
+      'morning' => '아침',
+      'lunch' => '점심',
+      'evening' => '저녁',
+      'bedtime' => '취침 전',
+      _ => '복약',
+    };
   }
 
   // 함수명: _reportPushError

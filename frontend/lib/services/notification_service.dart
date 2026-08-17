@@ -4,10 +4,22 @@ import 'package:flutter/services.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
-enum MedicationNotificationDestination { schedule }
+enum MedicationNotificationDestination { schedule, caregiverSchedule }
+
+// 클래스명: MedicationNotificationSelection
+// 역할: 사용자가 누른 알림의 이동 화면과 선택 환자를 함께 전달한다.
+class MedicationNotificationSelection {
+  final MedicationNotificationDestination destination;
+  final String? patientHash;
+
+  const MedicationNotificationSelection({
+    required this.destination,
+    this.patientHash,
+  });
+}
 
 typedef MedicationNotificationSelectionHandler =
-    void Function(MedicationNotificationDestination destination);
+    void Function(MedicationNotificationSelection selection);
 
 // 파일명: notification_service.dart
 // 역할: 복약 알림을 휴대폰 로컬 알림으로 예약하고 취소한다.
@@ -17,13 +29,13 @@ typedef MedicationNotificationSelectionHandler =
 // 주요 책임:
 // - 앱 시작 시 알림 플러그인과 한국 시간대를 초기화한다.
 // - 알림 권한을 요청한다.
-// - 시간대별 매일 반복 알림을 예약하거나 취소한다.
+// - 복용 기간에 포함된 날짜만 시간대별 알림으로 예약하거나 취소한다.
 class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
   static MedicationNotificationSelectionHandler? _selectionHandler;
-  static MedicationNotificationDestination? _pendingDestination;
+  static MedicationNotificationSelection? _pendingSelection;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -34,41 +46,72 @@ class NotificationService {
     MedicationNotificationSelectionHandler? handler,
   ) {
     _selectionHandler = handler;
-    final pendingDestination = _pendingDestination;
-    if (handler == null || pendingDestination == null) {
+    final pendingSelection = _pendingSelection;
+    if (handler == null || pendingSelection == null) {
       return;
     }
-    _pendingDestination = null;
-    handler(pendingDestination);
+    _pendingSelection = null;
+    handler(pendingSelection);
   }
 
   static MedicationNotificationDestination? destinationFromPayload(
     String? payload,
   ) {
+    return selectionFromPayload(payload)?.destination;
+  }
+
+  // 함수명: selectionFromPayload
+  // 함수역할:
+  // - 일반 복약 알림과 보호자 알림 payload를 안전한 화면 이동 정보로 변환한다.
+  // 매개변수:
+  // - payload: 로컬 알림 또는 FCM 데이터에서 받은 문자열
+  // 반환값:
+  // - 유효한 이동 대상과 환자 hash, 형식이 잘못됐으면 null
+  static MedicationNotificationSelection? selectionFromPayload(
+    String? payload,
+  ) {
     final segments = payload?.split(':') ?? const <String>[];
-    if (segments.length != 3 ||
-        segments[0] != 'schedule' ||
-        segments[1].trim().isEmpty) {
-      return null;
+    if (segments.length == 3 &&
+        segments[0] == 'schedule' &&
+        segments[1].trim().isNotEmpty) {
+      final notificationID = int.tryParse(segments[2]);
+      if (notificationID == null || notificationID < 0) {
+        return null;
+      }
+      return const MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+      );
     }
-    final notificationID = int.tryParse(segments[2]);
-    if (notificationID == null || notificationID < 0) {
-      return null;
+    if (segments.length == 2 &&
+        segments[0] == 'caregiver' &&
+        segments[1].trim().isNotEmpty) {
+      try {
+        final patientHash = Uri.decodeComponent(segments[1]).trim();
+        if (patientHash.isEmpty) {
+          return null;
+        }
+        return MedicationNotificationSelection(
+          destination: MedicationNotificationDestination.caregiverSchedule,
+          patientHash: patientHash,
+        );
+      } on FormatException {
+        return null;
+      }
     }
-    return MedicationNotificationDestination.schedule;
+    return null;
   }
 
   static void handleNotificationPayload(String? payload) {
-    final destination = destinationFromPayload(payload);
-    if (destination == null) {
+    final selection = selectionFromPayload(payload);
+    if (selection == null) {
       return;
     }
     final handler = _selectionHandler;
     if (handler == null) {
-      _pendingDestination = destination;
+      _pendingSelection = selection;
       return;
     }
-    handler(destination);
+    handler(selection);
   }
 
   // 함수명: initialize
@@ -149,13 +192,14 @@ class NotificationService {
 
   // 함수명: registerNotification
   // 함수역할:
-  // - 지정한 시간에 매일 반복되는 복약 알림을 예약한다.
+  // - 복용 기간에 포함된 날짜 중 지정한 시간에만 복약 알림을 예약한다.
   // 매개변수:
   // - id: 시간대별 고정 알림 id
   // - slotTitle: 아침, 점심 등 시간대명
   // - hour: 24시간 기준 시
   // - minute: 분
   // - medicationNames: 알림 본문에 보여줄 약 이름 목록
+  // - activeDates: 이 시간대 알림이 필요한 복용 날짜 목록
   // - language: 알림 제목과 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 없음
@@ -166,47 +210,97 @@ class NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
     String language = 'ko',
   }) async {
     await initialize();
-    await _plugin.cancel(id: id);
-
+    await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
     final now = timezone.TZDateTime.now(timezone.local);
-    var scheduledDate = timezone.TZDateTime(
-      timezone.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-    if (!scheduledDate.isAfter(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
     final body = _buildReminderBody(medicationNames, language);
-
-    try {
-      await _scheduleWithMode(
-        id: id,
-        slotKey: slotKey,
-        slotTitle: slotTitle,
-        language: language,
-        body: body,
-        scheduledDate: scheduledDate,
-        scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    final uniqueDates = <String, DateTime>{};
+    for (final activeDate in activeDates) {
+      final normalizedDate = DateTime(
+        activeDate.year,
+        activeDate.month,
+        activeDate.day,
       );
-    } on PlatformException {
-      await _scheduleWithMode(
-        id: id,
-        slotKey: slotKey,
-        slotTitle: slotTitle,
-        language: language,
-        body: body,
-        scheduledDate: scheduledDate,
-        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      );
+      uniqueDates[_dateKey(normalizedDate)] = normalizedDate;
     }
+    final sortedDates = uniqueDates.values.toList(growable: false)..sort();
+
+    for (final activeDate in sortedDates) {
+      final scheduledDate = timezone.TZDateTime(
+        timezone.local,
+        activeDate.year,
+        activeDate.month,
+        activeDate.day,
+        hour,
+        minute,
+      );
+      if (!scheduledDate.isAfter(now)) {
+        continue;
+      }
+      final notificationId = _notificationIdForDate(id, slotKey, activeDate);
+      try {
+        await _scheduleWithMode(
+          id: notificationId,
+          slotKey: slotKey,
+          slotTitle: slotTitle,
+          language: language,
+          body: body,
+          scheduledDate: scheduledDate,
+          scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        );
+      } on PlatformException {
+        await _scheduleWithMode(
+          id: notificationId,
+          slotKey: slotKey,
+          slotTitle: slotTitle,
+          language: language,
+          body: body,
+          scheduledDate: scheduledDate,
+          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+      }
+    }
+  }
+
+  // 함수명: _cancelScheduledNotificationsForSlot
+  // 함수역할:
+  // - 같은 시간대에 남아 있는 기존 반복 알림과 날짜별 단발 알림을 모두 취소한다.
+  Future<void> _cancelScheduledNotificationsForSlot(
+    String slotKey, {
+    int? legacyId,
+  }) async {
+    if (legacyId != null) {
+      await _plugin.cancel(id: legacyId);
+    }
+    final pendingRequests = await _plugin.pendingNotificationRequests();
+    final payloadPrefix = 'schedule:$slotKey:';
+    for (final request in pendingRequests) {
+      if (request.payload?.startsWith(payloadPrefix) ?? false) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+  }
+
+  String _dateKey(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  // 함수명: _notificationIdForDate
+  // 함수역할:
+  // - 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
+  int _notificationIdForDate(int baseId, String slotKey, DateTime date) {
+    final source = '$baseId|$slotKey|${_dateKey(date)}';
+    var hash = 0x811C9DC5;
+    for (final codeUnit in source.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0x7FFFFFFF;
+    }
+    return 100000 + (hash % 2000000000);
   }
 
   // 함수명: _buildReminderBody
@@ -298,7 +392,6 @@ class NotificationService {
         iOS: DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
-      matchDateTimeComponents: DateTimeComponents.time,
       payload: 'schedule:$slotKey:$id',
     );
   }
@@ -310,8 +403,12 @@ class NotificationService {
   // - id: 취소할 알림 id
   // 반환값:
   // - 없음
-  Future<void> cancelReminder(int id) async {
+  Future<void> cancelReminder(int id, {String? slotKey}) async {
     await initialize();
+    if (slotKey != null && slotKey.trim().isNotEmpty) {
+      await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
+      return;
+    }
     await _plugin.cancel(id: id);
   }
 
@@ -322,12 +419,14 @@ class NotificationService {
   // - id: 중복 알림을 교체하기 위한 고정 알림 식별자
   // - title: 보호자 알림 제목
   // - body: 보호자에게 보여줄 복약 상태 설명
+  // - patientHash: 알림을 누를 때 열어야 하는 환자 식별 hash
   // 반환값:
   // - 없음
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
     required String body,
+    String? patientHash,
   }) async {
     await initialize();
     await _plugin.show(
@@ -344,6 +443,9 @@ class NotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
+      payload: patientHash == null || patientHash.trim().isEmpty
+          ? null
+          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
     );
   }
 }

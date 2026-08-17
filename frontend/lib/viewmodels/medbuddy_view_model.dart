@@ -87,6 +87,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   final String patientHash;
   final http.Client _apiClient;
   final bool _ownsApiClient;
+  bool _isDisposed = false;
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
@@ -310,11 +311,18 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 반환값:
   // - 없음
   void _notifyViewModelListeners() {
+    if (_isDisposed) {
+      return;
+    }
     notifyListeners();
   }
 
   @override
   void dispose() {
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
     _cancelPrescriptionOperation();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
