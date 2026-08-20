@@ -292,8 +292,22 @@ jobs:
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
 
-          test "${APK_CERT}" = "${EXPECTED_CERT}"
-          test "${AAB_CERT}" = "${EXPECTED_CERT}"
+          if [[ -z "${APK_CERT}" ]]; then
+            echo "APK certificate fingerprint extraction failed." >&2
+            exit 1
+          fi
+          if [[ -z "${AAB_CERT}" ]]; then
+            echo "AAB certificate fingerprint extraction failed." >&2
+            exit 1
+          fi
+          if [[ "${APK_CERT}" != "${EXPECTED_CERT}" ]]; then
+            echo "APK signing certificate SHA-256 mismatch." >&2
+            exit 1
+          fi
+          if [[ "${AAB_CERT}" != "${EXPECTED_CERT}" ]]; then
+            echo "AAB signing certificate SHA-256 mismatch." >&2
+            exit 1
+          fi
 
       - name: Upload signed release artifacts
         uses: actions/upload-artifact@v4
