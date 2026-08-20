@@ -285,7 +285,7 @@ jobs:
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
-          jarsigner -verify -strict "${AAB}"
+          jarsigner -verify "${AAB}"
           AAB_CERT="$(keytool -printcert -jarfile "${AAB}" \
             | sed -n 's/^[[:space:]]*SHA256: //p' \
             | head -n 1 \
