@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_authenticated_principal,
+    get_recently_authenticated_principal,
     verify_app_check_token,
     get_registered_principal,
     get_authorization_control,
@@ -36,6 +37,9 @@ from api.dependencies import (
     get_set_caregiver_notification,
     get_set_notification,
     get_push_notification_boundary,
+)
+from boundaries.firebase_identity_boundary import (
+    IdentityDeletionUnavailableError,
 )
 from boundaries.pill_identification_boundary import (
     MAX_PILL_IMAGE_BYTES,
@@ -143,10 +147,24 @@ def export_account_data(
 # - 현재 로그인 사용자의 복약정보, 연결, 알림, 캐시를 모두 삭제한다.
 @auth_router.delete("/account-data")
 def delete_account_data(
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(
+        get_recently_authenticated_principal
+    ),
     manage_account: ManageAccount = Depends(get_manage_account),
 ) -> dict[str, object]:
-    return manage_account.deleteAccountData(principal.user_hash)
+    try:
+        return manage_account.deleteAccountData(
+            principal.user_hash,
+            external_subject=(
+                None if principal.authentication_disabled else principal.subject
+            ),
+        )
+    except IdentityDeletionUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Account identity deletion is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
 
 
 # 함수명: register_push_token

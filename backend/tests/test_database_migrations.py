@@ -24,6 +24,10 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         completion_foreign_keys = inspector.get_foreign_keys(
             "medication_completions"
         )
+        user_account_columns = {
+            column["name"]
+            for column in inspector.get_columns("user_accounts")
+        }
     finally:
         engine.dispose()
     assert {
@@ -39,6 +43,10 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "pill_identification_references",
     }.issubset(tables)
     assert "deduplication_key" in saved_columns
+    assert {
+        "deletion_requested_at",
+        "identity_deleted_at",
+    }.issubset(user_account_columns)
     assert any(
         foreign_key["referred_table"] == "saved_medications"
         for foreign_key in completion_foreign_keys

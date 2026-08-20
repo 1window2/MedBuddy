@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../theme/medbuddy_theme.dart';
 
 class AuthenticationUI extends StatefulWidget {
   final AuthenticationControl control;
+  final AppLanguageControl? languageControl;
 
-  const AuthenticationUI({super.key, required this.control});
+  const AuthenticationUI({
+    super.key,
+    required this.control,
+    this.languageControl,
+  });
 
   @override
   State<AuthenticationUI> createState() => _AuthenticationUIState();
@@ -18,17 +24,33 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   final _passwordController = TextEditingController();
   bool _createAccount = false;
   bool _obscurePassword = true;
+  late final AppLanguageControl _languageControl;
+  late final bool _ownsLanguageControl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsLanguageControl = widget.languageControl == null;
+    _languageControl =
+        widget.languageControl ?? AppLanguageControl(loadPersisted: false);
+    _languageControl.addListener(_handleLanguageChanged);
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _languageControl.removeListener(_handleLanguageChanged);
+    if (_ownsLanguageControl) {
+      _languageControl.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final control = widget.control;
+    final text = _AuthenticationText(_languageControl.language);
     if (control.initializationFailed) {
       return Scaffold(
         body: SafeArea(
@@ -89,167 +111,245 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'MedBuddy',
-                      textScaler: TextScaler.noScaling,
-                      style: TextStyle(
-                        color: MedBuddyColors.primary,
-                        fontSize: 38,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _createAccount ? 'Create a secure account' : 'Sign in',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) => (value ?? '').trim().contains('@')
-                          ? null
-                          : 'Enter a valid email address.',
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      autofillHints: _createAccount
-                          ? const [AutofillHints.newPassword]
-                          : const [AutofillHints.password],
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          tooltip: _obscurePassword
-                              ? 'Show password'
-                              : 'Hide password',
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                        ),
-                      ),
-                      validator: (value) => (value ?? '').length >= 6
-                          ? null
-                          : 'Use at least six characters.',
-                    ),
-                    if (control.errorMessage != null) ...[
-                      const SizedBox(height: 14),
-                      Text(
-                        control.errorMessage!,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    ],
-                    if (control.canRetryBackendSession) ...[
-                      const SizedBox(height: 14),
-                      FilledButton.tonalIcon(
-                        key: const Key('backend-session-retry-button'),
-                        onPressed: control.isBusy
-                            ? null
-                            : control.retryBackendSession,
-                        icon: const Icon(Icons.sync),
-                        label: const Text('Retry secure session'),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: control.isBusy ? null : _submit,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54),
-                        backgroundColor: MedBuddyColors.primary,
-                      ),
-                      child: control.isBusy
-                          ? const SizedBox.square(
-                              dimension: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(_createAccount ? 'Create account' : 'Sign in'),
-                    ),
-                    if (!_createAccount)
-                      TextButton(
-                        onPressed: control.isBusy ? null : _sendPasswordReset,
-                        child: const Text('Forgot password?'),
-                      ),
-                    TextButton(
-                      onPressed: control.isBusy
-                          ? null
-                          : () => setState(() {
-                              _createAccount = !_createAccount;
-                            }),
-                      child: Text(
-                        _createAccount
-                            ? 'Already have an account? Sign in'
-                            : 'New to MedBuddy? Create an account',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Row(
+        child: Stack(
+          children: [
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 28,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(child: Divider()),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('or'),
+                        const Text(
+                          'MedBuddy',
+                          textScaler: TextScaler.noScaling,
+                          style: TextStyle(
+                            color: MedBuddyColors.primary,
+                            fontSize: 38,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        Expanded(child: Divider()),
+                        const SizedBox(height: 8),
+                        Text(
+                          _createAccount
+                              ? text.createAccountTitle
+                              : text.signIn,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autofillHints: const [AutofillHints.email],
+                          decoration: InputDecoration(
+                            labelText: text.email,
+                            border: const OutlineInputBorder(),
+                          ),
+                          validator: (value) =>
+                              (value ?? '').trim().contains('@')
+                              ? null
+                              : text.invalidEmail,
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          autofillHints: _createAccount
+                              ? const [AutofillHints.newPassword]
+                              : const [AutofillHints.password],
+                          decoration: InputDecoration(
+                            labelText: text.password,
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              tooltip: _obscurePassword
+                                  ? text.showPassword
+                                  : text.hidePassword,
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                            ),
+                          ),
+                          validator: (value) => (value ?? '').length >= 6
+                              ? null
+                              : text.invalidPassword,
+                        ),
+                        if (control.errorMessage != null) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            control.errorMessage!,
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                        ],
+                        if (control.canRetryBackendSession) ...[
+                          const SizedBox(height: 14),
+                          FilledButton.tonalIcon(
+                            key: const Key('backend-session-retry-button'),
+                            onPressed: control.isBusy
+                                ? null
+                                : control.retryBackendSession,
+                            icon: const Icon(Icons.sync),
+                            label: Text(text.retrySecureSession),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        FilledButton(
+                          onPressed: control.isBusy ? null : _submit,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                            backgroundColor: MedBuddyColors.primary,
+                          ),
+                          child: control.isBusy
+                              ? const SizedBox.square(
+                                  dimension: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  _createAccount
+                                      ? text.createAccount
+                                      : text.signIn,
+                                ),
+                        ),
+                        if (!_createAccount)
+                          TextButton(
+                            onPressed: control.isBusy
+                                ? null
+                                : _sendPasswordReset,
+                            child: Text(text.forgotPassword),
+                          ),
+                        TextButton(
+                          onPressed: control.isBusy
+                              ? null
+                              : () => setState(() {
+                                  _createAccount = !_createAccount;
+                                }),
+                          child: Text(
+                            _createAccount
+                                ? text.alreadyHaveAccount
+                                : text.newToMedBuddy,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              child: Text(text.or),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: control.isBusy
+                              ? null
+                              : control.signInWithGoogle,
+                          icon: const Icon(Icons.account_circle_outlined),
+                          label: Text(text.continueWithGoogle),
+                        ),
+                        if (control.phoneAuthenticationEnabled) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: control.isBusy
+                                ? null
+                                : _startPhoneSignIn,
+                            icon: const Icon(Icons.sms_outlined),
+                            label: const Text('Continue with phone'),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: control.isBusy ? null : _continueAsGuest,
+                          icon: const Icon(Icons.person_outline),
+                          label: Text(text.continueAsGuest),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: control.isBusy
-                          ? null
-                          : control.signInWithGoogle,
-                      icon: const Icon(Icons.account_circle_outlined),
-                      label: const Text('Continue with Google'),
-                    ),
-                    if (control.phoneAuthenticationEnabled) ...[
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: control.isBusy ? null : _startPhoneSignIn,
-                        icon: const Icon(Icons.sms_outlined),
-                        label: const Text('Continue with phone'),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: control.isBusy ? null : _continueAsGuest,
-                      icon: const Icon(Icons.person_outline),
-                      label: const Text('Continue as guest'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+            Positioned(
+              top: 0,
+              right: 8,
+              child: Semantics(
+                label: text.changeLanguage,
+                button: true,
+                child: IconButton(
+                  key: const Key('authentication-language-toggle'),
+                  tooltip: text.changeLanguage,
+                  onPressed: _toggleLanguage,
+                  icon: const Icon(Icons.language),
+                ),
+              ),
+            ),
+            if (control.isBusy)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: const Color.fromRGBO(0, 0, 0, 0.32),
+                  child: Center(
+                    child: Semantics(
+                      liveRegion: true,
+                      label: text.processing,
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 20,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox.square(
+                                dimension: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Text(text.processing),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
+  }
+
+  // Rebuilds this boundary whenever the device-wide language changes.
+  void _handleLanguageChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _toggleLanguage() async {
+    await _languageControl.toggleLanguage();
   }
 
   Future<void> _submit() async {
@@ -317,22 +417,20 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   }
 
   Future<void> _continueAsGuest() async {
+    final text = _AuthenticationText(_languageControl.language);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Continue as guest?'),
-        content: const Text(
-          'Guest access is tied to this temporary account. Sign in with a '
-          'permanent account before changing devices or clearing app data.',
-        ),
+        title: Text(text.guestConfirmationTitle),
+        content: Text(text.guestConfirmationMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(text.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continue'),
+            child: Text(text.continueLabel),
           ),
         ],
       ),
@@ -341,6 +439,56 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
       await widget.control.signInAnonymously();
     }
   }
+}
+
+// Class Name: _AuthenticationText
+// Role: Supplies the authentication screen's Korean and English labels.
+// Responsibilities:
+// - Keep the sign-in boundary usable in the device-wide selected language.
+// - Preserve concise validation, guest-consent, and progress messages.
+class _AuthenticationText {
+  final String language;
+
+  const _AuthenticationText(this.language);
+
+  bool get _isEnglish => language == 'en';
+
+  String get signIn => _isEnglish ? 'Sign in' : '로그인';
+  String get createAccountTitle =>
+      _isEnglish ? 'Create a secure account' : '안전한 계정 만들기';
+  String get email => _isEnglish ? 'Email' : '이메일';
+  String get password => _isEnglish ? 'Password' : '비밀번호';
+  String get showPassword => _isEnglish ? 'Show password' : '비밀번호 표시';
+  String get hidePassword => _isEnglish ? 'Hide password' : '비밀번호 숨기기';
+  String get invalidEmail =>
+      _isEnglish ? 'Enter a valid email address.' : '올바른 이메일 주소를 입력해 주세요.';
+  String get invalidPassword =>
+      _isEnglish ? 'Use at least six characters.' : '비밀번호는 6자 이상 입력해 주세요.';
+  String get retrySecureSession =>
+      _isEnglish ? 'Retry secure session' : '보안 세션 다시 연결';
+  String get createAccount => _isEnglish ? 'Create account' : '회원가입';
+  String get forgotPassword => _isEnglish ? 'Forgot password?' : '비밀번호 찾기';
+  String get alreadyHaveAccount =>
+      _isEnglish ? 'Already have an account? Sign in' : '이미 계정이 있으신가요? 로그인';
+  String get newToMedBuddy => _isEnglish
+      ? 'New to MedBuddy? Create an account'
+      : 'MedBuddy가 처음이신가요? 회원가입';
+  String get or => _isEnglish ? 'or' : '또는';
+  String get continueWithGoogle =>
+      _isEnglish ? 'Continue with Google' : 'Google로 계속하기';
+  String get continueAsGuest =>
+      _isEnglish ? 'Continue as guest' : '회원가입 없이 계속하기';
+  String get changeLanguage => _isEnglish ? 'Change language' : '언어 변경';
+  String get processing => _isEnglish ? 'Please wait…' : '처리 중입니다…';
+  String get guestConfirmationTitle =>
+      _isEnglish ? 'Continue as guest?' : '게스트로 계속할까요?';
+  String get guestConfirmationMessage => _isEnglish
+      ? 'Guest access is tied to this temporary account. Sign in with a '
+            'permanent account before changing devices or clearing app data.'
+      : '게스트 데이터는 이 임시 계정에만 연결됩니다. 기기를 변경하거나 '
+            '앱 데이터를 지우기 전에 정식 계정으로 로그인해 주세요.';
+  String get cancel => _isEnglish ? 'Cancel' : '취소';
+  String get continueLabel => _isEnglish ? 'Continue' : '계속';
 }
 
 class _SmsCodeView extends StatefulWidget {

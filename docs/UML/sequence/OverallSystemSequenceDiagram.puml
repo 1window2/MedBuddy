@@ -74,10 +74,13 @@ end
 
 AuthControl -> ApiClient : GET /api/v1/auth/session
 ApiClient -> Router : Authorization: Bearer ID Token
+Router -> Router : validate Host against production allowlist
 Router -> BackService : OIDCTokenVerifier.verifyIdToken()
 BackService -> FirebaseAuth : Firebase ID Token 검증
 FirebaseAuth --> BackService : 검증된 issuer, subject, 사용자 정보
 BackService --> Router : 인증 Principal
+Router -> Database : acquire per-account transaction lock
+Database --> Router : lock held until commit or rollback
 Router -> BackControl : ManageAccount.ensureAccount(userHash)
 BackControl -> Database : user_accounts 조회 또는 생성
 Database --> BackControl : 사용자 계정
@@ -108,6 +111,63 @@ BackControl -> Database : device_push_tokens 저장
 Database --> BackControl : 저장 완료
 Router --> FrontService : Token 등록 완료
 
+== 1A. Authenticated sign-out ==
+
+User -> UI : request sign-out
+UI -> AuthControl : signOut()
+AuthControl -> FrontService : PushNotificationService.stop(requireServerUnregistration=true)
+FrontService -> ApiClient : DELETE /api/v1/auth/push-token
+ApiClient -> Router : Bearer token and device token
+Router -> BackControl : ManagePushToken.unregisterPushToken()
+BackControl -> Database : deactivate device token
+Database --> BackControl : committed
+Router --> FrontService : token removed
+alt token cleanup succeeds
+    AuthControl -> FirebaseAuth : signOut()
+    FirebaseAuth --> AuthControl : provider session cleared
+    AuthControl --> UI : show sign-in screen
+else token cleanup fails
+    FrontService --> AuthControl : error
+    AuthControl --> UI : keep authenticated session and show retryable error
+end
+
+== 1B. Permanent account deletion ==
+
+User -> UI : confirm permanent account deletion
+UI -> AuthControl : prepareAccountDeletion()
+alt credential-backed identity needs recent authentication
+    AuthControl -> FirebaseAuth : reauthenticate and force token refresh
+    FirebaseAuth --> AuthControl : ID token with fresh auth_time
+else anonymous guest
+    AuthControl -> FirebaseAuth : force ID token refresh
+    note over AuthControl, FirebaseAuth : Anonymous deletion is explicitly exempt from credential step-up.
+end
+AuthControl --> UI : deletion request is ready
+UI -> ViewModel : requestAccountDataDeletion()
+ViewModel -> FrontControl : ManageAccount.deleteAccountData()
+FrontControl -> ApiClient : DELETE /api/v1/auth/account-data
+ApiClient -> Router : Bearer token with server-derived subject
+Router -> BackService : verify token and recent auth_time
+BackService --> Router : AuthenticatedPrincipal
+Router -> Database : acquire same per-account transaction lock
+note over Router, Database : Every authenticated account request uses this lock before account registration.
+Router -> BackControl : deleteAccountData(userHash, verified subject)
+BackControl -> Database : write tombstone, purge medical data, commit
+BackControl -> FirebaseAuth : Admin delete verified subject
+alt external identity deletion succeeds or was already complete
+    BackControl -> Database : mark identity_deleted_at and commit
+    BackControl --> Router : success
+    Router --> ApiClient : deletion result
+    ApiClient --> UI : deletion complete
+    UI -> AuthControl : finishAccountDeletion()
+    AuthControl -> FirebaseAuth : signOut()
+    AuthControl --> UI : clear session before provider completion
+else external identity deletion is temporarily unavailable
+    BackControl --> Router : retryable provider error
+    Router --> ApiClient : 503 Retry-After
+    ApiClient --> UI : keep deletion screen retryable
+    note over Router, Database : The tombstone blocks new writes; retry is idempotent.
+end
 == 2. 처방전 입력 및 이미지 분석 ==
 
 User -> UI : 처방전 입력 선택

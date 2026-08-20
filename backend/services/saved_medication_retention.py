@@ -6,11 +6,10 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
+from core.config import settings
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 from services.medication_course_policy import MedicationCoursePolicy
-
-_RETENTION_DAYS_AFTER_END = 30
 
 
 # 클래스명: SavedMedicationRetentionPolicy
@@ -23,8 +22,15 @@ class SavedMedicationRetentionPolicy:
     def __init__(
         self,
         course_policy: MedicationCoursePolicy | None = None,
+        retention_days_after_end: int | None = None,
     ) -> None:
         self.course_policy = course_policy or MedicationCoursePolicy()
+        configured_days = (
+            settings.SAVED_MEDICATION_RETENTION_DAYS_AFTER_END
+            if retention_days_after_end is None
+            else retention_days_after_end
+        )
+        self.retention_days_after_end = max(0, configured_days)
 
     # 함수명: cleanup_expired_medications
     # 함수역할:
@@ -73,8 +79,10 @@ class SavedMedicationRetentionPolicy:
     # 반환값:
     # - 복용 종료 후 30일 이상 지났으면 True
     def is_expired(self, medication: _SavedMedication, today: date) -> bool:
+        if self.retention_days_after_end == 0:
+            return False
         return self.course_policy.is_expired_after(
             medication,
             today,
-            _RETENTION_DAYS_AFTER_END,
+            self.retention_days_after_end,
         )

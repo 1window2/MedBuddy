@@ -74,12 +74,17 @@ docker compose \
   up -d --build --wait
 ```
 
-All four production services must become healthy:
+The four long-running production services must become healthy:
 
 - `postgres`
 - `redis`
 - `backend`
 - `cloudflared`
+
+Before those services start, the one-shot `catalog-bootstrap` service applies
+the Alembic migrations and seeds any empty shared medication catalog. A
+successful deployment therefore shows `catalog-bootstrap` as exited with code
+0; it is not expected to remain running.
 
 ## Verify
 
@@ -96,6 +101,17 @@ curl -i https://api.medbuddy.pp.ua/ready
 ```
 
 Both must return HTTP 200 with the expected API contract.
+
+Verify that the pill-identification catalog was populated:
+
+```bash
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  exec -T postgres psql -U medbuddy -d medbuddy -tAc \
+  "SELECT COUNT(*) FROM pill_identification_references;"
+```
+
+The result must be greater than zero before physical-device pill
+identification is considered ready.
 
 ## Android API Endpoint
 

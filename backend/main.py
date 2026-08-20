@@ -15,6 +15,8 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
@@ -63,6 +65,28 @@ def _verify_database_revision(connection: object) -> None:
     current_heads = set(MigrationContext.configure(connection).get_current_heads())
     if current_heads != expected_heads:
         raise RuntimeError("Database migration revision does not match Alembic head.")
+
+
+def _verify_catalog_seed(connection: object) -> None:
+    required_tables = (
+        "drug_basic_infos",
+        "drug_approval_infos",
+        "pill_identification_references",
+    )
+    for table_name in required_tables:
+        has_rows = connection.execute(
+            text(f"SELECT EXISTS (SELECT 1 FROM {table_name} LIMIT 1)")
+        ).scalar_one()
+        if not has_rows:
+            raise RuntimeError("The shared medication catalog is not seeded.")
+
+
+def _verify_database_dependencies() -> None:
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+        if settings.APP_ENV == "production":
+            _verify_database_revision(connection)
+            _verify_catalog_seed(connection)
 
 
 async def _ping_required_redis() -> None:
@@ -160,6 +184,11 @@ def create_app() -> FastAPI:
         rules=DEFAULT_RATE_LIMIT_RULES,
         enabled=settings.RATE_LIMIT_ENABLED,
     )
+    if settings.APP_ENV == "production":
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=settings.trusted_host_list,
+        )
     app.include_router(
         medication_router,
         prefix="/api/v1/medication",
@@ -177,10 +206,7 @@ def create_app() -> FastAPI:
     @app.get("/ready", include_in_schema=False)
     async def readiness_check() -> dict[str, str]:
         try:
-            with engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-                if settings.APP_ENV == "production":
-                    _verify_database_revision(connection)
+            await run_in_threadpool(_verify_database_dependencies)
             if settings.AUTH_MODE == "firebase":
                 get_oidc_token_verifier()
             if settings.FIREBASE_APP_CHECK_REQUIRED:

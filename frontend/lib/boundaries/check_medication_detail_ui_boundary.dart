@@ -70,12 +70,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                 const SizedBox(height: 24),
                 _DetailQuestionSection(
                   title: '어떻게 먹나요?',
-                  values: [
-                    _dailyFrequencyLabel(
-                      widget.medicationDetail.dailyFrequency,
-                    ),
-                    _summaryValue(widget.medicationDetail.usageMethod),
-                  ],
+                  values: widget.medicationDetail.compactDosageGuideLines,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
@@ -341,9 +336,8 @@ class _DetailValueTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 86),
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(14),
@@ -353,7 +347,7 @@ class _DetailValueTile extends StatelessWidget {
         value,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: MedBuddyColors.textLight,
+          color: MedBuddyColors.textStrong,
           fontSize: 14 * scale,
           height: 1.35,
           fontWeight: FontWeight.w600,
@@ -375,7 +369,7 @@ class _RecommendedDosageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dosageLines = medicationDetail.detailedDosageGuideLines;
+    final dosageLines = medicationDetail.compactDosageGuideLines;
     final warning = _summaryValue(medicationDetail.warning);
 
     return Container(
@@ -476,7 +470,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailListCard(
       title: '상세 복용 가이드',
-      items: medicationDetail.detailedDosageGuideLines,
+      items: medicationDetail.compactDosageGuideLines,
       scale: scale,
     );
   }
@@ -610,28 +604,38 @@ List<String> _summaryValues(String value) {
 
   final values = normalizedValue
       .split(RegExp(r'[,/;·\n]+'))
-      .map((item) => item.trim())
+      .map(_compactIndicationLabel)
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
-  return values.isEmpty ? [normalizedValue] : values;
+  final fallback = _compactIndicationLabel(normalizedValue);
+  return values.isEmpty ? [fallback] : values;
+}
+
+// Function Name: _compactIndicationLabel
+// Description:
+// - Removes sentence scaffolding from efficacy text for display-only tiles.
+// - Keeps the source efficacy unchanged for backend voice-guide generation.
+// Parameters:
+// - value: One efficacy clause returned by the medication detail source.
+// Returns:
+// - A concise indication label suitable for the detail screen.
+String _compactIndicationLabel(String value) {
+  var label = value.trim();
+  label = label.replaceFirst(RegExp(r'^(?:이\s*약(?:은|이)?|본\s*약은)\s*'), '');
+  label = label.replaceFirst(
+    RegExp(
+      r'\s*(?:의\s*)?(?:치료|완화|개선)?\s*(?:에|을\s*위해)?\s*'
+      r'(?:사용합니다|사용됩니다|쓰입니다)\.?$',
+    ),
+    '',
+  );
+  label = label.replaceFirst(RegExp(r'\s*(?:을|를)\s*(?:치료|완화|개선)합니다\.?$'), '');
+  return label.replaceFirst(RegExp(r'[.!?。]+$'), '').trim();
 }
 
 String _summaryValue(String value) {
   final normalizedValue = value.trim();
   return normalizedValue.isEmpty ? '정보 없음' : normalizedValue;
-}
-
-String _dailyFrequencyLabel(String value) {
-  final normalizedValue = value.trim();
-  if (normalizedValue.isEmpty) {
-    return '정보 없음';
-  }
-  if (normalizedValue.contains('일') || normalizedValue.contains('하루')) {
-    return normalizedValue;
-  }
-
-  final count = RegExp(r'\d+').firstMatch(normalizedValue)?.group(0);
-  return count == null ? normalizedValue : '1일 $count회';
 }
 
 List<String> _uniqueNonEmptyValues(List<String> values) {

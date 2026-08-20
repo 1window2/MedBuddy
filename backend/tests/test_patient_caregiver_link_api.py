@@ -17,13 +17,21 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from api.dependencies import get_link_patient_caregiver_control  # noqa: E402
+from api.dependencies import (  # noqa: E402
+    get_authorization_control,
+    get_link_patient_caregiver_control,
+    get_registered_principal,
+)
 from api.router import router  # noqa: E402
+from controls.authorization_control import AuthorizationControl  # noqa: E402
 from controls.link_patient_caregiver_control import (  # noqa: E402
     LinkPatientCaregiver,
 )
 from core.database import Base  # noqa: E402
 from core.request_rate_limits import RequestRateLimitStore  # noqa: E402
+from entities.authenticated_principal_entity import (  # noqa: E402
+    AuthenticatedPrincipal,
+)
 
 
 class _UnavailableRedis:
@@ -60,6 +68,13 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         finally:
             db.close()
 
+    def override_authorization_control() -> Generator[AuthorizationControl, None, None]:
+        db: Session = session_factory()
+        try:
+            yield AuthorizationControl(db=db)
+        finally:
+            db.close()
+
     app = FastAPI()
     request_rate_limit_store = RequestRateLimitStore(
         redis_url="redis://localhost:6379",
@@ -67,8 +82,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
     )
     app.state.request_rate_limit_store = request_rate_limit_store
     app.include_router(router, prefix="/api/v1/medication")
+    app.dependency_overrides[get_authorization_control] = (
+        override_authorization_control
+    )
     app.dependency_overrides[get_link_patient_caregiver_control] = (
         override_link_control
+    )
+    app.dependency_overrides[get_registered_principal] = (
+        AuthenticatedPrincipal.development_principal
     )
 
     async def run_link_lifecycle() -> None:

@@ -29,6 +29,7 @@ from boundaries.pill_identification_boundary import MFDSPillAPI
 from core.database import SessionLocal
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from entities.pill_identification_entity import PillIdentificationReference
 from repositories.pill_identification_catalog_repository import (
     PillIdentificationCatalogRepository,
 )
@@ -246,6 +247,19 @@ class _DrugCatalogStore:
     # - Row count.
     def count_approval(self) -> int:
         return self.db.query(_DrugApprovalInfo).count()
+
+    def count_pill_identification(self) -> int:
+        return self.db.query(PillIdentificationReference).count()
+
+    def has_complete_seed(self) -> bool:
+        return all(
+            count > 0
+            for count in (
+                self.count_basic(),
+                self.count_approval(),
+                self.count_pill_identification(),
+            )
+        )
 
     # Function Name: normalize_name
     # Description:
@@ -602,6 +616,11 @@ def parse_args() -> argparse.Namespace:
         default=3.0,
         help="Delay between retry attempts.",
     )
+    parser.add_argument(
+        "--only-if-empty",
+        action="store_true",
+        help="Skip synchronization when every shared catalog already has rows.",
+    )
     args = parser.parse_args()
     if args.page_size <= 0:
         parser.error("--page-size must be greater than 0.")
@@ -640,7 +659,9 @@ async def main() -> None:
         )
 
         with _exclusive_catalog_sync_lock(db):
-            if args.dataset == "all":
+            if args.only_if_empty and store.has_complete_seed():
+                logger.info("Shared medication catalogs are already seeded; skipping sync.")
+            elif args.dataset == "all":
                 synchronized_counts = await sync_job.sync_all()
                 logger.info(
                     "[e약은요] synchronized rows: %s",
@@ -665,9 +686,10 @@ async def main() -> None:
                 logger.info("[알약 식별정보] synchronized rows: %s", pill_count)
 
             logger.info(
-                "shared catalog counts: basic=%s, approval=%s",
+                "shared catalog counts: basic=%s, approval=%s, pill=%s",
                 store.count_basic(),
                 store.count_approval(),
+                store.count_pill_identification(),
             )
     finally:
         await transport.close()

@@ -23,3 +23,5 @@ class _UserAccount(Base):
     user_hash = Column(String, primary_key=True)
     created_at = Column(DateTime, nullable=False, default=utc_now)
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    deletion_requested_at = Column(DateTime, nullable=True)
+    identity_deleted_at = Column(DateTime, nullable=True)

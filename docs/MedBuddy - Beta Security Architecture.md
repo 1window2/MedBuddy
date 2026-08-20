@@ -44,6 +44,10 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend control | `ManagePushToken` | Register or disable device tokens within the authenticated user scope. |
 | Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
+| Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
+| Backend dependency policy | `_lock_account_operation` | Serialize every authenticated account request with deletion using a transaction-scoped PostgreSQL advisory lock or a local SQLite write transaction. |
+| Backend external boundary | `FirebaseIdentityDeletionBoundary` | Delete only the verified Firebase subject through Admin SDK and treat already-absent identities as idempotent success. |
+| Backend control | `ManageAccount` | Persist deletion tombstones, purge account-owned data, and complete retryable external identity deletion. |
 
 These names are the implementation contract. Authentication is centralized at
 the API and application composition boundaries rather than embedded separately
@@ -126,6 +130,28 @@ Router --> AuthenticatedApiClient : JSON response
 6. Release mode has no unauthenticated `local_patient`, query-role, or
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
+
+## Irreversible Account Deletion
+
+Permanent deletion is a server-managed, retryable saga:
+
+1. Credential-backed users must present a Firebase token whose `auth_time` is
+   no older than `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` (300 seconds by
+   default). The Flutter control reauthenticates stale Google sessions; other
+   credential providers require an explicit sign-out and sign-in.
+2. Anonymous guests are explicitly exempt from credential step-up because
+   Firebase anonymous accounts have no reusable credential. Their current ID
+   token is still verified and force-refreshed.
+3. Every authenticated request acquires the same account-scoped database
+   transaction lock before account registration. Deletion therefore waits for
+   in-flight writes, writes a tombstone, purges owned data, and commits before
+   the external identity call.
+4. Once tombstoned, ordinary requests fail with `410 Gone`; only the deletion
+   endpoint may retry. Firebase `user-not-found` is idempotent success, while
+   transient provider failure returns `503 Retry-After` without reopening writes.
+5. After server success, Flutter clears its in-memory medical session before
+   provider sign-out. A sign-out failure remains visible and cannot resurrect
+   the deleted subject inside the running application.
 
 ## Caregiver Notification Delivery
 
@@ -275,6 +301,14 @@ authentication paths.
    checks remain an authenticated Workmanager task; periodic server maintenance
    runs inside the single production FastAPI process.
 
+10. Permanent deletion requires a recent Firebase `auth_time` for credential-
+    backed users. Keep `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS=300` unless a
+    documented threat-model change justifies another bounded value.
+
+11. Production FastAPI accepts only the public API hostname and documented
+    loopback/container diagnostic hosts from `TRUSTED_HOSTS`; wildcard Host
+    configuration is rejected.
+
 ### Android Firebase Registration
 
 Register both debug fingerprints while testing Google sign-in and App Check:
@@ -327,6 +361,7 @@ The current ordered Alembic chain records the beta data boundary:
 | `e82bc4d1a930` | Persist user-confirmed schedule slots on saved medications. |
 | `f93ac76b2e11` | Strengthen account lifecycle and relationship integrity. |
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
+| `b71d8c2e4f10` | Add account-deletion tombstone and external-identity completion timestamps. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still

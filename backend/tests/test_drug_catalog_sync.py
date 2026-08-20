@@ -101,6 +101,32 @@ class DrugCatalogSyncTest(unittest.TestCase):
             ["effect-a", "effect-b"],
         )
 
+    def test_complete_seed_requires_every_shared_catalog(self) -> None:
+        self.assertFalse(self.store.has_complete_seed())
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq="BASIC-1",
+                    item_name="basic",
+                    normalized_item_name="basic",
+                    raw_json="{}",
+                ),
+                _DrugApprovalInfo(
+                    item_seq="APPROVAL-1",
+                    item_name="approval",
+                    normalized_item_name="approval",
+                    raw_json="{}",
+                ),
+                PillIdentificationReference(
+                    item_seq="PILL-1",
+                    item_name="pill",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        self.assertTrue(self.store.has_complete_seed())
+
     def test_pill_sync_replaces_shared_reference_catalog(self) -> None:
         class _PillCatalogAPI:
             async def requestCatalog(self) -> list[PillCatalogEntry]:

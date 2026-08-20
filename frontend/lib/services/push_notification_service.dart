@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -87,9 +88,34 @@ class PushNotificationService {
   // - 현재 기기 토큰을 서버에서 비활성화하고 메시지 구독을 정리한다.
   // 반환값:
   // - 없음
-  Future<void> stop() async {
+  Future<void> stop({bool requireServerUnregistration = false}) async {
     final token = _registeredToken;
-    _registeredToken = null;
+    if (token != null && token.isNotEmpty) {
+      try {
+        final response = await _client
+            .delete(
+              Uri.parse(ApiConfig.pushTokenUrl),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'token': token, 'platform': 'android'}),
+            )
+            .timeout(_requestTimeout);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw StateError(
+            'The device push token could not be unregistered. '
+            '(${response.statusCode})',
+          );
+        }
+        if (_registeredToken == token) {
+          _registeredToken = null;
+        }
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+        if (requireServerUnregistration) {
+          rethrow;
+        }
+      }
+    }
+
     _started = false;
     await _tokenRefreshSubscription?.cancel();
     await _foregroundMessageSubscription?.cancel();
@@ -97,20 +123,11 @@ class PushNotificationService {
     _tokenRefreshSubscription = null;
     _foregroundMessageSubscription = null;
     _openedMessageSubscription = null;
-    if (token == null || token.isEmpty) {
-      return;
-    }
-    try {
-      await _client
-          .delete(
-            Uri.parse(ApiConfig.pushTokenUrl),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'token': token, 'platform': 'android'}),
-          )
-          .timeout(_requestTimeout);
-    } catch (error, stackTrace) {
-      _reportPushError(error, stackTrace);
-    }
+  }
+
+  @visibleForTesting
+  void setRegisteredTokenForTesting(String token) {
+    _registeredToken = token;
   }
 
   // 함수명: _registerToken

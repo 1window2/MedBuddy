@@ -86,9 +86,14 @@ class _PublicDrugTransport:
         self,
         url: str,
         params: dict[str, object],
+        *,
+        bypass_failure_cache: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         failure_key = self._build_failure_key(url, params)
-        if self._failed_until.get(failure_key, 0.0) > time.monotonic():
+        if (
+            not bypass_failure_cache
+            and self._failed_until.get(failure_key, 0.0) > time.monotonic()
+        ):
             raise RuntimeError(
                 "The public medication API is temporarily unavailable."
             )
@@ -267,6 +272,7 @@ class PublicDrugSmallAPI:
                 "numOfRows": num_of_rows,
                 "type": "json",
             },
+            bypass_failure_cache=True,
         )
 
 
@@ -305,6 +311,7 @@ class PublicDrugLargeAPI:
                 "numOfRows": num_of_rows,
                 "type": "json",
             },
+            bypass_failure_cache=True,
         )
 
 

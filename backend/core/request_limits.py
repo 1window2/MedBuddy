@@ -44,6 +44,7 @@ class RequestBodyLimitMiddleware:
         """Delegates bounded requests and rejects bodies that exceed their path limit."""
 
         if scope["type"] != "http" or scope.get("method") not in {
+            "DELETE",
             "POST",
             "PUT",
             "PATCH",

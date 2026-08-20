@@ -1,11 +1,11 @@
 # MedBuddy Codex Security Finding Disposition
 
-Audit date: 2026-08-09
+Audit date: 2026-08-21
 
-Target: beta/v0.1.0 working tree, `codex/beta-v0.1.0-security-hardening`,
-and the verified follow-up branch `codex/beta-v0.1.0-postscan-hardening`
+Target: `beta/v0.1.0` and draft PR #74 into `main`
 
-Scope: all 34 supplied Codex Security reports and every available Patch tab
+Scope: all 34 supplied Codex Security reports, every available Patch tab, and
+the five post-scan Codex review threads on PR #74
 
 ## Method
 
@@ -15,10 +15,21 @@ findings exposed a Patch tab; those patches were reviewed as proposals rather
 than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
-The result is 17 findings that required a change in the hardening branches and
-17 findings whose reported vulnerable state had already been removed by the
-recovered beta work. "Already resolved" means the current tree contains the
-relevant control; it does not mean the original report was invalid.
+The original disposition remains 17 findings that required a change and 17
+whose reported vulnerable state had already been removed by the recovered beta
+work. The five later review threads also required corrections before merge.
+"Already resolved" means the current tree contains the relevant control; it
+does not mean the original report was invalid.
+
+## PR #74 post-scan review corrections
+
+| Review concern | Final control |
+| --- | --- |
+| A device push token could survive sign-out | Strict sign-out unregisters the token while the Firebase bearer token is still valid. Provider sign-out and local listener teardown happen only after server confirmation; failure leaves the authenticated session retryable. |
+| Production disabled inline pill-catalog refresh before a seed existed | A one-shot `catalog-bootstrap` service applies Alembic migrations and atomically seeds all three shared catalogs before FastAPI and Cloudflare Tunnel can become ready. `/ready` requires nonempty basic, approval, and pill-reference tables. |
+| Catalog retry was blocked by the interactive negative cache | Full-catalog page fetches explicitly bypass the short interactive failure cache while retaining bounded retry counts, timeouts, and the cross-process sync lock. |
+| DELETE request bodies bypassed the global size limit | `RequestBodyLimitMiddleware` now covers DELETE alongside POST, PUT, and PATCH; regression tests cover both content-length and streamed-body overflow. |
+| Client-side deletion could purge data before Firebase recent-login failure | Credential-backed deletion now requires a recent server-verified `auth_time`. The backend records a retry-safe tombstone, purges data, and deletes the verified Firebase subject through Admin SDK under the same account transaction lock used by ordinary requests. |
 
 ## High severity
 
@@ -76,37 +87,35 @@ relevant control; it does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 336 passed, 2 PostgreSQL-gated tests skipped, 4 subtests passed.
-- Flutter: 219 tests passed; `flutter analyze` reported no issues.
-- UML: PlantUML rendering passed and the class and overall sequence PNGs were regenerated.
+- Backend: 353 passed, 2 PostgreSQL-gated tests skipped, 4 subtests passed.
+- Flutter: 241 tests passed; `flutter analyze --no-pub` reported no issues.
+- Focused review suites: 75 backend security/catalog tests, 26 final
+  config/catalog tests, and 5 Flutter sign-out/deletion tests passed.
+- UML: PlantUML 1.2026.6 source validation and local rendering passed; the
+  class and overall sequence PNGs were regenerated without uploading the UML.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
   HTTPS placeholder; manifest reports `usesCleartextTraffic=false`.
-- Physical device: Samsung SM-N976N / Android 12. The previously installed
-  v0.1.0+10 Firebase-enabled debug build exposed email/password, Google, phone,
-  and guest authentication. The current no-billing beta source hides phone and
-  SMS MFA behind disabled frontend and backend flags. Anonymous sign-in acquired
-  a client Firebase identity, then
-  failed closed because the local backend lacked Firebase Admin application
-  credentials. Earlier synthetic-data checks on the same merged beta code
-  covered prescription OCR/analysis/save, 3-slot schedules, reversible
-  completion, medication detail, health guidance, notifications, settings,
-  caregiver restrictions, and pill rejection without fatal app logs.
-- Standalone boundary: the APK targets the LAN host rather than localhost, all
-  ADB forward/reverse tunnels were removed, and wireless ADB was disconnected.
-  Direct phone-to-PC traffic remained blocked because domain policy ignores
-  local Windows Firewall rules; a GPO-authorized phone-scoped rule or public
-  HTTPS backend is still required for cable-free end-to-end proof.
-- Cleanup: synthetic Firebase test users and local test data were removed, and
-  the temporary backend was stopped. One earlier anonymous Firebase UID may
-  still require deletion in the Firebase Authentication console if present.
-  The ignored local phone-only firewall rule also remains because this process
-  could not obtain administrator elevation; an administrator must delete it.
+- Prior physical-device beta: the user verified standalone startup on a
+  network-separated Samsung SM-N976N, guest and Google authentication,
+  prescription analysis/masking/save, saved medication and schedules,
+  completion/undo, reminders, health guidance, images, settings persistence,
+  and force-stop session restoration. The feedback from that run is reflected
+  in the current source and regression tests; the new signed artifact still
+  requires a final repeat pass.
+- Production ingress: `https://api.medbuddy.pp.ua` reaches the dedicated mini
+  PC through Cloudflare Tunnel. PostgreSQL and Redis remain private, and the
+  host loopback port is diagnostic only. Tailscale Funnel, Caddy, laptop LAN
+  addresses, ADB forwarding, and user-specific endpoints are not part of the
+  tracked production configuration.
+- Local hygiene: real `.env`, Firebase JSON, Android local properties, signing
+  keys, SQLite runtime databases, generated dependency caches, and APKs remain
+  ignored and absent from the PR diff.
 
 ## Remaining release gates
 
-No release was made. A signed beta still requires a Firebase Admin credential on
-the backend (or an attached runtime service account), the real public HTTPS
-backend, App Check configuration, release keystore/certificate match, PostgreSQL
-migration integration tests, CI success, and a final signed-artifact device
-pass. These are deployment proofs, not reasons to weaken the local or release
-fail-closed controls.
+No release was made. Before PR #74 is merged, the final reviewed commit must be
+deployed to the mini PC, `pill_identification_references` must be populated and
+queried successfully, CI and the final Codex re-review must pass, and the signed
+artifact must complete the network transition/outage, sign-out privacy,
+deletion, data-preserving update, and two-device caregiver gates. These are
+deployment proofs, not reasons to weaken the fail-closed controls.

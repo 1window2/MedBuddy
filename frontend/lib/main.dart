@@ -7,6 +7,7 @@ import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
+import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
@@ -41,7 +42,13 @@ Future<void> main() async {
     );
   }
   final authenticationControl = AuthenticationControl.bootstrap();
-  runApp(MedBuddyApp(authenticationControl: authenticationControl));
+  final appLanguageControl = AppLanguageControl();
+  runApp(
+    MedBuddyApp(
+      authenticationControl: authenticationControl,
+      appLanguageControl: appLanguageControl,
+    ),
+  );
   try {
     await NotificationService.instance.initialize();
   } catch (error, stackTrace) {
@@ -68,6 +75,7 @@ class MedBuddyApp extends StatefulWidget {
   final void Function(MedicationNotificationSelectionHandler? handler)?
   notificationSelectionRegistrar;
   final AuthenticationControl? authenticationControl;
+  final AppLanguageControl? appLanguageControl;
 
   const MedBuddyApp({
     super.key,
@@ -75,6 +83,7 @@ class MedBuddyApp extends StatefulWidget {
     this.viewModelFactory,
     this.notificationSelectionRegistrar,
     this.authenticationControl,
+    this.appLanguageControl,
   });
 
   @override
@@ -88,6 +97,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   late final GlobalKey<NavigatorState> _navigatorKey;
   late final AuthenticationControl _authenticationControl;
   late final bool _ownsAuthenticationControl;
+  late final AppLanguageControl _appLanguageControl;
+  late final bool _ownsAppLanguageControl;
   bool _isScheduleRouteOpen = false;
   String? _openCaregiverScheduleRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
@@ -103,6 +114,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _ownsAuthenticationControl = widget.authenticationControl == null;
     _authenticationControl =
         widget.authenticationControl ?? AuthenticationControl.development();
+    _authenticationControl.setBeforeSignOut(_stopPushBeforeSignOut);
+    _ownsAppLanguageControl = widget.appLanguageControl == null;
+    _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
     _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
     _synchronizeCaregiverNotificationMonitor();
@@ -115,11 +129,29 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     unawaited(_pushNotificationService?.stop());
     unawaited(CaregiverNotificationBackgroundScheduler.cancel());
     _registerNotificationSelectionHandler(null);
+    _authenticationControl.setBeforeSignOut(null);
     _authenticationControl.removeListener(_handleAuthenticationChange);
     if (_ownsAuthenticationControl) {
       _authenticationControl.dispose();
     }
+    if (_ownsAppLanguageControl) {
+      _appLanguageControl.dispose();
+    }
     super.dispose();
+  }
+
+  // Function Name: _stopPushBeforeSignOut
+  // Description:
+  // - Unregisters the device push token while Firebase authentication is still
+  //   available to authorize the backend DELETE request.
+  // Returns:
+  // - Completes only after the server accepts token removal.
+  Future<void> _stopPushBeforeSignOut() async {
+    final pushService = _pushNotificationService;
+    if (pushService == null) {
+      return;
+    }
+    await pushService.stop(requireServerUnregistration: true);
   }
 
   void _registerNotificationSelectionHandler(
@@ -374,10 +406,17 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<AuthenticationControl>.value(
-      value: _authenticationControl,
-      child: Consumer<AuthenticationControl>(
-        builder: (context, authentication, _) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthenticationControl>.value(
+          value: _authenticationControl,
+        ),
+        ChangeNotifierProvider<AppLanguageControl>.value(
+          value: _appLanguageControl,
+        ),
+      ],
+      child: Consumer2<AuthenticationControl, AppLanguageControl>(
+        builder: (context, authentication, appLanguage, _) {
           final session = authentication.session;
           final application = MaterialApp(
             navigatorKey: _navigatorKey,
@@ -385,7 +424,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             debugShowCheckedModeBanner: false,
             builder: (context, child) {
               final userSetting = session == null
-                  ? const UserSetting()
+                  ? UserSetting(language: appLanguage.language)
                   : context.watch<MedBuddyViewModel>().userSetting;
               return MedBuddyTextScale(
                 userSetting: userSetting,
@@ -403,7 +442,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             ),
             home: AuthenticationGate(
               state: authentication,
-              unauthenticatedChild: AuthenticationUI(control: authentication),
+              unauthenticatedChild: AuthenticationUI(
+                control: authentication,
+                languageControl: appLanguage,
+              ),
               authenticatedChild: const HomeScreen(),
             ),
           );
@@ -412,17 +454,46 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
           }
           return ChangeNotifierProvider<MedBuddyViewModel>(
             key: ValueKey(session.userHash),
-            create: (_) =>
-                (widget.viewModelFactory?.call() ??
-                      MedBuddyViewModel(
-                        patientHash: session.userHash,
-                        apiClient: authentication.apiClient,
-                      ))
-                  ..loadUserSetting(),
+            create: (_) {
+              final viewModel =
+                  widget.viewModelFactory?.call() ??
+                  MedBuddyViewModel(
+                    patientHash: session.userHash,
+                    apiClient: authentication.apiClient,
+                  );
+              unawaited(_loadUserSettingAndSyncLanguage(viewModel));
+              return viewModel;
+            },
             child: application,
           );
         },
       ),
     );
+  }
+
+  // Function Name: _loadUserSettingAndSyncLanguage
+  // Description:
+  // - Loads the authenticated user's setting through the existing ViewModel.
+  // - Mirrors its language into the device-wide authentication preference.
+  // Parameters:
+  // - viewModel: Authenticated MedBuddy application state.
+  // Returns:
+  // - Completes after the setting load and language synchronization attempt.
+  Future<void> _loadUserSettingAndSyncLanguage(
+    MedBuddyViewModel viewModel,
+  ) async {
+    try {
+      await viewModel.loadUserSetting();
+      await _appLanguageControl.setLanguage(viewModel.userSetting.language);
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'MedBuddy settings bootstrap',
+          context: ErrorDescription('loading authenticated user settings'),
+        ),
+      );
+    }
   }
 }

@@ -303,7 +303,9 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.manageUserSetting =
         manageUserSetting ??
         ManageUserSetting(userHash: this.patientHash, client: _apiClient);
-    this.manageAccount = manageAccount ?? ManageAccount(client: _apiClient);
+    this.manageAccount =
+        manageAccount ??
+        ManageAccount(userHash: this.patientHash, client: _apiClient);
   }
   // 함수명: _notifyViewModelListeners
   // 함수역할:

@@ -13,6 +13,7 @@ import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
 import '../boundaries/prescription_analysis_status_ui_boundary.dart';
+import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -186,18 +187,40 @@ class HomeScreen extends StatelessWidget {
       },
       onUserSettingRequested: () {
         final authenticationControl = context.read<AuthenticationControl>();
+        final appLanguageControl = context.read<AppLanguageControl>();
+
+        Future<void> deleteCurrentAccount() async {
+          await authenticationControl.prepareAccountDeletion();
+          await viewModel.requestAccountDataDeletion();
+          await authenticationControl.finishAccountDeletion();
+        }
+
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ManageUserSettingUI(
               initialSetting: viewModel.userSetting,
               authenticationControl: authenticationControl,
-              onSettingSaveRequested: viewModel.requestUserSettingSave,
-              onSignOutRequested: authenticationControl.signOut,
-              onDeleteAccountRequested: () async {
-                await viewModel.requestAccountDataDeletion();
-                await authenticationControl.deleteCurrentUser();
-              },
+              onSettingSaveRequested:
+                  ({
+                    required String fontSizeOption,
+                    required String readingSpeedOption,
+                    required String language,
+                  }) async {
+                    final result = await viewModel.requestUserSettingSave(
+                      fontSizeOption: fontSizeOption,
+                      readingSpeedOption: readingSpeedOption,
+                      language: language,
+                    );
+                    await appLanguageControl.setLanguage(
+                      result.setting.language,
+                    );
+                    return result;
+                  },
+              onSignOutRequested: authenticationControl.isAnonymous
+                  ? deleteCurrentAccount
+                  : authenticationControl.signOut,
+              onDeleteAccountRequested: deleteCurrentAccount,
             ),
           ),
         );

@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
     FIREBASE_APP_CHECK_REQUIRED: bool = False
+    TRUSTED_HOSTS: str = (
+        "api.medbuddy.pp.ua,localhost,127.0.0.1,backend,testserver"
+    )
+    ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description=(
+            "Maximum Firebase auth_time age accepted for permanent deletion "
+            "of credential-backed accounts. Anonymous guests are exempt "
+            "because Firebase provides no reusable credential for step-up."
+        ),
+    )
     DATABASE_URL: str = _DEFAULT_DATABASE_URL
     AUTO_CREATE_SCHEMA: bool = True
     DATABASE_POOL_SIZE: int = Field(default=5, gt=0, le=20)
@@ -137,6 +150,15 @@ class Settings(BaseSettings):
         ge=1,
         le=365,
     )
+    SAVED_MEDICATION_RETENTION_DAYS_AFTER_END: int = Field(
+        default=0,
+        ge=0,
+        le=3650,
+        description=(
+            "Days to retain ended medication history before maintenance removes "
+            "it. Zero preserves ended history until the user deletes it."
+        ),
+    )
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
@@ -161,6 +183,27 @@ class Settings(BaseSettings):
         if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
+
+    # Function Name: validate_trusted_hosts
+    # Description:
+    # - Normalizes the comma-separated Host allowlist used by production ASGI.
+    # - Rejects wildcard or empty configurations so Host validation cannot be
+    #   silently disabled by deployment configuration.
+    # Parameters:
+    # - value: Comma-separated hostnames or literal IP addresses.
+    # Returns:
+    # - A normalized comma-separated allowlist.
+    @field_validator("TRUSTED_HOSTS")
+    @classmethod
+    def validate_trusted_hosts(cls, value: str) -> str:
+        hosts = [host.strip().lower() for host in value.split(",") if host.strip()]
+        if not hosts or "*" in hosts:
+            raise ValueError("TRUSTED_HOSTS requires an explicit host allowlist.")
+        return ",".join(dict.fromkeys(hosts))
+
+    @property
+    def trusted_host_list(self) -> list[str]:
+        return self.TRUSTED_HOSTS.split(",")
 
     # 함수이름: validate_application_time_zone
     # 함수역할:

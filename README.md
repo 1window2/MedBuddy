@@ -55,8 +55,8 @@
 - Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Completing a dose provides immediate feedback and an undo action, while reminder setup and cancellation display a clear result message at the bottom of the schedule screen.
-- Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
-- Saved medication records are retained through their medication period and cleaned up after the configured retention window.
+- Slot completion state is stored separately from saved medication snapshots and is cleaned up when the owning medication or account is deleted.
+- Ended medication records remain visible in the completed-history section by default. Operators may configure a nonzero retention window, but the beta self-hosted profile preserves history until user deletion.
 
 ### Patient and Caregiver Link Flow
 
@@ -270,6 +270,13 @@ HTTPS backend contract. Production deployment details are documented in
 [`docs/Production Deployment.md`](docs/Production%20Deployment.md), and
 authentication, App Check, and signing requirements are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
+For an already installed physical-device beta, increment `frontend/pubspec.yaml`
+version code and use `frontend/tool/install_update_preserving_data.ps1`. The
+helper verifies the package/signing identity, performs only `adb install -r`,
+and refuses any fallback that would uninstall the app or clear Firebase and
+reminder state. Server-side medication history remains in the named PostgreSQL
+Compose volume; never use `docker compose down -v` during a rebuild. See the
+self-hosted guide above for the complete update and backup procedure.
 
 ## Contributing
 

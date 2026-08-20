@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/authentication_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/app_language_control.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
@@ -21,10 +22,37 @@ void main() {
     );
 
     expect(find.text('Continue with phone'), findsNothing);
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue as guest'), findsOneWidget);
+    expect(find.text('Google로 계속하기'), findsOneWidget);
+    expect(find.text('회원가입 없이 계속하기'), findsOneWidget);
   });
 
+  testWidgets('authentication globe toggles Korean and English globally', (
+    tester,
+  ) async {
+    final control = AuthenticationControl.development();
+    final languageControl = AppLanguageControl(loadPersisted: false);
+    addTearDown(control.dispose);
+    addTearDown(languageControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthenticationUI(
+          control: control,
+          languageControl: languageControl,
+        ),
+      ),
+    );
+
+    expect(find.text('로그인'), findsNWidgets(2));
+    expect(find.text('회원가입 없이 계속하기'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('authentication-language-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in'), findsNWidgets(2));
+    expect(find.text('Continue as guest'), findsOneWidget);
+    expect(languageControl.language, 'en');
+  });
   testWidgets('SMS MFA settings are hidden in the default beta build', (
     tester,
   ) async {

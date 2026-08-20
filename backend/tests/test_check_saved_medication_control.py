@@ -231,7 +231,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertIsNone(saved_row.item_seq)
         self.assertIsNone(saved_row.image_url)
 
-    def test_list_filters_expired_medications_without_mutating_storage(self) -> None:
+    def test_list_preserves_expired_medications_without_mutating_storage(self) -> None:
         expired_medication = self._saved_medication(
             patient_hash="patient-a",
             item_name="expired-tablet",
@@ -269,8 +269,11 @@ class CheckSavedMedicationTest(unittest.TestCase):
 
         response = self.control.requestSavedMedicationInfo("patient-a")
 
-        self.assertEqual(len(response["data"]), 1)
-        self.assertEqual(response["data"][0]["item_name"], "active-tablet")
+        self.assertEqual(len(response["data"]), 2)
+        self.assertCountEqual(
+            [medication["item_name"] for medication in response["data"]],
+            ["expired-tablet", "active-tablet"],
+        )
         saved_names = [
             medication.item_name
             for medication in self.db.query(_SavedMedication).all()
@@ -291,7 +294,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
                 item_name="new-tablet",
             )
         )
-        self.assertIsNone(self.db.get(_SavedMedication, expired_response["id"]))
+        self.assertIsNotNone(self.db.get(_SavedMedication, expired_response["id"]))
 
     def test_list_keeps_medications_without_total_days(self) -> None:
         unknown_period_medication = self._saved_medication(

@@ -3,12 +3,19 @@
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
+from boundaries.firebase_identity_boundary import (
+    FirebaseIdentityDeletionBoundary,
+)
 from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
@@ -52,7 +59,10 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.input_prescription_control import InputPrescription
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
-from controls.manage_account_control import ManageAccount
+from controls.manage_account_control import (
+    AccountDeletionPendingError,
+    ManageAccount,
+)
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
@@ -185,6 +195,82 @@ def get_authenticated_principal(
         )
     return principal
 
+# Function Name: get_recently_authenticated_principal
+# Description:
+# - Requires recent Firebase authentication before irreversible account deletion.
+# - Preserves the authenticated server-derived subject and explicitly exempts
+#   anonymous guests because they have no reusable credential for step-up auth.
+# Parameters:
+# - principal: Verified request principal supplied by Firebase authentication.
+# Returns:
+# - The same principal when the deletion freshness policy is satisfied.
+def get_recently_authenticated_principal(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+) -> AuthenticatedPrincipal:
+    if principal.authentication_disabled or principal.anonymous:
+        return principal
+
+    authenticated_at = principal.authenticated_at
+    now = datetime.now(UTC)
+    maximum_age = timedelta(
+        seconds=settings.ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS
+    )
+    if (
+        authenticated_at is None
+        or authenticated_at > now + timedelta(seconds=60)
+        or now - authenticated_at > maximum_age
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Recent authentication is required before deleting this account. "
+                "Sign in again and retry."
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return principal
+
+
+# Function Name: _lock_account_operation
+# Description:
+# - Serializes each authenticated account request with account deletion.
+# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and
+#   a SQLite write transaction for deterministic local/test behavior.
+# Parameters:
+# - db: Request-scoped SQLAlchemy session shared by endpoint controls.
+# - user_hash: Server-derived account scope used only as a lock namespace.
+# Returns:
+# - None. The lock remains held until the request transaction commits/rolls back.
+def _lock_account_operation(db: Session, user_hash: str) -> None:
+    if db.in_transaction():
+        return
+    dialect_name = db.get_bind().dialect.name
+    if dialect_name == "postgresql":
+        db.execute(
+            text("SELECT set_config('lock_timeout', :timeout, true)"),
+            {"timeout": "5s"},
+        )
+        db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended(:user_hash, 0))"
+            ),
+            {"user_hash": user_hash},
+        )
+        return
+    if dialect_name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        return
+    raise RuntimeError(
+        "Authenticated account-operation locking requires PostgreSQL or SQLite."
+    )
+
+
+def _register_account_scope(db: Session, user_hash: str) -> None:
+    """Acquires the account lock and rejects deleted account tombstones."""
+
+    _lock_account_operation(db, user_hash)
+    ManageAccount(db).ensureAccount(user_hash)
 
 # 함수명: get_registered_principal
 # 역할:
@@ -218,7 +304,33 @@ async def get_registered_principal(
                 detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
                 headers={"Retry-After": str(max(1, retry_after))},
             )
-    ManageAccount(db).ensureAccount(principal.user_hash, commit=True)
+    try:
+        if db.get_bind().dialect.name == "postgresql":
+            await run_in_threadpool(
+                _register_account_scope,
+                db,
+                principal.user_hash,
+            )
+        else:
+            _register_account_scope(db, principal.user_hash)
+    except AccountDeletionPendingError as exc:
+        is_account_deletion_retry = (
+            request.method.upper() == "DELETE"
+            and request.url.path == "/api/v1/auth/account-data"
+        )
+        if is_account_deletion_retry:
+            return principal
+        raise HTTPException(
+            status_code=410,
+            detail="This MedBuddy account has been deleted.",
+        ) from exc
+    except OperationalError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="This account is busy. Retry the request shortly.",
+            headers={"Retry-After": "5"},
+        ) from exc
     return principal
 
 
@@ -256,7 +368,15 @@ def get_authorization_control(
 def get_manage_account(
     db: Session = Depends(get_db),
 ) -> ManageAccount:
-    return ManageAccount(db=db)
+    identity_boundary = (
+        FirebaseIdentityDeletionBoundary(settings.FIREBASE_PROJECT_ID)
+        if settings.AUTH_MODE == "firebase"
+        else None
+    )
+    return ManageAccount(
+        db=db,
+        identity_deletion_boundary=identity_boundary,
+    )
 
 
 async def get_medication_detail_cache() -> _MedicationDetailCache:

@@ -37,12 +37,34 @@ services:
       retries: 10
     networks: [backend]
 
+  catalog-bootstrap:
+    build:
+      context: ./backend
+    restart: "no"
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: catalog_sync
+      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      AUTO_CREATE_SCHEMA: "false"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        python -m alembic upgrade head
+        python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5 --only-if-empty
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
   backend:
     build:
       context: ./backend
     restart: unless-stopped
     env_file:
-      - ./deploy/backend.env
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
     environment:
       APP_ENV: production
       RUNTIME_ROLE: api
@@ -61,9 +83,10 @@ services:
       - /bin/sh
       - -ec
       - |
-        python -m alembic upgrade head
         exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=*
     depends_on:
+      catalog-bootstrap:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
