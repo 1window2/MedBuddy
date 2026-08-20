@@ -12,8 +12,9 @@ from pathlib import Path
 import re
 import sys
 from typing import Any, Iterator
+from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -106,6 +107,7 @@ class _DrugCatalogStore:
         items: list[dict[str, Any]],
         *,
         commit: bool = True,
+        sync_token: str | None = None,
     ) -> int:
         processed_count = 0
         batch_targets_by_seq: dict[str, _DrugBasicInfo] = {}
@@ -142,6 +144,7 @@ class _DrugCatalogStore:
                 self._read_text(item, "depositMethodQesitm") or None
             )
             target_item.raw_json = self._dump_raw_json(item)
+            target_item.catalog_sync_token = sync_token
 
             if is_new_item:
                 self.db.add(target_item)
@@ -169,6 +172,7 @@ class _DrugCatalogStore:
         items: list[dict[str, Any]],
         *,
         commit: bool = True,
+        sync_token: str | None = None,
     ) -> int:
         processed_count = 0
         batch_targets_by_seq: dict[str, _DrugApprovalInfo] = {}
@@ -217,6 +221,7 @@ class _DrugCatalogStore:
                 ["NB_DOC_DATA", "atpnWarnQesitm"],
             ) or None
             target_item.raw_json = self._dump_raw_json(item)
+            target_item.catalog_sync_token = sync_token
 
             if is_new_item:
                 self.db.add(target_item)
@@ -231,6 +236,72 @@ class _DrugCatalogStore:
         else:
             self.db.flush()
         return processed_count
+
+    # Function Name: prune_basic_items_not_seen
+    # Description:
+    # - Deletes basic-catalog rows that were not observed during a successful
+    #   complete refresh identified by sync_token.
+    # - Participates in the caller's transaction so a later dataset failure
+    #   restores the previously published catalog.
+    # Parameters:
+    # - sync_token: Unique marker assigned to every row observed by this refresh.
+    # - commit: Whether this method owns the transaction commit.
+    # Returns:
+    # - Number of obsolete rows deleted.
+    def prune_basic_items_not_seen(
+        self,
+        sync_token: str,
+        *,
+        commit: bool = True,
+    ) -> int:
+        deleted_count = (
+            self.db.query(_DrugBasicInfo)
+            .filter(
+                or_(
+                    _DrugBasicInfo.catalog_sync_token.is_(None),
+                    _DrugBasicInfo.catalog_sync_token != sync_token,
+                )
+            )
+            .delete(synchronize_session=False)
+        )
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return deleted_count
+
+    # Function Name: prune_approval_items_not_seen
+    # Description:
+    # - Deletes approval-catalog rows that were not observed during a successful
+    #   complete refresh identified by sync_token.
+    # - Participates in the caller's transaction so a later dataset failure
+    #   restores the previously published catalog.
+    # Parameters:
+    # - sync_token: Unique marker assigned to every row observed by this refresh.
+    # - commit: Whether this method owns the transaction commit.
+    # Returns:
+    # - Number of obsolete rows deleted.
+    def prune_approval_items_not_seen(
+        self,
+        sync_token: str,
+        *,
+        commit: bool = True,
+    ) -> int:
+        deleted_count = (
+            self.db.query(_DrugApprovalInfo)
+            .filter(
+                or_(
+                    _DrugApprovalInfo.catalog_sync_token.is_(None),
+                    _DrugApprovalInfo.catalog_sync_token != sync_token,
+                )
+            )
+            .delete(synchronize_session=False)
+        )
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return deleted_count
 
     # Function Name: count_basic
     # Description:
@@ -398,6 +469,7 @@ class DrugCatalogSyncJob:
     # Returns:
     # - Number of rows processed.
     async def sync_basic(self, *, commit: bool = True) -> int:
+        sync_token = str(uuid4()) if self._is_complete_dataset_sync else None
         try:
             processed = await self._sync_pages(
                 dataset_name="e약은요",
@@ -405,12 +477,15 @@ class DrugCatalogSyncJob:
                 upsert_items=lambda items: self.store.upsert_basic_items(
                     items,
                     commit=False,
+                    sync_token=sync_token,
                 ),
             )
             if processed == 0:
                 raise CatalogSyncIncompleteError(
                     "The basic medication catalog returned no usable rows."
                 )
+            if sync_token is not None:
+                self.store.prune_basic_items_not_seen(sync_token, commit=False)
             if commit:
                 self.store.db.commit()
             return processed
@@ -425,6 +500,7 @@ class DrugCatalogSyncJob:
     # Returns:
     # - Number of rows processed.
     async def sync_approval(self, *, commit: bool = True) -> int:
+        sync_token = str(uuid4()) if self._is_complete_dataset_sync else None
         try:
             processed = await self._sync_pages(
                 dataset_name="허가정보",
@@ -432,12 +508,15 @@ class DrugCatalogSyncJob:
                 upsert_items=lambda items: self.store.upsert_approval_items(
                     items,
                     commit=False,
+                    sync_token=sync_token,
                 ),
             )
             if processed == 0:
                 raise CatalogSyncIncompleteError(
                     "The approval medication catalog returned no usable rows."
                 )
+            if sync_token is not None:
+                self.store.prune_approval_items_not_seen(sync_token, commit=False)
             if commit:
                 self.store.db.commit()
             return processed
@@ -479,6 +558,12 @@ class DrugCatalogSyncJob:
         except Exception:
             self.store.db.rollback()
             raise
+
+    @property
+    def _is_complete_dataset_sync(self) -> bool:
+        """Returns whether this job covers every page from the first page."""
+
+        return self.start_page == 1 and self.max_pages is None
 
     async def _sync_pages(
         self,

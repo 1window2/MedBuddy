@@ -63,6 +63,11 @@ deploy/backend.env.example
 Never commit the real `.env` files, Firebase Admin credential, Cloudflare Tunnel
 token, API keys, database passwords, or Android signing material.
 
+Set `POSTGRES_PASSWORD` once in `deploy/.env` as the raw PostgreSQL password.
+The backend receives structured host/user/password fields and lets SQLAlchemy
+encode the connection URL, so passwords containing URL-reserved characters
+such as `@`, `:`, `/`, `?`, or `#` work without a second encoded secret.
+
 ## Start or Update Production
 
 From the repository root:
@@ -88,9 +93,13 @@ successful deployment therefore shows `catalog-bootstrap` as exited with code
 0; it is not expected to remain running.
 
 The separate `catalog-refresh` service performs a full atomic synchronization
-every seven days by default. A failed refresh preserves the last committed
-catalog and retries after one hour. Configure the two intervals in
-`deploy/.env`; do not add `--only-if-empty` to this periodic service.
+every seven days by default. Each successful complete refresh removes basic,
+approval, and pill records no longer returned by MFDS while preserving local AI
+summaries for retained product identifiers. A failed full refresh keeps the
+last committed catalog, and a deliberately page-limited maintenance job
+never prunes unvisited rows. Production retries a failed full refresh after one
+hour. Configure the two intervals in `deploy/.env`; do not add
+`--only-if-empty` to this periodic service.
 
 ## Verify
 

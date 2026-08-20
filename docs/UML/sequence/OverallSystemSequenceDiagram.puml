@@ -595,7 +595,8 @@ end
 loop 설정된 주기마다 catalog-refresh 실행
     BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청
     MFDS --> BackService : 최신 MFDS Dataset
-    BackService -> Database : 한 Transaction에서 Catalog 동기화
+    BackService -> Database : 기본/허가 Row에 Sync Token 표시
+    BackService -> Database : 미관측 기본/허가 Row 제거,\n낱알 Catalog 교체 (한 Transaction)
     alt 전체 Dataset 성공
         Database --> BackService : Commit
     else 일부 Dataset 실패

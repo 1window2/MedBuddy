@@ -333,14 +333,11 @@ authentication paths.
 
 ### Android Firebase Registration
 
-Register both debug fingerprints while testing Google sign-in and App Check:
-
-- Debug SHA-1: `9C:E0:30:DB:15:5B:54:F3:A7:8A:E7:CA:C6:6B:46:73:B5:40:E0:25`
-- Debug SHA-256: `78:AF:ED:C9:BE:90:3B:15:B6:18:1B:C5:09:08:A6:92:D6:41:9D:D0:C9:91:6F:3E:70:63:27:76:B8:B1:F8:D1`
-
-These fingerprints identify the current local debug certificate and are not
-secrets. Register the release/upload SHA-1 and SHA-256 separately after the
-protected release keystore is created. Download a refreshed
+Register the SHA-1 and SHA-256 fingerprints for each contributor's own debug
+certificate while testing Google sign-in and App Check. Do not copy a
+machine-specific debug fingerprint into tracked project documentation or
+configuration. Register the release/upload SHA-1 and SHA-256 separately after
+the protected release keystore is created. Download a refreshed
 `google-services.json` after registering fingerprints and enabling Google
 sign-in; keep the real file out of Git.
 
@@ -355,8 +352,8 @@ stored in the Compose file or Flutter compile-time constants.
 
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
-- One periodic catalog-refresh worker with atomic weekly synchronization and
-  bounded retry backoff.
+- One periodic catalog-refresh worker with atomic weekly synchronization,
+  upstream-withdrawal pruning, and bounded retry backoff.
 - One FastAPI container with production fail-closed settings.
 - One `cloudflared` container providing the only public ingress path.
 
@@ -368,7 +365,9 @@ into the required containers.
 The one-shot bootstrap waits for PostgreSQL, runs `alembic upgrade head`, and
 seeds all empty medication catalogs before the backend starts. The periodic
 worker then refreshes all three datasets atomically without the empty-only
-shortcut. FastAPI port `8000` is exposed only on host loopback for
+shortcut. Complete basic and approval refreshes mark observed rows with a
+generation token and remove rows not returned by MFDS in the same transaction;
+failed or page-limited jobs cannot publish that pruning. FastAPI port `8000` is exposed only on host loopback for
 local diagnostics. Public traffic reaches the backend only through
 `https://api.medbuddy.pp.ua` -> Cloudflare -> `medbuddy-production` ->
 `http://backend:8080`.
@@ -388,6 +387,7 @@ The current ordered Alembic chain records the beta data boundary:
 | `f93ac76b2e11` | Strengthen account lifecycle and relationship integrity. |
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
 | `b71d8c2e4f10` | Add account-deletion tombstone and external-identity completion timestamps. |
+| `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still

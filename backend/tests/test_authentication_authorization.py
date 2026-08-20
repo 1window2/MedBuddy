@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from api.dependencies import (
@@ -321,6 +322,27 @@ def test_production_configuration_requires_valid_postgresql_url(
 ) -> None:
     with pytest.raises(ValueError, match="PostgreSQL|invalid"):
         _production_api_settings(DATABASE_URL=database_url)
+
+
+def test_structured_database_settings_escape_reserved_password_characters() -> None:
+    raw_password = "p@ss:/word?#[]"
+
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="",
+        DATABASE_HOST="postgres",
+        DATABASE_PORT=5432,
+        DATABASE_NAME="medbuddy",
+        DATABASE_USER="medbuddy",
+        DATABASE_PASSWORD=raw_password,
+    )
+
+    database_url = make_url(settings.DATABASE_URL)
+    assert database_url.host == "postgres"
+    assert database_url.port == 5432
+    assert database_url.database == "medbuddy"
+    assert database_url.username == "medbuddy"
+    assert database_url.password == raw_password
 
 
 def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:

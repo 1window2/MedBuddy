@@ -46,7 +46,11 @@ services:
     environment:
       APP_ENV: production
       RUNTIME_ROLE: catalog_sync
-      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       AUTO_CREATE_SCHEMA: "false"
     command:
       - /bin/sh
@@ -68,7 +72,11 @@ services:
     environment:
       APP_ENV: production
       RUNTIME_ROLE: catalog_sync
-      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       AUTO_CREATE_SCHEMA: "false"
       CATALOG_REFRESH_INTERVAL_SECONDS: "${CATALOG_REFRESH_INTERVAL_SECONDS:-604800}"
       CATALOG_REFRESH_RETRY_SECONDS: "${CATALOG_REFRESH_RETRY_SECONDS:-3600}"
@@ -105,7 +113,11 @@ services:
       FIREBASE_ALLOW_PHONE_AUTH: "false"
       FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
       FIREBASE_APP_CHECK_REQUIRED: "true"
-      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       AUTO_CREATE_SCHEMA: "false"
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_ENABLED: "true"

@@ -87,6 +87,7 @@ class _DrugBasicInfo(Base):
     deposit_method = Column(Text, nullable=True)
     ai_guide = Column(Text, nullable=True)
     raw_json = Column(Text, nullable=False)
+    catalog_sync_token = Column(String(36), index=True, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
@@ -119,4 +120,5 @@ class _DrugApprovalInfo(Base):
     summary_warning_message = Column(Text, nullable=True)
     ai_guide = Column(Text, nullable=True)
     raw_json = Column(Text, nullable=False)
+    catalog_sync_token = Column(String(36), index=True, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

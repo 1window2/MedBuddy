@@ -5,7 +5,7 @@ Audit date: 2026-08-21
 Target: `beta/v0.1.0` and draft PR #74 into `main`
 
 Scope: all 35 current Codex Security reports, every available Patch tab, and
-the ten post-scan Codex review threads on PR #74
+the twelve post-scan Codex review threads on PR #74
 
 ## Method
 
@@ -16,7 +16,7 @@ than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
 Eighteen findings required a change and 17 had a reported vulnerable state that
-was already removed by the recovered beta work. The ten later review threads
+was already removed by the recovered beta work. The twelve later review threads
 also required corrections before merge.
 "Already resolved" means the current tree contains the relevant control; it
 does not mean the original report was invalid.
@@ -35,6 +35,8 @@ does not mean the original report was invalid.
 | Clearing prescription state could leave app-created camera captures behind | Prescription image ownership is explicit: app-created camera files are deleted after active OCR completes, while user-owned gallery originals are never deleted. |
 | Medication reminders could survive sign-out or account deletion | Session teardown cancels the authenticated replenishment task and all pending patient `schedule:` notifications before provider sign-out. Account deletion performs the same cleanup before its destructive backend request. |
 | Long medication courses lost reminders after the 14-day device window | The bounded 14-day window is retained for OEM safety and is replenished twice daily by an authenticated Workmanager task using current server settings and schedules. |
+| Full catalog refresh retained records withdrawn upstream | Complete basic and approval refreshes assign per-run generation tokens and atomically prune rows not observed in the successful MFDS response. Failed and page-limited jobs preserve the prior catalog. |
+| Reserved characters in the PostgreSQL password broke Compose database URLs | Compose passes separate structured database fields. SQLAlchemy renders the URL and escapes the raw password, while PostgreSQL receives the same unmodified secret. |
 
 ## High severity
 
@@ -93,9 +95,9 @@ does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 355 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
+- Backend: 359 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
 - Flutter: 248 tests passed; `flutter analyze --no-pub` reported no issues.
-- Focused final-review suites: 5 repository/deployment configuration tests,
+- Focused final-review suites: 6 repository/deployment configuration tests,
   14 prescription-media/push-lifecycle tests, and 30 reminder/session tests
   passed.
 - UML: PlantUML 1.2026.6 source validation and local rendering passed; the

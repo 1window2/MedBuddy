@@ -89,3 +89,22 @@ def test_self_hosted_catalog_has_periodic_atomic_refresh() -> None:
     assert "CATALOG_REFRESH_RETRY_SECONDS" in refresh_service
     assert "sync_drug_catalog.py --dataset all" in refresh_service
     assert "--only-if-empty" not in refresh_service
+
+
+# Function Name: test_self_hosted_database_url_uses_structured_credentials
+# Description:
+# - Prevents Compose from interpolating an unescaped raw PostgreSQL password
+#   directly into a SQLAlchemy URL.
+# - Ensures every application service uses the same structured connection
+#   fields while PostgreSQL receives the original raw password.
+# Returns:
+# - None; pytest reports a failure when raw URL interpolation returns.
+def test_self_hosted_database_url_uses_structured_credentials() -> None:
+    compose_source = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "${POSTGRES_PASSWORD}@postgres" not in compose_source
+    assert "DATABASE_URL:" not in compose_source
+    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 3
+    assert compose_source.count("DATABASE_HOST: postgres") == 3
