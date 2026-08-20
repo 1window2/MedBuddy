@@ -156,8 +156,10 @@ package "Flutter Frontend" {
             + baseUrl: String
             + requestTimeout: Duration
             + lastSelectedImagePath: String
+            + lastSelectedImageOwnedByApp: bool
             + requestPrescriptionImageFromGallery(): Future<List<MedicationSchedule>>
             + requestCapturedPrescriptionImage(image): Future<List<MedicationSchedule>>
+            + clearSelectedImage(): Future<void>
             + dispose(): void
         }
 
@@ -313,6 +315,8 @@ package "Flutter Frontend" {
         class "PushNotificationService" as PushNotificationService <<Service: FCM 수신>> {
             - _client: http.Client
             - _started: bool
+            - _startOperation: Future<void>
+            - _pendingTokenRegistrations: Set<Future<void>>
             + start(): Future<void>
             + stop(requireServerUnregistration): Future<void>
         }
@@ -647,6 +651,7 @@ package "FastAPI Backend" {
             - public_drug_large_api: PublicDrugLargeAPI
             + sync_basic(): int
             + sync_approval(): int
+            + sync_all(): dict<str, int>
         }
     }
 

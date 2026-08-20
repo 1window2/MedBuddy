@@ -65,8 +65,10 @@ release-mode identity or bypasses bearer-token and App Check enforcement.
 Prescription analysis uses a different privacy boundary from loose-pill
 identification:
 
-1. Flutter runs Korean OCR locally with Google ML Kit and keeps the original
-   prescription image on the device.
+1. Flutter runs Korean OCR locally with Google ML Kit. App-owned camera
+   captures remain only for the active preview and are deleted after in-flight
+   OCR finishes when the flow is cleared or disposed; gallery originals are
+   never deleted by MedBuddy.
 2. `PrescriptionLocalOcrService` removes patient-identifying lines and masks
    inline resident numbers, phone numbers, and email addresses.
 3. The preview displays recognized regions, hides sensitive regions, and lets
@@ -164,7 +166,9 @@ Android device token and follows Firebase token refresh. A patient's
 incomplete-to-complete transition invokes `DispatchCaregiverAlert`, which
 checks the active link and slot preference before sending FCM. Tokens rejected
 as unregistered or sender-mismatched are disabled instead of retried
-indefinitely. Signing out requests deactivation of the current token.
+indefinitely. Push startup and token registration are tracked as lifecycle
+operations, so signing out waits for any in-flight registration before it
+requests deactivation of the current token.
 
 Missed-deadline evaluation currently remains in the Android Workmanager
 monitor. Its background isolate initializes Firebase before making
@@ -333,6 +337,8 @@ stored in the Compose file or Flutter compile-time constants.
 
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
+- One periodic catalog-refresh worker with atomic weekly synchronization and
+  bounded retry backoff.
 - One FastAPI container with production fail-closed settings.
 - One `cloudflared` container providing the only public ingress path.
 
@@ -341,8 +347,10 @@ runtime values in ignored `deploy/backend.env`. A Firebase Admin credential and
 Cloudflare Tunnel token remain outside the repository and are mounted read-only
 into the required containers.
 
-The backend waits for PostgreSQL and Redis, runs `alembic upgrade head`, and
-then starts Uvicorn. FastAPI port `8000` is exposed only on host loopback for
+The one-shot bootstrap waits for PostgreSQL, runs `alembic upgrade head`, and
+seeds all empty medication catalogs before the backend starts. The periodic
+worker then refreshes all three datasets atomically without the empty-only
+shortcut. FastAPI port `8000` is exposed only on host loopback for
 local diagnostics. Public traffic reaches the backend only through
 `https://api.medbuddy.pp.ua` -> Cloudflare -> `medbuddy-production` ->
 `http://backend:8080`.

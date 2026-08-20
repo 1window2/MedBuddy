@@ -5,7 +5,7 @@ Audit date: 2026-08-21
 Target: `beta/v0.1.0` and draft PR #74 into `main`
 
 Scope: all 34 supplied Codex Security reports, every available Patch tab, and
-the five post-scan Codex review threads on PR #74
+the eight post-scan Codex review threads on PR #74
 
 ## Method
 
@@ -17,7 +17,7 @@ trust boundaries.
 
 The original disposition remains 17 findings that required a change and 17
 whose reported vulnerable state had already been removed by the recovered beta
-work. The five later review threads also required corrections before merge.
+work. The eight later review threads also required corrections before merge.
 "Already resolved" means the current tree contains the relevant control; it
 does not mean the original report was invalid.
 
@@ -30,6 +30,9 @@ does not mean the original report was invalid.
 | Catalog retry was blocked by the interactive negative cache | Full-catalog page fetches explicitly bypass the short interactive failure cache while retaining bounded retry counts, timeouts, and the cross-process sync lock. |
 | DELETE request bodies bypassed the global size limit | `RequestBodyLimitMiddleware` now covers DELETE alongside POST, PUT, and PATCH; regression tests cover both content-length and streamed-body overflow. |
 | Client-side deletion could purge data before Firebase recent-login failure | Credential-backed deletion now requires a recent server-verified `auth_time`. The backend records a retry-safe tombstone, purges data, and deletes the verified Firebase subject through Admin SDK under the same account transaction lock used by ordinary requests. |
+| Push-token registration could finish after strict sign-out cleanup | Push startup and every token registration are tracked as lifecycle operations. Strict sign-out blocks new registrations, waits for in-flight registration, and only then unregisters the final token. |
+| Production catalog data became stale after the one-time bootstrap | A dedicated `catalog-refresh` service performs a full atomic MFDS synchronization on a configurable weekly cadence, with bounded retries and an explicit failure backoff. |
+| Clearing prescription state could leave app-created camera captures behind | Prescription image ownership is explicit: app-created camera files are deleted after active OCR completes, while user-owned gallery originals are never deleted. |
 
 ## High severity
 
@@ -87,10 +90,10 @@ does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 353 passed, 2 PostgreSQL-gated tests skipped, 4 subtests passed.
-- Flutter: 241 tests passed; `flutter analyze --no-pub` reported no issues.
-- Focused review suites: 75 backend security/catalog tests, 26 final
-  config/catalog tests, and 5 Flutter sign-out/deletion tests passed.
+- Backend: 354 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
+- Flutter: 244 tests passed; `flutter analyze --no-pub` reported no issues.
+- Focused final-review suites: 4 repository/deployment configuration tests and
+  14 Flutter prescription-media/push-lifecycle tests passed.
 - UML: PlantUML 1.2026.6 source validation and local rendering passed; the
   class and overall sequence PNGs were regenerated without uploading the UML.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public

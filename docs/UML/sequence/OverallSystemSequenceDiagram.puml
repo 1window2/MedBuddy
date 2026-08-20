@@ -102,6 +102,10 @@ else Firebase identity succeeds but backend session is unavailable
 end
 
 AuthControl -> FrontService : PushNotificationService.start()
+note right of FrontService
+  시작 및 Token 등록 Future를 추적해
+  로그아웃 정리와 직렬화
+end note
 FrontService -> FCM : 기기 FCM Token 요청
 FCM --> FrontService : 기기 FCM Token
 FrontService -> ApiClient : POST /api/v1/auth/push-token
@@ -116,6 +120,7 @@ Router --> FrontService : Token 등록 완료
 User -> UI : request sign-out
 UI -> AuthControl : signOut()
 AuthControl -> FrontService : PushNotificationService.stop(requireServerUnregistration=true)
+FrontService -> FrontService : 진행 중 start/Token POST 완료 대기
 FrontService -> ApiClient : DELETE /api/v1/auth/push-token
 ApiClient -> Router : Bearer token and device token
 Router -> BackControl : ManagePushToken.unregisterPushToken()
@@ -222,6 +227,16 @@ Router --> ApiClient : 처방 분석 응답
 ApiClient --> FrontControl : MedicationSchedule 목록
 FrontControl --> ViewModel : 인식 일정과 Preview Region
 ViewModel --> UI : PrescriptionAnalysisPreviewUI 출력
+
+opt 사용자가 흐름을 닫거나 새 촬영을 시작
+    UI -> ViewModel : clearAnalysisResult()
+    ViewModel -> FrontControl : clearSelectedImage()
+    alt 앱 Camera가 생성한 임시 촬영 파일
+        FrontControl -> MediaService : 진행 중 OCR 완료 후 파일 삭제
+    else 사용자가 선택한 Gallery 원본
+        FrontControl -> FrontControl : 참조만 해제하고 원본 보존
+    end
+end
 
 opt 사용자가 OCR 결과를 수정하는 경우
     User -> UI : 약명, 복용량, 횟수 또는 일수 수정
@@ -556,6 +571,20 @@ opt 사용자가 재생 중지 또는 화면 종료
     UI -> FrontControl : RequestVoiceGuide.stop()
     FrontControl -> FrontService : TTSService.stop()
     FrontService -> OSTTS : 음성 재생 중지
+end
+
+== 11. 운영 Catalog 주기 갱신 ==
+
+loop 설정된 주기마다 catalog-refresh 실행
+    BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청
+    MFDS --> BackService : 최신 MFDS Dataset
+    BackService -> Database : 한 Transaction에서 Catalog 동기화
+    alt 전체 Dataset 성공
+        Database --> BackService : Commit
+    else 일부 Dataset 실패
+        Database --> BackService : Rollback, 기존 Catalog 보존
+        BackService -> BackService : 설정된 Backoff 후 재시도
+    end
 end
 
 @enduml

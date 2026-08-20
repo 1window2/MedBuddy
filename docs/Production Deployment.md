@@ -74,10 +74,11 @@ docker compose \
   up -d --build --wait
 ```
 
-The four long-running production services must become healthy:
+The five long-running production services must remain running or healthy:
 
 - `postgres`
 - `redis`
+- `catalog-refresh`
 - `backend`
 - `cloudflared`
 
@@ -85,6 +86,11 @@ Before those services start, the one-shot `catalog-bootstrap` service applies
 the Alembic migrations and seeds any empty shared medication catalog. A
 successful deployment therefore shows `catalog-bootstrap` as exited with code
 0; it is not expected to remain running.
+
+The separate `catalog-refresh` service performs a full atomic synchronization
+every seven days by default. A failed refresh preserves the last committed
+catalog and retries after one hour. Configure the two intervals in
+`deploy/.env`; do not add `--only-if-empty` to this periodic service.
 
 ## Verify
 
@@ -112,6 +118,23 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
 
 The result must be greater than zero before physical-device pill
 identification is considered ready.
+
+Verify that periodic refresh is running and inspect its last synchronization:
+
+```bash
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  ps catalog-refresh
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  logs --tail=100 catalog-refresh
+```
+
+To request an immediate, atomic refresh without waiting for the next interval:
+
+```bash
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  run --rm catalog-bootstrap \
+  python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
+```
 
 ## Android API Endpoint
 

@@ -45,6 +45,27 @@ class _FakePrescriptionLocalOcrBoundary
   }
 }
 
+class _BlockingPrescriptionLocalOcrBoundary
+    implements PrescriptionLocalOcrBoundary {
+  final Completer<void> started = Completer<void>();
+  final Completer<void> allowCompletion = Completer<void>();
+
+  @override
+  Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath) async {
+    started.complete();
+    await allowCompletion.future;
+    return const LocalPrescriptionOcrResult(
+      maskedText: '테스트정 1 2 3',
+      regions: [],
+    );
+  }
+}
+
+Future<void> _disposeControl(InputPrescription control) async {
+  await control.clearSelectedImage();
+  control.dispose();
+}
+
 class _DelayedResponseBodyClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -124,7 +145,7 @@ void main() {
       client: client,
       localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
     );
-    addTearDown(control.dispose);
+    addTearDown(() => _disposeControl(control));
 
     final schedules = await control.requestCapturedPrescriptionImage(
       XFile(imageFile.path),
@@ -137,8 +158,88 @@ void main() {
     expect(schedules, hasLength(1));
     expect(schedules.first.medicationName, '테스트정');
     expect(control.lastSelectedImagePath, imageFile.path);
+    expect(control.lastSelectedImageOwnedByApp, isTrue);
     expect(control.lastRecognizedTextRegions, hasLength(1));
     expect(control.lastRecognizedTextRegions.first.text, '테스트정 1정 1일 2회');
+
+    await control.clearSelectedImage();
+    expect(await imageFile.exists(), isFalse);
+  });
+
+  test('갤러리 처방전 원본은 분석 흐름을 닫아도 삭제하지 않는다', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-gallery-prescription-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/gallery.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = MockClient(
+      (_) async => http.Response(
+        jsonEncode({'medications': <Object>[]}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    addTearDown(() => _disposeControl(control));
+
+    await control.requestPrescriptionImageFromGallery();
+    expect(control.lastSelectedImageOwnedByApp, isFalse);
+
+    await control.clearSelectedImage();
+
+    expect(await imageFile.exists(), isTrue);
+  });
+
+  test('진행 중 OCR이 끝난 뒤 촬영 파일을 삭제한다', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-active-ocr-cleanup-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/captured.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final localOcr = _BlockingPrescriptionLocalOcrBoundary();
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(null),
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({'medications': <Object>[]}),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+      localOcrBoundary: localOcr,
+    );
+    addTearDown(() => _disposeControl(control));
+
+    final analysis = control.requestCapturedPrescriptionImage(
+      XFile(imageFile.path),
+    );
+    await localOcr.started.future;
+    final cleanup = control.clearSelectedImage();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(await imageFile.exists(), isTrue);
+
+    localOcr.allowCompletion.complete();
+    await analysis;
+    await cleanup;
+
+    expect(await imageFile.exists(), isFalse);
   });
 
   test('서버 약품 영역을 사용해도 로컬 개인정보 마스킹 영역을 보존한다', () async {
@@ -193,7 +294,7 @@ void main() {
         ),
       ),
     );
-    addTearDown(control.dispose);
+    addTearDown(() => _disposeControl(control));
 
     await control.requestCapturedPrescriptionImage(XFile(imageFile.path));
 
@@ -258,7 +359,7 @@ void main() {
         ),
       ),
     );
-    addTearDown(control.dispose);
+    addTearDown(() => _disposeControl(control));
 
     await control.requestCapturedPrescriptionImage(XFile(imageFile.path));
 
@@ -312,7 +413,7 @@ void main() {
         client: client,
         localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
       );
-      addTearDown(control.dispose);
+      addTearDown(() => _disposeControl(control));
 
       final schedules = await control.requestPrescriptionImageFromGallery();
 
@@ -360,7 +461,7 @@ void main() {
       client: client,
       localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
     );
-    addTearDown(control.dispose);
+    addTearDown(() => _disposeControl(control));
 
     final schedules = await control.requestPrescriptionImageFromGallery();
 
@@ -397,7 +498,7 @@ void main() {
         client: client,
         localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
       );
-      addTearDown(control.dispose);
+      addTearDown(() => _disposeControl(control));
 
       expect(
         () => control.requestPrescriptionImageFromGallery(),
@@ -432,7 +533,7 @@ void main() {
         localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
         requestTimeout: const Duration(milliseconds: 10),
       );
-      addTearDown(control.dispose);
+      addTearDown(() => _disposeControl(control));
 
       expect(
         () => control.requestPrescriptionImageFromGallery(),
@@ -461,7 +562,7 @@ void main() {
         localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
         requestTimeout: const Duration(milliseconds: 10),
       );
-      addTearDown(control.dispose);
+      addTearDown(() => _disposeControl(control));
 
       await expectLater(
         control.requestPrescriptionImageFromGallery(),

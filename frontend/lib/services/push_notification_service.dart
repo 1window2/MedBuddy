@@ -34,6 +34,9 @@ class PushNotificationService {
   StreamSubscription<RemoteMessage>? _openedMessageSubscription;
   String? _registeredToken;
   bool _started = false;
+  bool _stopping = false;
+  Future<void>? _startOperation;
+  final Set<Future<void>> _pendingTokenRegistrations = <Future<void>>{};
 
   PushNotificationService({
     required this.userHash,
@@ -48,21 +51,50 @@ class PushNotificationService {
   // 반환값:
   // - 없음
   Future<void> start() async {
+    final pendingStart = _startOperation;
+    if (pendingStart != null) {
+      await pendingStart;
+      return;
+    }
     if (_started || AuthConfig.mode != AuthenticationMode.firebase) {
       return;
     }
+    late final Future<void> startOperation;
+    startOperation = _start().whenComplete(() {
+      if (identical(_startOperation, startOperation)) {
+        _startOperation = null;
+      }
+    });
+    _startOperation = startOperation;
+    await startOperation;
+  }
+
+  // 함수명: _start
+  // 역할:
+  // - 단일 시작 작업 안에서 FCM 권한, 초기 토큰 등록, 메시지 구독을 준비한다.
+  // - 공개 start가 이 Future를 공유해 중복 초기화를 막도록 한다.
+  // 반환값:
+  // - 초기화 시도가 끝나면 완료되는 Future
+  Future<void> _start() async {
     _started = true;
     try {
       final messaging = _resolvedMessaging;
       await messaging.requestPermission(alert: true, badge: true, sound: true);
       final token = await messaging.getToken();
       if (token != null && token.trim().isNotEmpty) {
-        await _registerToken(token);
+        await _trackTokenRegistration(token);
       }
       _tokenRefreshSubscription = messaging.onTokenRefresh.listen((
         refreshedToken,
       ) {
-        unawaited(_registerToken(refreshedToken));
+        unawaited(
+          _trackTokenRegistration(refreshedToken).catchError((
+            Object error,
+            StackTrace stackTrace,
+          ) {
+            _reportPushError(error, stackTrace);
+          }),
+        );
       }, onError: _reportPushError);
       _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen((
         message,
@@ -89,6 +121,9 @@ class PushNotificationService {
   // 반환값:
   // - 없음
   Future<void> stop({bool requireServerUnregistration = false}) async {
+    _stopping = true;
+    await _startOperation;
+    await _awaitPendingTokenRegistrations();
     final token = _registeredToken;
     if (token != null && token.isNotEmpty) {
       try {
@@ -111,6 +146,7 @@ class PushNotificationService {
       } catch (error, stackTrace) {
         _reportPushError(error, stackTrace);
         if (requireServerUnregistration) {
+          _stopping = false;
           rethrow;
         }
       }
@@ -123,11 +159,55 @@ class PushNotificationService {
     _tokenRefreshSubscription = null;
     _foregroundMessageSubscription = null;
     _openedMessageSubscription = null;
+    _stopping = false;
   }
 
   @visibleForTesting
   void setRegisteredTokenForTesting(String token) {
     _registeredToken = token;
+  }
+
+  @visibleForTesting
+  Future<void> registerTokenForTesting(String token) {
+    return _trackTokenRegistration(token);
+  }
+
+  // 함수명: _trackTokenRegistration
+  // 역할:
+  // - 진행 중인 토큰 등록을 수명주기 작업으로 추적해 로그아웃 정리가
+  //   등록 완료 뒤에만 실행되도록 직렬화한다.
+  // 매개변수:
+  // - token: Firebase가 발급한 현재 기기 토큰
+  // 반환값:
+  // - 등록 완료 또는 실패를 나타내는 Future
+  Future<void> _trackTokenRegistration(String token) async {
+    if (_stopping) {
+      return;
+    }
+    late final Future<void> registration;
+    registration = _registerToken(token).whenComplete(() {
+      _pendingTokenRegistrations.remove(registration);
+    });
+    _pendingTokenRegistrations.add(registration);
+    await registration;
+  }
+
+  // 함수명: _awaitPendingTokenRegistrations
+  // 역할:
+  // - 현재 추적 중인 모든 토큰 등록 작업이 정착할 때까지 기다린다.
+  // - 개별 실패는 기록하되 마지막 정상 등록 토큰의 서버 정리는 계속한다.
+  // 반환값:
+  // - 대기 시점의 등록 작업이 모두 정착하면 완료되는 Future
+  Future<void> _awaitPendingTokenRegistrations() async {
+    for (final registration in _pendingTokenRegistrations.toList(
+      growable: false,
+    )) {
+      try {
+        await registration;
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+      }
+    }
   }
 
   // 함수명: _registerToken

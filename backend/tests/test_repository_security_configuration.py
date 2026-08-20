@@ -49,3 +49,24 @@ def test_issue_templates_forbid_real_medical_data() -> None:
         template = (template_directory / filename).read_text(encoding="utf-8")
         assert "Do not attach real medical or personal data" in template
         assert "SECURITY.md" in template
+
+
+# Function Name: test_self_hosted_catalog_has_periodic_atomic_refresh
+# Description:
+# - Ensures production keeps refreshing MFDS catalogs after the first seed.
+# - Guards the periodic writer against accidentally inheriting the
+#   bootstrap-only empty-catalog shortcut.
+# Returns:
+# - None; pytest reports a failure when the maintenance service regresses.
+def test_self_hosted_catalog_has_periodic_atomic_refresh() -> None:
+    compose_source = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(
+        encoding="utf-8"
+    )
+    refresh_service = compose_source.split("  catalog-refresh:", maxsplit=1)[1]
+    refresh_service = refresh_service.split("\n  backend:", maxsplit=1)[0]
+
+    assert "restart: unless-stopped" in refresh_service
+    assert "CATALOG_REFRESH_INTERVAL_SECONDS" in refresh_service
+    assert "CATALOG_REFRESH_RETRY_SECONDS" in refresh_service
+    assert "sync_drug_catalog.py --dataset all" in refresh_service
+    assert "--only-if-empty" not in refresh_service

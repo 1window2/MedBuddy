@@ -59,6 +59,39 @@ services:
         condition: service_healthy
     networks: [backend]
 
+  catalog-refresh:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: catalog_sync
+      DATABASE_URL: postgresql+psycopg://medbuddy:${POSTGRES_PASSWORD}@postgres:5432/medbuddy
+      AUTO_CREATE_SCHEMA: "false"
+      CATALOG_REFRESH_INTERVAL_SECONDS: "${CATALOG_REFRESH_INTERVAL_SECONDS:-604800}"
+      CATALOG_REFRESH_RETRY_SECONDS: "${CATALOG_REFRESH_RETRY_SECONDS:-3600}"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+        while true; do
+          if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5; then
+            sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+          else
+            echo "Catalog refresh failed; retrying after the configured backoff." >&2
+            sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
+          fi
+        done
+    depends_on:
+      catalog-bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
   backend:
     build:
       context: ./backend
