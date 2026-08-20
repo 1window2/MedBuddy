@@ -280,7 +280,17 @@ jobs:
           test -n "${EXPECTED_CERT}"
           test -x "${APKSIGNER}"
 
-          APK_CERT="$(${APKSIGNER} verify --verbose --print-certs "${APK}" \
+          set +e
+          APK_VERIFY_OUTPUT="$("${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1)"
+          APK_VERIFY_STATUS=$?
+          set -e
+          printf '%s\n' "${APK_VERIFY_OUTPUT}"
+          if (( APK_VERIFY_STATUS != 0 )); then
+            echo "APK signature verification failed with exit code ${APK_VERIFY_STATUS}." >&2
+            exit "${APK_VERIFY_STATUS}"
+          fi
+
+          APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
             | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
             | head -n 1 \
             | tr -d ':[:space:]' \
