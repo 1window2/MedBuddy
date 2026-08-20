@@ -4,7 +4,7 @@ Audit date: 2026-08-21
 
 Target: `beta/v0.1.0` and draft PR #74 into `main`
 
-Scope: all 34 supplied Codex Security reports, every available Patch tab, and
+Scope: all 35 current Codex Security reports, every available Patch tab, and
 the ten post-scan Codex review threads on PR #74
 
 ## Method
@@ -15,9 +15,9 @@ findings exposed a Patch tab; those patches were reviewed as proposals rather
 than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
-The original disposition remains 17 findings that required a change and 17
-whose reported vulnerable state had already been removed by the recovered beta
-work. The ten later review threads also required corrections before merge.
+Eighteen findings required a change and 17 had a reported vulnerable state that
+was already removed by the recovered beta work. The ten later review threads
+also required corrections before merge.
 "Already resolved" means the current tree contains the relevant control; it
 does not mean the original report was invalid.
 
@@ -53,6 +53,7 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `118bbbfa807c819181a0eb15cc30bd94` | Release workflow exposes signing secrets to broad refs | Fixed in this branch and GitHub environment | The workflow accepts only exact `main` and `beta/v0.1.0` refs. The `beta-android` environment independently requires owner approval and exact custom deployment branch policies for those two branches; wildcard beta branches and tags cannot receive signing material. |
 | `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Fixed after verified review | Saved-list and caregiver reads return persisted image metadata only; they no longer call MFDS or commit enrichment as a GET side effect. |
 | `8d0d695912108191a19a8311c5153486` | Unauthenticated health recommendation LLM endpoint | Already resolved in beta | Recommendation generation is protected by the verified request principal and bounded request policy. |
 | `1b4134d204dc81918ea1d955c21b0c71` | Medication detail screen loads untrusted image URLs | Fixed in this branch | All medication images require HTTPS on the exact MFDS image host with no credentials or alternate port. |
@@ -92,9 +93,9 @@ does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 354 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
+- Backend: 355 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
 - Flutter: 248 tests passed; `flutter analyze --no-pub` reported no issues.
-- Focused final-review suites: 4 repository/deployment configuration tests,
+- Focused final-review suites: 5 repository/deployment configuration tests,
   14 prescription-media/push-lifecycle tests, and 30 reminder/session tests
   passed.
 - UML: PlantUML 1.2026.6 source validation and local rendering passed; the

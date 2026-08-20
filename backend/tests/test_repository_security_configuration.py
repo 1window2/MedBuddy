@@ -37,6 +37,25 @@ def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
     assert workflow.count("test-key-for-ci") >= 4
 
 
+# Function Name: test_android_signing_secrets_are_limited_to_release_branches
+# Description:
+# - Prevents arbitrary beta branches or version-like tags from selecting
+#   repository-controlled build code that receives Android signing secrets.
+# - Keeps the repository gate aligned with the beta-android environment's
+#   exact custom deployment branch policies.
+# Returns:
+# - None; pytest reports a failure when broad signing refs are reintroduced.
+def test_android_signing_secrets_are_limited_to_release_branches() -> None:
+    workflow = (
+        _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "refs/heads/main|refs/heads/beta/v0.1.0" in workflow
+    assert "refs/heads/beta/*" not in workflow
+    assert "refs/tags/v*" not in workflow
+    assert "environment: beta-android" in workflow
+
+
 # Function Name: test_issue_templates_forbid_real_medical_data
 # Description:
 # - Keeps public bug intake from soliciting prescription images, personal

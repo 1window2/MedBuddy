@@ -8,6 +8,9 @@ permissions:
 
 jobs:
   build:
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/beta/v0.1.0'
     runs-on: ubuntu-latest
     environment: beta-android
 
@@ -24,9 +27,9 @@ jobs:
         run: |
           set -euo pipefail
           case "${GITHUB_REF}" in
-            refs/heads/main|refs/heads/beta/*|refs/tags/v*) ;;
+            refs/heads/main|refs/heads/beta/v0.1.0) ;;
             *)
-              echo "Android releases are restricted to main, beta branches, and version tags." >&2
+              echo "Signed Android builds are restricted to the protected main and beta/v0.1.0 branches." >&2
               exit 1
               ;;
           esac

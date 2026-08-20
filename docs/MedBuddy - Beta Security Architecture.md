@@ -264,7 +264,8 @@ Cloudflare Tunnel.
 - Use Play App Signing for store distribution and protect the upload key.
 - Keep the keystore and `key.properties` ignored and outside source control.
 - Store CI signing material in a protected GitHub Environment; expose it only
-  to tag/release jobs, never pull-request jobs.
+  to the exact protected `main` and `beta/v0.1.0` branches after an explicit
+  environment approval, never pull-request or wildcard-ref jobs.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
 - The release manifest/network security configuration permits HTTPS only.
@@ -408,8 +409,12 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_PROJECT_ID` as environment
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials; the
-protected environment prevents accidental cross-project builds rather than
-treating those values as authorization secrets.
+environment requires owner approval and exact custom deployment policies for
+only `main` and `beta/v0.1.0`. The workflow repeats that exact-ref gate before
+repository build code can receive signing material. Arbitrary `beta/*` branches
+and version-like tags cannot access the environment. The protected environment
+also prevents accidental cross-project builds rather than treating public
+Firebase identifiers as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies
 the upload certificate fingerprint and cross-checks the restored Firebase
 Android configuration before building. It builds both APK and AAB outputs and
