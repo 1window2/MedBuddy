@@ -178,6 +178,23 @@ monitor polls for both completion and missed-deadline changes. A production
 beta still requires server-scheduled missed-deadline delivery and two-device
 FCM smoke testing.
 
+## Patient Reminder Privacy and Continuity
+
+Patient medication reminders use a rolling 14-day local reservation window so
+the application stays below device/OEM pending-alarm limits. An authenticated
+Android Workmanager task runs twice daily, reloads the current reminder
+settings and today's active medication courses, and replenishes that window.
+Each refresh remains bounded by the prescription course end. A transient
+network/authentication failure asks Workmanager to retry and leaves the already
+scheduled window intact.
+
+Session exit is a privacy boundary. Ordinary sign-out cancels the replenishment
+task and every pending `schedule:` local notification before provider sign-out;
+the server-side reminder preference remains available for a later sign-in.
+Permanent account deletion performs the same local cleanup before the backend
+deletion request. Caregiver alerts and unrelated notification categories are
+not removed by patient-reminder cleanup.
+
 ## Migration Without Pipeline Breakage
 
 1. Derive an opaque, stable MedBuddy identity from the verified provider issuer

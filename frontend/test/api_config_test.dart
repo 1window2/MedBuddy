@@ -22,7 +22,7 @@ void main() {
         'https://localhost/api/v1/medication',
         'https://127.0.0.1/api/v1/medication',
         'https://10.0.2.2/api/v1/medication',
-        'https://192.168.45.7/api/v1/medication',
+        'https://192.168.1.10/api/v1/medication',
         'https://198.51.100.4/api/v1/medication',
         'https://203.0.113.4/api/v1/medication',
         'https://[::1]/api/v1/medication',

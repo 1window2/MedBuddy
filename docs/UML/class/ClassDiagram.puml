@@ -303,7 +303,20 @@ package "Flutter Frontend" {
             + requestPermission(): Future<bool>
             + registerNotification(setting, medications): Future<void>
             + cancelReminder(id): Future<void>
+            + cancelAllMedicationReminders(): Future<void>
             + showCaregiverAlert(): Future<void>
+        }
+
+        class "MedicationReminderRefreshService" as MedicationReminderRefreshService <<Service: rolling reminder sync>> {
+            + maximumReminderDatesPerSlot: int
+            + synchronize(): Future<bool>
+            + {static} activeReminderDates(schedules, now): List<DateTime>
+            + dispose(): void
+        }
+
+        class "MedicationReminderBackgroundScheduler" as MedicationReminderBackgroundScheduler <<Service: Android reminder work>> {
+            + {static} register(patientHash): Future<void>
+            + {static} cancel(): Future<void>
         }
 
         class "TTSService" as TTSService <<Service: 기기 음성 합성>> {
@@ -905,8 +918,9 @@ MedBuddyApp ..> HomeScreen
 MedBuddyApp ..> MedBuddyViewModel
 MedBuddyApp *-- AppLanguageControl
 MedBuddyApp ..> CaregiverNotificationBackgroundScheduler
+MedBuddyApp ..> MedicationReminderBackgroundScheduler
 MedBuddyApp ..> PushNotificationService
-MedBuddyApp --> FAuthenticationControl : injects pre-sign-out push cleanup
+MedBuddyApp --> FAuthenticationControl : injects pre-sign-out notification cleanup
 AuthenticationUI --> FAuthenticationControl
 AuthenticationUI --> AppLanguageControl
 AuthenticationGate --> AuthenticationGateState
@@ -977,6 +991,10 @@ FRequestVoiceGuide ..> AuthenticatedApiClient
 AuthenticatedApiClient ..> ApiConfig
 
 FSetNotification ..> NotificationService
+MedicationReminderRefreshService ..> FSetNotification
+MedicationReminderRefreshService ..> FCheckSchedule
+MedicationReminderRefreshService ..> NotificationService
+MedicationReminderBackgroundScheduler ..> MedicationReminderRefreshService
 FRequestVoiceGuide o-- TTSService
 PushNotificationService ..> NotificationService
 CaregiverNotificationMonitorService ..> NotificationService

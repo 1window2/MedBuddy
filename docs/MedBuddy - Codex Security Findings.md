@@ -5,7 +5,7 @@ Audit date: 2026-08-21
 Target: `beta/v0.1.0` and draft PR #74 into `main`
 
 Scope: all 34 supplied Codex Security reports, every available Patch tab, and
-the eight post-scan Codex review threads on PR #74
+the ten post-scan Codex review threads on PR #74
 
 ## Method
 
@@ -17,7 +17,7 @@ trust boundaries.
 
 The original disposition remains 17 findings that required a change and 17
 whose reported vulnerable state had already been removed by the recovered beta
-work. The eight later review threads also required corrections before merge.
+work. The ten later review threads also required corrections before merge.
 "Already resolved" means the current tree contains the relevant control; it
 does not mean the original report was invalid.
 
@@ -33,6 +33,8 @@ does not mean the original report was invalid.
 | Push-token registration could finish after strict sign-out cleanup | Push startup and every token registration are tracked as lifecycle operations. Strict sign-out blocks new registrations, waits for in-flight registration, and only then unregisters the final token. |
 | Production catalog data became stale after the one-time bootstrap | A dedicated `catalog-refresh` service performs a full atomic MFDS synchronization on a configurable weekly cadence, with bounded retries and an explicit failure backoff. |
 | Clearing prescription state could leave app-created camera captures behind | Prescription image ownership is explicit: app-created camera files are deleted after active OCR completes, while user-owned gallery originals are never deleted. |
+| Medication reminders could survive sign-out or account deletion | Session teardown cancels the authenticated replenishment task and all pending patient `schedule:` notifications before provider sign-out. Account deletion performs the same cleanup before its destructive backend request. |
+| Long medication courses lost reminders after the 14-day device window | The bounded 14-day window is retained for OEM safety and is replenished twice daily by an authenticated Workmanager task using current server settings and schedules. |
 
 ## High severity
 
@@ -91,15 +93,16 @@ does not mean the original report was invalid.
 ## Verification evidence
 
 - Backend: 354 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
-- Flutter: 244 tests passed; `flutter analyze --no-pub` reported no issues.
-- Focused final-review suites: 4 repository/deployment configuration tests and
-  14 Flutter prescription-media/push-lifecycle tests passed.
+- Flutter: 248 tests passed; `flutter analyze --no-pub` reported no issues.
+- Focused final-review suites: 4 repository/deployment configuration tests,
+  14 prescription-media/push-lifecycle tests, and 30 reminder/session tests
+  passed.
 - UML: PlantUML 1.2026.6 source validation and local rendering passed; the
   class and overall sequence PNGs were regenerated without uploading the UML.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
   HTTPS placeholder; manifest reports `usesCleartextTraffic=false`.
 - Prior physical-device beta: the user verified standalone startup on a
-  network-separated Samsung SM-N976N, guest and Google authentication,
+  network-separated Android device, guest and Google authentication,
   prescription analysis/masking/save, saved medication and schedules,
   completion/undo, reminders, health guidance, images, settings persistence,
   and force-stop session restoration. The feedback from that run is reflected

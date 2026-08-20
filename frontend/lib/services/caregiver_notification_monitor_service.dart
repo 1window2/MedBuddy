@@ -21,6 +21,7 @@ import 'auth_config.dart';
 import 'authenticated_api_client.dart';
 import 'caregiver_patient_local_state_service.dart';
 import 'firebase_runtime_service.dart';
+import 'medication_reminder_background_service.dart';
 import 'notification_service.dart';
 
 typedef CaregiverLinkLoader = Future<List<PatientCaregiverLink>> Function();
@@ -62,22 +63,21 @@ Future<User?> _restoreBackgroundFirebaseUser() async {
 
 // 함수명: caregiverNotificationCallbackDispatcher
 // 역할:
-// - Android가 앱을 깨운 경우 별도 isolate에서 보호자 알림 조건을 확인한다.
+// - Android가 앱을 깨운 경우 별도 isolate에서 보호자 상태 또는 환자 복약
+//   알림 Rolling Window를 인증된 서버 상태로 갱신한다.
 // 반환값:
 // - 없음
 @pragma('vm:entry-point')
 void caregiverNotificationCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
-    if (taskName != caregiverNotificationBackgroundTask) {
+    if (taskName != caregiverNotificationBackgroundTask &&
+        taskName != medicationReminderBackgroundTask) {
       return true;
     }
-    final caregiverHash = inputData?['caregiver_hash']?.toString() ?? '';
     final baseUrl = inputData?['base_url']?.toString() ?? ApiConfig.baseUrl;
-    if (caregiverHash.trim().isEmpty) {
-      return true;
-    }
 
     CaregiverNotificationMonitorService? monitor;
+    MedicationReminderRefreshService? reminderRefresh;
     AuthenticatedApiClient? authenticatedClient;
     try {
       if (AuthConfig.mode == AuthenticationMode.firebase) {
@@ -90,6 +90,22 @@ void caregiverNotificationCallbackDispatcher() {
         authenticatedClient = AuthenticatedApiClient();
       }
       await NotificationService.instance.initialize();
+      if (taskName == medicationReminderBackgroundTask) {
+        final patientHash = inputData?['patient_hash']?.toString() ?? '';
+        if (patientHash.trim().isEmpty) {
+          return true;
+        }
+        reminderRefresh = MedicationReminderRefreshService.live(
+          patientHash: patientHash,
+          baseUrl: baseUrl,
+          client: authenticatedClient,
+        );
+        return await reminderRefresh.synchronize();
+      }
+      final caregiverHash = inputData?['caregiver_hash']?.toString() ?? '';
+      if (caregiverHash.trim().isEmpty) {
+        return true;
+      }
       monitor = CaregiverNotificationMonitorService.live(
         caregiverHash: caregiverHash,
         baseUrl: baseUrl,
@@ -109,6 +125,7 @@ void caregiverNotificationCallbackDispatcher() {
       return false;
     } finally {
       monitor?.dispose();
+      reminderRefresh?.dispose();
       authenticatedClient?.close();
     }
   });
@@ -128,7 +145,7 @@ class CaregiverNotificationBackgroundScheduler {
 
   // 함수명: initialize
   // 역할:
-  // - 운영체제가 호출할 백그라운드 진입점을 등록한다.
+  // - 보호자 감시와 환자 복약 알림이 공유하는 백그라운드 진입점을 등록한다.
   // 반환값:
   // - 없음
   static Future<void> initialize() async {

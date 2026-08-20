@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import '../entities/medication_alarm_entity.dart';
+
 enum MedicationNotificationDestination { schedule, caregiverSchedule }
 
 // 클래스명: MedicationNotificationSelection
@@ -410,6 +412,31 @@ class NotificationService {
       return;
     }
     await _plugin.cancel(id: id);
+  }
+
+  // Function Name: cancelAllMedicationReminders
+  // Description:
+  // - Cancels every pending patient medication reminder before session exit.
+  // - Leaves caregiver alerts and unrelated application notifications intact.
+  // Returns:
+  // - Completes after date-specific and legacy reminder IDs are removed.
+  Future<void> cancelAllMedicationReminders() async {
+    await initialize();
+    final pendingRequests = await _plugin.pendingNotificationRequests();
+    for (final request in pendingRequests) {
+      if (request.payload?.startsWith('schedule:') ?? false) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+      await _plugin.cancel(
+        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
+      );
+    }
+    if (_pendingSelection?.destination ==
+        MedicationNotificationDestination.schedule) {
+      _pendingSelection = null;
+    }
   }
 
   // 함수명: showCaregiverAlert

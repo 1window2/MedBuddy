@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
@@ -46,6 +47,9 @@ class _NoopNotificationService implements NotificationService {
 
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {}
 
   @override
   Future<void> showCaregiverAlert({
@@ -149,5 +153,36 @@ void main() {
 
     expect(navigatorKey.currentState?.canPop(), isTrue);
     expect(find.byType(CheckScheduleUI), findsOneWidget);
+  });
+
+  testWidgets('sign-out cancels local medication reminders first', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final events = <String>[];
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        authenticationControl: authenticationControl,
+        sessionReminderCleanup: () async {
+          events.add('reminders-canceled');
+        },
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: _EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: _NoopNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await authenticationControl.signOutForTest(() async {
+      events.add('provider-sign-out');
+    });
+
+    expect(events, ['reminders-canceled', 'provider-sign-out']);
   });
 }

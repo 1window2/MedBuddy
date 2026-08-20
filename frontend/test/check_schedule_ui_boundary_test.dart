@@ -202,6 +202,9 @@ class _SuccessfulNotificationService implements NotificationService {
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
   @override
+  Future<void> cancelAllMedicationReminders() async {}
+
+  @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
@@ -233,6 +236,9 @@ class _FailingNotificationService implements NotificationService {
 
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {}
 
   @override
   Future<void> showCaregiverAlert({

@@ -13,6 +13,7 @@ import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
 import 'services/auth_config.dart';
+import 'services/medication_reminder_background_service.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'theme/medbuddy_text_scale.dart';
@@ -37,7 +38,7 @@ Future<void> main() async {
         exception: error,
         stack: stackTrace,
         library: 'MedBuddy bootstrap',
-        context: ErrorDescription('보호자 백그라운드 알림을 초기화하는 중'),
+        context: ErrorDescription('백그라운드 알림 작업을 초기화하는 중'),
       ),
     );
   }
@@ -74,6 +75,7 @@ class MedBuddyApp extends StatefulWidget {
   final MedBuddyViewModel Function()? viewModelFactory;
   final void Function(MedicationNotificationSelectionHandler? handler)?
   notificationSelectionRegistrar;
+  final Future<void> Function()? sessionReminderCleanup;
   final AuthenticationControl? authenticationControl;
   final AppLanguageControl? appLanguageControl;
 
@@ -82,6 +84,7 @@ class MedBuddyApp extends StatefulWidget {
     this.navigatorKey,
     this.viewModelFactory,
     this.notificationSelectionRegistrar,
+    this.sessionReminderCleanup,
     this.authenticationControl,
     this.appLanguageControl,
   });
@@ -114,7 +117,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _ownsAuthenticationControl = widget.authenticationControl == null;
     _authenticationControl =
         widget.authenticationControl ?? AuthenticationControl.development();
-    _authenticationControl.setBeforeSignOut(_stopPushBeforeSignOut);
+    _authenticationControl.setBeforeSignOut(_prepareSessionEnd);
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
     _authenticationControl.addListener(_handleAuthenticationChange);
@@ -140,13 +143,20 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     super.dispose();
   }
 
-  // Function Name: _stopPushBeforeSignOut
+  // Function Name: _prepareSessionEnd
   // Description:
-  // - Unregisters the device push token while Firebase authentication is still
-  //   available to authorize the backend DELETE request.
+  // - Cancels local medication reminders and their replenishment task.
+  // - Unregisters the push token while Firebase can authorize the DELETE.
   // Returns:
-  // - Completes only after the server accepts token removal.
-  Future<void> _stopPushBeforeSignOut() async {
+  // - Completes only after privacy-sensitive notification cleanup succeeds.
+  Future<void> _prepareSessionEnd() async {
+    final reminderCleanup = widget.sessionReminderCleanup;
+    if (reminderCleanup != null) {
+      await reminderCleanup();
+    } else {
+      await MedicationReminderBackgroundScheduler.cancel();
+      await NotificationService.instance.cancelAllMedicationReminders();
+    }
     final pushService = _pushNotificationService;
     if (pushService == null) {
       return;
@@ -213,8 +223,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
 
     if (userHash == null || userHash.isEmpty) {
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
+      unawaited(MedicationReminderBackgroundScheduler.cancel());
       return;
     }
+    unawaited(MedicationReminderBackgroundScheduler.register(userHash));
     final pushService = PushNotificationService(
       userHash: userHash,
       client: _authenticationControl.apiClient,

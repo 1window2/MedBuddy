@@ -119,6 +119,9 @@ Router --> FrontService : Token 등록 완료
 
 User -> UI : request sign-out
 UI -> AuthControl : signOut()
+AuthControl -> FrontService : cancel reminder replenishment and local reminders
+FrontService -> Workmanager : cancel medication reminder refresh task
+FrontService -> LocalNotification : cancel every schedule:* notification
 AuthControl -> FrontService : PushNotificationService.stop(requireServerUnregistration=true)
 FrontService -> FrontService : 진행 중 start/Token POST 완료 대기
 FrontService -> ApiClient : DELETE /api/v1/auth/push-token
@@ -149,6 +152,8 @@ else anonymous guest
 end
 AuthControl --> UI : deletion request is ready
 UI -> ViewModel : requestAccountDataDeletion()
+ViewModel -> Workmanager : cancel medication reminder refresh task
+ViewModel -> LocalNotification : cancel every schedule:* notification
 ViewModel -> FrontControl : ManageAccount.deleteAccountData()
 FrontControl -> ApiClient : DELETE /api/v1/auth/account-data
 ApiClient -> Router : Bearer token with server-derived subject
@@ -426,6 +431,18 @@ FrontService -> LocalNotification : 복약 Local Notification 예약
 LocalNotification --> FrontService : 예약 완료
 FrontService --> ViewModel : 알림 등록 완료
 ViewModel --> UI : 알림 활성 상태 출력
+
+loop Android Workmanager 12시간 주기
+    Workmanager -> FrontService : medication reminder refresh
+    FrontService -> FirebaseAuth : 백그라운드 사용자 및 ID Token 복원
+    FrontService -> FrontControl : 현재 알림 설정과 오늘의 활성 복약 일정 조회
+    FrontControl -> ApiClient : GET notification/settings, schedule/today
+    ApiClient -> Router : 인증된 사용자 범위 조회
+    Router --> ApiClient : MedicationAlarm과 MedicationSchedule
+    ApiClient --> FrontControl : 현재 서버 상태
+    FrontControl --> FrontService : 다음 14일의 복용 종료일 이내 날짜 계산
+    FrontService -> LocalNotification : 기존 Slot 교체 및 Rolling Window 보충
+end
 
 == 7. 환자-보호자 연동 및 보호자 조회 ==
 
