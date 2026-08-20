@@ -37,6 +37,7 @@ void main() {
       ),
       medicationSchedule: const MedicationSchedule(
         medicationName: 'test-tablet',
+        prescriptionBatchId: 'batch_1234567890abcdef',
         dosage: '1 tablet',
         intakeTime: '3 times',
         medicationTime: 7,
@@ -48,6 +49,7 @@ void main() {
     expect(requestBody['patient_hash'], 'patient-a');
     expect(requestBody['item_seq'], '200000001');
     expect(requestBody['item_name'], 'test-tablet');
+    expect(requestBody['prescription_batch_id'], 'batch_1234567890abcdef');
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');

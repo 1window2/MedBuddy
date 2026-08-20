@@ -170,7 +170,8 @@ class CheckPrescriptionChange:
 
     # 함수이름: _load_candidate_prescriptions
     # 함수역할:
-    # - 같은 환자의 과거 처방을 날짜별로 묶고 최근 90일 후보만 반환한다.
+    # - 같은 환자의 과거 처방을 분석 batch별로 묶고 최근 90일 후보만 반환한다.
+    # - batch가 없는 기존 데이터만 날짜 단위 호환 그룹으로 취급한다.
     # - 과거 기록 자체가 없는 경우와 비교 기간을 지난 경우를 구분한다.
     # 매개변수:
     # - patient_hash: 조회 범위를 제한하는 환자 해시
@@ -198,44 +199,47 @@ class CheckPrescriptionChange:
             if self._effective_prescription_date(row) is not None
         ]
         reference_date = current_date or application_today()
-        previous_dates = sorted(
-            {
-                prescription_date
-                for prescription_date, _ in dated_rows
-                if (
-                    prescription_date < current_date
-                    if current_date is not None
-                    else prescription_date <= reference_date
-                )
-            },
-            reverse=True,
-        )
-        if not previous_dates:
+        previous_rows = [
+            (prescription_date, row)
+            for prescription_date, row in dated_rows
+            if (
+                prescription_date < current_date
+                if current_date is not None
+                else prescription_date <= reference_date
+            )
+        ]
+        if not previous_rows:
             return "no_history", []
 
         window_start = reference_date - timedelta(
             days=PRESCRIPTION_COMPARISON_WINDOW_DAYS
         )
-        candidate_dates = [
-            prescription_date
-            for prescription_date in previous_dates
+        candidate_rows = [
+            (prescription_date, row)
+            for prescription_date, row in previous_rows
             if prescription_date >= window_start
         ]
-        if not candidate_dates:
+        if not candidate_rows:
             return "expired", []
+
+        grouped_rows: dict[tuple[date, str], list[_SavedMedication]] = {}
+        for prescription_date, row in candidate_rows:
+            batch_id = (getattr(row, "prescription_batch_id", None) or "").strip()
+            group_key = (
+                prescription_date,
+                f"batch:{batch_id}" if batch_id else "legacy-date-group",
+            )
+            grouped_rows.setdefault(group_key, []).append(row)
 
         return (
             "candidate",
             [
-                (
-                    candidate_date,
-                    [
-                        row
-                        for row_date, row in dated_rows
-                        if row_date == candidate_date
-                    ],
+                (candidate_date, medications)
+                for (candidate_date, _), medications in sorted(
+                    grouped_rows.items(),
+                    key=lambda item: (item[0][0], item[0][1]),
+                    reverse=True,
                 )
-                for candidate_date in candidate_dates
             ],
         )
 

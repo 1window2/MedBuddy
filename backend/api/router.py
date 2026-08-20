@@ -10,6 +10,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     UploadFile,
 )
 from pydantic import BaseModel, Field
@@ -368,6 +369,45 @@ def get_today_medication_schedule(
         raise HTTPException(
             status_code=500,
             detail="오늘의 복약 일정을 불러오지 못했습니다.",
+        ) from exc
+
+
+# Function Name: get_medication_schedule_window
+# Description:
+# - Returns medication courses overlapping a bounded rolling reminder window.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope schedule lookup.
+# - days: Inclusive number of days beginning today, capped at 14.
+# Returns:
+# - API-compatible schedule list dictionary.
+@router.get("/schedule/window")
+def get_medication_schedule_window(
+    patient_hash: str | None = None,
+    days: int = Query(default=14, ge=1, le=14),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    try:
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_schedule.requestMedicationScheduleWindow(
+            authorized_patient_hash,
+            days,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Medication schedule window lookup failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="복약 알림 일정을 불러오지 못했습니다.",
         ) from exc
 
 

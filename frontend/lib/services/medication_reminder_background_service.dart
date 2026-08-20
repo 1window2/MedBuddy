@@ -94,7 +94,7 @@ class MedicationReminderRefreshService {
         notificationService ?? NotificationService.instance;
     return MedicationReminderRefreshService(
       loadSettings: alarmControl.requestMedicationAlarm,
-      loadSchedules: scheduleControl.requestTodayMedicationSchedule,
+      loadSchedules: scheduleControl.requestMedicationScheduleWindow,
       registerReminder: resolvedNotificationService.registerNotification,
       cancelReminder: resolvedNotificationService.cancelReminder,
       onDispose: () {

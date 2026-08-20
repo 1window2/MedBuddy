@@ -24,6 +24,7 @@ _MAX_URL_LENGTH = 2_048
 _MAX_PUSH_TOKEN_LENGTH = 4_096
 _MIN_PRESCRIPTION_DATE = date(2000, 1, 1)
 _MAX_PRESCRIPTION_DATE_OFFSET_DAYS = 365
+_PRESCRIPTION_BATCH_ID_PATTERN = r"^[A-Za-z0-9_-]{16,64}$"
 
 
 # Class Name: MedicationRequest
@@ -57,6 +58,10 @@ class SavedMedicationCreate(BaseModel):
         max_length=MAX_PATIENT_HASH_LENGTH,
     )
     prescription_date: Optional[date] = None
+    prescription_batch_id: Optional[str] = Field(
+        default=None,
+        pattern=_PRESCRIPTION_BATCH_ID_PATTERN,
+    )
     item_seq: Optional[str] = Field(default=None, max_length=64)
     item_name: str = Field(
         min_length=1,

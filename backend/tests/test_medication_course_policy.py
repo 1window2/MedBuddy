@@ -45,6 +45,28 @@ class MedicationCoursePolicyTest(unittest.TestCase):
 
         self.assertTrue(self.policy.is_active_on(medication, date(2026, 1, 10)))
 
+    def test_future_course_overlaps_rolling_schedule_window(self) -> None:
+        medication = SimpleNamespace(
+            prescription_date=date(2026, 1, 10),
+            created_date=None,
+            total_days="3 days",
+        )
+
+        self.assertTrue(
+            self.policy.is_active_during(
+                medication,
+                date(2026, 1, 1),
+                date(2026, 1, 14),
+            )
+        )
+        self.assertFalse(
+            self.policy.is_active_during(
+                medication,
+                date(2026, 1, 1),
+                date(2026, 1, 9),
+            )
+        )
+
     def test_is_expired_after_applies_retention_window(self) -> None:
         medication = SimpleNamespace(
             prescription_date=date.today() - timedelta(days=40),

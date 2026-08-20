@@ -57,6 +57,7 @@ class _SavedMedication(Base):
     )
     created_date = Column(Date, nullable=True, default=application_today)
     prescription_date = Column(Date, nullable=True)
+    prescription_batch_id = Column(String(64), nullable=True, index=True)
     item_seq = Column(String, nullable=True, index=True)
     item_name = Column(String, index=True)
     efficacy = Column(String)
@@ -91,22 +92,25 @@ def build_saved_medication_deduplication_key(
     *,
     item_name: str | None,
     prescription_date: date | None,
+    prescription_batch_id: str | None,
     dosage_per_time: str | None,
     daily_frequency: str | None,
     total_days: str | None,
     schedule_slot_keys: object,
 ) -> str:
     normalized_slots = _normalize_schedule_slot_value(schedule_slot_keys)
-    signature = "\0".join(
-        (
-            _normalize_signature_text(item_name),
-            prescription_date.isoformat() if prescription_date else "",
-            _normalize_signature_text(dosage_per_time),
-            _normalize_signature_text(daily_frequency),
-            _normalize_signature_text(total_days),
-            normalized_slots,
-        )
-    )
+    signature_parts = [
+        _normalize_signature_text(item_name),
+        prescription_date.isoformat() if prescription_date else "",
+        _normalize_signature_text(dosage_per_time),
+        _normalize_signature_text(daily_frequency),
+        _normalize_signature_text(total_days),
+        normalized_slots,
+    ]
+    normalized_batch_id = _normalize_signature_text(prescription_batch_id)
+    if normalized_batch_id:
+        signature_parts.append(normalized_batch_id)
+    signature = "\0".join(signature_parts)
     return hashlib.sha256(signature.encode("utf-8")).hexdigest()
 
 
@@ -152,6 +156,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
         "created_date": "DATE",
         "prescription_date": "DATE",
+        "prescription_batch_id": "VARCHAR(64)",
         "item_seq": "VARCHAR",
         "dosage_per_time": "VARCHAR",
         "daily_frequency": "VARCHAR",
@@ -187,7 +192,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
             text(
                 f"SELECT id, patient_hash, created_date, item_name, "
                 "prescription_date, dosage_per_time, daily_frequency, "
-                "total_days, schedule_slot_keys "
+                "total_days, schedule_slot_keys, prescription_batch_id "
                 f"FROM {_SavedMedication.__tablename__}"
             )
         ).mappings()
@@ -201,6 +206,7 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
             deduplication_key = build_saved_medication_deduplication_key(
                 item_name=row["item_name"],
                 prescription_date=prescription_date,
+                prescription_batch_id=row["prescription_batch_id"],
                 dosage_per_time=row["dosage_per_time"],
                 daily_frequency=row["daily_frequency"],
                 total_days=row["total_days"],
@@ -245,5 +251,12 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS "
                 f"ix_{_SavedMedication.__tablename__}_item_seq "
                 f"ON {_SavedMedication.__tablename__} (item_seq)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                f"ix_{_SavedMedication.__tablename__}_prescription_batch_id "
+                f"ON {_SavedMedication.__tablename__} (prescription_batch_id)"
             )
         )

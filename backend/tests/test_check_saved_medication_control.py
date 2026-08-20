@@ -1,8 +1,9 @@
 # 파일명: test_check_saved_medication_control.py
 # 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
 
-import unittest
+import hashlib
 import sys
+import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from entities.medication_completion_entity import (  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
+    build_saved_medication_deduplication_key,
     ensure_saved_medication_schema,
 )
 from schemas.medication import SavedMedicationCreate  # noqa: E402
@@ -56,10 +58,12 @@ class CheckSavedMedicationTest(unittest.TestCase):
         patient_hash: str = "patient-a",
         item_name: str = "test-tablet",
         schedule_slot_keys: list[str] | None = None,
+        prescription_batch_id: str | None = "batch_1234567890abcdef",
     ) -> SavedMedicationCreate:
         return SavedMedicationCreate(
             patient_hash=patient_hash,
             prescription_date=self.active_prescription_date,
+            prescription_batch_id=prescription_batch_id,
             item_seq="200000001",
             item_name=item_name,
             efficacy="effect",
@@ -86,6 +90,10 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
         self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
+        self.assertEqual(
+            saved_row.prescription_batch_id,
+            "batch_1234567890abcdef",
+        )
         self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
 
     def test_save_preserves_user_confirmed_schedule_slots(self) -> None:
@@ -142,6 +150,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertIn("ai_guide", existing_columns)
         self.assertIn("item_seq", existing_columns)
         self.assertIn("schedule_slot_keys", existing_columns)
+        self.assertIn("prescription_batch_id", existing_columns)
 
         session_factory = sessionmaker(
             autocommit=False,
@@ -175,6 +184,33 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_rows = self.db.query(_SavedMedication).all()
         self.assertEqual(len(saved_rows), 1)
 
+    def test_legacy_deduplication_key_is_stable_without_batch_id(self) -> None:
+        legacy_signature = "\0".join(
+            (
+                "a tablet",
+                self.active_prescription_date.isoformat(),
+                "1 tablet",
+                "3 times",
+                "7 days",
+                '["morning","lunch","evening"]',
+            )
+        )
+
+        actual_key = build_saved_medication_deduplication_key(
+            item_name="A tablet",
+            prescription_date=self.active_prescription_date,
+            prescription_batch_id=None,
+            dosage_per_time="1 tablet",
+            daily_frequency="3 times",
+            total_days="7 days",
+            schedule_slot_keys=["morning", "lunch", "evening"],
+        )
+
+        self.assertEqual(
+            actual_key,
+            hashlib.sha256(legacy_signature.encode("utf-8")).hexdigest(),
+        )
+
     def test_save_allows_same_medication_with_different_period(self) -> None:
         first_response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -191,6 +227,24 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertFalse(second_response["duplicate"])
         saved_rows = self.db.query(_SavedMedication).all()
         self.assertEqual(len(saved_rows), 2)
+
+    def test_save_allows_same_medication_from_distinct_analysis_batches(self) -> None:
+        first_response = self.control.saveMedicationDetail(
+            self._saved_medication(
+                item_name="A tablet",
+                prescription_batch_id="batch_1111111111111111",
+            )
+        )
+        second_response = self.control.saveMedicationDetail(
+            self._saved_medication(
+                item_name="A tablet",
+                prescription_batch_id="batch_2222222222222222",
+            )
+        )
+
+        self.assertTrue(first_response["success"])
+        self.assertTrue(second_response["success"])
+        self.assertEqual(self.db.query(_SavedMedication).count(), 2)
 
     def test_list_is_scoped_by_patient_hash(self) -> None:
         self.control.saveMedicationDetail(

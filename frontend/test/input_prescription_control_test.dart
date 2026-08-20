@@ -119,6 +119,7 @@ void main() {
       return http.Response(
         jsonEncode({
           'prescription_date': '2026-07-25',
+          'prescription_batch_id': 'batch_1234567890abcdef',
           'recognized_regions': [
             {
               'category': 'medication_row',
@@ -157,6 +158,7 @@ void main() {
     expect(selectedCallbackCount, 1);
     expect(schedules, hasLength(1));
     expect(schedules.first.medicationName, '테스트정');
+    expect(schedules.first.prescriptionBatchId, 'batch_1234567890abcdef');
     expect(control.lastSelectedImagePath, imageFile.path);
     expect(control.lastSelectedImageOwnedByApp, isTrue);
     expect(control.lastRecognizedTextRegions, hasLength(1));

@@ -24,6 +24,32 @@ MAX_DAILY_FREQUENCY = 4
 #   - Decide whether a medication is active on a requested date.
 #   - Decide whether a medication has passed a retention window.
 class MedicationCoursePolicy:
+    # Function Name: is_active_during
+    # Description:
+    # - Checks whether a saved medication overlaps an inclusive date window.
+    # Parameters:
+    # - medication: Saved medication-like object with date and total_days fields.
+    # - window_start: First date in the requested schedule window.
+    # - window_end: Last date in the requested schedule window.
+    # Returns:
+    # - True when any day of the medication course overlaps the window.
+    def is_active_during(
+        self,
+        medication: Any,
+        window_start: date,
+        window_end: date,
+    ) -> bool:
+        if window_end < window_start:
+            return False
+
+        course_start = self.read_start_date(medication, window_start)
+        total_days = self.read_total_days(getattr(medication, "total_days", None))
+        if total_days <= 0:
+            return course_start <= window_end
+
+        course_end = course_start + timedelta(days=total_days - 1)
+        return course_start <= window_end and course_end >= window_start
+
     # Function Name: is_active_on
     # Description:
     # - Checks whether a saved medication should be visible for a schedule date.

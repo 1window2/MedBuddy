@@ -192,6 +192,8 @@ class InputPrescription {
       );
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
+      final prescriptionBatchId =
+          decodedData['prescription_batch_id']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
       if (rawMedications is! List) {
         _lastRecognizedTextRegions = _resolvePreviewRegions(
@@ -208,6 +210,10 @@ class InputPrescription {
           .map((item) {
             final itemJson = Map<String, dynamic>.from(item);
             itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
+            itemJson.putIfAbsent(
+              'prescription_batch_id',
+              () => prescriptionBatchId,
+            );
             return MedicationSchedule.fromAnalysisJson(itemJson);
           })
           .toList(growable: false);

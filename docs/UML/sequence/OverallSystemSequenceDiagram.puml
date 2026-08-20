@@ -299,16 +299,20 @@ loop 인식된 MedicationSchedule마다
 end
 
 ViewModel -> FrontControl : CheckPrescriptionChange.requestPrescriptionChange()
-FrontControl -> ApiClient : POST /prescription-change
+alt 일부 약품 상세정보 조회 실패
+    ViewModel -> ViewModel : 변경 Radar 생략\n불완전 비교 방지
+else 모든 인식 약품 상세정보 조회 성공
+    FrontControl -> ApiClient : POST /prescription/change-radar
 ApiClient -> Router : 현재 처방 비교 요청
 Router -> BackControl : CheckPrescriptionChange.request_prescription_change()
-BackControl -> Database : 이전 저장 처방과 성분 정보 조회
-Database --> BackControl : 비교 대상 처방
+BackControl -> Database : 이전 저장 처방을\nprescription_batch_id별 조회
+Database --> BackControl : 같은 날에도 분리된 비교 후보
 BackControl -> BackService : PrescriptionSimilarityService.compare()
 BackService --> BackControl : 유사도와 비교 대상
 BackControl --> Router : PrescriptionChangeRadar
 Router --> ApiClient : 처방 변경 결과
 ApiClient --> ViewModel : PrescriptionChangeRadar
+end
 
 ViewModel --> UI : CheckResultUI에 분석 결과와 변경 Radar 출력
 
@@ -317,7 +321,7 @@ opt 사용자가 분석 약을 저장하는 경우
     loop 저장 대상으로 선택된 약마다
         UI -> ViewModel : requestMedicationSave()
         ViewModel -> FrontControl : CheckSavedMedication.saveMedicationDetail()
-        FrontControl -> ApiClient : POST /save
+        FrontControl -> ApiClient : POST /save\n처방 분석 batch id 포함
         ApiClient -> Router : 저장 약 생성 요청
         Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
         BackControl -> Database : saved_medications 중복 확인 및 저장
@@ -435,12 +439,13 @@ ViewModel --> UI : 알림 활성 상태 출력
 loop Android Workmanager 12시간 주기
     Workmanager -> FrontService : medication reminder refresh
     FrontService -> FirebaseAuth : 백그라운드 사용자 및 ID Token 복원
-    FrontService -> FrontControl : 현재 알림 설정과 오늘의 활성 복약 일정 조회
-    FrontControl -> ApiClient : GET notification/settings, schedule/today
+    FrontService -> FrontControl : 현재 알림 설정과 14일 복약 일정 조회
+    FrontControl -> ApiClient : GET notification/settings, schedule/window?days=14
     ApiClient -> Router : 인증된 사용자 범위 조회
     Router --> ApiClient : MedicationAlarm과 MedicationSchedule
     ApiClient --> FrontControl : 현재 서버 상태
-    FrontControl --> FrontService : 다음 14일의 복용 종료일 이내 날짜 계산
+    FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
+    FrontService -> FrontService : 다음 14일의 복용 기간 내 날짜 계산
     FrontService -> LocalNotification : 기존 Slot 교체 및 Rolling Window 보충
 end
 

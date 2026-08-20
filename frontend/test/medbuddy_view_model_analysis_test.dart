@@ -227,12 +227,14 @@ void main() {
   test(
     'requestPrescriptionAnalysis surfaces partial lookup failures',
     () async {
+      final changeControl = _FakeCheckPrescriptionChange();
       final viewModel = MedBuddyViewModel(
         inputPrescription: _FakeInputPrescription(const [
           MedicationSchedule(medicationName: 'found-tablet'),
           MedicationSchedule(medicationName: 'missing-tablet'),
         ]),
         checkMedicationDetail: _FakeCheckMedicationDetail(),
+        checkPrescriptionChange: changeControl,
       );
       addTearDown(viewModel.dispose);
 
@@ -245,6 +247,13 @@ void main() {
       );
       expect(viewModel.analyzedMedicationList, hasLength(1));
       expect(viewModel.statusMessage, contains('1개 약 정보'));
+
+      viewModel.showMedicationAnalysisResult();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(changeControl.requestCount, 0);
+      expect(viewModel.prescriptionChangeRadar, isNull);
+      expect(viewModel.isPrescriptionChangeLoading, isFalse);
     },
   );
 

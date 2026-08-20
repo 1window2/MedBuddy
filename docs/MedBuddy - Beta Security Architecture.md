@@ -183,8 +183,9 @@ FCM smoke testing.
 Patient medication reminders use a rolling 14-day local reservation window so
 the application stays below device/OEM pending-alarm limits. An authenticated
 Android Workmanager task runs twice daily, reloads the current reminder
-settings and today's active medication courses, and replenishes that window.
-Each refresh remains bounded by the prescription course end. A transient
+settings and medication courses overlapping the next 14 days, and replenishes
+that window. Future-start courses are therefore visible before their first
+dose, while each refresh remains bounded by the prescription course end. A transient
 network/authentication failure asks Workmanager to retry and leaves the already
 scheduled window intact.
 

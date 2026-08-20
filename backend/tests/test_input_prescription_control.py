@@ -699,6 +699,10 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
 
         self.assertEqual(payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
         self.assertEqual(payload["prescription_date"], "2026-07-08")
+        self.assertRegex(
+            payload["prescription_batch_id"],
+            r"^[A-Za-z0-9_-]{16,64}$",
+        )
         self.assertEqual(len(payload["medications"]), 1)
         self.assertEqual(payload["raw_medication_count"], 2)
         self.assertEqual(payload["parsed_medication_count"], 1)

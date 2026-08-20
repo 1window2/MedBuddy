@@ -181,6 +181,7 @@ package "Flutter Frontend" {
             + baseUrl: String
             + patientHash: String
             + requestTodayMedicationSchedule(): Future<List<MedicationSchedule>>
+            + requestMedicationScheduleWindow(days): Future<List<MedicationSchedule>>
             + updateMedicationStatus(id, status): Future<MedicationSchedule>
         }
 
@@ -362,6 +363,7 @@ package "Flutter Frontend" {
         class "MedicationSchedule" as FMedicationSchedule <<Entity: 복약 일정>> {
             + medicationID: String
             + medicationName: String
+            + prescriptionBatchId: String
             + dosage: String
             + medicationStatus: bool
             + slotStatuses: Map<String, bool>
@@ -506,6 +508,7 @@ package "FastAPI Backend" {
         class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
             - db: Session
             + requestTodayMedicationSchedule(patient_hash): dict
+            + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
         }
 
@@ -816,6 +819,7 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + prescription_date: Date
+            + prescription_batch_id: String?
             + schedule_slot_keys: Text
             + medication_status: Boolean
         }

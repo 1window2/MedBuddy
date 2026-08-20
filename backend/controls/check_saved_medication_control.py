@@ -78,6 +78,7 @@ class CheckSavedMedication:
                 patient_hash=patient_hash,
                 created_date=registration_date,
                 prescription_date=medication.prescription_date,
+                prescription_batch_id=medication.prescription_batch_id,
                 item_seq=(medication.item_seq or "").strip() or None,
                 item_name=medication.item_name.strip(),
                 efficacy=medication.efficacy,
@@ -232,6 +233,7 @@ class CheckSavedMedication:
                 if medication.prescription_date
                 else ""
             ),
+            "prescription_batch_id": medication.prescription_batch_id or "",
             "item_seq": medication.item_seq or "",
             "item_name": medication.item_name,
             "efficacy": medication.efficacy,
@@ -333,6 +335,7 @@ class CheckSavedMedication:
         return build_saved_medication_deduplication_key(
             item_name=medication.item_name,
             prescription_date=medication.prescription_date,
+            prescription_batch_id=medication.prescription_batch_id,
             dosage_per_time=medication.dosage_per_time,
             daily_frequency=medication.daily_frequency,
             total_days=medication.total_days,

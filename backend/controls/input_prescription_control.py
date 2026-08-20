@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import re
+import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -958,6 +959,7 @@ class InputPrescription:
         return {
             "hospital_name": safe_data.get("hospital_name", INFO_UNAVAILABLE),
             "prescription_date": prescription_date,
+            "prescription_batch_id": secrets.token_urlsafe(18),
             "medications": medication_schedules,
             "raw_medication_count": safe_data.get(
                 "raw_medication_count",

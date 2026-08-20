@@ -136,6 +136,43 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
 
+    def test_schedule_window_includes_future_starting_course(self) -> None:
+        today = application_today()
+        future_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="future-tablet",
+            prescription_date=today + timedelta(days=5),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-a",
+            item_name="outside-window-tablet",
+            prescription_date=today + timedelta(days=15),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-patient-tablet",
+            prescription_date=today + timedelta(days=2),
+        )
+
+        response = self.control.requestMedicationScheduleWindow(
+            "patient-a",
+            days=14,
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["window_start"], today.isoformat())
+        self.assertEqual(
+            response["window_end"],
+            (today + timedelta(days=13)).isoformat(),
+        )
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(
+            response["data"][0]["medication_id"],
+            str(future_medication.id),
+        )
+
     def test_status_update_is_scoped_by_patient_hash(self) -> None:
         medication = self._saved_medication(patient_hash="patient-b")
 

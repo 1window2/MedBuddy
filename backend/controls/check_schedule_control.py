@@ -2,7 +2,7 @@
 # Role: Control class mapped from CheckSchedule in class diagram integrated v5.
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -90,6 +90,51 @@ class CheckSchedule:
             "success": True,
             "message": "Today medication schedule lookup succeeded.",
             "data": active_schedules,
+        }
+
+    # Function Name: requestMedicationScheduleWindow
+    # Description:
+    # - Reads medication courses that overlap a bounded rolling date window.
+    # - This supports notification replenishment before a future course starts.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - days: Inclusive rolling window length beginning today.
+    # Returns:
+    # - API-compatible schedule list response dictionary.
+    def requestMedicationScheduleWindow(
+        self,
+        patient_hash: str | None = None,
+        days: int = 14,
+    ) -> dict[str, object]:
+        if days < 1 or days > 14:
+            raise ValueError("Schedule window must be between 1 and 14 days.")
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        window_start = application_today()
+        window_end = window_start + timedelta(days=days - 1)
+        medications = (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == normalized_patient_hash)
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+        window_medications = [
+            medication
+            for medication in medications
+            if self.course_policy.is_active_during(
+                medication,
+                window_start,
+                window_end,
+            )
+        ]
+        return {
+            "success": True,
+            "message": "Medication schedule window lookup succeeded.",
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "data": [
+                self._to_schedule_dict(medication, window_start, [])
+                for medication in window_medications
+            ],
         }
 
     # Function Name: updateMedicationStatus

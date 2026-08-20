@@ -301,6 +301,13 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     }
 
     _prescriptionFlowState = PrescriptionFlowState.resultReady;
+    if (_analyzedMedicationList.length !=
+        _recognizedMedicationScheduleList.length) {
+      _prescriptionChangeRadar = null;
+      _isPrescriptionChangeLoading = false;
+      _notifyViewModelListeners();
+      return;
+    }
     _isPrescriptionChangeLoading = true;
     _notifyViewModelListeners();
     unawaited(
