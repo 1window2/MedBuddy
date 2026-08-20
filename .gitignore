@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+**/.env
 .venv/
 venv/
 **/venv/
@@ -60,4 +61,5 @@ frontend/ios/Flutter/ephemeral/
 # Outputs
 *.apk
 *.aab
-backend/.env.self-hosted
+
+deploy/backend.env

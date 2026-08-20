@@ -1,14 +1,14 @@
 // File Name: api_config_test.dart
-// Role: Verifies development and release API endpoint trust rules.
+// Role: Verifies the public HTTPS API endpoint trust policy.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/api_config.dart';
 
 void main() {
-  test('release validation accepts a public HTTPS medication API', () {
+  test('validation accepts the production public HTTPS medication API', () {
     expect(
       () => ApiConfig.validateUrl(
-        'https://api.medbuddy.example/api/v1/medication',
+        'https://api.medbuddy.pp.ua/api/v1/medication',
         requirePublicHttps: true,
       ),
       returnsNormally,
@@ -16,7 +16,7 @@ void main() {
   });
 
   test(
-    'release validation rejects localhost and private network endpoints',
+    'validation rejects localhost, private network, and clear-text endpoints',
     () {
       const rejectedUrls = [
         'https://localhost/api/v1/medication',
@@ -28,7 +28,7 @@ void main() {
         'https://[::1]/api/v1/medication',
         'https://[2001:db8::1]/api/v1/medication',
         'https://[ff02::1]/api/v1/medication',
-        'http://api.medbuddy.example/api/v1/medication',
+        'http://api.medbuddy.pp.ua/api/v1/medication',
       ];
 
       for (final url in rejectedUrls) {
@@ -38,19 +38,6 @@ void main() {
           reason: url,
         );
       }
-    },
-  );
-
-  test(
-    'debug validation retains explicit emulator and trusted-LAN support',
-    () {
-      expect(
-        () => ApiConfig.validateUrl(
-          'http://10.0.2.2:8000/api/v1/medication',
-          requirePublicHttps: false,
-        ),
-        returnsNormally,
-      );
     },
   );
 }

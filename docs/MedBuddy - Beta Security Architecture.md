@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-- Status: implemented in source; infrastructure provisioning and smoke testing pending
+- Status: production infrastructure provisioned and public HTTPS smoke-tested; authenticated Android device and final signed-release validation remain
 - Applies to: Android beta and FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
@@ -167,38 +167,38 @@ FCM smoke testing.
 
 ## HTTPS and Deployment
 
-The self-hosted deployment must provide:
+The production beta runs on one dedicated team-controlled Ubuntu host behind
+Cloudflare Tunnel.
 
-- TLS termination with automatic certificate renewal and HTTP-to-HTTPS redirect
-  when direct router forwarding is used.
-- A private Docker network between FastAPI, PostgreSQL, and Redis.
-- PostgreSQL with a persistent volume, bounded connection pooling, external
-  backups, and a tested restore. SQLite remains valid only for local/demo use.
-- The pill reference catalog in the shared PostgreSQL database. Catalog changes
-  run as a controlled maintenance operation rather than from API request paths.
-- Redis on the private Docker network for distributed quotas. Production fails
-  closed when Redis is unavailable.
-- The versioned Alembic migration chain before the API starts accepting traffic.
-- Secrets in an ignored host environment file or mounted read-only secret file,
-  never repository files or Flutter compile-time constants.
-- One bounded API container on the 8 GB beta host, with request/body limits,
-  timeouts, redacted logs, health probes, and external API failure monitoring.
-
-The beta topology is one team-controlled container host. A temporary Tailscale
-Funnel can publish loopback FastAPI over HTTPS during the two-week bridge.
-Permanent direct hosting requires a public IPv4 address, router TCP 80/443
-forwarding, DNS or DDNS, and Caddy TLS termination. PostgreSQL, Redis, and the
-FastAPI development port must never be forwarded. The Boundary-Control-Entity
-interfaces remain provider-independent if managed hosting is revisited later.
+- Cloudflare is the authoritative DNS provider for `medbuddy.pp.ua`.
+- The public API hostname is `https://api.medbuddy.pp.ua`.
+- The named tunnel `medbuddy-production` forwards the API hostname to
+  `http://backend:8080` on the private Docker network.
+- No inbound router port forwarding is required.
+- Tailscale Funnel and direct-public Caddy ingress are not part of the
+  production topology.
+- PostgreSQL and Redis remain private Docker services with no public host ports.
+- FastAPI port `8000` is bound only to host loopback for local diagnostics.
+- Cloudflare provides edge TLS, API cache bypass, route filtering, DDoS
+  mitigation, and an outer burst rate limit.
+- FastAPI remains responsible for Firebase Authentication, Firebase App Check,
+  authorization, Redis-backed application quotas, request validation, and
+  domain controls.
+- Production configuration is split between ignored `deploy/.env` and
+  `deploy/backend.env` files, while Firebase Admin and Cloudflare Tunnel
+  credentials remain outside the repository.
+- The versioned Alembic migration chain runs before the API starts accepting
+  traffic, and readiness checks cover the database revision, Firebase
+  verification, App Check, and Redis.
 
 ## Client Egress and Resource-Safety Policy
 
-- `ApiConfig` keeps emulator and explicitly selected trusted-LAN endpoints in
-  debug mode, while release/profile mode rejects clear-text, localhost,
-  private-network, credentialed, query-bearing, and non-contract API URLs.
-- The convenience `python backend/main.py` entry point binds to `127.0.0.1`.
-  Listening on every interface is an explicit trusted-LAN test action, never a
-  default.
+- `ApiConfig` defaults to the production HTTPS endpoint
+  `https://api.medbuddy.pp.ua/api/v1/medication` and requires a public HTTPS
+  backend in debug, profile, and release modes.
+- The Android debug manifest retains Internet access for ADB, breakpoints, and
+  Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
+  access.
 - Medication images are external content. Flutter loads them only from the
   documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
   value immediately before every `Image.network` call.
@@ -221,8 +221,8 @@ interfaces remain provider-independent if managed hosting is revisited later.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
 - The release manifest/network security configuration permits HTTPS only.
-- Development clear-text access, if retained, must live in a debug-only Android
-  manifest overlay.
+- Debug builds retain Internet permission for Flutter tooling, but clear-text
+  HTTP access is not enabled in the Android manifest.
 
 ## Delivery Order to July 31
 
@@ -237,12 +237,13 @@ interfaces remain provider-independent if managed hosting is revisited later.
 ## Implemented Beta Configuration
 
 The source implements authentication adapters, authorization controls,
-self-hosted container configuration, disabled historical GCP workflows, and
-signed-build safeguards for delivery items 1-6. Runtime monitoring,
-least-privilege Firebase IAM assignment, host secrets, backup/restore rehearsal,
-public HTTPS verification, and signed-device smoke testing remain operational
-release gates, not completed application features or a second authentication
-path.
+the dedicated production container configuration, Cloudflare Tunnel ingress,
+disabled historical GCP workflows, and signed-build safeguards for delivery
+items 1-6. Public HTTPS and readiness smoke testing are complete. Runtime
+monitoring, least-privilege Firebase IAM assignment, backup/restore rehearsal,
+authenticated Android device testing, and final signed-device validation remain
+operational release gates rather than separate application features or
+authentication paths.
 
 ### Firebase
 
@@ -251,7 +252,7 @@ path.
    Phone remains disabled for the no-billing beta.
 2. Backend production uses `AUTH_MODE=firebase`, `FIREBASE_PROJECT_ID`, and a
    minimum-permission Firebase Admin credential mounted read-only from outside
-   the repository on the self-hosted server.
+   the repository on the dedicated production server.
 3. Flutter release builds receive `MEDBUDDY_AUTH_MODE=firebase`, Firebase
    identifiers, and `MEDBUDDY_PHONE_AUTH_ENABLED=false` through protected build
    variables.
@@ -272,7 +273,7 @@ path.
    during sign-out.
 9. Newly completed-dose transitions are delivered through FCM. Missed-deadline
    checks remain an authenticated Workmanager task; periodic server maintenance
-   runs inside the single self-hosted FastAPI process.
+   runs inside the single production FastAPI process.
 
 ### Android Firebase Registration
 
@@ -292,21 +293,25 @@ Admin, API, database, and signing credentials stay outside the repository in
 mounted host secret files or protected GitHub Environments. They must never be
 stored in the Compose file or Flutter compile-time constants.
 
-### Self-hosted FastAPI, PostgreSQL, and Redis
+### Production FastAPI, PostgreSQL, Redis, and Cloudflare Tunnel
 
-`compose.self-hosted.yml` builds the existing backend image and runs:
+`compose.self-hosted.yml` runs the production backend stack:
 
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
 - One FastAPI container with production fail-closed settings.
-- An optional Caddy profile for direct public HTTPS.
+- One `cloudflared` container providing the only public ingress path.
 
-The host copies `backend/.env.self-hosted.example` to the ignored
-`backend/.env.self-hosted` file. A Firebase Admin credential remains outside
-the repository and is mounted read-only into the backend container. The
-container waits for PostgreSQL and Redis, runs `alembic upgrade head`, and only
-then starts Uvicorn. The temporary Funnel path publishes loopback port 8000;
-the direct-public profile publishes only Caddy ports 80 and 443.
+The host keeps Docker interpolation values in ignored `deploy/.env` and backend
+runtime values in ignored `deploy/backend.env`. A Firebase Admin credential and
+Cloudflare Tunnel token remain outside the repository and are mounted read-only
+into the required containers.
+
+The backend waits for PostgreSQL and Redis, runs `alembic upgrade head`, and
+then starts Uvicorn. FastAPI port `8000` is exposed only on host loopback for
+local diagnostics. Public traffic reaches the backend only through
+`https://api.medbuddy.pp.ua` -> Cloudflare -> `medbuddy-production` ->
+`http://backend:8080`.
 
 The historical GCP deployment, catalog-sync, and maintenance workflows retain
 their source but every job has `if: false`. They cannot provision or invoke

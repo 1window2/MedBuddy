@@ -72,29 +72,26 @@ persistence, battery saver, and patient-caregiver two-device synchronization,
 use the
 [`beta accessibility and device regression checklist`](../docs/qa/beta_accessibility_device_regression_checklist.md).
 
-For Android emulator testing, the default API base URL points to:
+The Android application defaults to the production API endpoint:
 
 ```text
-http://10.0.2.2:8000/api/v1/medication
+https://api.medbuddy.pp.ua/api/v1/medication
 ```
 
-Use the device id reported by `flutter devices`. For a physical Android device
-on the same network, replace the example host with the development machine's
-LAN IP address. Start the backend with an explicit trusted-LAN binding and use
-synthetic data only; the default backend command remains loopback-only:
+Use the device id reported by `flutter devices`:
 
 ```powershell
-cd ../backend
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-cd ../frontend
+flutter run -d "[your-device-id]"
 ```
 
-```powershell
-flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
-```
+ADB debugging, Flutter hot reload, breakpoints, and physical-device testing do
+not require the backend to run on the development computer or on the same LAN.
+The Android client reaches the production backend over ordinary HTTPS.
 
-Release and profile builds reject localhost, private-network addresses, and
-non-HTTPS API endpoints.
+`MEDBUDDY_API_BASE_URL` remains a compile-time value. If explicitly overridden,
+it must still be a public HTTPS endpoint ending in `/api/v1/medication`.
+Localhost, private-network addresses, and clear-text HTTP endpoints are rejected
+in debug, profile, and release builds.
 
 See the repository-level [`README.md`](../README.md) for complete backend and
 device setup, and [`CONTRIBUTING.md`](../CONTRIBUTING.md) for release

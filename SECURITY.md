@@ -139,14 +139,16 @@ keystores ignored, and provides a protected GitHub Environment workflow that
 requires release signing credentials. Ordinary pull requests can compile an
 unsigned release artifact but never receive signing material.
 
-The main Android manifest rejects clear-text traffic. Only the debug manifest
-overlay permits HTTP for emulator or trusted-LAN development. Release runtime
-configuration additionally rejects a non-HTTPS API URL. The beta backend runs
-FastAPI, PostgreSQL, and Redis on a team-controlled host. PostgreSQL and Redis
-remain on a private container network, and only a TLS reverse proxy or temporary
-Tailscale Funnel publishes the API. Retained Google Cloud deployment and
-scheduled-job workflows are disabled so they cannot provision billable
-resources. The signed Android workflow still requires the release SHA-1 to be
+The Android manifests do not enable clear-text API traffic. Debug builds retain
+Internet permission for ADB, breakpoints, and Flutter hot reload, while
+`ApiConfig` requires the same public HTTPS backend contract in debug, profile,
+and release builds. The beta backend runs FastAPI, PostgreSQL, Redis, and
+`cloudflared` on a dedicated team-controlled Ubuntu host. PostgreSQL and Redis
+remain on the private Docker network, FastAPI port 8000 is bound only to host
+loopback, and Cloudflare Tunnel is the only public ingress path. Router port
+forwarding, Tailscale Funnel, and direct-public Caddy ingress are not used.
+Retained Google Cloud deployment and scheduled-job workflows remain disabled so
+they cannot provision billable resources. The signed Android workflow still requires the release SHA-1 to be
 registered in Firebase and rejects identifiers that differ from the compiled
 Dart configuration. Phone sign-in and SMS MFA are hidden and fail closed unless
 an owner explicitly enables their build and backend feature flags.

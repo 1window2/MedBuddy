@@ -30,7 +30,7 @@ relevant control; it does not mean the original report was invalid.
 | `f0105020e29c8191aa816d4c6aff4509` | Home link screen exposes unauthenticated caregiver linking | Already resolved in beta | The client no longer exposes an editable identity boundary; the physical-device anonymous view cannot create or register a link. |
 | `be803f617cf481918039d89dab38015d` | Editable user hash exposes caregiver links | Already resolved in beta | User identity is derived from the verified principal; hash fields are no longer editable credentials. |
 | `a73bc23032548191ba138f0dad71e6d9` | Unauthenticated users can mint caregiver link codes | Already resolved in beta | Link-code operations require authenticated, server-owned identity and retain expiry/single-use checks. |
-| `478a041c00348191b8e534c2d885737d` | README exposes unauthenticated API on all interfaces | Fixed in this branch | Direct startup binds loopback; trusted-LAN instructions are explicit, synthetic-data-only exceptions. |
+| `478a041c00348191b8e534c2d885737d` | README exposes unauthenticated API on all interfaces | Fixed in this branch | Direct startup binds loopback; Android documentation and client configuration no longer permit private-LAN or clear-text API endpoints. |
 | `c7884ee22fd48191aeaee21793044d59` | Backend PR CI can expose API secrets to PR code | Fixed in this branch | Pull-request import/tests receive fixed fake values and never interpolate repository secrets. |
 
 ## Medium severity

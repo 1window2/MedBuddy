@@ -6,12 +6,11 @@
 // 주요 책임:
 // - Android 에뮬레이터 데모용 기본 주소를 제공한다.
 // - MEDBUDDY_API_BASE_URL 값이 주어지면 해당 주소를 우선 사용한다.
-import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   static const String baseUrl = String.fromEnvironment(
     'MEDBUDDY_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000/api/v1/medication',
+    defaultValue: 'https://api.medbuddy.pp.ua/api/v1/medication',
   );
 
   static String get authSessionUrl {
@@ -40,7 +39,7 @@ class ApiConfig {
   }
 
   static void validate() {
-    validateUrl(baseUrl, requirePublicHttps: kReleaseMode || kProfileMode);
+    validateUrl(baseUrl, requirePublicHttps: true);
   }
 
   // 함수명: validateUrl

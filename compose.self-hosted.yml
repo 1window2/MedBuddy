@@ -42,7 +42,7 @@ services:
       context: ./backend
     restart: unless-stopped
     env_file:
-      - ./backend/.env.self-hosted
+      - ./deploy/backend.env
     environment:
       APP_ENV: production
       RUNTIME_ROLE: api
@@ -85,28 +85,50 @@ services:
       start_period: 30s
     networks: [backend]
 
-  caddy:
-    image: caddy:2.10-alpine
-    profiles: [direct-public]
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.2@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
     restart: unless-stopped
-    environment:
-      MEDBUDDY_PUBLIC_HOSTNAME: ${MEDBUDDY_PUBLIC_HOSTNAME:?Set MEDBUDDY_PUBLIC_HOSTNAME}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+      - --token-file
+      - /run/secrets/cloudflare-tunnel-token
     depends_on:
       backend:
         condition: service_healthy
+    secrets:
+      - source: cloudflare_tunnel_token
+        target: cloudflare-tunnel-token
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - cloudflared
+        - tunnel
+        - --metrics
+        - 127.0.0.1:2000
+        - ready
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks: [backend]
 
 secrets:
   firebase_admin:
     file: ${FIREBASE_ADMIN_CREDENTIALS_PATH:?Set FIREBASE_ADMIN_CREDENTIALS_PATH}
+  cloudflare_tunnel_token:
+    file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:?Set CLOUDFLARE_TUNNEL_TOKEN_FILE}
 
 networks:
   backend:
@@ -115,5 +137,3 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  caddy_data:
-  caddy_config:
