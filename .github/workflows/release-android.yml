@@ -8,9 +8,7 @@ permissions:
 
 jobs:
   build:
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/beta/v0.1.0'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: beta-android
 
@@ -26,13 +24,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${GITHUB_REF}" in
-            refs/heads/main|refs/heads/beta/v0.1.0) ;;
-            *)
-              echo "Signed Android builds are restricted to the protected main and beta/v0.1.0 branches." >&2
-              exit 1
-              ;;
-          esac
+          test "${GITHUB_REF}" = "refs/heads/main" || {
+            echo "Signed Android builds are restricted to the protected main branch." >&2
+            exit 1
+          }
 
       - name: Java Setup
         uses: actions/setup-java@v5

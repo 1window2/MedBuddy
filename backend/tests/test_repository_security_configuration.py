@@ -42,15 +42,17 @@ def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
 # - Prevents arbitrary beta branches or version-like tags from selecting
 #   repository-controlled build code that receives Android signing secrets.
 # - Keeps the repository gate aligned with the beta-android environment's
-#   exact custom deployment branch policies.
+#   protected-main deployment policy.
 # Returns:
 # - None; pytest reports a failure when broad signing refs are reintroduced.
-def test_android_signing_secrets_are_limited_to_release_branches() -> None:
+def test_android_signing_secrets_are_limited_to_main() -> None:
     workflow = (
         _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
     ).read_text(encoding="utf-8")
 
-    assert "refs/heads/main|refs/heads/beta/v0.1.0" in workflow
+    assert "test \"${GITHUB_REF}\" = \"refs/heads/main\"" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "refs/heads/beta/v0.1.0" not in workflow
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow

@@ -55,7 +55,7 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
-| `118bbbfa807c819181a0eb15cc30bd94` | Release workflow exposes signing secrets to broad refs | Fixed in this branch and GitHub environment | The workflow accepts only exact `main` and `beta/v0.1.0` refs. The `beta-android` environment independently requires owner approval and exact custom deployment branch policies for those two branches; wildcard beta branches and tags cannot receive signing material. |
+| `118bbbfa807c819181a0eb15cc30bd94` | Release workflow exposes signing secrets to broad refs | Fixed in this branch and GitHub environment | The workflow accepts only the protected `main` ref. The `beta-android` environment independently requires owner approval and an exact main-branch deployment policy; beta branches and tags cannot receive signing material. |
 | `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Fixed after verified review | Saved-list and caregiver reads return persisted image metadata only; they no longer call MFDS or commit enrichment as a GET side effect. |
 | `8d0d695912108191a19a8311c5153486` | Unauthenticated health recommendation LLM endpoint | Already resolved in beta | Recommendation generation is protected by the verified request principal and bounded request policy. |
 | `1b4134d204dc81918ea1d955c21b0c71` | Medication detail screen loads untrusted image URLs | Fixed in this branch | All medication images require HTTPS on the exact MFDS image host with no credentials or alternate port. |
