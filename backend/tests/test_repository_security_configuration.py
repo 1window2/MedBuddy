@@ -84,13 +84,16 @@ def test_android_signing_secrets_are_limited_to_main() -> None:
     assert "environment: beta-android" in workflow
 
 
-# Function Name: test_android_artifact_signature_checks_are_strict
+# Function Name: test_android_artifact_signature_checks_are_fail_closed
 # Description:
 # - Prevents certificate-subject text from spoofing the APK digest parser.
-# - Requires jarsigner warnings, including unsigned entries, to fail AAB checks.
+# - Requires APK and AAB signature-tool failures, missing verified-archive
+#   output, unsigned AAB content, and malformed fingerprints to fail the build.
+# - Allows the expected self-signed Android upload certificate while still
+#   requiring its exact protected SHA-256 fingerprint.
 # Returns:
 # - None; pytest reports a failure when artifact verification is weakened.
-def test_android_artifact_signature_checks_are_strict() -> None:
+def test_android_artifact_signature_checks_are_fail_closed() -> None:
     workflow = (
         _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
     ).read_text(encoding="utf-8")
@@ -99,7 +102,11 @@ def test_android_artifact_signature_checks_are_strict() -> None:
         "/^Signer #[0-9]+ certificate SHA-256 digest: "
         "[[:xdigit:]:]+$/" in workflow
     )
-    assert "jarsigner -verify -strict \"${AAB}\"" in workflow
+    assert 'AAB_VERIFY_OUTPUT="$(jarsigner -verify "${AAB}" 2>&1)"' in workflow
+    assert "if (( AAB_VERIFY_STATUS != 0 )); then" in workflow
+    assert "grep -Eq '^jar verified\\.$'" in workflow
+    assert "grep -Eqi 'unsigned entries|treated as unsigned'" in workflow
+    assert 'jarsigner -verify -strict "${AAB}"' not in workflow
     assert '[[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
     assert '[[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
 

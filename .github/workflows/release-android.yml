@@ -293,7 +293,23 @@ jobs:
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
-          jarsigner -verify -strict "${AAB}"
+          set +e
+          AAB_VERIFY_OUTPUT="$(jarsigner -verify "${AAB}" 2>&1)"
+          AAB_VERIFY_STATUS=$?
+          set -e
+          printf '%s\n' "${AAB_VERIFY_OUTPUT}"
+          if (( AAB_VERIFY_STATUS != 0 )); then
+            echo "AAB signature verification failed with exit code ${AAB_VERIFY_STATUS}." >&2
+            exit "${AAB_VERIFY_STATUS}"
+          fi
+          if ! grep -Eq '^jar verified\.$' <<< "${AAB_VERIFY_OUTPUT}"; then
+            echo "AAB signature verification did not report a verified archive." >&2
+            exit 1
+          fi
+          if grep -Eqi 'unsigned entries|treated as unsigned' <<< "${AAB_VERIFY_OUTPUT}"; then
+            echo "AAB signature verification reported unsigned content." >&2
+            exit 1
+          fi
           AAB_CERT="$(keytool -printcert -jarfile "${AAB}" \
             | sed -n 's/^[[:space:]]*SHA256: //p' \
             | head -n 1 \
