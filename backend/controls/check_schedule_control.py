@@ -16,6 +16,7 @@ from entities.medication_completion_entity import (
     _MedicationCompletion,
     utc_now,
 )
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     MedicationSchedule,
     decode_medication_schedule_slot_keys,
@@ -406,7 +407,7 @@ class CheckSchedule:
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
             "warning_message": medication.warning_message,
-            "image_url": medication.image_url,
+            "image_url": safe_medication_image_url(medication.image_url),
             "created_date": (
                 medication.created_date.isoformat()
                 if medication.created_date is not None

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     decode_medication_schedule_slot_keys,
     encode_medication_schedule_slot_keys,
@@ -245,7 +246,7 @@ class CheckSavedMedication:
             "schedule_slot_keys": decode_medication_schedule_slot_keys(
                 medication.schedule_slot_keys
             ),
-            "image_url": medication.image_url,
+            "image_url": safe_medication_image_url(medication.image_url),
             "ai_guide": medication.ai_guide,
         }
 

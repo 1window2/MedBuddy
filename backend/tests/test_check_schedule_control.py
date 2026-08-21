@@ -94,7 +94,7 @@ class CheckScheduleTest(unittest.TestCase):
             medication_status=medication_status,
             medication_status_date=medication_status_date,
             ai_guide="guide",
-            image_url="https://example.com/medicine.jpg",
+            image_url="https://nedrug.mfds.go.kr/medicine.jpg",
         )
         self.db.add(medication)
         self.db.commit()
@@ -132,7 +132,10 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["drug_name"], "active-tablet")
         self.assertEqual(schedule["patient_hash"], "patient-a")
         self.assertFalse(schedule["medication_status"])
-        self.assertEqual(schedule["image_url"], "https://example.com/medicine.jpg")
+        self.assertEqual(
+            schedule["image_url"],
+            "https://nedrug.mfds.go.kr/medicine.jpg",
+        )
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
 

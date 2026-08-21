@@ -8,6 +8,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from core.application_clock import application_today
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     normalize_medication_schedule_slot_keys,
 )
@@ -96,6 +97,24 @@ class SavedMedicationCreate(BaseModel):
         if value and not normalized_slot_keys:
             raise ValueError("At least one supported schedule slot is required.")
         return normalized_slot_keys
+
+    # Function Name: validate_image_url
+    # Description:
+    # - Accepts only the documented MFDS HTTPS medication-image origin.
+    # - Rejects arbitrary client-controlled hosts before persistence.
+    # Parameters:
+    # - value: Optional image URL supplied by the client.
+    # Returns:
+    # - A trusted normalized URL, or None when the field is blank.
+    @field_validator("image_url")
+    @classmethod
+    def validate_image_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        trusted_url = safe_medication_image_url(value)
+        if not trusted_url:
+            raise ValueError("Medication image URL is not trusted.")
+        return trusted_url
 
     # 함수명: validate_prescription_date
     # 역할:

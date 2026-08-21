@@ -108,7 +108,7 @@ def _entry(
         item_seq=item_seq,
         item_name=item_name,
         entp_name="테스트제약",
-        image_url=f"https://example.test/{item_seq}.jpg",
+        image_url=f"https://nedrug.mfds.go.kr/{item_seq}.jpg",
         shape=shape,
         color_primary=color,
         print_front=print_front,

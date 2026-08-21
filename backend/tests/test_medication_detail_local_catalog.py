@@ -34,7 +34,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
                     "efcyQesitm": "raw effect",
                     "useMethodQesitm": "raw usage",
                     "atpnWarnQesitm": "raw warning",
-                    "itemImage": "https://example.com/pill.png",
+                    "itemImage": "https://nedrug.mfds.go.kr/pill.png",
                 }
             ),
         )
@@ -46,7 +46,10 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
         self.assertEqual(raw_item["EE_DOC_DATA"], "raw effect")
         self.assertEqual(raw_item["UD_DOC_DATA"], "raw usage")
         self.assertEqual(raw_item["NB_DOC_DATA"], "raw warning")
-        self.assertEqual(raw_item["ITEM_IMAGE"], "https://example.com/pill.png")
+        self.assertEqual(
+            raw_item["ITEM_IMAGE"],
+            "https://nedrug.mfds.go.kr/pill.png",
+        )
 
     def test_local_basic_detail_preserves_product_code(self) -> None:
         catalog = _LocalMedicationCatalog(db=None, summary_generator=object())

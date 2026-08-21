@@ -207,12 +207,14 @@ def test_read_text_replaces_missing_public_api_fields() -> None:
 
 def test_public_medication_image_url_accepts_documented_aliases() -> None:
     assert (
-        read_public_image_url({"itemImage": "https://example.com/pill.png"})
-        == "https://example.com/pill.png"
+        read_public_image_url(
+            {"itemImage": "https://nedrug.mfds.go.kr/pill.png"}
+        )
+        == "https://nedrug.mfds.go.kr/pill.png"
     )
     assert (
-        read_public_image_url({"ITEM_IMAGE": "//example.com/pill.png"})
-        == "https://example.com/pill.png"
+        read_public_image_url({"ITEM_IMAGE": "//nedrug.mfds.go.kr/pill.png"})
+        == "https://nedrug.mfds.go.kr/pill.png"
     )
 
 
@@ -220,6 +222,14 @@ def test_public_medication_image_url_rejects_non_network_schemes() -> None:
     assert read_public_image_url({"itemImage": "data:image/png;base64,abc"}) == ""
     assert read_public_image_url({"imageUrl": "javascript:alert(1)"}) == ""
     assert read_public_image_url({"imageUrl": "https://[invalid"}) == ""
+    assert read_public_image_url({"imageUrl": "http://nedrug.mfds.go.kr/a"}) == ""
+    assert read_public_image_url({"imageUrl": "https://example.com/a"}) == ""
+    assert (
+        read_public_image_url(
+            {"imageUrl": "https://user:pass@nedrug.mfds.go.kr/a"}
+        )
+        == ""
+    )
 
 
 @pytest.mark.anyio
@@ -243,12 +253,12 @@ async def test_pill_image_lookup_requires_an_exact_medication_match(
                 {
                     "ITEM_SEQ": "1",
                     "ITEM_NAME": "테스트정서방형",
-                    "ITEM_IMAGE": "https://example.com/wrong.png",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/wrong.png",
                 },
                 {
                     "ITEM_SEQ": "2",
                     "ITEM_NAME": "테스트정",
-                    "ITEM_IMAGE": "https://example.com/right.png",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/right.png",
                 },
             ],
             2,
@@ -258,11 +268,11 @@ async def test_pill_image_lookup_requires_an_exact_medication_match(
 
     assert (
         await portal.searchMedicationImage("테스트정")
-        == "https://example.com/right.png"
+        == "https://nedrug.mfds.go.kr/right.png"
     )
     assert (
         await portal.searchMedicationImage("테스트정")
-        == "https://example.com/right.png"
+        == "https://nedrug.mfds.go.kr/right.png"
     )
     assert request_count == 1
 
@@ -305,11 +315,11 @@ async def test_pill_image_lookup_rejects_ambiguous_name_matches(
             [
                 {
                     "ITEM_NAME": "동일정",
-                    "ITEM_IMAGE": "https://example.com/first.png",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/first.png",
                 },
                 {
                     "ITEM_NAME": "동일정",
-                    "ITEM_IMAGE": "https://example.com/second.png",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/second.png",
                 },
             ],
             2,
@@ -338,7 +348,7 @@ async def test_pill_image_lookup_uses_product_code_when_available(
                 {
                     "ITEM_SEQ": "200000001",
                     "ITEM_NAME": "테스트정",
-                    "ITEM_IMAGE": "https://example.com/by-code.png",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/by-code.png",
                 }
             ],
             1,
@@ -348,7 +358,7 @@ async def test_pill_image_lookup_uses_product_code_when_available(
 
     assert (
         await portal.searchMedicationImage("테스트정", "200000001")
-        == "https://example.com/by-code.png"
+        == "https://nedrug.mfds.go.kr/by-code.png"
     )
 
 
@@ -372,7 +382,7 @@ async def test_image_enrichment_uses_canonical_product_code() -> None:
             item_seq: str = "",
         ) -> str:
             requested_values.append((item_name, item_seq))
-            return "https://example.com/by-code.png"
+            return "https://nedrug.mfds.go.kr/by-code.png"
 
     control = object.__new__(CheckMedicationDetail)
     control.pill_image_api = _FakePillImagePortal()
@@ -390,7 +400,7 @@ async def test_image_enrichment_uses_canonical_product_code() -> None:
 
     assert requested_values == [("test-tablet", "200000001")]
     assert details[0].item_seq == "200000001"
-    assert details[0].image_url == "https://example.com/by-code.png"
+    assert details[0].image_url == "https://nedrug.mfds.go.kr/by-code.png"
 
 
 @pytest.mark.anyio
