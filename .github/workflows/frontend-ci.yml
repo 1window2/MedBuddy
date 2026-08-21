@@ -2,9 +2,9 @@ name: Flutter CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "beta/**" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "beta/**" ]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Source Code Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@v6
 
     - name: Java Setup (for Flutter)
       uses: actions/setup-java@v5
@@ -43,5 +43,9 @@ jobs:
     - name: Run Flutter Tests
       run: flutter test --no-pub
 
-    - name: Android APK Build Test
-      run: flutter build apk --debug
+    - name: Prepare compile-only Firebase configuration
+      shell: bash
+      run: cp android/app/google-services.json.example android/app/google-services.json
+
+    - name: Android Release APK Build Test
+      run: flutter build apk --release --no-pub

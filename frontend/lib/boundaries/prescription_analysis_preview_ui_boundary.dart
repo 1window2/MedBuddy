@@ -1,8 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+
+part 'prescription_preview_image_widgets.dart';
+part 'prescription_preview_medication_widgets.dart';
+
+// 타입명: MedicationScheduleChangedCallback
+// 역할: 수정된 OCR 복약 일정과 원본 목록 인덱스를 상위 상태에 전달한다.
+typedef MedicationScheduleChangedCallback =
+    void Function(int scheduleIndex, MedicationSchedule medicationSchedule);
 
 // 파일명: prescription_analysis_preview_ui_boundary.dart
 // 역할: UC-1 OCR 결과를 사용자에게 먼저 확인시키는 분석 예비 화면을 구성한다.
@@ -11,22 +23,29 @@ import '../theme/medbuddy_theme.dart';
 // 역할: 처방전에서 인식된 약 목록과 복약 횟수를 페이지 단위로 보여준다.
 // 주요 책임:
 // - OCR 결과가 여러 개인 경우 PageView로 나누어 보여준다.
+// - 신뢰도가 낮거나 잘못 인식된 OCR 결과를 사용자가 직접 수정하게 한다.
 // - 사용자가 인식 결과를 확인한 뒤 실제 약품 상세 분석을 시작하게 한다.
 // - 분석 전에 뒤로가기를 통해 촬영 단계로 돌아갈 수 있게 한다.
 class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final List<MedicationSchedule> medicationScheduleList;
+  final List<RecognizedTextRegion> recognizedTextRegions;
+  final String previewImagePath;
   final String recognitionNotice;
   final UserSetting userSetting;
   final VoidCallback onBackRequested;
   final VoidCallback onAnalysisRequested;
+  final MedicationScheduleChangedCallback onMedicationScheduleChanged;
 
   const PrescriptionAnalysisPreviewUI({
     super.key,
     required this.medicationScheduleList,
+    this.recognizedTextRegions = const [],
+    this.previewImagePath = '',
     this.recognitionNotice = '',
     required this.userSetting,
     required this.onBackRequested,
     required this.onAnalysisRequested,
+    required this.onMedicationScheduleChanged,
   });
 
   @override
@@ -53,18 +72,31 @@ class _PrescriptionAnalysisPreviewUIState
     final scale = widget.userSetting.contentTextScale;
     final pageCount = _pageCount;
     final recognitionNotice = widget.recognitionNotice.trim();
-    final hasNameCorrection = widget.medicationScheduleList.any(
-      (schedule) => schedule.hasNameCorrection,
+    final hasReviewRequired = widget.medicationScheduleList.any(
+      (schedule) => schedule.isNameReviewRequired,
+    );
+    final hasSupplementalRowContent = widget.medicationScheduleList.any(
+      (schedule) =>
+          schedule.hasNameCorrection ||
+          schedule.isNameReviewRequired ||
+          schedule.isNameConfirmed,
     );
     final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
     final effectiveTextScale = scale * systemTextScale;
-    final medicationPageSafety = hasNameCorrection ? 32.0 : 8.0;
-    final medicationPageHeight = (hasNameCorrection ? 238.0 : 206.0) *
-            (effectiveTextScale > 1 ? effectiveTextScale : 1) +
-        medicationPageSafety;
+    final medicationPageHeight = _resolveMedicationPageHeight(
+      hasSupplementalRowContent: hasSupplementalRowContent,
+      effectiveTextScale: effectiveTextScale,
+    );
 
     return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: _AnalysisBottomBar(
+        label: hasReviewRequired
+            ? text.reviewBeforeAnalyze
+            : text.confirmAndAnalyze,
+        scale: scale,
+        onPressed: widget.onAnalysisRequested,
+      ),
       body: SafeArea(
         top: false,
         child: Container(
@@ -118,6 +150,15 @@ class _PrescriptionAnalysisPreviewUIState
                           const SizedBox(height: 20),
                         ] else
                           const SizedBox(height: 26),
+                        if (widget.previewImagePath.trim().isNotEmpty) ...[
+                          _RecognizedTextRegionPreview(
+                            imagePath: widget.previewImagePath,
+                            regions: widget.recognizedTextRegions,
+                            previewText: text,
+                            scale: scale,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         SizedBox(
                           height: medicationPageHeight,
                           child: PageView.builder(
@@ -129,8 +170,10 @@ class _PrescriptionAnalysisPreviewUIState
                             itemBuilder: (context, pageIndex) {
                               return _PreviewMedicationPage(
                                 medicationScheduleList: _pageItems(pageIndex),
+                                firstScheduleIndex: pageIndex * _itemsPerPage,
                                 previewText: text,
                                 userSetting: widget.userSetting,
+                                onEditRequested: _showMedicationEditor,
                               );
                             },
                           ),
@@ -158,27 +201,7 @@ class _PrescriptionAnalysisPreviewUIState
                               ),
                           ],
                         ),
-                        const SizedBox(height: 36),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 64,
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: MedBuddyColors.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: MedBuddyRadii.card,
-                              ),
-                              textStyle: TextStyle(
-                                fontSize: 19 * scale,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                            onPressed: widget.onAnalysisRequested,
-                            child: Text(text.analyze),
-                          ),
-                        ),
+                        const SizedBox(height: 4),
                       ],
                     ),
                   ),
@@ -214,6 +237,41 @@ class _PrescriptionAnalysisPreviewUIState
     return widget.medicationScheduleList.sublist(start, end);
   }
 
+  // 함수이름: _resolveMedicationPageHeight
+  // 함수역할:
+  // - 수정 버튼, 신뢰도 배지, OCR 원문을 포함한 최대 네 행의 필요 높이를 계산한다.
+  // - 글자 크기가 커진 경우에도 PageView 내부가 넘치지 않도록 여유 높이를 반영한다.
+  // 매개변수:
+  // - hasSupplementalRowContent: 보정 원문이나 신뢰도 배지를 추가로 표시하는지 여부
+  // - effectiveTextScale: 앱 설정과 시스템 접근성 설정을 합친 글자 배율
+  // 반환값:
+  // - OCR 결과 PageView에 적용할 높이
+  double _resolveMedicationPageHeight({
+    required bool hasSupplementalRowContent,
+    required double effectiveTextScale,
+  }) {
+    final medicationCount = widget.medicationScheduleList.length;
+    final visibleRowCount = medicationCount <= 0
+        ? 1
+        : medicationCount > _itemsPerPage
+        ? _itemsPerPage
+        : medicationCount;
+    final appliedScale = effectiveTextScale > 1 ? effectiveTextScale : 1.0;
+    final usesStackedRow = effectiveTextScale > 1.5;
+    final rowBaseHeight = usesStackedRow
+        ? (hasSupplementalRowContent ? 92.0 : 58.0)
+        : (hasSupplementalRowContent ? 52.0 : 44.0);
+    final rowHeight = rowBaseHeight * appliedScale;
+    final dividerHeight = (visibleRowCount - 1) * 22.0;
+    final requiredHeight = visibleRowCount * rowHeight + dividerHeight;
+    final minimumHeight =
+        (hasSupplementalRowContent ? 238.0 : 206.0) * appliedScale;
+    final baseHeight = requiredHeight > minimumHeight
+        ? requiredHeight
+        : minimumHeight;
+    return baseHeight + 24;
+  }
+
   void _animateToPage(int index) {
     _pageController.animateToPage(
       index,
@@ -221,308 +279,32 @@ class _PrescriptionAnalysisPreviewUIState
       curve: Curves.easeOut,
     );
   }
-}
 
-class _ScrollableCenteredCard extends StatelessWidget {
-  final Widget child;
-
-  const _ScrollableCenteredCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const padding = EdgeInsets.symmetric(vertical: 24, horizontal: 16);
-        final centeredHeight = constraints.maxHeight > padding.vertical
-            ? constraints.maxHeight - padding.vertical
-            : 0.0;
-
-        return SingleChildScrollView(
-          padding: padding,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: centeredHeight),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 328),
-                child: SizedBox(width: double.infinity, child: child),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _RecognitionNoticeBanner extends StatelessWidget {
-  final String message;
-  final double scale;
-
-  const _RecognitionNoticeBanner({
-    required this.message,
-    required this.scale,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFAEB),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFF5D565)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline,
-            color: const Color(0xFFB7791F),
-            size: 16 * scale,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: const Color(0xFF8A5A12),
-                fontSize: 12 * scale,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
+  // 함수이름: _showMedicationEditor
+  // 함수역할:
+  // - 선택한 OCR 인식 결과를 수정하는 대화상자를 연다.
+  // - 수정이 완료되면 목록의 실제 인덱스와 변경값을 상위 상태로 전달한다.
+  // 매개변수:
+  // - scheduleIndex: 전체 OCR 결과 목록에서 수정할 항목의 인덱스
+  // - medicationSchedule: 대화상자에 표시할 현재 OCR 인식 결과
+  // 반환값:
+  // - 없음
+  Future<void> _showMedicationEditor(
+    int scheduleIndex,
+    MedicationSchedule medicationSchedule,
+  ) async {
+    final updatedSchedule = await showDialog<MedicationSchedule>(
+      context: context,
+      builder: (context) => _MedicationScheduleEditDialog(
+        medicationSchedule: medicationSchedule,
+        previewText: _PreviewText(widget.userSetting.language),
+        userSetting: widget.userSetting,
       ),
     );
-  }
-}
-
-class _TopBackButton extends StatelessWidget {
-  final String tooltip;
-  final VoidCallback onBackRequested;
-
-  const _TopBackButton({
-    required this.tooltip,
-    required this.onBackRequested,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(31, 37, 31, 0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: IconButton(
-          tooltip: tooltip,
-          onPressed: onBackRequested,
-          icon: const Icon(
-            Icons.chevron_left,
-            color: MedBuddyColors.textMuted,
-            size: 31,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewMedicationPage extends StatelessWidget {
-  final List<MedicationSchedule> medicationScheduleList;
-  final _PreviewText previewText;
-  final UserSetting userSetting;
-
-  const _PreviewMedicationPage({
-    required this.medicationScheduleList,
-    required this.previewText,
-    required this.userSetting,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (int index = 0; index < medicationScheduleList.length; index++) ...[
-          _PreviewMedicationRow(
-            schedule: medicationScheduleList[index],
-            previewText: previewText,
-            userSetting: userSetting,
-          ),
-          if (index != medicationScheduleList.length - 1)
-            const Divider(height: 22),
-        ],
-      ],
-    );
-  }
-}
-
-class _PreviewMedicationRow extends StatelessWidget {
-  final MedicationSchedule schedule;
-  final _PreviewText previewText;
-  final UserSetting userSetting;
-
-  const _PreviewMedicationRow({
-    required this.schedule,
-    required this.previewText,
-    required this.userSetting,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-    final frequency = schedule.intakeTime.trim().isEmpty
-        ? previewText.noInformation
-        : schedule.intakeTime.trim();
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      schedule.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 18 * scale,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                  if (schedule.hasNameCorrection) ...[
-                    const SizedBox(width: 6),
-                    _CorrectionBadge(
-                      label: previewText.corrected,
-                      scale: scale,
-                    ),
-                  ],
-                ],
-              ),
-              if (schedule.hasNameCorrection) ...[
-                const SizedBox(height: 3),
-                Text(
-                  previewText.correctedFrom(schedule.rawMedicationName),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: MedBuddyColors.textLight,
-                    fontSize: 12 * scale,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Text(
-          frequency,
-          style: TextStyle(
-            color: MedBuddyColors.textMuted,
-            fontSize: 18 * scale,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CorrectionBadge extends StatelessWidget {
-  final String label;
-  final double scale;
-
-  const _CorrectionBadge({
-    required this.label,
-    required this.scale,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE6F7F1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: MedBuddyColors.primaryDark,
-          fontSize: 10 * scale,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0,
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewDot extends StatelessWidget {
-  final bool active;
-  final VoidCallback onTap;
-
-  const _PreviewDot({
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 8,
-        height: 8,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: active ? MedBuddyColors.primary : MedBuddyColors.outline,
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewText {
-  final String language;
-
-  const _PreviewText(this.language);
-
-  bool get isEnglish => language == 'en';
-
-  String get back => isEnglish ? 'Back' : '뒤로가기';
-  String get analyze => isEnglish ? 'Analyze' : '분석하기';
-  String get noInformation => isEnglish ? 'No info' : '정보 없음';
-  String get corrected => isEnglish ? 'Corrected' : '보정';
-
-  String correctedFrom(String rawName) {
-    return isEnglish ? 'OCR: $rawName' : 'OCR 원문: $rawName';
-  }
-
-  String title(DateTime date) {
-    if (isEnglish) {
-      return '${date.month}/${date.day} Prescription';
+    if (!mounted || updatedSchedule == null) {
+      return;
     }
 
-    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    final weekday = weekdays[date.weekday - 1];
-    return '${date.month}/${date.day} ($weekday) 처방 내역';
-  }
-
-  String moreCount(int count) {
-    return isEnglish ? '+$count more' : '+$count개 더 있음';
+    widget.onMedicationScheduleChanged(scheduleIndex, updatedSchedule);
   }
 }

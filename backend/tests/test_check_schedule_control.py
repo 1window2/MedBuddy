@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     MedicationCompletion,
@@ -27,6 +28,24 @@ from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
     ensure_saved_medication_schema,
 )
+
+
+class _CompletionEventRecorder:
+    def __init__(self) -> None:
+        self.events: list[dict[str, str]] = []
+
+    def notifySlotCompleted(
+        self,
+        *,
+        patient_hash: str,
+        slot_key: str,
+    ) -> None:
+        self.events.append(
+            {
+                "patient_hash": patient_hash,
+                "slot_key": slot_key,
+            }
+        )
 
 
 class CheckScheduleTest(unittest.TestCase):
@@ -63,7 +82,7 @@ class CheckScheduleTest(unittest.TestCase):
     ) -> _SavedMedication:
         medication = _SavedMedication(
             patient_hash=patient_hash,
-            created_date=created_date or date.today(),
+            created_date=created_date or application_today(),
             prescription_date=prescription_date,
             item_name=item_name,
             efficacy="effect",
@@ -83,7 +102,7 @@ class CheckScheduleTest(unittest.TestCase):
         return medication
 
     def test_today_schedule_is_scoped_and_filters_expired_medications(self) -> None:
-        today = date.today()
+        today = application_today()
         old_saved_date = today - timedelta(days=20)
         active_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -117,6 +136,43 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
 
+    def test_schedule_window_includes_future_starting_course(self) -> None:
+        today = application_today()
+        future_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="future-tablet",
+            prescription_date=today + timedelta(days=5),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-a",
+            item_name="outside-window-tablet",
+            prescription_date=today + timedelta(days=15),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-patient-tablet",
+            prescription_date=today + timedelta(days=2),
+        )
+
+        response = self.control.requestMedicationScheduleWindow(
+            "patient-a",
+            days=14,
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["window_start"], today.isoformat())
+        self.assertEqual(
+            response["window_end"],
+            (today + timedelta(days=13)).isoformat(),
+        )
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(
+            response["data"][0]["medication_id"],
+            str(future_medication.id),
+        )
+
     def test_status_update_is_scoped_by_patient_hash(self) -> None:
         medication = self._saved_medication(patient_hash="patient-b")
 
@@ -138,7 +194,7 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["data"]["medication_status"])
         self.db.refresh(medication)
         self.assertTrue(medication.medication_status)
-        self.assertEqual(medication.medication_status_date, date.today())
+        self.assertEqual(medication.medication_status_date, application_today())
 
     def test_slot_status_update_only_marks_requested_dose(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
@@ -169,8 +225,104 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
 
+    def test_completion_event_is_emitted_only_when_slot_becomes_fully_completed(
+        self,
+    ) -> None:
+        first_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="first-tablet",
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="second-tablet",
+        )
+        event_recorder = _CompletionEventRecorder()
+        control = CheckSchedule(
+            self.db,
+            completion_event_boundary=event_recorder,
+        )
+
+        control.updateMedicationStatus(
+            first_medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+        self.assertEqual(event_recorder.events, [])
+
+        control.updateMedicationStatus(
+            second_medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+        self.assertEqual(
+            control.consumeCompletionEvents(),
+            [
+                {
+                    "patient_hash": "patient-a",
+                    "slot_key": "morning",
+                }
+            ],
+        )
+        control.updateMedicationStatus(
+            second_medication.id,
+            True,
+            "patient-a",
+            slot_key="morning",
+        )
+
+        self.assertEqual(
+            event_recorder.events,
+            [
+                {
+                    "patient_hash": "patient-a",
+                    "slot_key": "morning",
+                }
+            ],
+        )
+        self.assertEqual(control.consumeCompletionEvents(), [])
+
+    def test_completion_transition_is_computed_before_transaction_commit(
+        self,
+    ) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="serialized-tablet",
+        )
+        commit_completed = False
+        completion_state_reads: list[bool] = []
+        original_reader = self.control._slot_completion_states_for_patient
+
+        def mark_commit(_session: object) -> None:
+            nonlocal commit_completed
+            commit_completed = True
+
+        def tracked_reader(
+            patient_hash: str,
+            schedule_date: date,
+            slot_keys: list[str],
+        ) -> dict[str, bool]:
+            completion_state_reads.append(commit_completed)
+            return original_reader(patient_hash, schedule_date, slot_keys)
+
+        event.listen(self.db, "after_commit", mark_commit)
+        self.control._slot_completion_states_for_patient = tracked_reader
+        try:
+            self.control.updateMedicationStatus(
+                medication.id,
+                True,
+                "patient-a",
+                slot_key="morning",
+            )
+        finally:
+            event.remove(self.db, "after_commit", mark_commit)
+            self.control._slot_completion_states_for_patient = original_reader
+
+        self.assertEqual(completion_state_reads, [False, False])
+
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
-        schedule_date = date.today()
+        schedule_date = application_today()
         completed_at = datetime(2026, 1, 1, 8, 0)
         completion = MedicationCompletion(
             patient_hash="patient-a",
@@ -237,7 +389,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(
             patient_hash="patient-a",
             medication_status=True,
-            medication_status_date=date.today(),
+            medication_status_date=application_today(),
         )
 
         response = self.control.updateMedicationStatus(
@@ -272,7 +424,7 @@ class CheckScheduleTest(unittest.TestCase):
         medication = self._saved_medication(
             patient_hash="patient-a",
             medication_status=True,
-            medication_status_date=date.today() - timedelta(days=1),
+            medication_status_date=application_today() - timedelta(days=1),
         )
 
         response = self.control.requestTodayMedicationSchedule("patient-a")
@@ -295,14 +447,14 @@ class CheckScheduleTest(unittest.TestCase):
                 _MedicationCompletion(
                     saved_medication_id=first_medication.id,
                     patient_hash="patient-a",
-                    schedule_date=date.today(),
+                    schedule_date=application_today(),
                     slot_key="morning",
                     completed=True,
                 ),
                 _MedicationCompletion(
                     saved_medication_id=second_medication.id,
                     patient_hash="patient-a",
-                    schedule_date=date.today(),
+                    schedule_date=application_today(),
                     slot_key="lunch",
                     completed=True,
                 ),

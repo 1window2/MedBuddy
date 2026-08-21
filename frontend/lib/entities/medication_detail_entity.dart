@@ -7,6 +7,7 @@
 // - API 응답 JSON을 안전하게 변환한다.
 // - 저장 요청에 필요한 JSON payload를 생성한다.
 // - 음성 안내에 사용할 텍스트를 조합한다.
+import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
 
 class MedicationDetail {
@@ -78,7 +79,7 @@ class MedicationDetail {
       dosagePerTime: _readString(json['dosage_per_time']),
       dailyFrequency: _readString(json['daily_frequency']),
       totalDays: _readString(json['total_days']),
-      imageUrl: _readString(json['image_url'] ?? json['itemImage']),
+      imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
       aiGuide: _readString(json['ai_guide']),
     );
   }
@@ -92,7 +93,7 @@ class MedicationDetail {
       dosagePerTime: schedule.dosage,
       dailyFrequency: schedule.intakeTime,
       totalDays: schedule.medicationTimeLabel,
-      imageUrl: schedule.imageUrl ?? '',
+      imageUrl: safeMedicationImageUrl(schedule.imageUrl),
     );
   }
 
@@ -113,7 +114,7 @@ class MedicationDetail {
       'dosage_per_time': dosagePerTime,
       'daily_frequency': dailyFrequency,
       'total_days': totalDays,
-      'image_url': imageUrl,
+      'image_url': safeMedicationImageUrl(imageUrl),
       'ai_guide': aiGuide,
     };
   }
@@ -121,6 +122,43 @@ class MedicationDetail {
   String get displayName {
     final normalizedName = itemName.trim();
     return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
+  }
+
+  DateTime? get medicationEndDate {
+    final startDate = prescriptionDate;
+    final dayCount = medicationScheduleCountFromText(totalDays);
+    if (startDate == null || dayCount <= 0) {
+      return null;
+    }
+    return DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    ).add(Duration(days: dayCount - 1));
+  }
+
+  // 함수명: isActiveOn
+  // 역할:
+  // - 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다.
+  // - 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
+  bool isActiveOn(DateTime referenceDate) {
+    final startDate = prescriptionDate;
+    final endDate = medicationEndDate;
+    if (startDate == null || endDate == null) {
+      return true;
+    }
+    final normalizedReference = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    final normalizedStart = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    return !normalizedReference.isBefore(normalizedStart) &&
+        !normalizedReference.isAfter(endDate);
   }
 
   List<String> get detailedDosageGuideLines {
@@ -136,6 +174,30 @@ class MedicationDetail {
       lines.add('처방전에서 추출된 상세 복용 정보가 없습니다.');
     }
     return lines;
+  }
+
+  // Getter Name: compactDosageGuideLines
+  // Description:
+  // - Builds short, display-only dosage facts for medication detail cards.
+  // - Keeps the original usageMethod and other sentence fields unchanged for TTS.
+  // Returns:
+  // - A list of concise dose, frequency, duration, and timing labels.
+  List<String> get compactDosageGuideLines {
+    final lines = <String>[];
+    if (dosagePerTime.trim().isNotEmpty) {
+      lines.add('1회 복용량 · ${dosagePerTime.trim()}');
+    }
+    if (dailyFrequency.trim().isNotEmpty) {
+      lines.add('복용 횟수 · ${dailyFrequency.trim()}');
+    }
+    if (totalDays.trim().isNotEmpty) {
+      lines.add('복용 기간 · ${totalDays.trim()}');
+    }
+    final timing = _readDosageTiming(usageMethod);
+    if (timing != null) {
+      lines.add('복용 시점 · $timing');
+    }
+    return lines.isEmpty ? const ['복용 정보 없음'] : lines;
   }
 
   String get voiceGuideText {
@@ -167,6 +229,24 @@ class MedicationDetail {
       return const ['아침'];
     }
     return const [];
+  }
+
+  static String? _readDosageTiming(String usageMethod) {
+    const timingLabels = <String>[
+      '식사 직전',
+      '식사 직후',
+      '식전',
+      '식후',
+      '공복',
+      '취침 전',
+      '취침전',
+    ];
+    for (final timing in timingLabels) {
+      if (usageMethod.contains(timing)) {
+        return timing == '취침전' ? '취침 전' : timing;
+      }
+    }
+    return null;
   }
 
   static String _readString(dynamic value) {

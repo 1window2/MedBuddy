@@ -10,45 +10,47 @@ import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 
 void main() {
-  test('requestMedicationAlarm scopes list request and decodes settings',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/notification/settings');
-      expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters.containsKey('role'), isFalse);
-      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': [
-            {
-              'patient_hash': 'patient-a',
-              'slot_key': 'morning',
-              'hour': 8,
-              'minute': 30,
-              'is_enabled': true,
-            },
-          ],
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'requestMedicationAlarm scopes list request and decodes settings',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/notification/settings');
+        expect(request.url.queryParameters['patient_hash'], 'patient-a');
+        expect(request.url.queryParameters.containsKey('role'), isFalse);
+        expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'patient_hash': 'patient-a',
+                'slot_key': 'morning',
+                'hour': 8,
+                'minute': 30,
+                'is_enabled': true,
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
       );
-    });
-    final control = SetNotification(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
 
-    final settings = await control.requestMedicationAlarm();
+      final settings = await control.requestMedicationAlarm();
 
-    expect(settings, hasLength(1));
-    expect(settings.first.slotKey, 'morning');
-    expect(settings.first.hour, 8);
-    expect(settings.first.minute, 30);
-    expect(settings.first.isEnabled, isTrue);
-  });
+      expect(settings, hasLength(1));
+      expect(settings.first.slotKey, 'morning');
+      expect(settings.first.hour, 8);
+      expect(settings.first.minute, 30);
+      expect(settings.first.isEnabled, isTrue);
+    },
+  );
 
   test('saveNotificationSetting sends selected alarm time', () async {
     late Map<String, dynamic> requestBody;
@@ -125,78 +127,86 @@ void main() {
     expect(setting.isEnabled, isFalse);
   });
 
-  test('saveNotificationSetting rejects unsupported slot keys before request',
-      () async {
-    var requestCalled = false;
-    final client = MockClient((http.Request request) async {
-      requestCalled = true;
-      return http.Response('{}', 500);
-    });
-    final control = SetNotification(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
+  test(
+    'saveNotificationSetting rejects unsupported slot keys before request',
+    () async {
+      var requestCalled = false;
+      final client = MockClient((http.Request request) async {
+        requestCalled = true;
+        return http.Response('{}', 500);
+      });
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      );
 
-    await expectLater(
-      control.saveNotificationSetting(
-        slotKey: '../bad',
-        hour: 9,
-        minute: 0,
-      ),
-      throwsA(isA<StateError>()),
-    );
-    expect(requestCalled, isFalse);
-  });
+      await expectLater(
+        control.saveNotificationSetting(slotKey: '../bad', hour: 9, minute: 0),
+        throwsA(isA<StateError>()),
+      );
+      expect(requestCalled, isFalse);
+    },
+  );
 
-  test('registerNotification delegates platform registration through control',
-      () async {
-    Map<String, Object?>? registration;
-    final control = SetNotification(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: MockClient((_) async => http.Response('{}', 500)),
-      notificationRegistrar: ({
-        required id,
-        required slotKey,
-        required slotTitle,
-        required hour,
-        required minute,
-        required medicationNames,
-        language = 'ko',
-      }) async {
-        registration = {
-          'id': id,
-          'slotKey': slotKey,
-          'slotTitle': slotTitle,
-          'hour': hour,
-          'minute': minute,
-          'medicationNames': medicationNames,
-          'language': language,
-        };
-      },
-    );
+  test(
+    'registerNotification delegates platform registration through control',
+    () async {
+      Map<String, Object?>? registration;
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: MockClient((_) async => http.Response('{}', 500)),
+        notificationRegistrar:
+            ({
+              required id,
+              required slotKey,
+              required slotTitle,
+              required hour,
+              required minute,
+              required medicationNames,
+              required activeDates,
+              medicationNamesByDate = const <String, List<String>>{},
+              language = 'ko',
+            }) async {
+              registration = {
+                'id': id,
+                'slotKey': slotKey,
+                'slotTitle': slotTitle,
+                'hour': hour,
+                'minute': minute,
+                'medicationNames': medicationNames,
+                'activeDates': activeDates,
+                'medicationNamesByDate': medicationNamesByDate,
+                'language': language,
+              };
+            },
+      );
 
-    await control.registerNotification(
-      id: 17,
-      slotKey: 'morning',
-      slotTitle: 'Morning',
-      hour: 8,
-      minute: 25,
-      medicationNames: const ['Medicine A'],
-      language: 'en',
-    );
+      await control.registerNotification(
+        id: 17,
+        slotKey: 'morning',
+        slotTitle: 'Morning',
+        hour: 8,
+        minute: 25,
+        medicationNames: const ['Medicine A'],
+        activeDates: [DateTime(2026, 8, 17)],
+        language: 'en',
+      );
 
-    expect(registration, {
-      'id': 17,
-      'slotKey': 'morning',
-      'slotTitle': 'Morning',
-      'hour': 8,
-      'minute': 25,
-      'medicationNames': const ['Medicine A'],
-      'language': 'en',
-    });
-  });
+      expect(registration, {
+        'id': 17,
+        'slotKey': 'morning',
+        'slotTitle': 'Morning',
+        'hour': 8,
+        'minute': 25,
+        'medicationNames': const ['Medicine A'],
+        'activeDates': [DateTime(2026, 8, 17)],
+        'medicationNamesByDate': const <String, List<String>>{},
+        'language': 'en',
+      });
+    },
+  );
 
   test('MedicationAlarm notification ids are scoped by patient hash', () {
     const patientASetting = MedicationAlarm(
@@ -217,7 +227,9 @@ void main() {
     expect(patientASetting.notificationId, isNot(1001));
     expect(patientBSetting.notificationId, isNot(1001));
     expect(
-        patientASetting.notificationId, isNot(patientBSetting.notificationId));
+      patientASetting.notificationId,
+      isNot(patientBSetting.notificationId),
+    );
     expect(patientASetting.legacyNotificationId, 1001);
   });
 }

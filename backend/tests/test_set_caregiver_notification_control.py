@@ -1,5 +1,5 @@
-# File Name: test_set_caregiver_notification_control.py
-# Role: Verifies caregiver notification persistence and scoping.
+# 파일명: test_set_caregiver_notification_control.py
+# 역할: 보호자 알림의 시간대별 저장과 연동 범위 제한을 검증한다.
 
 import sys
 import unittest
@@ -64,7 +64,8 @@ class SetCaregiverNotificationTest(unittest.TestCase):
         self.assertEqual(response["data"]["caregiver_hash"], "caregiver-a")
         self.assertEqual(response["data"]["patient_hash"], "patient-a")
         self.assertFalse(response["data"]["is_enabled"])
-        self.assertEqual(response["data"]["alert_option"], "disable")
+        self.assertEqual(response["data"]["alert_option"], "disabled")
+        self.assertEqual(response["data"]["slot_key"], "morning")
         self.assertEqual(self.db.query(_CaregiverNotification).count(), 0)
 
     def test_update_persists_enable_and_disable_options(self) -> None:
@@ -78,12 +79,15 @@ class SetCaregiverNotificationTest(unittest.TestCase):
 
         self.assertTrue(enable_response["success"])
         self.assertTrue(enable_response["data"]["is_enabled"])
-        self.assertEqual(enable_response["data"]["alert_option"], "enable")
+        self.assertEqual(
+            enable_response["data"]["alert_option"],
+            "dose_completed",
+        )
 
         row = self.db.query(_CaregiverNotification).first()
         self.assertIsNotNone(row)
         self.assertTrue(row.enabled)
-        self.assertEqual(row.alert_option, "enable")
+        self.assertEqual(row.alert_option, "dose_completed")
 
         disable_response = self.control.saveCaregiverNotificationSetting(
             "caregiver-a",
@@ -92,10 +96,10 @@ class SetCaregiverNotificationTest(unittest.TestCase):
         )
 
         self.assertFalse(disable_response["data"]["is_enabled"])
-        self.assertEqual(disable_response["data"]["alert_option"], "disable")
+        self.assertEqual(disable_response["data"]["alert_option"], "disabled")
         self.db.refresh(row)
         self.assertFalse(row.enabled)
-        self.assertEqual(row.alert_option, "disable")
+        self.assertEqual(row.alert_option, "disabled")
 
     def test_unlinked_caregiver_cannot_read_or_update_setting(self) -> None:
         with self.assertRaises(HTTPException) as read_context:
@@ -132,7 +136,77 @@ class SetCaregiverNotificationTest(unittest.TestCase):
         )
 
         self.assertFalse(response["data"]["is_enabled"])
-        self.assertEqual(response["data"]["alert_option"], "disable")
+        self.assertEqual(response["data"]["alert_option"], "disabled")
+
+    def test_missed_deadline_mode_requires_and_persists_time(self) -> None:
+        self._link_caregiver()
+
+        with self.assertRaises(HTTPException) as context:
+            self.control.saveCaregiverNotificationSetting(
+                "caregiver-a",
+                "patient-a",
+                alert_option="missed_deadline",
+            )
+        self.assertEqual(context.exception.status_code, 400)
+
+        response = self.control.saveCaregiverNotificationSetting(
+            "caregiver-a",
+            "patient-a",
+            alert_option="missed_deadline",
+            deadline_hour=20,
+            deadline_minute=30,
+        )
+
+        self.assertEqual(response["data"]["alert_option"], "missed_deadline")
+        self.assertEqual(response["data"]["deadline_hour"], 20)
+        self.assertEqual(response["data"]["deadline_minute"], 30)
+
+    def test_each_medication_slot_keeps_an_independent_setting(self) -> None:
+        self._link_caregiver()
+
+        self.control.saveCaregiverNotificationSetting(
+            "caregiver-a",
+            "patient-a",
+            alert_option="dose_completed",
+            slot_key="morning",
+        )
+        self.control.saveCaregiverNotificationSetting(
+            "caregiver-a",
+            "patient-a",
+            alert_option="missed_deadline",
+            deadline_hour=21,
+            deadline_minute=15,
+            slot_key="evening",
+        )
+
+        response = self.control.requestCaregiverNotificationSettings(
+            "caregiver-a",
+            "patient-a",
+        )
+        settings = {
+            setting["slot_key"]: setting
+            for setting in response["data"]
+        }
+
+        self.assertEqual(settings["morning"]["alert_option"], "dose_completed")
+        self.assertEqual(settings["lunch"]["alert_option"], "disabled")
+        self.assertEqual(settings["evening"]["alert_option"], "missed_deadline")
+        self.assertEqual(settings["evening"]["deadline_hour"], 21)
+        self.assertEqual(settings["bedtime"]["alert_option"], "disabled")
+        self.assertEqual(self.db.query(_CaregiverNotification).count(), 1)
+
+    def test_invalid_medication_slot_is_rejected(self) -> None:
+        self._link_caregiver()
+
+        with self.assertRaises(HTTPException) as context:
+            self.control.saveCaregiverNotificationSetting(
+                "caregiver-a",
+                "patient-a",
+                enabled=True,
+                slot_key="snack",
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
 
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
         legacy_engine = create_engine(
@@ -172,6 +246,9 @@ class SetCaregiverNotificationTest(unittest.TestCase):
                 }
                 self.assertIn("enabled", columns)
                 self.assertIn("alert_option", columns)
+                self.assertIn("deadline_hour", columns)
+                self.assertIn("deadline_minute", columns)
+                self.assertIn("slot_settings", columns)
                 row_count = connection.execute(
                     text(
                         "SELECT COUNT(*) FROM guardian_alert_settings "
@@ -189,7 +266,7 @@ class SetCaregiverNotificationTest(unittest.TestCase):
                     )
                 ).first()
                 self.assertEqual(migrated_row[0], 0)
-                self.assertEqual(migrated_row[1], "disable")
+                self.assertEqual(migrated_row[1], "disabled")
                 self.assertIsNotNone(migrated_row[2])
                 self.assertIsNotNone(migrated_row[3])
         finally:

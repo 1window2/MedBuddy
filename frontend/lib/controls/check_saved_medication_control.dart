@@ -7,22 +7,16 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-enum MedicationSaveStatus {
-  saved,
-  duplicate,
-  failed,
-}
+enum MedicationSaveStatus { saved, duplicate, failed }
 
 class MedicationSaveResult {
   final MedicationSaveStatus status;
   final String message;
 
-  const MedicationSaveResult({
-    required this.status,
-    required this.message,
-  });
+  const MedicationSaveResult({required this.status, required this.message});
 
   bool get isCompleted {
     return status == MedicationSaveStatus.saved ||
@@ -49,9 +43,9 @@ class CheckSavedMedication {
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: saveMedicationDetail
   // 함수역할:
@@ -65,10 +59,7 @@ class CheckSavedMedication {
     MedicationDetail medicationDetail, {
     MedicationSchedule? medicationSchedule,
   }) async {
-    final savePayload = _buildSaveRequest(
-      medicationDetail,
-      medicationSchedule,
-    );
+    final savePayload = _buildSaveRequest(medicationDetail, medicationSchedule);
 
     try {
       final response = await _client
@@ -120,24 +111,37 @@ class CheckSavedMedication {
     }
   }
 
-  // Function Name: _buildSaveRequest
-  // Description:
-  // - Builds the JSON request body for the saved medication API.
-  // - Preserves prescription-derived schedule fields when a schedule is present.
-  // Parameters:
-  // - medicationDetail: Medication detail selected for saving.
-  // - medicationSchedule: Optional prescription-analysis schedule for the same item.
-  // Returns:
-  // - JSON-ready save request map.
+  // 함수이름: _buildSaveRequest
+  // 함수역할:
+  // - 약 상세정보와 처방전 복약 일정을 저장 API 요청 형식으로 합친다.
+  // - 사용자가 OCR 약명을 직접 수정한 경우 API 응답 이름보다 수정명을 우선한다.
+  // 매개변수:
+  // - medicationDetail: 저장할 공공데이터 약 상세정보
+  // - medicationSchedule: 같은 약의 선택적 처방전 OCR 복약 일정
+  // 반환값:
+  // - 저장 API에 전달할 JSON Map
   Map<String, dynamic> _buildSaveRequest(
     MedicationDetail medicationDetail,
     MedicationSchedule? medicationSchedule,
   ) {
     final savePayload = medicationDetail.toSaveJson();
-    final prescriptionDate = medicationSchedule?.prescriptionDate ??
+    final prescriptionDate =
+        medicationSchedule?.prescriptionDate ??
         medicationDetail.prescriptionDate;
+    final userEditedMedicationName =
+        medicationSchedule?.nameCorrectionSource == 'user_edit'
+        ? medicationSchedule?.medicationName.trim() ?? ''
+        : '';
     savePayload['patient_hash'] = patientHash;
+    if (userEditedMedicationName.isNotEmpty) {
+      savePayload['item_name'] = userEditedMedicationName;
+    }
     savePayload['prescription_date'] = _formatDate(prescriptionDate);
+    final prescriptionBatchId =
+        medicationSchedule?.prescriptionBatchId.trim() ?? '';
+    if (prescriptionBatchId.isNotEmpty) {
+      savePayload['prescription_batch_id'] = prescriptionBatchId;
+    }
     savePayload['dosage_per_time'] = _readScheduleValue(
       medicationSchedule?.dosage,
       medicationDetail.dosagePerTime,
@@ -150,6 +154,8 @@ class CheckSavedMedication {
       medicationSchedule?.medicationTimeLabel,
       medicationDetail.totalDays,
     );
+    savePayload['schedule_slot_keys'] =
+        medicationSchedule?.slotKeys ?? const <String>[];
     return savePayload;
   }
 
@@ -252,8 +258,9 @@ class CheckSavedMedication {
 
     return rawItems
         .whereType<Map>()
-        .map((item) =>
-            MedicationDetail.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
+        )
         .where((item) => item.id != null && item.id! > 0)
         .toList(growable: false);
   }
@@ -271,9 +278,9 @@ class CheckSavedMedication {
   // 반환값:
   // - patient_hash가 포함된 URI
   Uri _buildMedicationUri(String path) {
-    return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {'patient_hash': patientHash},
-    );
+    return Uri.parse(
+      '$baseUrl/$path',
+    ).replace(queryParameters: {'patient_hash': patientHash});
   }
 
   void dispose() {

@@ -1,0 +1,40 @@
+name: Data Maintenance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 18 * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: beta-data-maintenance
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    # Disabled while the beta backend is self-hosted. Periodic maintenance runs
+    # inside FastAPI and must not execute a billable Cloud Run job.
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    environment: beta-backend
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Delete expired application data
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute "${{ vars.GCP_MAINTENANCE_JOB }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --wait

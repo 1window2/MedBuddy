@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // File Name: check_today_medication_info_control.dart
@@ -26,9 +27,9 @@ class CheckTodayMedicationInfo {
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // Function Name: requestTodayMedicationInfo
   // Description:
@@ -65,9 +66,9 @@ class CheckTodayMedicationInfo {
   }
 
   Uri _buildTodayInfoUri() {
-    return Uri.parse('$baseUrl/schedule/today/info').replace(
-      queryParameters: {'patient_hash': patientHash},
-    );
+    return Uri.parse(
+      '$baseUrl/schedule/today/info',
+    ).replace(queryParameters: {'patient_hash': patientHash});
   }
 
   void dispose() {

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
@@ -17,6 +18,19 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('비동기 일정 조회가 끝나기 전에 ViewModel을 폐기해도 예외가 발생하지 않는다', () async {
+    final scheduleCompleter = Completer<List<MedicationSchedule>>();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _DelayedCheckSchedule(scheduleCompleter.future),
+    );
+
+    final loadFuture = viewModel.fetchTodayMedicationSchedule();
+    viewModel.dispose();
+    scheduleCompleter.complete(const <MedicationSchedule>[]);
+
+    await expectLater(loadFuture, completes);
+  });
+
   test('dose status update uses slot-scoped backend status flow', () async {
     var patchCalled = false;
     late Map<String, dynamic> patchBody;
@@ -96,7 +110,9 @@ void main() {
     expect(patchCalled, isTrue);
     expect(patchBody['slot_key'], 'morning');
     expect(
-        viewModel.todayMedicationScheduleList.first.medicationStatus, isFalse);
+      viewModel.todayMedicationScheduleList.first.medicationStatus,
+      isFalse,
+    );
     expect(
       viewModel.isMedicationDoseCompleted(
         'morning',
@@ -115,151 +131,152 @@ void main() {
     expect(viewModel.todayMedicationProgress.totalCount, 3);
   });
 
-  test('older schedule GET cannot overwrite a newer completion PATCH',
-      () async {
-    final staleGetStarted = Completer<void>();
-    final staleGetResponse = Completer<http.Response>();
-    var getCount = 0;
-    final client = MockClient((http.Request request) async {
-      if (request.method == 'GET') {
-        getCount += 1;
-        if (getCount == 1) {
-          return _scheduleResponse(morningCompleted: false);
+  test(
+    'older schedule GET cannot overwrite a newer completion PATCH',
+    () async {
+      final staleGetStarted = Completer<void>();
+      final staleGetResponse = Completer<http.Response>();
+      var getCount = 0;
+      final client = MockClient((http.Request request) async {
+        if (request.method == 'GET') {
+          getCount += 1;
+          if (getCount == 1) {
+            return _scheduleResponse(morningCompleted: false);
+          }
+          expect(getCount, 2);
+          staleGetStarted.complete();
+          return staleGetResponse.future;
         }
-        expect(getCount, 2);
-        staleGetStarted.complete();
-        return staleGetResponse.future;
-      }
 
-      expect(request.method, 'PATCH');
-      expect(request.url.path, '/schedule/7/status');
-      return _scheduleResponse(
-        morningCompleted: true,
-        wrapInList: false,
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/schedule/7/status');
+        return _scheduleResponse(morningCompleted: true, wrapInList: false);
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
       );
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: CheckSchedule(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: client,
-      ),
-    );
-    addTearDown(viewModel.dispose);
+      addTearDown(viewModel.dispose);
 
-    await viewModel.fetchTodayMedicationSchedule();
-    final schedule = viewModel.todayMedicationScheduleList.single;
+      await viewModel.fetchTodayMedicationSchedule();
+      final schedule = viewModel.todayMedicationScheduleList.single;
 
-    final staleFetch = viewModel.fetchTodayMedicationSchedule();
-    await staleGetStarted.future;
-    final patchSucceeded = await viewModel.requestMedicationDoseStatusUpdate(
-      'morning',
-      schedule,
-      true,
-    );
-
-    expect(patchSucceeded, isTrue);
-    expect(
-      viewModel.isMedicationDoseCompleted(
+      final staleFetch = viewModel.fetchTodayMedicationSchedule();
+      await staleGetStarted.future;
+      final patchSucceeded = await viewModel.requestMedicationDoseStatusUpdate(
         'morning',
-        viewModel.todayMedicationScheduleList.single,
-      ),
-      isTrue,
-    );
+        schedule,
+        true,
+      );
 
-    staleGetResponse.complete(_scheduleResponse(morningCompleted: false));
-    await staleFetch;
+      expect(patchSucceeded, isTrue);
+      expect(
+        viewModel.isMedicationDoseCompleted(
+          'morning',
+          viewModel.todayMedicationScheduleList.single,
+        ),
+        isTrue,
+      );
 
-    expect(getCount, 2);
-    expect(viewModel.isTodayScheduleLoading, isFalse);
-    expect(
-      viewModel.isMedicationDoseCompleted(
-        'morning',
-        viewModel.todayMedicationScheduleList.single,
-      ),
-      isTrue,
-    );
-  });
+      staleGetResponse.complete(_scheduleResponse(morningCompleted: false));
+      await staleFetch;
 
-  test('batch delete applies mixed results once and refreshes schedule once',
-      () async {
-    final deletedRequestIds = <int>[];
-    final savedMedicationClient = MockClient((http.Request request) async {
-      if (request.method == 'GET') {
-        expect(request.url.path, '/list');
+      expect(getCount, 2);
+      expect(viewModel.isTodayScheduleLoading, isFalse);
+      expect(
+        viewModel.isMedicationDoseCompleted(
+          'morning',
+          viewModel.todayMedicationScheduleList.single,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'batch delete applies mixed results once and refreshes schedule once',
+    () async {
+      final deletedRequestIds = <int>[];
+      final savedMedicationClient = MockClient((http.Request request) async {
+        if (request.method == 'GET') {
+          expect(request.url.path, '/list');
+          return _jsonResponse({
+            'success': true,
+            'data': [
+              _savedMedicationJson(1, 'tablet-one'),
+              _savedMedicationJson(2, 'tablet-two'),
+              _savedMedicationJson(3, 'tablet-three'),
+            ],
+          });
+        }
+
+        expect(request.method, 'DELETE');
+        final id = int.parse(request.url.pathSegments.last);
+        deletedRequestIds.add(id);
+        return http.Response(
+          jsonEncode({'success': id != 2}),
+          id == 2 ? 500 : 200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      var scheduleFetchCount = 0;
+      final scheduleClient = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        scheduleFetchCount += 1;
         return _jsonResponse({
           'success': true,
-          'data': [
-            _savedMedicationJson(1, 'tablet-one'),
-            _savedMedicationJson(2, 'tablet-two'),
-            _savedMedicationJson(3, 'tablet-three'),
-          ],
+          'data': <Map<String, dynamic>>[],
         });
-      }
-
-      expect(request.method, 'DELETE');
-      final id = int.parse(request.url.pathSegments.last);
-      deletedRequestIds.add(id);
-      return http.Response(
-        jsonEncode({'success': id != 2}),
-        id == 2 ? 500 : 200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
-      );
-    });
-    var scheduleFetchCount = 0;
-    final scheduleClient = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today');
-      scheduleFetchCount += 1;
-      return _jsonResponse({
-        'success': true,
-        'data': <Map<String, dynamic>>[],
       });
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSavedMedication: CheckSavedMedication(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: savedMedicationClient,
-      ),
-      checkSchedule: CheckSchedule(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: scheduleClient,
-      ),
-    );
-    addTearDown(viewModel.dispose);
-
-    await viewModel.fetchSavedMedicationInfo();
-    final observedSavedIds = <List<int>>[];
-    viewModel.addListener(() {
-      observedSavedIds.add(
-        viewModel.savedMedicationInfoList
-            .map((medication) => medication.id!)
-            .toList(growable: false),
+      final viewModel = MedBuddyViewModel(
+        checkSavedMedication: CheckSavedMedication(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: savedMedicationClient,
+        ),
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: scheduleClient,
+        ),
       );
-    });
+      addTearDown(viewModel.dispose);
 
-    final result = await viewModel.requestDeleteSavedMedications([1, 2, 3]);
+      await viewModel.fetchSavedMedicationInfo();
+      final observedSavedIds = <List<int>>[];
+      viewModel.addListener(() {
+        observedSavedIds.add(
+          viewModel.savedMedicationInfoList
+              .map((medication) => medication.id!)
+              .toList(growable: false),
+        );
+      });
 
-    expect(result.successCount, 2);
-    expect(result.failureCount, 1);
-    expect(result.totalCount, 3);
-    expect(result.hasFailures, isTrue);
-    expect(deletedRequestIds, containsAll(<int>[1, 2, 3]));
-    expect(deletedRequestIds, hasLength(3));
-    expect(scheduleFetchCount, 1);
-    expect(
-      viewModel.savedMedicationInfoList
-          .map((medication) => medication.id)
-          .toList(),
-      [2],
-    );
-    expect(observedSavedIds, isNotEmpty);
-    for (final savedIds in observedSavedIds) {
-      expect(savedIds, [2]);
-    }
-  });
+      final result = await viewModel.requestDeleteSavedMedications([1, 2, 3]);
+
+      expect(result.successCount, 2);
+      expect(result.failureCount, 1);
+      expect(result.totalCount, 3);
+      expect(result.hasFailures, isTrue);
+      expect(deletedRequestIds, containsAll(<int>[1, 2, 3]));
+      expect(deletedRequestIds, hasLength(3));
+      expect(scheduleFetchCount, 1);
+      expect(
+        viewModel.savedMedicationInfoList
+            .map((medication) => medication.id)
+            .toList(),
+        [2],
+      );
+      expect(observedSavedIds, isNotEmpty);
+      for (final savedIds in observedSavedIds) {
+        expect(savedIds, [2]);
+      }
+    },
+  );
 
   test('deleting saved medication refreshes today schedule cache', () async {
     final savedMedicationClient = MockClient((http.Request request) async {
@@ -273,10 +290,7 @@ void main() {
       expect(request.url.path, '/schedule/today');
       scheduleFetchCount += 1;
       return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': <Map<String, dynamic>>[],
-        }),
+        jsonEncode({'success': true, 'data': <Map<String, dynamic>>[]}),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
@@ -303,84 +317,123 @@ void main() {
   });
 
   test(
-      'today progress is derived from schedule slots, not stale summary counts',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': [
-            {
-              'medication_id': '7',
-              'drug_name': 'test-tablet',
-              'daily_frequency': '2 times',
-              'slot_statuses': {
-                'morning': true,
-                'evening': false,
+    'today progress is derived from schedule slots, not stale summary counts',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '2 times',
+                'slot_statuses': {'morning': true, 'evening': false},
+                'patient_hash': 'patient-a',
               },
-              'patient_hash': 'patient-a',
-            },
-          ],
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
       );
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: CheckSchedule(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: client,
-      ),
-    );
-    addTearDown(viewModel.dispose);
+      addTearDown(viewModel.dispose);
 
-    await viewModel.fetchTodayMedicationSchedule();
+      await viewModel.fetchTodayMedicationSchedule();
 
-    expect(viewModel.todayMedicationProgress.totalCount, 2);
-    expect(viewModel.todayMedicationProgress.completedCount, 1);
-  });
+      expect(viewModel.todayMedicationProgress.totalCount, 2);
+      expect(viewModel.todayMedicationProgress.completedCount, 1);
+    },
+  );
 
-  test('slotKeysForSchedule prefers backend slot status keys', () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': [
-            {
-              'medication_id': '7',
-              'drug_name': 'test-tablet',
-              'daily_frequency': '1 time',
-              'slot_statuses': {
-                'lunch': false,
+  test(
+    'slotKeysForSchedule prefers explicit backend schedule slot keys',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '1 time',
+                'slot_statuses': {'lunch': false},
+                'schedule_slot_keys': ['lunch'],
+                'patient_hash': 'patient-a',
               },
-              'patient_hash': 'patient-a',
-            },
-          ],
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
       );
-    });
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: CheckSchedule(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-a',
-        client: client,
-      ),
-    );
-    addTearDown(viewModel.dispose);
+      addTearDown(viewModel.dispose);
 
-    await viewModel.fetchTodayMedicationSchedule();
-    final schedule = viewModel.todayMedicationScheduleList.single;
+      await viewModel.fetchTodayMedicationSchedule();
+      final schedule = viewModel.todayMedicationScheduleList.single;
 
-    expect(viewModel.slotKeysForSchedule(schedule), ['lunch']);
-    expect(viewModel.todayMedicationProgress.totalCount, 1);
-  });
+      expect(viewModel.slotKeysForSchedule(schedule), ['lunch']);
+      expect(viewModel.todayMedicationProgress.totalCount, 1);
+    },
+  );
+
+  test(
+    'completed-only slot status does not shrink the expected daily schedule',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'test-tablet',
+                'daily_frequency': '3 times',
+                'completed_slot_keys': ['morning'],
+                'patient_hash': 'patient-a',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.fetchTodayMedicationSchedule();
+
+      expect(viewModel.todayMedicationProgress.totalCount, 3);
+      expect(viewModel.todayMedicationProgress.completedCount, 1);
+    },
+  );
 
   test('today progress parses Korean daily frequency labels', () async {
     final client = MockClient((http.Request request) async {
@@ -417,67 +470,72 @@ void main() {
     expect(viewModel.todayMedicationProgress.completedCount, 0);
   });
 
-  test('refreshMedicationOverview registers enabled reminders for live slots',
-      () async {
+  test(
+    'refreshMedicationOverview registers enabled reminders for live slots',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final notificationService = _FakeNotificationService();
+      final client = MockClient((http.Request request) async {
+        if (request.url.path.endsWith('/notification/settings')) {
+          return _jsonResponse({
+            'success': true,
+            'data': [
+              {
+                'patient_hash': PatientHash.defaultPatientHash,
+                'slot_key': 'morning',
+                'hour': 8,
+                'minute': 15,
+                'is_enabled': true,
+              },
+            ],
+          });
+        }
+        if (request.url.path.endsWith('/schedule/today/info')) {
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'schedules': [
+                {
+                  'medication_id': '11',
+                  'drug_name': 'test-tablet',
+                  'daily_frequency': '1 time',
+                  'slot_statuses': {'morning': false},
+                  'patient_hash': PatientHash.defaultPatientHash,
+                },
+              ],
+            },
+          });
+        }
+        return http.Response('Not found', 404);
+      });
+      final viewModel = MedBuddyViewModel(
+        apiClient: client,
+        notificationService: notificationService,
+      );
+      addTearDown(viewModel.dispose);
+
+      await viewModel.refreshMedicationOverview();
+
+      expect(notificationService.registeredSlotKeys, ['morning']);
+      expect(notificationService.registeredMedicationNames.single, [
+        'test-tablet',
+      ]);
+      expect(notificationService.registeredActiveDates, hasLength(1));
+      final activeDate =
+          notificationService.registeredActiveDates.single.single;
+      final now = DateTime.now();
+      expect(
+        DateTime(activeDate.year, activeDate.month, activeDate.day),
+        DateTime(now.year, now.month, now.day),
+      );
+    },
+  );
+
+  test('복약 알림 날짜는 처방된 복용 종료일을 넘지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
     final notificationService = _FakeNotificationService();
     final client = MockClient((http.Request request) async {
-      if (request.url.path.endsWith('/notification/settings')) {
-        return _jsonResponse({
-          'success': true,
-          'data': [
-            {
-              'patient_hash': PatientHash.defaultPatientHash,
-              'slot_key': 'morning',
-              'hour': 8,
-              'minute': 15,
-              'is_enabled': true,
-            },
-          ],
-        });
-      }
-      if (request.url.path.endsWith('/schedule/today/info')) {
-        return _jsonResponse({
-          'success': true,
-          'data': {
-            'patient_hash': PatientHash.defaultPatientHash,
-            'schedules': [
-              {
-                'medication_id': '11',
-                'drug_name': 'test-tablet',
-                'daily_frequency': '1 time',
-                'slot_statuses': {'morning': false},
-                'patient_hash': PatientHash.defaultPatientHash,
-              },
-            ],
-          },
-        });
-      }
-      return http.Response('Not found', 404);
-    });
-    final viewModel = MedBuddyViewModel(
-      apiClient: client,
-      notificationService: notificationService,
-    );
-    addTearDown(viewModel.dispose);
-
-    await viewModel.refreshMedicationOverview();
-
-    expect(notificationService.registeredSlotKeys, ['morning']);
-    expect(notificationService.registeredMedicationNames.single, [
-      'test-tablet',
-    ]);
-  });
-
-  test('failed local registration rolls persisted reminder back to disabled',
-      () async {
-    SharedPreferences.setMockInitialValues({});
-    final requestMethods = <String>[];
-    final notificationService = _FakeNotificationService(
-      failRegistration: true,
-    );
-    final client = MockClient((http.Request request) async {
-      requestMethods.add(request.method);
       if (request.method == 'PUT') {
         return _jsonResponse({
           'success': true,
@@ -490,18 +548,6 @@ void main() {
           },
         });
       }
-      if (request.method == 'PATCH') {
-        return _jsonResponse({
-          'success': true,
-          'data': {
-            'patient_hash': PatientHash.defaultPatientHash,
-            'slot_key': 'morning',
-            'hour': 8,
-            'minute': 30,
-            'is_enabled': false,
-          },
-        });
-      }
       return http.Response('Not found', 404);
     });
     final viewModel = MedBuddyViewModel(
@@ -509,39 +555,143 @@ void main() {
       notificationService: notificationService,
     );
     addTearDown(viewModel.dispose);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
     final result = await viewModel.requestMedicationReminderSave(
       slotKey: 'morning',
-      slotTitle: 'Morning',
+      slotTitle: '아침',
       hour: 8,
       minute: 30,
-      schedules: const [MedicationSchedule(medicationName: 'test-tablet')],
+      schedules: [
+        MedicationSchedule(
+          medicationName: '테스트정',
+          prescriptionDate: today,
+          medicationTime: 3,
+        ),
+      ],
     );
 
-    final setting = const MedicationAlarm(
-      patientHash: PatientHash.defaultPatientHash,
-      slotKey: 'morning',
-      hour: 8,
-      minute: 30,
-      enabled: true,
-    );
-    final preferences = await SharedPreferences.getInstance();
-    final cachedSetting = jsonDecode(
-      preferences.getString(
-        'medbuddy_medication_reminder_patient_local_patient_'
-        'local_patient_morning',
-      )!,
-    ) as Map<String, dynamic>;
-
-    expect(result, isFalse);
-    expect(requestMethods, ['PUT', 'PATCH']);
-    expect(
-      notificationService.canceledIds,
-      containsAll([setting.notificationId, setting.legacyNotificationId]),
-    );
-    expect(cachedSetting['is_enabled'], isFalse);
-    expect(viewModel.medicationReminderSettings, isEmpty);
+    expect(result, isTrue);
+    expect(notificationService.registeredActiveDates.single, [
+      today,
+      today.add(const Duration(days: 1)),
+      today.add(const Duration(days: 2)),
+    ]);
   });
+
+  test(
+    'failed local registration rolls persisted reminder back to disabled',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final requestMethods = <String>[];
+      final notificationService = _FakeNotificationService(
+        failRegistration: true,
+      );
+      final client = MockClient((http.Request request) async {
+        requestMethods.add(request.method);
+        if (request.method == 'PUT') {
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 8,
+              'minute': 30,
+              'is_enabled': true,
+            },
+          });
+        }
+        if (request.method == 'PATCH') {
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 8,
+              'minute': 30,
+              'is_enabled': false,
+            },
+          });
+        }
+        return http.Response('Not found', 404);
+      });
+      final viewModel = MedBuddyViewModel(
+        apiClient: client,
+        notificationService: notificationService,
+      );
+      addTearDown(viewModel.dispose);
+
+      final result = await viewModel.requestMedicationReminderSave(
+        slotKey: 'morning',
+        slotTitle: 'Morning',
+        hour: 8,
+        minute: 30,
+        schedules: const [MedicationSchedule(medicationName: 'test-tablet')],
+      );
+
+      final setting = const MedicationAlarm(
+        patientHash: PatientHash.defaultPatientHash,
+        slotKey: 'morning',
+        hour: 8,
+        minute: 30,
+        enabled: true,
+      );
+      final preferences = await SharedPreferences.getInstance();
+      final cachedSetting =
+          jsonDecode(
+                preferences.getString(
+                  'medbuddy_medication_reminder_patient_local_patient_'
+                  'local_patient_morning',
+                )!,
+              )
+              as Map<String, dynamic>;
+
+      expect(result, isFalse);
+      expect(requestMethods, ['PUT', 'PATCH']);
+      expect(
+        notificationService.canceledIds,
+        containsAll([setting.notificationId, setting.legacyNotificationId]),
+      );
+      expect(cachedSetting['is_enabled'], isFalse);
+      expect(viewModel.medicationReminderSettings, isEmpty);
+    },
+  );
+
+  test('계정 데이터 삭제 전에 기기의 복약 알림을 모두 취소한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = _FakeNotificationService();
+    final accountControl = ManageAccount(
+      userHash: 'patient-a',
+      client: MockClient((request) async {
+        expect(notificationService.canceledAllMedicationReminders, isTrue);
+        expect(request.method, 'DELETE');
+        return http.Response('{"success":true}', 200);
+      }),
+    );
+    final viewModel = MedBuddyViewModel(
+      manageAccount: accountControl,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestAccountDataDeletion();
+
+    expect(notificationService.canceledAllMedicationReminders, isTrue);
+  });
+}
+
+// 클래스명: _DelayedCheckSchedule
+// 역할: ViewModel 폐기 이후 완료되는 일정 조회를 재현한다.
+class _DelayedCheckSchedule extends CheckSchedule {
+  final Future<List<MedicationSchedule>> responseFuture;
+
+  _DelayedCheckSchedule(this.responseFuture);
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() {
+    return responseFuture;
+  }
 }
 
 http.Response _scheduleResponse({
@@ -592,9 +742,11 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 
 class _FakeNotificationService implements NotificationService {
   final bool failRegistration;
+  bool canceledAllMedicationReminders = false;
   final List<int> canceledIds = [];
   final List<String> registeredSlotKeys = [];
   final List<List<String>> registeredMedicationNames = [];
+  final List<List<DateTime>> registeredActiveDates = [];
 
   _FakeNotificationService({this.failRegistration = false});
 
@@ -612,17 +764,33 @@ class _FakeNotificationService implements NotificationService {
     required int hour,
     required int minute,
     required List<String> medicationNames,
+    required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     registeredSlotKeys.add(slotKey);
     registeredMedicationNames.add(medicationNames);
+    registeredActiveDates.add(activeDates);
     if (failRegistration) {
       throw StateError('Simulated local notification failure.');
     }
   }
 
   @override
-  Future<void> cancelReminder(int id) async {
+  Future<void> cancelReminder(int id, {String? slotKey}) async {
     canceledIds.add(id);
   }
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {
+    canceledAllMedicationReminders = true;
+  }
+
+  @override
+  Future<void> showCaregiverAlert({
+    required int id,
+    required String title,
+    required String body,
+    String? patientHash,
+  }) async {}
 }

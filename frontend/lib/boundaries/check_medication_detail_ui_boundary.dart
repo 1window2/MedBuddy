@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controls/request_voice_guide_control.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -49,7 +50,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
         child: Stack(
           children: [
             ListView(
-              padding: const EdgeInsets.fromLTRB(42, 32, 42, 104),
+              padding: const EdgeInsets.fromLTRB(42, 32, 42, 140),
               children: [
                 _DetailHeader(
                   title: '약 상세정보',
@@ -69,12 +70,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                 const SizedBox(height: 24),
                 _DetailQuestionSection(
                   title: '어떻게 먹나요?',
-                  values: [
-                    _dailyFrequencyLabel(
-                      widget.medicationDetail.dailyFrequency,
-                    ),
-                    _summaryValue(widget.medicationDetail.usageMethod),
-                  ],
+                  values: widget.medicationDetail.compactDosageGuideLines,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
@@ -146,10 +142,7 @@ class _DetailHeader extends StatelessWidget {
   final String title;
   final VoidCallback onBackRequested;
 
-  const _DetailHeader({
-    required this.title,
-    required this.onBackRequested,
-  });
+  const _DetailHeader({required this.title, required this.onBackRequested});
 
   @override
   Widget build(BuildContext context) {
@@ -239,13 +232,11 @@ class _MedicationHeroCard extends StatelessWidget {
 class _MedicationImageBox extends StatelessWidget {
   final String imageUrl;
 
-  const _MedicationImageBox({
-    required this.imageUrl,
-  });
+  const _MedicationImageBox({required this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
-    final normalizedImageUrl = imageUrl.trim();
+    final normalizedImageUrl = safeMedicationImageUrl(imageUrl);
 
     return Container(
       width: 112,
@@ -307,7 +298,6 @@ class _DetailQuestionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final visibleValues = values
         .map((value) => _summaryValue(value))
-        .take(2)
         .toList(growable: false);
 
     return Column(
@@ -323,16 +313,11 @@ class _DetailQuestionSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
+        Column(
           children: [
             for (int index = 0; index < visibleValues.length; index++) ...[
-              Expanded(
-                child: _DetailValueTile(
-                  value: visibleValues[index],
-                  scale: scale,
-                ),
-              ),
-              if (index != visibleValues.length - 1) const SizedBox(width: 12),
+              _DetailValueTile(value: visibleValues[index], scale: scale),
+              if (index != visibleValues.length - 1) const SizedBox(height: 12),
             ],
           ],
         ),
@@ -345,17 +330,14 @@ class _DetailValueTile extends StatelessWidget {
   final String value;
   final double scale;
 
-  const _DetailValueTile({
-    required this.value,
-    required this.scale,
-  });
+  const _DetailValueTile({required this.value, required this.scale});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 86),
+      width: double.infinity,
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(14),
@@ -363,11 +345,9 @@ class _DetailValueTile extends StatelessWidget {
       ),
       child: Text(
         value,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: MedBuddyColors.textLight,
+          color: MedBuddyColors.textStrong,
           fontSize: 14 * scale,
           height: 1.35,
           fontWeight: FontWeight.w600,
@@ -389,7 +369,7 @@ class _RecommendedDosageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dosageLines = medicationDetail.detailedDosageGuideLines;
+    final dosageLines = medicationDetail.compactDosageGuideLines;
     final warning = _summaryValue(medicationDetail.warning);
 
     return Container(
@@ -490,7 +470,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailListCard(
       title: '상세 복용 가이드',
-      items: medicationDetail.detailedDosageGuideLines,
+      items: medicationDetail.compactDosageGuideLines,
       scale: scale,
     );
   }
@@ -624,29 +604,38 @@ List<String> _summaryValues(String value) {
 
   final values = normalizedValue
       .split(RegExp(r'[,/;·\n]+'))
-      .map((item) => item.trim())
+      .map(_compactIndicationLabel)
       .where((item) => item.isNotEmpty)
-      .take(2)
       .toList(growable: false);
-  return values.isEmpty ? [normalizedValue] : values;
+  final fallback = _compactIndicationLabel(normalizedValue);
+  return values.isEmpty ? [fallback] : values;
+}
+
+// Function Name: _compactIndicationLabel
+// Description:
+// - Removes sentence scaffolding from efficacy text for display-only tiles.
+// - Keeps the source efficacy unchanged for backend voice-guide generation.
+// Parameters:
+// - value: One efficacy clause returned by the medication detail source.
+// Returns:
+// - A concise indication label suitable for the detail screen.
+String _compactIndicationLabel(String value) {
+  var label = value.trim();
+  label = label.replaceFirst(RegExp(r'^(?:이\s*약(?:은|이)?|본\s*약은)\s*'), '');
+  label = label.replaceFirst(
+    RegExp(
+      r'\s*(?:의\s*)?(?:치료|완화|개선)?\s*(?:에|을\s*위해)?\s*'
+      r'(?:사용합니다|사용됩니다|쓰입니다)\.?$',
+    ),
+    '',
+  );
+  label = label.replaceFirst(RegExp(r'\s*(?:을|를)\s*(?:치료|완화|개선)합니다\.?$'), '');
+  return label.replaceFirst(RegExp(r'[.!?。]+$'), '').trim();
 }
 
 String _summaryValue(String value) {
   final normalizedValue = value.trim();
   return normalizedValue.isEmpty ? '정보 없음' : normalizedValue;
-}
-
-String _dailyFrequencyLabel(String value) {
-  final normalizedValue = value.trim();
-  if (normalizedValue.isEmpty) {
-    return '정보 없음';
-  }
-  if (normalizedValue.contains('일') || normalizedValue.contains('하루')) {
-    return normalizedValue;
-  }
-
-  final count = RegExp(r'\d+').firstMatch(normalizedValue)?.group(0);
-  return count == null ? normalizedValue : '1일 $count회';
 }
 
 List<String> _uniqueNonEmptyValues(List<String> values) {
@@ -664,10 +653,7 @@ class _TtsButton extends StatelessWidget {
   final bool isSpeaking;
   final Future<void> Function() onPressed;
 
-  const _TtsButton({
-    required this.isSpeaking,
-    required this.onPressed,
-  });
+  const _TtsButton({required this.isSpeaking, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -679,9 +665,7 @@ class _TtsButton extends StatelessWidget {
         minimumSize: const Size.fromHeight(60),
         backgroundColor: MedBuddyColors.primary,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w900,

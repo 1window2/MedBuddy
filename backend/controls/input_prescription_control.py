@@ -6,10 +6,11 @@ import json
 import logging
 import math
 import re
+import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, ClassVar
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -111,13 +112,6 @@ class _PrescriptionMedicationNameVerifier:
         ("㎎", "밀리그람"),
     )
 
-    _AI_FALLBACK_CACHE: ClassVar[
-        OrderedDict[
-            _MedicationNameFallbackCacheKey,
-            tuple[_CatalogMedicationName, float] | None,
-        ]
-    ] = OrderedDict()
-
     def __init__(
         self,
         db: Session | None = None,
@@ -127,10 +121,10 @@ class _PrescriptionMedicationNameVerifier:
             raise ValueError("AI fallback timeout must be greater than zero.")
         self.db = db
         self.ai_timeout_seconds = ai_timeout_seconds
-
-    @classmethod
-    def clear_ai_fallback_cache(cls) -> None:
-        cls._AI_FALLBACK_CACHE.clear()
+        self._ai_fallback_cache: OrderedDict[
+            _MedicationNameFallbackCacheKey,
+            tuple[_CatalogMedicationName, float] | None,
+        ] = OrderedDict()
 
     async def verify_many(
         self,
@@ -187,7 +181,7 @@ class _PrescriptionMedicationNameVerifier:
     ]:
         corrections: dict[int, tuple[_CatalogMedicationName, float]] = {}
         uncached_fallback_requests: list[_MedicationNameFallbackRequest] = []
-        cache = type(self)._AI_FALLBACK_CACHE
+        cache = self._ai_fallback_cache
 
         for request in fallback_requests:
             cache_key = self._ai_fallback_cache_key(request, model_name)
@@ -208,7 +202,7 @@ class _PrescriptionMedicationNameVerifier:
         corrections: dict[int, tuple[_CatalogMedicationName, float]],
         model_name: str,
     ) -> None:
-        cache = type(self)._AI_FALLBACK_CACHE
+        cache = self._ai_fallback_cache
         for request in fallback_requests:
             cache_key = self._ai_fallback_cache_key(request, model_name)
             cache[cache_key] = corrections.get(request.index)
@@ -468,30 +462,27 @@ class _PrescriptionMedicationNameVerifier:
             return None
 
         prefix_upper_bound = self._prefix_upper_bound(normalized_name)
-        matches_by_name: dict[str, str] = {}
+        matching_item_names: set[str] = set()
         for model in (_DrugBasicInfo, _DrugApprovalInfo):
             for row in (
-                self.db.query(
-                    model.normalized_item_name,
-                    model.item_name,
-                )
+                self.db.query(model.item_name)
                 .filter(
                     model.normalized_item_name >= normalized_name,
                     model.normalized_item_name < prefix_upper_bound,
                 )
+                .distinct()
                 .order_by(model.item_name.asc())
                 .limit(2)
                 .all()
             ):
-                if row.item_name and row.normalized_item_name:
-                    matches_by_name[row.normalized_item_name] = row.item_name
-                if len(set(matches_by_name.values())) > 1:
+                if row.item_name:
+                    matching_item_names.add(row.item_name)
+                if len(matching_item_names) > 1:
                     return None
 
-        unique_item_names = sorted(set(matches_by_name.values()))
-        if len(unique_item_names) != 1:
+        if len(matching_item_names) != 1:
             return None
-        return unique_item_names[0]
+        return next(iter(matching_item_names))
 
     def _prefix_match_candidate(
         self,
@@ -755,7 +746,12 @@ class _PrescriptionMedicationNameVerifier:
 class InputPrescription:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
         "type": "OBJECT",
-        "required": ["hospital_name", "prescription_date", "medications"],
+        "required": [
+            "hospital_name",
+            "prescription_date",
+            "medications",
+            "recognized_regions",
+        ],
         "properties": {
             "hospital_name": {
                 "type": "STRING",
@@ -792,6 +788,41 @@ class InputPrescription:
                         "total_days": {
                             "type": "STRING",
                             "description": "Total duration, for example '7일'.",
+                        },
+                    },
+                },
+            },
+            "recognized_regions": {
+                "type": "ARRAY",
+                "description": (
+                    "복약 분석에 사용한 조제일자와 약품 행, "
+                    "미리보기에서 가릴 환자 민감정보의 위치"
+                ),
+                "items": {
+                    "type": "OBJECT",
+                    "required": ["category", "text", "box_2d"],
+                    "properties": {
+                        "category": {
+                            "type": "STRING",
+                            "description": (
+                                "prescription_date, medication_name 또는 "
+                                "sensitive_info"
+                            ),
+                        },
+                        "text": {
+                            "type": "STRING",
+                            "description": (
+                                "복약 관련 문구. sensitive_info이면 "
+                                "반드시 빈 문자열"
+                            ),
+                        },
+                        "box_2d": {
+                            "type": "ARRAY",
+                            "items": {"type": "INTEGER"},
+                            "description": (
+                                "[ymin, xmin, ymax, xmax] 순서의 "
+                                "0~1000 정규화 좌표"
+                            ),
                         },
                     },
                 },
@@ -839,6 +870,50 @@ class InputPrescription:
         image_bytes = image
         self._validate_prescription_image(image_bytes)
         response_text = await self._extract_prescription_text(image_bytes)
+        return await self._build_prescription_response(response_text)
+
+    # 함수명: requestPrescriptionText
+    # 역할:
+    # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화 처방 정보로 변환한다.
+    # 매개변수:
+    # - masked_text: 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
+    # 반환값:
+    # - API 호환 복약 일정 분석 결과
+    async def requestPrescriptionText(
+        self,
+        masked_text: str,
+    ) -> dict[str, object]:
+        normalized_text = masked_text.strip()
+        if not normalized_text:
+            raise ValueError("Masked prescription text is empty.")
+        if len(normalized_text) > 100_000:
+            raise ValueError("Masked prescription text exceeds 100,000 characters.")
+        try:
+            response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
+                normalized_text
+            )
+        except TimeoutError as exc:
+            raise PrescriptionAnalysisTimeoutError(
+                "처방전 인식 서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+            ) from exc
+        return await self._build_prescription_response(
+            response_text,
+            recognized_regions=[],
+        )
+
+    # 함수명: _build_prescription_response
+    # 역할:
+    # - 이미지 또는 비식별 텍스트 분석 응답을 공통 복약 일정 응답으로 변환한다.
+    # 매개변수:
+    # - response_text: Gemini가 반환한 구조화 JSON 문자열
+    # - recognized_regions: 기기에서 별도로 관리할 때 덮어쓸 인식 영역 목록
+    # 반환값:
+    # - 검증된 복약 일정과 인식 통계를 포함한 API 응답
+    async def _build_prescription_response(
+        self,
+        response_text: str,
+        recognized_regions: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
         cleaned_text = self._clean_response_text(response_text)
 
         try:
@@ -850,13 +925,19 @@ class InputPrescription:
             )
             raise ValueError("AI returned an invalid JSON response.") from exc
 
+        masked_data = self._apply_secondary_masking(raw_data)
         (
             hospital_name,
             prescription_date,
             medication_candidates,
             raw_medication_count,
-        ) = normalize_prescription_candidates(
-            self._apply_secondary_masking(raw_data)
+        ) = normalize_prescription_candidates(masked_data)
+        normalized_regions = (
+            recognized_regions
+            if recognized_regions is not None
+            else self._normalize_recognized_regions(
+                masked_data.get("recognized_regions")
+            )
         )
         safe_data = self.buildAnalysisResult(
             medication_candidates,
@@ -878,6 +959,7 @@ class InputPrescription:
         return {
             "hospital_name": safe_data.get("hospital_name", INFO_UNAVAILABLE),
             "prescription_date": prescription_date,
+            "prescription_batch_id": secrets.token_urlsafe(18),
             "medications": medication_schedules,
             "raw_medication_count": safe_data.get(
                 "raw_medication_count",
@@ -885,7 +967,73 @@ class InputPrescription:
             ),
             "parsed_medication_count": len(medication_schedules),
             "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
+            "recognized_regions": normalized_regions,
         }
+
+    # 함수이름: _normalize_recognized_regions
+    # 함수역할:
+    # - OCR이 반환한 복약 정보와 민감정보 마스킹 영역의 좌표를 검증한다.
+    # - 민감정보의 실제 문구는 제거하고 화면 마스킹에 필요한 좌표만 남긴다.
+    # 매개변수:
+    # - raw_regions: Gemini가 반환한 OCR 인식 영역 목록
+    # 반환값:
+    # - 안전한 문구와 0~1000 좌표만 포함한 최대 40개 영역 목록
+    def _normalize_recognized_regions(
+        self,
+        raw_regions: object,
+    ) -> list[dict[str, object]]:
+        if not isinstance(raw_regions, list):
+            return []
+
+        medication_categories = {
+            "prescription_date",
+            "medication_name",
+            "medication_row",
+        }
+        sensitive_categories = {
+            "sensitive_info",
+            "patient_name",
+            "resident_registration_number",
+            "birth_date",
+            "phone_number",
+            "address",
+            "patient_number",
+            "patient_identifier",
+            "medical_record_number",
+            "insurance_number",
+        }
+        normalized_regions: list[dict[str, object]] = []
+        for raw_region in raw_regions[:40]:
+            if not isinstance(raw_region, dict):
+                continue
+            category = str(raw_region.get("category") or "").strip()
+            text = str(raw_region.get("text") or "").strip()
+            raw_box = raw_region.get("box_2d")
+            is_sensitive = category in sensitive_categories
+            if (
+                (category not in medication_categories and not is_sensitive)
+                or (not is_sensitive and not text)
+                or not isinstance(raw_box, list)
+                or len(raw_box) != 4
+            ):
+                continue
+            try:
+                box = [
+                    max(0, min(1000, int(float(value))))
+                    for value in raw_box
+                ]
+            except (TypeError, ValueError):
+                continue
+            if box[0] >= box[2] or box[1] >= box[3]:
+                continue
+            normalized_regions.append(
+                {
+                    "category": "sensitive_info" if is_sensitive else category,
+                    "text": "" if is_sensitive else self.maskSensitiveInfo(text)[:300],
+                    "box_2d": box,
+                }
+            )
+        return normalized_regions
 
     @staticmethod
     def parse_prescription_text(text: str) -> dict[str, object]:

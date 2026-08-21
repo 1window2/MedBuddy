@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: manage_user_setting_control.dart
@@ -35,8 +36,8 @@ class ManageUserSetting {
     this.userHash = PatientHash.defaultPatientHash,
     this.useRemotePersistence = true,
     http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // 함수명: requestUserSetting
   // 함수역할:
@@ -56,8 +57,9 @@ class ManageUserSetting {
     }
 
     try {
-      final response =
-          await _client.get(_buildUserSettingUri()).timeout(_requestTimeout);
+      final response = await _client
+          .get(_buildUserSettingUri())
+          .timeout(_requestTimeout);
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
         throw StateError(
@@ -89,8 +91,8 @@ class ManageUserSetting {
   // - readingSpeedOption: slow, medium, fast 중 선택된 읽기 속도 옵션
   // - language: ko 또는 en 언어 코드
   // 반환값:
-  // - 저장 완료된 새 UserSetting
-  Future<UserSetting> saveUserSetting({
+  // - 저장 완료된 설정과 서버 동기화 여부
+  Future<UserSettingSaveResult> saveUserSetting({
     required UserSetting currentSetting,
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -107,7 +109,10 @@ class ManageUserSetting {
     await _cacheUserSetting(nextSetting);
 
     if (!useRemotePersistence) {
-      return nextSetting;
+      return UserSettingSaveResult(
+        setting: nextSetting,
+        synchronizedWithServer: false,
+      );
     }
 
     try {
@@ -129,7 +134,10 @@ class ManageUserSetting {
 
       final savedSetting = _decodeUserSetting(responseBody);
       await _cacheUserSetting(savedSetting);
-      return savedSetting;
+      return UserSettingSaveResult(
+        setting: savedSetting,
+        synchronizedWithServer: true,
+      );
     } catch (error, stackTrace) {
       developer.log(
         'User setting save fell back to local cache.',
@@ -137,7 +145,10 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
-      return nextSetting;
+      return UserSettingSaveResult(
+        setting: nextSetting,
+        synchronizedWithServer: false,
+      );
     }
   }
 
@@ -147,13 +158,16 @@ class ManageUserSetting {
 
     return UserSetting(
       userHash: fallbackSetting.userHash,
-      fontSize: preferences.getInt(_fontSizeKey) ??
+      fontSize:
+          preferences.getInt(_fontSizeKey) ??
           preferences.getInt(_legacyFontSizeKey) ??
           fallbackSetting.fontSize,
-      readingSpeed: preferences.getDouble(_readingSpeedKey) ??
+      readingSpeed:
+          preferences.getDouble(_readingSpeedKey) ??
           preferences.getDouble(_legacyReadingSpeedKey) ??
           fallbackSetting.readingSpeed,
-      language: preferences.getString(_languageKey) ??
+      language:
+          preferences.getString(_languageKey) ??
           preferences.getString(_legacyLanguageKey) ??
           fallbackSetting.language,
     );
@@ -176,9 +190,9 @@ class ManageUserSetting {
   }
 
   Uri _buildUserSettingUri() {
-    return Uri.parse('$baseUrl/settings/user').replace(
-      queryParameters: {'user_hash': _normalizedUserHash},
-    );
+    return Uri.parse(
+      '$baseUrl/settings/user',
+    ).replace(queryParameters: {'user_hash': _normalizedUserHash});
   }
 
   String get _normalizedUserHash => PatientHash.normalizePatientHash(userHash);

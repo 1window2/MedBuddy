@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from boundaries.llm_service_boundary import LLMService
+from core.application_clock import application_today
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.health_recommendation_entity import HealthRecommendation
 from entities.patient_hash_entity import normalize_patient_hash
@@ -54,7 +55,7 @@ class CheckHealthRecommendation:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         active_medications = self._get_active_medications(
             normalized_patient_hash,
-            date.today(),
+            application_today(),
         )
         if not active_medications:
             raise HTTPException(

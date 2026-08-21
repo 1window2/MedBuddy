@@ -5,10 +5,13 @@
 // 역할: 기본 환자 식별자와 환자 연동 코드를 생성/정규화한다.
 // 주요 책임:
 // - 로컬 단일 사용자 데모용 기본 환자 해시를 제공한다.
+// - 환자 식별자와 연동 코드의 공통 입력 규칙을 제공한다.
 // - 보호자 연동에 사용할 짧은 코드 값을 생성한다.
 // - 비어 있는 환자 해시를 기본값으로 보정한다.
 class PatientHash {
   static const String defaultPatientHash = 'local_patient';
+  static const int maxPatientHashLength = 128;
+  static const int patientLinkCodeLength = 8;
 
   final String patientHash;
 

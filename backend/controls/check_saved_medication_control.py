@@ -1,31 +1,30 @@
 # File Name: check_saved_medication_control.py
 # Role: Control class for saved medication persistence workflows.
 
-import asyncio
 import logging
-from datetime import date, timedelta
-from typing import Protocol
+from datetime import date
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
-from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from entities.medication_schedule_entity import (
+    decode_medication_schedule_slot_keys,
+    encode_medication_schedule_slot_keys,
+    medication_schedule_slot_keys_for_frequency,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
-from entities.saved_medication_entity import _SavedMedication
+from entities.saved_medication_entity import (
+    _SavedMedication,
+    build_saved_medication_deduplication_key,
+)
 from schemas.medication import SavedMedicationCreate
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
-
-
-class _MedicationImageLookup(Protocol):
-    async def searchMedicationImage(
-        self,
-        item_name: str,
-        item_seq: str = "",
-    ) -> str: ...
 
 
 # Class Name: CheckSavedMedication
@@ -37,19 +36,14 @@ class _MedicationImageLookup(Protocol):
 # Attributes:
 #   - db: SQLAlchemy session used for persistence operations.
 class CheckSavedMedication:
-    _MAX_IMAGE_ENRICHMENTS_PER_REQUEST = 4
-    _IMAGE_ENRICHMENT_CONCURRENCY = 2
-
     def __init__(
         self,
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
-        medication_image_lookup: _MedicationImageLookup | None = None,
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
-        self.medication_image_lookup = medication_image_lookup
 
     # Function Name: saveMedicationDetail
     # Description:
@@ -65,9 +59,12 @@ class CheckSavedMedication:
         try:
             patient_hash = normalize_patient_hash(medication.patient_hash)
             self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
+            registration_date = application_today()
+            deduplication_key = self._build_deduplication_key(medication)
             duplicate_medication = self._find_today_duplicate(
                 patient_hash,
-                medication,
+                registration_date,
+                deduplication_key,
             )
             if duplicate_medication is not None:
                 return {
@@ -79,7 +76,9 @@ class CheckSavedMedication:
 
             db_medication = _SavedMedication(
                 patient_hash=patient_hash,
+                created_date=registration_date,
                 prescription_date=medication.prescription_date,
+                prescription_batch_id=medication.prescription_batch_id,
                 item_seq=(medication.item_seq or "").strip() or None,
                 item_name=medication.item_name.strip(),
                 efficacy=medication.efficacy,
@@ -88,11 +87,31 @@ class CheckSavedMedication:
                 dosage_per_time=medication.dosage_per_time,
                 daily_frequency=medication.daily_frequency,
                 total_days=medication.total_days,
+                schedule_slot_keys=encode_medication_schedule_slot_keys(
+                    medication.schedule_slot_keys
+                ),
+                deduplication_key=deduplication_key,
                 image_url=medication.image_url,
                 ai_guide=medication.ai_guide,
             )
             self.db.add(db_medication)
-            self.db.commit()
+            try:
+                self.db.commit()
+            except IntegrityError:
+                self.db.rollback()
+                duplicate_medication = self._find_today_duplicate(
+                    patient_hash,
+                    registration_date,
+                    deduplication_key,
+                )
+                if duplicate_medication is None:
+                    raise
+                return {
+                    "success": False,
+                    "duplicate": True,
+                    "message": "이미 추가된 약입니다.",
+                    "id": duplicate_medication.id,
+                }
             self.db.refresh(db_medication)
             return {
                 "success": True,
@@ -126,21 +145,6 @@ class CheckSavedMedication:
         saved_medications = self._load_saved_medications(normalized_patient_hash)
         return self._build_list_response(saved_medications)
 
-    # Function Name: requestSavedMedicationInfoWithImages
-    # Description:
-    # - HTTP-boundary extension that enriches missing image metadata without
-    #   changing the synchronous UML control contract.
-    async def requestSavedMedicationInfoWithImages(
-        self,
-        patient_hash: str | None = None,
-    ) -> dict[str, object]:
-        normalized_patient_hash = normalize_patient_hash(patient_hash)
-        saved_medications = self._load_saved_medications(normalized_patient_hash)
-        enrichment = await self._enrich_missing_medication_images(
-            saved_medications
-        )
-        return self._build_list_response(saved_medications, enrichment)
-
     def _load_saved_medications(
         self,
         patient_hash: str,
@@ -151,7 +155,7 @@ class CheckSavedMedication:
             .order_by(_SavedMedication.id.asc())
             .all()
         )
-        today = date.today()
+        today = application_today()
         return [
             medication
             for medication in medications
@@ -161,110 +165,17 @@ class CheckSavedMedication:
     def _build_list_response(
         self,
         saved_medications: list[_SavedMedication],
-        enrichment: dict[int, tuple[str, str]] | None = None,
     ) -> dict[str, object]:
-        enrichment = enrichment or {}
         return {
             "success": True,
             "message": "Saved medication lookup succeeded.",
             "data": [
                 self._to_response_dict(
                     medication,
-                    item_seq_override=enrichment.get(medication.id, ("", ""))[0],
-                    image_url_override=enrichment.get(medication.id, ("", ""))[1],
                 )
                 for medication in saved_medications
             ],
         }
-
-    async def _enrich_missing_medication_images(
-        self,
-        saved_medications: list[_SavedMedication],
-    ) -> dict[int, tuple[str, str]]:
-        if self.medication_image_lookup is None:
-            return {}
-
-        candidates = [
-            medication
-            for medication in saved_medications
-            if not (medication.image_url or "").strip()
-        ][: self._MAX_IMAGE_ENRICHMENTS_PER_REQUEST]
-        if not candidates:
-            return {}
-
-        semaphore = asyncio.Semaphore(self._IMAGE_ENRICHMENT_CONCURRENCY)
-        resolved_item_sequences: dict[int, str] = {}
-
-        async def resolve_image(medication: _SavedMedication) -> str:
-            item_seq = (medication.item_seq or "").strip()
-            if not item_seq:
-                item_seq = self._resolve_catalog_item_seq(
-                    medication.item_name or ""
-                )
-                if item_seq:
-                    resolved_item_sequences[medication.id] = item_seq
-            async with semaphore:
-                return await self.medication_image_lookup.searchMedicationImage(
-                    medication.item_name or "",
-                    item_seq,
-                )
-
-        results = await asyncio.gather(
-            *(resolve_image(medication) for medication in candidates),
-            return_exceptions=True,
-        )
-        enrichment: dict[int, tuple[str, str]] = {}
-        has_persistence_changes = False
-        for medication, result in zip(candidates, results, strict=True):
-            if isinstance(result, asyncio.CancelledError):
-                raise result
-            item_seq = resolved_item_sequences.get(
-                medication.id,
-                (medication.item_seq or "").strip(),
-            )
-            image_url = "" if isinstance(result, Exception) else result.strip()
-            if isinstance(result, Exception):
-                logger.warning(
-                    "Saved medication image lookup failed: %s",
-                    type(result).__name__,
-                )
-            if item_seq and not (medication.item_seq or "").strip():
-                medication.item_seq = item_seq
-                has_persistence_changes = True
-            if image_url:
-                medication.image_url = image_url
-                has_persistence_changes = True
-            enrichment[medication.id] = (item_seq, image_url)
-
-        if has_persistence_changes:
-            try:
-                self.db.commit()
-            except Exception as exc:
-                self.db.rollback()
-                logger.warning(
-                    "Saved medication image metadata persistence failed: %s",
-                    type(exc).__name__,
-                )
-        return enrichment
-
-    def _resolve_catalog_item_seq(self, item_name: str) -> str:
-        normalized_name = "".join(item_name.strip().lower().split())
-        if not normalized_name:
-            return ""
-
-        item_sequences: set[str] = set()
-        for model in (_DrugApprovalInfo, _DrugBasicInfo):
-            rows = (
-                self.db.query(model.item_seq)
-                .filter(model.normalized_item_name == normalized_name)
-                .all()
-            )
-            item_sequences.update(
-                str(row[0]).strip()
-                for row in rows
-                if row[0] is not None and str(row[0]).strip()
-            )
-        return next(iter(item_sequences)) if len(item_sequences) == 1 else ""
 
     # Function Name: requestDelete
     # Description:
@@ -308,9 +219,6 @@ class CheckSavedMedication:
     def _to_response_dict(
         self,
         medication: _SavedMedication,
-        *,
-        item_seq_override: str = "",
-        image_url_override: str = "",
     ) -> dict[str, object]:
         return {
             "id": medication.id,
@@ -325,7 +233,8 @@ class CheckSavedMedication:
                 if medication.prescription_date
                 else ""
             ),
-            "item_seq": item_seq_override or medication.item_seq or "",
+            "prescription_batch_id": medication.prescription_batch_id or "",
+            "item_seq": medication.item_seq or "",
             "item_name": medication.item_name,
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
@@ -333,7 +242,10 @@ class CheckSavedMedication:
             "dosage_per_time": medication.dosage_per_time,
             "daily_frequency": medication.daily_frequency,
             "total_days": medication.total_days,
-            "image_url": image_url_override or medication.image_url,
+            "schedule_slot_keys": decode_medication_schedule_slot_keys(
+                medication.schedule_slot_keys
+            ),
+            "image_url": medication.image_url,
             "ai_guide": medication.ai_guide,
         }
 
@@ -385,112 +297,47 @@ class CheckSavedMedication:
     # - 약 이름이 같아도 조제일자나 실제 복용기간이 다르면 별도 정보로 취급한다.
     # 매개변수:
     # - patient_hash: 저장 범위를 구분하는 환자 해시
-    # - medication: 저장하려는 복약 정보 DTO
+    # - registration_date: 등록일자
+    # - deduplication_key: 처방 핵심값을 정규화한 중복 키
     # 반환값:
     # - 중복 row가 있으면 _SavedMedication
     # - 중복이 없으면 None
     def _find_today_duplicate(
         self,
         patient_hash: str,
-        medication: SavedMedicationCreate,
+        registration_date: date,
+        deduplication_key: str,
     ) -> _SavedMedication | None:
-        normalized_item_name = self._normalize_item_name(medication.item_name)
-        if not normalized_item_name:
-            return None
-
-        requested_signature = self._build_duplicate_signature(
-            item_name=medication.item_name,
-            prescription_date=medication.prescription_date,
-            dosage_per_time=medication.dosage_per_time,
-            daily_frequency=medication.daily_frequency,
-            total_days=medication.total_days,
-        )
-
-        today_medications = (
+        return (
             self.db.query(_SavedMedication)
             .filter(
                 _SavedMedication.patient_hash == patient_hash,
-                _SavedMedication.created_date == date.today(),
+                _SavedMedication.created_date == registration_date,
+                _SavedMedication.deduplication_key == deduplication_key,
             )
-            .all()
-        )
-        for medication in today_medications:
-            stored_signature = self._build_duplicate_signature(
-                item_name=medication.item_name or "",
-                prescription_date=medication.prescription_date,
-                dosage_per_time=medication.dosage_per_time,
-                daily_frequency=medication.daily_frequency,
-                total_days=medication.total_days,
-            )
-            if stored_signature == requested_signature:
-                return medication
-        return None
-
-    # 함수명: _build_duplicate_signature
-    # 함수역할:
-    # - 중복 판정에 사용할 복약 정보의 핵심 식별값을 만든다.
-    # - 등록일자는 조회 조건에서 오늘로 이미 제한하므로 실제 복용기간과 약 정보를 묶는다.
-    # 매개변수:
-    # - item_name: 약품명
-    # - prescription_date: 실제 복용 시작일로 쓰는 조제일자
-    # - dosage_per_time: 1회 투약량
-    # - daily_frequency: 1일 복용 횟수
-    # - total_days: 총 복용 일수
-    # 반환값:
-    # - 중복 비교용 tuple
-    def _build_duplicate_signature(
-        self,
-        *,
-        item_name: str,
-        prescription_date: date | None,
-        dosage_per_time: str | None,
-        daily_frequency: str | None,
-        total_days: str | None,
-    ) -> tuple[str, str, str, str, str, str]:
-        start_date = prescription_date or date.today()
-        return (
-            self._normalize_item_name(item_name),
-            start_date.isoformat(),
-            self._read_medication_end_date(start_date, total_days).isoformat(),
-            self._normalize_schedule_value(dosage_per_time),
-            self._normalize_schedule_value(daily_frequency),
-            self._normalize_schedule_value(total_days),
+            .first()
         )
 
-    # 함수명: _read_medication_end_date
-    # 함수역할:
-    # - 조제일자와 총 복용 일수로 실제 복용 종료일을 계산한다.
-    # 매개변수:
-    # - start_date: 복용 시작일
-    # - total_days: "7일" 같은 총 복용 일수 문자열
-    # 반환값:
-    # - 복용 종료일
-    def _read_medication_end_date(
+    # 함수명: _build_deduplication_key
+    # 역할:
+    # - DB 유니크 제약과 사전 중복 조회가 공유할 결정적 처방 키를 만든다.
+    def _build_deduplication_key(
         self,
-        start_date: date,
-        total_days: str | None,
-    ) -> date:
-        days = self.course_policy.read_total_days(total_days)
-        if days <= 0:
-            return start_date
-        return start_date + timedelta(days=days - 1)
-
-    # 함수명: _normalize_schedule_value
-    # 함수역할:
-    # - 복용량, 횟수, 기간 값의 공백 차이를 제거해 중복 비교를 안정화한다.
-    # 매개변수:
-    # - value: 원본 복용 정보 문자열
-    # 반환값:
-    # - 정규화된 문자열
-    def _normalize_schedule_value(self, value: str | None) -> str:
-        return " ".join((value or "").strip().lower().split())
-
-    # 함수명: _normalize_item_name
-    # 함수역할:
-    # - 중복 비교에 사용할 약품명을 공백 제거와 소문자 기준으로 정규화한다.
-    # 매개변수:
-    # - item_name: 원본 약품명
-    # 반환값:
-    # - 정규화된 약품명
-    def _normalize_item_name(self, item_name: str) -> str:
-        return " ".join(item_name.strip().lower().split())
+        medication: SavedMedicationCreate,
+    ) -> str:
+        normalized_slot_keys = decode_medication_schedule_slot_keys(
+            encode_medication_schedule_slot_keys(medication.schedule_slot_keys)
+        )
+        if not normalized_slot_keys:
+            normalized_slot_keys = medication_schedule_slot_keys_for_frequency(
+                self.course_policy.read_frequency_count(medication.daily_frequency)
+            )
+        return build_saved_medication_deduplication_key(
+            item_name=medication.item_name,
+            prescription_date=medication.prescription_date,
+            prescription_batch_id=medication.prescription_batch_id,
+            dosage_per_time=medication.dosage_per_time,
+            daily_frequency=medication.daily_frequency,
+            total_days=medication.total_days,
+            schedule_slot_keys=normalized_slot_keys,
+        )

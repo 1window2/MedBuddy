@@ -1,0 +1,207 @@
+name: medbuddy-beta
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medbuddy
+      POSTGRES_USER: medbuddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medbuddy -d medbuddy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  catalog-bootstrap:
+    build:
+      context: ./backend
+    restart: "no"
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: catalog_sync
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      AUTO_CREATE_SCHEMA: "false"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        python -m alembic upgrade head
+        python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5 --only-if-empty
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  catalog-refresh:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: catalog_sync
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      AUTO_CREATE_SCHEMA: "false"
+      CATALOG_REFRESH_INTERVAL_SECONDS: "${CATALOG_REFRESH_INTERVAL_SECONDS:-604800}"
+      CATALOG_REFRESH_RETRY_SECONDS: "${CATALOG_REFRESH_RETRY_SECONDS:-3600}"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+        while true; do
+          if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5; then
+            sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+          else
+            echo "Catalog refresh failed; retrying after the configured backoff." >&2
+            sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
+          fi
+        done
+    depends_on:
+      catalog-bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: api
+      AUTH_MODE: firebase
+      FIREBASE_ALLOW_PHONE_AUTH: "false"
+      FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
+      FIREBASE_APP_CHECK_REQUIRED: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      AUTO_CREATE_SCHEMA: "false"
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUIRE_REDIS: "true"
+      PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: "false"
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-admin.json
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=*
+    depends_on:
+      catalog-bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - source: firebase_admin
+        target: firebase-admin.json
+    ports:
+      - "127.0.0.1:${MEDBUDDY_BACKEND_PORT:-8000}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [backend]
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.2@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+      - --token-file
+      - /run/secrets/cloudflare-tunnel-token
+    depends_on:
+      backend:
+        condition: service_healthy
+    secrets:
+      - source: cloudflare_tunnel_token
+        target: cloudflare-tunnel-token
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - cloudflared
+        - tunnel
+        - --metrics
+        - 127.0.0.1:2000
+        - ready
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks: [backend]
+
+secrets:
+  firebase_admin:
+    file: ${FIREBASE_ADMIN_CREDENTIALS_PATH:?Set FIREBASE_ADMIN_CREDENTIALS_PATH}
+  cloudflare_tunnel_token:
+    file: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:?Set CLOUDFLARE_TUNNEL_TOKEN_FILE}
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

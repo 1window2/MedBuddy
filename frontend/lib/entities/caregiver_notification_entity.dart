@@ -1,39 +1,86 @@
 // 파일명: caregiver_notification_entity.dart
-// 역할: 보호자 알림 설정 상태를 표현한다.
+// 역할: 보호자별 환자 복약 시간대의 알림 조건과 마감 시각을 표현한다.
+
+const List<String> caregiverNotificationSlotKeys = [
+  'morning',
+  'lunch',
+  'evening',
+  'bedtime',
+];
+
+enum CaregiverNotificationMode {
+  disabled('disabled'),
+  doseCompleted('dose_completed'),
+  missedDeadline('missed_deadline');
+
+  final String wireValue;
+
+  const CaregiverNotificationMode(this.wireValue);
+
+  static CaregiverNotificationMode fromValue(dynamic value) {
+    final normalizedValue = value?.toString().trim().toLowerCase() ?? '';
+    return switch (normalizedValue) {
+      'enable' ||
+      'enabled' ||
+      'on' ||
+      'true' ||
+      '1' => CaregiverNotificationMode.doseCompleted,
+      'dose_completed' => CaregiverNotificationMode.doseCompleted,
+      'missed_deadline' => CaregiverNotificationMode.missedDeadline,
+      _ => CaregiverNotificationMode.disabled,
+    };
+  }
+}
 
 // 클래스명: CaregiverNotification
-// 역할: 보호자/환자 식별자와 보호자 알림 활성 상태를 보관한다.
-// 주요 책임:
-// - 백엔드 caregiver notification 응답과 legacy guardian alias를 변환한다.
-// - UML의 notificationType과 UI toggle 상태를 함께 보존한다.
+// 역할: 한 보호자와 환자의 특정 복약 시간대에 적용되는 알림 조건을 보관한다.
 class CaregiverNotification {
   final int? notificationId;
   final String caregiverHash;
   final String patientHash;
-  final bool notificationEnabled;
-  final String notificationType;
+  final String slotKey;
+  final CaregiverNotificationMode mode;
+  final int? deadlineHour;
+  final int? deadlineMinute;
 
   const CaregiverNotification({
     this.notificationId,
     this.caregiverHash = '',
     this.patientHash = '',
-    this.notificationEnabled = false,
-    this.notificationType = 'disable',
+    this.slotKey = 'morning',
+    this.mode = CaregiverNotificationMode.disabled,
+    this.deadlineHour,
+    this.deadlineMinute,
   });
 
+  bool get notificationEnabled => mode != CaregiverNotificationMode.disabled;
+
+  String get notificationType => mode.wireValue;
+
+  bool get hasValidDeadline {
+    return deadlineHour != null &&
+        deadlineMinute != null &&
+        deadlineHour! >= 0 &&
+        deadlineHour! <= 23 &&
+        deadlineMinute! >= 0 &&
+        deadlineMinute! <= 59;
+  }
+
   factory CaregiverNotification.fromJson(Map<String, dynamic> json) {
-    final rawAlertOption = _readString(
-      json['notification_type'] ??
-          json['notificationType'] ??
-          json['alert_option'] ??
-          json['alertOption'],
-    );
-    final rawEnabled = json['notification_enabled'] ??
+    final rawMode =
+        json['notification_type'] ??
+        json['notificationType'] ??
+        json['alert_option'] ??
+        json['alertOption'];
+    final rawEnabled =
+        json['notification_enabled'] ??
         json['notificationEnabled'] ??
         json['is_enabled'] ??
         json['enabled'];
-    final enabled =
-        rawEnabled == null ? _readBool(rawAlertOption) : _readBool(rawEnabled);
+    final mode = rawMode == null
+        ? CaregiverNotificationMode.fromValue(rawEnabled)
+        : CaregiverNotificationMode.fromValue(rawMode);
+
     return CaregiverNotification(
       notificationId: _readInt(
         json['notification_id'] ??
@@ -52,10 +99,14 @@ class CaregiverNotification {
       patientHash: _readString(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      notificationEnabled: enabled,
-      notificationType: rawAlertOption.trim().isEmpty
-          ? _alertOptionFromEnabled(enabled)
-          : rawAlertOption,
+      slotKey: _readString(json['slot_key'] ?? json['slotKey']).isEmpty
+          ? 'morning'
+          : _readString(json['slot_key'] ?? json['slotKey']),
+      mode: mode,
+      deadlineHour: _readInt(json['deadline_hour'] ?? json['deadlineHour']),
+      deadlineMinute: _readInt(
+        json['deadline_minute'] ?? json['deadlineMinute'],
+      ),
     );
   }
 
@@ -64,15 +115,25 @@ class CaregiverNotification {
       'notification_id': notificationId,
       'caregiver_hash': caregiverHash,
       'patient_hash': patientHash,
+      'slot_key': slotKey,
       'notification_enabled': notificationEnabled,
       'notification_type': notificationType,
+      'deadline_hour': deadlineHour,
+      'deadline_minute': deadlineMinute,
     };
   }
 
-  CaregiverNotification updateNotificationSetting(bool notificationOption) {
+  CaregiverNotification updateNotificationSetting(
+    CaregiverNotificationMode nextMode, {
+    int? deadlineHour,
+    int? deadlineMinute,
+  }) {
+    final keepsDeadline = nextMode == CaregiverNotificationMode.missedDeadline;
     return copyWith(
-      notificationEnabled: notificationOption,
-      notificationType: _alertOptionFromEnabled(notificationOption),
+      mode: nextMode,
+      deadlineHour: keepsDeadline ? deadlineHour : null,
+      deadlineMinute: keepsDeadline ? deadlineMinute : null,
+      clearDeadline: !keepsDeadline,
     );
   }
 
@@ -80,22 +141,27 @@ class CaregiverNotification {
     int? notificationId,
     String? caregiverHash,
     String? patientHash,
-    bool? notificationEnabled,
-    String? notificationType,
+    String? slotKey,
+    CaregiverNotificationMode? mode,
+    int? deadlineHour,
+    int? deadlineMinute,
+    bool clearDeadline = false,
   }) {
-    final nextEnabled = notificationEnabled ?? this.notificationEnabled;
     return CaregiverNotification(
       notificationId: notificationId ?? this.notificationId,
       caregiverHash: caregiverHash ?? this.caregiverHash,
       patientHash: patientHash ?? this.patientHash,
-      notificationEnabled: nextEnabled,
-      notificationType:
-          notificationType ?? _alertOptionFromEnabled(nextEnabled),
+      slotKey: slotKey ?? this.slotKey,
+      mode: mode ?? this.mode,
+      deadlineHour: clearDeadline ? null : deadlineHour ?? this.deadlineHour,
+      deadlineMinute: clearDeadline
+          ? null
+          : deadlineMinute ?? this.deadlineMinute,
     );
   }
 
   static String _readString(dynamic value) {
-    return value?.toString() ?? '';
+    return value?.toString().trim() ?? '';
   }
 
   static int? _readInt(dynamic value) {
@@ -106,20 +172,5 @@ class CaregiverNotification {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '');
-  }
-
-  static bool _readBool(dynamic value) {
-    if (value is bool) {
-      return value;
-    }
-    final normalizedValue = value?.toString().trim().toLowerCase() ?? '';
-    return normalizedValue == 'true' ||
-        normalizedValue == '1' ||
-        normalizedValue == 'enable' ||
-        normalizedValue == 'enabled';
-  }
-
-  static String _alertOptionFromEnabled(bool enabled) {
-    return enabled ? 'enable' : 'disable';
   }
 }

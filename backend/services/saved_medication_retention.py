@@ -5,11 +5,11 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
+from core.config import settings
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 from services.medication_course_policy import MedicationCoursePolicy
-
-_RETENTION_DAYS_AFTER_END = 30
 
 
 # 클래스명: SavedMedicationRetentionPolicy
@@ -22,8 +22,15 @@ class SavedMedicationRetentionPolicy:
     def __init__(
         self,
         course_policy: MedicationCoursePolicy | None = None,
+        retention_days_after_end: int | None = None,
     ) -> None:
         self.course_policy = course_policy or MedicationCoursePolicy()
+        configured_days = (
+            settings.SAVED_MEDICATION_RETENTION_DAYS_AFTER_END
+            if retention_days_after_end is None
+            else retention_days_after_end
+        )
+        self.retention_days_after_end = max(0, configured_days)
 
     # 함수명: cleanup_expired_medications
     # 함수역할:
@@ -37,15 +44,16 @@ class SavedMedicationRetentionPolicy:
     def cleanup_expired_medications(
         self,
         db: Session,
-        patient_hash: str,
+        patient_hash: str | None = None,
         today: date | None = None,
+        *,
+        commit: bool = True,
     ) -> int:
-        reference_date = today or date.today()
-        medications = (
-            db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .all()
-        )
+        reference_date = today or application_today()
+        query = db.query(_SavedMedication)
+        if patient_hash is not None:
+            query = query.filter(_SavedMedication.patient_hash == patient_hash)
+        medications = query.all()
         expired_medications = [
             medication
             for medication in medications
@@ -55,11 +63,10 @@ class SavedMedicationRetentionPolicy:
         for medication in expired_medications:
             db.query(_MedicationCompletion).filter(
                 _MedicationCompletion.saved_medication_id == medication.id,
-                _MedicationCompletion.patient_hash == patient_hash,
             ).delete(synchronize_session=False)
             db.delete(medication)
 
-        if expired_medications:
+        if expired_medications and commit:
             db.commit()
         return len(expired_medications)
 
@@ -72,8 +79,10 @@ class SavedMedicationRetentionPolicy:
     # 반환값:
     # - 복용 종료 후 30일 이상 지났으면 True
     def is_expired(self, medication: _SavedMedication, today: date) -> bool:
+        if self.retention_days_after_end == 0:
+            return False
         return self.course_policy.is_expired_after(
             medication,
             today,
-            _RETENTION_DAYS_AFTER_END,
+            self.retention_days_after_end,
         )

@@ -1,6 +1,7 @@
-# File Name: medication_schedule_entity.py
-# Role: Entity class mapped from MedicationSchedule in class diagram integrated v5.
+# 파일명: medication_schedule_entity.py
+# 역할: OCR 복약 일정과 사용자 확인 시간대를 표현하는 엔티티를 정의한다.
 
+import json
 from datetime import date
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
@@ -28,6 +29,52 @@ def medication_schedule_slot_keys_for_frequency(frequency_count: int) -> list[st
             MEDICATION_SCHEDULE_SLOT_KEYS[2],
         ]
     return [DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY]
+
+
+# 함수명: normalize_medication_schedule_slot_keys
+# 역할:
+# - 외부 입력의 복약 시간대 키를 지원 순서에 맞는 중복 없는 목록으로 정규화한다.
+# 매개변수:
+# - values: 문자열 시간대 키 목록
+# 반환값:
+# - morning, lunch, evening, bedtime 순서의 유효한 시간대 목록
+def normalize_medication_schedule_slot_keys(
+    values: object,
+) -> list[str]:
+    if not isinstance(values, (list, tuple, set)):
+        return []
+    requested = {
+        str(value).strip().lower()
+        for value in values
+        if str(value).strip().lower() in MEDICATION_SCHEDULE_SLOT_KEYS
+    }
+    return [
+        slot_key
+        for slot_key in MEDICATION_SCHEDULE_SLOT_KEYS
+        if slot_key in requested
+    ]
+
+
+# 함수명: decode_medication_schedule_slot_keys
+# 역할:
+# - DB에 JSON 문자열로 저장된 사용자 확인 복약 시간대를 안전하게 읽는다.
+def decode_medication_schedule_slot_keys(raw_value: str | None) -> list[str]:
+    try:
+        decoded = json.loads(raw_value or "[]")
+    except (TypeError, ValueError):
+        return []
+    return normalize_medication_schedule_slot_keys(decoded)
+
+
+# 함수명: encode_medication_schedule_slot_keys
+# 역할:
+# - 사용자 확인 복약 시간대 목록을 DB 저장용 JSON 문자열로 변환한다.
+def encode_medication_schedule_slot_keys(values: object) -> str:
+    return json.dumps(
+        normalize_medication_schedule_slot_keys(values),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 # Class Name: MedicationSchedule
@@ -109,4 +156,9 @@ class MedicationSchedule(BaseModel):
         default_factory=list,
         validation_alias=AliasChoices("completedSlotKeys", "completed_slot_keys"),
         serialization_alias="completed_slot_keys",
+    )
+    schedule_slot_keys: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("scheduleSlotKeys", "schedule_slot_keys"),
+        serialization_alias="schedule_slot_keys",
     )

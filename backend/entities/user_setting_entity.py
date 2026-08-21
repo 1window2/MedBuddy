@@ -4,11 +4,21 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, Float, Integer, String, inspect, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    inspect,
+    text,
+)
 from sqlalchemy.engine import Engine
 
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 def utc_now() -> datetime:
@@ -21,6 +31,7 @@ class _UserSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_hash = Column(
         String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
         unique=True,
         index=True,
         nullable=False,

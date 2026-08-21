@@ -6,6 +6,7 @@ import 'check_medication_detail_ui_boundary.dart';
 import '../boundaries/set_notification_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -27,6 +28,7 @@ class CheckScheduleUI extends StatefulWidget {
 }
 
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
+  static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
     _ScheduleSlotDefinition(
       key: 'morning',
@@ -58,6 +60,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     ),
   ];
 
+  int _completionSnackBarGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -85,9 +89,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             totalCount: progress.totalCount,
             onBackRequested: () => Navigator.pop(context),
           ),
-          Expanded(
-            child: _buildContent(viewModel, slots, text),
-          ),
+          Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
             _HealthRecommendationFooter(
               text: text,
@@ -129,7 +131,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           _TimeSlotCard(
             text: text,
             slot: slot,
-            reminderSetting: viewModel.medicationReminderSettings[slot.key] ??
+            reminderSetting:
+                viewModel.medicationReminderSettings[slot.key] ??
                 MedicationAlarm.defaults(slot.key),
             isCompletedProvider: (schedule) {
               return viewModel.isMedicationDoseCompleted(slot.key, schedule);
@@ -140,22 +143,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             onGuideRequested: (schedule) {
               _showMedicationDetail(viewModel, schedule);
             },
-            onStatusChanged: (schedule, medicationStatus) async {
-              final success = await viewModel.requestMedicationDoseStatusUpdate(
-                slot.key,
-                schedule,
-                medicationStatus,
-              );
-              if (!mounted || success) {
-                return;
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(text.statusUpdateFailed),
-                  duration: const Duration(seconds: 1),
+            onStatusChanged: (schedule, medicationStatus) =>
+                _handleMedicationStatusChange(
+                  viewModel: viewModel,
+                  slot: slot,
+                  schedule: schedule,
+                  medicationStatus: medicationStatus,
+                  text: text,
                 ),
-              );
-            },
           ),
           const SizedBox(height: 16),
         ],
@@ -163,23 +158,113 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
+  // 함수명: _handleMedicationStatusChange
+  // 역할:
+  // - 복용 완료 변경을 저장하고, 완료 직후에는 실수로 누른 상태를 되돌릴 기회를 제공한다.
+  // - 실행 취소 요청도 동일한 상태 변경 API를 사용해 화면과 서버 상태를 함께 복원한다.
+  Future<void> _handleMedicationStatusChange({
+    required MedBuddyViewModel viewModel,
+    required _ScheduleSlot slot,
+    required MedicationSchedule schedule,
+    required bool medicationStatus,
+    required _ScheduleText text,
+  }) async {
+    final success = await viewModel.requestMedicationDoseStatusUpdate(
+      slot.key,
+      schedule,
+      medicationStatus,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (!success) {
+      _completionSnackBarGeneration += 1;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(text.statusUpdateFailed),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    _completionSnackBarGeneration += 1;
+    messenger.hideCurrentSnackBar();
+    if (!medicationStatus) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(text.completionCancelled(schedule.displayName)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final snackBarGeneration = _completionSnackBarGeneration;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          text.completionSaved(text.slotTitle(slot.key), schedule.displayName),
+        ),
+        duration: _completionSnackBarDuration,
+        action: SnackBarAction(
+          label: text.undo,
+          onPressed: () async {
+            _completionSnackBarGeneration += 1;
+            final undoSucceeded = await viewModel
+                .requestMedicationDoseStatusUpdate(slot.key, schedule, false);
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  undoSucceeded
+                      ? text.completionCancelled(schedule.displayName)
+                      : text.statusUpdateFailed,
+                ),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    Future<void>.delayed(_completionSnackBarDuration, () {
+      if (!mounted || snackBarGeneration != _completionSnackBarGeneration) {
+        return;
+      }
+      _completionSnackBarGeneration += 1;
+      ScaffoldMessenger.of(
+        context,
+      ).hideCurrentSnackBar(reason: SnackBarClosedReason.timeout);
+    });
+  }
+
   void _openHealthRecommendation() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const HealthRecommendationUI(),
-      ),
+      MaterialPageRoute(builder: (context) => const HealthRecommendationUI()),
     );
   }
 
   List<_ScheduleSlot> _buildSlots(MedBuddyViewModel viewModel) {
-    return _slotDefinitions.map((definition) {
-      final medications =
-          viewModel.todayMedicationScheduleList.where((schedule) {
-        return viewModel.slotKeysForSchedule(schedule).contains(definition.key);
-      }).toList(growable: false);
-      return _ScheduleSlot(definition: definition, medications: medications);
-    }).toList(growable: false);
+    return _slotDefinitions
+        .map((definition) {
+          final medications = viewModel.todayMedicationScheduleList
+              .where((schedule) {
+                return viewModel
+                    .slotKeysForSchedule(schedule)
+                    .contains(definition.key);
+              })
+              .toList(growable: false);
+          return _ScheduleSlot(
+            definition: definition,
+            medications: medications,
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<void> _showReminderDialog(
@@ -187,17 +272,15 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     _ScheduleSlot slot,
     _ScheduleText text,
   ) async {
-    final setting = viewModel.medicationReminderSettings[slot.key] ??
+    final setting =
+        viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
     final selectedTime = await SetNotificationUI.showNotificationPopup(
       context,
       language: viewModel.userSetting.language,
       slotTitle: slotTitle,
-      initialTime: TimeOfDay(
-        hour: setting.hour,
-        minute: setting.minute,
-      ),
+      initialTime: TimeOfDay(hour: setting.hour, minute: setting.minute),
     );
     if (selectedTime == null) {
       return;
@@ -210,12 +293,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       minute: selectedTime.minute,
       schedules: slot.medications,
     );
-    if (!mounted || success) {
+    if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(viewModel.statusMessage)),
-    );
+    _showReminderResultMessage(viewModel.statusMessage, success: success);
   }
 
   Future<void> _handleReminderToggle(
@@ -223,7 +304,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     _ScheduleSlot slot,
     _ScheduleText text,
   ) async {
-    final setting = viewModel.medicationReminderSettings[slot.key] ??
+    final setting =
+        viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     if (!setting.isEnabled) {
       await _showReminderDialog(viewModel, slot, text);
@@ -234,11 +316,26 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       slotKey: slot.key,
       slotTitle: text.slotTitle(slot.key),
     );
-    if (!mounted || success) {
+    if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(viewModel.statusMessage)),
+    _showReminderResultMessage(viewModel.statusMessage, success: success);
+  }
+
+  // 함수명: _showReminderResultMessage
+  // 역할:
+  // - 알림 설정 또는 해제 요청의 성공 여부를 화면 하단 안내로 명확히 전달한다.
+  void _showReminderResultMessage(String message, {required bool success}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: success
+            ? MedBuddyColors.primaryDark
+            : Theme.of(context).colorScheme.error,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -294,6 +391,9 @@ class _HealthRecommendationFooter extends StatelessWidget {
         ),
         child: Text(
           text.healthRecommendation,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
       ),
@@ -335,16 +435,23 @@ class _ScheduleHeader extends StatelessWidget {
               IconButton(
                 tooltip: text.back,
                 onPressed: onBackRequested,
-                icon:
-                    const Icon(Icons.arrow_back, color: Colors.white, size: 30),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 30,
+                ),
               ),
               const SizedBox(width: 8),
-              Text(
-                text.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Text(
+                  text.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
@@ -410,7 +517,8 @@ class _TimeSlotCard extends StatelessWidget {
   final Future<void> Function(
     MedicationSchedule schedule,
     bool medicationStatus,
-  ) onStatusChanged;
+  )
+  onStatusChanged;
 
   const _TimeSlotCard({
     required this.text,
@@ -573,15 +681,16 @@ class _MedicationScheduleRow extends StatelessWidget {
                         color: isCompleted
                             ? MedBuddyColors.textLight
                             : MedBuddyColors.textStrong,
-                        decoration:
-                            isCompleted ? TextDecoration.lineThrough : null,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      schedule.dosageLabel,
+                      text.dosageLabel(schedule),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -595,7 +704,73 @@ class _MedicationScheduleRow extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(width: 10),
+          _MedicationThumbnail(schedule: schedule, onPressed: onGuideRequested),
         ],
+      ),
+    );
+  }
+}
+
+// 클래스명: _MedicationThumbnail
+// 역할: 오늘 복약 일정 행 오른쪽에 약품 이미지 또는 대체 표시를 보여준다.
+// 주요 책임:
+// - 일정 API가 제공한 네트워크 이미지 URL을 고정 크기로 표시한다.
+// - URL이 없거나 이미지 로딩에 실패하면 이미지 없음 아이콘을 표시한다.
+class _MedicationThumbnail extends StatelessWidget {
+  final MedicationSchedule schedule;
+  final VoidCallback onPressed;
+
+  const _MedicationThumbnail({required this.schedule, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
+    final hasNetworkImage = imageUrl.isNotEmpty;
+    final thumbnailKey = schedule.medicationID.trim().isNotEmpty
+        ? schedule.medicationID.trim()
+        : schedule.displayName;
+
+    return Tooltip(
+      message: schedule.displayName,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onPressed,
+        child: Container(
+          key: Key('schedule-medication-thumbnail-$thumbnailKey'),
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F4F7),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: MedBuddyColors.outline),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: hasNetworkImage
+              ? Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const _MissingMedicationImage(),
+                )
+              : const _MissingMedicationImage(),
+        ),
+      ),
+    );
+  }
+}
+
+// 클래스명: _MissingMedicationImage
+// 역할: 약품 사진을 제공할 수 없을 때 일관된 대체 아이콘을 표시한다.
+class _MissingMedicationImage extends StatelessWidget {
+  const _MissingMedicationImage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        color: MedBuddyColors.textLight,
+        size: 25,
       ),
     );
   }
@@ -617,8 +792,9 @@ class _ReminderIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = isEnabled ? const Color(0xFFFF1744) : Colors.white;
-    final backgroundColor =
-        isEnabled ? Colors.white : Colors.white.withValues(alpha: 0.0);
+    final backgroundColor = isEnabled
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.0);
 
     return Tooltip(
       message: text.reminderTooltip(slotTitle),
@@ -645,6 +821,29 @@ class _ReminderIconButton extends StatelessWidget {
   }
 }
 
+// 클래스명: _ScrollableScheduleState
+// 역할: 작은 화면과 큰 글씨에서도 빈 상태와 오류 상태를 안전하게 스크롤한다.
+class _ScrollableScheduleState extends StatelessWidget {
+  final Widget child;
+
+  const _ScrollableScheduleState({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 32),
+            child: Center(child: child),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ScheduleEmptyState extends StatelessWidget {
   final _ScheduleText text;
 
@@ -652,7 +851,7 @@ class _ScheduleEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return _ScrollableScheduleState(
       child: Container(
         width: 320,
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
@@ -699,7 +898,7 @@ class _ScheduleLoadErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return _ScrollableScheduleState(
       child: Container(
         key: const Key('schedule-load-error'),
         width: 320,
@@ -797,6 +996,68 @@ class _ScheduleText {
       ? 'Could not load today\'s medication schedule.'
       : '오늘의 복약 일정을 불러오지 못했습니다.';
   String get retry => isEnglish ? 'Retry' : '다시 시도';
+  String get undo => isEnglish ? 'Undo' : '실행 취소';
+
+  String completionSaved(String slotTitle, String medicationName) {
+    return isEnglish
+        ? '$slotTitle · $medicationName marked as taken.'
+        : '$slotTitle · $medicationName 복용을 완료했습니다.';
+  }
+
+  String completionCancelled(String medicationName) {
+    return isEnglish
+        ? '$medicationName completion was undone.'
+        : '$medicationName 복용 완료를 취소했습니다.';
+  }
+
+  // 함수이름: dosageLabel
+  // 함수역할:
+  // - OCR 투약량이 숫자로만 제공되면 약 이름의 제형에 맞는 단위를 보완한다.
+  // - 이미 단위가 포함된 투약량은 원문을 그대로 유지한다.
+  // 매개변수:
+  // - schedule: 약 이름과 1회 투약량이 포함된 오늘 복약 일정
+  // 반환값:
+  // - 화면에 표시할 단위 포함 투약량 또는 정보 없음 문구
+  String dosageLabel(MedicationSchedule schedule) {
+    final dosage = schedule.dosage.trim();
+    if (dosage.isEmpty) {
+      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
+    }
+    if (!RegExp(r'^(?:\d+(?:[.,]\d+)?|\d+/\d+)$').hasMatch(dosage)) {
+      return dosage;
+    }
+
+    final unit = _dosageUnit(schedule.medicationName);
+    if (!isEnglish) {
+      return '$dosage$unit';
+    }
+    final englishUnit = switch (unit) {
+      '캡슐' => 'capsule',
+      '포' => 'sachet',
+      _ => 'tablet',
+    };
+    return '$dosage $englishUnit';
+  }
+
+  // 함수이름: _dosageUnit
+  // 함수역할:
+  // - 약 이름에 포함된 제형을 기준으로 숫자 투약량에 붙일 단위를 결정한다.
+  // 매개변수:
+  // - medicationName: OCR 또는 공공데이터에서 받은 약 이름
+  // 반환값:
+  // - 캡슐, 포 또는 기본 단위인 정
+  String _dosageUnit(String medicationName) {
+    final normalizedName = medicationName.replaceAll(' ', '');
+    if (normalizedName.contains('캡슐')) {
+      return '캡슐';
+    }
+    if (normalizedName.contains('시럽') ||
+        normalizedName.contains('과립') ||
+        normalizedName.endsWith('산')) {
+      return '포';
+    }
+    return '정';
+  }
 
   String reminderTooltip(String slotTitle) {
     return isEnglish ? 'Set $slotTitle reminder' : '$slotTitle 알림 설정';

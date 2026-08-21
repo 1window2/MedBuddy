@@ -15,10 +15,14 @@ from services.medication_course_policy import (
     MAX_DAILY_FREQUENCY,
     MAX_MEDICATION_COURSE_DAYS,
     MedicationCoursePolicy,
+    _FREQUENCY_COUNT_PATTERN,
 )
 
 
 class MedicationCoursePolicyTest(unittest.TestCase):
+    def test_frequency_pattern_does_not_restart_inside_digit_runs(self) -> None:
+        self.assertTrue(_FREQUENCY_COUNT_PATTERN.pattern.startswith(r"(?<!\d)"))
+
     def setUp(self) -> None:
         self.policy = MedicationCoursePolicy()
 
@@ -40,6 +44,28 @@ class MedicationCoursePolicyTest(unittest.TestCase):
         )
 
         self.assertTrue(self.policy.is_active_on(medication, date(2026, 1, 10)))
+
+    def test_future_course_overlaps_rolling_schedule_window(self) -> None:
+        medication = SimpleNamespace(
+            prescription_date=date(2026, 1, 10),
+            created_date=None,
+            total_days="3 days",
+        )
+
+        self.assertTrue(
+            self.policy.is_active_during(
+                medication,
+                date(2026, 1, 1),
+                date(2026, 1, 14),
+            )
+        )
+        self.assertFalse(
+            self.policy.is_active_during(
+                medication,
+                date(2026, 1, 1),
+                date(2026, 1, 9),
+            )
+        )
 
     def test_is_expired_after_applies_retention_window(self) -> None:
         medication = SimpleNamespace(

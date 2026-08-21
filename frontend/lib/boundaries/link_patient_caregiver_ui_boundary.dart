@@ -2,16 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/link_patient_caregiver_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../services/user_facing_error_message.dart';
+import '../services/caregiver_patient_local_state_service.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 
-typedef LinkPatientCaregiverFactory = LinkPatientCaregiver Function(
-  String userHash,
-);
+typedef LinkPatientCaregiverFactory =
+    LinkPatientCaregiver Function(String userHash);
 
 // 파일명: link_patient_caregiver_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
@@ -37,12 +39,12 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 }
 
 class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
-  late final TextEditingController _userHashController;
   late final TextEditingController _patientCodeController;
   late String _committedUserHash;
   late LinkPatientCaregiver _control;
 
   List<PatientCaregiverLink> _links = const [];
+  Map<String, String> _patientLabels = const {};
   String _statusMessage =
       '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
   bool _isLoading = false;
@@ -51,7 +53,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   @override
   void initState() {
     super.initState();
-    _userHashController = TextEditingController(text: widget.initialUserHash);
     _patientCodeController = TextEditingController();
     _committedUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
@@ -67,7 +68,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
 
-    _userHashController.text = widget.initialUserHash;
     final nextUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
     );
@@ -77,6 +77,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
     _replaceControl(nextUserHash);
     _links = const [];
+    _patientLabels = const {};
     _statusMessage =
         '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
     _scheduleRefresh();
@@ -86,72 +87,91 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void dispose() {
     _requestGeneration += 1;
     _control.dispose();
-    _userHashController.dispose();
     _patientCodeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final textScale = mediaQuery.textScaler.scale(16) / 16;
+    final usesScrollableLayout =
+        mediaQuery.size.height < 700 || textScale > 1.3;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(42, 24, 42, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              IconButton(
-                tooltip: '닫기',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 42,
-                  height: 42,
-                ),
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(
-                  Icons.close,
-                  color: MedBuddyColors.textMuted,
-                  size: 30,
-                ),
+        child: usesScrollableLayout
+            ? SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+                child: _buildLinkContent(usesScrollableList: true),
+              )
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(42, 24, 42, 28),
+                child: _buildLinkContent(usesScrollableList: false),
               ),
-              const SizedBox(height: 30),
-              const Text(
-                '환자/보호자 연동하기',
-                style: TextStyle(
-                  color: Color(0xFF0A0A0A),
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                ),
-              ),
-              const SizedBox(height: 26),
-              _StatusCard(
-                statusMessage: _statusMessage,
-                isLoading: _isLoading,
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: _LinkListCard(
-                  links: _links,
-                  currentUserHash: _committedUserHash,
-                  isEnabled: !_isLoading,
-                  onPatientMedicationRequested: _openPatientMedicationInfo,
-                  onUnlinkRequested: _removePatientCaregiverLink,
-                ),
-              ),
-              const SizedBox(height: 20),
-              _LinkActionFooter(
-                onGeneratePatientCodeRequested:
-                    _isLoading ? null : _generatePatientHash,
-                onRegisterPatientRequested:
-                    _isLoading ? null : _showRegisterPatientDialog,
-              ),
-            ],
+      ),
+    );
+  }
+
+  // 함수이름: _buildLinkContent
+  // 함수역할:
+  // - 일반 화면에서는 연동 목록이 남은 공간을 채우게 배치한다.
+  // - 작은 화면이나 큰 글씨에서는 전체 내용을 한 번에 스크롤할 수 있게 배치한다.
+  // 매개변수:
+  // - usesScrollableList: 연동 목록을 화면 전체 스크롤 안에 포함할지 여부
+  // 반환값:
+  // - 현재 화면 크기에 맞게 구성한 환자·보호자 연동 화면 내용
+  Widget _buildLinkContent({required bool usesScrollableList}) {
+    final linkList = _LinkListCard(
+      links: _links,
+      currentUserHash: _committedUserHash,
+      isEnabled: !_isLoading,
+      shrinkWrap: usesScrollableList,
+      patientLabels: _patientLabels,
+      onPatientMedicationRequested: _openPatientMedicationInfo,
+      onPatientLabelRequested: _showPatientLabelDialog,
+      onUnlinkRequested: _removePatientCaregiverLink,
+    );
+    final footer = _LinkActionFooter(
+      onGeneratePatientCodeRequested: _isLoading ? null : _generatePatientHash,
+      onRegisterPatientRequested: _isLoading
+          ? null
+          : _showRegisterPatientDialog,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        IconButton(
+          tooltip: '닫기',
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.close,
+            color: MedBuddyColors.textMuted,
+            size: 30,
           ),
         ),
-      ),
+        SizedBox(height: usesScrollableList ? 20 : 30),
+        const Text(
+          '환자/보호자 연동하기',
+          style: TextStyle(
+            color: Color(0xFF0A0A0A),
+            fontSize: 27,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
+        SizedBox(height: usesScrollableList ? 18 : 26),
+        _StatusCard(statusMessage: _statusMessage, isLoading: _isLoading),
+        SizedBox(height: usesScrollableList ? 18 : 24),
+        if (usesScrollableList) linkList else Expanded(child: linkList),
+        const SizedBox(height: 20),
+        footer,
+      ],
     );
   }
 
@@ -161,8 +181,13 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final labels = await _loadPatientLabels(links);
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
       setState(() {
         _links = links;
+        _patientLabels = labels;
         _statusMessage = links.isEmpty
             ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
             : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
@@ -208,7 +233,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return false;
     }
 
-    _commitUserHash();
     var registered = false;
     final request = await _runLinkAction((request) async {
       await request.control.requestPatientCaregiverLink(patientCode);
@@ -219,8 +243,13 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final labels = await _loadPatientLabels(links);
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
       setState(() {
         _links = links;
+        _patientLabels = labels;
         _patientCodeController.clear();
         _statusMessage =
             '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
@@ -249,16 +278,52 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final preferences = await SharedPreferences.getInstance();
+      await CaregiverPatientLocalStateService.clearPatientState(
+        preferences,
+        caregiverHash: link.caregiverHash,
+        patientHash: link.patientHash,
+      );
       final links = await request.control.requestLinkScreen();
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
+      final labels = await _loadPatientLabels(links);
       if (!_isCurrentRequest(request)) {
         return;
       }
       setState(() {
         _links = links;
+        _patientLabels = labels;
         _statusMessage =
             '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
       });
     });
+  }
+
+  // 함수이름: _loadPatientLabels
+  // 함수역할:
+  // - 현재 보호자가 연결한 환자별 표시 이름을 로컬 저장소에서 읽는다.
+  // 매개변수:
+  // - links: 서버가 반환한 현재 연동 목록
+  // 반환값:
+  // - 환자 hash를 키로 사용하는 표시 이름 Map
+  Future<Map<String, String>> _loadPatientLabels(
+    List<PatientCaregiverLink> links,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    final labels = <String, String>{};
+    for (final link in links) {
+      if (link.caregiverHash != _committedUserHash) {
+        continue;
+      }
+      labels[link.patientHash] = CaregiverPatientLocalStateService.resolveLabel(
+        preferences,
+        caregiverHash: link.caregiverHash,
+        patientHash: link.patientHash,
+      );
+    }
+    return labels;
   }
 
   Future<_LinkRequest?> _runLinkAction(
@@ -283,7 +348,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     } catch (error) {
       if (_isCurrentRequest(request)) {
         setState(() {
-          _statusMessage = error.toString().replaceFirst('Bad state: ', '');
+          _statusMessage = UserFacingErrorMessage.resolve(
+            error,
+            isEnglish: false,
+          );
         });
       }
       return null;
@@ -304,16 +372,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       }
       _refreshLinks();
     });
-  }
-
-  void _commitUserHash() {
-    final nextUserHash = PatientHash.normalizePatientHash(
-      _userHashController.text,
-    );
-    if (nextUserHash != _committedUserHash) {
-      _replaceControl(nextUserHash);
-      _links = const [];
-    }
   }
 
   void _replaceControl(String userHash) {
@@ -338,6 +396,77 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         identical(request.control, _control);
   }
 
+  // 함수이름: _showPatientLabelDialog
+  // 함수역할:
+  // - 보호자가 여러 환자를 쉽게 구분하도록 환자별 표시 이름을 입력받아 저장한다.
+  // 매개변수:
+  // - link: 별칭을 변경할 환자·보호자 연동 정보
+  // 반환값:
+  // - 없음
+  Future<void> _showPatientLabelDialog(PatientCaregiverLink link) async {
+    if (link.caregiverHash != _committedUserHash || !mounted) {
+      return;
+    }
+    var draftLabel =
+        _patientLabels[link.patientHash] ??
+        CaregiverPatientLocalStateService.fallbackLabel(link.patientHash);
+    final submittedLabel = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('환자 표시 이름'),
+          content: TextFormField(
+            initialValue: draftLabel,
+            autofocus: true,
+            maxLength: CaregiverPatientLocalStateService.maximumLabelLength,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(
+              hintText: '예: 어머니, 아버지',
+              helperText: '이 이름은 현재 보호자 기기에만 저장됩니다.',
+            ),
+            onChanged: (value) => draftLabel = value,
+            onFieldSubmitted: (value) => Navigator.pop(dialogContext, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, draftLabel),
+              child: const Text('저장'),
+            ),
+          ],
+        );
+      },
+    );
+    if (submittedLabel == null || !mounted) {
+      return;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    final savedLabel = await CaregiverPatientLocalStateService.saveLabel(
+      preferences,
+      caregiverHash: link.caregiverHash,
+      patientHash: link.patientHash,
+      label: submittedLabel,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _patientLabels = {..._patientLabels, link.patientHash: savedLabel};
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$savedLabel 표시 이름을 저장했습니다.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
   void _openPatientMedicationInfo(PatientCaregiverLink link) {
     if (_isLoading) {
       return;
@@ -359,6 +488,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         builder: (context) => CheckCaregiverMedicationUI(
           caregiverHash: caregiverHash,
           patientHash: link.patientHash,
+          patientLabel: _patientLabels[link.patientHash],
         ),
       ),
     );
@@ -377,7 +507,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (context) => _RegisterPatientDialog(
-        userHashController: _userHashController,
         patientCodeController: _patientCodeController,
         onRegisterRequested: _requestPatientCaregiverLink,
         statusMessageProvider: () => _statusMessage,
@@ -413,16 +542,20 @@ class _LinkActionFooter extends StatelessWidget {
       children: [
         Expanded(
           child: _LinkActionButton(
+            icon: Icons.person_outline_rounded,
             title: '환자 코드 생성',
-            subtitle: '(환자 휴대폰)',
+            subtitle: '약을 복용하는 환자',
+            semanticLabel: '약을 복용하는 환자입니다. 보호자에게 전달할 연동 코드를 만듭니다.',
             onPressed: onGeneratePatientCodeRequested,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _LinkActionButton(
+            icon: Icons.health_and_safety_outlined,
             title: '환자 관리 등록',
-            subtitle: '(보호자 휴대폰)',
+            subtitle: '복약을 확인하는 보호자',
+            semanticLabel: '복약을 확인하는 보호자입니다. 환자에게 받은 연동 코드를 등록합니다.',
             onPressed: onRegisterPatientRequested,
           ),
         ),
@@ -432,56 +565,69 @@ class _LinkActionFooter extends StatelessWidget {
 }
 
 class _LinkActionButton extends StatelessWidget {
+  final IconData icon;
   final String title;
   final String subtitle;
+  final String semanticLabel;
   final VoidCallback? onPressed;
 
   const _LinkActionButton({
+    required this.icon,
     required this.title,
     required this.subtitle,
+    required this.semanticLabel,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(92),
-        foregroundColor: const Color(0xFF0A0A0A),
-        backgroundColor: Colors.white,
-        side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(92),
+          foregroundColor: const Color(0xFF0A0A0A),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: MedBuddyColors.primaryDark, size: 24),
+            const SizedBox(height: 5),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
             ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
+            const SizedBox(height: 3),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -491,10 +637,7 @@ class _StatusCard extends StatelessWidget {
   final String statusMessage;
   final bool isLoading;
 
-  const _StatusCard({
-    required this.statusMessage,
-    required this.isLoading,
-  });
+  const _StatusCard({required this.statusMessage, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
@@ -541,13 +684,11 @@ class _StatusCard extends StatelessWidget {
 }
 
 class _RegisterPatientDialog extends StatefulWidget {
-  final TextEditingController userHashController;
   final TextEditingController patientCodeController;
   final Future<bool> Function() onRegisterRequested;
   final String Function() statusMessageProvider;
 
   const _RegisterPatientDialog({
-    required this.userHashController,
     required this.patientCodeController,
     required this.onRegisterRequested,
     required this.statusMessageProvider,
@@ -558,114 +699,149 @@ class _RegisterPatientDialog extends StatefulWidget {
 }
 
 class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isRegistering = false;
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-      child: Container(
-        width: 328,
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.card,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+      backgroundColor: Colors.white,
+      clipBehavior: Clip.antiAlias,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 328),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+          child: Form(
+            key: _formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  tooltip: '닫기',
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 36,
-                    height: 36,
-                  ),
-                  onPressed:
-                      _isRegistering ? null : () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.close,
-                    color: MedBuddyColors.textMuted,
-                    size: 22,
-                  ),
-                ),
-                const Expanded(
-                  child: Text(
-                    '환자 관리 등록',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF0A0A0A),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '닫기',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 36,
+                        height: 36,
+                      ),
+                      onPressed: _isRegistering
+                          ? null
+                          : () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close,
+                        color: MedBuddyColors.textMuted,
+                        size: 22,
+                      ),
                     ),
+                    const Expanded(
+                      child: Text(
+                        '환자 관리 등록',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 36),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  key: const Key('patient-link-code'),
+                  controller: widget.patientCodeController,
+                  enabled: !_isRegistering,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+                    LengthLimitingTextInputFormatter(
+                      PatientHash.patientLinkCodeLength,
+                    ),
+                    const _UpperCaseTextFormatter(),
+                  ],
+                  decoration: _inputDecoration('환자 코드', 'ABCD1234'),
+                  textInputAction: TextInputAction.done,
+                  validator: _validatePatientCode,
+                  onFieldSubmitted: (_) => _handleRegisterRequested(),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: _isRegistering ? null : _handleRegisterRequested,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    child: _isRegistering
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text('등록하기'),
                   ),
                 ),
-                const SizedBox(width: 36),
               ],
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: widget.userHashController,
-              enabled: !_isRegistering,
-              decoration: _inputDecoration(
-                '보호자 사용자 ID',
-                PatientHash.defaultPatientHash,
-              ),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: widget.patientCodeController,
-              enabled: !_isRegistering,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: _inputDecoration('환자 코드', 'ABCD1234'),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _handleRegisterRequested(),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton(
-                onPressed: _isRegistering ? null : _handleRegisterRequested,
-                style: FilledButton.styleFrom(
-                  backgroundColor: MedBuddyColors.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                child: _isRegistering
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : const Text('등록하기'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
+  // 함수이름: _validatePatientCode
+  // 함수역할:
+  // - 환자 연동 코드가 서버 규칙과 동일한 8자리 영문·숫자인지 검증한다.
+  // 매개변수:
+  // - value: 사용자가 입력한 환자 연동 코드
+  // 반환값:
+  // - 유효하면 null, 유효하지 않으면 화면에 표시할 오류 문구
+  String? _validatePatientCode(String? value) {
+    final patientCode = (value ?? '').trim();
+    if (!RegExp(r'^[A-Z0-9]{8}$').hasMatch(patientCode)) {
+      return '환자 코드는 영문과 숫자 8자리로 입력해 주세요.';
+    }
+    return null;
+  }
+
+  // 함수이름: _handleRegisterRequested
+  // 함수역할:
+  // - 입력값을 검증하고 같은 연동 요청이 연속으로 전송되지 않게 보호한다.
+  // 반환값:
+  // - 없음
   Future<void> _handleRegisterRequested() async {
+    if (_isRegistering || !(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
     setState(() => _isRegistering = true);
-    final success = await widget.onRegisterRequested();
+    var success = false;
+    try {
+      success = await widget.onRegisterRequested();
+    } catch (_) {
+      success = false;
+    }
     if (!mounted) {
       return;
     }
@@ -674,9 +850,23 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
       return;
     }
     setState(() => _isRegistering = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(widget.statusMessageProvider())),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(widget.statusMessageProvider())));
+  }
+}
+
+// 클래스명: _UpperCaseTextFormatter
+// 역할: 환자 연동 코드 입력을 커서 위치를 유지한 채 대문자로 정규화한다.
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  const _UpperCaseTextFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }
 
@@ -716,147 +906,157 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-      child: Container(
-        width: 328,
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 19),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.card,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 328,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: MedBuddyRadii.card,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 19),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  tooltip: '\uB2EB\uAE30',
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 36,
-                    height: 36,
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.close,
-                    color: Color(0xFF344054),
-                    size: 22,
-                  ),
-                ),
-                const Expanded(
-                  child: Text(
-                    '\uD658\uC790 \uCF54\uB4DC \uC0DD\uC131',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF0A0A0A),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 36),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(13),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(13),
-                onTap: () {
-                  Clipboard.setData(
-                    ClipboardData(text: widget.patientCode.code),
-                  );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        '\uCF54\uB4DC\uB97C \uBCF5\uC0AC\uD588\uC2B5\uB2C8\uB2E4.',
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '\uB2EB\uAE30',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 36,
+                        height: 36,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Color(0xFF344054),
+                        size: 22,
                       ),
                     ),
-                  );
-                },
-                child: Container(
-                  height: 57,
-                  padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: MedBuddyColors.outline, width: 2),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.patientCode.code,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF1E2939),
-                            fontSize: 16,
-                            letterSpacing: 0,
-                            fontWeight: FontWeight.w500,
-                          ),
+                    const Expanded(
+                      child: Text(
+                        '\uD658\uC790 \uCF54\uB4DC \uC0DD\uC131',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      const Icon(
-                        Icons.copy_outlined,
-                        color: Color(0xFF99A1AF),
-                        size: 22,
+                    ),
+                    const SizedBox(width: 36),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(13),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(13),
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: widget.patientCode.code),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '\uCF54\uB4DC\uB97C \uBCF5\uC0AC\uD588\uC2B5\uB2C8\uB2E4.',
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      height: 57,
+                      padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(13),
+                        border: Border.all(
+                          color: MedBuddyColors.outline,
+                          width: 2,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.patientCode.code,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF1E2939),
+                                fontSize: 16,
+                                letterSpacing: 0,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(
+                            Icons.copy_outlined,
+                            color: Color(0xFF99A1AF),
+                            size: 22,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                const Text(
+                  '(\uCF54\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uBCF5\uC0AC\uB429\uB2C8\uB2E4)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: MedBuddyColors.textSubtle,
+                    fontSize: 13,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                _PatientCodeNotice(
+                  backgroundColor: MedBuddyColors.successSurface,
+                  foregroundColor: MedBuddyColors.textBody,
+                  text:
+                      '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
+                ),
+                const SizedBox(height: 15),
+                _PatientCodeNotice(
+                  backgroundColor: Color(0xFFFEF2F2),
+                  foregroundColor: Color(0xFFE7000B),
+                  fontWeight: FontWeight.w700,
+                  text:
+                      '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678\n\uB2E4\uB978 \uC0AC\uB78C\uACFC \uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
+                ),
+                const SizedBox(height: 24),
+                Text.rich(
+                  TextSpan(
+                    text: '\uB0A8\uC740 \uC2DC\uAC04: ',
+                    children: [
+                      TextSpan(
+                        text: _remainingTimeText,
+                        style: const TextStyle(
+                          color: MedBuddyColors.primary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 7),
-            const Text(
-              '(\uCF54\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uBCF5\uC0AC\uB429\uB2C8\uB2E4)',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: MedBuddyColors.textSubtle,
-                fontSize: 13,
-                letterSpacing: 0,
-              ),
-            ),
-            const SizedBox(height: 28),
-            _PatientCodeNotice(
-              backgroundColor: MedBuddyColors.successSurface,
-              foregroundColor: MedBuddyColors.textBody,
-              text:
-                  '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
-            ),
-            const SizedBox(height: 15),
-            _PatientCodeNotice(
-              backgroundColor: Color(0xFFFEF2F2),
-              foregroundColor: Color(0xFFE7000B),
-              fontWeight: FontWeight.w700,
-              text:
-                  '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678 \uB2E4\uB978 \uC0AC\uB78C\uACFC\n\uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
-            ),
-            const SizedBox(height: 24),
-            Text.rich(
-              TextSpan(
-                text: '\uB0A8\uC740 \uC2DC\uAC04: ',
-                children: [
-                  TextSpan(
-                    text: _remainingTimeText,
-                    style: const TextStyle(
-                      color: MedBuddyColors.primary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textSubtle,
+                    fontSize: 13,
+                    letterSpacing: 0,
                   ),
-                ],
-              ),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: MedBuddyColors.textSubtle,
-                fontSize: 13,
-                letterSpacing: 0,
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -896,15 +1096,19 @@ class _PatientCodeNotice extends StatelessWidget {
         color: backgroundColor,
         borderRadius: MedBuddyRadii.card,
       ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: foregroundColor,
-          fontSize: 14,
-          height: 1.45,
-          fontWeight: fontWeight,
-          letterSpacing: 0,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          text,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: foregroundColor,
+            fontSize: 14,
+            height: 1.45,
+            fontWeight: fontWeight,
+            letterSpacing: 0,
+          ),
         ),
       ),
     );
@@ -915,14 +1119,21 @@ class _LinkListCard extends StatelessWidget {
   final List<PatientCaregiverLink> links;
   final String currentUserHash;
   final bool isEnabled;
+  final bool shrinkWrap;
+  final Map<String, String> patientLabels;
   final void Function(PatientCaregiverLink link) onPatientMedicationRequested;
+  final Future<void> Function(PatientCaregiverLink link)
+  onPatientLabelRequested;
   final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
 
   const _LinkListCard({
     required this.links,
     required this.currentUserHash,
     required this.isEnabled,
+    this.shrinkWrap = false,
+    required this.patientLabels,
     required this.onPatientMedicationRequested,
+    required this.onPatientLabelRequested,
     required this.onUnlinkRequested,
   });
 
@@ -934,6 +1145,9 @@ class _LinkListCard extends StatelessWidget {
 
     return ListView.separated(
       padding: EdgeInsets.zero,
+      shrinkWrap: shrinkWrap,
+      primary: shrinkWrap ? false : null,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       itemCount: links.length,
       separatorBuilder: (context, index) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
@@ -941,8 +1155,14 @@ class _LinkListCard extends StatelessWidget {
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
-          onPatientMedicationRequested:
-              isEnabled ? () => onPatientMedicationRequested(link) : null,
+          patientLabel: patientLabels[link.patientHash],
+          onPatientMedicationRequested: isEnabled
+              ? () => onPatientMedicationRequested(link)
+              : null,
+          onPatientLabelRequested:
+              isEnabled && link.caregiverHash == currentUserHash
+              ? () => onPatientLabelRequested(link)
+              : null,
           onUnlinkRequested: isEnabled ? () => onUnlinkRequested(link) : null,
         );
       },
@@ -953,13 +1173,17 @@ class _LinkListCard extends StatelessWidget {
 class _LinkedUserTile extends StatelessWidget {
   final PatientCaregiverLink link;
   final String currentUserHash;
+  final String? patientLabel;
   final VoidCallback? onPatientMedicationRequested;
+  final VoidCallback? onPatientLabelRequested;
   final VoidCallback? onUnlinkRequested;
 
   const _LinkedUserTile({
     required this.link,
     required this.currentUserHash,
+    required this.patientLabel,
     required this.onPatientMedicationRequested,
+    required this.onPatientLabelRequested,
     required this.onUnlinkRequested,
   });
 
@@ -976,10 +1200,12 @@ class _LinkedUserTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '연동 정보',
-                  style: TextStyle(
+                  patientLabel ?? '연동 정보',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Color(0xFF0A0A0A),
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -987,6 +1213,15 @@ class _LinkedUserTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onPatientLabelRequested != null)
+                IconButton(
+                  tooltip: '환자 표시 이름 수정',
+                  onPressed: onPatientLabelRequested,
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: MedBuddyColors.primary,
+                  ),
+                ),
               if (_canOpenPatientMedication)
                 IconButton(
                   tooltip:
@@ -1039,10 +1274,7 @@ class _LinkedIdentityField extends StatelessWidget {
   final String label;
   final String value;
 
-  const _LinkedIdentityField({
-    required this.label,
-    required this.value,
-  });
+  const _LinkedIdentityField({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {

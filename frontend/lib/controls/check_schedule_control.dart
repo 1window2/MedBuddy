@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 파일명: check_schedule_control.dart
@@ -27,9 +28,9 @@ class CheckSchedule {
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? client,
-  })  : patientHash = PatientHash.normalizePatientHash(patientHash),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  }) : patientHash = PatientHash.normalizePatientHash(patientHash),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null;
 
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -62,6 +63,45 @@ class CheckSchedule {
         stackTrace: stackTrace,
       );
       throw StateError('Schedule lookup failed.');
+    }
+  }
+
+  // Function Name: requestMedicationScheduleWindow
+  // Description:
+  // - Requests courses overlapping the rolling reminder window.
+  // Parameters:
+  // - days: Inclusive window length beginning today, up to 14 days.
+  // Returns:
+  // - Medication courses needed to replenish notifications before they start.
+  Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
+    int days = 14,
+  }) async {
+    if (days < 1 || days > 14) {
+      throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
+    }
+    try {
+      final response = await _client
+          .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.decodeBody(response);
+      if (response.statusCode != 200) {
+        throw StateError(
+          'Schedule window lookup failed (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        );
+      }
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
+      return _decodeMedicationScheduleList(decodedData['data']);
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Medication schedule window request failed.',
+        name: 'CheckSchedule',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw StateError('Schedule window lookup failed.');
     }
   }
 
@@ -124,9 +164,15 @@ class CheckSchedule {
     return MedicationSchedule.fromScheduleJsonList(rawItems);
   }
 
-  Uri _buildScheduleUri(String path) {
+  Uri _buildScheduleUri(
+    String path, [
+    Map<String, String> additionalQueryParameters = const {},
+  ]) {
     return Uri.parse('$baseUrl/$path').replace(
-      queryParameters: {'patient_hash': patientHash},
+      queryParameters: {
+        'patient_hash': patientHash,
+        ...additionalQueryParameters,
+      },
     );
   }
 

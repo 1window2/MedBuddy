@@ -15,9 +15,10 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from api.dependencies import get_identify_pill  # noqa: E402
+from api.dependencies import get_identify_pill, get_registered_principal  # noqa: E402
 from core.request_limits import RequestBodyLimitMiddleware  # noqa: E402
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES  # noqa: E402
+from entities.authenticated_principal_entity import AuthenticatedPrincipal  # noqa: E402
 from entities.pill_identification_entity import (  # noqa: E402
     PillIdentificationCandidate,
     PillIdentificationResult,
@@ -146,10 +147,68 @@ async def test_request_body_limit_counts_streamed_chunks() -> None:
 
 
 @pytest.mark.anyio
+async def test_request_body_limit_applies_default_to_json_routes() -> None:
+    app_called = False
+
+    async def app(_scope: Scope, _receive: Receive, _send: Send) -> None:
+        nonlocal app_called
+        app_called = True
+
+    async def receive() -> Message:
+        return {"type": "http.disconnect"}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    middleware = RequestBodyLimitMiddleware(
+        app,
+        limits={},
+        default_limit=10,
+    )
+
+    await middleware(_scope(content_length=11), receive, send)
+
+    assert app_called is False
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
+
+
+@pytest.mark.anyio
+async def test_request_body_limit_applies_default_to_delete_json_routes() -> None:
+    app_called = False
+
+    async def app(_scope: Scope, _receive: Receive, _send: Send) -> None:
+        nonlocal app_called
+        app_called = True
+
+    async def receive() -> Message:
+        return {"type": "http.disconnect"}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    middleware = RequestBodyLimitMiddleware(app, limits={}, default_limit=10)
+    scope = _scope(content_length=11)
+    scope["method"] = "DELETE"
+
+    await middleware(scope, receive, send)
+
+    assert app_called is False
+    assert sent[0]["status"] == 413
+
+
+@pytest.mark.anyio
 async def test_pill_identification_accepts_front_and_optional_back_multipart() -> None:
     control = _RecordingIdentifyPill()
     app = create_app()
     app.dependency_overrides[get_identify_pill] = lambda: control
+    app.dependency_overrides[get_registered_principal] = (
+        AuthenticatedPrincipal.development_principal
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),

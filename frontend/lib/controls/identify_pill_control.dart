@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../entities/pill_identification_entity.dart';
 import '../services/api_config.dart';
+import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 enum PillIdentificationFailure {
@@ -41,9 +42,9 @@ class IdentifyPill {
     ImagePicker? imagePicker,
     http.Client? client,
     this.requestTimeout = const Duration(seconds: 45),
-  })  : _imagePicker = imagePicker ?? ImagePicker(),
-        _client = client ?? http.Client(),
-        _ownsClient = client == null {
+  }) : _imagePicker = imagePicker ?? ImagePicker(),
+       _client = client ?? AuthenticatedApiClient(),
+       _ownsClient = client == null {
     if (requestTimeout <= Duration.zero) {
       throw ArgumentError.value(
         requestTimeout,
@@ -87,17 +88,19 @@ class IdentifyPill {
       }
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
-      final request = http.AbortableMultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/pill-identification/candidates'),
-        abortTrigger: abortTrigger.future,
-      )..files.add(
-          http.MultipartFile.fromBytes(
-            'front',
-            frontImage,
-            filename: 'pill-front.jpg',
-          ),
-        );
+      final request =
+          http.AbortableMultipartRequest(
+              'POST',
+              Uri.parse('$baseUrl/pill-identification/candidates'),
+              abortTrigger: abortTrigger.future,
+            )
+            ..files.add(
+              http.MultipartFile.fromBytes(
+                'front',
+                frontImage,
+                filename: 'pill-front.jpg',
+              ),
+            );
       if (backImage != null) {
         request.files.add(
           http.MultipartFile.fromBytes(
@@ -110,18 +113,20 @@ class IdentifyPill {
 
       late final http.Response response;
       try {
-        response =
-            await _client.send(request).then(http.Response.fromStream).timeout(
-          requestTimeout,
-          onTimeout: () {
-            if (!abortTrigger.isCompleted) {
-              abortTrigger.complete();
-            }
-            throw const PillIdentificationException(
-              PillIdentificationFailure.timedOut,
+        response = await _client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(
+              requestTimeout,
+              onTimeout: () {
+                if (!abortTrigger.isCompleted) {
+                  abortTrigger.complete();
+                }
+                throw const PillIdentificationException(
+                  PillIdentificationFailure.timedOut,
+                );
+              },
             );
-          },
-        );
       } finally {
         _abortTriggers.remove(abortTrigger);
       }

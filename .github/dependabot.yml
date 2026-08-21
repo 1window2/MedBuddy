@@ -24,10 +24,19 @@ updates:
         versions:
           - ">=2.5.0"
 
+  # Flutter and Dart package updates
+  - package-ecosystem: "pub"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    

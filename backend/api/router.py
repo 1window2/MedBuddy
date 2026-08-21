@@ -4,16 +4,32 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+)
+from pydantic import BaseModel, Field
 
 from api.dependencies import (
+    get_authenticated_principal,
+    get_recently_authenticated_principal,
+    verify_app_check_token,
+    get_registered_principal,
+    get_authorization_control,
     get_check_medication_detail,
+    get_check_prescription_change,
     get_check_schedule,
     get_check_saved_medication,
     get_check_today_medication_info,
     get_check_caregiver_medication,
     get_manage_user_setting,
+    get_manage_account,
+    get_manage_push_token,
     get_identify_pill,
     get_link_patient_caregiver_control,
     get_input_prescription,
@@ -21,6 +37,10 @@ from api.dependencies import (
     get_request_voice_guide,
     get_set_caregiver_notification,
     get_set_notification,
+    get_push_notification_boundary,
+)
+from boundaries.firebase_identity_boundary import (
+    IdentityDeletionUnavailableError,
 )
 from boundaries.pill_identification_boundary import (
     MAX_PILL_IMAGE_BYTES,
@@ -29,7 +49,12 @@ from boundaries.pill_identification_boundary import (
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
+from boundaries.prescription_ocr_boundary import (
+    PrescriptionPreprocessingCapacityError,
+)
 from controls.check_medication_detail_control import CheckMedicationDetail
+from controls.check_prescription_change_control import CheckPrescriptionChange
+from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
@@ -41,12 +66,17 @@ from controls.input_prescription_control import (
 )
 from controls.identify_pill_control import IdentifyPill
 from controls.manage_user_setting_control import ManageUserSetting
+from controls.manage_account_control import ManageAccount
+from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
+from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.authenticated_principal_entity import AuthenticatedPrincipal
+from core.database import SessionLocal
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
@@ -55,13 +85,27 @@ from schemas.medication import (
     CaregiverNotificationUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
+    PushTokenRegistration,
     SavedMedicationCreate,
     UserSettingUpdate,
     VoiceGuideRequest,
 )
 from schemas.pill_identification import PillIdentificationResponse
+from schemas.prescription_change import (
+    PrescriptionChangeRequest,
+    PrescriptionChangeResponse,
+)
 
-router = APIRouter()
+_authenticated_app_dependencies = [
+    Depends(verify_app_check_token),
+    Depends(get_registered_principal),
+]
+router = APIRouter(dependencies=_authenticated_app_dependencies)
+auth_router = APIRouter(
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+    dependencies=_authenticated_app_dependencies,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +114,93 @@ logger = logging.getLogger(__name__)
 # Attributes:
 #   - text: Raw OCR text from the frontend.
 class OCRParseRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=100_000)
+
+
+@auth_router.get("/session")
+def get_auth_session(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+) -> dict[str, object]:
+    return {
+        "authenticated": not principal.authentication_disabled,
+        "user_hash": principal.user_hash,
+        "email": principal.email,
+        "email_verified": principal.email_verified,
+        "phone_number": principal.phone_number,
+        "sign_in_provider": principal.sign_in_provider,
+        "anonymous": principal.anonymous,
+    }
+
+
+# 함수명: export_account_data
+# 역할:
+# - 현재 로그인 사용자의 MedBuddy 저장 데이터를 JSON으로 반환한다.
+@auth_router.get("/account-data")
+def export_account_data(
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_account: ManageAccount = Depends(get_manage_account),
+) -> dict[str, object]:
+    return manage_account.exportAccountData(principal.user_hash)
+
+
+# 함수명: delete_account_data
+# 역할:
+# - 현재 로그인 사용자의 복약정보, 연결, 알림, 캐시를 모두 삭제한다.
+@auth_router.delete("/account-data")
+def delete_account_data(
+    principal: AuthenticatedPrincipal = Depends(
+        get_recently_authenticated_principal
+    ),
+    manage_account: ManageAccount = Depends(get_manage_account),
+) -> dict[str, object]:
+    try:
+        return manage_account.deleteAccountData(
+            principal.user_hash,
+            external_subject=(
+                None if principal.authentication_disabled else principal.subject
+            ),
+        )
+    except IdentityDeletionUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Account identity deletion is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
+
+
+# 함수명: register_push_token
+# 역할:
+# - 현재 인증 사용자의 FCM 기기 토큰을 등록하거나 갱신한다.
+# 반환값:
+# - 토큰 등록 결과
+@auth_router.post("/push-token")
+def register_push_token(
+    request: PushTokenRegistration,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_push_token: ManagePushToken = Depends(get_manage_push_token),
+) -> dict[str, object]:
+    return manage_push_token.registerPushToken(
+        principal.user_hash,
+        request.token,
+        request.platform,
+    )
+
+
+# 함수명: unregister_push_token
+# 역할:
+# - 로그아웃하는 현재 기기의 FCM 토큰을 비활성화한다.
+# 반환값:
+# - 토큰 해제 결과
+@auth_router.delete("/push-token")
+def unregister_push_token(
+    request: PushTokenRegistration,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    manage_push_token: ManagePushToken = Depends(get_manage_push_token),
+) -> dict[str, object]:
+    return manage_push_token.unregisterPushToken(
+        principal.user_hash,
+        request.token,
+    )
 
 
 # Function Name: identify_medication
@@ -104,6 +234,50 @@ async def identify_medication(
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
 
 
+# 함수이름: check_prescription_change
+# 함수역할:
+# - 현재 분석한 처방과 환자의 가장 최근 이전 처방을 비교한다.
+# - 의료 판단 없이 약품 구성과 복약 일정 필드의 객관적 차이만 반환한다.
+# 매개변수:
+# - request: 현재 처방 조제일자와 약품 목록
+# - check_prescription_change_control: 처방 변화 비교 Control
+# 반환값:
+# - 처방 변화 요약과 약품별 변화 목록
+@router.post(
+    "/prescription/change-radar",
+    response_model=PrescriptionChangeResponse,
+)
+def check_prescription_change(
+    request: PrescriptionChangeRequest,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_prescription_change_control: CheckPrescriptionChange = Depends(
+        get_check_prescription_change
+    ),
+) -> PrescriptionChangeResponse:
+    try:
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            request.patient_hash,
+        )
+        return check_prescription_change_control.request_prescription_change(
+            request.model_copy(update={"patient_hash": authorized_patient_hash})
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Prescription change comparison failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="처방 변화를 비교하지 못했습니다.",
+        ) from exc
+
+
 # Function Name: save_medication
 # Description:
 # - Saves selected medication information into the user's pillbox.
@@ -115,9 +289,18 @@ async def identify_medication(
 @router.post("/save")
 def save_medication(
     medication: SavedMedicationCreate,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.saveMedicationDetail(medication)
+    patient_hash = authorization.resolvePatientScope(
+        principal,
+        medication.patient_hash,
+    )
+    trusted_medication = medication.model_copy(
+        update={"patient_hash": patient_hash},
+    )
+    return check_saved_medication.saveMedicationDetail(trusted_medication)
 
 
 # Function Name: get_saved_medications
@@ -129,13 +312,20 @@ def save_medication(
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
-async def get_saved_medications(
+def get_saved_medications(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
     try:
-        return await check_saved_medication.requestSavedMedicationInfoWithImages(
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
             patient_hash,
+            allow_caregiver=True,
+        )
+        return check_saved_medication.requestSavedMedicationInfo(
+            authorized_patient_hash
         )
     except HTTPException:
         raise
@@ -158,10 +348,17 @@ async def get_saved_medications(
 @router.get("/schedule/today")
 def get_today_medication_schedule(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
     try:
-        return check_schedule.requestTodayMedicationSchedule(patient_hash)
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_schedule.requestTodayMedicationSchedule(authorized_patient_hash)
     except HTTPException:
         raise
     except Exception as exc:
@@ -172,6 +369,45 @@ def get_today_medication_schedule(
         raise HTTPException(
             status_code=500,
             detail="오늘의 복약 일정을 불러오지 못했습니다.",
+        ) from exc
+
+
+# Function Name: get_medication_schedule_window
+# Description:
+# - Returns medication courses overlapping a bounded rolling reminder window.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope schedule lookup.
+# - days: Inclusive number of days beginning today, capped at 14.
+# Returns:
+# - API-compatible schedule list dictionary.
+@router.get("/schedule/window")
+def get_medication_schedule_window(
+    patient_hash: str | None = None,
+    days: int = Query(default=14, ge=1, le=14),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    try:
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_schedule.requestMedicationScheduleWindow(
+            authorized_patient_hash,
+            days,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Medication schedule window lookup failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="복약 알림 일정을 불러오지 못했습니다.",
         ) from exc
 
 
@@ -186,12 +422,21 @@ def get_today_medication_schedule(
 @router.get("/schedule/today/info")
 def get_today_medication_info(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_today_medication_info: CheckTodayMedicationInfo = Depends(
         get_check_today_medication_info
     ),
 ) -> dict[str, object]:
     try:
-        return check_today_medication_info.requestTodayMedicationInfo(patient_hash)
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_today_medication_info.requestTodayMedicationInfo(
+            authorized_patient_hash
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -205,29 +450,62 @@ def get_today_medication_info(
         ) from exc
 
 
-# Function Name: update_medication_status
-# Description:
-# - Updates today's medication completion status for one saved medication.
-# Parameters:
-# - medication_id: Saved medication primary key from route path.
-# - request: MedicationStatusUpdate request DTO.
-# - patient_hash: Patient ownership key used to scope status update.
-# - check_schedule: CheckSchedule injected by FastAPI.
-# Returns:
-# - API-compatible status update dictionary.
+# 함수명: _dispatch_caregiver_completion_alert
+# 역할:
+# - 복약 체크 응답이 끝난 뒤 별도 DB 세션으로 보호자 FCM 알림을 전송한다.
+# - 푸시 장애가 환자의 복약 상태 저장 결과에 영향을 주지 않도록 예외를 격리한다.
+def _dispatch_caregiver_completion_alert(
+    patient_hash: str,
+    slot_key: str,
+) -> None:
+    db = SessionLocal()
+    try:
+        DispatchCaregiverAlert(
+            db=db,
+            push_boundary=get_push_notification_boundary(),
+        ).notifySlotCompleted(
+            patient_hash=patient_hash,
+            slot_key=slot_key,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Caregiver push background dispatch failed: %s",
+            type(exc).__name__,
+        )
+    finally:
+        db.close()
+
+
+# 함수명: update_medication_status
+# 역할:
+# - 오늘의 복약 완료 상태를 저장하고 보호자 알림은 응답 이후 작업으로 예약한다.
 @router.patch("/schedule/{medication_id}/status")
 def update_medication_status(
     medication_id: int,
     request: MedicationStatusUpdate,
+    background_tasks: BackgroundTasks,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
-    return check_schedule.updateMedicationStatus(
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    response = check_schedule.updateMedicationStatus(
         medication_id,
         request.medication_status,
-        patient_hash,
+        authorized_patient_hash,
         request.slot_key,
     )
+    for completion_event in check_schedule.consumeCompletionEvents():
+        background_tasks.add_task(
+            _dispatch_caregiver_completion_alert,
+            completion_event["patient_hash"],
+            completion_event["slot_key"],
+        )
+    return response
 
 
 # Function Name: get_medication_alarms
@@ -241,9 +519,15 @@ def update_medication_status(
 @router.get("/notification/settings")
 def get_medication_alarms(
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.requestMedicationAlarm(patient_hash)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.requestMedicationAlarm(authorized_patient_hash)
 
 
 # Function Name: get_medication_alarm
@@ -259,9 +543,15 @@ def get_medication_alarms(
 def get_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.requestAlarmToggle(patient_hash, slot_key)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.requestAlarmToggle(authorized_patient_hash, slot_key)
 
 
 # Function Name: save_medication_alarm
@@ -279,10 +569,16 @@ def save_medication_alarm(
     slot_key: str,
     request: MedicationAlarmUpdate,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.saveNotificationSetting(
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
         patient_hash,
+    )
+    return set_notification.saveNotificationSetting(
+        authorized_patient_hash,
         slot_key,
         request.hour,
         request.minute,
@@ -302,9 +598,15 @@ def save_medication_alarm(
 def disable_medication_alarm(
     slot_key: str,
     patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_notification: SetNotification = Depends(get_set_notification),
 ) -> dict[str, object]:
-    return set_notification.disableAlarmSetting(patient_hash, slot_key)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return set_notification.disableAlarmSetting(authorized_patient_hash, slot_key)
 
 
 # Function Name: get_user_setting
@@ -318,9 +620,12 @@ def disable_medication_alarm(
 @router.get("/settings/user")
 def get_user_setting(
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
-    return manage_user_setting.requestUserSetting(user_hash)
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    return manage_user_setting.requestUserSetting(authorized_user_hash)
 
 
 # Function Name: save_user_setting
@@ -336,10 +641,13 @@ def get_user_setting(
 def save_user_setting(
     request: UserSettingUpdate,
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     manage_user_setting: ManageUserSetting = Depends(get_manage_user_setting),
 ) -> dict[str, object]:
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
     return manage_user_setting.saveUserSetting(
-        user_hash,
+        authorized_user_hash,
         request.font_size,
         request.reading_speed,
         request.language,
@@ -378,13 +686,20 @@ def request_voice_guide(
 async def get_health_recommendation(
     patient_hash: str | None = None,
     language: str = "ko",
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_health_recommendation: CheckHealthRecommendation = Depends(
         get_check_health_recommendation
     ),
 ) -> dict[str, object]:
     try:
-        return await check_health_recommendation.requestHealthRecommendation(
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
             patient_hash,
+            allow_caregiver=True,
+        )
+        return await check_health_recommendation.requestHealthRecommendation(
+            authorized_patient_hash,
             language,
         )
     except HTTPException:
@@ -397,16 +712,38 @@ async def get_health_recommendation(
         ) from exc
 
 
-# Function Name: get_caregiver_notification_setting
-# Description:
-# - Returns the notification setting for one linked caregiver-patient pair.
-# Parameters:
-# - patient_hash: Patient ownership key monitored by the caregiver.
-# - caregiver_hash: Caregiver ownership key requesting notification state.
-# - legacy_guardian_hash: Backward-compatible alias for older clients.
-# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
-# Returns:
-# - API-compatible caregiver notification setting dictionary.
+# 함수명: get_caregiver_notification_settings
+# 역할:
+# - 연동된 보호자-환자의 모든 시간대별 알림 설정을 한 번에 반환한다.
+@router.get("/caregiver-notification/settings/{patient_hash}/slots")
+def get_caregiver_notification_settings(
+    patient_hash: str,
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    set_caregiver_notification: SetCaregiverNotification = Depends(
+        get_set_caregiver_notification
+    ),
+) -> dict[str, object]:
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
+    return set_caregiver_notification.requestCaregiverNotificationSettings(
+        requesting_caregiver_hash,
+        authorized_patient_hash,
+    )
+
+
+# 함수명: get_caregiver_notification_setting
+# 역할:
+# - 연동된 보호자-환자의 지정 시간대 알림 설정을 반환한다.
 @router.get("/caregiver-notification/settings/{patient_hash}")
 @router.get(
     "/guardian-alert/settings/{patient_hash}",
@@ -416,30 +753,32 @@ def get_caregiver_notification_setting(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    slot_key: str = "morning",
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
     return set_caregiver_notification.requestCaregiverNotificationSetting(
         requesting_caregiver_hash,
-        patient_hash,
+        authorized_patient_hash,
+        slot_key,
     )
 
 
-# Function Name: save_caregiver_notification_setting
-# Description:
-# - Saves caregiver notification state for one linked pair.
-# Parameters:
-# - patient_hash: Patient ownership key monitored by the caregiver.
-# - caregiver_hash: Caregiver ownership key requesting the update.
-# - legacy_guardian_hash: Backward-compatible alias for older clients.
-# - request: CaregiverNotificationUpdate request DTO.
-# - set_caregiver_notification: SetCaregiverNotification injected by FastAPI.
-# Returns:
-# - API-compatible caregiver notification setting dictionary.
+# 함수명: save_caregiver_notification_setting
+# 역할:
+# - 연동된 보호자-환자의 지정 시간대 알림 설정만 저장한다.
 @router.put("/caregiver-notification/settings/{patient_hash}")
 @router.put(
     "/guardian-alert/settings/{patient_hash}",
@@ -450,18 +789,30 @@ def save_caregiver_notification_setting(
     request: CaregiverNotificationUpdate,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    slot_key: str = "morning",
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
+        patient_hash,
+    )
     return set_caregiver_notification.saveCaregiverNotificationSetting(
         requesting_caregiver_hash,
-        patient_hash,
+        authorized_patient_hash,
         request.notification_enabled,
         request.notification_type,
+        request.deadline_hour,
+        request.deadline_minute,
+        slot_key=slot_key,
     )
 
 
@@ -476,11 +827,14 @@ def save_caregiver_notification_setting(
 @router.get("/link/list")
 def get_patient_caregiver_links(
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.requestLinkScreen(user_hash)
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    return link_patient_caregiver_control.requestLinkScreen(authorized_user_hash)
 
 
 # Function Name: get_caregiver_patient_medication_info
@@ -491,20 +845,28 @@ def get_patient_caregiver_links(
     "/guardian/medications/{patient_hash}",
     include_in_schema=False,
 )
-async def get_caregiver_patient_medication_info(
+def get_caregiver_patient_medication_info(
     patient_hash: str,
     caregiver_hash: str | None = None,
     guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_caregiver_medication: CheckCaregiverMedication = Depends(
         get_check_caregiver_medication
     ),
 ) -> dict[str, object]:
-    requesting_caregiver_hash = caregiver_hash or guardian_hash
-    if not requesting_caregiver_hash:
-        raise HTTPException(status_code=400, detail="Caregiver hash is required.")
-    return await check_caregiver_medication.requestPatientMedicationInfo(
-        requesting_caregiver_hash,
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    requesting_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    authorized_patient_hash = authorization.requireLinkedPatient(
+        principal,
         patient_hash,
+    )
+    return check_caregiver_medication.requestPatientMedicationInfo(
+        requesting_caregiver_hash,
+        authorized_patient_hash,
     )
 
 
@@ -519,11 +881,14 @@ async def get_caregiver_patient_medication_info(
 @router.post("/link/code")
 def create_patient_link_code(
     request: PatientCodeCreate,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.generatePatientHash(request.patient_hash)
+    patient_hash = authorization.resolveOwnUserHash(principal, request.patient_hash)
+    return link_patient_caregiver_control.generatePatientHash(patient_hash)
 
 
 # Function Name: register_patient_link_code
@@ -537,12 +902,18 @@ def create_patient_link_code(
 @router.post("/link/register")
 def register_patient_link_code(
     request: PatientCodeRegister,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
-    return link_patient_caregiver_control.requestPatientCaregiverLink(
+    caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
         request.caregiver_hash,
+    )
+    return link_patient_caregiver_control.requestPatientCaregiverLink(
+        caregiver_hash,
         request.patient_code,
     )
 
@@ -560,13 +931,16 @@ def register_patient_link_code(
 def unlink_patient_caregiver(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     link_patient_caregiver_control: LinkPatientCaregiver = Depends(
         get_link_patient_caregiver_control
     ),
 ) -> dict[str, object]:
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
     return link_patient_caregiver_control.requestUnlink(
         link_id,
-        user_hash,
+        authorized_user_hash,
     )
 
 
@@ -583,9 +957,15 @@ def unlink_patient_caregiver(
 def delete_medication(
     drug_id: int,
     patient_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    return check_saved_medication.requestDelete(drug_id, patient_hash)
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    return check_saved_medication.requestDelete(drug_id, authorized_patient_hash)
 
 
 # Function Name: parse_prescription_endpoint
@@ -619,6 +999,34 @@ def parse_prescription_endpoint(
         raise HTTPException(
             status_code=500,
             detail="처방전 텍스트를 파싱하지 못했습니다.",
+        ) from exc
+
+
+# 함수명: analyze_masked_prescription_text
+# 역할:
+# - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 분석한다.
+# 반환값:
+# - API 호환 처방 분석 결과
+@router.post("/analyze-prescription-text")
+async def analyze_masked_prescription_text(
+    request: OCRParseRequest,
+    input_prescription: InputPrescription = Depends(get_input_prescription),
+) -> dict[str, object]:
+    try:
+        return await input_prescription.requestPrescriptionText(request.text)
+    except PrescriptionAnalysisTimeoutError as exc:
+        logger.warning("De-identified prescription text analysis timed out.")
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "De-identified prescription text analysis failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
         ) from exc
 
 
@@ -705,11 +1113,16 @@ async def upload_and_parse_prescription(
         get_input_prescription
     ),
 ) -> dict[str, object]:
+    content_type = (file.content_type or "").strip().casefold()
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail="Prescription uploads must use an image content type.",
+        )
     try:
         image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
         logger.info(
-            "Prescription image upload received: content_type=%s, bytes=%d",
-            file.content_type,
+            "Prescription image upload received: bytes=%d",
             len(image_bytes),
         )
         return await input_prescription.requestPrescriptionImage(
@@ -718,6 +1131,13 @@ async def upload_and_parse_prescription(
     except PrescriptionAnalysisTimeoutError as exc:
         logger.warning("Prescription OCR request timed out.")
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except PrescriptionPreprocessingCapacityError as exc:
+        logger.warning("Prescription preprocessing capacity is occupied.")
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "1"},
+        ) from exc
     except ValueError as exc:
         logger.warning("Prescription image upload rejected: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

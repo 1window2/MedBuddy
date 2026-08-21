@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'check_today_medication_info_ui_boundary.dart';
+import 'medication_capture_options_ui_boundary.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -18,6 +20,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
+  final Map<String, MedicationAlarm> medicationReminderSettings;
   final int todayMedicationCompletedCount;
   final int todayMedicationTotalCount;
   final bool isTodayScheduleLoading;
@@ -35,6 +38,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.statusMessage,
     required this.userSetting,
     this.todayMedicationScheduleList = const [],
+    this.medicationReminderSettings = const {},
     this.todayMedicationCompletedCount = 0,
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
@@ -47,22 +51,21 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
-  const InputPrescriptionUI.analyzing({
-    super.key,
-    required this.statusMessage,
-  })  : userSetting = const UserSetting(),
-        todayMedicationScheduleList = const [],
-        todayMedicationCompletedCount = 0,
-        todayMedicationTotalCount = 0,
-        isTodayScheduleLoading = false,
-        onPrescriptionScanRequested = null,
-        onPrescriptionGalleryRequested = null,
-        onPillIdentificationRequested = null,
-        onTodayScheduleRequested = null,
-        onSavedMedicationRequested = null,
-        onPatientCaregiverLinkRequested = null,
-        onUserSettingRequested = null,
-        isAnalyzing = true;
+  const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
+    : userSetting = const UserSetting(),
+      todayMedicationScheduleList = const [],
+      medicationReminderSettings = const {},
+      todayMedicationCompletedCount = 0,
+      todayMedicationTotalCount = 0,
+      isTodayScheduleLoading = false,
+      onPrescriptionScanRequested = null,
+      onPrescriptionGalleryRequested = null,
+      onPillIdentificationRequested = null,
+      onTodayScheduleRequested = null,
+      onSavedMedicationRequested = null,
+      onPatientCaregiverLinkRequested = null,
+      onUserSettingRequested = null,
+      isAnalyzing = true;
 
   @override
   Widget build(BuildContext context) {
@@ -78,9 +81,7 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(
-              onSettingPressed: onUserSettingRequested,
-            ),
+            _HomeHeader(onSettingPressed: onUserSettingRequested),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
@@ -91,6 +92,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       noMedicationLabel: text.noMedication,
                       userSetting: userSetting,
                       schedules: todayMedicationScheduleList,
+                      reminderSettings: medicationReminderSettings,
                       completedCount: todayMedicationCompletedCount,
                       totalCount: todayMedicationTotalCount,
                       isLoading: isTodayScheduleLoading,
@@ -98,15 +100,17 @@ class InputPrescriptionUI extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     _HomeActionCard(
+                      cardKey: const ValueKey('homeCaptureCard'),
                       icon: Icons.photo_camera_outlined,
                       title: text.scanPrescription,
                       subtitle: text.scanPrescriptionSubtitle,
                       filled: true,
                       userSetting: userSetting,
-                      onTap: () => _showAnalysisTaskOptions(context, text),
+                      onTap: () => _showAnalysisTaskOptions(context),
                     ),
                     const SizedBox(height: 22),
                     _HomeActionCard(
+                      cardKey: const ValueKey('homeSavedMedicationCard'),
                       icon: Icons.medication_outlined,
                       title: text.savedMedication,
                       subtitle: text.savedMedicationSubtitle,
@@ -115,8 +119,12 @@ class InputPrescriptionUI extends StatelessWidget {
                       onTap: onSavedMedicationRequested,
                     ),
                     const SizedBox(height: 22),
-                    _LinkCard(
+                    _HomeActionCard(
+                      cardKey: const ValueKey('homePatientCaregiverLinkCard'),
+                      icon: Icons.people_alt_outlined,
                       title: text.patientCaregiverLink,
+                      subtitle: text.patientCaregiverLinkSubtitle,
+                      filled: false,
                       userSetting: userSetting,
                       onTap: onPatientCaregiverLinkRequested,
                     ),
@@ -130,110 +138,39 @@ class InputPrescriptionUI extends StatelessWidget {
     );
   }
 
-  Future<void> _showAnalysisTaskOptions(
-    BuildContext context,
-    _HomeText text,
-  ) async {
-    final task = await showModalBottomSheet<_CameraAnalysisTask>(
+  // 함수이름: _showAnalysisTaskOptions
+  // 함수역할:
+  // - 공통 선택 화면에서 처방전 분석 또는 낱알약 식별 작업을 선택하게 한다.
+  // - 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
+  // 매개변수:
+  // - context: 선택 화면 표시와 화면 활성 상태 확인에 사용할 BuildContext
+  // 반환값:
+  // - 없음
+  Future<void> _showAnalysisTaskOptions(BuildContext context) async {
+    final task = await showMedicationCaptureTaskOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: MedBuddyColors.outline,
-                    borderRadius: MedBuddyRadii.pill,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _PrescriptionInputOption(
-                  icon: Icons.photo_camera_outlined,
-                  title: text.prescriptionTask,
-                  subtitle: text.prescriptionTaskSubtitle,
-                  userSetting: userSetting,
-                  onTap: () {
-                    Navigator.pop(context, _CameraAnalysisTask.prescription);
-                  },
-                ),
-                const SizedBox(height: 10),
-                _PrescriptionInputOption(
-                  icon: Icons.medication_outlined,
-                  title: text.pillTask,
-                  subtitle: text.pillTaskSubtitle,
-                  userSetting: userSetting,
-                  onTap: () {
-                    Navigator.pop(context, _CameraAnalysisTask.pill);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      userSetting: userSetting,
     );
 
     if (!context.mounted || task == null) {
       return;
     }
-    if (task == _CameraAnalysisTask.pill) {
+    if (task == MedicationCaptureTask.pill) {
       onPillIdentificationRequested?.call();
       return;
     }
-    _showPrescriptionSourceOptions(context, text);
-  }
-
-  void _showPrescriptionSourceOptions(
-    BuildContext context,
-    _HomeText text,
-  ) {
-    showModalBottomSheet<void>(
+    final source = await showPrescriptionImageSourceOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PrescriptionInputOption(
-                icon: Icons.photo_camera_outlined,
-                title: text.cameraOption,
-                subtitle: text.cameraOptionSubtitle,
-                userSetting: userSetting,
-                onTap: () {
-                  Navigator.pop(context);
-                  onPrescriptionScanRequested?.call();
-                },
-              ),
-              const SizedBox(height: 10),
-              _PrescriptionInputOption(
-                icon: Icons.photo_library_outlined,
-                title: text.galleryOption,
-                subtitle: text.galleryOptionSubtitle,
-                userSetting: userSetting,
-                onTap: () {
-                  Navigator.pop(context);
-                  onPrescriptionGalleryRequested?.call();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      userSetting: userSetting,
     );
+    if (!context.mounted || source == null) {
+      return;
+    }
+    if (source == PrescriptionImageSource.camera) {
+      onPrescriptionScanRequested?.call();
+      return;
+    }
+    onPrescriptionGalleryRequested?.call();
   }
 
   // 함수명: _buildAnalyzingScreen
@@ -324,9 +261,7 @@ class InputPrescriptionUI extends StatelessWidget {
 class _HomeHeader extends StatelessWidget {
   final VoidCallback? onSettingPressed;
 
-  const _HomeHeader({
-    required this.onSettingPressed,
-  });
+  const _HomeHeader({required this.onSettingPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -340,19 +275,24 @@ class _HomeHeader extends StatelessWidget {
         children: [
           const Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'MEDbuddy',
-                  maxLines: 1,
-                  overflow: TextOverflow.visible,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'MedBuddy',
+                    maxLines: 1,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
                 SizedBox(height: 3),
@@ -360,6 +300,7 @@ class _HomeHeader extends StatelessWidget {
                   '건강한 복약 관리 도우미',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textScaler: TextScaler.noScaling,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -396,6 +337,7 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _HomeActionCard extends StatelessWidget {
+  final Key? cardKey;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -404,6 +346,7 @@ class _HomeActionCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _HomeActionCard({
+    this.cardKey,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -428,6 +371,7 @@ class _HomeActionCard extends StatelessWidget {
         borderRadius: MedBuddyRadii.card,
         onTap: onTap,
         child: Container(
+          key: cardKey,
           width: double.infinity,
           constraints: BoxConstraints(minHeight: filled ? 176 : 182),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
@@ -475,161 +419,6 @@ class _HomeActionCard extends StatelessWidget {
   }
 }
 
-class _LinkCard extends StatelessWidget {
-  final String title;
-  final UserSetting userSetting;
-  final VoidCallback? onTap;
-
-  const _LinkCard({
-    required this.title,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return _SurfaceCard(
-      minHeight: 92,
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-      child: Center(
-        child: Text(
-          title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: MedBuddyColors.primaryDark,
-            fontSize: 22 * scale,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SurfaceCard extends StatelessWidget {
-  final Widget child;
-  final double minHeight;
-  final EdgeInsetsGeometry padding;
-  final VoidCallback? onTap;
-
-  const _SurfaceCard({
-    required this.child,
-    required this.minHeight,
-    required this.onTap,
-    this.padding = const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: MedBuddyRadii.card,
-      elevation: 7,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.16),
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          constraints: BoxConstraints(minHeight: minHeight),
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 2.7),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-class _PrescriptionInputOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final UserSetting userSetting;
-  final VoidCallback onTap;
-
-  const _PrescriptionInputOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return Material(
-      color: const Color(0xFFF4FFF4),
-      borderRadius: MedBuddyRadii.card,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: MedBuddyColors.primary,
-                size: 30,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13 * scale,
-                        height: 1.25,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                color: MedBuddyColors.primary,
-                size: 24,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HomeText {
   final String language;
 
@@ -651,23 +440,9 @@ class _HomeText {
       isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
   String get patientCaregiverLink =>
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
-  String get prescriptionTask =>
-      isEnglish ? 'Analyze a prescription' : '처방전 분석';
-  String get prescriptionTaskSubtitle => isEnglish
-      ? 'Extract medication names and schedules.'
-      : '처방전에서 약 이름과 복약 일정을 확인합니다.';
-  String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
-  String get pillTaskSubtitle => isEnglish
-      ? 'Compare a photographed pill with MFDS candidates.'
-      : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
-  String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
-  String get cameraOptionSubtitle =>
-      isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
-  String get galleryOption => isEnglish ? 'Choose From Gallery' : '갤러리에서 선택';
-  String get galleryOptionSubtitle =>
-      isEnglish ? 'Load a saved prescription image.' : '저장된 처방전 이미지를 불러옵니다.';
+  String get patientCaregiverLinkSubtitle => isEnglish
+      ? 'Connect patient and caregiver medication schedules'
+      : '환자와 보호자의 복약 일정을 연결';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
-
-enum _CameraAnalysisTask { prescription, pill }

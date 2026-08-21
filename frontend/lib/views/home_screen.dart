@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
+import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
@@ -11,6 +13,8 @@ import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
 import '../boundaries/prescription_analysis_status_ui_boundary.dart';
+import '../controls/app_language_control.dart';
+import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 
@@ -40,12 +44,16 @@ class HomeScreen extends StatelessWidget {
           onBackRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.previewReady => PrescriptionAnalysisPreviewUI(
-          medicationScheduleList: viewModel.recognizedMedicationScheduleList,
-          recognitionNotice: viewModel.prescriptionRecognitionNotice,
-          userSetting: viewModel.userSetting,
-          onBackRequested: viewModel.clearAnalysisResult,
-          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
-        ),
+        medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+        recognizedTextRegions: viewModel.recognizedTextRegionList,
+        previewImagePath: viewModel.prescriptionPreviewImagePath,
+        recognitionNotice: viewModel.prescriptionRecognitionNotice,
+        userSetting: viewModel.userSetting,
+        onBackRequested: viewModel.clearAnalysisResult,
+        onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
+        onMedicationScheduleChanged:
+            viewModel.updateRecognizedMedicationSchedule,
+      ),
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,
@@ -53,36 +61,59 @@ class HomeScreen extends StatelessWidget {
           onBackRequested: viewModel.clearAnalysisResult,
         ),
       PrescriptionFlowState.analysisSucceeded => PrescriptionAnalysisSuccessUI(
-          analyzedMedicationList: viewModel.analyzedMedicationList,
-          userSetting: viewModel.userSetting,
-          onResultRequested: viewModel.showMedicationAnalysisResult,
-        ),
+        analyzedMedicationList: viewModel.analyzedMedicationList,
+        userSetting: viewModel.userSetting,
+        onResultRequested: viewModel.showMedicationAnalysisResult,
+      ),
       PrescriptionFlowState.analysisFailed => PrescriptionAnalysisFailureUI(
-          message: viewModel.analysisErrorMessage,
-          userSetting: viewModel.userSetting,
-          failureStep: viewModel.analysisProgressStep,
-          onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
-              ? viewModel.requestPrescriptionAnalysis
-              : null,
-          onCameraRetryRequested: viewModel.requestPrescriptionImage,
-          onGalleryRetryRequested:
-              viewModel.requestPrescriptionImageFromGallery,
-          onHomeRequested: viewModel.clearAnalysisResult,
-        ),
+        message: viewModel.analysisErrorMessage,
+        userSetting: viewModel.userSetting,
+        failureStep: viewModel.analysisProgressStep,
+        onAnalysisRetryRequested: viewModel.canRetryPrescriptionAnalysis
+            ? viewModel.requestPrescriptionAnalysis
+            : null,
+        onOcrReviewRequested: viewModel.canRetryPrescriptionAnalysis
+            ? viewModel.returnToPrescriptionPreview
+            : null,
+        onCameraRetryRequested: () =>
+            _requestGuidedPrescriptionImage(context, viewModel),
+        onGalleryRetryRequested: viewModel.requestPrescriptionImageFromGallery,
+        onHomeRequested: viewModel.clearAnalysisResult,
+      ),
       PrescriptionFlowState.resultReady => CheckResultUI(
-          analyzedMedicationList: viewModel.analyzedMedicationList,
-          userSetting: viewModel.userSetting,
-          statusMessageProvider: () => viewModel.statusMessage,
-          savingMedicationIndex: viewModel.savingMedicationIndex,
-          completedMedicationSaveIndexes:
-              viewModel.completedMedicationSaveIndexes,
-          isAllMedicationSaving: viewModel.isAllMedicationSaving,
-          onCloseRequested:
-              isPrescriptionExitBlocked ? null : viewModel.clearAnalysisResult,
-          onAllMedicationSaveRequested:
-              viewModel.requestAllAnalyzedMedicationSave,
-          onMedicationSaveRequested: viewModel.requestMedicationSave,
-        ),
+        analyzedMedicationList: viewModel.analyzedMedicationList,
+        prescriptionChangeRadar: viewModel.prescriptionChangeRadar,
+        isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
+        userSetting: viewModel.userSetting,
+        statusMessageProvider: () => viewModel.statusMessage,
+        savingMedicationIndex: viewModel.savingMedicationIndex,
+        completedMedicationSaveIndexes:
+            viewModel.completedMedicationSaveIndexes,
+        isAllMedicationSaving: viewModel.isAllMedicationSaving,
+        onCloseRequested: isPrescriptionExitBlocked
+            ? null
+            : viewModel.clearAnalysisResult,
+        onAllMedicationSaveRequested:
+            viewModel.requestAllAnalyzedMedicationSave,
+        onMedicationSaveRequested: viewModel.requestMedicationSave,
+        onTodayScheduleRequested: () {
+          viewModel.clearAnalysisResult();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
+          ).then((_) => viewModel.fetchTodayMedicationSchedule());
+        },
+        onSavedMedicationRequested: () {
+          viewModel.clearAnalysisResult();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CheckSavedMedicationUI(),
+            ),
+          );
+        },
+        onHomeRequested: viewModel.clearAnalysisResult,
+      ),
       PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
     };
 
@@ -107,41 +138,35 @@ class HomeScreen extends StatelessWidget {
   // - viewModel: 홈 화면 상태와 사용자 요청 함수를 제공하는 ViewModel
   // 반환값:
   // - 홈 입력 화면 Widget
-  Widget _buildHomeInput(
-    BuildContext context,
-    MedBuddyViewModel viewModel,
-  ) {
+  Widget _buildHomeInput(BuildContext context, MedBuddyViewModel viewModel) {
     final todayMedicationProgress = viewModel.todayMedicationProgress;
 
     return InputPrescriptionUI(
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
+      medicationReminderSettings: viewModel.medicationReminderSettings,
       todayMedicationCompletedCount: todayMedicationProgress.completedCount,
       todayMedicationTotalCount: todayMedicationProgress.totalCount,
       isTodayScheduleLoading: viewModel.isTodayScheduleLoading,
-      onPrescriptionScanRequested: viewModel.requestPrescriptionImage,
+      onPrescriptionScanRequested: () =>
+          _requestGuidedPrescriptionImage(context, viewModel),
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
       onPillIdentificationRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PillIdentificationUI(
-              userSetting: viewModel.userSetting,
-            ),
+            builder: (context) =>
+                PillIdentificationUI(userSetting: viewModel.userSetting),
           ),
         );
       },
       onTodayScheduleRequested: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => const CheckScheduleUI(),
-          ),
-        ).then(
-          (_) => viewModel.fetchTodayMedicationSchedule(),
-        );
+          MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
+        ).then((_) => viewModel.fetchTodayMedicationSchedule());
       },
       onSavedMedicationRequested: () {
         Navigator.push(
@@ -155,21 +180,76 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const LinkPatientCaregiverUI(),
+            builder: (context) =>
+                LinkPatientCaregiverUI(initialUserHash: viewModel.patientHash),
           ),
         );
       },
       onUserSettingRequested: () {
+        final authenticationControl = context.read<AuthenticationControl>();
+        final appLanguageControl = context.read<AppLanguageControl>();
+
+        Future<void> deleteCurrentAccount() async {
+          await authenticationControl.prepareAccountDeletion();
+          await viewModel.requestAccountDataDeletion();
+          await authenticationControl.finishAccountDeletion();
+        }
+
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ManageUserSettingUI(
               initialSetting: viewModel.userSetting,
-              onSettingSaveRequested: viewModel.requestUserSettingSave,
+              authenticationControl: authenticationControl,
+              onSettingSaveRequested:
+                  ({
+                    required String fontSizeOption,
+                    required String readingSpeedOption,
+                    required String language,
+                  }) async {
+                    final result = await viewModel.requestUserSettingSave(
+                      fontSizeOption: fontSizeOption,
+                      readingSpeedOption: readingSpeedOption,
+                      language: language,
+                    );
+                    await appLanguageControl.setLanguage(
+                      result.setting.language,
+                    );
+                    return result;
+                  },
+              onSignOutRequested: authenticationControl.isAnonymous
+                  ? deleteCurrentAccount
+                  : authenticationControl.signOut,
+              onDeleteAccountRequested: deleteCurrentAccount,
             ),
           ),
         );
       },
     );
+  }
+
+  // 함수이름: _requestGuidedPrescriptionImage
+  // 함수역할:
+  // - 처방전 전용 카메라 화면을 열고 촬영된 파일을 ViewModel의 OCR 흐름에 전달한다.
+  // 매개변수:
+  // - context: 전용 카메라 화면을 표시할 BuildContext
+  // - viewModel: 촬영 파일을 분석할 MedBuddyViewModel
+  // 반환값:
+  // - 없음
+  Future<void> _requestGuidedPrescriptionImage(
+    BuildContext context,
+    MedBuddyViewModel viewModel,
+  ) async {
+    final image = await Navigator.push<XFile>(
+      context,
+      MaterialPageRoute<XFile>(
+        builder: (context) =>
+            GuidedPrescriptionCameraUI(userSetting: viewModel.userSetting),
+      ),
+    );
+    if (!context.mounted || image == null) {
+      return;
+    }
+    await viewModel.requestCapturedPrescriptionImage(image);
   }
 }

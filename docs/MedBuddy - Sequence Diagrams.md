@@ -2,6 +2,18 @@
 
 이 문서는 MedBuddy의 주요 상호작용을 Boundary-Control-Entity 관점으로 정리한 PlantUML 시퀀스 다이어그램 제안본이다.
 
+> **Implementation status (2026-07-20):** The six UC-1 through UC-14 groups
+> below preserve the first-semester behavioral baseline. Current implementation
+> names are defined by `MedBuddy - Class Diagram.md`: use `Caregiver`,
+> `LinkPatientCaregiver`, and `CaregiverNotification` where older diagrams say
+> `Guardian`, `PatientGuardianLinkControl`, or `GuardianAlertSetting`. UC-15
+> loose-pill identification is documented in `MedBuddy - v0.0.9 Pill
+> Identification Extension.md`. Caregiver preference persistence is implemented,
+> but cross-device caregiver alert delivery is a beta requirement and must not
+> be inferred from the external notification messages in this historical flow.
+> Authentication and HTTPS are cross-cutting beta additions defined in
+> `MedBuddy - Beta Security Architecture.md`.
+
 ## 수정 기준과 논거
 
 - `boundary`는 사용자 화면, 외부 API, 로컬 저장소처럼 시스템 경계에서 입출력을 담당하는 객체로 둔다.

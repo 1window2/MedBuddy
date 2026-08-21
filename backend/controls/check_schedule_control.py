@@ -2,11 +2,15 @@
 # Role: Control class mapped from CheckSchedule in class diagram integrated v5.
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from boundaries.medication_completion_event_boundary import (
+    MedicationCompletionEventBoundary,
+)
+from core.application_clock import application_today
 from entities.medication_completion_entity import (
     MedicationCompletion,
     _MedicationCompletion,
@@ -14,6 +18,7 @@ from entities.medication_completion_entity import (
 )
 from entities.medication_schedule_entity import (
     MedicationSchedule,
+    decode_medication_schedule_slot_keys,
     medication_schedule_slot_keys_for_frequency,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
@@ -36,10 +41,13 @@ class CheckSchedule:
         self,
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
+        completion_event_boundary: MedicationCompletionEventBoundary | None = None,
     ) -> None:
         self.db = db
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
+        self.completion_event_boundary = completion_event_boundary
+        self._pending_completion_events: list[dict[str, str]] = []
 
     # Function Name: requestTodayMedicationSchedule
     # Description:
@@ -53,7 +61,7 @@ class CheckSchedule:
         patient_hash: str | None = None,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        today = date.today()
+        today = application_today()
         medications = (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == normalized_patient_hash)
@@ -84,6 +92,51 @@ class CheckSchedule:
             "data": active_schedules,
         }
 
+    # Function Name: requestMedicationScheduleWindow
+    # Description:
+    # - Reads medication courses that overlap a bounded rolling date window.
+    # - This supports notification replenishment before a future course starts.
+    # Parameters:
+    # - patient_hash: Patient ownership key used to scope schedule lookup.
+    # - days: Inclusive rolling window length beginning today.
+    # Returns:
+    # - API-compatible schedule list response dictionary.
+    def requestMedicationScheduleWindow(
+        self,
+        patient_hash: str | None = None,
+        days: int = 14,
+    ) -> dict[str, object]:
+        if days < 1 or days > 14:
+            raise ValueError("Schedule window must be between 1 and 14 days.")
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        window_start = application_today()
+        window_end = window_start + timedelta(days=days - 1)
+        medications = (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == normalized_patient_hash)
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+        window_medications = [
+            medication
+            for medication in medications
+            if self.course_policy.is_active_during(
+                medication,
+                window_start,
+                window_end,
+            )
+        ]
+        return {
+            "success": True,
+            "message": "Medication schedule window lookup succeeded.",
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "data": [
+                self._to_schedule_dict(medication, window_start, [])
+                for medication in window_medications
+            ],
+        }
+
     # Function Name: updateMedicationStatus
     # Description:
     # - Persists the medication completion status for one saved medication row.
@@ -101,14 +154,20 @@ class CheckSchedule:
         patient_hash: str | None = None,
         slot_key: str | None = None,
     ) -> dict[str, object]:
+        self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         medication = self._get_existing_medication(
             medication_id,
             normalized_patient_hash,
         )
-        today = date.today()
+        today = application_today()
         slot_keys = self._slot_keys_for_medication(medication)
         target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
+        previous_slot_completion_states = self._slot_completion_states_for_patient(
+            normalized_patient_hash,
+            today,
+            target_slot_keys,
+        )
 
         try:
             if (slot_key or "").strip() and self._is_legacy_completed_on(
@@ -134,6 +193,13 @@ class CheckSchedule:
             slot_statuses = self._slot_statuses_for_medication(medication, today)
             medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
+            current_slot_completion_states = (
+                self._slot_completion_states_for_patient(
+                    normalized_patient_hash,
+                    today,
+                    target_slot_keys,
+                )
+            )
             self.db.commit()
             self.db.refresh(medication)
         except Exception as exc:
@@ -147,11 +213,134 @@ class CheckSchedule:
                 detail="Medication status could not be updated.",
             ) from exc
 
+        self._dispatch_new_slot_completion_events(
+            patient_hash=normalized_patient_hash,
+            target_slot_keys=target_slot_keys,
+            previous_slot_completion_states=previous_slot_completion_states,
+            current_slot_completion_states=current_slot_completion_states,
+        )
         return {
             "success": True,
             "message": "Medication status was updated.",
             "data": self._to_schedule_dict(medication, today),
         }
+
+    # 함수명: _dispatch_new_slot_completion_events
+    # 역할:
+    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 이벤트로 기록한다.
+    # - 직접 주입된 후속 처리기는 테스트와 내부 호출의 호환성을 위해 함께 실행한다.
+    # - 알림 장애가 환자의 복약 체크 저장을 되돌리지 않도록 예외를 격리한다.
+    # 매개변수:
+    # - patient_hash: 환자 소유권 hash
+    # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
+    # - previous_slot_completion_states: 변경 전 시간대별 전체 완료 상태
+    # - current_slot_completion_states: 변경 후 시간대별 전체 완료 상태
+    # 반환값:
+    # - 없음
+    def _dispatch_new_slot_completion_events(
+        self,
+        *,
+        patient_hash: str,
+        target_slot_keys: list[str],
+        previous_slot_completion_states: dict[str, bool],
+        current_slot_completion_states: dict[str, bool],
+    ) -> None:
+        for target_slot_key in target_slot_keys:
+            was_completed = previous_slot_completion_states.get(
+                target_slot_key,
+                False,
+            )
+            is_completed = current_slot_completion_states.get(
+                target_slot_key,
+                False,
+            )
+            if was_completed or not is_completed:
+                continue
+            self._pending_completion_events.append(
+                {
+                    "patient_hash": patient_hash,
+                    "slot_key": target_slot_key,
+                }
+            )
+            if self.completion_event_boundary is None:
+                continue
+            try:
+                self.completion_event_boundary.notifySlotCompleted(
+                    patient_hash=patient_hash,
+                    slot_key=target_slot_key,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Caregiver push dispatch failed after medication commit: %s",
+                    type(exc).__name__,
+                )
+
+    # 함수명: consumeCompletionEvents
+    # 역할:
+    # - 이번 상태 변경에서 새로 완료된 시간대 이벤트를 반환하고 내부 대기 목록을 비운다.
+    # 반환값:
+    # - 환자 hash와 시간대 키를 담은 이벤트 목록
+    def consumeCompletionEvents(self) -> list[dict[str, str]]:
+        completion_events = list(self._pending_completion_events)
+        self._pending_completion_events.clear()
+        return completion_events
+
+    # 함수명: _slot_completion_states_for_patient
+    # 역할:
+    # - 환자의 오늘 활성 약을 기준으로 각 시간대가 모두 완료되었는지 계산한다.
+    # - 대상 약이 하나도 없는 시간대는 완료로 간주하지 않는다.
+    # 매개변수:
+    # - patient_hash: 환자 소유권 hash
+    # - schedule_date: 완료 상태를 확인할 날짜
+    # - slot_keys: 확인할 복약 시간대 목록
+    # 반환값:
+    # - 시간대 키별 전체 완료 여부
+    def _slot_completion_states_for_patient(
+        self,
+        patient_hash: str,
+        schedule_date: date,
+        slot_keys: list[str],
+    ) -> dict[str, bool]:
+        medications = (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == patient_hash)
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+        active_medications = [
+            medication
+            for medication in medications
+            if self._is_active_today(medication, schedule_date)
+        ]
+        completion_rows_by_medication_id = self._completion_rows_by_medication_id(
+            active_medications,
+            patient_hash,
+            schedule_date,
+        )
+        medication_slot_keys = {
+            int(medication.id): self._slot_keys_for_medication(medication)
+            for medication in active_medications
+            if medication.id is not None
+        }
+
+        completion_states: dict[str, bool] = {}
+        for current_slot_key in slot_keys:
+            slot_medications = [
+                medication
+                for medication in active_medications
+                if medication.id is not None
+                and current_slot_key
+                in medication_slot_keys.get(int(medication.id), [])
+            ]
+            completion_states[current_slot_key] = bool(slot_medications) and all(
+                self._slot_statuses_for_medication(
+                    medication,
+                    schedule_date,
+                    completion_rows_by_medication_id.get(int(medication.id), []),
+                ).get(current_slot_key, False)
+                for medication in slot_medications
+            )
+        return completion_states
 
     # Function Name: _get_existing_medication
     # Description:
@@ -195,7 +384,7 @@ class CheckSchedule:
         schedule_date: date | None = None,
         completion_rows: list[_MedicationCompletion] | None = None,
     ) -> dict[str, object]:
-        target_date = schedule_date or date.today()
+        target_date = schedule_date or application_today()
         schedule = self._to_schedule(
             medication,
             target_date,
@@ -209,6 +398,7 @@ class CheckSchedule:
             "medication_status": schedule.medcation_status,
             "slot_statuses": schedule.slot_statuses,
             "completed_slot_keys": schedule.completed_slot_keys,
+            "schedule_slot_keys": schedule.schedule_slot_keys,
             "schedule_date": target_date.isoformat(),
             "patient_hash": schedule.patient_id,
             "patient_id": schedule.patient_id,
@@ -238,7 +428,7 @@ class CheckSchedule:
         schedule_date: date | None = None,
         completion_rows: list[_MedicationCompletion] | None = None,
     ) -> MedicationSchedule:
-        target_date = schedule_date or date.today()
+        target_date = schedule_date or application_today()
         slot_statuses = self._slot_statuses_for_medication(
             medication,
             target_date,
@@ -261,6 +451,7 @@ class CheckSchedule:
             completed_slot_keys=[
                 key for key, completed in slot_statuses.items() if completed
             ],
+            schedule_slot_keys=self._slot_keys_for_medication(medication),
         )
 
     # Function Name: _slot_keys_for_medication
@@ -271,6 +462,11 @@ class CheckSchedule:
     # Returns:
     # - Ordered slot keys used by backend and Flutter schedule UI.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
+        confirmed_slot_keys = decode_medication_schedule_slot_keys(
+            medication.schedule_slot_keys
+        )
+        if confirmed_slot_keys:
+            return confirmed_slot_keys
         frequency_count = self.course_policy.read_frequency_count(
             medication.daily_frequency
         )

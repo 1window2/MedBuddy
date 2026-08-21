@@ -1,0 +1,613 @@
+@startuml
+scale max 4096*4096
+
+title beta/v0.1.0 전체 시스템 주요 동작 Sequence Diagram
+
+autonumber
+hide footbox
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+actor "사용자" as User
+actor "환자" as Patient
+actor "보호자" as Caregiver
+
+actor "Firebase Authentication" as FirebaseAuth
+actor "Firebase Cloud Messaging" as FCM
+actor "Google ML Kit OCR\n(기기 내 SDK)" as MLKit
+actor "Gemini API" as Gemini
+actor "식품의약품안전처\n공공데이터 API" as MFDS
+actor "Camera / Gallery Service" as MediaService
+actor "OS Local Notification" as LocalNotification
+actor "OS TTS" as OSTTS
+actor "Android Workmanager" as Workmanager
+
+box "Flutter Frontend"
+    boundary "UI Layer\nMedBuddyApp\nAuthenticationUI\nHomeScreen\n각 Boundary UI" as UI
+    control "AuthenticationControl" as AuthControl
+    control "MedBuddyViewModel" as ViewModel
+    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nLinkPatientCaregiver 등" as FrontControl
+    participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nNotificationService\nTTSService\nCaregiverNotificationMonitorService" as FrontService
+    participant "AuthenticatedApiClient" as ApiClient
+end box
+
+box "FastAPI Backend"
+    participant "API Router\napi/router.py" as Router
+    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nLinkPatientCaregiver 등" as BackControl
+    participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug API Boundary\nPillVisionBoundary" as BackService
+    participant "PillIdentificationCatalogRepository" as Repository
+    database "Application Database\nSQLAlchemy" as Database
+    database "Pill Catalog Database" as PillDatabase
+    database "Redis Cache" as Redis
+end box
+
+== 1. 앱 실행 및 사용자 접근 ==
+
+User -> UI : MedBuddyApp 실행
+UI -> AuthControl : 초기화 및 현재 인증 상태 확인
+AuthControl -> FirebaseAuth : 현재 사용자 조회
+
+alt Firebase Session이 없는 경우
+    FirebaseAuth --> AuthControl : 인증 사용자 없음
+    AuthControl --> UI : session = null
+    UI --> User : AuthenticationUI 출력
+    User -> UI : Email, Google 또는 Guest 인증 선택
+    UI -> AuthControl : signIn() / signInWithGoogle()\nsignInAnonymously()
+    note over UI, FirebaseAuth : Phone sign-in and SMS MFA are dormant in the no-billing beta.
+    AuthControl -> FirebaseAuth : 사용자 인증 요청
+
+    alt Email 인증이 필요한 경우
+        FirebaseAuth --> AuthControl : Email 검증 요구
+        AuthControl --> UI : 인증 확인 화면 출력
+        User -> UI : Email 인증 완료
+        UI -> AuthControl : refreshEmailVerification()
+        AuthControl -> FirebaseAuth : 인증 검증 요청
+        FirebaseAuth --> AuthControl : 인증 완료
+    else 추가 인증이 필요하지 않은 경우
+        FirebaseAuth --> AuthControl : Firebase 사용자와 ID Token
+    end
+else 기존 Firebase Session이 있는 경우
+    FirebaseAuth --> AuthControl : 현재 사용자와 ID Token
+end
+
+AuthControl -> ApiClient : GET /api/v1/auth/session
+ApiClient -> Router : Authorization: Bearer ID Token
+Router -> Router : validate Host against production allowlist
+Router -> BackService : OIDCTokenVerifier.verifyIdToken()
+BackService -> FirebaseAuth : Firebase ID Token 검증
+FirebaseAuth --> BackService : 검증된 issuer, subject, 사용자 정보
+BackService --> Router : 인증 Principal
+Router -> Database : acquire per-account transaction lock
+Database --> Router : lock held until commit or rollback
+Router -> BackControl : ManageAccount.ensureAccount(userHash)
+BackControl -> Database : user_accounts 조회 또는 생성
+Database --> BackControl : 사용자 계정
+BackControl --> Router : 계정 동기화 완료
+Router --> ApiClient : 인증 Session 응답
+ApiClient --> AuthControl : AuthSession
+AuthControl --> UI : HomeScreen 출력
+
+alt Firebase or App Check startup exceeds the bounded timeout
+    AuthControl --> UI : recoverable startup error
+    User -> UI : Retry secure startup
+    UI -> AuthControl : retryInitialization()
+else Firebase identity succeeds but backend session is unavailable
+    ApiClient --> AuthControl : timeout or transport error
+    AuthControl --> UI : session = null, retain Firebase identity
+    User -> UI : Retry secure session
+    UI -> AuthControl : retryBackendSession()
+    AuthControl -> ApiClient : GET /api/v1/auth/session
+end
+
+AuthControl -> FrontService : PushNotificationService.start()
+note right of FrontService
+  시작 및 Token 등록 Future를 추적해
+  로그아웃 정리와 직렬화
+end note
+FrontService -> FCM : 기기 FCM Token 요청
+FCM --> FrontService : 기기 FCM Token
+FrontService -> ApiClient : POST /api/v1/auth/push-token
+ApiClient -> Router : Token 등록 요청
+Router -> BackControl : ManagePushToken.registerPushToken()
+BackControl -> Database : device_push_tokens 저장
+Database --> BackControl : 저장 완료
+Router --> FrontService : Token 등록 완료
+
+== 1A. Authenticated sign-out ==
+
+User -> UI : request sign-out
+UI -> AuthControl : signOut()
+AuthControl -> FrontService : cancel reminder replenishment and local reminders
+FrontService -> Workmanager : cancel medication reminder refresh task
+FrontService -> LocalNotification : cancel every schedule:* notification
+AuthControl -> FrontService : PushNotificationService.stop(requireServerUnregistration=true)
+FrontService -> FrontService : 진행 중 start/Token POST 완료 대기
+FrontService -> ApiClient : DELETE /api/v1/auth/push-token
+ApiClient -> Router : Bearer token and device token
+Router -> BackControl : ManagePushToken.unregisterPushToken()
+BackControl -> Database : deactivate device token
+Database --> BackControl : committed
+Router --> FrontService : token removed
+alt token cleanup succeeds
+    AuthControl -> FirebaseAuth : signOut()
+    FirebaseAuth --> AuthControl : provider session cleared
+    AuthControl --> UI : show sign-in screen
+else token cleanup fails
+    FrontService --> AuthControl : error
+    AuthControl --> UI : keep authenticated session and show retryable error
+end
+
+== 1B. Permanent account deletion ==
+
+User -> UI : confirm permanent account deletion
+UI -> AuthControl : prepareAccountDeletion()
+alt credential-backed identity needs recent authentication
+    AuthControl -> FirebaseAuth : reauthenticate and force token refresh
+    FirebaseAuth --> AuthControl : ID token with fresh auth_time
+else anonymous guest
+    AuthControl -> FirebaseAuth : force ID token refresh
+    note over AuthControl, FirebaseAuth : Anonymous deletion is explicitly exempt from credential step-up.
+end
+AuthControl --> UI : deletion request is ready
+UI -> ViewModel : requestAccountDataDeletion()
+ViewModel -> Workmanager : cancel medication reminder refresh task
+ViewModel -> LocalNotification : cancel every schedule:* notification
+ViewModel -> FrontControl : ManageAccount.deleteAccountData()
+FrontControl -> ApiClient : DELETE /api/v1/auth/account-data
+ApiClient -> Router : Bearer token with server-derived subject
+Router -> BackService : verify token and recent auth_time
+BackService --> Router : AuthenticatedPrincipal
+Router -> Database : acquire same per-account transaction lock
+note over Router, Database : Every authenticated account request uses this lock before account registration.
+Router -> BackControl : deleteAccountData(userHash, verified subject)
+BackControl -> Database : write tombstone, purge medical data, commit
+BackControl -> FirebaseAuth : Admin delete verified subject
+alt external identity deletion succeeds or was already complete
+    BackControl -> Database : mark identity_deleted_at and commit
+    BackControl --> Router : success
+    Router --> ApiClient : deletion result
+    ApiClient --> UI : deletion complete
+    UI -> AuthControl : finishAccountDeletion()
+    AuthControl -> FirebaseAuth : signOut()
+    AuthControl --> UI : clear session before provider completion
+else external identity deletion is temporarily unavailable
+    BackControl --> Router : retryable provider error
+    Router --> ApiClient : 503 Retry-After
+    ApiClient --> UI : keep deletion screen retryable
+    note over Router, Database : The tombstone blocks new writes; retry is idempotent.
+end
+== 2. 처방전 입력 및 이미지 분석 ==
+
+User -> UI : 처방전 입력 선택
+
+alt 가이드 카메라 촬영
+    UI -> MediaService : Camera 권한 및 영상 Stream 요청
+    MediaService --> UI : Camera Frame
+    loop 촬영 화면이 활성화된 동안
+        UI -> FrontService : PrescriptionFrameAnalyzer.analyze(frame)
+        FrontService --> UI : tooFar / aligned / tooClose
+    end
+    User -> UI : 촬영 버튼 선택
+    UI -> MediaService : 처방전 이미지 촬영
+    MediaService --> UI : 촬영 이미지
+    UI -> ViewModel : requestCapturedPrescriptionImage(image)
+else 사진첩 이미지 선택
+    UI -> ViewModel : requestPrescriptionImageFromGallery()
+    ViewModel -> FrontControl : InputPrescription.requestPrescriptionImageFromGallery()
+    FrontControl -> MediaService : Gallery 이미지 선택 요청
+    MediaService --> FrontControl : 선택 이미지
+end
+
+ViewModel -> FrontControl : InputPrescription로 이미지 분석 요청
+FrontControl -> FrontService : PrescriptionLocalOcrService.recognizeAndMask(imagePath)
+FrontService -> MLKit : 기기 내 문자 인식 실행
+MLKit --> FrontService : 인식 Text와 Text Region
+FrontService -> FrontService : PrescriptionPrivacyFilter\n개인정보 탐지 및 Masking
+FrontService --> FrontControl : LocalPrescriptionOcrResult\nmaskedText, regions
+
+FrontControl -> ApiClient : POST /analyze-prescription-text\n비식별 Text만 전송
+ApiClient -> Router : 처방 Text 분석 요청
+Router -> BackControl : InputPrescription.requestPrescriptionText(maskedText)
+BackControl -> BackService : OCRServiceBoundary.extractPrescriptionTextData()
+BackService -> Gemini : Structured Output 요청
+Gemini --> BackService : 구조화된 처방 정보
+BackService --> BackControl : 약명, 용량, 횟수, 복용일수
+
+BackControl -> Database : Local Drug Catalog에서 약명 후보 조회
+Database --> BackControl : 약명 후보
+
+alt 정확하거나 신뢰 가능한 약명이 존재
+    BackControl -> BackControl : _PrescriptionMedicationNameVerifier.verify()
+else 약명 보정이 필요한 경우
+    BackControl -> BackService : 제한된 Catalog 후보 내 보정 요청
+    BackService -> Gemini : 후보 선택 요청
+    Gemini --> BackService : 선택된 약명과 Confidence
+    BackService --> BackControl : 보정 결과
+end
+
+BackControl --> Router : MedicationSchedule 목록
+Router --> ApiClient : 처방 분석 응답
+ApiClient --> FrontControl : MedicationSchedule 목록
+FrontControl --> ViewModel : 인식 일정과 Preview Region
+ViewModel --> UI : PrescriptionAnalysisPreviewUI 출력
+
+opt 사용자가 흐름을 닫거나 새 촬영을 시작
+    UI -> ViewModel : clearAnalysisResult()
+    ViewModel -> FrontControl : clearSelectedImage()
+    alt 앱 Camera가 생성한 임시 촬영 파일
+        FrontControl -> MediaService : 진행 중 OCR 완료 후 파일 삭제
+    else 사용자가 선택한 Gallery 원본
+        FrontControl -> FrontControl : 참조만 해제하고 원본 보존
+    end
+end
+
+opt 사용자가 OCR 결과를 수정하는 경우
+    User -> UI : 약명, 복용량, 횟수 또는 일수 수정
+    UI -> ViewModel : updateRecognizedMedicationSchedule()
+    ViewModel -> ViewModel : 원본 OCR 값 보존 및 수정 상태 반영
+    ViewModel --> UI : 수정된 Preview 출력
+end
+
+== 3. 약 정보 조회 및 분석 결과 생성 ==
+
+User -> UI : 분석 시작 선택
+UI -> ViewModel : requestPrescriptionAnalysis()
+
+loop 인식된 MedicationSchedule마다
+    ViewModel -> FrontControl : CheckMedicationDetail.requestMedicationDetail(schedule)
+    FrontControl -> ApiClient : POST /identify
+    ApiClient -> Router : 약 상세 조회 요청
+    Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText)
+    BackControl -> BackService : _MedicationDetailCache.get(drugName)
+    BackService -> Redis : Cache 조회
+
+    alt Redis Cache Hit
+        Redis --> BackService : MedicationDetail 목록
+        BackService --> BackControl : Cache 결과
+    else Redis Cache Miss 또는 Redis 사용 불가
+        BackService --> BackControl : Cache 없음
+        BackControl -> BackService : _LocalMedicationCatalog.fetch_drug_info()
+        BackService -> Database : drug_basic_infos 및\ndrug_approval_infos 조회
+
+        alt Local Catalog에 충분한 정보 존재
+            Database --> BackService : Local 약품 정보
+        else Local Catalog 정보가 없거나 불충분
+            Database --> BackService : 조회 결과 없음
+            BackService -> MFDS : PublicDrugSmallAPI.searchMedication()
+            MFDS --> BackService : 의약품 기본정보
+            BackService -> MFDS : PublicDrugLargeAPI.searchMedication()
+            MFDS --> BackService : 의약품 허가정보
+            BackService -> MFDS : PillImageAPI.searchMedicationImage()
+            MFDS --> BackService : 약품 이미지 URL
+        end
+
+        opt 허가정보 요약이 필요한 경우
+            BackService -> Gemini : 약품 정보 요약 요청
+            Gemini --> BackService : 환자용 효능, 복용법, 경고 요약
+        end
+
+        BackService -> Redis : MedicationDetail Cache 저장
+        BackService --> BackControl : MedicationDetail 목록
+    end
+
+    BackControl --> Router : MedicationResponse
+    Router --> ApiClient : 약 상세 응답
+    ApiClient --> FrontControl : MedicationDetail
+    FrontControl --> ViewModel : AnalyzedMedication
+end
+
+ViewModel -> FrontControl : CheckPrescriptionChange.requestPrescriptionChange()
+alt 일부 약품 상세정보 조회 실패
+    ViewModel -> ViewModel : 변경 Radar 생략\n불완전 비교 방지
+else 모든 인식 약품 상세정보 조회 성공
+    FrontControl -> ApiClient : POST /prescription/change-radar
+ApiClient -> Router : 현재 처방 비교 요청
+Router -> BackControl : CheckPrescriptionChange.request_prescription_change()
+BackControl -> Database : 이전 저장 처방을\nprescription_batch_id별 조회
+Database --> BackControl : 같은 날에도 분리된 비교 후보
+BackControl -> BackService : PrescriptionSimilarityService.compare()
+BackService --> BackControl : 유사도와 비교 대상
+BackControl --> Router : PrescriptionChangeRadar
+Router --> ApiClient : 처방 변경 결과
+ApiClient --> ViewModel : PrescriptionChangeRadar
+end
+
+ViewModel --> UI : CheckResultUI에 분석 결과와 변경 Radar 출력
+
+opt 사용자가 분석 약을 저장하는 경우
+    User -> UI : 개별 저장 또는 전체 저장 선택
+    loop 저장 대상으로 선택된 약마다
+        UI -> ViewModel : requestMedicationSave()
+        ViewModel -> FrontControl : CheckSavedMedication.saveMedicationDetail()
+        FrontControl -> ApiClient : POST /save\n처방 분석 batch id 포함
+        ApiClient -> Router : 저장 약 생성 요청
+        Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
+        BackControl -> Database : saved_medications 중복 확인 및 저장
+        Database --> BackControl : 저장 결과
+        BackControl --> Router : 저장, 중복 또는 실패 상태
+        Router --> ApiClient : 저장 결과
+        ApiClient --> ViewModel : MedicationSaveResult
+    end
+    ViewModel --> UI : 저장 결과와 갱신된 일정 상태 출력
+end
+
+== 4. 선택적 낱알 약 후보 식별 ==
+
+opt 사용자가 낱알 약 식별을 선택하는 경우
+    User -> UI : 낱알 앞면 및 선택적 뒷면 이미지 입력
+    UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
+    FrontControl -> ApiClient : POST /pill-identification/candidates
+    ApiClient -> Router : 낱알 이미지 분석 요청
+    Router -> BackControl : IdentifyPill.requestPillIdentification()
+    BackControl -> BackService : PillVisionBoundary.extractVisualFeatures()
+    BackService -> Gemini : GeminiPillVisionAPI 요청
+    Gemini --> BackService : 모양, 색상, 각인, 분할선 특징
+    BackService --> BackControl : PillVisualFeatures
+
+    BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog()
+    BackService -> Repository : list_all() / is_fresh()
+    Repository -> PillDatabase : pill_identification_references 조회
+
+    alt 저장된 Catalog가 최신 상태
+        PillDatabase --> Repository : PillCatalogEntry 목록
+        Repository --> BackService : Local Catalog
+    else Catalog가 없거나 오래된 경우
+        PillDatabase --> Repository : 비어 있거나 오래된 Catalog
+        BackService -> MFDS : MFDSPillAPI.requestCatalog()
+        MFDS --> BackService : 낱알식별정보
+        BackService -> Repository : replace_all(entries)
+        Repository -> PillDatabase : Catalog 교체 저장
+        PillDatabase --> Repository : 저장 완료
+        Repository --> BackService : 갱신된 Catalog
+    end
+
+    BackService --> BackControl : PillCatalogEntry 목록
+    BackControl -> BackControl : 결정론적 Candidate Ranking
+    BackControl --> Router : PillIdentificationResult
+    Router --> ApiClient : 후보와 Match Score
+    ApiClient --> FrontControl : PillIdentificationResult
+    FrontControl --> UI : 후보 목록 출력
+    User -> UI : 실제 약과 일치하는 후보 확인
+end
+
+== 5. 복약 일정 확인 및 복약 완료 ==
+
+Patient -> UI : 오늘 복약 일정 선택
+UI -> ViewModel : fetchTodayMedicationSchedule()
+ViewModel -> FrontControl : CheckSchedule.requestTodayMedicationSchedule()
+FrontControl -> ApiClient : GET /schedule/today
+ApiClient -> Router : 오늘 일정 요청
+Router -> BackControl : CheckSchedule.requestTodayMedicationSchedule(patientHash)
+BackControl -> Database : saved_medications와\nmedication_completions 조회
+Database --> BackControl : 오늘 활성 약과 시간대별 완료 기록
+BackControl --> Router : 시간대별 MedicationSchedule
+Router --> ApiClient : 오늘 복약 일정 응답
+ApiClient --> FrontControl : MedicationSchedule 목록
+FrontControl --> ViewModel : 일정 상태 갱신
+ViewModel --> UI : CheckScheduleUI 출력
+
+Patient -> UI : 특정 시간대 복약 완료 선택
+UI -> ViewModel : requestMedicationDoseStatusUpdate(slotKey, schedule)
+ViewModel -> FrontControl : CheckSchedule.updateMedicationStatus()
+FrontControl -> ApiClient : PATCH /schedule/{id}/status
+ApiClient -> Router : 시간대 완료 상태 변경
+Router -> BackControl : CheckSchedule.updateMedicationStatus()
+BackControl -> Database : medication_completions Upsert
+Database --> BackControl : 갱신된 완료 상태
+
+BackControl -> BackControl : DispatchCaregiverAlert.notifyDoseCompleted()
+BackControl -> Database : 활성 연결, 보호자 알림 설정,\n기기 Push Token 조회
+Database --> BackControl : 보호자 알림 대상
+
+alt dose_completed 보호자 알림이 활성화된 경우
+    BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
+    BackService -> FCM : 복약 완료 Push 전송
+    FCM --> Caregiver : 환자 복약 완료 알림
+else 보호자 알림이 비활성화된 경우
+    BackControl -> BackControl : Push 전송 생략
+end
+
+BackControl --> Router : 갱신된 MedicationSchedule
+Router --> ApiClient : 완료 처리 결과
+ApiClient --> FrontControl : 완료 상태
+FrontControl --> ViewModel : 시간대 상태 갱신
+ViewModel --> UI : 완료 상태 반영
+
+== 6. 환자 복약 알림 설정 ==
+
+Patient -> UI : 시간대 알림 아이콘 선택
+UI --> Patient : SetNotificationUI 출력
+Patient -> UI : 알림 시간 선택 및 저장
+UI -> ViewModel : requestMedicationReminderSave()
+ViewModel -> FrontControl : SetNotification.saveNotificationSetting()
+FrontControl -> ApiClient : PUT /notification/settings/{slotKey}
+ApiClient -> Router : 알림 설정 저장 요청
+Router -> BackControl : SetNotification.saveNotificationSetting()
+BackControl -> Database : notification_settings Upsert
+Database --> BackControl : MedicationAlarm
+BackControl --> Router : 저장된 알림 설정
+Router --> ApiClient : MedicationAlarm
+ApiClient --> FrontControl : 저장 결과
+FrontControl -> FrontService : NotificationService.registerNotification()
+FrontService -> LocalNotification : 복약 Local Notification 예약
+LocalNotification --> FrontService : 예약 완료
+FrontService --> ViewModel : 알림 등록 완료
+ViewModel --> UI : 알림 활성 상태 출력
+
+loop Android Workmanager 12시간 주기
+    Workmanager -> FrontService : medication reminder refresh
+    FrontService -> FirebaseAuth : 백그라운드 사용자 및 ID Token 복원
+    FrontService -> FrontControl : 현재 알림 설정과 14일 복약 일정 조회
+    FrontControl -> ApiClient : GET notification/settings, schedule/window?days=14
+    ApiClient -> Router : 인증된 사용자 범위 조회
+    Router --> ApiClient : MedicationAlarm과 MedicationSchedule
+    ApiClient --> FrontControl : 현재 서버 상태
+    FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
+    FrontService -> FrontService : 다음 14일의 복용 기간 내 날짜 계산
+    FrontService -> LocalNotification : 기존 Slot 교체 및 Rolling Window 보충
+end
+
+== 7. 환자-보호자 연동 및 보호자 조회 ==
+
+Patient -> UI : 연결 코드 생성 선택
+UI -> FrontControl : LinkPatientCaregiver.generatePatientHash()
+FrontControl -> ApiClient : POST /link/code
+ApiClient -> Router : 연결 코드 생성 요청
+Router -> BackControl : LinkPatientCaregiver.generatePatientHash()
+BackControl -> Database : 기존 코드 만료 처리 및\n8자리 patient_link_codes 저장
+Database --> BackControl : 15분 유효 연결 코드
+BackControl --> Router : PatientLinkCode
+Router --> ApiClient : 연결 코드 응답
+ApiClient --> FrontControl : PatientLinkCode
+FrontControl --> UI : 연결 코드와 만료 시간 출력
+Patient --> Caregiver : 연결 코드 전달
+
+Caregiver -> UI : 전달받은 연결 코드 입력
+UI -> FrontControl : LinkPatientCaregiver.requestPatientCaregiverLink(code)
+FrontControl -> ApiClient : POST /link/register
+ApiClient -> Router : 연결 등록 요청
+Router -> BackControl : LinkPatientCaregiver.requestPatientCaregiverLink()
+BackControl -> Database : 코드 유효기간, 사용 여부,\n자기 연결 및 기존 연결 검증
+
+alt 유효한 연결 코드
+    Database --> BackControl : 유효한 PatientLinkCode
+    BackControl -> Database : patient_caregiver_links 저장 및 코드 사용 처리
+    Database --> BackControl : PatientCaregiverLink
+    BackControl --> Router : 연결 성공
+    Router --> ApiClient : 연결 정보
+    ApiClient --> FrontControl : PatientCaregiverLink
+    FrontControl --> UI : 연결 성공 상태 출력
+else 만료, 재사용, 자기 연결 또는 잘못된 코드
+    Database --> BackControl : 검증 실패
+    BackControl --> Router : 연결 오류
+    Router --> ApiClient : 오류 응답
+    ApiClient --> FrontControl : 연결 실패
+    FrontControl --> UI : 사용자용 오류 메시지 출력
+end
+
+Caregiver -> UI : 연결 환자의 복약 현황 선택
+UI -> FrontControl : CheckCaregiverMedication.requestPatientMedicationInfo()
+FrontControl -> ApiClient : GET /caregiver/medications/{patientHash}
+ApiClient -> Router : 연결 환자 복약 정보 요청
+Router -> BackControl : CheckCaregiverMedication.requestPatientMedicationInfo()
+BackControl -> Database : 활성 연결 검증
+Database --> BackControl : 연결 권한
+
+alt 활성 연결이 존재
+    BackControl -> Database : 환자의 saved_medications와\n오늘 medication_completions 조회
+    Database --> BackControl : 저장 약과 오늘 일정
+    BackControl --> Router : 읽기 전용 CaregiverMedicationInfo
+    Router --> ApiClient : 보호자 조회 응답
+    ApiClient --> FrontControl : CaregiverMedicationInfo
+    FrontControl --> UI : CheckCaregiverMedicationUI 출력
+else 활성 연결이 없음
+    BackControl --> Router : 접근 거부
+    Router --> ApiClient : 403 오류
+    ApiClient --> FrontControl : 권한 오류
+    FrontControl --> UI : 연결이 필요하다는 메시지 출력
+end
+
+== 8. 보호자 알림 설정 및 미복약 감지 ==
+
+Caregiver -> UI : 환자 시간대의 보호자 알림 선택
+UI --> Caregiver : SetCaregiverNotificationUI 출력
+Caregiver -> UI : dose_completed 또는\nmissed_deadline Mode와 마감 시간 선택
+UI -> FrontControl : SetCaregiverNotification.saveCaregiverNotificationSetting()
+FrontControl -> ApiClient : PUT /caregiver-notification/settings/{patientHash}
+ApiClient -> Router : 보호자 알림 정책 저장
+Router -> BackControl : SetCaregiverNotification.saveCaregiverNotificationSetting()
+BackControl -> Database : guardian_alert_settings Upsert
+Database --> BackControl : CaregiverNotification
+BackControl --> Router : 저장된 보호자 알림 정책
+Router --> ApiClient : 저장 결과
+ApiClient --> FrontControl : CaregiverNotification
+FrontControl --> UI : 알림 정책 반영
+
+loop Foreground Polling 또는 Android Workmanager 주기
+    Workmanager -> FrontService : Background 작업 Trigger
+    FrontService -> FrontControl : 연결, 알림 설정, 환자 일정 조회
+    FrontControl -> ApiClient : 보호자 Monitoring API 요청
+    ApiClient -> Router : 연결 환자별 설정과 일정 요청
+    Router -> BackControl : 연결 검증 및 복약 상태 조회
+    BackControl -> Database : guardian_alert_settings와\nmedication_completions 조회
+    Database --> BackControl : 시간대별 알림 정책과 완료 상태
+    BackControl --> Router : Monitoring Data
+    Router --> ApiClient : Monitoring 응답
+    ApiClient --> FrontService : 환자별 시간대 상태
+
+    alt missed_deadline 시간이 지났고 복약 미완료
+        FrontService -> LocalNotification : 보호자 미복약 알림 표시
+        LocalNotification --> Caregiver : 환자 미복약 알림
+    else 완료 상태이거나 마감 전
+        FrontService -> FrontService : 다음 점검까지 대기
+    end
+end
+
+== 9. 건강 추천 ==
+
+Patient -> UI : 건강 추천 선택
+UI -> ViewModel : fetchHealthRecommendation()
+ViewModel -> FrontControl : CheckHealthRecommendation.requestHealthRecommendation()
+FrontControl -> ApiClient : GET /health/recommendation
+ApiClient -> Router : 건강 추천 요청
+Router -> BackControl : CheckHealthRecommendation.requestHealthRecommendation()
+BackControl -> Database : 활성 저장 약과\nhealth_recommendation_cache 조회
+
+alt 동일한 약 조합의 유효한 Cache 존재
+    Database --> BackControl : 저장된 HealthRecommendation
+else Cache가 없거나 만료됨
+    Database --> BackControl : 활성 복약 목록
+    BackControl -> BackService : LLMService.requestHealthRecommendation()
+    BackService -> Gemini : 건강 추천 생성 요청
+    Gemini --> BackService : 식이, 운동, 주의사항
+    BackService --> BackControl : HealthRecommendation
+    BackControl -> Database : health_recommendation_cache 저장
+    Database --> BackControl : 저장 완료
+end
+
+BackControl --> Router : HealthRecommendation
+Router --> ApiClient : 추천 응답
+ApiClient --> FrontControl : HealthRecommendation
+FrontControl --> ViewModel : 추천 상태 갱신
+ViewModel --> UI : HealthRecommendationUI 출력
+
+== 10. 음성 안내 ==
+
+User -> UI : 약 상세 화면에서 음성 안내 선택
+UI -> FrontControl : RequestVoiceGuide.requestVoiceGuide()
+FrontControl -> ApiClient : POST /voice-guide
+ApiClient -> Router : MedicationDetail과 언어 전달
+Router -> BackControl : RequestVoiceGuide.requestVoiceGuide()
+BackControl -> BackControl : 약명, 복용법, 주의사항을\n읽기용 Text로 구성
+BackControl --> Router : Voice Guide Text
+Router --> ApiClient : 안내문 응답
+ApiClient --> FrontControl : Voice Guide Text
+FrontControl -> FrontService : TTSService.speak(text, language, speed)
+FrontService -> OSTTS : 음성 재생 요청
+OSTTS --> User : 약 상세 음성 안내
+
+opt 사용자가 재생 중지 또는 화면 종료
+    User -> UI : 음성 중지
+    UI -> FrontControl : RequestVoiceGuide.stop()
+    FrontControl -> FrontService : TTSService.stop()
+    FrontService -> OSTTS : 음성 재생 중지
+end
+
+== 11. 운영 Catalog 주기 갱신 ==
+
+loop 설정된 주기마다 catalog-refresh 실행
+    BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청
+    MFDS --> BackService : 최신 MFDS Dataset
+    BackService -> Database : 기본/허가 Row에 Sync Token 표시
+    BackService -> Database : 미관측 기본/허가 Row 제거,\n낱알 Catalog 교체 (한 Transaction)
+    alt 전체 Dataset 성공
+        Database --> BackService : Commit
+    else 일부 Dataset 실패
+        Database --> BackService : Rollback, 기존 Catalog 보존
+        BackService -> BackService : 설정된 Backoff 후 재시도
+    end
+end
+
+@enduml

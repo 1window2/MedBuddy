@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     UniqueConstraint,
@@ -22,6 +23,7 @@ from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.user_account_entity import _UserAccount  # noqa: F401
 
 
 # Function Name: utc_now
@@ -60,6 +62,7 @@ class _MedicationAlarm(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_hash = Column(
         String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
         index=True,
         nullable=False,
         default=DEFAULT_PATIENT_HASH,
