@@ -56,6 +56,25 @@ def test_android_signing_secrets_are_limited_to_release_branches() -> None:
     assert "environment: beta-android" in workflow
 
 
+# Function Name: test_dormant_cloud_deploy_rejects_anonymous_identities
+# Description:
+# - Keeps the retained managed-cloud deployment fail-closed if it is enabled
+#   after the self-hosted beta period.
+# - Prevents anonymous Firebase identities from reaching cost-bearing routes in
+#   a future public Cloud Run deployment while leaving self-hosted guest policy
+#   under its separate runtime configuration.
+# Returns:
+# - None; pytest reports a failure when anonymous Cloud Run access returns.
+def test_dormant_cloud_deploy_rejects_anonymous_identities() -> None:
+    workflow = (
+        _REPOSITORY_ROOT / ".github" / "workflows" / "deploy-backend.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "if: ${{ false }}" in workflow
+    assert "FIREBASE_ALLOW_ANONYMOUS_AUTH=false" in workflow
+    assert "FIREBASE_ALLOW_ANONYMOUS_AUTH=true" not in workflow
+
+
 # Function Name: test_issue_templates_forbid_real_medical_data
 # Description:
 # - Keeps public bug intake from soliciting prescription images, personal
