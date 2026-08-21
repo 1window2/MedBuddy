@@ -99,7 +99,7 @@ def test_android_artifact_signature_checks_are_fail_closed() -> None:
     ).read_text(encoding="utf-8")
 
     assert (
-        "/^Signer #[0-9]+ certificate SHA-256 digest: "
+        "/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest: "
         "[[:xdigit:]:]+$/" in workflow
     )
     assert 'AAB_VERIFY_OUTPUT="$(jarsigner -verify "${AAB}" 2>&1)"' in workflow
