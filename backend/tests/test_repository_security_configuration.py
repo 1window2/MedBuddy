@@ -58,6 +58,26 @@ def test_android_signing_secrets_are_limited_to_main() -> None:
     assert "environment: beta-android" in workflow
 
 
+# Function Name: test_android_artifact_signature_checks_are_strict
+# Description:
+# - Prevents certificate-subject text from spoofing the APK digest parser.
+# - Requires jarsigner warnings, including unsigned entries, to fail AAB checks.
+# Returns:
+# - None; pytest reports a failure when artifact verification is weakened.
+def test_android_artifact_signature_checks_are_strict() -> None:
+    workflow = (
+        _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "/^Signer #[0-9]+ certificate SHA-256 digest: "
+        "[[:xdigit:]:]+$/" in workflow
+    )
+    assert "jarsigner -verify -strict \"${AAB}\"" in workflow
+    assert '[[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
+    assert '[[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
+
+
 # Function Name: test_dormant_cloud_deploy_rejects_anonymous_identities
 # Description:
 # - Keeps the retained managed-cloud deployment fail-closed if it is enabled

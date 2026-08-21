@@ -289,22 +289,22 @@ jobs:
           fi
 
           APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
-            | awk -F': ' '/[Ss]igner.*certificate SHA-256 digest:/ { print $NF; exit }' \
+            | awk -F': ' '/^Signer #[0-9]+ certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
-          jarsigner -verify "${AAB}"
+          jarsigner -verify -strict "${AAB}"
           AAB_CERT="$(keytool -printcert -jarfile "${AAB}" \
             | sed -n 's/^[[:space:]]*SHA256: //p' \
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
 
-          if [[ -z "${APK_CERT}" ]]; then
+          if [[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
             echo "APK certificate fingerprint extraction failed." >&2
             exit 1
           fi
-          if [[ -z "${AAB_CERT}" ]]; then
+          if [[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
             echo "AAB certificate fingerprint extraction failed." >&2
             exit 1
           fi
