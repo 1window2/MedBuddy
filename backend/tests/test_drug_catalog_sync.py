@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import sys
 import unittest
@@ -27,6 +28,7 @@ from scripts.sync_drug_catalog import (  # noqa: E402
     CatalogSyncIncompleteError,
     DrugCatalogSyncJob,
     _DrugCatalogStore,
+    _configure_logging,
     _exclusive_catalog_sync_lock,
 )
 
@@ -49,6 +51,24 @@ class DrugCatalogSyncTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
+
+    def test_logging_suppresses_credential_bearing_http_client_urls(self) -> None:
+        httpx_logger = logging.getLogger("httpx")
+        httpcore_logger = logging.getLogger("httpcore")
+        previous_httpx_level = httpx_logger.level
+        previous_httpcore_level = httpcore_logger.level
+        try:
+            httpx_logger.setLevel(logging.INFO)
+            httpcore_logger.setLevel(logging.INFO)
+
+            with patch("scripts.sync_drug_catalog.logging.basicConfig"):
+                _configure_logging()
+
+            self.assertEqual(httpx_logger.level, logging.WARNING)
+            self.assertEqual(httpcore_logger.level, logging.WARNING)
+        finally:
+            httpx_logger.setLevel(previous_httpx_level)
+            httpcore_logger.setLevel(previous_httpcore_level)
 
     def test_basic_sync_keeps_same_name_rows_with_distinct_item_seq(self) -> None:
         self.store.upsert_basic_items(

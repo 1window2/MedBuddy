@@ -48,6 +48,17 @@ class CatalogSyncIncompleteError(RuntimeError):
     """Raised when an upstream catalog response would publish partial data."""
 
 
+def _configure_logging() -> None:
+    """Configures catalog logs without exposing credential-bearing request URLs."""
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
 @contextmanager
 def _exclusive_catalog_sync_lock(db: Session) -> Iterator[None]:
     """Serializes the complete catalog job across PostgreSQL-backed workers."""
@@ -722,10 +733,7 @@ def parse_args() -> argparse.Namespace:
 
 async def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    _configure_logging()
 
     db = SessionLocal()
     transport = _PublicDrugTransport(timeout_seconds=60.0)
