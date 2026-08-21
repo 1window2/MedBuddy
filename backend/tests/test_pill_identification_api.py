@@ -52,7 +52,7 @@ class _RecordingIdentifyPill:
                     item_seq="200808877",
                     item_name="Test pill",
                     entp_name="Test manufacturer",
-                    image_url="https://example.test/pill.jpg",
+                    image_url="https://nedrug.mfds.go.kr/pill.jpg",
                     shape="round",
                     colors=("yellow",),
                     print_front="YH",

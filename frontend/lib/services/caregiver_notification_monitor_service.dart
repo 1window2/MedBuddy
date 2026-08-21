@@ -590,15 +590,10 @@ class CaregiverNotificationMonitorService {
       return;
     }
     final slotName = _slotName(slotKey);
-    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
-      preferences,
-      caregiverHash: caregiverHash,
-      patientHash: patientHash,
-    );
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
-      title: '$patientLabel 복약 완료',
-      body: '$patientLabel의 $slotName 복약이 모두 완료되었습니다.',
+      title: '환자 복약 완료',
+      body: '연동된 환자의 $slotName 복약이 모두 완료되었습니다.',
       patientHash: patientHash,
     );
     await preferences.setString('$scope.completion_notice', noticeSignature);
@@ -656,16 +651,11 @@ class CaregiverNotificationMonitorService {
         '${setting.deadlineHour!.toString().padLeft(2, '0')}:'
         '${setting.deadlineMinute!.toString().padLeft(2, '0')}';
     final slotName = _slotName(slotKey);
-    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
-      preferences,
-      caregiverHash: caregiverHash,
-      patientHash: patientHash,
-    );
     await _sendAlert(
       id: _stableNotificationId('missed|$patientHash|$noticeSignature'),
-      title: '$patientLabel 미복용 일정 확인',
+      title: '미복용 일정 확인',
       body:
-          '$patientLabel의 $slotName 복약 중 $deadlineLabel 기준으로 '
+          '연동된 환자의 $slotName 복약 중 $deadlineLabel 기준으로 '
           '아직 체크되지 않은 일정이 '
           '$remainingCount건 있습니다.',
       patientHash: patientHash,

@@ -503,6 +503,89 @@ class DrugCatalogSyncTest(unittest.TestCase):
 
         self.assertEqual(self.db.query(_DrugBasicInfo).count(), 0)
 
+    def test_full_sync_rejects_internally_consistent_mass_pruning(self) -> None:
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq=f"EXISTING-{index}",
+                    item_name=f"existing tablet {index}",
+                    normalized_item_name=f"existingtablet{index}",
+                    raw_json="{}",
+                )
+                for index in range(10)
+            ]
+        )
+        self.db.commit()
+
+        class _PartialBasicAPI:
+            async def fetchPage(
+                self,
+                _page_no: int,
+                _page_size: int,
+            ) -> tuple[list[dict[str, object]], int]:
+                return (
+                    [{"itemSeq": "EXISTING-0", "itemName": "current tablet"}],
+                    1,
+                )
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=_PartialBasicAPI(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=object(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        with self.assertRaises(CatalogSyncIncompleteError):
+            asyncio.run(sync_job.sync_basic())
+
+        self.db.expire_all()
+        self.assertEqual(self.db.query(_DrugBasicInfo).count(), 10)
+
+    def test_pill_sync_rejects_internally_consistent_mass_replacement(
+        self,
+    ) -> None:
+        self.db.add_all(
+            [
+                PillIdentificationReference(
+                    item_seq=f"EXISTING-{index}",
+                    item_name=f"existing tablet {index}",
+                )
+                for index in range(10)
+            ]
+        )
+        self.db.commit()
+
+        class _PartialPillCatalogAPI:
+            async def requestCatalog(self) -> list[PillCatalogEntry]:
+                return [
+                    PillCatalogEntry(
+                        item_seq="REPLACEMENT",
+                        item_name="replacement tablet",
+                    )
+                ]
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=object(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=_PartialPillCatalogAPI(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        with self.assertRaises(CatalogSyncIncompleteError):
+            asyncio.run(sync_job.sync_pill_identification())
+
+        self.db.expire_all()
+        item_seqs = {
+            row.item_seq
+            for row in self.db.query(PillIdentificationReference).all()
+        }
+        self.assertEqual(
+            item_seqs,
+            {f"EXISTING-{index}" for index in range(10)},
+        )
+
     def test_pill_sync_rejects_empty_catalog_without_deleting_existing_rows(
         self,
     ) -> None:

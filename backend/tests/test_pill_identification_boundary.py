@@ -505,7 +505,7 @@ def test_mfds_catalog_parser_accepts_documented_response_shape() -> None:
                     "ITEM_SEQ": "200808877",
                     "ITEM_NAME": "페라트라정2.5밀리그램(레트로졸)",
                     "ENTP_NAME": "영풍제약",
-                    "ITEM_IMAGE": "https://example.test/pill.jpg",
+                    "ITEM_IMAGE": "https://nedrug.mfds.go.kr/pill.jpg",
                     "DRUG_SHAPE": "원형",
                     "COLOR_CLASS1": "노랑",
                     "PRINT_FRONT": "YH",
@@ -521,7 +521,7 @@ def test_mfds_catalog_parser_accepts_documented_response_shape() -> None:
     assert total_count == 1
     assert entry is not None
     assert entry.item_seq == "200808877"
-    assert entry.image_url == "https://example.test/pill.jpg"
+    assert entry.image_url == "https://nedrug.mfds.go.kr/pill.jpg"
 
 
 def test_mfds_catalog_rejects_non_network_image_url() -> None:
@@ -562,7 +562,7 @@ async def test_mfds_api_downloads_and_normalizes_complete_catalog() -> None:
                 {
                     "ITEM_SEQ": "2",
                     "ITEM_NAME": "second",
-                    "ITEM_IMAGE": "//example.test/2.jpg",
+                        "ITEM_IMAGE": "//nedrug.mfds.go.kr/2.jpg",
                 },
                 {"ITEM_SEQ": "1", "ITEM_NAME": "first"},
             ]
@@ -594,7 +594,7 @@ async def test_mfds_api_downloads_and_normalizes_complete_catalog() -> None:
 
     assert requested_pages == [1, 2]
     assert [entry.item_seq for entry in catalog] == ["1", "2", "3"]
-    assert catalog[1].image_url == "https://example.test/2.jpg"
+    assert catalog[1].image_url == "https://nedrug.mfds.go.kr/2.jpg"
 
 
 @pytest.mark.anyio

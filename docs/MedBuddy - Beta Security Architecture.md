@@ -247,9 +247,14 @@ Cloudflare Tunnel.
 - The Android debug manifest retains Internet access for ADB, breakpoints, and
   Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
   access.
-- Medication images are external content. Flutter loads them only from the
-  documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
-  value immediately before every `Image.network` call.
+- Medication images are external content. The backend accepts, persists, and
+  returns them only from the documented `https://nedrug.mfds.go.kr`
+  public-data host. Flutter independently revalidates the value immediately
+  before every `Image.network` call.
+- Prescription image overlays receive validated categories and coordinates,
+  but no model-returned region text. Caregiver notifications use generic
+  lock-screen content and keep the patient scope only in the private tap
+  payload used for authenticated in-app navigation.
 - Prescription image processing rejects decoded dimensions above 24 megapixels
   from the image header and uses a dedicated single-worker executor before
   OpenCV allocation. Multipart byte limits remain a separate outer control.
@@ -265,10 +270,13 @@ Cloudflare Tunnel.
 - Use Play App Signing for store distribution and protect the upload key.
 - Keep the keystore and `key.properties` ignored and outside source control.
 - Store CI signing material in a protected GitHub Environment; expose it only
-  to the exact protected `main` and `beta/v0.1.0` branches after an explicit
-  environment approval, never pull-request or wildcard-ref jobs.
+  to the protected `main` branch after an explicit environment approval, never
+  pull-request, beta-branch, wildcard-ref, or tag jobs.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
+- APK fingerprint extraction is anchored to the exact `apksigner` digest line,
+  and AAB verification uses strict jarsigner semantics before certificate
+  comparison.
 - The release manifest/network security configuration permits HTTPS only.
 - Debug builds retain Internet permission for Flutter tooling, but clear-text
   HTTP access is not enabled in the Android manifest.
@@ -410,10 +418,10 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_PROJECT_ID` as environment
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials; the
-environment requires owner approval and exact custom deployment policies for
-only `main` and `beta/v0.1.0`. The workflow repeats that exact-ref gate before
-repository build code can receive signing material. Arbitrary `beta/*` branches
-and version-like tags cannot access the environment. The protected environment
+environment requires owner approval and an exact custom deployment policy for
+only `main`. The workflow repeats that exact-ref gate before repository build
+code can receive signing material. Beta branches and version-like tags cannot
+access the environment. The protected environment
 also prevents accidental cross-project builds rather than treating public
 Firebase identifiers as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies

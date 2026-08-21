@@ -31,6 +31,19 @@ def test_readiness_checks_database_connectivity() -> None:
     }
 
 
+def test_readiness_coalesces_repeated_public_dependency_checks() -> None:
+    with (
+        patch("main._verify_database_dependencies") as verify_database,
+        TestClient(app) as client,
+    ):
+        first_response = client.get("/ready")
+        second_response = client.get("/ready")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    verify_database.assert_called_once_with()
+
+
 def test_readiness_fails_when_database_is_unavailable() -> None:
     database_error = OperationalError(
         "SELECT 1",

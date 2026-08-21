@@ -73,7 +73,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
             daily_frequency="3 times",
             total_days="7 days",
             schedule_slot_keys=schedule_slot_keys or [],
-            image_url="https://example.com/medicine.jpg",
+            image_url="https://nedrug.mfds.go.kr/medicine.jpg",
             ai_guide="guide",
         )
 
@@ -94,7 +94,10 @@ class CheckSavedMedicationTest(unittest.TestCase):
             saved_row.prescription_batch_id,
             "batch_1234567890abcdef",
         )
-        self.assertEqual(saved_row.image_url, "https://example.com/medicine.jpg")
+        self.assertEqual(
+            saved_row.image_url,
+            "https://nedrug.mfds.go.kr/medicine.jpg",
+        )
 
     def test_save_preserves_user_confirmed_schedule_slots(self) -> None:
         response = self.control.saveMedicationDetail(
@@ -266,7 +269,7 @@ class CheckSavedMedicationTest(unittest.TestCase):
         )
         self.assertEqual(
             response["data"][0]["image_url"],
-            "https://example.com/medicine.jpg",
+            "https://nedrug.mfds.go.kr/medicine.jpg",
         )
 
     def test_list_does_not_enrich_or_mutate_legacy_missing_image(self) -> None:
@@ -284,6 +287,24 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_row = self.db.get(_SavedMedication, save_response["id"])
         self.assertIsNone(saved_row.item_seq)
         self.assertIsNone(saved_row.image_url)
+
+    def test_list_suppresses_legacy_untrusted_image_url(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="legacy-image-tablet",
+        )
+        save_response = self.control.saveMedicationDetail(medication)
+        saved_row = self.db.get(_SavedMedication, save_response["id"])
+        saved_row.image_url = "https://tracker.example/patient-a.png"
+        self.db.commit()
+
+        response = self.control.requestSavedMedicationInfo("patient-a")
+
+        self.assertEqual(response["data"][0]["image_url"], "")
+        self.assertEqual(
+            self.db.get(_SavedMedication, save_response["id"]).image_url,
+            "https://tracker.example/patient-a.png",
+        )
 
     def test_list_preserves_expired_medications_without_mutating_storage(self) -> None:
         expired_medication = self._saved_medication(

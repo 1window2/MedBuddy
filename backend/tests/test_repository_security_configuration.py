@@ -7,6 +7,32 @@ from pathlib import Path
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
+# Function Name: test_local_generated_and_secret_files_are_ignored
+# Description:
+# - Prevents Kotlin session markers, generated Firebase platform files, local
+#   environment variants, signing material, and Flutter plugin registrants from
+#   appearing in commits.
+# - Keeps shareable example environment files explicitly available to Git.
+# Returns:
+# - None; pytest reports a failure when repository hygiene rules regress.
+def test_local_generated_and_secret_files_are_ignored() -> None:
+    ignore_source = (_REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    for required_pattern in (
+        "**/.env.*",
+        "!**/.env.example",
+        "*.salive",
+        "**/.gradle/",
+        "**/.kotlin/",
+        "**/google-services.json",
+        "**/GoogleService-Info.plist",
+        "*.jks",
+        "*.keystore",
+        "frontend/ios/Runner/GeneratedPluginRegistrant.*",
+    ):
+        assert required_pattern in ignore_source
+
+
 # Function Name: test_direct_backend_entrypoint_binds_to_loopback
 # Description:
 # - Prevents the convenience Python entrypoint from exposing the alpha API on
@@ -42,18 +68,40 @@ def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
 # - Prevents arbitrary beta branches or version-like tags from selecting
 #   repository-controlled build code that receives Android signing secrets.
 # - Keeps the repository gate aligned with the beta-android environment's
-#   exact custom deployment branch policies.
+#   protected-main deployment policy.
 # Returns:
 # - None; pytest reports a failure when broad signing refs are reintroduced.
-def test_android_signing_secrets_are_limited_to_release_branches() -> None:
+def test_android_signing_secrets_are_limited_to_main() -> None:
     workflow = (
         _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
     ).read_text(encoding="utf-8")
 
-    assert "refs/heads/main|refs/heads/beta/v0.1.0" in workflow
+    assert "test \"${GITHUB_REF}\" = \"refs/heads/main\"" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "refs/heads/beta/v0.1.0" not in workflow
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow
+
+
+# Function Name: test_android_artifact_signature_checks_are_strict
+# Description:
+# - Prevents certificate-subject text from spoofing the APK digest parser.
+# - Requires jarsigner warnings, including unsigned entries, to fail AAB checks.
+# Returns:
+# - None; pytest reports a failure when artifact verification is weakened.
+def test_android_artifact_signature_checks_are_strict() -> None:
+    workflow = (
+        _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "/^Signer #[0-9]+ certificate SHA-256 digest: "
+        "[[:xdigit:]:]+$/" in workflow
+    )
+    assert "jarsigner -verify -strict \"${AAB}\"" in workflow
+    assert '[[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
+    assert '[[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]' in workflow
 
 
 # Function Name: test_dormant_cloud_deploy_rejects_anonymous_identities

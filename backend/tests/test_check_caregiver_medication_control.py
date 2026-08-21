@@ -53,7 +53,7 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
                 dosage_per_time="1 tablet",
                 daily_frequency="1 time",
                 total_days="3 days",
-                image_url="https://example.com/tablet.jpg",
+                image_url="https://nedrug.mfds.go.kr/tablet.jpg",
             )
         )
 
