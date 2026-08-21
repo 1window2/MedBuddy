@@ -673,6 +673,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                             "category": "medication_row",
                             "text": (
                                 f"{canonical_name} "
+                                "환자명 홍길동 010-1234-5678 "
                                 "900101-1234567 1정 1일 3회"
                             ),
                             "box_2d": [-10, 20, 400, 1100],
@@ -716,10 +717,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             payload["recognized_regions"][0]["box_2d"],
             [0, 20, 400, 1000],
         )
-        self.assertNotIn(
-            "900101-1234567",
-            payload["recognized_regions"][0]["text"],
-        )
+        self.assertEqual(payload["recognized_regions"][0]["text"], "")
         self.assertEqual(
             payload["recognized_regions"][1],
             {
