@@ -67,10 +67,14 @@ def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     with (
         patch("main.settings.APP_ENV", "production"),
         patch("main.settings.AUTH_MODE", "firebase"),
+        patch("main.settings.FIREBASE_PROJECT_ID", "medbuddy-test"),
         patch("main.settings.FIREBASE_APP_CHECK_REQUIRED", True),
         patch("main.settings.RATE_LIMIT_REQUIRE_REDIS", True),
         patch("main._verify_database_revision") as verify_revision,
         patch("main._verify_catalog_seed") as verify_catalog_seed,
+        patch(
+            "main.verify_firebase_admin_credentials"
+        ) as verify_firebase_credentials,
         patch("main.get_oidc_token_verifier") as get_oidc,
         patch("main.get_app_check_token_verifier") as get_app_check,
         patch("main._ping_required_redis", new_callable=AsyncMock) as ping_redis,
@@ -81,6 +85,7 @@ def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     assert response.status_code == 200
     verify_revision.assert_called_once()
     verify_catalog_seed.assert_called_once()
+    verify_firebase_credentials.assert_called_once_with("medbuddy-test")
     get_oidc.assert_called_once_with()
     get_app_check.assert_called_once_with()
     ping_redis.assert_awaited_once_with()

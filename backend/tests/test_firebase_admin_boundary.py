@@ -5,7 +5,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from boundaries.firebase_admin_boundary import get_firebase_admin_app
+from boundaries.firebase_admin_boundary import (
+    get_firebase_admin_app,
+    verify_firebase_admin_credentials,
+)
 
 
 def test_firebase_admin_app_reuses_the_same_project() -> None:
@@ -68,3 +71,17 @@ def test_firebase_admin_app_initializes_once_under_concurrency() -> None:
 
     assert apps == [initialized_app] * 4
     initialize.assert_called_once()
+
+
+def test_firebase_admin_readiness_forces_lazy_credential_loading() -> None:
+    credential = Mock()
+    app = Mock(credential=credential)
+
+    with patch(
+        "boundaries.firebase_admin_boundary.get_firebase_admin_app",
+        return_value=app,
+    ) as get_app:
+        verify_firebase_admin_credentials("medbuddy-test")
+
+    get_app.assert_called_once_with("medbuddy-test")
+    credential.get_credential.assert_called_once_with()
