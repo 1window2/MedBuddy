@@ -1,6 +1,8 @@
 // 파일명: api_config.dart
 // 역할: 프론트엔드에서 사용할 백엔드 API 기본 주소를 관리한다.
 
+import 'package:flutter/foundation.dart';
+
 // 클래스명: ApiConfig
 // 역할: 빌드/실행 환경에서 전달된 API base URL을 앱 전체에 제공한다.
 // 주요 책임:
@@ -44,7 +46,7 @@ class ApiConfig {
   }
 
   static void validate() {
-    validateUrl(baseUrl, requirePublicHttps: true);
+    validateUrl(baseUrl, requirePublicHttps: kReleaseMode || kProfileMode);
   }
 
   // 함수명: validateUrl
