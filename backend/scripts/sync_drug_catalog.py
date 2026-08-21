@@ -48,6 +48,10 @@ class CatalogSyncIncompleteError(RuntimeError):
     """Raised when an upstream catalog response would publish partial data."""
 
 
+_CATALOG_VOLUME_GUARD_MINIMUM_BASELINE = 10
+_CATALOG_VOLUME_GUARD_RETENTION_RATIO = 0.80
+
+
 def _configure_logging() -> None:
     """Configures catalog logs without exposing credential-bearing request URLs."""
 
@@ -322,6 +326,13 @@ class _DrugCatalogStore:
     def count_basic(self) -> int:
         return self.db.query(_DrugBasicInfo).count()
 
+    def count_basic_seen(self, sync_token: str) -> int:
+        return (
+            self.db.query(_DrugBasicInfo)
+            .filter(_DrugBasicInfo.catalog_sync_token == sync_token)
+            .count()
+        )
+
     # Function Name: count_approval
     # Description:
     # - Counts locally stored approval detail rows.
@@ -329,6 +340,13 @@ class _DrugCatalogStore:
     # - Row count.
     def count_approval(self) -> int:
         return self.db.query(_DrugApprovalInfo).count()
+
+    def count_approval_seen(self, sync_token: str) -> int:
+        return (
+            self.db.query(_DrugApprovalInfo)
+            .filter(_DrugApprovalInfo.catalog_sync_token == sync_token)
+            .count()
+        )
 
     def count_pill_identification(self) -> int:
         return self.db.query(PillIdentificationReference).count()
@@ -480,6 +498,7 @@ class DrugCatalogSyncJob:
     # Returns:
     # - Number of rows processed.
     async def sync_basic(self, *, commit: bool = True) -> int:
+        previous_count = self.store.count_basic()
         sync_token = str(uuid4()) if self._is_complete_dataset_sync else None
         try:
             processed = await self._sync_pages(
@@ -496,6 +515,11 @@ class DrugCatalogSyncJob:
                     "The basic medication catalog returned no usable rows."
                 )
             if sync_token is not None:
+                self._validate_refresh_volume(
+                    dataset_name="e약은요",
+                    previous_count=previous_count,
+                    refreshed_count=self.store.count_basic_seen(sync_token),
+                )
                 self.store.prune_basic_items_not_seen(sync_token, commit=False)
             if commit:
                 self.store.db.commit()
@@ -511,6 +535,7 @@ class DrugCatalogSyncJob:
     # Returns:
     # - Number of rows processed.
     async def sync_approval(self, *, commit: bool = True) -> int:
+        previous_count = self.store.count_approval()
         sync_token = str(uuid4()) if self._is_complete_dataset_sync else None
         try:
             processed = await self._sync_pages(
@@ -527,6 +552,11 @@ class DrugCatalogSyncJob:
                     "The approval medication catalog returned no usable rows."
                 )
             if sync_token is not None:
+                self._validate_refresh_volume(
+                    dataset_name="허가정보",
+                    previous_count=previous_count,
+                    refreshed_count=self.store.count_approval_seen(sync_token),
+                )
                 self.store.prune_approval_items_not_seen(sync_token, commit=False)
             if commit:
                 self.store.db.commit()
@@ -537,6 +567,7 @@ class DrugCatalogSyncJob:
             raise
 
     async def sync_pill_identification(self, *, commit: bool = True) -> int:
+        previous_count = self.store.count_pill_identification()
         try:
             catalog = await self.pill_catalog_api.requestCatalog()
             if not catalog:
@@ -546,6 +577,11 @@ class DrugCatalogSyncJob:
             PillIdentificationCatalogRepository(self.store.db).replace_all(
                 catalog,
                 commit=False,
+            )
+            self._validate_refresh_volume(
+                dataset_name="알약 식별정보",
+                previous_count=previous_count,
+                refreshed_count=self.store.count_pill_identification(),
             )
             if commit:
                 self.store.db.commit()
@@ -575,6 +611,36 @@ class DrugCatalogSyncJob:
         """Returns whether this job covers every page from the first page."""
 
         return self.start_page == 1 and self.max_pages is None
+
+    # Function Name: _validate_refresh_volume
+    # Description:
+    # - Rejects a full refresh that would replace a populated catalog with a
+    #   sharply smaller result, even when the upstream response is internally
+    #   consistent and returns HTTP success.
+    # Parameters:
+    # - dataset_name: Human-readable catalog name for the error message.
+    # - previous_count: Row count before the refresh transaction started.
+    # - refreshed_count: Distinct rows observed in the candidate refresh.
+    # Returns:
+    # - None when the candidate volume is safe to publish.
+    @staticmethod
+    def _validate_refresh_volume(
+        *,
+        dataset_name: str,
+        previous_count: int,
+        refreshed_count: int,
+    ) -> None:
+        if previous_count < _CATALOG_VOLUME_GUARD_MINIMUM_BASELINE:
+            return
+        minimum_safe_count = math.ceil(
+            previous_count * _CATALOG_VOLUME_GUARD_RETENTION_RATIO
+        )
+        if refreshed_count < minimum_safe_count:
+            raise CatalogSyncIncompleteError(
+                f"{dataset_name} refresh produced {refreshed_count} rows; "
+                f"at least {minimum_safe_count} are required before replacing "
+                f"the existing {previous_count}-row catalog."
+            )
 
     async def _sync_pages(
         self,
