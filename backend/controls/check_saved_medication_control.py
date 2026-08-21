@@ -21,6 +21,7 @@ from entities.saved_medication_entity import (
     build_saved_medication_deduplication_key,
 )
 from schemas.medication import SavedMedicationCreate
+from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
@@ -40,8 +41,12 @@ class CheckSavedMedication:
         self,
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
+        medication_repository: SavedMedicationRepository | None = None,
     ) -> None:
         self.db = db
+        self.medication_repository = (
+            medication_repository or SavedMedicationRepository(db)
+        )
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
@@ -148,12 +153,7 @@ class CheckSavedMedication:
         self,
         patient_hash: str,
     ) -> list[_SavedMedication]:
-        medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .order_by(_SavedMedication.id.asc())
-            .all()
-        )
+        medications = self.medication_repository.list_by_patient(patient_hash)
         today = application_today()
         return [
             medication
@@ -261,13 +261,9 @@ class CheckSavedMedication:
         patient_hash: str,
     ) -> _SavedMedication:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        medication = (
-            self.db.query(_SavedMedication)
-            .filter(
-                _SavedMedication.id == medication_id,
-                _SavedMedication.patient_hash == normalized_patient_hash,
-            )
-            .first()
+        medication = self.medication_repository.find_owned_by_id(
+            medication_id,
+            normalized_patient_hash,
         )
         if medication is None:
             raise HTTPException(status_code=404, detail="Medication was not found.")
@@ -306,14 +302,10 @@ class CheckSavedMedication:
         registration_date: date,
         deduplication_key: str,
     ) -> _SavedMedication | None:
-        return (
-            self.db.query(_SavedMedication)
-            .filter(
-                _SavedMedication.patient_hash == patient_hash,
-                _SavedMedication.created_date == registration_date,
-                _SavedMedication.deduplication_key == deduplication_key,
-            )
-            .first()
+        return self.medication_repository.find_daily_duplicate(
+            patient_hash=patient_hash,
+            registration_date=registration_date,
+            deduplication_key=deduplication_key,
         )
 
     # 함수명: _build_deduplication_key

@@ -9,6 +9,7 @@ void main() {
       expect(request.headers['authorization'], 'Bearer verified-token');
       expect(request.headers['x-firebase-appcheck'], 'verified-app-token');
       expect(request.headers['accept'], 'application/json');
+      expect(request.headers['x-medbuddy-api-contract'], 'medbuddy-api-v1');
       return http.Response('{}', 200);
     });
     final client = AuthenticatedApiClient(
@@ -21,6 +22,34 @@ void main() {
     final response = await client.get(Uri.parse('https://api.example.test'));
 
     expect(response.statusCode, 200);
+    client.close();
+  });
+
+  test('rejects a response with an incompatible API contract', () async {
+    final client = AuthenticatedApiClient(
+      inner: MockClient(
+        (request) async => http.Response(
+          '{}',
+          200,
+          headers: {'x-medbuddy-api-contract': 'medbuddy-api-v2'},
+        ),
+      ),
+      tokenProvider: () async => null,
+      appCheckTokenProvider: () async => null,
+      trustedBaseUri: Uri.parse('http://localhost/api/v1/medication'),
+    );
+
+    await expectLater(
+      client.get(Uri.parse('http://localhost/api/v1/medication/list')),
+      throwsA(
+        isA<ApiContractMismatchException>().having(
+          (error) => error.serverVersion,
+          'serverVersion',
+          'medbuddy-api-v2',
+        ),
+      ),
+    );
+
     client.close();
   });
 

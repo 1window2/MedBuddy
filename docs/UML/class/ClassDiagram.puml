@@ -436,7 +436,6 @@ package "FastAPI Backend" {
             + model_name: str
             + requestPrescriptionImage(image): dict
             + requestPrescriptionText(masked_text): dict
-            + parse_prescription_text(text): dict
             + maskSensitiveInfo(rawText): str
         }
 

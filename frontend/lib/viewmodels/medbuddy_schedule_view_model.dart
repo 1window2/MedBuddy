@@ -30,7 +30,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     _todayScheduleLoadCount += 1;
     _isTodayScheduleLoading = true;
     _hasTodayScheduleLoadError = false;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.schedule);
 
     try {
       final scheduleList = await loader();
@@ -62,7 +62,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     } finally {
       _todayScheduleLoadCount -= 1;
       _isTodayScheduleLoading = _todayScheduleLoadCount > 0;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
     }
   }
 
@@ -128,18 +128,18 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
                 : item,
           )
           .toList(growable: false);
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
       return true;
     } on StateError catch (error) {
       _statusMessage = UserFacingErrorMessage.resolve(
         error,
         isEnglish: _isEnglishSetting,
       );
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
       return false;
     } catch (_) {
       _statusMessage = '복약 상태를 업데이트하지 못했습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
       return false;
     }
   }

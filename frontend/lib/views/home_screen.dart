@@ -16,6 +16,7 @@ import '../boundaries/prescription_analysis_status_ui_boundary.dart';
 import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../viewmodels/medbuddy_feature_updates.dart';
 
 // 파일명: home_screen.dart
 // 역할: ViewModel의 처방전 분석 상태에 따라 실제 표시할 화면을 선택한다.
@@ -30,7 +31,19 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<MedBuddyViewModel>();
+    final viewModel = context.read<MedBuddyViewModel>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        viewModel.updatesFor(MedBuddyFeature.prescription),
+        viewModel.updatesFor(MedBuddyFeature.schedule),
+        viewModel.updatesFor(MedBuddyFeature.reminder),
+        viewModel.updatesFor(MedBuddyFeature.userSetting),
+      ]),
+      builder: (context, _) => _buildActiveScreen(context, viewModel),
+    );
+  }
+
+  Widget _buildActiveScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final flowState = viewModel.prescriptionFlowState;
     final isPrescriptionExitBlocked =
         viewModel.isMedicationSaving || viewModel.isAllMedicationSaving;

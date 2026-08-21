@@ -3,16 +3,8 @@
 
 import 'package:flutter/material.dart';
 
-// Class Name: AuthenticationGateState
-// Role: Exposes the minimum observable state required by AuthenticationGate.
-// Responsibilities:
-// - Reports whether authentication bootstrap is still running.
-// - Reports whether a verified MedBuddy backend session exists.
-abstract interface class AuthenticationGateState implements Listenable {
-  bool get isInitializing;
-
-  bool get isAuthenticated;
-}
+import '../entities/authentication_gate_state_entity.dart';
+export '../entities/authentication_gate_state_entity.dart';
 
 // Class Name: AuthenticationGate
 // Role: Switches the active root-route content as authentication changes.

@@ -11,6 +11,7 @@ from core.application_clock import application_today
 from entities.medication_detail_entity import _DrugApprovalInfo
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
+from repositories.saved_medication_repository import SavedMedicationRepository
 from schemas.prescription_change import (
     PrescriptionChangeMedication,
     PrescriptionChangeRequest,
@@ -48,8 +49,12 @@ class CheckPrescriptionChange:
         self,
         db: Session,
         similarity_service: PrescriptionSimilarityService | None = None,
+        medication_repository: SavedMedicationRepository | None = None,
     ) -> None:
         self.db = db
+        self.medication_repository = (
+            medication_repository or SavedMedicationRepository(db)
+        )
         self.similarity_service = similarity_service or PrescriptionSimilarityService()
 
     # 함수이름: request_prescription_change
@@ -182,16 +187,7 @@ class CheckPrescriptionChange:
         patient_hash: str,
         current_date: date | None,
     ) -> tuple[str, list[tuple[date, list[_SavedMedication]]]]:
-        rows = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .order_by(
-                _SavedMedication.prescription_date.desc(),
-                _SavedMedication.created_date.desc(),
-                _SavedMedication.id.desc(),
-            )
-            .all()
-        )
+        rows = self.medication_repository.list_recent_by_patient(patient_hash)
         dated_rows = [
             (self._effective_prescription_date(row), row)
             for row in rows

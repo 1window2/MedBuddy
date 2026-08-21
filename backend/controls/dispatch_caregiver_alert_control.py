@@ -15,7 +15,9 @@ from entities.caregiver_notification_entity import (
     decode_slot_settings,
 )
 from entities.device_push_token_entity import _DevicePushToken
-from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+from repositories.patient_caregiver_link_repository import (
+    PatientCaregiverLinkRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +43,13 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         self,
         db: Session,
         push_boundary: PushNotificationBoundary,
+        link_repository: PatientCaregiverLinkRepository | None = None,
     ) -> None:
         self.db = db
         self.push_boundary = push_boundary
+        self.link_repository = (
+            link_repository or PatientCaregiverLinkRepository(db)
+        )
 
     # 함수명: notifySlotCompleted
     # 역할:
@@ -98,14 +104,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         patient_hash: str,
         slot_key: str,
     ) -> list[str]:
-        links = (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                _PatientCaregiverLink.patient_hash == patient_hash,
-                _PatientCaregiverLink.linked.is_(True),
-            )
-            .all()
-        )
+        links = self.link_repository.list_active_for_patient(patient_hash)
         caregiver_hashes: list[str] = []
         for link in links:
             setting = (

@@ -20,7 +20,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
     bool refreshAfterSave = true,
   }) async {
     _statusMessage = '${medicationInfo.itemName} 저장 중...';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
 
     final result = await checkSavedMedication.saveMedicationDetail(
       medicationInfo,
@@ -28,7 +28,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
     );
     if (result.status == MedicationSaveStatus.failed) {
       _statusMessage = result.message;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
       return result;
     }
 
@@ -40,7 +40,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
       await fetchTodayMedicationSchedule();
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
     return result;
   }
 
@@ -51,7 +51,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
   // - 없음
   Future<void> fetchSavedMedicationInfo() async {
     _isSavedMedicationLoading = true;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
 
     try {
       final savedMedicationInfoList = await checkSavedMedication
@@ -66,7 +66,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
       _statusMessage = '저장된 복약 정보를 불러오지 못했습니다.';
     } finally {
       _isSavedMedicationLoading = false;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
     }
   }
 

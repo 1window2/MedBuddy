@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.application_clock import application_now
 from core.config import settings
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
+from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_STATUS_SENT,
+    _CaregiverAlertOutbox,
+)
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientLinkCode
 from entities.saved_medication_entity import _SavedMedication
@@ -41,6 +45,9 @@ class DataMaintenanceService:
         cache_cutoff = utc_now - timedelta(
             days=settings.HEALTH_RECOMMENDATION_CACHE_RETENTION_DAYS
         )
+        outbox_cutoff = utc_now - timedelta(
+            days=settings.CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS
+        )
         deleted = {
             "saved_medications": self.retention_policy.cleanup_expired_medications(
                 db,
@@ -69,6 +76,14 @@ class DataMaintenanceService:
             "health_recommendation_cache": (
                 db.query(_HealthRecommendationCache)
                 .filter(_HealthRecommendationCache.created_at < cache_cutoff)
+                .delete(synchronize_session=False)
+            ),
+            "sent_caregiver_alerts": (
+                db.query(_CaregiverAlertOutbox)
+                .filter(
+                    _CaregiverAlertOutbox.status == CAREGIVER_ALERT_STATUS_SENT,
+                    _CaregiverAlertOutbox.sent_at < outbox_cutoff,
+                )
                 .delete(synchronize_session=False)
             ),
         }

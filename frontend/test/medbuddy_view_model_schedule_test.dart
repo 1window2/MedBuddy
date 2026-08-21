@@ -14,9 +14,32 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('일정 변경은 일정 화면 채널에만 전달된다', () async {
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _DelayedCheckSchedule(
+        Future.value(const <MedicationSchedule>[]),
+      ),
+    );
+    addTearDown(viewModel.dispose);
+    var scheduleUpdateCount = 0;
+    var prescriptionUpdateCount = 0;
+    viewModel.updatesFor(MedBuddyFeature.schedule).addListener(() {
+      scheduleUpdateCount += 1;
+    });
+    viewModel.updatesFor(MedBuddyFeature.prescription).addListener(() {
+      prescriptionUpdateCount += 1;
+    });
+
+    await viewModel.fetchTodayMedicationSchedule();
+
+    expect(scheduleUpdateCount, 2);
+    expect(prescriptionUpdateCount, 0);
+  });
+
   test('비동기 일정 조회가 끝나기 전에 ViewModel을 폐기해도 예외가 발생하지 않는다', () async {
     final scheduleCompleter = Completer<List<MedicationSchedule>>();
     final viewModel = MedBuddyViewModel(

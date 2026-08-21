@@ -12,7 +12,7 @@ from typing import Any, Callable, TypeVar
 import redis.asyncio as redis
 from google import genai
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from boundaries.public_drug_api_boundary import (
     PillImageAPI,
@@ -724,7 +724,7 @@ class _LocalMedicationCatalog:
         if self.db is None:
             return []
 
-        basic_items = self._search_basic(drug_name)
+        basic_items, approval_items = await self._search_catalog(drug_name)
         if basic_items:
             logger.info(
                 "[Local DB] e약은요 lookup succeeded (%s items).",
@@ -732,12 +732,57 @@ class _LocalMedicationCatalog:
             )
             return await self._build_basic_details(basic_items)
 
-        approval_items = self._search_approval(drug_name)
         if not approval_items:
             return []
 
         logger.info("[Local DB] approval lookup succeeded.")
         return [await self._build_approval_detail(drug_name, approval_items[0])]
+
+    # 함수이름: _search_catalog
+    # 함수역할:
+    # - 로컬 카탈로그 조회를 이벤트 루프 밖의 독립 DB 세션에서 처리한다.
+    # - 연결별 DB가 분리되는 인메모리 SQLite에서는 현재 테스트 세션을 사용한다.
+    async def _search_catalog(
+        self,
+        drug_name: str,
+    ) -> tuple[list[_DrugBasicInfo], list[_DrugApprovalInfo]]:
+        if self.db is None:
+            return [], []
+        bind = self.db.get_bind()
+        uses_memory_sqlite = bind.dialect.name == "sqlite" and bind.url.database in {
+            None,
+            "",
+            ":memory:",
+        }
+        if uses_memory_sqlite:
+            basic_items = self._search_basic(drug_name)
+            return basic_items, [] if basic_items else self._search_approval(drug_name)
+        return await asyncio.to_thread(
+            self._search_catalog_with_isolated_session,
+            drug_name,
+        )
+
+    # 함수이름: _search_catalog_with_isolated_session
+    # 함수역할:
+    # - 작업 스레드 안에서 별도 세션을 만들고 기본·허가 카탈로그를 순서대로 조회한다.
+    def _search_catalog_with_isolated_session(
+        self,
+        drug_name: str,
+    ) -> tuple[list[_DrugBasicInfo], list[_DrugApprovalInfo]]:
+        if self.db is None:
+            return [], []
+        worker_session_factory = sessionmaker(bind=self.db.get_bind())
+        worker_db = worker_session_factory()
+        try:
+            worker = _LocalMedicationCatalog(
+                db=worker_db,
+                summary_generator=self.summary_generator,
+                name_matcher=self.name_matcher,
+            )
+            basic_items = worker._search_basic(drug_name)
+            return basic_items, [] if basic_items else worker._search_approval(drug_name)
+        finally:
+            worker_db.close()
 
     # 함수이름: _search_basic
     # 함수역할:

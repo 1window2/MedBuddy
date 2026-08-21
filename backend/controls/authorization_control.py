@@ -4,9 +4,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
-from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.user_account_entity import _UserAccount
+from repositories.patient_caregiver_link_repository import (
+    PatientCaregiverLinkRepository,
+)
 
 
 class AuthorizationControl:
@@ -14,6 +16,9 @@ class AuthorizationControl:
 
     def __init__(self, db: Session | None) -> None:
         self.db = db
+        self.link_repository = (
+            PatientCaregiverLinkRepository(db) if db is not None else None
+        )
 
     def resolveOwnUserHash(
         self,
@@ -74,13 +79,6 @@ class AuthorizationControl:
     def _has_active_link(self, caregiver_hash: str, patient_hash: str) -> bool:
         if self.db is None:
             return False
-        return (
-            self.db.query(_PatientCaregiverLink.id)
-            .filter(
-                _PatientCaregiverLink.caregiver_hash == caregiver_hash,
-                _PatientCaregiverLink.patient_hash == patient_hash,
-                _PatientCaregiverLink.linked.is_(True),
-            )
-            .first()
-            is not None
-        )
+        if self.link_repository is None:
+            return False
+        return self.link_repository.has_active_pair(caregiver_hash, patient_hash)

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../entities/health_recommendation_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../viewmodels/medbuddy_feature_updates.dart';
 
 // 파일명: health_recommendation_ui_boundary.dart
 // 역할: 약 조합 기반 건강 관리 추천 화면을 구성한다.
@@ -37,7 +38,17 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<MedBuddyViewModel>();
+    final viewModel = context.read<MedBuddyViewModel>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        viewModel.updatesFor(MedBuddyFeature.healthRecommendation),
+        viewModel.updatesFor(MedBuddyFeature.userSetting),
+      ]),
+      builder: (context, _) => _buildScreen(context, viewModel),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final text = _HealthRecommendationText(viewModel.userSetting.language);
 
     return Scaffold(

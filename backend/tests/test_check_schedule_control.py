@@ -23,6 +23,10 @@ from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
     ensure_medication_completion_schema,
 )
+from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_STATUS_PENDING,
+    _CaregiverAlertOutbox,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
@@ -219,15 +223,17 @@ class CheckScheduleTest(unittest.TestCase):
             "patient-a",
             slot_key="morning",
         )
-        self.assertEqual(
-            control.consumeCompletionEvents(),
-            [
-                {
-                    "patient_hash": "patient-a",
-                    "slot_key": "morning",
-                }
-            ],
+        completion_events = control.consumeCompletionEvents()
+        self.assertEqual(len(completion_events), 1)
+        self.assertEqual(completion_events[0]["patient_hash"], "patient-a")
+        self.assertEqual(completion_events[0]["slot_key"], "morning")
+        self.assertIsInstance(completion_events[0]["outbox_id"], int)
+        outbox_row = self.db.get(
+            _CaregiverAlertOutbox,
+            int(completion_events[0]["outbox_id"]),
         )
+        self.assertIsNotNone(outbox_row)
+        self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_PENDING)
         control.updateMedicationStatus(
             second_medication.id,
             True,

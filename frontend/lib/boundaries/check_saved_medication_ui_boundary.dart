@@ -11,6 +11,7 @@ import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../viewmodels/medbuddy_feature_updates.dart';
 
 part 'check_saved_medication_empty_widgets.dart';
 part 'check_saved_medication_filter_widgets.dart';
@@ -64,7 +65,17 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<MedBuddyViewModel>();
+    final viewModel = context.read<MedBuddyViewModel>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        viewModel.updatesFor(MedBuddyFeature.savedMedication),
+        viewModel.updatesFor(MedBuddyFeature.userSetting),
+      ]),
+      builder: (context, _) => _buildScreen(context, viewModel),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final userSetting = viewModel.userSetting;
     final text = _SavedMedicationText(userSetting.language);
     final savedMedicationInfoList = viewModel.savedMedicationInfoList;

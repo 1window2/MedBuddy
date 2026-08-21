@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_caregiver_medication_control.dart';
+import '../controls/manage_caregiver_patient_local_state_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_detail_entity.dart';
@@ -12,7 +12,6 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
-import '../services/caregiver_patient_local_state_service.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'set_caregiver_notification_ui_boundary.dart';
 
@@ -44,7 +43,9 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
 
 class _CheckCaregiverMedicationUIState
     extends State<CheckCaregiverMedicationUI> {
-  static const Duration _refreshInterval = Duration(seconds: 5);
+  static const Duration _refreshInterval = Duration(seconds: 15);
+  static const ManageCaregiverPatientLocalState _localStateControl =
+      ManageCaregiverPatientLocalState();
   static const List<_CaregiverScheduleSlot> _slots = [
     _CaregiverScheduleSlot(
       key: 'morning',
@@ -98,7 +99,7 @@ class _CheckCaregiverMedicationUIState
     _ownsControl = widget.control == null;
     _patientLabel = widget.patientLabel?.trim().isNotEmpty == true
         ? widget.patientLabel!.trim()
-        : CaregiverPatientLocalStateService.fallbackLabel(widget.patientHash);
+        : _localStateControl.fallbackLabel(widget.patientHash);
     _control =
         widget.control ??
         CheckCaregiverMedication(caregiverHash: widget.caregiverHash);
@@ -264,9 +265,7 @@ class _CheckCaregiverMedicationUIState
   // 반환값:
   // - 없음
   Future<void> _loadPatientLabel() async {
-    final preferences = await SharedPreferences.getInstance();
-    final label = CaregiverPatientLocalStateService.resolveLabel(
-      preferences,
+    final label = await _localStateControl.loadLabel(
       caregiverHash: widget.caregiverHash,
       patientHash: widget.patientHash,
     );

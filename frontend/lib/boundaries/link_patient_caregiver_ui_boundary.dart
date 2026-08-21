@@ -2,14 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/link_patient_caregiver_control.dart';
+import '../controls/manage_caregiver_patient_local_state_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
-import '../services/caregiver_patient_local_state_service.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
 
 typedef LinkPatientCaregiverFactory =
@@ -39,6 +38,8 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 }
 
 class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
+  static const ManageCaregiverPatientLocalState _localStateControl =
+      ManageCaregiverPatientLocalState();
   late final TextEditingController _patientCodeController;
   late String _committedUserHash;
   late LinkPatientCaregiver _control;
@@ -278,9 +279,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
-      final preferences = await SharedPreferences.getInstance();
-      await CaregiverPatientLocalStateService.clearPatientState(
-        preferences,
+      await _localStateControl.clearPatientState(
         caregiverHash: link.caregiverHash,
         patientHash: link.patientHash,
       );
@@ -311,19 +310,10 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   Future<Map<String, String>> _loadPatientLabels(
     List<PatientCaregiverLink> links,
   ) async {
-    final preferences = await SharedPreferences.getInstance();
-    final labels = <String, String>{};
-    for (final link in links) {
-      if (link.caregiverHash != _committedUserHash) {
-        continue;
-      }
-      labels[link.patientHash] = CaregiverPatientLocalStateService.resolveLabel(
-        preferences,
-        caregiverHash: link.caregiverHash,
-        patientHash: link.patientHash,
-      );
-    }
-    return labels;
+    return _localStateControl.loadLabels(
+      caregiverHash: _committedUserHash,
+      links: links,
+    );
   }
 
   Future<_LinkRequest?> _runLinkAction(
@@ -409,7 +399,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
     var draftLabel =
         _patientLabels[link.patientHash] ??
-        CaregiverPatientLocalStateService.fallbackLabel(link.patientHash);
+        _localStateControl.fallbackLabel(link.patientHash);
     final submittedLabel = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
@@ -418,7 +408,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           content: TextFormField(
             initialValue: draftLabel,
             autofocus: true,
-            maxLength: CaregiverPatientLocalStateService.maximumLabelLength,
+            maxLength: ManageCaregiverPatientLocalState.maximumLabelLength,
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
               hintText: '예: 어머니, 아버지',
@@ -443,9 +433,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     if (submittedLabel == null || !mounted) {
       return;
     }
-    final preferences = await SharedPreferences.getInstance();
-    final savedLabel = await CaregiverPatientLocalStateService.saveLabel(
-      preferences,
+    final savedLabel = await _localStateControl.saveLabel(
       caregiverHash: link.caregiverHash,
       patientHash: link.patientHash,
       label: submittedLabel,

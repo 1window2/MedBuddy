@@ -30,6 +30,7 @@ import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/notification_service.dart';
 import '../services/user_facing_error_message.dart';
+import 'medbuddy_feature_updates.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_view_model.dart';
@@ -88,6 +89,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   final http.Client _apiClient;
   final bool _ownsApiClient;
   bool _isDisposed = false;
+  final Map<MedBuddyFeature, MedBuddyFeatureUpdates> _featureUpdates = {
+    for (final feature in MedBuddyFeature.values)
+      feature: MedBuddyFeatureUpdates(),
+  };
+
+  MedBuddyFeatureUpdates updatesFor(MedBuddyFeature feature) {
+    return _featureUpdates[feature]!;
+  }
 
   PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
@@ -310,9 +319,16 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 기능별 ViewModel 확장에서 상태 변경을 화면에 알릴 수 있도록 ChangeNotifier 호출을 중계한다.
   // 반환값:
   // - 없음
-  void _notifyViewModelListeners() {
+  void _notifyViewModelListeners([MedBuddyFeature? feature]) {
     if (_isDisposed) {
       return;
+    }
+    if (feature == null) {
+      for (final updates in _featureUpdates.values) {
+        updates.markChanged();
+      }
+    } else {
+      _featureUpdates[feature]!.markChanged();
     }
     notifyListeners();
   }
@@ -323,6 +339,9 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    for (final updates in _featureUpdates.values) {
+      updates.dispose();
+    }
     _cancelPrescriptionOperation();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();

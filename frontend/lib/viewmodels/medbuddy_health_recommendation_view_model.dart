@@ -17,7 +17,7 @@ extension MedBuddyHealthRecommendationViewModel on MedBuddyViewModel {
     _statusMessage = _isEnglishSetting
         ? 'Loading health recommendations.'
         : '건강 관리 추천을 불러오는 중입니다.';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.healthRecommendation);
 
     try {
       final healthRecommendation = await checkHealthRecommendation
@@ -34,7 +34,7 @@ extension MedBuddyHealthRecommendationViewModel on MedBuddyViewModel {
           : '건강 관리 추천을 불러오지 못했습니다.';
     } finally {
       _isHealthRecommendationLoading = false;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.healthRecommendation);
     }
   }
 }

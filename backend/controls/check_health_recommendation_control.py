@@ -15,6 +15,7 @@ from entities.health_recommendation_cache_entity import _HealthRecommendationCac
 from entities.health_recommendation_entity import HealthRecommendation
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
+from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
@@ -33,8 +34,12 @@ class CheckHealthRecommendation:
         db: Session,
         llm_service: LLMService | None = None,
         course_policy: MedicationCoursePolicy | None = None,
+        medication_repository: SavedMedicationRepository | None = None,
     ) -> None:
         self.db = db
+        self.medication_repository = (
+            medication_repository or SavedMedicationRepository(db)
+        )
         self.llm_service = llm_service or LLMService()
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
@@ -194,12 +199,7 @@ class CheckHealthRecommendation:
         patient_hash: str,
         today: date,
     ) -> list[_SavedMedication]:
-        medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .order_by(_SavedMedication.id.asc())
-            .all()
-        )
+        medications = self.medication_repository.list_by_patient(patient_hash)
         return [
             medication
             for medication in medications

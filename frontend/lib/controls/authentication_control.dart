@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../entities/auth_session_entity.dart';
+import '../entities/authentication_gate_state_entity.dart';
 import '../entities/patient_hash_entity.dart';
-import '../boundaries/authentication_gate.dart';
 import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';

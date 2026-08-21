@@ -132,6 +132,16 @@ class Settings(BaseSettings):
         ge=300,
         le=86_400,
     )
+    CAREGIVER_ALERT_OUTBOX_POLL_SECONDS: int = Field(
+        default=15,
+        ge=5,
+        le=300,
+    )
+    CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+    )
     HEALTH_RECOMMENDATION_CACHE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,

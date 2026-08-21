@@ -10,6 +10,7 @@ import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../viewmodels/medbuddy_feature_updates.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
@@ -73,7 +74,18 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<MedBuddyViewModel>();
+    final viewModel = context.read<MedBuddyViewModel>();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        viewModel.updatesFor(MedBuddyFeature.schedule),
+        viewModel.updatesFor(MedBuddyFeature.reminder),
+        viewModel.updatesFor(MedBuddyFeature.userSetting),
+      ]),
+      builder: (context, _) => _buildScreen(context, viewModel),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final text = _ScheduleText(viewModel.userSetting.language);
     final slots = _buildSlots(viewModel);
     final progress = viewModel.todayMedicationProgress;

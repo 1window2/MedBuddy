@@ -11,11 +11,14 @@ import 'controls/authentication_control.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
+import 'services/caregiver_notification_background_service.dart';
+import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'theme/medbuddy_text_scale.dart';
 import 'viewmodels/medbuddy_view_model.dart';
+import 'viewmodels/medbuddy_feature_updates.dart';
 import 'views/home_screen.dart';
 
 // 파일명: main.dart
@@ -196,9 +199,12 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     String userHash,
     int generation,
   ) async {
-    final monitor = CaregiverNotificationMonitorService.live(
+    final monitor = CaregiverNotificationMonitorFactory.create(
       caregiverHash: userHash,
       client: _authenticationControl.apiClient,
+      pollingInterval: AuthConfig.mode == AuthenticationMode.firebase
+          ? const Duration(minutes: 1)
+          : CaregiverNotificationMonitorService.defaultPollingInterval,
       monitorCompletionTransitions:
           AuthConfig.mode != AuthenticationMode.firebase,
       onCaregiverStatusChanged: (hasCaregiverLinks) {
@@ -384,12 +390,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             title: 'MedBuddy',
             debugShowCheckedModeBanner: false,
             builder: (context, child) {
-              final userSetting = session == null
-                  ? const UserSetting()
-                  : context.watch<MedBuddyViewModel>().userSetting;
-              return MedBuddyTextScale(
-                userSetting: userSetting,
-                child: child ?? const SizedBox.shrink(),
+              if (session == null) {
+                return MedBuddyTextScale(
+                  userSetting: const UserSetting(),
+                  child: child ?? const SizedBox.shrink(),
+                );
+              }
+              final viewModel = context.read<MedBuddyViewModel>();
+              return ListenableBuilder(
+                listenable: viewModel.updatesFor(MedBuddyFeature.userSetting),
+                builder: (context, _) => MedBuddyTextScale(
+                  userSetting: viewModel.userSetting,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               );
             },
             theme: ThemeData(

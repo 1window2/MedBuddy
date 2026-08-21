@@ -111,7 +111,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _statusMessage = _isEnglishSetting
         ? 'The OCR result was updated.'
         : 'OCR 인식 결과를 수정했습니다.';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // 함수명: returnToPrescriptionPreview
@@ -126,7 +126,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
         ? 'Review the recognized medication information.'
         : '인식된 약 정보를 다시 확인해주세요.';
     _prescriptionFlowState = PrescriptionFlowState.previewReady;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // 함수이름: requestPrescriptionAnalysis
@@ -155,7 +155,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _analyzedMedicationList = [];
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
 
     try {
       final analysisBatch = await _analyzeMedicationSchedules(
@@ -186,7 +186,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       _statusMessage = failedAnalysisCount > 0
           ? '처방전 분석은 완료되었지만 $failedAnalysisCount개 약 정보는 확인하지 못했습니다.'
           : '처방전 분석이 완료되었습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
     } on StateError catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
@@ -286,7 +286,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     }
     _prescriptionChangeRadar = radar;
     _isPrescriptionChangeLoading = false;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // 함수명: showMedicationAnalysisResult
@@ -302,7 +302,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
 
     _prescriptionFlowState = PrescriptionFlowState.resultReady;
     _isPrescriptionChangeLoading = true;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
     unawaited(
       _refreshPrescriptionChangeRadar(
         _prescriptionOperationId,
@@ -325,12 +325,12 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   ) async {
     if (_savingMedicationIndex != null || _isAllMedicationSaving) {
       _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
     if (_completedMedicationSaveIndexes.contains(medicationIndex)) {
       _statusMessage = '이미 추가된 약입니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
       return true;
     }
 
@@ -344,7 +344,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       );
       if (result.isCompleted) {
         _completedMedicationSaveIndexes.add(medicationIndex);
-        _notifyViewModelListeners();
+        _notifyViewModelListeners(MedBuddyFeature.prescription);
       }
       return result.isCompleted;
     } finally {
@@ -355,18 +355,18 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   Future<bool> requestAllAnalyzedMedicationSave() async {
     if (_savingMedicationIndex != null || _isAllMedicationSaving) {
       _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
     if (_analyzedMedicationList.isEmpty) {
       _statusMessage = '저장할 분석 결과가 없습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
 
     _isAllMedicationSaving = true;
     _statusMessage = '전체 복약 일정을 저장 중입니다...';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
 
     var savedCount = 0;
     var duplicateCount = 0;
@@ -380,7 +380,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
         }
 
         _savingMedicationIndex = index;
-        _notifyViewModelListeners();
+        _notifyViewModelListeners(MedBuddyFeature.prescription);
 
         final analyzedMedication = _analyzedMedicationList[index];
         final result = await saveMedicationInfo(
@@ -411,7 +411,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     } finally {
       _savingMedicationIndex = null;
       _isAllMedicationSaving = false;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
     }
   }
 
@@ -458,7 +458,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       if (result == null) {
         _statusMessage = cancelledMessage;
         _prescriptionFlowState = PrescriptionFlowState.idle;
-        _notifyViewModelListeners();
+        _notifyViewModelListeners(MedBuddyFeature.prescription);
         return;
       }
 
@@ -474,7 +474,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       _statusMessage = prescriptionRecognitionNotice.isEmpty
           ? '처방전 인식이 완료되었습니다.'
           : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.prescription);
     } on StateError catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
@@ -509,7 +509,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.recognizingPrescription;
     _statusMessage = '처방전을 인식 중입니다...';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   void _clearPrescriptionRecognitionCounts() {
@@ -542,12 +542,12 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     _analysisErrorMessage = message;
     _statusMessage = message;
     _prescriptionFlowState = PrescriptionFlowState.analysisFailed;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   void _setSavingMedicationIndex(int? value) {
     _savingMedicationIndex = value;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   String _buildBulkSaveMessage({
