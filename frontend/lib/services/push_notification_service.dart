@@ -5,11 +5,9 @@ import 'dart:developer' as developer;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
 import 'auth_config.dart';
-import 'caregiver_patient_local_state_service.dart';
 import 'notification_service.dart';
 
 // 파일명: push_notification_service.dart
@@ -243,20 +241,9 @@ class PushNotificationService {
       return;
     }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
-    final preferences = await SharedPreferences.getInstance();
-    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
-      preferences,
-      caregiverHash: userHash,
-      patientHash: patientHash,
-    );
     final slotName = _slotName(message.data['slot_key']);
-    final notification = message.notification;
-    final title = patientHash.isEmpty
-        ? notification?.title ?? '환자 복약 완료'
-        : '$patientLabel 복약 완료';
-    final body = patientHash.isEmpty
-        ? notification?.body ?? '연동된 환자의 복약 상태가 변경되었습니다.'
-        : '$patientLabel의 $slotName 복약이 모두 완료되었습니다.';
+    const title = '환자 복약 완료';
+    final body = '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
     final source = message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       id: source.hashCode & 0x7fffffff,
