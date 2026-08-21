@@ -7,6 +7,32 @@ from pathlib import Path
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
+# Function Name: test_local_generated_and_secret_files_are_ignored
+# Description:
+# - Prevents Kotlin session markers, generated Firebase platform files, local
+#   environment variants, signing material, and Flutter plugin registrants from
+#   appearing in commits.
+# - Keeps shareable example environment files explicitly available to Git.
+# Returns:
+# - None; pytest reports a failure when repository hygiene rules regress.
+def test_local_generated_and_secret_files_are_ignored() -> None:
+    ignore_source = (_REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    for required_pattern in (
+        "**/.env.*",
+        "!**/.env.example",
+        "*.salive",
+        "**/.gradle/",
+        "**/.kotlin/",
+        "**/google-services.json",
+        "**/GoogleService-Info.plist",
+        "*.jks",
+        "*.keystore",
+        "frontend/ios/Runner/GeneratedPluginRegistrant.*",
+    ):
+        assert required_pattern in ignore_source
+
+
 # Function Name: test_direct_backend_entrypoint_binds_to_loopback
 # Description:
 # - Prevents the convenience Python entrypoint from exposing the alpha API on
