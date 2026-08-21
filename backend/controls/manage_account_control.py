@@ -1,6 +1,7 @@
 # 파일명: manage_account_control.py
 # 역할: 사용자 범위 생성, 데이터 내보내기, 계정 데이터 전체 삭제를 담당한다.
 
+import logging
 from datetime import date, datetime
 
 from sqlalchemy import inspect as sqlalchemy_inspect, or_
@@ -17,12 +18,19 @@ from entities.patient_caregiver_link_entity import (
 )
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
-from entities.user_account_entity import _UserAccount
+from boundaries.firebase_identity_boundary import IdentityDeletionBoundary
+from entities.user_account_entity import _UserAccount, utc_now
 from entities.user_setting_entity import _UserSetting
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
 from repositories.saved_medication_repository import SavedMedicationRepository
+
+logger = logging.getLogger(__name__)
+
+
+class AccountDeletionPendingError(RuntimeError):
+    """Raised when a deleted identity tries to recreate its data scope."""
 
 
 # 클래스명: ManageAccount
@@ -37,6 +45,7 @@ class ManageAccount:
         db: Session,
         medication_repository: SavedMedicationRepository | None = None,
         link_repository: PatientCaregiverLinkRepository | None = None,
+        identity_deletion_boundary: IdentityDeletionBoundary | None = None,
     ) -> None:
         self.db = db
         self.medication_repository = (
@@ -45,6 +54,7 @@ class ManageAccount:
         self.link_repository = (
             link_repository or PatientCaregiverLinkRepository(db)
         )
+        self.identity_deletion_boundary = identity_deletion_boundary
 
     # 함수명: ensureAccount
     # 역할:
@@ -52,6 +62,10 @@ class ManageAccount:
     def ensureAccount(self, user_hash: str, *, commit: bool = False) -> str:
         normalized_user_hash = normalize_patient_hash(user_hash)
         account = self.db.get(_UserAccount, normalized_user_hash)
+        if account is not None and account.deletion_requested_at is not None:
+            raise AccountDeletionPendingError(
+                "This MedBuddy account has been deleted."
+            )
         if account is None:
             self.db.add(_UserAccount(user_hash=normalized_user_hash))
             if commit:
@@ -109,74 +123,158 @@ class ManageAccount:
             },
         }
 
-    # 함수명: deleteAccountData
-    # 역할:
-    # - 사용자 소유 데이터와 보호자 접근 관계를 트랜잭션으로 모두 삭제한다.
-    # - Firebase 인증 계정 삭제는 클라이언트의 재인증 흐름에서 별도로 수행한다.
-    def deleteAccountData(self, user_hash: str) -> dict[str, object]:
+    # Function Name: deleteAccountData
+    # Description:
+    # - Purges the authenticated user's MedBuddy data in one database transaction.
+    # - In Firebase mode, retains a tombstone before deleting the external identity
+    #   so a retry cannot recreate an empty account after a provider outage.
+    # Parameters:
+    # - user_hash: Server-derived MedBuddy ownership key.
+    # - external_subject: Verified Firebase UID; never supplied by the client body.
+    # Returns:
+    # - Deletion counts and whether the external identity was removed.
+    def deleteAccountData(
+        self,
+        user_hash: str,
+        external_subject: str | None = None,
+    ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
-        deleted_counts: dict[str, int] = {}
+        identity_boundary = self.identity_deletion_boundary
+        if identity_boundary is None:
+            deleted_counts = self._purge_local_account(normalized_user_hash)
+            return self._deletion_result(deleted_counts, identity_deleted=False)
+
+        normalized_subject = (external_subject or "").strip()
+        if not normalized_subject:
+            raise ValueError("Verified Firebase subject is required.")
+
+        deleted_counts = self._prepare_firebase_account_deletion(
+            normalized_user_hash
+        )
+        identity_boundary.deleteIdentity(normalized_subject)
+        self._mark_identity_deleted(normalized_user_hash)
+        return self._deletion_result(deleted_counts, identity_deleted=True)
+
+    def _prepare_firebase_account_deletion(
+        self,
+        normalized_user_hash: str,
+    ) -> dict[str, int]:
         try:
-            deleted_counts["medication_completions"] = self._delete(
-                _MedicationCompletion,
-                _MedicationCompletion.patient_hash == normalized_user_hash,
-            )
-            deleted_counts["saved_medications"] = self._delete(
-                _SavedMedication,
-                _SavedMedication.patient_hash == normalized_user_hash,
-            )
-            deleted_counts["notification_settings"] = self._delete(
-                _MedicationAlarm,
-                _MedicationAlarm.patient_hash == normalized_user_hash,
-            )
-            deleted_counts["health_recommendation_cache"] = self._delete(
-                _HealthRecommendationCache,
-                _HealthRecommendationCache.patient_hash == normalized_user_hash,
-            )
-            deleted_counts["patient_link_codes"] = self._delete(
-                _PatientLinkCode,
-                or_(
-                    _PatientLinkCode.patient_hash == normalized_user_hash,
-                    _PatientLinkCode.caregiver_hash == normalized_user_hash,
-                ),
-            )
-            deleted_counts["caregiver_notifications"] = self._delete(
-                _CaregiverNotification,
-                or_(
-                    _CaregiverNotification.patient_hash == normalized_user_hash,
-                    _CaregiverNotification.caregiver_hash == normalized_user_hash,
-                ),
-            )
-            deleted_counts["caregiver_links"] = self._delete(
-                _PatientCaregiverLink,
-                or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
-                ),
-            )
-            deleted_counts["push_tokens"] = self._delete(
-                _DevicePushToken,
-                _DevicePushToken.user_hash == normalized_user_hash,
-            )
-            deleted_counts["user_settings"] = self._delete(
-                _UserSetting,
-                _UserSetting.user_hash == normalized_user_hash,
-            )
-            deleted_counts["user_accounts"] = self._delete(
-                _UserAccount,
-                _UserAccount.user_hash == normalized_user_hash,
+            account = self.db.get(_UserAccount, normalized_user_hash)
+            if account is None:
+                account = _UserAccount(user_hash=normalized_user_hash)
+                self.db.add(account)
+            if account.deletion_requested_at is None:
+                account.deletion_requested_at = utc_now()
+            deleted_counts = self._purge_user_data(
+                normalized_user_hash,
+                delete_account=False,
             )
             self.db.commit()
+            return deleted_counts
         except Exception:
             self.db.rollback()
             raise
 
+    def _purge_local_account(self, normalized_user_hash: str) -> dict[str, int]:
+        try:
+            deleted_counts = self._purge_user_data(
+                normalized_user_hash,
+                delete_account=True,
+            )
+            self.db.commit()
+            return deleted_counts
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _purge_user_data(
+        self,
+        normalized_user_hash: str,
+        *,
+        delete_account: bool,
+    ) -> dict[str, int]:
+        deleted_counts: dict[str, int] = {}
+        deleted_counts["medication_completions"] = self._delete(
+            _MedicationCompletion,
+            _MedicationCompletion.patient_hash == normalized_user_hash,
+        )
+        deleted_counts["saved_medications"] = self._delete(
+            _SavedMedication,
+            _SavedMedication.patient_hash == normalized_user_hash,
+        )
+        deleted_counts["notification_settings"] = self._delete(
+            _MedicationAlarm,
+            _MedicationAlarm.patient_hash == normalized_user_hash,
+        )
+        deleted_counts["health_recommendation_cache"] = self._delete(
+            _HealthRecommendationCache,
+            _HealthRecommendationCache.patient_hash == normalized_user_hash,
+        )
+        deleted_counts["patient_link_codes"] = self._delete(
+            _PatientLinkCode,
+            or_(
+                _PatientLinkCode.patient_hash == normalized_user_hash,
+                _PatientLinkCode.caregiver_hash == normalized_user_hash,
+            ),
+        )
+        deleted_counts["caregiver_notifications"] = self._delete(
+            _CaregiverNotification,
+            or_(
+                _CaregiverNotification.patient_hash == normalized_user_hash,
+                _CaregiverNotification.caregiver_hash == normalized_user_hash,
+            ),
+        )
+        deleted_counts["caregiver_links"] = self._delete(
+            _PatientCaregiverLink,
+            or_(
+                _PatientCaregiverLink.patient_hash == normalized_user_hash,
+                _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+            ),
+        )
+        deleted_counts["push_tokens"] = self._delete(
+            _DevicePushToken,
+            _DevicePushToken.user_hash == normalized_user_hash,
+        )
+        deleted_counts["user_settings"] = self._delete(
+            _UserSetting,
+            _UserSetting.user_hash == normalized_user_hash,
+        )
+        deleted_counts["user_accounts"] = (
+            self._delete(
+                _UserAccount,
+                _UserAccount.user_hash == normalized_user_hash,
+            )
+            if delete_account
+            else 0
+        )
+        return deleted_counts
+
+    def _mark_identity_deleted(self, normalized_user_hash: str) -> None:
+        try:
+            account = self.db.get(_UserAccount, normalized_user_hash)
+            if account is not None:
+                account.identity_deleted_at = utc_now()
+                self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning(
+                "Firebase identity was deleted but its tombstone marker failed: %s",
+                type(exc).__name__,
+            )
+
+    @staticmethod
+    def _deletion_result(
+        deleted_counts: dict[str, int],
+        *,
+        identity_deleted: bool,
+    ) -> dict[str, object]:
         return {
             "success": True,
             "message": "MedBuddy account data was deleted.",
             "deleted": deleted_counts,
+            "identity_deleted": identity_deleted,
         }
-
     def _delete(self, model: type[object], criterion: object) -> int:
         return (
             self.db.query(model)

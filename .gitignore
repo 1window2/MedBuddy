@@ -2,6 +2,14 @@
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.*
+*.env
+*.env.*
+!**/.env.example
+!**/.env.*.example
+!**/*.env.example
+!**/*.env.*.example
 .venv/
 venv/
 **/venv/
@@ -10,8 +18,17 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-*/
+.audit-pytest-*/
+.codex-pytest-*/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.pytype/
+.pyre/
+*.egg-info/
 .coverage
 .coverage.*
 coverage.xml
@@ -24,19 +41,51 @@ htmlcov/
 *.db-shm
 *.db-wal
 *.sqlite
+*.sqlite-journal
 *.sqlite-shm
 *.sqlite-wal
 *.sqlite3
 *.sqlite3-journal
 *.sqlite3-shm
 *.sqlite3-wal
+*.dump
+*.backup
+*.bak
 *.log
 *.tmp
 
 # IDE/local workspace files
 .idea/
+.vscode/
 .codex/
 .codex_tmp/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+*.orig
+*.rej
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# JVM, Gradle, and native build state
+**/.gradle/
+**/.kotlin/
+**/.cxx/
+**/.externalNativeBuild/
+*.salive
+*.hprof
+
+# Local credentials and signing material
+**/google-services.json
+**/GoogleService-Info.plist
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Flutter local generated files
 frontend/.dart_tool/
@@ -56,8 +105,10 @@ frontend/android/app/release/
 frontend/ios/Flutter/Generated.xcconfig
 frontend/ios/Flutter/flutter_export_environment.sh
 frontend/ios/Flutter/ephemeral/
+frontend/ios/Runner/GeneratedPluginRegistrant.*
 
 # Outputs
 *.apk
 *.aab
-backend/.env.self-hosted
+
+deploy/backend.env

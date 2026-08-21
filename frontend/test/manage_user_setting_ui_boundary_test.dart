@@ -10,7 +10,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 역할: 환경설정 저장 중복 방지와 실패 복구 동작을 검증한다.
 
 void main() {
-  testWidgets('English 선택을 비활성화하고 한국어 설정을 유지한다', (tester) async {
+  testWidgets('English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다', (tester) async {
     String? savedLanguage;
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
@@ -33,20 +33,25 @@ void main() {
       ),
     );
 
-    expect(find.text('추후 업데이트 예정'), findsOneWidget);
+    expect(find.text('추후 업데이트 예정'), findsNothing);
     final englishButton = find.ancestor(
       of: find.text('English'),
       matching: find.byType(InkWell),
     );
-    expect(tester.widget<InkWell>(englishButton).onTap, isNull);
+    expect(tester.widget<InkWell>(englishButton).onTap, isNotNull);
 
-    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
+    await tester.ensureVisible(find.text('English'));
+    await tester.tap(find.text('English'));
+    await tester.pump();
+    expect(find.text('Text Size'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
-    expect(savedLanguage, 'ko');
+    expect(savedLanguage, 'en');
   });
 
-  testWidgets('기존 영어 설정도 지원 중인 한국어 설정으로 연다', (tester) async {
+  testWidgets('기존 영어 설정은 영어로 열리고 한국어로 전환할 수 있다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
 
@@ -65,11 +70,16 @@ void main() {
       ),
     );
 
+    expect(find.text('Text Size'), findsOneWidget);
+    expect(find.text('글씨크기'), findsNothing);
+
+    await tester.ensureVisible(find.text('한국어'));
+    await tester.tap(find.text('한국어'));
+    await tester.pump();
+
     expect(find.text('글씨크기'), findsOneWidget);
-    expect(find.text('추후 업데이트 예정'), findsOneWidget);
     expect(find.text('Text Size'), findsNothing);
   });
-
   testWidgets('환경설정 저장 실패 후 버튼을 복구하고 재시도를 허용한다', (tester) async {
     final saveRequest = Completer<UserSettingSaveResult>();
     var requestCount = 0;
@@ -247,6 +257,53 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('기기에만 저장했습니다. 서버 연결 후 다시 저장해주세요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('계정 삭제 성공 후 빈 화면이 아니라 루트 화면으로 돌아간다', (tester) async {
+    var deletionCount = 0;
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ManageUserSettingUI(
+                    initialSetting: const UserSetting(),
+                    authenticationControl: authenticationControl,
+                    onSettingSaveRequested:
+                        ({
+                          required fontSizeOption,
+                          required readingSpeedOption,
+                          required language,
+                        }) async => _saveResult(),
+                    onDeleteAccountRequested: () async {
+                      deletionCount += 1;
+                    },
+                  ),
+                ),
+              ),
+              child: const Text('설정 열기'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('설정 열기'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('계정 데이터 삭제'));
+    await tester.tap(find.text('계정 데이터 삭제'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+    await tester.pumpAndSettle();
+
+    expect(deletionCount, 1);
+    expect(find.text('설정 열기'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -54,6 +54,7 @@ class MedicationSchedule {
   final String maskedPrescriptionText;
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
+  final String prescriptionBatchId;
   final String medicationID;
   final String medicationName;
   final String dosage;
@@ -75,6 +76,7 @@ class MedicationSchedule {
     this.maskedPrescriptionText = '',
     this.createdDate,
     this.prescriptionDate,
+    this.prescriptionBatchId = '',
     this.medicationID = '',
     required this.medicationName,
     this.dosage = '',
@@ -104,6 +106,7 @@ class MedicationSchedule {
     return MedicationSchedule(
       medicationName: _readString(json['drug_name']),
       prescriptionDate: _readDate(json['prescription_date']),
+      prescriptionBatchId: _readString(json['prescription_batch_id']),
       dosage: _readString(json['dosage_per_time']),
       intakeTime: _readString(json['daily_frequency']),
       medicationTime: _readInt(json['total_days']),
@@ -146,6 +149,9 @@ class MedicationSchedule {
       createdDate: _readDate(json['created_date'] ?? json['createdDate']),
       prescriptionDate: _readDate(
         json['prescription_date'] ?? json['prescriptionDate'],
+      ),
+      prescriptionBatchId: _readString(
+        json['prescription_batch_id'] ?? json['prescriptionBatchId'],
       ),
       medicationID: _readString(
         json['medication_id'] ?? json['medicationID'] ?? json['id'],
@@ -278,6 +284,7 @@ class MedicationSchedule {
       'patient_id': patientID,
       'created_date': _formatDate(createdDate),
       'prescription_date': _formatDate(prescriptionDate),
+      'prescription_batch_id': prescriptionBatchId,
       'total_days': medicationTimeLabel,
       'efficacy': efficacy ?? '',
       'use_method': usageMethod ?? '',
@@ -298,6 +305,7 @@ class MedicationSchedule {
     String? maskedPrescriptionText,
     DateTime? createdDate,
     DateTime? prescriptionDate,
+    String? prescriptionBatchId,
     String? medicationID,
     String? medicationName,
     String? dosage,
@@ -320,6 +328,7 @@ class MedicationSchedule {
           maskedPrescriptionText ?? this.maskedPrescriptionText,
       createdDate: createdDate ?? this.createdDate,
       prescriptionDate: prescriptionDate ?? this.prescriptionDate,
+      prescriptionBatchId: prescriptionBatchId ?? this.prescriptionBatchId,
       medicationID: medicationID ?? this.medicationID,
       medicationName: medicationName ?? this.medicationName,
       dosage: dosage ?? this.dosage,

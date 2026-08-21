@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
 from entities.medication_completion_entity import _MedicationCompletion
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     decode_medication_schedule_slot_keys,
     encode_medication_schedule_slot_keys,
@@ -83,6 +84,7 @@ class CheckSavedMedication:
                 patient_hash=patient_hash,
                 created_date=registration_date,
                 prescription_date=medication.prescription_date,
+                prescription_batch_id=medication.prescription_batch_id,
                 item_seq=(medication.item_seq or "").strip() or None,
                 item_name=medication.item_name.strip(),
                 efficacy=medication.efficacy,
@@ -232,6 +234,7 @@ class CheckSavedMedication:
                 if medication.prescription_date
                 else ""
             ),
+            "prescription_batch_id": medication.prescription_batch_id or "",
             "item_seq": medication.item_seq or "",
             "item_name": medication.item_name,
             "efficacy": medication.efficacy,
@@ -243,7 +246,7 @@ class CheckSavedMedication:
             "schedule_slot_keys": decode_medication_schedule_slot_keys(
                 medication.schedule_slot_keys
             ),
-            "image_url": medication.image_url,
+            "image_url": safe_medication_image_url(medication.image_url),
             "ai_guide": medication.ai_guide,
         }
 
@@ -325,6 +328,7 @@ class CheckSavedMedication:
         return build_saved_medication_deduplication_key(
             item_name=medication.item_name,
             prescription_date=medication.prescription_date,
+            prescription_batch_id=medication.prescription_batch_id,
             dosage_per_time=medication.dosage_per_time,
             daily_frequency=medication.daily_frequency,
             total_days=medication.total_days,

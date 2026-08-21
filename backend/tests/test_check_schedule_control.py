@@ -98,7 +98,7 @@ class CheckScheduleTest(unittest.TestCase):
             medication_status=medication_status,
             medication_status_date=medication_status_date,
             ai_guide="guide",
-            image_url="https://example.com/medicine.jpg",
+            image_url="https://nedrug.mfds.go.kr/medicine.jpg",
         )
         self.db.add(medication)
         self.db.commit()
@@ -136,9 +136,49 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["drug_name"], "active-tablet")
         self.assertEqual(schedule["patient_hash"], "patient-a")
         self.assertFalse(schedule["medication_status"])
-        self.assertEqual(schedule["image_url"], "https://example.com/medicine.jpg")
+        self.assertEqual(
+            schedule["image_url"],
+            "https://nedrug.mfds.go.kr/medicine.jpg",
+        )
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
+
+    def test_schedule_window_includes_future_starting_course(self) -> None:
+        today = application_today()
+        future_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="future-tablet",
+            prescription_date=today + timedelta(days=5),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-a",
+            item_name="outside-window-tablet",
+            prescription_date=today + timedelta(days=15),
+            total_days="3 days",
+        )
+        self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-patient-tablet",
+            prescription_date=today + timedelta(days=2),
+        )
+
+        response = self.control.requestMedicationScheduleWindow(
+            "patient-a",
+            days=14,
+        )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["window_start"], today.isoformat())
+        self.assertEqual(
+            response["window_end"],
+            (today + timedelta(days=13)).isoformat(),
+        )
+        self.assertEqual(len(response["data"]), 1)
+        self.assertEqual(
+            response["data"][0]["medication_id"],
+            str(future_medication.id),
+        )
 
     def test_status_update_is_scoped_by_patient_hash(self) -> None:
         medication = self._saved_medication(patient_hash="patient-b")
@@ -251,6 +291,44 @@ class CheckScheduleTest(unittest.TestCase):
             ],
         )
         self.assertEqual(control.consumeCompletionEvents(), [])
+
+    def test_completion_transition_is_computed_before_transaction_commit(
+        self,
+    ) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="serialized-tablet",
+        )
+        commit_completed = False
+        completion_state_reads: list[bool] = []
+        original_reader = self.control._slot_completion_states_for_patient
+
+        def mark_commit(_session: object) -> None:
+            nonlocal commit_completed
+            commit_completed = True
+
+        def tracked_reader(
+            patient_hash: str,
+            schedule_date: date,
+            slot_keys: list[str],
+        ) -> dict[str, bool]:
+            completion_state_reads.append(commit_completed)
+            return original_reader(patient_hash, schedule_date, slot_keys)
+
+        event.listen(self.db, "after_commit", mark_commit)
+        self.control._slot_completion_states_for_patient = tracked_reader
+        try:
+            self.control.updateMedicationStatus(
+                medication.id,
+                True,
+                "patient-a",
+                slot_key="morning",
+            )
+        finally:
+            event.remove(self.db, "after_commit", mark_commit)
+            self.control._slot_completion_states_for_patient = original_reader
+
+        self.assertEqual(completion_state_reads, [False, False])
 
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
         schedule_date = application_today()

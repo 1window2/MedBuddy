@@ -28,11 +28,13 @@ package "Flutter Frontend" {
             + navigatorKey: GlobalKey<NavigatorState>?
             + viewModelFactory: MedBuddyViewModel Function()?
             + authenticationControl: AuthenticationControl?
+            + appLanguageControl: AppLanguageControl?
             + createState(): State<MedBuddyApp>
         }
 
         class "AuthenticationUI" as AuthenticationUI <<UI: 인증 화면>> {
             + control: AuthenticationControl
+            + languageControl: AppLanguageControl?
             + createState(): State
         }
 
@@ -115,17 +117,27 @@ package "Flutter Frontend" {
             + apiClient: AuthenticatedApiClient
             + isBusy: bool
             + session: AuthSession?
+            + isAnonymous: bool
             + initializationFailed: bool
             + canRetryBackendSession: bool
             + phoneAuthenticationEnabled: bool
             + retryInitialization(): Future<void>
             + retryBackendSession(): Future<void>
+            + setBeforeSignOut(callback): void
             + signIn(email, password): Future<void>
             + signInWithGoogle(): Future<void>
             + signInAnonymously(): Future<void>
             + startPhoneSignIn(phoneNumber): Future<void> <<dormant>>
             + signOut(): Future<void>
-            + deleteCurrentUser(): Future<void>
+            + prepareAccountDeletion(): Future<void>
+            + finishAccountDeletion(): Future<void>
+        }
+
+        class "AppLanguageControl" as AppLanguageControl <<Controller: 앱 전역 언어>> {
+            + {static} preferenceKey: String
+            + language: String
+            + setLanguage(language): Future<void>
+            + toggleLanguage(): Future<void>
         }
 
         class "MedBuddyViewModel" as MedBuddyViewModel <<ViewModel: 애플리케이션 상태>> {
@@ -144,8 +156,10 @@ package "Flutter Frontend" {
             + baseUrl: String
             + requestTimeout: Duration
             + lastSelectedImagePath: String
+            + lastSelectedImageOwnedByApp: bool
             + requestPrescriptionImageFromGallery(): Future<List<MedicationSchedule>>
             + requestCapturedPrescriptionImage(image): Future<List<MedicationSchedule>>
+            + clearSelectedImage(): Future<void>
             + dispose(): void
         }
 
@@ -167,6 +181,7 @@ package "Flutter Frontend" {
             + baseUrl: String
             + patientHash: String
             + requestTodayMedicationSchedule(): Future<List<MedicationSchedule>>
+            + requestMedicationScheduleWindow(days): Future<List<MedicationSchedule>>
             + updateMedicationStatus(id, status): Future<MedicationSchedule>
         }
 
@@ -227,6 +242,7 @@ package "Flutter Frontend" {
         }
 
         class "ManageAccount" as FManageAccount <<Controller: 계정 데이터 삭제>> {
+            + userHash: String
             + client: http.Client
             + deleteAccountData(): Future<void>
         }
@@ -288,7 +304,20 @@ package "Flutter Frontend" {
             + requestPermission(): Future<bool>
             + registerNotification(setting, medications): Future<void>
             + cancelReminder(id): Future<void>
+            + cancelAllMedicationReminders(): Future<void>
             + showCaregiverAlert(): Future<void>
+        }
+
+        class "MedicationReminderRefreshService" as MedicationReminderRefreshService <<Service: rolling reminder sync>> {
+            + maximumReminderDatesPerSlot: int
+            + synchronize(): Future<bool>
+            + {static} activeReminderDates(schedules, now): List<DateTime>
+            + dispose(): void
+        }
+
+        class "MedicationReminderBackgroundScheduler" as MedicationReminderBackgroundScheduler <<Service: Android reminder work>> {
+            + {static} register(patientHash): Future<void>
+            + {static} cancel(): Future<void>
         }
 
         class "TTSService" as TTSService <<Service: 기기 음성 합성>> {
@@ -300,8 +329,10 @@ package "Flutter Frontend" {
         class "PushNotificationService" as PushNotificationService <<Service: FCM 수신>> {
             - _client: http.Client
             - _started: bool
+            - _startOperation: Future<void>
+            - _pendingTokenRegistrations: Set<Future<void>>
             + start(): Future<void>
-            + stop(): Future<void>
+            + stop(requireServerUnregistration): Future<void>
         }
 
         class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 미복약 감지>> {
@@ -332,6 +363,7 @@ package "Flutter Frontend" {
         class "MedicationSchedule" as FMedicationSchedule <<Entity: 복약 일정>> {
             + medicationID: String
             + medicationName: String
+            + prescriptionBatchId: String
             + dosage: String
             + medicationStatus: bool
             + slotStatuses: Map<String, bool>
@@ -475,6 +507,7 @@ package "FastAPI Backend" {
         class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
             - db: Session
             + requestTodayMedicationSchedule(patient_hash): dict
+            + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
         }
 
@@ -532,9 +565,10 @@ package "FastAPI Backend" {
 
         class "ManageAccount" as BManageAccount <<Control: 계정 Data Lifecycle>> {
             - db: Session
+            - identity_deletion_boundary: IdentityDeletionBoundary?
             + ensureAccount(user_hash): str
             + exportAccountData(user_hash): dict
-            + deleteAccountData(user_hash): dict
+            + deleteAccountData(user_hash, external_subject): dict
         }
 
         class "ManagePushToken" as BManagePushToken <<Control: FCM Token 관리>> {
@@ -552,6 +586,24 @@ package "FastAPI Backend" {
             + resolveOwnUserHash(principal, requested_hash): str
             + resolvePatientScope(principal, patient_hash): str
             + requireLinkedPatient(caregiver_hash, patient_hash): str
+        }
+
+        class "AuthenticatedPrincipal" as BAuthenticatedPrincipal <<Entity: verified request identity>> {
+            + subject: str
+            + user_hash: str
+            + anonymous: bool
+            + authenticated_at: datetime?
+            + from_verified_claims(claims): AuthenticatedPrincipal
+        }
+
+        class "Account Request Dependencies" as BAccountDependencies <<Dependency: auth freshness and serialization>> {
+            + get_recently_authenticated_principal(principal): AuthenticatedPrincipal
+            + lock_account_operation(db, user_hash): void
+            + get_registered_principal(principal, db): AuthenticatedPrincipal
+        }
+
+        class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Middleware: production Host allowlist>> {
+            + allowed_hosts: list<str>
         }
 
         interface "MedicationCompletionEventBoundary" as MedicationCompletionEventBoundary {
@@ -578,6 +630,7 @@ package "FastAPI Backend" {
         }
 
         class "SavedMedicationRetentionPolicy" as SavedMedicationRetentionPolicy <<Service: 저장 약 보존 정책>> {
+            + retention_days_after_end: int
             + cleanup_expired_medications(db, patient_hash, today): int
             + is_expired(medication, today): bool
         }
@@ -602,8 +655,10 @@ package "FastAPI Backend" {
 
         class "_DrugCatalogStore" as DrugCatalogStore <<Repository Helper: 의약품 Catalog 동기화>> {
             - db: Session
-            + upsert_basic_items(items): int
-            + upsert_approval_items(items): int
+            + upsert_basic_items(items, sync_token): int
+            + upsert_approval_items(items, sync_token): int
+            + prune_basic_items_not_seen(sync_token): int
+            + prune_approval_items_not_seen(sync_token): int
             + normalize_name(item_name): str
         }
 
@@ -611,8 +666,10 @@ package "FastAPI Backend" {
             - store: _DrugCatalogStore
             - public_drug_small_api: PublicDrugSmallAPI
             - public_drug_large_api: PublicDrugLargeAPI
+            - _is_complete_dataset_sync: bool
             + sync_basic(): int
             + sync_approval(): int
+            + sync_all(): dict<str, int>
         }
     }
 
@@ -626,6 +683,14 @@ package "FastAPI Backend" {
         class "OIDCTokenVerifier" as OIDCTokenVerifier <<Wrapper: Firebase Token 검증>> {
             - _check_revoked: bool
             + verifyIdToken(token): dict
+        }
+
+        interface "IdentityDeletionBoundary" as IdentityDeletionBoundary {
+            + deleteIdentity(subject): void
+        }
+
+        class "FirebaseIdentityDeletionBoundary" as FirebaseIdentityDeletionBoundary <<Wrapper: Firebase 계정 삭제>> {
+            + deleteIdentity(subject): void
         }
 
         class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
@@ -743,6 +808,8 @@ package "FastAPI Backend" {
             + user_hash: String
             + created_at: DateTime
             + updated_at: DateTime
+            + deletion_requested_at: DateTime?
+            + identity_deleted_at: DateTime?
         }
 
         class "_SavedMedication" as DBSavedMedication <<ORM: saved_medications>> {
@@ -751,6 +818,7 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + prescription_date: Date
+            + prescription_batch_id: String?
             + schedule_slot_keys: Text
             + medication_status: Boolean
         }
@@ -828,6 +896,7 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + normalized_item_name: String
+            + catalog_sync_token: String
             + raw_json: Text
         }
 
@@ -836,6 +905,7 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + main_ingredient: Text
+            + catalog_sync_token: String
             + raw_json: Text
         }
 
@@ -854,9 +924,13 @@ MedBuddyApp ..> AuthenticationUI
 MedBuddyApp ..> AuthenticationGate
 MedBuddyApp ..> HomeScreen
 MedBuddyApp ..> MedBuddyViewModel
+MedBuddyApp *-- AppLanguageControl
 MedBuddyApp ..> CaregiverNotificationBackgroundScheduler
+MedBuddyApp ..> MedicationReminderBackgroundScheduler
 MedBuddyApp ..> PushNotificationService
+MedBuddyApp --> FAuthenticationControl : injects pre-sign-out notification cleanup
 AuthenticationUI --> FAuthenticationControl
+AuthenticationUI --> AppLanguageControl
 AuthenticationGate --> AuthenticationGateState
 AuthenticationGate ..> AuthenticationUI
 AuthenticationGate ..> HomeScreen
@@ -870,6 +944,7 @@ HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> PillIdentificationUI
 HomeScreen ..> LinkPatientCaregiverUI
 HomeScreen ..> ManageUserSettingUI
+HomeScreen ..> AppLanguageControl
 
 CheckScheduleUI ..> MedBuddyViewModel
 CheckSavedMedicationUI ..> MedBuddyViewModel
@@ -924,6 +999,10 @@ FRequestVoiceGuide ..> AuthenticatedApiClient
 AuthenticatedApiClient ..> ApiConfig
 
 FSetNotification ..> NotificationService
+MedicationReminderRefreshService ..> FSetNotification
+MedicationReminderRefreshService ..> FCheckSchedule
+MedicationReminderRefreshService ..> NotificationService
+MedicationReminderBackgroundScheduler ..> MedicationReminderRefreshService
 FRequestVoiceGuide o-- TTSService
 PushNotificationService ..> NotificationService
 CaregiverNotificationMonitorService ..> NotificationService
@@ -1023,6 +1102,13 @@ BManageAccount --> DBSavedMedication
 BManageAccount --> DBMedicationCompletion
 BManageAccount --> DBPatientCaregiverLink
 BManageAccount --> DBUserSetting
+BManageAccount o-- IdentityDeletionBoundary
+FirebaseIdentityDeletionBoundary ..|> IdentityDeletionBoundary
+OIDCTokenVerifier ..> BAuthenticatedPrincipal : verified claims
+BAccountDependencies --> BAuthenticatedPrincipal : freshness policy
+BAccountDependencies ..> BManageAccount : tombstone registration
+BAccountDependencies --> DBUserAccount : transaction lock scope
+BTrustedHostMiddleware ..> BAccountDependencies : rejects invalid Host before auth
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import sys
 import unittest
@@ -27,6 +28,7 @@ from scripts.sync_drug_catalog import (  # noqa: E402
     CatalogSyncIncompleteError,
     DrugCatalogSyncJob,
     _DrugCatalogStore,
+    _configure_logging,
     _exclusive_catalog_sync_lock,
 )
 
@@ -49,6 +51,24 @@ class DrugCatalogSyncTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
+
+    def test_logging_suppresses_credential_bearing_http_client_urls(self) -> None:
+        httpx_logger = logging.getLogger("httpx")
+        httpcore_logger = logging.getLogger("httpcore")
+        previous_httpx_level = httpx_logger.level
+        previous_httpcore_level = httpcore_logger.level
+        try:
+            httpx_logger.setLevel(logging.INFO)
+            httpcore_logger.setLevel(logging.INFO)
+
+            with patch("scripts.sync_drug_catalog.logging.basicConfig"):
+                _configure_logging()
+
+            self.assertEqual(httpx_logger.level, logging.WARNING)
+            self.assertEqual(httpcore_logger.level, logging.WARNING)
+        finally:
+            httpx_logger.setLevel(previous_httpx_level)
+            httpcore_logger.setLevel(previous_httpcore_level)
 
     def test_basic_sync_keeps_same_name_rows_with_distinct_item_seq(self) -> None:
         self.store.upsert_basic_items(
@@ -100,6 +120,32 @@ class DrugCatalogSyncTest(unittest.TestCase):
             [row.efficacy_doc for row in rows],
             ["effect-a", "effect-b"],
         )
+
+    def test_complete_seed_requires_every_shared_catalog(self) -> None:
+        self.assertFalse(self.store.has_complete_seed())
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq="BASIC-1",
+                    item_name="basic",
+                    normalized_item_name="basic",
+                    raw_json="{}",
+                ),
+                _DrugApprovalInfo(
+                    item_seq="APPROVAL-1",
+                    item_name="approval",
+                    normalized_item_name="approval",
+                    raw_json="{}",
+                ),
+                PillIdentificationReference(
+                    item_seq="PILL-1",
+                    item_name="pill",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        self.assertTrue(self.store.has_complete_seed())
 
     def test_pill_sync_replaces_shared_reference_catalog(self) -> None:
         class _PillCatalogAPI:
@@ -160,11 +206,23 @@ class DrugCatalogSyncTest(unittest.TestCase):
                     efficacy="existing basic effect",
                     raw_json="{}",
                 ),
+                _DrugBasicInfo(
+                    item_seq="BASIC-WITHDRAWN",
+                    item_name="existing withdrawn basic",
+                    normalized_item_name="existingwithdrawnbasic",
+                    raw_json="{}",
+                ),
                 _DrugApprovalInfo(
                     item_seq="APPROVAL-1",
                     item_name="existing approval",
                     normalized_item_name="existingapproval",
                     efficacy_doc="existing approval effect",
+                    raw_json="{}",
+                ),
+                _DrugApprovalInfo(
+                    item_seq="APPROVAL-WITHDRAWN",
+                    item_name="existing withdrawn approval",
+                    normalized_item_name="existingwithdrawnapproval",
                     raw_json="{}",
                 ),
                 PillIdentificationReference(
@@ -225,14 +283,34 @@ class DrugCatalogSyncTest(unittest.TestCase):
             asyncio.run(sync_job.sync_all())
 
         self.db.expire_all()
-        basic = self.db.query(_DrugBasicInfo).one()
-        approval = self.db.query(_DrugApprovalInfo).one()
+        basic = (
+            self.db.query(_DrugBasicInfo)
+            .filter(_DrugBasicInfo.item_seq == "BASIC-1")
+            .one()
+        )
+        approval = (
+            self.db.query(_DrugApprovalInfo)
+            .filter(_DrugApprovalInfo.item_seq == "APPROVAL-1")
+            .one()
+        )
         pill = self.db.query(PillIdentificationReference).one()
         self.assertEqual(basic.item_name, "existing basic")
         self.assertEqual(basic.efficacy, "existing basic effect")
         self.assertEqual(approval.item_name, "existing approval")
         self.assertEqual(approval.efficacy_doc, "existing approval effect")
         self.assertEqual(pill.item_name, "existing pill")
+        self.assertEqual(
+            {
+                row.item_seq for row in self.db.query(_DrugBasicInfo).all()
+            },
+            {"BASIC-1", "BASIC-WITHDRAWN"},
+        )
+        self.assertEqual(
+            {
+                row.item_seq for row in self.db.query(_DrugApprovalInfo).all()
+            },
+            {"APPROVAL-1", "APPROVAL-WITHDRAWN"},
+        )
 
     def test_all_sync_commits_every_dataset_once(self) -> None:
         class _BasicAPI:
@@ -278,6 +356,128 @@ class DrugCatalogSyncTest(unittest.TestCase):
         self.assertEqual(self.db.query(_DrugApprovalInfo).count(), 1)
         self.assertEqual(self.db.query(PillIdentificationReference).count(), 1)
 
+    def test_complete_sync_prunes_basic_and_approval_rows_removed_upstream(
+        self,
+    ) -> None:
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq="BASIC-KEEP",
+                    item_name="old basic",
+                    normalized_item_name="oldbasic",
+                    ai_guide="preserved guide",
+                    raw_json="{}",
+                ),
+                _DrugBasicInfo(
+                    item_seq="BASIC-WITHDRAWN",
+                    item_name="withdrawn basic",
+                    normalized_item_name="withdrawnbasic",
+                    raw_json="{}",
+                ),
+                _DrugApprovalInfo(
+                    item_seq="APPROVAL-KEEP",
+                    item_name="old approval",
+                    normalized_item_name="oldapproval",
+                    summary_efficacy="preserved summary",
+                    raw_json="{}",
+                ),
+                _DrugApprovalInfo(
+                    item_seq="APPROVAL-WITHDRAWN",
+                    item_name="withdrawn approval",
+                    normalized_item_name="withdrawnapproval",
+                    raw_json="{}",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        class _BasicAPI:
+            async def fetchPage(
+                self,
+                _page_no: int,
+                _page_size: int,
+            ) -> tuple[list[dict[str, object]], int]:
+                return (
+                    [{"itemSeq": "BASIC-KEEP", "itemName": "current basic"}],
+                    1,
+                )
+
+        class _ApprovalAPI:
+            async def fetchPage(
+                self,
+                _page_no: int,
+                _page_size: int,
+            ) -> tuple[list[dict[str, object]], int]:
+                return (
+                    [
+                        {
+                            "ITEM_SEQ": "APPROVAL-KEEP",
+                            "ITEM_NAME": "current approval",
+                        }
+                    ],
+                    1,
+                )
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=_BasicAPI(),  # type: ignore[arg-type]
+            public_drug_large_api=_ApprovalAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=object(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        asyncio.run(sync_job.sync_basic())
+        asyncio.run(sync_job.sync_approval())
+
+        basic = self.db.query(_DrugBasicInfo).one()
+        approval = self.db.query(_DrugApprovalInfo).one()
+        self.assertEqual(basic.item_seq, "BASIC-KEEP")
+        self.assertEqual(basic.item_name, "current basic")
+        self.assertEqual(basic.ai_guide, "preserved guide")
+        self.assertIsNotNone(basic.catalog_sync_token)
+        self.assertEqual(approval.item_seq, "APPROVAL-KEEP")
+        self.assertEqual(approval.item_name, "current approval")
+        self.assertEqual(approval.summary_efficacy, "preserved summary")
+        self.assertIsNotNone(approval.catalog_sync_token)
+
+    def test_page_limited_sync_does_not_prune_unvisited_rows(self) -> None:
+        self.db.add(
+            _DrugBasicInfo(
+                item_seq="BASIC-UNVISITED",
+                item_name="unvisited basic",
+                normalized_item_name="unvisitedbasic",
+                raw_json="{}",
+            )
+        )
+        self.db.commit()
+
+        class _BasicAPI:
+            async def fetchPage(
+                self,
+                _page_no: int,
+                _page_size: int,
+            ) -> tuple[list[dict[str, object]], int]:
+                return (
+                    [{"itemSeq": "BASIC-VISITED", "itemName": "visited basic"}],
+                    2,
+                )
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=_BasicAPI(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=object(),  # type: ignore[arg-type]
+            page_size=1,
+            max_pages=1,
+        )
+
+        asyncio.run(sync_job.sync_basic())
+
+        item_seqs = {
+            row.item_seq for row in self.db.query(_DrugBasicInfo).all()
+        }
+        self.assertEqual(item_seqs, {"BASIC-UNVISITED", "BASIC-VISITED"})
+
     def test_basic_sync_rolls_back_premature_empty_page(self) -> None:
         class _TruncatedBasicAPI:
             async def fetchPage(
@@ -302,6 +502,89 @@ class DrugCatalogSyncTest(unittest.TestCase):
             asyncio.run(sync_job.sync_basic())
 
         self.assertEqual(self.db.query(_DrugBasicInfo).count(), 0)
+
+    def test_full_sync_rejects_internally_consistent_mass_pruning(self) -> None:
+        self.db.add_all(
+            [
+                _DrugBasicInfo(
+                    item_seq=f"EXISTING-{index}",
+                    item_name=f"existing tablet {index}",
+                    normalized_item_name=f"existingtablet{index}",
+                    raw_json="{}",
+                )
+                for index in range(10)
+            ]
+        )
+        self.db.commit()
+
+        class _PartialBasicAPI:
+            async def fetchPage(
+                self,
+                _page_no: int,
+                _page_size: int,
+            ) -> tuple[list[dict[str, object]], int]:
+                return (
+                    [{"itemSeq": "EXISTING-0", "itemName": "current tablet"}],
+                    1,
+                )
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=_PartialBasicAPI(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=object(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        with self.assertRaises(CatalogSyncIncompleteError):
+            asyncio.run(sync_job.sync_basic())
+
+        self.db.expire_all()
+        self.assertEqual(self.db.query(_DrugBasicInfo).count(), 10)
+
+    def test_pill_sync_rejects_internally_consistent_mass_replacement(
+        self,
+    ) -> None:
+        self.db.add_all(
+            [
+                PillIdentificationReference(
+                    item_seq=f"EXISTING-{index}",
+                    item_name=f"existing tablet {index}",
+                )
+                for index in range(10)
+            ]
+        )
+        self.db.commit()
+
+        class _PartialPillCatalogAPI:
+            async def requestCatalog(self) -> list[PillCatalogEntry]:
+                return [
+                    PillCatalogEntry(
+                        item_seq="REPLACEMENT",
+                        item_name="replacement tablet",
+                    )
+                ]
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=object(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=_PartialPillCatalogAPI(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        with self.assertRaises(CatalogSyncIncompleteError):
+            asyncio.run(sync_job.sync_pill_identification())
+
+        self.db.expire_all()
+        item_seqs = {
+            row.item_seq
+            for row in self.db.query(PillIdentificationReference).all()
+        }
+        self.assertEqual(
+            item_seqs,
+            {f"EXISTING-{index}" for index in range(10)},
+        )
 
     def test_pill_sync_rejects_empty_catalog_without_deleting_existing_rows(
         self,

@@ -250,6 +250,7 @@ class RequestRateLimitMiddleware:
 
 
 DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
+    ("GET", "/ready"): RateLimitRule(6, 60),
     ("POST", "/api/v1/medication/analyze-prescription-text"): RateLimitRule(
         12,
         60,

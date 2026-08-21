@@ -44,12 +44,16 @@ class InputPrescription {
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
   String _lastSelectedImagePath = '';
+  bool _lastSelectedImageOwnedByApp = false;
   List<RecognizedTextRegion> _lastRecognizedTextRegions = [];
+  final Map<String, Completer<void>> _activeImageOperations =
+      <String, Completer<void>>{};
 
   int get lastRawMedicationCount => _lastRawMedicationCount;
   int get lastParsedMedicationCount => _lastParsedMedicationCount;
   int get lastSkippedMedicationCount => _lastSkippedMedicationCount;
   String get lastSelectedImagePath => _lastSelectedImagePath;
+  bool get lastSelectedImageOwnedByApp => _lastSelectedImageOwnedByApp;
   List<RecognizedTextRegion> get lastRecognizedTextRegions =>
       List.unmodifiable(_lastRecognizedTextRegions);
 
@@ -101,7 +105,8 @@ class InputPrescription {
     XFile image, {
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    _prepareSelectedImage(image.path);
+    await clearSelectedImage();
+    _prepareSelectedImage(image.path, ownedByApp: true);
     onImageSelected?.call();
     return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
   }
@@ -136,6 +141,8 @@ class InputPrescription {
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
   }) async {
+    final imageOperation = Completer<void>();
+    _activeImageOperations[image.path] = imageOperation;
     _lastRecognizedTextRegions = [];
     try {
       final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
@@ -185,6 +192,8 @@ class InputPrescription {
       );
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
+      final prescriptionBatchId =
+          decodedData['prescription_batch_id']?.toString().trim() ?? '';
       final rawMedications = decodedData['medications'];
       if (rawMedications is! List) {
         _lastRecognizedTextRegions = _resolvePreviewRegions(
@@ -201,6 +210,10 @@ class InputPrescription {
           .map((item) {
             final itemJson = Map<String, dynamic>.from(item);
             itemJson.putIfAbsent('prescription_date', () => prescriptionDate);
+            itemJson.putIfAbsent(
+              'prescription_batch_id',
+              () => prescriptionBatchId,
+            );
             return MedicationSchedule.fromAnalysisJson(itemJson);
           })
           .toList(growable: false);
@@ -229,6 +242,13 @@ class InputPrescription {
         stackTrace: stackTrace,
       );
       throw StateError('서버 연결에 실패했습니다.');
+    } finally {
+      if (identical(_activeImageOperations[image.path], imageOperation)) {
+        _activeImageOperations.remove(image.path);
+      }
+      if (!imageOperation.isCompleted) {
+        imageOperation.complete();
+      }
     }
   }
 
@@ -244,7 +264,7 @@ class InputPrescription {
     ImageSource imageSource, {
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    _prepareSelectedImage('');
+    await clearSelectedImage();
     final image = await _imagePicker.pickImage(
       source: imageSource,
       imageQuality: 82,
@@ -255,14 +275,49 @@ class InputPrescription {
     if (image == null) {
       return null;
     }
-    _prepareSelectedImage(image.path);
+    _prepareSelectedImage(
+      image.path,
+      ownedByApp: imageSource == ImageSource.camera,
+    );
     onImageSelected?.call();
     return _requestPrescriptionAnalysis(image, imageSource: imageSource);
   }
 
-  void _prepareSelectedImage(String imagePath) {
+  void _prepareSelectedImage(String imagePath, {required bool ownedByApp}) {
     _lastSelectedImagePath = imagePath;
+    _lastSelectedImageOwnedByApp = ownedByApp;
     _lastRecognizedTextRegions = [];
+  }
+
+  // 함수이름: clearSelectedImage
+  // 함수역할:
+  // - 현재 미리보기 참조를 즉시 해제한다.
+  // - 앱 카메라가 만든 임시 파일은 진행 중 OCR이 끝난 뒤 삭제하고,
+  //   사용자가 선택한 갤러리 원본은 삭제하지 않는다.
+  // 반환값:
+  // - 필요한 파일 정리가 끝나면 완료되는 Future
+  Future<void> clearSelectedImage() async {
+    final imagePath = _lastSelectedImagePath;
+    final ownedByApp = _lastSelectedImageOwnedByApp;
+    final activeOperation = _activeImageOperations[imagePath];
+    _prepareSelectedImage('', ownedByApp: false);
+    if (!ownedByApp || imagePath.isEmpty) {
+      return;
+    }
+    await activeOperation?.future;
+    final imageFile = File(imagePath);
+    try {
+      if (await imageFile.exists()) {
+        await imageFile.delete();
+      }
+    } on FileSystemException catch (error, stackTrace) {
+      developer.log(
+        'App-owned prescription capture cleanup failed.',
+        name: 'InputPrescription',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   String _imageFileAccessErrorMessage(ImageSource imageSource) {
@@ -528,6 +583,7 @@ class InputPrescription {
   }
 
   void dispose() {
+    unawaited(clearSelectedImage());
     for (final abortTrigger in _abortTriggers.toList(growable: false)) {
       if (!abortTrigger.isCompleted) {
         abortTrigger.complete();

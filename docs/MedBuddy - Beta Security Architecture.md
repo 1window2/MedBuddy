@@ -2,7 +2,7 @@
 
 ## Decision Status
 
-- Status: implemented in source; infrastructure provisioning and smoke testing pending
+- Status: production infrastructure provisioned and public HTTPS smoke-tested; authenticated Android device and final signed-release validation remain
 - Applies to: Android beta and FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
@@ -44,6 +44,10 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend control | `ManagePushToken` | Register or disable device tokens within the authenticated user scope. |
 | Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
+| Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
+| Backend dependency policy | `_lock_account_operation` | Serialize every authenticated account request with deletion using a transaction-scoped PostgreSQL advisory lock or a local SQLite write transaction. |
+| Backend external boundary | `FirebaseIdentityDeletionBoundary` | Delete only the verified Firebase subject through Admin SDK and treat already-absent identities as idempotent success. |
+| Backend control | `ManageAccount` | Persist deletion tombstones, purge account-owned data, and complete retryable external identity deletion. |
 
 These names are the implementation contract. Authentication is centralized at
 the API and application composition boundaries rather than embedded separately
@@ -61,8 +65,10 @@ release-mode identity or bypasses bearer-token and App Check enforcement.
 Prescription analysis uses a different privacy boundary from loose-pill
 identification:
 
-1. Flutter runs Korean OCR locally with Google ML Kit and keeps the original
-   prescription image on the device.
+1. Flutter runs Korean OCR locally with Google ML Kit. App-owned camera
+   captures remain only for the active preview and are deleted after in-flight
+   OCR finishes when the flow is cleared or disposed; gallery originals are
+   never deleted by MedBuddy.
 2. `PrescriptionLocalOcrService` removes patient-identifying lines and masks
    inline resident numbers, phone numbers, and email addresses.
 3. The preview displays recognized regions, hides sensitive regions, and lets
@@ -127,6 +133,28 @@ Router --> AuthenticatedApiClient : JSON response
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
 
+## Irreversible Account Deletion
+
+Permanent deletion is a server-managed, retryable saga:
+
+1. Credential-backed users must present a Firebase token whose `auth_time` is
+   no older than `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS` (300 seconds by
+   default). The Flutter control reauthenticates stale Google sessions; other
+   credential providers require an explicit sign-out and sign-in.
+2. Anonymous guests are explicitly exempt from credential step-up because
+   Firebase anonymous accounts have no reusable credential. Their current ID
+   token is still verified and force-refreshed.
+3. Every authenticated request acquires the same account-scoped database
+   transaction lock before account registration. Deletion therefore waits for
+   in-flight writes, writes a tombstone, purges owned data, and commits before
+   the external identity call.
+4. Once tombstoned, ordinary requests fail with `410 Gone`; only the deletion
+   endpoint may retry. Firebase `user-not-found` is idempotent success, while
+   transient provider failure returns `503 Retry-After` without reopening writes.
+5. After server success, Flutter clears its in-memory medical session before
+   provider sign-out. A sign-out failure remains visible and cannot resurrect
+   the deleted subject inside the running application.
+
 ## Caregiver Notification Delivery
 
 Caregiver settings are persisted independently for morning, lunch, evening,
@@ -138,7 +166,9 @@ Android device token and follows Firebase token refresh. A patient's
 incomplete-to-complete transition invokes `DispatchCaregiverAlert`, which
 checks the active link and slot preference before sending FCM. Tokens rejected
 as unregistered or sender-mismatched are disabled instead of retried
-indefinitely. Signing out requests deactivation of the current token.
+indefinitely. Push startup and token registration are tracked as lifecycle
+operations, so signing out waits for any in-flight registration before it
+requests deactivation of the current token.
 
 Missed-deadline evaluation currently remains in the Android Workmanager
 monitor. Its background isolate initializes Firebase before making
@@ -147,6 +177,24 @@ authenticated API requests. In local demo mode,
 monitor polls for both completion and missed-deadline changes. A production
 beta still requires server-scheduled missed-deadline delivery and two-device
 FCM smoke testing.
+
+## Patient Reminder Privacy and Continuity
+
+Patient medication reminders use a rolling 14-day local reservation window so
+the application stays below device/OEM pending-alarm limits. An authenticated
+Android Workmanager task runs twice daily, reloads the current reminder
+settings and medication courses overlapping the next 14 days, and replenishes
+that window. Future-start courses are therefore visible before their first
+dose, while each refresh remains bounded by the prescription course end. A transient
+network/authentication failure asks Workmanager to retry and leaves the already
+scheduled window intact.
+
+Session exit is a privacy boundary. Ordinary sign-out cancels the replenishment
+task and every pending `schedule:` local notification before provider sign-out;
+the server-side reminder preference remains available for a later sign-in.
+Permanent account deletion performs the same local cleanup before the backend
+deletion request. Caregiver alerts and unrelated notification categories are
+not removed by patient-reminder cleanup.
 
 ## Migration Without Pipeline Breakage
 
@@ -167,41 +215,46 @@ FCM smoke testing.
 
 ## HTTPS and Deployment
 
-The self-hosted deployment must provide:
+The production beta runs on one dedicated team-controlled Ubuntu host behind
+Cloudflare Tunnel.
 
-- TLS termination with automatic certificate renewal and HTTP-to-HTTPS redirect
-  when direct router forwarding is used.
-- A private Docker network between FastAPI, PostgreSQL, and Redis.
-- PostgreSQL with a persistent volume, bounded connection pooling, external
-  backups, and a tested restore. SQLite remains valid only for local/demo use.
-- The pill reference catalog in the shared PostgreSQL database. Catalog changes
-  run as a controlled maintenance operation rather than from API request paths.
-- Redis on the private Docker network for distributed quotas. Production fails
-  closed when Redis is unavailable.
-- The versioned Alembic migration chain before the API starts accepting traffic.
-- Secrets in an ignored host environment file or mounted read-only secret file,
-  never repository files or Flutter compile-time constants.
-- One bounded API container on the 8 GB beta host, with request/body limits,
-  timeouts, redacted logs, health probes, and external API failure monitoring.
-
-The beta topology is one team-controlled container host. A temporary Tailscale
-Funnel can publish loopback FastAPI over HTTPS during the two-week bridge.
-Permanent direct hosting requires a public IPv4 address, router TCP 80/443
-forwarding, DNS or DDNS, and Caddy TLS termination. PostgreSQL, Redis, and the
-FastAPI development port must never be forwarded. The Boundary-Control-Entity
-interfaces remain provider-independent if managed hosting is revisited later.
+- Cloudflare is the authoritative DNS provider for `medbuddy.pp.ua`.
+- The public API hostname is `https://api.medbuddy.pp.ua`.
+- The named tunnel `medbuddy-production` forwards the API hostname to
+  `http://backend:8080` on the private Docker network.
+- No inbound router port forwarding is required.
+- Tailscale Funnel and direct-public Caddy ingress are not part of the
+  production topology.
+- PostgreSQL and Redis remain private Docker services with no public host ports.
+- FastAPI port `8000` is bound only to host loopback for local diagnostics.
+- Cloudflare provides edge TLS, API cache bypass, route filtering, DDoS
+  mitigation, and an outer burst rate limit.
+- FastAPI remains responsible for Firebase Authentication, Firebase App Check,
+  authorization, Redis-backed application quotas, request validation, and
+  domain controls.
+- Production configuration is split between ignored `deploy/.env` and
+  `deploy/backend.env` files, while Firebase Admin and Cloudflare Tunnel
+  credentials remain outside the repository.
+- The versioned Alembic migration chain runs before the API starts accepting
+  traffic, and readiness checks cover the database revision, Firebase
+  verification, App Check, and Redis.
 
 ## Client Egress and Resource-Safety Policy
 
-- `ApiConfig` keeps emulator and explicitly selected trusted-LAN endpoints in
-  debug mode, while release/profile mode rejects clear-text, localhost,
-  private-network, credentialed, query-bearing, and non-contract API URLs.
-- The convenience `python backend/main.py` entry point binds to `127.0.0.1`.
-  Listening on every interface is an explicit trusted-LAN test action, never a
-  default.
-- Medication images are external content. Flutter loads them only from the
-  documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
-  value immediately before every `Image.network` call.
+- `ApiConfig` defaults to the production HTTPS endpoint
+  `https://api.medbuddy.pp.ua/api/v1/medication` and requires a public HTTPS
+  backend in debug, profile, and release modes.
+- The Android debug manifest retains Internet access for ADB, breakpoints, and
+  Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
+  access.
+- Medication images are external content. The backend accepts, persists, and
+  returns them only from the documented `https://nedrug.mfds.go.kr`
+  public-data host. Flutter independently revalidates the value immediately
+  before every `Image.network` call.
+- Prescription image overlays receive validated categories and coordinates,
+  but no model-returned region text. Caregiver notifications use generic
+  lock-screen content and keep the patient scope only in the private tap
+  payload used for authenticated in-app navigation.
 - Prescription image processing rejects decoded dimensions above 24 megapixels
   from the image header and uses a dedicated single-worker executor before
   OpenCV allocation. Multipart byte limits remain a separate outer control.
@@ -217,12 +270,16 @@ interfaces remain provider-independent if managed hosting is revisited later.
 - Use Play App Signing for store distribution and protect the upload key.
 - Keep the keystore and `key.properties` ignored and outside source control.
 - Store CI signing material in a protected GitHub Environment; expose it only
-  to tag/release jobs, never pull-request jobs.
+  to the protected `main` branch after an explicit environment approval, never
+  pull-request, beta-branch, wildcard-ref, or tag jobs.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
+- APK fingerprint extraction is anchored to the exact `apksigner` digest line,
+  and AAB verification uses strict jarsigner semantics before certificate
+  comparison.
 - The release manifest/network security configuration permits HTTPS only.
-- Development clear-text access, if retained, must live in a debug-only Android
-  manifest overlay.
+- Debug builds retain Internet permission for Flutter tooling, but clear-text
+  HTTP access is not enabled in the Android manifest.
 
 ## Delivery Order to July 31
 
@@ -237,12 +294,13 @@ interfaces remain provider-independent if managed hosting is revisited later.
 ## Implemented Beta Configuration
 
 The source implements authentication adapters, authorization controls,
-self-hosted container configuration, disabled historical GCP workflows, and
-signed-build safeguards for delivery items 1-6. Runtime monitoring,
-least-privilege Firebase IAM assignment, host secrets, backup/restore rehearsal,
-public HTTPS verification, and signed-device smoke testing remain operational
-release gates, not completed application features or a second authentication
-path.
+the dedicated production container configuration, Cloudflare Tunnel ingress,
+disabled historical GCP workflows, and signed-build safeguards for delivery
+items 1-6. Public HTTPS and readiness smoke testing are complete. Runtime
+monitoring, least-privilege Firebase IAM assignment, backup/restore rehearsal,
+authenticated Android device testing, and final signed-device validation remain
+operational release gates rather than separate application features or
+authentication paths.
 
 ### Firebase
 
@@ -251,7 +309,7 @@ path.
    Phone remains disabled for the no-billing beta.
 2. Backend production uses `AUTH_MODE=firebase`, `FIREBASE_PROJECT_ID`, and a
    minimum-permission Firebase Admin credential mounted read-only from outside
-   the repository on the self-hosted server.
+   the repository on the dedicated production server.
 3. Flutter release builds receive `MEDBUDDY_AUTH_MODE=firebase`, Firebase
    identifiers, and `MEDBUDDY_PHONE_AUTH_ENABLED=false` through protected build
    variables.
@@ -272,18 +330,23 @@ path.
    during sign-out.
 9. Newly completed-dose transitions are delivered through FCM. Missed-deadline
    checks remain an authenticated Workmanager task; periodic server maintenance
-   runs inside the single self-hosted FastAPI process.
+   runs inside the single production FastAPI process.
+
+10. Permanent deletion requires a recent Firebase `auth_time` for credential-
+    backed users. Keep `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS=300` unless a
+    documented threat-model change justifies another bounded value.
+
+11. Production FastAPI accepts only the public API hostname and documented
+    loopback/container diagnostic hosts from `TRUSTED_HOSTS`; wildcard Host
+    configuration is rejected.
 
 ### Android Firebase Registration
 
-Register both debug fingerprints while testing Google sign-in and App Check:
-
-- Debug SHA-1: `9C:E0:30:DB:15:5B:54:F3:A7:8A:E7:CA:C6:6B:46:73:B5:40:E0:25`
-- Debug SHA-256: `78:AF:ED:C9:BE:90:3B:15:B6:18:1B:C5:09:08:A6:92:D6:41:9D:D0:C9:91:6F:3E:70:63:27:76:B8:B1:F8:D1`
-
-These fingerprints identify the current local debug certificate and are not
-secrets. Register the release/upload SHA-1 and SHA-256 separately after the
-protected release keystore is created. Download a refreshed
+Register the SHA-1 and SHA-256 fingerprints for each contributor's own debug
+certificate while testing Google sign-in and App Check. Do not copy a
+machine-specific debug fingerprint into tracked project documentation or
+configuration. Register the release/upload SHA-1 and SHA-256 separately after
+the protected release keystore is created. Download a refreshed
 `google-services.json` after registering fingerprints and enabling Google
 sign-in; keep the real file out of Git.
 
@@ -292,21 +355,31 @@ Admin, API, database, and signing credentials stay outside the repository in
 mounted host secret files or protected GitHub Environments. They must never be
 stored in the Compose file or Flutter compile-time constants.
 
-### Self-hosted FastAPI, PostgreSQL, and Redis
+### Production FastAPI, PostgreSQL, Redis, and Cloudflare Tunnel
 
-`compose.self-hosted.yml` builds the existing backend image and runs:
+`compose.self-hosted.yml` runs the production backend stack:
 
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
+- One periodic catalog-refresh worker with atomic weekly synchronization,
+  upstream-withdrawal pruning, and bounded retry backoff.
 - One FastAPI container with production fail-closed settings.
-- An optional Caddy profile for direct public HTTPS.
+- One `cloudflared` container providing the only public ingress path.
 
-The host copies `backend/.env.self-hosted.example` to the ignored
-`backend/.env.self-hosted` file. A Firebase Admin credential remains outside
-the repository and is mounted read-only into the backend container. The
-container waits for PostgreSQL and Redis, runs `alembic upgrade head`, and only
-then starts Uvicorn. The temporary Funnel path publishes loopback port 8000;
-the direct-public profile publishes only Caddy ports 80 and 443.
+The host keeps Docker interpolation values in ignored `deploy/.env` and backend
+runtime values in ignored `deploy/backend.env`. A Firebase Admin credential and
+Cloudflare Tunnel token remain outside the repository and are mounted read-only
+into the required containers.
+
+The one-shot bootstrap waits for PostgreSQL, runs `alembic upgrade head`, and
+seeds all empty medication catalogs before the backend starts. The periodic
+worker then refreshes all three datasets atomically without the empty-only
+shortcut. Complete basic and approval refreshes mark observed rows with a
+generation token and remove rows not returned by MFDS in the same transaction;
+failed or page-limited jobs cannot publish that pruning. FastAPI port `8000` is exposed only on host loopback for
+local diagnostics. Public traffic reaches the backend only through
+`https://api.medbuddy.pp.ua` -> Cloudflare -> `medbuddy-production` ->
+`http://backend:8080`.
 
 The historical GCP deployment, catalog-sync, and maintenance workflows retain
 their source but every job has `if: false`. They cannot provision or invoke
@@ -322,6 +395,8 @@ The current ordered Alembic chain records the beta data boundary:
 | `e82bc4d1a930` | Persist user-confirmed schedule slots on saved medications. |
 | `f93ac76b2e11` | Strengthen account lifecycle and relationship integrity. |
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
+| `b71d8c2e4f10` | Add account-deletion tombstone and external-identity completion timestamps. |
+| `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still
@@ -343,8 +418,12 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_PROJECT_ID` as environment
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials; the
-protected environment prevents accidental cross-project builds rather than
-treating those values as authorization secrets.
+environment requires owner approval and an exact custom deployment policy for
+only `main`. The workflow repeats that exact-ref gate before repository build
+code can receive signing material. Beta branches and version-like tags cannot
+access the environment. The protected environment
+also prevents accidental cross-project builds rather than treating public
+Firebase identifiers as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies
 the upload certificate fingerprint and cross-checks the restored Firebase
 Android configuration before building. It builds both APK and AAB outputs and

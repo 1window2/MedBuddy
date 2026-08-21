@@ -1,4 +1,4 @@
-[![CodeQL](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql) [![FastAPI](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/backend-ci.yml?label=FastAPI&logo=fastapi)](https://github.com/1window2/MedBuddy/actions/workflows/backend-ci.yml) [![Flutter](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/frontend-ci.yml?label=Flutter&logo=flutter)](https://github.com/1window2/MedBuddy/actions/workflows/frontend-ci.yml) [![Dependabot](https://img.shields.io/github/issues-pr/1window2/MedBuddy/dependencies?label=Dependabot&logo=dependabot)](https://github.com/1window2/MedBuddy/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Fdependabot)
+[![CodeQL](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/1window2/MedBuddy/actions/workflows/github-code-scanning/codeql) [![FastAPI](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/backend-ci.yml?label=FastAPI&logo=fastapi)](https://github.com/1window2/MedBuddy/actions/workflows/backend-ci.yml) [![Flutter](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/frontend-ci.yml?label=Flutter&logo=flutter)](https://github.com/1window2/MedBuddy/actions/workflows/frontend-ci.yml) [![Android](https://img.shields.io/github/actions/workflow/status/1window2/MedBuddy/release-android.yml?label=Android&logo=android)](https://github.com/1window2/MedBuddy/actions/workflows/release-android.yml) [![Dependabot](https://img.shields.io/github/issues-pr/1window2/MedBuddy/dependencies?label=Dependabot&logo=dependabot)](https://github.com/1window2/MedBuddy/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Fdependabot)
 
 # MedBuddy
 
@@ -55,8 +55,8 @@
 - Today's schedule supports patient-scoped and caregiver-scoped status updates.
 - Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
 - Completing a dose provides immediate feedback and an undo action, while reminder setup and cancellation display a clear result message at the bottom of the schedule screen.
-- Slot completion state is stored separately from saved medication snapshots and is cleaned up with deleted or expired medication records.
-- Saved medication records are retained through their medication period and cleaned up after the configured retention window.
+- Slot completion state is stored separately from saved medication snapshots and is cleaned up when the owning medication or account is deleted.
+- Ended medication records remain visible in the completed-history section by default. Operators may configure a nonzero retention window, but the beta self-hosted profile preserves history until user deletion.
 
 ### Patient and Caregiver Link Flow
 
@@ -83,10 +83,10 @@
 
 ## Roadmap
 
-1. **Android beta verification:** Run the self-hosted FastAPI/PostgreSQL/Redis
-   topology behind public HTTPS, validate backup and restore, and complete
-   signed two-device authentication, authorization, Wi-Fi, and cellular smoke
-   tests.
+1. **Android beta verification:** Validate the dedicated
+   FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
+   backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,
+   cellular, outage-recovery, and signed-device smoke tests.
 2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
@@ -200,12 +200,12 @@ API documentation is available at:
 http://127.0.0.1:8000/docs
 ```
 
-The Android emulator reaches this loopback-only service through `10.0.2.2`.
-Do not bind the unauthenticated development configuration to every interface.
+This loopback-only server is retained for backend development and automated
+testing only. The Android application does not use it as its default API
+endpoint.
 
-For the production-like Docker Compose stack, temporary Tailscale Funnel, and
-direct-router HTTPS setup, see
-[MedBuddy Self-Hosted Beta Backend](docs/Self%20Hosted%20Beta%20Backend.md).
+Production runs on the dedicated Ubuntu host behind Cloudflare Tunnel. See
+[MedBuddy Production Deployment](docs/Production%20Deployment.md).
 
 ### Optional Local Drug Catalog
 
@@ -234,52 +234,49 @@ flutter devices
 flutter run -d "[your-device-id]"
 ```
 
-Use the device id shown by `flutter devices`. By default, the Android emulator build calls:
+Use the device id shown by `flutter devices`.
+
+The Android application defaults to the production API endpoint:
 
 ```text
-http://10.0.2.2:8000/api/v1/medication
+https://api.medbuddy.pp.ua/api/v1/medication
 ```
 
-For a physical Android device on the same trusted network, replace the example
-host with your development machine's LAN IP address. Supply the backend URL when
-building or launching the app. This requires an explicit trusted-LAN backend
-binding and must use synthetic data only:
+ADB debugging, Flutter hot reload, breakpoints, and physical-device testing do
+not require a backend process on the development laptop or a device on the same
+LAN. The Android client reaches the production API over ordinary HTTPS.
 
-```powershell
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
+`MEDBUDDY_API_BASE_URL` remains a compile-time `String.fromEnvironment` value.
+If it is overridden, the value must still be a public HTTPS endpoint whose path
+is `/api/v1/medication`. Localhost, private-network addresses, and clear-text
+HTTP endpoints are rejected in debug, profile, and release builds.
 
-```powershell
-flutter run -d "[your-device-id]" --dart-define=MEDBUDDY_API_BASE_URL=http://192.168.1.100:8000/api/v1/medication
-```
-
-`MEDBUDDY_API_BASE_URL` is compiled into the Flutter application through
-`String.fromEnvironment`; it is not an in-app runtime setting. An APK built
-without this value keeps the emulator-only `10.0.2.2` default. Do not publish an
-APK containing a private LAN address as a portable client. Current APKs are
-local alpha-demo artifacts and require a separately running backend.
-
-Local development defaults to `AUTH_MODE=disabled` and
-`MEDBUDDY_AUTH_MODE=disabled`. To test Firebase Authentication, register the
-Android package and certificate fingerprints, enable the intended providers,
-place the downloaded `google-services.json` in `frontend/android/app`, set
-`AUTH_MODE=firebase` and `FIREBASE_PROJECT_ID` in `backend/.env`, and provide
-the matching Flutter configuration as compile-time values:
+For authenticated beta testing, keep the real `google-services.json` in
+`frontend/android/app` and out of Git. Provide the Firebase configuration that
+matches the registered `com.medbuddy.app` Android application:
 
 ```powershell
 flutter run -d "[your-device-id]" `
   --dart-define=MEDBUDDY_AUTH_MODE=firebase `
-  --dart-define=MEDBUDDY_API_BASE_URL=https://your-backend.example/api/v1/medication `
   --dart-define=MEDBUDDY_FIREBASE_API_KEY=your_api_key `
   --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
   --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
-  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=your_project_id `
+  --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=medbuddy-26 `
   --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
 ```
 
-Release builds reject disabled authentication, non-HTTPS URLs, localhost, and
-private-network backend addresses at runtime. Production deployment and signing variables are documented in
+Release and profile builds require Firebase authentication and the same public
+HTTPS backend contract. Production deployment details are documented in
+[`docs/Production Deployment.md`](docs/Production%20Deployment.md), and
+authentication, App Check, and signing requirements are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
+For an already installed physical-device beta, increment `frontend/pubspec.yaml`
+version code and use `frontend/tool/install_update_preserving_data.ps1`. The
+helper verifies the package/signing identity, performs only `adb install -r`,
+and refuses any fallback that would uninstall the app or clear Firebase and
+reminder state. Server-side medication history remains in the named PostgreSQL
+Compose volume; never use `docker compose down -v` during a rebuild. See the
+self-hosted guide above for the complete update and backup procedure.
 
 ## Contributing
 

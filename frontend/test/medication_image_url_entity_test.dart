@@ -18,7 +18,7 @@ void main() {
     const rejectedUrls = [
       'http://nedrug.mfds.go.kr/image.png',
       'https://127.0.0.1/image.png',
-      'https://192.168.45.7/image.png',
+      'https://192.168.1.10/image.png',
       'https://[::1]/image.png',
       'https://user:password@nedrug.mfds.go.kr/image.png',
       'https://nedrug.mfds.go.kr:8443/image.png',

@@ -66,6 +66,45 @@ class CheckSchedule {
     }
   }
 
+  // Function Name: requestMedicationScheduleWindow
+  // Description:
+  // - Requests courses overlapping the rolling reminder window.
+  // Parameters:
+  // - days: Inclusive window length beginning today, up to 14 days.
+  // Returns:
+  // - Medication courses needed to replenish notifications before they start.
+  Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
+    int days = 14,
+  }) async {
+    if (days < 1 || days > 14) {
+      throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
+    }
+    try {
+      final response = await _client
+          .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.decodeBody(response);
+      if (response.statusCode != 200) {
+        throw StateError(
+          'Schedule window lookup failed (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        );
+      }
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
+      return _decodeMedicationScheduleList(decodedData['data']);
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Medication schedule window request failed.',
+        name: 'CheckSchedule',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw StateError('Schedule window lookup failed.');
+    }
+  }
+
   // Function Name: updateMedicationStatus
   // Description:
   // - Persists one medication completion status.
@@ -125,10 +164,16 @@ class CheckSchedule {
     return MedicationSchedule.fromScheduleJsonList(rawItems);
   }
 
-  Uri _buildScheduleUri(String path) {
-    return Uri.parse(
-      '$baseUrl/$path',
-    ).replace(queryParameters: {'patient_hash': patientHash});
+  Uri _buildScheduleUri(
+    String path, [
+    Map<String, String> additionalQueryParameters = const {},
+  ]) {
+    return Uri.parse('$baseUrl/$path').replace(
+      queryParameters: {
+        'patient_hash': patientHash,
+        ...additionalQueryParameters,
+      },
+    );
   }
 
   void dispose() {

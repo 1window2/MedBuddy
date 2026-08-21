@@ -137,6 +137,11 @@ class CheckSavedMedication {
       savePayload['item_name'] = userEditedMedicationName;
     }
     savePayload['prescription_date'] = _formatDate(prescriptionDate);
+    final prescriptionBatchId =
+        medicationSchedule?.prescriptionBatchId.trim() ?? '';
+    if (prescriptionBatchId.isNotEmpty) {
+      savePayload['prescription_batch_id'] = prescriptionBatchId;
+    }
     savePayload['dosage_per_time'] = _readScheduleValue(
       medicationSchedule?.dosage,
       medicationDetail.dosagePerTime,

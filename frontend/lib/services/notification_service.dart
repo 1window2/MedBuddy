@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import '../entities/medication_alarm_entity.dart';
+
 enum MedicationNotificationDestination { schedule, caregiverSchedule }
 
 // 클래스명: MedicationNotificationSelection
@@ -114,6 +116,12 @@ class NotificationService {
     handler(selection);
   }
 
+  @visibleForTesting
+  static bool isSessionNotificationPayload(String? payload) {
+    return payload?.startsWith('schedule:') == true ||
+        payload?.startsWith('caregiver:') == true;
+  }
+
   // 함수명: initialize
   // 함수역할:
   // - 알림 플러그인과 timezone 패키지를 한 번만 초기화한다.
@@ -200,6 +208,7 @@ class NotificationService {
   // - minute: 분
   // - medicationNames: 알림 본문에 보여줄 약 이름 목록
   // - activeDates: 이 시간대 알림이 필요한 복용 날짜 목록
+  // - medicationNamesByDate: 날짜별로 실제 복용 중인 약 이름 목록
   // - language: 알림 제목과 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 없음
@@ -211,12 +220,12 @@ class NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     await initialize();
     await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
     final now = timezone.TZDateTime.now(timezone.local);
-    final body = _buildReminderBody(medicationNames, language);
     final uniqueDates = <String, DateTime>{};
     for (final activeDate in activeDates) {
       final normalizedDate = DateTime(
@@ -229,6 +238,10 @@ class NotificationService {
     final sortedDates = uniqueDates.values.toList(growable: false)..sort();
 
     for (final activeDate in sortedDates) {
+      final body = _buildReminderBody(
+        medicationNamesByDate[_dateKey(activeDate)] ?? medicationNames,
+        language,
+      );
       final scheduledDate = timezone.TZDateTime(
         timezone.local,
         activeDate.year,
@@ -410,6 +423,38 @@ class NotificationService {
       return;
     }
     await _plugin.cancel(id: id);
+  }
+
+  // Function Name: cancelAllMedicationReminders
+  // Description:
+  // - Cancels every pending medication reminder and every displayed caregiver
+  //   alert before session exit, while preserving unrelated notifications.
+  // Returns:
+  // - Completes after session-owned notifications and selections are removed.
+  Future<void> cancelAllMedicationReminders() async {
+    await initialize();
+    final pendingRequests = await _plugin.pendingNotificationRequests();
+    for (final request in pendingRequests) {
+      if (isSessionNotificationPayload(request.payload)) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+    final activeNotifications = await _plugin.getActiveNotifications();
+    for (final notification in activeNotifications) {
+      final notificationId = notification.id;
+      if (notificationId != null &&
+          isSessionNotificationPayload(notification.payload)) {
+        await _plugin.cancel(id: notificationId, tag: notification.tag);
+      }
+    }
+    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+      await _plugin.cancel(
+        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
+      );
+    }
+    if (_pendingSelection != null) {
+      _pendingSelection = null;
+    }
   }
 
   // 함수명: showCaregiverAlert

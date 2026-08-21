@@ -1,11 +1,11 @@
 # MedBuddy Codex Security Finding Disposition
 
-Audit date: 2026-08-09
+Audit date: 2026-08-21
 
-Target: beta/v0.1.0 working tree, `codex/beta-v0.1.0-security-hardening`,
-and the verified follow-up branch `codex/beta-v0.1.0-postscan-hardening`
+Target: final v0.1.0 security branch from merged `main`
 
-Scope: all 34 supplied Codex Security reports and every available Patch tab
+Scope: all 42 current Codex Security reports, every available Patch tab, and
+the 19 resolved review threads from merged PR #74
 
 ## Method
 
@@ -15,28 +15,50 @@ findings exposed a Patch tab; those patches were reviewed as proposals rather
 than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
-The result is 17 findings that required a change in the hardening branches and
-17 findings whose reported vulnerable state had already been removed by the
-recovered beta work. "Already resolved" means the current tree contains the
-relevant control; it does not mean the original report was invalid.
+Twenty-five findings required a change and 17 had a reported vulnerable state
+that was already removed by the recovered beta work. The later review threads
+also required corrections before merge.
+"Already resolved" means the current tree contains the relevant control; it
+does not mean the original report was invalid.
+
+## PR #74 post-scan review corrections
+
+| Review concern | Final control |
+| --- | --- |
+| A device push token could survive sign-out | Strict sign-out unregisters the token while the Firebase bearer token is still valid. Provider sign-out and local listener teardown happen only after server confirmation; failure leaves the authenticated session retryable. |
+| Production disabled inline pill-catalog refresh before a seed existed | A one-shot `catalog-bootstrap` service applies Alembic migrations and atomically seeds all three shared catalogs before FastAPI and Cloudflare Tunnel can become ready. `/ready` requires nonempty basic, approval, and pill-reference tables. |
+| Catalog retry was blocked by the interactive negative cache | Full-catalog page fetches explicitly bypass the short interactive failure cache while retaining bounded retry counts, timeouts, and the cross-process sync lock. |
+| DELETE request bodies bypassed the global size limit | `RequestBodyLimitMiddleware` now covers DELETE alongside POST, PUT, and PATCH; regression tests cover both content-length and streamed-body overflow. |
+| Client-side deletion could purge data before Firebase recent-login failure | Credential-backed deletion now requires a recent server-verified `auth_time`. The backend records a retry-safe tombstone, purges data, and deletes the verified Firebase subject through Admin SDK under the same account transaction lock used by ordinary requests. |
+| Push-token registration could finish after strict sign-out cleanup | Push startup and every token registration are tracked as lifecycle operations. Strict sign-out blocks new registrations, waits for in-flight registration, and only then unregisters the final token. |
+| Production catalog data became stale after the one-time bootstrap | A dedicated `catalog-refresh` service performs a full atomic MFDS synchronization on a configurable weekly cadence, with bounded retries and an explicit failure backoff. |
+| Clearing prescription state could leave app-created camera captures behind | Prescription image ownership is explicit: app-created camera files are deleted after active OCR completes, while user-owned gallery originals are never deleted. |
+| Medication reminders could survive sign-out or account deletion | Session teardown cancels the authenticated replenishment task and all pending patient `schedule:` notifications before provider sign-out. Account deletion performs the same cleanup before its destructive backend request. |
+| Long medication courses lost reminders after the 14-day device window | The bounded 14-day window is retained for OEM safety and is replenished twice daily by an authenticated Workmanager task using current server settings and schedules. |
+| Full catalog refresh retained records withdrawn upstream | Complete basic and approval refreshes assign per-run generation tokens and atomically prune rows not observed in the successful MFDS response. Failed and page-limited jobs preserve the prior catalog. |
+| Reserved characters in the PostgreSQL password broke Compose database URLs | Compose passes separate structured database fields. SQLAlchemy renders the URL and escapes the raw password, while PostgreSQL receives the same unmodified secret. |
 
 ## High severity
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `4ee5cc54a6f08191b8c476879b01ded2` | Production deploy allows Firebase anonymous API access | Fixed on main before this audit | The dormant Cloud Run workflow rejects anonymous Firebase identities; self-hosted guest access remains an explicitly authenticated Firebase anonymous principal. |
 | `72d651dbea5c8191ac42b085e871f5bc` | Concurrent prescription image preprocessing can exhaust resources | Fixed in this branch | Pillow header pixel limit runs before decode, and preprocessing uses a single-worker executor. |
 | `cf40175dd2988191ac0b07349bcb36df` | Regex DoS in daily frequency parsing | Fixed in this branch | Numeric matching cannot restart inside an arbitrarily long digit run; regression test covers the adversarial input. |
 | `f57513cdfd888191b3001364509782c4` | Unauthenticated reminder settings can be changed by hash | Already resolved in beta | Protected routes use verified authentication/App Check and server-derived ownership instead of accepting the hash as authority. |
 | `f0105020e29c8191aa816d4c6aff4509` | Home link screen exposes unauthenticated caregiver linking | Already resolved in beta | The client no longer exposes an editable identity boundary; the physical-device anonymous view cannot create or register a link. |
 | `be803f617cf481918039d89dab38015d` | Editable user hash exposes caregiver links | Already resolved in beta | User identity is derived from the verified principal; hash fields are no longer editable credentials. |
 | `a73bc23032548191ba138f0dad71e6d9` | Unauthenticated users can mint caregiver link codes | Already resolved in beta | Link-code operations require authenticated, server-owned identity and retain expiry/single-use checks. |
-| `478a041c00348191b8e534c2d885737d` | README exposes unauthenticated API on all interfaces | Fixed in this branch | Direct startup binds loopback; trusted-LAN instructions are explicit, synthetic-data-only exceptions. |
+| `478a041c00348191b8e534c2d885737d` | README exposes unauthenticated API on all interfaces | Fixed in this branch | Direct startup binds loopback; Android documentation and client configuration no longer permit private-LAN or clear-text API endpoints. |
 | `c7884ee22fd48191aeaee21793044d59` | Backend PR CI can expose API secrets to PR code | Fixed in this branch | Pull-request import/tests receive fixed fake values and never interpolate repository secrets. |
 
 ## Medium severity
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `a4f32bf8bd5081919241c84920994265` | Catalog refresh can prune on partial API data | Fixed in this branch | Full refresh refuses to prune an established catalog when the candidate retains less than 80 percent of the prior rows; the transaction rolls back for basic, approval, and pill catalogs. |
+| `118bbbfa807c819181a0eb15cc30bd94` | Release workflow exposes signing secrets to broad refs | Fixed in this branch and GitHub environment | The workflow accepts only the protected `main` ref. The `beta-android` environment independently requires owner approval and an exact main-branch deployment policy; beta branches and tags cannot receive signing material. |
+| `45b648cbdf348191b7145d3638ddbead` | Public readiness probe hits production dependencies | Fixed in this branch | `/ready` remains public for infrastructure probes, but requests are IP-rate-limited and dependency checks are coalesced behind a five-second process-local cache. |
 | `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Fixed after verified review | Saved-list and caregiver reads return persisted image metadata only; they no longer call MFDS or commit enrichment as a GET side effect. |
 | `8d0d695912108191a19a8311c5153486` | Unauthenticated health recommendation LLM endpoint | Already resolved in beta | Recommendation generation is protected by the verified request principal and bounded request policy. |
 | `1b4134d204dc81918ea1d955c21b0c71` | Medication detail screen loads untrusted image URLs | Fixed in this branch | All medication images require HTTPS on the exact MFDS image host with no credentials or alternate port. |
@@ -65,6 +87,10 @@ relevant control; it does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `5df0a574c8148191b552d13f27a13fc0` | Unanchored APK cert parser allows digest spoofing | Fixed in this branch | The parser accepts only the anchored `Signer #N certificate SHA-256 digest` line and requires exactly 64 hexadecimal characters after normalization. |
+| `707b27f248348191a49eebcfcc1927ee` | AAB verifier no longer fails on jarsigner warnings | Fixed in this branch | `jarsigner -verify -strict` makes unsigned entries and other security warnings release-blocking before the certificate comparison. |
+| `a17d9ff1f0248191980988706f2afb33` | Patient labels exposed in caregiver notifications | Fixed in this branch | Background and foreground caregiver notifications use generic patient text; the patient hash remains only in the private navigation payload. |
+| `59efa5d1bf2481919d37cfa7a5345b62` | OCR region text can expose patient identifiers | Fixed in this branch | OCR-region output contains only validated categories and coordinates; all model-returned region text is blanked before the API response. |
 | `ec180b769a248191a20c1a52a60775e7` | Multiple-pill photos can bypass new quality gate | Fixed in this branch | Additional tablet/capsule plurality phrases are rejected; a synthetic non-pill image was rejected on device. |
 | `f1768a8f0b1081919b095853798ef5c0` | Medication detail screen hides full usage instructions | Fixed in this branch | Detail values are no longer truncated to two items or three lines and render vertically at full width. |
 | `65a2b25d93108191840b308c20954fb8` | Ambiguous OCR prefixes can canonicalize to wrong drug | Fixed in this branch | Prefix correction succeeds only when both catalogs produce exactly one distinct item name. |
@@ -76,37 +102,38 @@ relevant control; it does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 336 passed, 2 PostgreSQL-gated tests skipped, 4 subtests passed.
-- Flutter: 219 tests passed; `flutter analyze` reported no issues.
-- UML: PlantUML rendering passed and the class and overall sequence PNGs were regenerated.
+- Backend: 373 passed and 2 PostgreSQL-gated tests skipped.
+- Flutter: 252 tests passed; `flutter analyze --no-pub` reported no issues.
+- Focused security suites included 8 repository/deployment configuration
+  tests, 134 medication-image boundary tests, 37 prescription OCR tests, and
+  12 caregiver-notification tests.
+- UML: PlantUML 1.2026.6 source validation and local rendering passed; the
+  class and overall sequence PNGs were regenerated without uploading the UML.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
   HTTPS placeholder; manifest reports `usesCleartextTraffic=false`.
-- Physical device: Samsung SM-N976N / Android 12. The previously installed
-  v0.1.0+10 Firebase-enabled debug build exposed email/password, Google, phone,
-  and guest authentication. The current no-billing beta source hides phone and
-  SMS MFA behind disabled frontend and backend flags. Anonymous sign-in acquired
-  a client Firebase identity, then
-  failed closed because the local backend lacked Firebase Admin application
-  credentials. Earlier synthetic-data checks on the same merged beta code
-  covered prescription OCR/analysis/save, 3-slot schedules, reversible
-  completion, medication detail, health guidance, notifications, settings,
-  caregiver restrictions, and pill rejection without fatal app logs.
-- Standalone boundary: the APK targets the LAN host rather than localhost, all
-  ADB forward/reverse tunnels were removed, and wireless ADB was disconnected.
-  Direct phone-to-PC traffic remained blocked because domain policy ignores
-  local Windows Firewall rules; a GPO-authorized phone-scoped rule or public
-  HTTPS backend is still required for cable-free end-to-end proof.
-- Cleanup: synthetic Firebase test users and local test data were removed, and
-  the temporary backend was stopped. One earlier anonymous Firebase UID may
-  still require deletion in the Firebase Authentication console if present.
-  The ignored local phone-only firewall rule also remains because this process
-  could not obtain administrator elevation; an administrator must delete it.
+- Prior physical-device beta: the user verified standalone startup on a
+  network-separated Android device, guest and Google authentication,
+  prescription analysis/masking/save, saved medication and schedules,
+  completion/undo, reminders, health guidance, images, settings persistence,
+  and force-stop session restoration. The feedback from that run is reflected
+  in the current source and regression tests; the new signed artifact still
+  requires a final repeat pass.
+- Production ingress: `https://api.medbuddy.pp.ua` reaches the dedicated mini
+  PC through Cloudflare Tunnel. PostgreSQL and Redis remain private, and the
+  host loopback port is diagnostic only. Tailscale Funnel, Caddy, laptop LAN
+  addresses, ADB forwarding, and user-specific endpoints are not part of the
+  tracked production configuration.
+- Local hygiene: real `.env`, Firebase JSON, Android local properties, signing
+  keys, SQLite runtime databases, generated dependency caches, and APKs remain
+  ignored and absent from the PR diff.
 
 ## Remaining release gates
 
-No release was made. A signed beta still requires a Firebase Admin credential on
-the backend (or an attached runtime service account), the real public HTTPS
-backend, App Check configuration, release keystore/certificate match, PostgreSQL
-migration integration tests, CI success, and a final signed-artifact device
-pass. These are deployment proofs, not reasons to weaken the local or release
-fail-closed controls.
+No release was made. PR #74 has been normal-merged, but this final security
+branch must still pass its own CI and Codex review and be normal-merged into
+`main`. The resulting commit must then be deployed to the mini PC,
+`pill_identification_references` must be populated and queried successfully,
+and a newly signed artifact must complete the network transition/outage,
+sign-out privacy, deletion, data-preserving update, and two-device caregiver
+gates. These are deployment proofs, not reasons to weaken the fail-closed
+controls.

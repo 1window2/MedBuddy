@@ -8,7 +8,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from controls.manage_account_control import ManageAccount
+from boundaries.firebase_identity_boundary import IdentityDeletionUnavailableError
+from controls.manage_account_control import (
+    AccountDeletionPendingError,
+    ManageAccount,
+)
 from core.database import Base
 from core.request_rate_limits import (
     RateLimitRule,
@@ -21,6 +25,7 @@ from entities.patient_caregiver_link_entity import _PatientLinkCode
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import _UserAccount
 from services.data_maintenance import DataMaintenanceService
+from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 
 @pytest.fixture
@@ -85,7 +90,11 @@ def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
     )
     db_session.commit()
 
-    deleted = DataMaintenanceService().runOnce(db_session)
+    deleted = DataMaintenanceService(
+        retention_policy=SavedMedicationRetentionPolicy(
+            retention_days_after_end=30,
+        )
+    ).runOnce(db_session)
 
     assert deleted["saved_medications"] == 1
     assert db_session.query(_SavedMedication).count() == 0
@@ -117,6 +126,80 @@ def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
     assert db_session.get(_UserAccount, user_hash) is None
     assert db_session.query(_HealthRecommendationCache).count() == 0
 
+
+class _FailOnceIdentityDeletionBoundary:
+    def __init__(self) -> None:
+        self.subjects: list[str] = []
+
+    def deleteIdentity(self, subject: str) -> None:
+        self.subjects.append(subject)
+        if len(self.subjects) == 1:
+            raise IdentityDeletionUnavailableError("provider unavailable")
+
+
+def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> None:
+    identity_boundary = _FailOnceIdentityDeletionBoundary()
+    control = ManageAccount(
+        db_session,
+        identity_deletion_boundary=identity_boundary,
+    )
+    user_hash = control.ensureAccount("patient-firebase-delete", commit=True)
+    db_session.add(
+        _HealthRecommendationCache(
+            patient_hash=user_hash,
+            recommendation_key="cache-key",
+            payload="{}",
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(IdentityDeletionUnavailableError):
+        control.deleteAccountData(user_hash, external_subject="firebase-uid")
+
+    tombstone = db_session.get(_UserAccount, user_hash)
+    assert tombstone is not None
+    assert tombstone.deletion_requested_at is not None
+    assert tombstone.identity_deleted_at is None
+    assert db_session.query(_HealthRecommendationCache).count() == 0
+    with pytest.raises(AccountDeletionPendingError):
+        control.ensureAccount(user_hash)
+
+    result = control.deleteAccountData(
+        user_hash,
+        external_subject="firebase-uid",
+    )
+
+    db_session.refresh(tombstone)
+    assert result["identity_deleted"] is True
+    assert tombstone.identity_deleted_at is not None
+    assert identity_boundary.subjects == ["firebase-uid", "firebase-uid"]
+
+
+def test_zero_day_retention_preserves_ended_medication_history(db_session) -> None:
+    patient_hash = "patient-history"
+    db_session.add(_UserAccount(user_hash=patient_hash))
+    medication = _SavedMedication(
+        patient_hash=patient_hash,
+        created_date=datetime.now().date() - timedelta(days=90),
+        prescription_date=datetime.now().date() - timedelta(days=90),
+        item_name="종료된 기록약",
+        efficacy="",
+        use_method="",
+        warning_message="",
+        dosage_per_time="1정",
+        daily_frequency="1회",
+        total_days="1일",
+        schedule_slot_keys='["morning"]',
+    )
+    db_session.add(medication)
+    db_session.commit()
+
+    deleted = SavedMedicationRetentionPolicy(
+        retention_days_after_end=0
+    ).cleanup_expired_medications(db_session, patient_hash)
+
+    assert deleted == 0
+    assert db_session.get(_SavedMedication, medication.id) is medication
 
 async def _empty_asgi_app(scope, receive, send) -> None:
     return None

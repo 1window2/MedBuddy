@@ -20,6 +20,7 @@ typedef NotificationRegistrar =
       required int minute,
       required List<String> medicationNames,
       required List<DateTime> activeDates,
+      Map<String, List<String>> medicationNamesByDate,
       String language,
     });
 
@@ -152,6 +153,7 @@ class SetNotification {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) {
     return _notificationRegistrar(
@@ -162,6 +164,7 @@ class SetNotification {
       minute: minute,
       medicationNames: medicationNames,
       activeDates: activeDates,
+      medicationNamesByDate: medicationNamesByDate,
       language: language,
     );
   }

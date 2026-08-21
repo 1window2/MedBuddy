@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from api.dependencies import (
@@ -26,6 +27,7 @@ from core.database import Base
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+from entities.user_account_entity import _UserAccount, utc_now
 from schemas.prescription_change import (
     PrescriptionChangeRequest,
     PrescriptionChangeResponse,
@@ -112,6 +114,36 @@ def _request(app: FastAPI, method: str, path: str) -> Request:
         }
     )
 
+
+@pytest.mark.anyio
+async def test_deleted_account_only_allows_authenticated_deletion_retry(
+    db_session,
+) -> None:
+    principal = _principal("deleted-firebase-user")
+    db_session.add(
+        _UserAccount(
+            user_hash=principal.user_hash,
+            deletion_requested_at=utc_now(),
+        )
+    )
+    db_session.commit()
+    app = FastAPI()
+
+    with patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False):
+        deletion_principal = await get_registered_principal(
+            request=_request(app, "DELETE", "/api/v1/auth/account-data"),
+            principal=principal,
+            db=db_session,
+        )
+        with pytest.raises(HTTPException) as denied:
+            await get_registered_principal(
+                request=_request(app, "GET", "/api/v1/auth/session"),
+                principal=principal,
+                db=db_session,
+            )
+
+    assert deletion_principal == principal
+    assert denied.value.status_code == 410
 
 def test_verified_claims_map_to_stable_internal_user_hash() -> None:
     first = _principal()
@@ -290,6 +322,27 @@ def test_production_configuration_requires_valid_postgresql_url(
 ) -> None:
     with pytest.raises(ValueError, match="PostgreSQL|invalid"):
         _production_api_settings(DATABASE_URL=database_url)
+
+
+def test_structured_database_settings_escape_reserved_password_characters() -> None:
+    raw_password = "p@ss:/word?#[]"
+
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="",
+        DATABASE_HOST="postgres",
+        DATABASE_PORT=5432,
+        DATABASE_NAME="medbuddy",
+        DATABASE_USER="medbuddy",
+        DATABASE_PASSWORD=raw_password,
+    )
+
+    database_url = make_url(settings.DATABASE_URL)
+    assert database_url.host == "postgres"
+    assert database_url.port == 5432
+    assert database_url.database == "medbuddy"
+    assert database_url.username == "medbuddy"
+    assert database_url.password == raw_password
 
 
 def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:

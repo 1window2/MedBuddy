@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
@@ -679,6 +680,28 @@ void main() {
       expect(viewModel.medicationReminderSettings, isEmpty);
     },
   );
+
+  test('계정 데이터 삭제 전에 기기의 복약 알림을 모두 취소한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = _FakeNotificationService();
+    final accountControl = ManageAccount(
+      userHash: 'patient-a',
+      client: MockClient((request) async {
+        expect(notificationService.canceledAllMedicationReminders, isTrue);
+        expect(request.method, 'DELETE');
+        return http.Response('{"success":true}', 200);
+      }),
+    );
+    final viewModel = MedBuddyViewModel(
+      manageAccount: accountControl,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestAccountDataDeletion();
+
+    expect(notificationService.canceledAllMedicationReminders, isTrue);
+  });
 }
 
 // 클래스명: _DelayedCheckSchedule
@@ -742,6 +765,7 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 
 class _FakeNotificationService implements NotificationService {
   final bool failRegistration;
+  bool canceledAllMedicationReminders = false;
   final List<int> canceledIds = [];
   final List<String> registeredSlotKeys = [];
   final List<List<String>> registeredMedicationNames = [];
@@ -764,6 +788,7 @@ class _FakeNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     registeredSlotKeys.add(slotKey);
@@ -777,6 +802,11 @@ class _FakeNotificationService implements NotificationService {
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {
     canceledIds.add(id);
+  }
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {
+    canceledAllMedicationReminders = true;
   }
 
   @override

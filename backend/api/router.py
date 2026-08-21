@@ -10,12 +10,14 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     UploadFile,
 )
 from pydantic import BaseModel, Field
 
 from api.dependencies import (
     get_authenticated_principal,
+    get_recently_authenticated_principal,
     verify_app_check_token,
     get_registered_principal,
     get_authorization_control,
@@ -36,6 +38,9 @@ from api.dependencies import (
     get_set_caregiver_notification,
     get_set_notification,
     get_push_notification_boundary,
+)
+from boundaries.firebase_identity_boundary import (
+    IdentityDeletionUnavailableError,
 )
 from boundaries.pill_identification_boundary import (
     MAX_PILL_IMAGE_BYTES,
@@ -143,10 +148,24 @@ def export_account_data(
 # - 현재 로그인 사용자의 복약정보, 연결, 알림, 캐시를 모두 삭제한다.
 @auth_router.delete("/account-data")
 def delete_account_data(
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(
+        get_recently_authenticated_principal
+    ),
     manage_account: ManageAccount = Depends(get_manage_account),
 ) -> dict[str, object]:
-    return manage_account.deleteAccountData(principal.user_hash)
+    try:
+        return manage_account.deleteAccountData(
+            principal.user_hash,
+            external_subject=(
+                None if principal.authentication_disabled else principal.subject
+            ),
+        )
+    except IdentityDeletionUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Account identity deletion is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
 
 
 # 함수명: register_push_token
@@ -350,6 +369,45 @@ def get_today_medication_schedule(
         raise HTTPException(
             status_code=500,
             detail="오늘의 복약 일정을 불러오지 못했습니다.",
+        ) from exc
+
+
+# Function Name: get_medication_schedule_window
+# Description:
+# - Returns medication courses overlapping a bounded rolling reminder window.
+# Parameters:
+# - patient_hash: Patient ownership key used to scope schedule lookup.
+# - days: Inclusive number of days beginning today, capped at 14.
+# Returns:
+# - API-compatible schedule list dictionary.
+@router.get("/schedule/window")
+def get_medication_schedule_window(
+    patient_hash: str | None = None,
+    days: int = Query(default=14, ge=1, le=14),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    try:
+        authorized_patient_hash = authorization.resolvePatientScope(
+            principal,
+            patient_hash,
+            allow_caregiver=True,
+        )
+        return check_schedule.requestMedicationScheduleWindow(
+            authorized_patient_hash,
+            days,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Medication schedule window lookup failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="복약 알림 일정을 불러오지 못했습니다.",
         ) from exc
 
 

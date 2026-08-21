@@ -1,8 +1,0 @@
-{
-	admin off
-}
-
-{$MEDBUDDY_PUBLIC_HOSTNAME} {
-	encode zstd gzip
-	reverse_proxy backend:8080
-}

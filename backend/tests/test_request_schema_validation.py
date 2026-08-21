@@ -71,6 +71,33 @@ class RequestSchemaValidationTest(unittest.TestCase):
                 warning_message="",
             )
 
+    def test_untrusted_medication_image_url_is_rejected(self) -> None:
+        common_fields = {
+            "item_name": "테스트정",
+            "efficacy": "",
+            "use_method": "",
+            "warning_message": "",
+        }
+
+        for image_url in (
+            "http://nedrug.mfds.go.kr/pill.jpg",
+            "https://example.com/pill.jpg",
+            "https://user:pass@nedrug.mfds.go.kr/pill.jpg",
+            "https://nedrug.mfds.go.kr:8443/pill.jpg",
+        ):
+            with self.subTest(image_url=image_url):
+                with self.assertRaises(ValidationError):
+                    SavedMedicationCreate(image_url=image_url, **common_fields)
+
+        request = SavedMedicationCreate(
+            image_url="https://nedrug.mfds.go.kr/pill.jpg",
+            **common_fields,
+        )
+        self.assertEqual(
+            request.image_url,
+            "https://nedrug.mfds.go.kr/pill.jpg",
+        )
+
     def test_prescription_date_outside_supported_range_is_rejected(self) -> None:
         common_fields = {
             "item_name": "테스트정",

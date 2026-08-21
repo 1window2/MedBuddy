@@ -95,8 +95,11 @@ async def test_catalog_page_fetches_stay_owned_by_their_api_boundaries(
     async def fake_request_items(
         url: str,
         params: dict[str, object],
+        *,
+        bypass_failure_cache: bool = False,
     ) -> tuple[list[dict[str, object]], int]:
         requested_urls.append(url)
+        assert bypass_failure_cache is True
         assert params["pageNo"] == 2
         assert params["numOfRows"] == 50
         return ([], 0)
@@ -110,3 +113,52 @@ async def test_catalog_page_fetches_stay_owned_by_their_api_boundaries(
         settings.BASIC_DRUG_API_BASE_URL,
         settings.ADVANCED_DRUG_API_BASE_URL,
     ]
+
+
+@pytest.mark.anyio
+async def test_catalog_retry_bypasses_interactive_failure_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = _PublicDrugTransport()
+    request_count = 0
+
+    class _Response:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+
+        def json(self) -> dict[str, object]:
+            return {"body": {"items": [{"itemName": "sample"}], "totalCount": 1}}
+
+    class _Client:
+        async def get(
+            self,
+            _url: str,
+            *,
+            params: dict[str, object],
+        ) -> _Response:
+            nonlocal request_count
+            request_count += 1
+            assert params["pageNo"] == 1
+            return _Response(503 if request_count == 1 else 200)
+
+    async def fake_get_client() -> _Client:
+        return _Client()
+
+    monkeypatch.setattr(transport, "_get_client", fake_get_client)
+    params: dict[str, object] = {"pageNo": 1, "numOfRows": 50}
+
+    with pytest.raises(RuntimeError):
+        await transport.request_items(settings.BASIC_DRUG_API_BASE_URL, params)
+    with pytest.raises(RuntimeError):
+        await transport.request_items(settings.BASIC_DRUG_API_BASE_URL, params)
+    assert request_count == 1
+
+    items, total_count = await transport.request_items(
+        settings.BASIC_DRUG_API_BASE_URL,
+        params,
+        bypass_failure_cache=True,
+    )
+
+    assert request_count == 2
+    assert items == [{"itemName": "sample"}]
+    assert total_count == 1

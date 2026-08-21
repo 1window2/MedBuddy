@@ -176,6 +176,30 @@ class MedicationDetail {
     return lines;
   }
 
+  // Getter Name: compactDosageGuideLines
+  // Description:
+  // - Builds short, display-only dosage facts for medication detail cards.
+  // - Keeps the original usageMethod and other sentence fields unchanged for TTS.
+  // Returns:
+  // - A list of concise dose, frequency, duration, and timing labels.
+  List<String> get compactDosageGuideLines {
+    final lines = <String>[];
+    if (dosagePerTime.trim().isNotEmpty) {
+      lines.add('1회 복용량 · ${dosagePerTime.trim()}');
+    }
+    if (dailyFrequency.trim().isNotEmpty) {
+      lines.add('복용 횟수 · ${dailyFrequency.trim()}');
+    }
+    if (totalDays.trim().isNotEmpty) {
+      lines.add('복용 기간 · ${totalDays.trim()}');
+    }
+    final timing = _readDosageTiming(usageMethod);
+    if (timing != null) {
+      lines.add('복용 시점 · $timing');
+    }
+    return lines.isEmpty ? const ['복용 정보 없음'] : lines;
+  }
+
   String get voiceGuideText {
     final sections = [
       displayName,
@@ -205,6 +229,24 @@ class MedicationDetail {
       return const ['아침'];
     }
     return const [];
+  }
+
+  static String? _readDosageTiming(String usageMethod) {
+    const timingLabels = <String>[
+      '식사 직전',
+      '식사 직후',
+      '식전',
+      '식후',
+      '공복',
+      '취침 전',
+      '취침전',
+    ];
+    for (final timing in timingLabels) {
+      if (usageMethod.contains(timing)) {
+        return timing == '취침전' ? '취침 전' : timing;
+      }
+    }
+    return null;
   }
 
   static String _readString(dynamic value) {

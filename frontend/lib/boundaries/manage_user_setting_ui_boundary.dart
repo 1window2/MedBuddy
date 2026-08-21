@@ -66,9 +66,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     super.initState();
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
-    _language = widget.initialSetting.language == 'en'
-        ? 'ko'
-        : widget.initialSetting.language;
+    _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -154,12 +152,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         _OptionRow(
                           options: const [
                             _SettingOption(value: 'ko', label: '한국어'),
-                            _SettingOption(
-                              value: 'en',
-                              label: 'English',
-                              enabled: false,
-                              supportText: '추후 업데이트 예정',
-                            ),
+                            _SettingOption(value: 'en', label: 'English'),
                           ],
                           selectedValue: _language,
                           contentScale: contentScale,
@@ -197,7 +190,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                             child: OutlinedButton.icon(
                               onPressed: _isSaving
                                   ? null
-                                  : widget.onSignOutRequested,
+                                  : _handleSignOutRequested,
                               icon: const Icon(Icons.logout),
                               label: Text(text.signOut),
                             ),
@@ -366,6 +359,66 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     }
   }
 
+  // Function Name: _handleSignOutRequested
+  // Description:
+  // - Warns anonymous users that signing out permanently deletes their guest
+  //   data because a later guest login creates a different Firebase identity.
+  // - Blocks repeated taps while the sign-out or deletion request is running.
+  // Returns:
+  // - Completes after cancellation, successful root navigation, or error UI.
+  Future<void> _handleSignOutRequested() async {
+    if (_isSaving) {
+      return;
+    }
+
+    final text = _SettingText(_language);
+    if (widget.authenticationControl.isAnonymous) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(text.guestSignOutTitle),
+          content: Text(text.guestSignOutMessage),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: MedBuddyColors.textStrong,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(text.cancel),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: MedBuddyColors.danger,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(text.delete),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      await widget.onSignOutRequested?.call();
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.signOutFailed)));
+    }
+  }
+
   Future<void> _showMfaEnrollment() async {
     await showDialog<void>(
       context: context,
@@ -410,15 +463,21 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       if (!mounted) {
         return;
       }
-      Navigator.pop(context);
-    } catch (_) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (error) {
       if (!mounted) {
         return;
       }
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(text.deleteAccountFailed)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is StateError
+                ? error.message.toString()
+                : text.deleteAccountFailed,
+          ),
+        ),
+      );
     }
   }
 }
@@ -674,9 +733,7 @@ class _OptionRow extends StatelessWidget {
               option: options[index],
               selected: options[index].value == selectedValue,
               contentScale: contentScale,
-              onTap: options[index].enabled
-                  ? () => onSelected(options[index].value)
-                  : null,
+              onTap: () => onSelected(options[index].value),
             ),
           ),
           if (index != options.length - 1) const SizedBox(width: 11),
@@ -701,32 +758,19 @@ class _SegmentButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = option.enabled;
-    final backgroundColor = selected
-        ? MedBuddyColors.primary
-        : enabled
-        ? Colors.white
-        : const Color(0xFFF3F4F6);
-    final foregroundColor = selected
-        ? Colors.white
-        : enabled
-        ? MedBuddyColors.textStrong
-        : MedBuddyColors.textLight;
-
-    final semanticsLabel = option.supportText == null
-        ? option.label
-        : '${option.label}. ${option.supportText}';
+    final backgroundColor = selected ? MedBuddyColors.primary : Colors.white;
+    final foregroundColor = selected ? Colors.white : MedBuddyColors.textStrong;
 
     return Semantics(
-      label: semanticsLabel,
+      label: option.label,
       button: true,
-      enabled: enabled,
+      enabled: true,
       selected: selected,
       child: ExcludeSemantics(
         child: Material(
           color: backgroundColor,
           borderRadius: MedBuddyRadii.card,
-          elevation: selected && enabled ? 7 : 0,
+          elevation: selected ? 7 : 0,
           shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
           child: InkWell(
             borderRadius: MedBuddyRadii.card,
@@ -738,9 +782,7 @@ class _SegmentButton extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: MedBuddyRadii.card,
                 border: Border.all(
-                  color: enabled
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.divider,
+                  color: MedBuddyColors.primary,
                   width: selected ? 0 : 2.7,
                 ),
               ),
@@ -762,20 +804,6 @@ class _SegmentButton extends StatelessWidget {
                       letterSpacing: 0,
                     ),
                   ),
-                  if (option.supportText != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      option.supportText!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textLight,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -884,15 +912,13 @@ class _PreviewPanel extends StatelessWidget {
 class _SettingOption {
   final String value;
   final String label;
-  final bool enabled;
-  final String? supportText;
+
   final double? labelFontSize;
 
   const _SettingOption({
     required this.value,
     required this.label,
-    this.enabled = true,
-    this.supportText,
+
     this.labelFontSize,
   });
 }
@@ -934,6 +960,15 @@ class _SettingText {
   String get saveFailed =>
       isEnglish ? 'Could not save settings.' : '설정을 저장하지 못했습니다.';
   String get signOut => isEnglish ? 'Sign out' : '로그아웃';
+  String get guestSignOutTitle =>
+      isEnglish ? 'Delete guest data and sign out?' : '게스트 데이터를 삭제하고 로그아웃할까요?';
+  String get guestSignOutMessage => isEnglish
+      ? 'Guest medication, schedule, caregiver link, and settings data will be '
+            'deleted permanently. A later guest login creates a new account.'
+      : '게스트 복약정보, 일정, 보호자 연동, 설정 데이터가 모두 영구 삭제됩니다. '
+            '나중에 다시 게스트로 로그인하면 새로운 계정이 생성됩니다.';
+  String get signOutFailed =>
+      isEnglish ? 'Could not sign out safely.' : '안전하게 로그아웃하지 못했습니다.';
   String get deleteAccount => isEnglish ? 'Delete account' : '계정 데이터 삭제';
   String get deleteAccountMessage => isEnglish
       ? 'All medication, schedule, caregiver link, and settings data will be '

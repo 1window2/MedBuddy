@@ -9,9 +9,10 @@ import '../services/api_config.dart';
 // 클래스명: ManageAccount
 // 역할: 서버 계정 데이터와 로컬 캐시의 삭제 순서를 한곳에서 관리한다.
 class ManageAccount {
+  final String userHash;
   final http.Client client;
 
-  const ManageAccount({required this.client});
+  const ManageAccount({required this.userHash, required this.client});
 
   // 함수명: deleteAccountData
   // 역할:
@@ -24,7 +25,17 @@ class ManageAccount {
     if (response.statusCode != 200) {
       throw StateError('계정 데이터를 삭제하지 못했습니다.');
     }
+    final normalizedUserHash = userHash.trim();
+    if (normalizedUserHash.isEmpty) {
+      throw StateError('삭제할 사용자 범위가 없습니다.');
+    }
     final preferences = await SharedPreferences.getInstance();
-    await preferences.clear();
+    final userScopedKeys = preferences
+        .getKeys()
+        .where((key) => key.contains(normalizedUserHash))
+        .toList(growable: false);
+    for (final key in userScopedKeys) {
+      await preferences.remove(key);
+    }
   }
 }

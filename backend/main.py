@@ -1,8 +1,10 @@
 # File Name: main.py
 # Role: Creates and configures the MedBuddy FastAPI application.
 
+import asyncio
 import logging
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,6 +17,8 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
@@ -57,6 +61,68 @@ from services.caregiver_alert_outbox_worker import CaregiverAlertOutboxWorker
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parent
+_READINESS_CACHE_TTL_SECONDS = 5.0
+_READINESS_EXCEPTIONS = (
+    SQLAlchemyError,
+    CommandError,
+    RedisError,
+    RuntimeError,
+    ValueError,
+    OSError,
+)
+
+
+# Class Name: _ReadinessProbeCache
+# Role: Bounds repeated public readiness checks against production dependencies.
+# Responsibilities:
+#   - Coalesce concurrent readiness probes behind one dependency check.
+#   - Cache only the generic ready/not-ready result for a short interval.
+#   - Avoid retaining exception details or dependency response data.
+# Attributes:
+#   - ttl_seconds: Number of seconds before the cached result expires.
+class _ReadinessProbeCache:
+    def __init__(self, ttl_seconds: float) -> None:
+        self.ttl_seconds = ttl_seconds
+        self._lock = asyncio.Lock()
+        self._expires_at = 0.0
+        self._is_ready = False
+
+    # Function Name: request_readiness
+    # Description:
+    # - Returns a short-lived readiness result and performs at most one
+    #   dependency check when the cached result has expired.
+    # Parameters:
+    # - check: Awaitable dependency check that raises on unavailable services.
+    # Returns:
+    # - True when dependencies are ready; otherwise False.
+    async def request_readiness(
+        self,
+        check: Callable[[], Awaitable[None]],
+    ) -> bool:
+        now = time.monotonic()
+        if now < self._expires_at:
+            return self._is_ready
+
+        async with self._lock:
+            now = time.monotonic()
+            if now < self._expires_at:
+                return self._is_ready
+            try:
+                await check()
+                self._is_ready = True
+            except _READINESS_EXCEPTIONS:
+                self._is_ready = False
+            self._expires_at = time.monotonic() + self.ttl_seconds
+            return self._is_ready
+
+    # Function Name: reset
+    # Description:
+    # - Invalidates the cached result when an application lifespan starts.
+    # Returns:
+    # - None.
+    def reset(self) -> None:
+        self._expires_at = 0.0
+        self._is_ready = False
 
 
 def _verify_database_revision(connection: object) -> None:
@@ -66,6 +132,28 @@ def _verify_database_revision(connection: object) -> None:
     current_heads = set(MigrationContext.configure(connection).get_current_heads())
     if current_heads != expected_heads:
         raise RuntimeError("Database migration revision does not match Alembic head.")
+
+
+def _verify_catalog_seed(connection: object) -> None:
+    required_tables = (
+        "drug_basic_infos",
+        "drug_approval_infos",
+        "pill_identification_references",
+    )
+    for table_name in required_tables:
+        has_rows = connection.execute(
+            text(f"SELECT EXISTS (SELECT 1 FROM {table_name} LIMIT 1)")
+        ).scalar_one()
+        if not has_rows:
+            raise RuntimeError("The shared medication catalog is not seeded.")
+
+
+def _verify_database_dependencies() -> None:
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+        if settings.APP_ENV == "production":
+            _verify_database_revision(connection)
+            _verify_catalog_seed(connection)
 
 
 async def _ping_required_redis() -> None:
@@ -79,6 +167,21 @@ async def _ping_required_redis() -> None:
             raise RuntimeError("Redis readiness ping was rejected.")
     finally:
         await redis.aclose()
+
+
+# Function Name: _verify_runtime_dependencies
+# Description:
+# - Performs the database, Firebase, App Check, and Redis readiness checks.
+# Returns:
+# - None when every configured dependency is ready.
+async def _verify_runtime_dependencies() -> None:
+    await run_in_threadpool(_verify_database_dependencies)
+    if settings.AUTH_MODE == "firebase":
+        get_oidc_token_verifier()
+    if settings.FIREBASE_APP_CHECK_REQUIRED:
+        get_app_check_token_verifier()
+    if settings.RATE_LIMIT_REQUIRE_REDIS:
+        await _ping_required_redis()
 
 
 # Function Name: configure_logging
@@ -106,6 +209,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     alert_outbox_worker.start()
     app.state.caregiver_alert_outbox_worker = alert_outbox_worker
+    app.state.readiness_probe_cache.reset()
     if settings.PERIODIC_MAINTENANCE_ENABLED:
         maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
         maintenance_runner.start()
@@ -152,6 +256,9 @@ def create_app() -> FastAPI:
         require_redis=settings.RATE_LIMIT_REQUIRE_REDIS,
     )
     app.state.request_rate_limit_store = rate_limit_store
+    app.state.readiness_probe_cache = _ReadinessProbeCache(
+        _READINESS_CACHE_TTL_SECONDS
+    )
     multipart_overhead_bytes = 512 * 1024
     app.add_middleware(
         RequestBodyLimitMiddleware,
@@ -172,6 +279,11 @@ def create_app() -> FastAPI:
         rules=DEFAULT_RATE_LIMIT_RULES,
         enabled=settings.RATE_LIMIT_ENABLED,
     )
+    if settings.APP_ENV == "production":
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=settings.trusted_host_list,
+        )
     app.include_router(
         medication_router,
         prefix="/api/v1/medication",
@@ -188,29 +300,14 @@ def create_app() -> FastAPI:
 
     @app.get("/ready", include_in_schema=False)
     async def readiness_check() -> dict[str, str]:
-        try:
-            with engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-                if settings.APP_ENV == "production":
-                    _verify_database_revision(connection)
-            if settings.AUTH_MODE == "firebase":
-                get_oidc_token_verifier()
-            if settings.FIREBASE_APP_CHECK_REQUIRED:
-                get_app_check_token_verifier()
-            if settings.RATE_LIMIT_REQUIRE_REDIS:
-                await _ping_required_redis()
-        except (
-            SQLAlchemyError,
-            CommandError,
-            RedisError,
-            RuntimeError,
-            ValueError,
-            OSError,
-        ) as exc:
+        is_ready = await app.state.readiness_probe_cache.request_readiness(
+            _verify_runtime_dependencies
+        )
+        if not is_ready:
             raise HTTPException(
                 status_code=503,
                 detail="MedBuddy dependencies are not ready.",
-            ) from exc
+            )
         return {
             "status": "ready",
             "api_contract": settings.API_CONTRACT_VERSION,

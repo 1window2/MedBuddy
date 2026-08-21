@@ -674,7 +674,7 @@ class _MedicationSaveIconButton extends StatelessWidget {
             : Icon(
                 isMedicationSaved
                     ? Icons.check_circle_outline
-                    : Icons.edit_outlined,
+                    : Icons.save_outlined,
                 size: 22,
               ),
       ),

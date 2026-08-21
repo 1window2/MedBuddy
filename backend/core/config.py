@@ -2,13 +2,13 @@
 # Role: Loads backend environment variables and external service settings.
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 
@@ -64,7 +64,25 @@ class Settings(BaseSettings):
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
     FIREBASE_APP_CHECK_REQUIRED: bool = False
+    TRUSTED_HOSTS: str = (
+        "api.medbuddy.pp.ua,localhost,127.0.0.1,backend,testserver"
+    )
+    ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description=(
+            "Maximum Firebase auth_time age accepted for permanent deletion "
+            "of credential-backed accounts. Anonymous guests are exempt "
+            "because Firebase provides no reusable credential for step-up."
+        ),
+    )
     DATABASE_URL: str = _DEFAULT_DATABASE_URL
+    DATABASE_HOST: str = ""
+    DATABASE_PORT: int = Field(default=5432, ge=1, le=65535)
+    DATABASE_NAME: str = ""
+    DATABASE_USER: str = ""
+    DATABASE_PASSWORD: str = Field(default="", repr=False)
     AUTO_CREATE_SCHEMA: bool = True
     DATABASE_POOL_SIZE: int = Field(default=5, gt=0, le=20)
     DATABASE_MAX_OVERFLOW: int = Field(default=0, ge=0, le=20)
@@ -147,10 +165,83 @@ class Settings(BaseSettings):
         ge=1,
         le=365,
     )
+    SAVED_MEDICATION_RETENTION_DAYS_AFTER_END: int = Field(
+        default=0,
+        ge=0,
+        le=3650,
+        description=(
+            "Days to retain ended medication history before maintenance removes "
+            "it. Zero preserves ended history until the user deletes it."
+        ),
+    )
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
     API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
+
+    # Function Name: build_structured_database_url
+    # Description:
+    # - Builds DATABASE_URL from separate connection fields when a deployment
+    #   supplies structured PostgreSQL settings.
+    # - Delegates escaping to SQLAlchemy so reserved password characters cannot
+    #   be misinterpreted as hostname or URL delimiters.
+    # Parameters:
+    # - values: Raw settings values collected by Pydantic.
+    # Returns:
+    # - Settings values containing a safely rendered DATABASE_URL.
+    @model_validator(mode="before")
+    @classmethod
+    def build_structured_database_url(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+
+        structured_fields = (
+            "DATABASE_HOST",
+            "DATABASE_NAME",
+            "DATABASE_USER",
+            "DATABASE_PASSWORD",
+        )
+        uses_structured_database = any(
+            str(values.get(field_name, "")).strip()
+            for field_name in structured_fields
+        )
+        if not uses_structured_database:
+            return values
+
+        missing_fields = [
+            field_name
+            for field_name in structured_fields
+            if not str(values.get(field_name, "")).strip()
+        ]
+        if missing_fields:
+            raise ValueError(
+                "Structured database configuration requires "
+                + ", ".join(missing_fields)
+                + "."
+            )
+        if str(values.get("DATABASE_URL", "")).strip():
+            raise ValueError(
+                "Set either DATABASE_URL or structured database fields, not both."
+            )
+
+        try:
+            database_port = int(values.get("DATABASE_PORT", 5432))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("DATABASE_PORT must be an integer.") from exc
+
+        database_url = URL.create(
+            drivername="postgresql+psycopg",
+            username=str(values["DATABASE_USER"]),
+            password=str(values["DATABASE_PASSWORD"]),
+            host=str(values["DATABASE_HOST"]),
+            port=database_port,
+            database=str(values["DATABASE_NAME"]),
+        )
+        rendered_values = dict(values)
+        rendered_values["DATABASE_URL"] = database_url.render_as_string(
+            hide_password=False
+        )
+        return rendered_values
 
     # 함수이름: validate_external_api_url
     # 함수역할:
@@ -171,6 +262,27 @@ class Settings(BaseSettings):
         if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
+
+    # Function Name: validate_trusted_hosts
+    # Description:
+    # - Normalizes the comma-separated Host allowlist used by production ASGI.
+    # - Rejects wildcard or empty configurations so Host validation cannot be
+    #   silently disabled by deployment configuration.
+    # Parameters:
+    # - value: Comma-separated hostnames or literal IP addresses.
+    # Returns:
+    # - A normalized comma-separated allowlist.
+    @field_validator("TRUSTED_HOSTS")
+    @classmethod
+    def validate_trusted_hosts(cls, value: str) -> str:
+        hosts = [host.strip().lower() for host in value.split(",") if host.strip()]
+        if not hosts or "*" in hosts:
+            raise ValueError("TRUSTED_HOSTS requires an explicit host allowlist.")
+        return ",".join(dict.fromkeys(hosts))
+
+    @property
+    def trusted_host_list(self) -> list[str]:
+        return self.TRUSTED_HOSTS.split(",")
 
     # 함수이름: validate_application_time_zone
     # 함수역할:

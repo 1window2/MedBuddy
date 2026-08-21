@@ -173,6 +173,7 @@ class _MutableSetNotification extends SetNotification {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 }
@@ -195,11 +196,15 @@ class _SuccessfulNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {}
 
   @override
   Future<void> showCaregiverAlert({
@@ -226,6 +231,7 @@ class _FailingNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     throw StateError('Notification registration failed.');
@@ -233,6 +239,9 @@ class _FailingNotificationService implements NotificationService {
 
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
+
+  @override
+  Future<void> cancelAllMedicationReminders() async {}
 
   @override
   Future<void> showCaregiverAlert({

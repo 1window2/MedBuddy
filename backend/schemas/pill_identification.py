@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import (
     PillIdentificationCandidate,
     PillIdentificationResult,
@@ -64,7 +65,7 @@ class PillIdentificationCandidateResponse(BaseModel):
             item_seq=candidate.item_seq,
             item_name=candidate.item_name,
             entp_name=candidate.entp_name,
-            image_url=candidate.image_url,
+            image_url=safe_medication_image_url(candidate.image_url),
             shape=candidate.shape,
             colors=list(candidate.colors),
             print_front=candidate.print_front,

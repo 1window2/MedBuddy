@@ -6,11 +6,10 @@ import json
 import logging
 import time
 from typing import Any
-from urllib.parse import urlsplit
-
 import httpx
 
 from core.config import settings
+from entities.medication_image_url_entity import safe_medication_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -57,19 +56,9 @@ def read_public_item_sequence(item: dict[str, Any]) -> str:
 
 
 def read_public_image_url(item: dict[str, Any]) -> str:
-    image_url = _read_public_item_text(item, _PUBLIC_IMAGE_URL_FIELDS)
-    if image_url.startswith("//"):
-        image_url = f"https:{image_url}"
-    if not image_url or len(image_url) > 3000:
-        return ""
-
-    try:
-        parsed_url = urlsplit(image_url)
-    except ValueError:
-        return ""
-    if parsed_url.scheme.lower() not in {"http", "https"} or not parsed_url.netloc:
-        return ""
-    return image_url
+    return safe_medication_image_url(
+        _read_public_item_text(item, _PUBLIC_IMAGE_URL_FIELDS)
+    )
 
 
 class _PublicDrugTransport:
@@ -86,9 +75,14 @@ class _PublicDrugTransport:
         self,
         url: str,
         params: dict[str, object],
+        *,
+        bypass_failure_cache: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         failure_key = self._build_failure_key(url, params)
-        if self._failed_until.get(failure_key, 0.0) > time.monotonic():
+        if (
+            not bypass_failure_cache
+            and self._failed_until.get(failure_key, 0.0) > time.monotonic()
+        ):
             raise RuntimeError(
                 "The public medication API is temporarily unavailable."
             )
@@ -267,6 +261,7 @@ class PublicDrugSmallAPI:
                 "numOfRows": num_of_rows,
                 "type": "json",
             },
+            bypass_failure_cache=True,
         )
 
 
@@ -305,6 +300,7 @@ class PublicDrugLargeAPI:
                 "numOfRows": num_of_rows,
                 "type": "json",
             },
+            bypass_failure_cache=True,
         )
 
 

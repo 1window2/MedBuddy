@@ -149,7 +149,7 @@ void main() {
 
       expect(find.bySemanticsLabel('닫기'), findsOneWidget);
       expect(find.bySemanticsLabel('저장하기'), findsOneWidget);
-      expect(find.bySemanticsLabel('English. 추후 업데이트 예정'), findsOneWidget);
+      expect(find.bySemanticsLabel('English'), findsOneWidget);
       expect(tester.takeException(), isNull);
       semantics.dispose();
     });
@@ -359,37 +359,40 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('약 상세정보는 효능과 복용법 전체 문장을 생략하지 않는다', (tester) async {
-      const efficacy = '첫 번째 효능, 두 번째 효능, 반드시 표시할 세 번째 효능';
-      const usage = '식후 충분한 물과 함께 복용하고 임의로 중단하지 마세요. 마지막 안내 문장';
+    testWidgets('약 상세정보는 명사형 요약을 표시하고 TTS 원문은 보존한다', (tester) async {
+      const medicationDetail = MedicationDetail(
+        itemName: '테스트정',
+        efficacy: '이 약은 다발성 관절염, 류마티스 관절염, 통증 및 발열을 수반하는 감염증에 사용합니다.',
+        usageMethod: '식후 충분한 물과 함께 복용하고 임의로 중단하지 마세요.',
+        warning: '주의사항',
+        dosagePerTime: '1정',
+        dailyFrequency: '1일 1회',
+        totalDays: '7일',
+      );
       await tester.pumpWidget(
         _scaledMaterialApp(
           textScale: 1,
           home: const CheckMedicationDetailUI(
-            medicationDetail: MedicationDetail(
-              itemName: '테스트정',
-              efficacy: efficacy,
-              usageMethod: usage,
-              warning: '주의사항',
-              dailyFrequency: '1일 1회',
-            ),
+            medicationDetail: medicationDetail,
             userSetting: UserSetting(),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('반드시 표시할 세 번째 효능'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text(usage),
-        220,
-        scrollable: find.byType(Scrollable).first,
+      expect(find.text('다발성 관절염'), findsOneWidget);
+      expect(find.text('류마티스 관절염'), findsOneWidget);
+      expect(find.text('통증 및 발열을 수반하는 감염증'), findsOneWidget);
+      expect(find.text('1회 복용량 · 1정'), findsWidgets);
+      expect(find.text('복용 횟수 · 1일 1회'), findsWidgets);
+      expect(find.text('복용 기간 · 7일'), findsWidgets);
+      expect(find.text(medicationDetail.usageMethod), findsNothing);
+      expect(
+        medicationDetail.voiceGuideText,
+        contains(medicationDetail.usageMethod),
       );
-      final usageText = tester.widget<Text>(find.text(usage));
-      expect(usageText.maxLines, isNull);
-      expect(usageText.overflow, isNot(TextOverflow.ellipsis));
+      expect(tester.takeException(), isNull);
     });
-
     testWidgets('처방 분석 결과는 긴 약 이름과 2배 글씨에서도 저장 명령을 유지한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       const schedule = MedicationSchedule(
@@ -429,6 +432,8 @@ void main() {
 
       expect(find.text('처방전 분석 결과'), findsOneWidget);
       expect(find.text('전체 저장하기'), findsOneWidget);
+      expect(find.byIcon(Icons.save_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -473,7 +478,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final guestButton = find.text('Continue as guest');
+      final guestButton = find.text('회원가입 없이 계속하기');
       await tester.ensureVisible(guestButton);
       await tester.pumpAndSettle();
 

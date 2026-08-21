@@ -22,6 +22,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.config import settings
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import PillCatalogEntry, PillVisualFeatures
 from repositories.pill_identification_catalog_repository import (
     PillIdentificationCatalogRepository,
@@ -1066,17 +1067,7 @@ class MFDSPillAPI:
 
     @staticmethod
     def _safe_image_url(value: str) -> str:
-        if value.startswith("//"):
-            value = f"https:{value}"
-        if not value or len(value) > 3000:
-            return ""
-        try:
-            parsed = urlsplit(value)
-        except ValueError:
-            return ""
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-            return ""
-        return value
+        return safe_medication_image_url(value)
 
 
 class MFDSPillCatalogBoundary:

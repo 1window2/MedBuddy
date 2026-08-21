@@ -60,8 +60,10 @@ void main() {
     await monitor.checkNow();
 
     expect(alerts, hasLength(1));
-    expect(alerts.single.title, '환자 TEST 복약 완료');
-    expect(alerts.single.body, '환자 TEST의 아침 복약이 모두 완료되었습니다.');
+    expect(alerts.single.title, '환자 복약 완료');
+    expect(alerts.single.body, '연동된 환자의 아침 복약이 모두 완료되었습니다.');
+    expect(alerts.single.title, isNot(contains('TEST')));
+    expect(alerts.single.body, isNot(contains('TEST')));
     expect(alerts.single.patientHash, 'patient_test');
   });
 
@@ -81,7 +83,9 @@ void main() {
     await monitor.checkNow();
 
     expect(alerts, hasLength(1));
-    expect(alerts.single.title, '환자 TEST 미복용 일정 확인');
+    expect(alerts.single.title, '미복용 일정 확인');
+    expect(alerts.single.body, startsWith('연동된 환자의 아침 복약 중'));
+    expect(alerts.single.body, isNot(contains('TEST')));
     expect(alerts.single.body, contains('20:00'));
     expect(alerts.single.body, contains('1건'));
   });

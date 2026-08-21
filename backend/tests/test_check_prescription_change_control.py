@@ -56,6 +56,7 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
         dosage_per_time: str = "1정",
         daily_frequency: str = "1일 3회",
         total_days: str = "7일",
+        prescription_batch_id: str | None = None,
     ) -> None:
         saved_date = prescription_date or self.previous_date
         self.db.add(
@@ -63,6 +64,7 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
                 patient_hash=patient_hash,
                 created_date=saved_date,
                 prescription_date=saved_date,
+                prescription_batch_id=prescription_batch_id,
                 item_seq=item_seq,
                 item_name=item_name,
                 efficacy=efficacy,
@@ -159,6 +161,42 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
         self.assertEqual(response.previous_prescription_date, recent_date)
         self.assertEqual(response.summary.unchanged_count, 1)
         self.assertEqual(response.changes, [])
+
+    def test_keeps_separate_prescription_batches_from_the_same_day(self) -> None:
+        same_day = self.current_date - timedelta(days=1)
+        self._save_previous(
+            prescription_date=same_day,
+            prescription_batch_id="batch_cold_1234567890",
+            item_seq="COLD-1",
+            item_name="감기약",
+            efficacy="기침과 가래를 완화합니다.",
+        )
+        self._save_previous(
+            prescription_date=same_day,
+            prescription_batch_id="batch_gi_123456789012",
+            item_seq="GI-1",
+            item_name="위장약",
+            efficacy="위산 과다와 속쓰림을 완화합니다.",
+        )
+
+        response = self.control.request_prescription_change(
+            PrescriptionChangeRequest(
+                patient_hash="patient-a",
+                prescription_date=self.current_date,
+                medications=[
+                    PrescriptionChangeMedication(
+                        item_seq="COLD-1",
+                        item_name="감기약",
+                        efficacy="기침과 가래를 완화합니다.",
+                    )
+                ],
+            )
+        )
+
+        self.assertTrue(response.has_previous_prescription)
+        self.assertEqual(response.previous_prescription_date, same_day)
+        self.assertEqual(response.summary.schedule_changed_count, 1)
+        self.assertEqual(response.summary.missing_count, 0)
 
     def test_selects_older_related_prescription_over_latest_unrelated_one(
         self,

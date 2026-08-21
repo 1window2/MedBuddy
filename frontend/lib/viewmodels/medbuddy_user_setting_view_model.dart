@@ -42,6 +42,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
 
   void clearAnalysisResult() {
     _cancelPrescriptionOperation();
+    unawaited(inputPrescription.clearSelectedImage());
     _recognizedMedicationScheduleList = [];
     _recognizedTextRegionList = [];
     _prescriptionPreviewImagePath = '';
@@ -79,6 +80,8 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
   // 역할:
   // - 현재 사용자에게 연결된 서버 데이터와 기기 캐시의 전체 삭제를 요청한다.
   Future<void> requestAccountDataDeletion() async {
+    await MedicationReminderBackgroundScheduler.cancel();
+    await notificationService.cancelAllMedicationReminders();
     await manageAccount.deleteAccountData();
     clearAnalysisResult();
     _savedMedicationInfoList = [];

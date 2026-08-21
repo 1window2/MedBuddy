@@ -27,6 +27,9 @@ class AuthenticationControl extends ChangeNotifier
   bool _googleSignInInitialized = false;
   late final AuthenticatedApiClient apiClient;
   int _sessionGeneration = 0;
+  String? _deletedFirebaseSubject;
+  Future<void> Function()? _beforeSignOut;
+  bool _isInvalidatingUnauthorizedSession = false;
 
   bool _isInitializing = true;
   @override
@@ -43,6 +46,8 @@ class AuthenticationControl extends ChangeNotifier
 
   String? _signedInEmail;
   String? get signedInEmail => _signedInEmail;
+
+  bool get isAnonymous => _firebaseAuth?.currentUser?.isAnonymous == true;
 
   bool _emailVerificationRequired = false;
   bool get emailVerificationRequired => _emailVerificationRequired;
@@ -108,6 +113,18 @@ class AuthenticationControl extends ChangeNotifier
     final control = AuthenticationControl._();
     unawaited(control._initialize());
     return control;
+  }
+
+  // Function Name: setBeforeSignOut
+  // Description:
+  // - Registers the application-owned cleanup boundary that must finish while
+  //   the current Firebase token can still authorize backend requests.
+  // Parameters:
+  // - callback: Optional asynchronous cleanup invoked before provider sign-out.
+  // Returns:
+  // - None.
+  void setBeforeSignOut(Future<void> Function()? callback) {
+    _beforeSignOut = callback;
   }
 
   Future<void> _initialize() async {
@@ -433,7 +450,8 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   Future<void> signOut() async {
-    await _runAuthOperation(() async {
+    await _runStrictAuthOperation(() async {
+      await _beforeSignOut?.call();
       if (_googleSignInInitialized) {
         await _googleSignIn.signOut();
       }
@@ -443,27 +461,147 @@ class AuthenticationControl extends ChangeNotifier
     });
   }
 
-  // 함수명: deleteCurrentUser
-  // 역할:
-  // - 서버의 MedBuddy 데이터 삭제가 끝난 뒤 Firebase 인증 계정을 삭제한다.
-  // - 인증을 사용하지 않는 로컬 데모에서는 현재 로컬 세션을 그대로 유지한다.
-  Future<void> deleteCurrentUser() async {
+  @visibleForTesting
+  Future<void> signOutForTest(Future<void> Function() providerSignOut) async {
+    await _runStrictAuthOperation(() async {
+      await _beforeSignOut?.call();
+      await providerSignOut();
+    });
+  }
+
+  // Function Name: prepareAccountDeletion
+  // Description:
+  // - Refreshes or reauthenticates the current Firebase identity before the
+  //   backend performs irreversible deletion.
+  // - Anonymous guests remain deletable because Firebase does not provide a
+  //   reusable credential for anonymous step-up authentication.
+  // Returns:
+  // - Completes with a fresh token, or throws with a user-actionable message.
+  Future<void> prepareAccountDeletion() async {
+    if (AuthConfig.mode == AuthenticationMode.disabled) {
+      return;
+    }
+    final user = _requireFirebaseAuth().currentUser;
+    if (user == null) {
+      throw StateError('Sign in before deleting this account.');
+    }
+    if (user.isAnonymous) {
+      await user.getIdToken(true);
+      return;
+    }
+
+    final lastSignIn = user.metadata.lastSignInTime?.toUtc();
+    final recentlySignedIn =
+        lastSignIn != null &&
+        DateTime.now().toUtc().difference(lastSignIn) <=
+            const Duration(minutes: 4);
+    if (recentlySignedIn) {
+      await user.getIdToken(true);
+      return;
+    }
+
+    final usesGoogle = user.providerData.any(
+      (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
+    );
+    if (!usesGoogle) {
+      throw StateError(
+        'For security, sign out and sign in again before deleting this account.',
+      );
+    }
+
+    await _runStrictAuthOperation(() async {
+      if (!_googleSignInInitialized) {
+        await _googleSignIn.initialize();
+        _googleSignInInitialized = true;
+      }
+      final googleUser = await _googleSignIn.authenticate();
+      final idToken = googleUser.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw StateError('Google did not return an identity token.');
+      }
+      await user.reauthenticateWithCredential(
+        GoogleAuthProvider.credential(idToken: idToken),
+      );
+      await user.getIdToken(true);
+    });
+  }
+
+  // Function Name: finishAccountDeletion
+  // Description:
+  // - Clears the local Firebase session after the backend has deleted MedBuddy
+  //   data and the Firebase identity through its trusted Admin boundary.
+  // - Avoids a second client-side identity deletion and its recent-login race.
+  // Returns:
+  // - Completes after the local authentication gate returns to sign-in.
+  Future<void> finishAccountDeletion() async {
     if (AuthConfig.mode == AuthenticationMode.disabled) {
       _session = _createLocalSession();
       notifyListeners();
       return;
     }
     final firebaseAuth = _requireFirebaseAuth();
-    final user = firebaseAuth.currentUser;
-    if (user == null) {
-      throw StateError('삭제할 로그인 계정이 없습니다.');
-    }
-    await user.delete();
-    if (_googleSignInInitialized) {
-      await _googleSignIn.signOut();
-    }
+    _deletedFirebaseSubject = firebaseAuth.currentUser?.uid;
+    await _finishDeletedSession(() async {
+      await firebaseAuth.signOut();
+      if (_googleSignInInitialized) {
+        await _googleSignIn.signOut();
+      }
+    });
+  }
+
+  @visibleForTesting
+  Future<void> finishAccountDeletionForTest(
+    Future<void> Function() providerSignOut,
+  ) => _finishDeletedSession(providerSignOut);
+
+  Future<void> _finishDeletedSession(
+    Future<void> Function() providerSignOut,
+  ) async {
+    _sessionGeneration += 1;
+    _signedInEmail = null;
+    _emailVerificationRequired = false;
+    _hasEnrolledSmsMfa = false;
     _clearSmsChallenge(notify: false);
-    await _synchronizeUser(null);
+    _session = null;
+    notifyListeners();
+    await _runStrictAuthOperation(providerSignOut);
+  }
+
+  Future<void> _runStrictAuthOperation(
+    Future<void> Function() operation,
+  ) async {
+    if (_isBusy) {
+      throw StateError('Another authentication request is already running.');
+    }
+    _isBusy = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await operation().timeout(_authenticationOperationTimeout);
+    } on FirebaseAuthException catch (error) {
+      final message = _messageForFirebaseError(error.code);
+      _setError(message);
+      throw StateError(message);
+    } on GoogleSignInException catch (error) {
+      final message = error.description ?? 'Google sign-in was not completed.';
+      _setError(message);
+      throw StateError(message);
+    } on TimeoutException {
+      const message =
+          'Authentication timed out. Check the network and try again.';
+      _setError(message);
+      throw StateError(message);
+    } on StateError catch (error) {
+      _setError(error.message);
+      rethrow;
+    } catch (_) {
+      const message = 'Authentication request failed. Please try again.';
+      _setError(message);
+      throw StateError(message);
+    } finally {
+      _isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _runAuthOperation(
@@ -503,6 +641,17 @@ class AuthenticationControl extends ChangeNotifier
 
   Future<void> _synchronizeUser(User? user) async {
     final generation = ++_sessionGeneration;
+    final deletedSubject = _deletedFirebaseSubject;
+    if (user != null && user.uid == deletedSubject) {
+      _session = null;
+      _signedInEmail = null;
+      _emailVerificationRequired = false;
+      notifyListeners();
+      return;
+    }
+    if (user != null && deletedSubject != null && user.uid != deletedSubject) {
+      _deletedFirebaseSubject = null;
+    }
     _signedInEmail = user?.email;
     _emailVerificationRequired = _requiresEmailVerification(user);
     await _refreshMfaEnrollment(user);
@@ -532,7 +681,12 @@ class AuthenticationControl extends ChangeNotifier
       }
       _session = session;
       _errorMessage = null;
-    } catch (_) {
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'Backend session handshake failed: ${error.runtimeType}: $error',
+        );
+      }
       if (generation == _sessionGeneration) {
         _session = null;
         _setError(
@@ -548,12 +702,53 @@ class AuthenticationControl extends ChangeNotifier
 
   Future<void> _invalidateUnauthorizedSession() async {
     final firebaseAuth = _firebaseAuth;
-    if (firebaseAuth == null) {
+    if (firebaseAuth == null || _isInvalidatingUnauthorizedSession) {
       return;
     }
-    _session = null;
-    _setError('Your secure session expired. Please sign in again.');
-    await firebaseAuth.signOut();
+    await _runUnauthorizedSessionInvalidation(firebaseAuth.signOut);
+  }
+
+  // Function Name: _runUnauthorizedSessionInvalidation
+  // Description:
+  // - Completes privacy-sensitive local and push cleanup while the current
+  //   Firebase identity is still available, then forces provider sign-out.
+  // - Continues the forced sign-out when server-side token cleanup is rejected
+  //   by the same expired credential that triggered this path.
+  // Parameters:
+  // - providerSignOut: Firebase provider invalidation operation.
+  // Returns:
+  // - Completes after the local session and provider identity are cleared.
+  Future<void> _runUnauthorizedSessionInvalidation(
+    Future<void> Function() providerSignOut,
+  ) async {
+    if (_isInvalidatingUnauthorizedSession) {
+      return;
+    }
+    _isInvalidatingUnauthorizedSession = true;
+    try {
+      try {
+        await _beforeSignOut?.call();
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint(
+            'Expired-session cleanup was only partially completed: '
+            '${error.runtimeType}',
+          );
+        }
+      }
+      _session = null;
+      _setError('Your secure session expired. Please sign in again.');
+      await providerSignOut();
+    } finally {
+      _isInvalidatingUnauthorizedSession = false;
+    }
+  }
+
+  @visibleForTesting
+  Future<void> invalidateUnauthorizedSessionForTest(
+    Future<void> Function() providerSignOut,
+  ) {
+    return _runUnauthorizedSessionInvalidation(providerSignOut);
   }
 
   FirebaseAuth _requireFirebaseAuth() {

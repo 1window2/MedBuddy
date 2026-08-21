@@ -673,6 +673,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                             "category": "medication_row",
                             "text": (
                                 f"{canonical_name} "
+                                "환자명 홍길동 010-1234-5678 "
                                 "900101-1234567 1정 1일 3회"
                             ),
                             "box_2d": [-10, 20, 400, 1100],
@@ -699,6 +700,10 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
 
         self.assertEqual(payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
         self.assertEqual(payload["prescription_date"], "2026-07-08")
+        self.assertRegex(
+            payload["prescription_batch_id"],
+            r"^[A-Za-z0-9_-]{16,64}$",
+        )
         self.assertEqual(len(payload["medications"]), 1)
         self.assertEqual(payload["raw_medication_count"], 2)
         self.assertEqual(payload["parsed_medication_count"], 1)
@@ -712,10 +717,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             payload["recognized_regions"][0]["box_2d"],
             [0, 20, 400, 1000],
         )
-        self.assertNotIn(
-            "900101-1234567",
-            payload["recognized_regions"][0]["text"],
-        )
+        self.assertEqual(payload["recognized_regions"][0]["text"], "")
         self.assertEqual(
             payload["recognized_regions"][1],
             {

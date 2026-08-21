@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import re
+import secrets
 from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -1024,6 +1025,7 @@ class InputPrescription:
         return {
             "hospital_name": safe_data.get("hospital_name", INFO_UNAVAILABLE),
             "prescription_date": prescription_date,
+            "prescription_batch_id": secrets.token_urlsafe(18),
             "medications": medication_schedules,
             "raw_medication_count": safe_data.get(
                 "raw_medication_count",
@@ -1037,11 +1039,12 @@ class InputPrescription:
     # 함수이름: _normalize_recognized_regions
     # 함수역할:
     # - OCR이 반환한 복약 정보와 민감정보 마스킹 영역의 좌표를 검증한다.
-    # - 민감정보의 실제 문구는 제거하고 화면 마스킹에 필요한 좌표만 남긴다.
+    # - 모델이 분류를 잘못해도 식별 문구가 노출되지 않도록 모든 실제 문구를 제거한다.
+    # - 화면 강조 및 마스킹에는 검증된 종류와 좌표만 전달한다.
     # 매개변수:
     # - raw_regions: Gemini가 반환한 OCR 인식 영역 목록
     # 반환값:
-    # - 안전한 문구와 0~1000 좌표만 포함한 최대 40개 영역 목록
+    # - 빈 문구와 0~1000 좌표만 포함한 최대 40개 영역 목록
     def _normalize_recognized_regions(
         self,
         raw_regions: object,
@@ -1093,7 +1096,7 @@ class InputPrescription:
             normalized_regions.append(
                 {
                     "category": "sensitive_info" if is_sensitive else category,
-                    "text": "" if is_sensitive else self.maskSensitiveInfo(text)[:300],
+                    "text": "",
                     "box_2d": box,
                 }
             )

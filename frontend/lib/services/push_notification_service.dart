@@ -3,12 +3,11 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
 import 'auth_config.dart';
-import 'caregiver_patient_local_state_service.dart';
 import 'notification_service.dart';
 
 // 파일명: push_notification_service.dart
@@ -33,6 +32,9 @@ class PushNotificationService {
   StreamSubscription<RemoteMessage>? _openedMessageSubscription;
   String? _registeredToken;
   bool _started = false;
+  bool _stopping = false;
+  Future<void>? _startOperation;
+  final Set<Future<void>> _pendingTokenRegistrations = <Future<void>>{};
 
   PushNotificationService({
     required this.userHash,
@@ -47,21 +49,50 @@ class PushNotificationService {
   // 반환값:
   // - 없음
   Future<void> start() async {
+    final pendingStart = _startOperation;
+    if (pendingStart != null) {
+      await pendingStart;
+      return;
+    }
     if (_started || AuthConfig.mode != AuthenticationMode.firebase) {
       return;
     }
+    late final Future<void> startOperation;
+    startOperation = _start().whenComplete(() {
+      if (identical(_startOperation, startOperation)) {
+        _startOperation = null;
+      }
+    });
+    _startOperation = startOperation;
+    await startOperation;
+  }
+
+  // 함수명: _start
+  // 역할:
+  // - 단일 시작 작업 안에서 FCM 권한, 초기 토큰 등록, 메시지 구독을 준비한다.
+  // - 공개 start가 이 Future를 공유해 중복 초기화를 막도록 한다.
+  // 반환값:
+  // - 초기화 시도가 끝나면 완료되는 Future
+  Future<void> _start() async {
     _started = true;
     try {
       final messaging = _resolvedMessaging;
       await messaging.requestPermission(alert: true, badge: true, sound: true);
       final token = await messaging.getToken();
       if (token != null && token.trim().isNotEmpty) {
-        await _registerToken(token);
+        await _trackTokenRegistration(token);
       }
       _tokenRefreshSubscription = messaging.onTokenRefresh.listen((
         refreshedToken,
       ) {
-        unawaited(_registerToken(refreshedToken));
+        unawaited(
+          _trackTokenRegistration(refreshedToken).catchError((
+            Object error,
+            StackTrace stackTrace,
+          ) {
+            _reportPushError(error, stackTrace);
+          }),
+        );
       }, onError: _reportPushError);
       _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen((
         message,
@@ -87,9 +118,38 @@ class PushNotificationService {
   // - 현재 기기 토큰을 서버에서 비활성화하고 메시지 구독을 정리한다.
   // 반환값:
   // - 없음
-  Future<void> stop() async {
+  Future<void> stop({bool requireServerUnregistration = false}) async {
+    _stopping = true;
+    await _startOperation;
+    await _awaitPendingTokenRegistrations();
     final token = _registeredToken;
-    _registeredToken = null;
+    if (token != null && token.isNotEmpty) {
+      try {
+        final response = await _client
+            .delete(
+              Uri.parse(ApiConfig.pushTokenUrl),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'token': token, 'platform': 'android'}),
+            )
+            .timeout(_requestTimeout);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw StateError(
+            'The device push token could not be unregistered. '
+            '(${response.statusCode})',
+          );
+        }
+        if (_registeredToken == token) {
+          _registeredToken = null;
+        }
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+        if (requireServerUnregistration) {
+          _stopping = false;
+          rethrow;
+        }
+      }
+    }
+
     _started = false;
     await _tokenRefreshSubscription?.cancel();
     await _foregroundMessageSubscription?.cancel();
@@ -97,19 +157,54 @@ class PushNotificationService {
     _tokenRefreshSubscription = null;
     _foregroundMessageSubscription = null;
     _openedMessageSubscription = null;
-    if (token == null || token.isEmpty) {
+    _stopping = false;
+  }
+
+  @visibleForTesting
+  void setRegisteredTokenForTesting(String token) {
+    _registeredToken = token;
+  }
+
+  @visibleForTesting
+  Future<void> registerTokenForTesting(String token) {
+    return _trackTokenRegistration(token);
+  }
+
+  // 함수명: _trackTokenRegistration
+  // 역할:
+  // - 진행 중인 토큰 등록을 수명주기 작업으로 추적해 로그아웃 정리가
+  //   등록 완료 뒤에만 실행되도록 직렬화한다.
+  // 매개변수:
+  // - token: Firebase가 발급한 현재 기기 토큰
+  // 반환값:
+  // - 등록 완료 또는 실패를 나타내는 Future
+  Future<void> _trackTokenRegistration(String token) async {
+    if (_stopping) {
       return;
     }
-    try {
-      await _client
-          .delete(
-            Uri.parse(ApiConfig.pushTokenUrl),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'token': token, 'platform': 'android'}),
-          )
-          .timeout(_requestTimeout);
-    } catch (error, stackTrace) {
-      _reportPushError(error, stackTrace);
+    late final Future<void> registration;
+    registration = _registerToken(token).whenComplete(() {
+      _pendingTokenRegistrations.remove(registration);
+    });
+    _pendingTokenRegistrations.add(registration);
+    await registration;
+  }
+
+  // 함수명: _awaitPendingTokenRegistrations
+  // 역할:
+  // - 현재 추적 중인 모든 토큰 등록 작업이 정착할 때까지 기다린다.
+  // - 개별 실패는 기록하되 마지막 정상 등록 토큰의 서버 정리는 계속한다.
+  // 반환값:
+  // - 대기 시점의 등록 작업이 모두 정착하면 완료되는 Future
+  Future<void> _awaitPendingTokenRegistrations() async {
+    for (final registration in _pendingTokenRegistrations.toList(
+      growable: false,
+    )) {
+      try {
+        await registration;
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+      }
     }
   }
 
@@ -146,20 +241,9 @@ class PushNotificationService {
       return;
     }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
-    final preferences = await SharedPreferences.getInstance();
-    final patientLabel = CaregiverPatientLocalStateService.resolveLabel(
-      preferences,
-      caregiverHash: userHash,
-      patientHash: patientHash,
-    );
     final slotName = _slotName(message.data['slot_key']);
-    final notification = message.notification;
-    final title = patientHash.isEmpty
-        ? notification?.title ?? '환자 복약 완료'
-        : '$patientLabel 복약 완료';
-    final body = patientHash.isEmpty
-        ? notification?.body ?? '연동된 환자의 복약 상태가 변경되었습니다.'
-        : '$patientLabel의 $slotName 복약이 모두 완료되었습니다.';
+    const title = '환자 복약 완료';
+    final body = '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
     final source = message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       id: source.hashCode & 0x7fffffff,

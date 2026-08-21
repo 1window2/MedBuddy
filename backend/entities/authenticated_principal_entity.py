@@ -1,6 +1,7 @@
 """Authenticated request identity used by backend authorization controls."""
 
 import hashlib
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,6 +22,7 @@ class AuthenticatedPrincipal(BaseModel):
     sign_in_provider: str = ""
     anonymous: bool = False
     authentication_disabled: bool = False
+    authenticated_at: datetime | None = None
 
     @classmethod
     def from_verified_claims(
@@ -45,6 +47,23 @@ class AuthenticatedPrincipal(BaseModel):
             sign_in_provider = str(
                 firebase_claim.get("sign_in_provider") or ""
             ).strip()
+        auth_time_value = claims.get("auth_time")
+        authenticated_at: datetime | None = None
+        if auth_time_value is not None:
+            if isinstance(auth_time_value, bool) or not isinstance(
+                auth_time_value,
+                (int, float),
+            ):
+                raise ValueError("Verified token has an invalid auth_time claim.")
+            try:
+                authenticated_at = datetime.fromtimestamp(
+                    float(auth_time_value),
+                    tz=UTC,
+                )
+            except (OverflowError, OSError, ValueError) as exc:
+                raise ValueError(
+                    "Verified token has an invalid auth_time claim."
+                ) from exc
         return cls(
             subject=subject,
             issuer=issuer,
@@ -54,6 +73,7 @@ class AuthenticatedPrincipal(BaseModel):
             phone_number=phone_number,
             sign_in_provider=sign_in_provider,
             anonymous=sign_in_provider == "anonymous",
+            authenticated_at=authenticated_at,
         )
 
     @classmethod

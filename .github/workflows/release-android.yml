@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: beta-android
 
@@ -17,19 +18,16 @@ jobs:
 
     steps:
       - name: Source Code Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate release ref
         shell: bash
         run: |
           set -euo pipefail
-          case "${GITHUB_REF}" in
-            refs/heads/main|refs/heads/beta/*|refs/tags/v*) ;;
-            *)
-              echo "Android releases are restricted to main, beta branches, and version tags." >&2
-              exit 1
-              ;;
-          esac
+          test "${GITHUB_REF}" = "refs/heads/main" || {
+            echo "Signed Android builds are restricted to the protected main branch." >&2
+            exit 1
+          }
 
       - name: Java Setup
         uses: actions/setup-java@v5
@@ -280,23 +278,63 @@ jobs:
           test -n "${EXPECTED_CERT}"
           test -x "${APKSIGNER}"
 
-          APK_CERT="$(${APKSIGNER} verify --verbose --print-certs "${APK}" \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+          set +e
+          APK_VERIFY_OUTPUT="$("${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1)"
+          APK_VERIFY_STATUS=$?
+          set -e
+          printf '%s\n' "${APK_VERIFY_OUTPUT}"
+          if (( APK_VERIFY_STATUS != 0 )); then
+            echo "APK signature verification failed with exit code ${APK_VERIFY_STATUS}." >&2
+            exit "${APK_VERIFY_STATUS}"
+          fi
+
+          APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
+            | awk -F': ' '/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
-          jarsigner -verify -strict "${AAB}"
+          set +e
+          AAB_VERIFY_OUTPUT="$(jarsigner -verify "${AAB}" 2>&1)"
+          AAB_VERIFY_STATUS=$?
+          set -e
+          printf '%s\n' "${AAB_VERIFY_OUTPUT}"
+          if (( AAB_VERIFY_STATUS != 0 )); then
+            echo "AAB signature verification failed with exit code ${AAB_VERIFY_STATUS}." >&2
+            exit "${AAB_VERIFY_STATUS}"
+          fi
+          if ! grep -Eq '^jar verified\.$' <<< "${AAB_VERIFY_OUTPUT}"; then
+            echo "AAB signature verification did not report a verified archive." >&2
+            exit 1
+          fi
+          if grep -Eqi 'unsigned entries|treated as unsigned' <<< "${AAB_VERIFY_OUTPUT}"; then
+            echo "AAB signature verification reported unsigned content." >&2
+            exit 1
+          fi
           AAB_CERT="$(keytool -printcert -jarfile "${AAB}" \
             | sed -n 's/^[[:space:]]*SHA256: //p' \
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
 
-          test "${APK_CERT}" = "${EXPECTED_CERT}"
-          test "${AAB_CERT}" = "${EXPECTED_CERT}"
+          if [[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
+            echo "APK certificate fingerprint extraction failed." >&2
+            exit 1
+          fi
+          if [[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
+            echo "AAB certificate fingerprint extraction failed." >&2
+            exit 1
+          fi
+          if [[ "${APK_CERT}" != "${EXPECTED_CERT}" ]]; then
+            echo "APK signing certificate SHA-256 mismatch." >&2
+            exit 1
+          fi
+          if [[ "${AAB_CERT}" != "${EXPECTED_CERT}" ]]; then
+            echo "AAB signing certificate SHA-256 mismatch." >&2
+            exit 1
+          fi
 
       - name: Upload signed release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: medbuddy-android-${{ github.sha }}
           if-no-files-found: error

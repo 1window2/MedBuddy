@@ -8,6 +8,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from core.application_clock import application_today
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     normalize_medication_schedule_slot_keys,
 )
@@ -24,6 +25,7 @@ _MAX_URL_LENGTH = 2_048
 _MAX_PUSH_TOKEN_LENGTH = 4_096
 _MIN_PRESCRIPTION_DATE = date(2000, 1, 1)
 _MAX_PRESCRIPTION_DATE_OFFSET_DAYS = 365
+_PRESCRIPTION_BATCH_ID_PATTERN = r"^[A-Za-z0-9_-]{16,64}$"
 
 
 # Class Name: MedicationRequest
@@ -57,6 +59,10 @@ class SavedMedicationCreate(BaseModel):
         max_length=MAX_PATIENT_HASH_LENGTH,
     )
     prescription_date: Optional[date] = None
+    prescription_batch_id: Optional[str] = Field(
+        default=None,
+        pattern=_PRESCRIPTION_BATCH_ID_PATTERN,
+    )
     item_seq: Optional[str] = Field(default=None, max_length=64)
     item_name: str = Field(
         min_length=1,
@@ -91,6 +97,24 @@ class SavedMedicationCreate(BaseModel):
         if value and not normalized_slot_keys:
             raise ValueError("At least one supported schedule slot is required.")
         return normalized_slot_keys
+
+    # Function Name: validate_image_url
+    # Description:
+    # - Accepts only the documented MFDS HTTPS medication-image origin.
+    # - Rejects arbitrary client-controlled hosts before persistence.
+    # Parameters:
+    # - value: Optional image URL supplied by the client.
+    # Returns:
+    # - A trusted normalized URL, or None when the field is blank.
+    @field_validator("image_url")
+    @classmethod
+    def validate_image_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        trusted_url = safe_medication_image_url(value)
+        if not trusted_url:
+            raise ValueError("Medication image URL is not trusted.")
+        return trusted_url
 
     # 함수명: validate_prescription_date
     # 역할:
