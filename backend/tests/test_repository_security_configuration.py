@@ -182,3 +182,36 @@ def test_self_hosted_database_url_uses_structured_credentials() -> None:
     assert "DATABASE_URL:" not in compose_source
     assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 3
     assert compose_source.count("DATABASE_HOST: postgres") == 3
+
+
+# Function Name: test_self_hosted_backend_prepares_secret_then_drops_privileges
+# Description:
+# - Ensures the host-owned Firebase credential is copied into a private runtime
+#   directory before the API starts as the unprivileged image user.
+# - Prevents a bind-mounted mode-0600 secret from becoming unreadable after the
+#   container switches from the host UID to the medbuddy UID.
+# Returns:
+# - None; pytest reports a failure when secret handling or privilege dropping
+#   regresses.
+def test_self_hosted_backend_prepares_secret_then_drops_privileges() -> None:
+    compose_source = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(
+        encoding="utf-8"
+    )
+    backend_service = compose_source.split("  backend:", maxsplit=1)[1]
+    backend_service = backend_service.split("  cloudflared:", maxsplit=1)[0]
+    dockerfile_source = (_REPOSITORY_ROOT / "backend" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    entrypoint_source = (
+        _REPOSITORY_ROOT / "backend" / "docker-entrypoint.sh"
+    ).read_text(encoding="utf-8")
+
+    assert 'user: "0:0"' in backend_service
+    assert 'entrypoint: ["/usr/local/bin/medbuddy-entrypoint"]' in backend_service
+    assert "USER medbuddy" in dockerfile_source
+    assert "install -m 0400 -o medbuddy -g medbuddy" in entrypoint_source
+    assert "--reuid=medbuddy" in entrypoint_source
+    assert "--regid=medbuddy" in entrypoint_source
+    assert "--bounding-set=-all" in entrypoint_source
+    assert "--no-new-privs" in entrypoint_source
+    assert '"$@"' in entrypoint_source

@@ -12,10 +12,12 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
 COPY . ./
+COPY docker-entrypoint.sh /usr/local/bin/medbuddy-entrypoint
 
 RUN addgroup --system medbuddy \
     && adduser --system --ingroup medbuddy medbuddy \
-    && chown -R medbuddy:medbuddy /app
+    && chown -R medbuddy:medbuddy /app \
+    && chmod 0755 /usr/local/bin/medbuddy-entrypoint
 
 USER medbuddy
 

@@ -104,6 +104,10 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    # The root-only bootstrap copies the bind-mounted secret, then permanently
+    # drops to the image's unprivileged medbuddy account before Python starts.
+    user: "0:0"
+    entrypoint: ["/usr/local/bin/medbuddy-entrypoint"]
     env_file:
       - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
     environment:

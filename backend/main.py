@@ -28,6 +28,7 @@ from api.dependencies import (
     get_app_check_token_verifier,
     get_oidc_token_verifier,
 )
+from boundaries.firebase_admin_boundary import verify_firebase_admin_credentials
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from controls.input_prescription_control import MAX_PRESCRIPTION_IMAGE_BYTES
 from core.config import settings
@@ -174,6 +175,10 @@ async def _ping_required_redis() -> None:
 async def _verify_runtime_dependencies() -> None:
     await run_in_threadpool(_verify_database_dependencies)
     if settings.AUTH_MODE == "firebase":
+        await run_in_threadpool(
+            verify_firebase_admin_credentials,
+            settings.FIREBASE_PROJECT_ID,
+        )
         get_oidc_token_verifier()
     if settings.FIREBASE_APP_CHECK_REQUIRED:
         get_app_check_token_verifier()
