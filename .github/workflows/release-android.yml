@@ -289,7 +289,7 @@ jobs:
           fi
 
           APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
-            | awk -F': ' '/^Signer #[0-9]+ certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
+            | awk -F': ' '/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
             | head -n 1 \
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
