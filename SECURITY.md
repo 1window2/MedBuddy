@@ -53,6 +53,10 @@ The local medication catalog database can be large and may be generated from
 public data sources. Do not commit generated database files such as
 `backend/medbuddy.db`. Production catalog rows belong in the shared,
 Alembic-managed PostgreSQL database rather than a container-local file.
+Full production catalog refreshes are transactional and reject a candidate
+dataset that would replace an established catalog with less than 80 percent of
+its prior row count. This fail-safe requires operator review for an unusually
+large legitimate upstream contraction instead of automatically pruning data.
 
 Do not commit local SDK paths, generated Flutter build files, tool telemetry
 state, emulator-specific configuration, Python virtual environments, pytest
@@ -125,8 +129,18 @@ Check, a Firebase project, a durable non-SQLite database, external schema
 migrations, and Redis-backed distributed quotas are configured. The
 unauthenticated `/health` route returns only process liveness, while `/ready`
 returns only binary database-revision, Firebase-verifier, App Check, and Redis
-readiness. App Check and rate limiting are defense in depth; neither replaces
-user authentication or authorization.
+readiness. Public readiness checks are IP-rate-limited and coalesced through a
+short-lived process-local cache so repeated probes do not repeatedly consume
+database and verifier resources. App Check and rate limiting are defense in
+depth; neither replaces user authentication or authorization.
+
+Medication image URLs are treated as untrusted at both API and client
+boundaries. Only HTTPS URLs on the documented `nedrug.mfds.go.kr` host, without
+credentials or alternate ports, may be stored or rendered; legacy values are
+revalidated before API responses. Prescription-region responses retain only
+validated categories and coordinates, never model-returned region text.
+Caregiver lock-screen notification content remains generic while the private
+payload retains the patient scope needed for authenticated in-app navigation.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).

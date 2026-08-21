@@ -247,9 +247,14 @@ Cloudflare Tunnel.
 - The Android debug manifest retains Internet access for ADB, breakpoints, and
   Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
   access.
-- Medication images are external content. Flutter loads them only from the
-  documented `https://nedrug.mfds.go.kr` public-data host, and revalidates the
-  value immediately before every `Image.network` call.
+- Medication images are external content. The backend accepts, persists, and
+  returns them only from the documented `https://nedrug.mfds.go.kr`
+  public-data host. Flutter independently revalidates the value immediately
+  before every `Image.network` call.
+- Prescription image overlays receive validated categories and coordinates,
+  but no model-returned region text. Caregiver notifications use generic
+  lock-screen content and keep the patient scope only in the private tap
+  payload used for authenticated in-app navigation.
 - Prescription image processing rejects decoded dimensions above 24 megapixels
   from the image header and uses a dedicated single-worker executor before
   OpenCV allocation. Multipart byte limits remain a separate outer control.
@@ -269,6 +274,9 @@ Cloudflare Tunnel.
   pull-request, beta-branch, wildcard-ref, or tag jobs.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
+- APK fingerprint extraction is anchored to the exact `apksigner` digest line,
+  and AAB verification uses strict jarsigner semantics before certificate
+  comparison.
 - The release manifest/network security configuration permits HTTPS only.
 - Debug builds retain Internet permission for Flutter tooling, but clear-text
   HTTP access is not enabled in the Android manifest.

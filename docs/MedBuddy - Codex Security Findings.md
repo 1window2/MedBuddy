@@ -2,10 +2,10 @@
 
 Audit date: 2026-08-21
 
-Target: `beta/v0.1.0` and draft PR #74 into `main`
+Target: final v0.1.0 security branch from merged `main`
 
-Scope: all 35 current Codex Security reports, every available Patch tab, and
-the twelve post-scan Codex review threads on PR #74
+Scope: all 42 current Codex Security reports, every available Patch tab, and
+the 19 resolved review threads from merged PR #74
 
 ## Method
 
@@ -15,8 +15,8 @@ findings exposed a Patch tab; those patches were reviewed as proposals rather
 than applied blindly. The current implementation was then tested at its real
 trust boundaries.
 
-Eighteen findings required a change and 17 had a reported vulnerable state that
-was already removed by the recovered beta work. The twelve later review threads
+Twenty-five findings required a change and 17 had a reported vulnerable state
+that was already removed by the recovered beta work. The later review threads
 also required corrections before merge.
 "Already resolved" means the current tree contains the relevant control; it
 does not mean the original report was invalid.
@@ -42,6 +42,7 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `4ee5cc54a6f08191b8c476879b01ded2` | Production deploy allows Firebase anonymous API access | Fixed on main before this audit | The dormant Cloud Run workflow rejects anonymous Firebase identities; self-hosted guest access remains an explicitly authenticated Firebase anonymous principal. |
 | `72d651dbea5c8191ac42b085e871f5bc` | Concurrent prescription image preprocessing can exhaust resources | Fixed in this branch | Pillow header pixel limit runs before decode, and preprocessing uses a single-worker executor. |
 | `cf40175dd2988191ac0b07349bcb36df` | Regex DoS in daily frequency parsing | Fixed in this branch | Numeric matching cannot restart inside an arbitrarily long digit run; regression test covers the adversarial input. |
 | `f57513cdfd888191b3001364509782c4` | Unauthenticated reminder settings can be changed by hash | Already resolved in beta | Protected routes use verified authentication/App Check and server-derived ownership instead of accepting the hash as authority. |
@@ -55,7 +56,9 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `a4f32bf8bd5081919241c84920994265` | Catalog refresh can prune on partial API data | Fixed in this branch | Full refresh refuses to prune an established catalog when the candidate retains less than 80 percent of the prior rows; the transaction rolls back for basic, approval, and pill catalogs. |
 | `118bbbfa807c819181a0eb15cc30bd94` | Release workflow exposes signing secrets to broad refs | Fixed in this branch and GitHub environment | The workflow accepts only the protected `main` ref. The `beta-android` environment independently requires owner approval and an exact main-branch deployment policy; beta branches and tags cannot receive signing material. |
+| `45b648cbdf348191b7145d3638ddbead` | Public readiness probe hits production dependencies | Fixed in this branch | `/ready` remains public for infrastructure probes, but requests are IP-rate-limited and dependency checks are coalesced behind a five-second process-local cache. |
 | `6e79917f1d448191b88581c2c84e4030` | Saved-list reads now trigger third-party medication lookups | Fixed after verified review | Saved-list and caregiver reads return persisted image metadata only; they no longer call MFDS or commit enrichment as a GET side effect. |
 | `8d0d695912108191a19a8311c5153486` | Unauthenticated health recommendation LLM endpoint | Already resolved in beta | Recommendation generation is protected by the verified request principal and bounded request policy. |
 | `1b4134d204dc81918ea1d955c21b0c71` | Medication detail screen loads untrusted image URLs | Fixed in this branch | All medication images require HTTPS on the exact MFDS image host with no credentials or alternate port. |
@@ -84,6 +87,10 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `5df0a574c8148191b552d13f27a13fc0` | Unanchored APK cert parser allows digest spoofing | Fixed in this branch | The parser accepts only the anchored `Signer #N certificate SHA-256 digest` line and requires exactly 64 hexadecimal characters after normalization. |
+| `707b27f248348191a49eebcfcc1927ee` | AAB verifier no longer fails on jarsigner warnings | Fixed in this branch | `jarsigner -verify -strict` makes unsigned entries and other security warnings release-blocking before the certificate comparison. |
+| `a17d9ff1f0248191980988706f2afb33` | Patient labels exposed in caregiver notifications | Fixed in this branch | Background and foreground caregiver notifications use generic patient text; the patient hash remains only in the private navigation payload. |
+| `59efa5d1bf2481919d37cfa7a5345b62` | OCR region text can expose patient identifiers | Fixed in this branch | OCR-region output contains only validated categories and coordinates; all model-returned region text is blanked before the API response. |
 | `ec180b769a248191a20c1a52a60775e7` | Multiple-pill photos can bypass new quality gate | Fixed in this branch | Additional tablet/capsule plurality phrases are rejected; a synthetic non-pill image was rejected on device. |
 | `f1768a8f0b1081919b095853798ef5c0` | Medication detail screen hides full usage instructions | Fixed in this branch | Detail values are no longer truncated to two items or three lines and render vertically at full width. |
 | `65a2b25d93108191840b308c20954fb8` | Ambiguous OCR prefixes can canonicalize to wrong drug | Fixed in this branch | Prefix correction succeeds only when both catalogs produce exactly one distinct item name. |
@@ -95,11 +102,11 @@ does not mean the original report was invalid.
 
 ## Verification evidence
 
-- Backend: 359 passed, 2 PostgreSQL-gated tests skipped, and 4 subtests passed.
-- Flutter: 248 tests passed; `flutter analyze --no-pub` reported no issues.
-- Focused final-review suites: 6 repository/deployment configuration tests,
-  14 prescription-media/push-lifecycle tests, and 30 reminder/session tests
-  passed.
+- Backend: 373 passed and 2 PostgreSQL-gated tests skipped.
+- Flutter: 252 tests passed; `flutter analyze --no-pub` reported no issues.
+- Focused security suites included 8 repository/deployment configuration
+  tests, 134 medication-image boundary tests, 37 prescription OCR tests, and
+  12 caregiver-notification tests.
 - UML: PlantUML 1.2026.6 source validation and local rendering passed; the
   class and overall sequence PNGs were regenerated without uploading the UML.
 - Android release-shaped build: unsigned v0.1.0 APK assembled with a public
@@ -122,9 +129,11 @@ does not mean the original report was invalid.
 
 ## Remaining release gates
 
-No release was made. Before PR #74 is merged, the final reviewed commit must be
-deployed to the mini PC, `pill_identification_references` must be populated and
-queried successfully, CI and the final Codex re-review must pass, and the signed
-artifact must complete the network transition/outage, sign-out privacy,
-deletion, data-preserving update, and two-device caregiver gates. These are
-deployment proofs, not reasons to weaken the fail-closed controls.
+No release was made. PR #74 has been normal-merged, but this final security
+branch must still pass its own CI and Codex review and be normal-merged into
+`main`. The resulting commit must then be deployed to the mini PC,
+`pill_identification_references` must be populated and queried successfully,
+and a newly signed artifact must complete the network transition/outage,
+sign-out privacy, deletion, data-preserving update, and two-device caregiver
+gates. These are deployment proofs, not reasons to weaken the fail-closed
+controls.
