@@ -166,6 +166,7 @@ void main() {
               required minute,
               required medicationNames,
               required activeDates,
+              medicationNamesByDate = const <String, List<String>>{},
               language = 'ko',
             }) async {
               registration = {
@@ -176,6 +177,7 @@ void main() {
                 'minute': minute,
                 'medicationNames': medicationNames,
                 'activeDates': activeDates,
+                'medicationNamesByDate': medicationNamesByDate,
                 'language': language,
               };
             },
@@ -200,6 +202,7 @@ void main() {
         'minute': 25,
         'medicationNames': const ['Medicine A'],
         'activeDates': [DateTime(2026, 8, 17)],
+        'medicationNamesByDate': const <String, List<String>>{},
         'language': 'en',
       });
     },

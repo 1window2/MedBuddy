@@ -330,6 +330,11 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     required List<MedicationSchedule> schedules,
   }) async {
     await _cancelLegacyMedicationReminder(setting);
+    final now = DateTime.now();
+    final activeDates = MedicationReminderRefreshService.activeReminderDates(
+      schedules,
+      now: now,
+    );
     await setNotification.registerNotification(
       id: setting.notificationId,
       slotKey: setting.slotKey,
@@ -340,19 +345,14 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
           .map((schedule) => schedule.displayName)
           .where((name) => name.trim().isNotEmpty)
           .toList(growable: false),
-      activeDates: _activeReminderDates(schedules),
+      activeDates: activeDates,
+      medicationNamesByDate:
+          MedicationReminderRefreshService.medicationNamesForDates(
+            schedules,
+            activeDates: activeDates,
+            now: now,
+          ),
       language: userSetting.language,
-    );
-  }
-
-  // 함수명: _activeReminderDates
-  // 함수역할:
-  // - 복용 시작일과 총 투약일을 기준으로 알림을 예약할 날짜를 계산한다.
-  // - 백그라운드 작업이 보충하는 최대 14일의 안전한 예약 창을 계산한다.
-  List<DateTime> _activeReminderDates(List<MedicationSchedule> schedules) {
-    return MedicationReminderRefreshService.activeReminderDates(
-      schedules,
-      now: DateTime.now(),
     );
   }
 

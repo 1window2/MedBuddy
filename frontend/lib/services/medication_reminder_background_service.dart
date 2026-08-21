@@ -30,6 +30,7 @@ typedef MedicationReminderRegistrar =
       required int minute,
       required List<String> medicationNames,
       required List<DateTime> activeDates,
+      Map<String, List<String>> medicationNamesByDate,
       String language,
     });
 typedef MedicationReminderCanceler =
@@ -141,6 +142,8 @@ class MedicationReminderRefreshService {
           );
           continue;
         }
+        final now = _now();
+        final activeDates = activeReminderDates(slotSchedules, now: now);
         await _registerReminder(
           id: setting.notificationId,
           slotKey: setting.slotKey,
@@ -152,7 +155,12 @@ class MedicationReminderRefreshService {
               .where((name) => name.trim().isNotEmpty)
               .toSet()
               .toList(growable: false),
-          activeDates: activeReminderDates(slotSchedules, now: _now()),
+          activeDates: activeDates,
+          medicationNamesByDate: medicationNamesForDates(
+            slotSchedules,
+            activeDates: activeDates,
+            now: now,
+          ),
           language: language,
         );
       }
@@ -210,6 +218,59 @@ class MedicationReminderRefreshService {
     }
 
     return activeDateKeys.values.toList(growable: false)..sort();
+  }
+
+  // Function Name: medicationNamesForDates
+  // Description:
+  // - Builds each reminder date from only the medication courses active on
+  //   that calendar date.
+  // Parameters:
+  // - schedules: Medication courses assigned to one reminder slot.
+  // - activeDates: Bounded dates that will receive local notifications.
+  // - now: Current local time used for schedules missing a persisted start.
+  // Returns:
+  // - Medication display names keyed by local ISO calendar date.
+  static Map<String, List<String>> medicationNamesForDates(
+    List<MedicationSchedule> schedules, {
+    required List<DateTime> activeDates,
+    required DateTime now,
+  }) {
+    final today = DateTime(now.year, now.month, now.day);
+    return {
+      for (final activeDate in activeDates)
+        _dateKey(activeDate): schedules
+            .where(
+              (schedule) => _isScheduleActiveOnDate(
+                schedule,
+                activeDate,
+                fallbackStartDate: today,
+              ),
+            )
+            .map((schedule) => schedule.displayName.trim())
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .toList(growable: false),
+    };
+  }
+
+  static bool _isScheduleActiveOnDate(
+    MedicationSchedule schedule,
+    DateTime date, {
+    required DateTime fallbackStartDate,
+  }) {
+    final rawStartDate =
+        schedule.prescriptionDate ?? schedule.createdDate ?? fallbackStartDate;
+    final startDate = DateTime(
+      rawStartDate.year,
+      rawStartDate.month,
+      rawStartDate.day,
+    );
+    final targetDate = DateTime(date.year, date.month, date.day);
+    final courseDays = schedule.medicationTime;
+    final endDate = courseDays > 0
+        ? startDate.add(Duration(days: courseDays - 1))
+        : fallbackStartDate;
+    return !targetDate.isBefore(startDate) && !targetDate.isAfter(endDate);
   }
 
   static String slotTitle(String slotKey, String language) {

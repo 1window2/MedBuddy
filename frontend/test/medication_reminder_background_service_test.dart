@@ -43,6 +43,7 @@ void main() {
             required minute,
             required medicationNames,
             required activeDates,
+            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
             registeredWindows.add(List<DateTime>.from(activeDates));
@@ -86,6 +87,7 @@ void main() {
             required minute,
             required medicationNames,
             required activeDates,
+            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
             fail('Disabled reminder should not be registered.');
@@ -98,5 +100,58 @@ void main() {
 
     expect(await service.synchronize(), isTrue);
     expect(canceledSlots, ['morning', 'lunch', 'evening', 'bedtime']);
+  });
+
+  test('각 날짜의 알림 본문에는 그날 복용 중인 약만 포함한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    Map<String, List<String>>? registeredNamesByDate;
+    final service = MedicationReminderRefreshService(
+      loadSettings: () async => const [
+        MedicationAlarm(
+          patientHash: 'patient-a',
+          slotKey: 'morning',
+          hour: 8,
+          minute: 0,
+          enabled: true,
+        ),
+      ],
+      loadSchedules: () async => [
+        MedicationSchedule(
+          medicationName: '약-A',
+          prescriptionDate: DateTime(2026, 8, 1),
+          medicationTime: 2,
+          scheduleSlotKeys: const ['morning'],
+        ),
+        MedicationSchedule(
+          medicationName: '약-B',
+          prescriptionDate: DateTime(2026, 8, 2),
+          medicationTime: 2,
+          scheduleSlotKeys: const ['morning'],
+        ),
+      ],
+      registerReminder:
+          ({
+            required id,
+            required slotKey,
+            required slotTitle,
+            required hour,
+            required minute,
+            required medicationNames,
+            required activeDates,
+            medicationNamesByDate = const <String, List<String>>{},
+            language = 'ko',
+          }) async {
+            registeredNamesByDate = medicationNamesByDate;
+          },
+      cancelReminder: (id, {slotKey}) async {},
+      now: () => DateTime(2026, 8, 1, 7),
+    );
+
+    expect(await service.synchronize(), isTrue);
+    expect(registeredNamesByDate, {
+      '2026-08-01': ['약-A'],
+      '2026-08-02': ['약-A', '약-B'],
+      '2026-08-03': ['약-B'],
+    });
   });
 }

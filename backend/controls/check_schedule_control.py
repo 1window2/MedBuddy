@@ -193,6 +193,13 @@ class CheckSchedule:
             slot_statuses = self._slot_statuses_for_medication(medication, today)
             medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
+            current_slot_completion_states = (
+                self._slot_completion_states_for_patient(
+                    normalized_patient_hash,
+                    today,
+                    target_slot_keys,
+                )
+            )
             self.db.commit()
             self.db.refresh(medication)
         except Exception as exc:
@@ -206,11 +213,6 @@ class CheckSchedule:
                 detail="Medication status could not be updated.",
             ) from exc
 
-        current_slot_completion_states = self._slot_completion_states_for_patient(
-            normalized_patient_hash,
-            today,
-            target_slot_keys,
-        )
         self._dispatch_new_slot_completion_events(
             patient_hash=normalized_patient_hash,
             target_slot_keys=target_slot_keys,

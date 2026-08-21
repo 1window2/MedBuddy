@@ -765,6 +765,7 @@ class _FakeNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     registeredSlotKeys.add(slotKey);

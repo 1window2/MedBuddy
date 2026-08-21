@@ -29,6 +29,7 @@ class AuthenticationControl extends ChangeNotifier
   int _sessionGeneration = 0;
   String? _deletedFirebaseSubject;
   Future<void> Function()? _beforeSignOut;
+  bool _isInvalidatingUnauthorizedSession = false;
 
   bool _isInitializing = true;
   @override
@@ -701,12 +702,53 @@ class AuthenticationControl extends ChangeNotifier
 
   Future<void> _invalidateUnauthorizedSession() async {
     final firebaseAuth = _firebaseAuth;
-    if (firebaseAuth == null) {
+    if (firebaseAuth == null || _isInvalidatingUnauthorizedSession) {
       return;
     }
-    _session = null;
-    _setError('Your secure session expired. Please sign in again.');
-    await firebaseAuth.signOut();
+    await _runUnauthorizedSessionInvalidation(firebaseAuth.signOut);
+  }
+
+  // Function Name: _runUnauthorizedSessionInvalidation
+  // Description:
+  // - Completes privacy-sensitive local and push cleanup while the current
+  //   Firebase identity is still available, then forces provider sign-out.
+  // - Continues the forced sign-out when server-side token cleanup is rejected
+  //   by the same expired credential that triggered this path.
+  // Parameters:
+  // - providerSignOut: Firebase provider invalidation operation.
+  // Returns:
+  // - Completes after the local session and provider identity are cleared.
+  Future<void> _runUnauthorizedSessionInvalidation(
+    Future<void> Function() providerSignOut,
+  ) async {
+    if (_isInvalidatingUnauthorizedSession) {
+      return;
+    }
+    _isInvalidatingUnauthorizedSession = true;
+    try {
+      try {
+        await _beforeSignOut?.call();
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint(
+            'Expired-session cleanup was only partially completed: '
+            '${error.runtimeType}',
+          );
+        }
+      }
+      _session = null;
+      _setError('Your secure session expired. Please sign in again.');
+      await providerSignOut();
+    } finally {
+      _isInvalidatingUnauthorizedSession = false;
+    }
+  }
+
+  @visibleForTesting
+  Future<void> invalidateUnauthorizedSessionForTest(
+    Future<void> Function() providerSignOut,
+  ) {
+    return _runUnauthorizedSessionInvalidation(providerSignOut);
   }
 
   FirebaseAuth _requireFirebaseAuth() {

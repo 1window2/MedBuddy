@@ -78,4 +78,26 @@ void main() {
       control.dispose();
     },
   );
+
+  test(
+    'expired session runs cleanup before forced provider sign out',
+    () async {
+      final control = AuthenticationControl.development();
+      final events = <String>[];
+      control.setBeforeSignOut(() async {
+        events.add('cleanup');
+        throw StateError('server token is already unauthorized');
+      });
+
+      await control.invalidateUnauthorizedSessionForTest(() async {
+        events.add('provider-sign-out');
+      });
+
+      expect(events, <String>['cleanup', 'provider-sign-out']);
+      expect(control.session, isNull);
+      expect(control.isAuthenticated, isFalse);
+      expect(control.errorMessage, contains('expired'));
+      control.dispose();
+    },
+  );
 }

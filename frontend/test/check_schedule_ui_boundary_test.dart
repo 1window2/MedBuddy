@@ -173,6 +173,7 @@ class _MutableSetNotification extends SetNotification {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 }
@@ -195,6 +196,7 @@ class _SuccessfulNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 
@@ -229,6 +231,7 @@ class _FailingNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     throw StateError('Notification registration failed.');

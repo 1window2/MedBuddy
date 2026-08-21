@@ -42,6 +42,7 @@ class _NoopNotificationService implements NotificationService {
     required int minute,
     required List<String> medicationNames,
     required List<DateTime> activeDates,
+    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 
@@ -117,6 +118,25 @@ void main() {
       MedicationNotificationDestination.caregiverSchedule,
     );
     expect(selection?.patientHash, 'patient_test');
+  });
+
+  test('session cleanup classifies schedule and caregiver notifications', () {
+    expect(
+      NotificationService.isSessionNotificationPayload(
+        'schedule:morning:17',
+      ),
+      isTrue,
+    );
+    expect(
+      NotificationService.isSessionNotificationPayload(
+        'caregiver:patient_test',
+      ),
+      isTrue,
+    );
+    expect(
+      NotificationService.isSessionNotificationPayload('settings:17'),
+      isFalse,
+    );
   });
 
   testWidgets('the notification selection handler opens the dose screen', (

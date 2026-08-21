@@ -283,6 +283,44 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.assertEqual(control.consumeCompletionEvents(), [])
 
+    def test_completion_transition_is_computed_before_transaction_commit(
+        self,
+    ) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="serialized-tablet",
+        )
+        commit_completed = False
+        completion_state_reads: list[bool] = []
+        original_reader = self.control._slot_completion_states_for_patient
+
+        def mark_commit(_session: object) -> None:
+            nonlocal commit_completed
+            commit_completed = True
+
+        def tracked_reader(
+            patient_hash: str,
+            schedule_date: date,
+            slot_keys: list[str],
+        ) -> dict[str, bool]:
+            completion_state_reads.append(commit_completed)
+            return original_reader(patient_hash, schedule_date, slot_keys)
+
+        event.listen(self.db, "after_commit", mark_commit)
+        self.control._slot_completion_states_for_patient = tracked_reader
+        try:
+            self.control.updateMedicationStatus(
+                medication.id,
+                True,
+                "patient-a",
+                slot_key="morning",
+            )
+        finally:
+            event.remove(self.db, "after_commit", mark_commit)
+            self.control._slot_completion_states_for_patient = original_reader
+
+        self.assertEqual(completion_state_reads, [False, False])
+
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
         schedule_date = application_today()
         completed_at = datetime(2026, 1, 1, 8, 0)
