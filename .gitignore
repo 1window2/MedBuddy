@@ -11,6 +11,9 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-*/
+.audit-pytest-*/
+.codex-pytest-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -31,6 +34,9 @@ htmlcov/
 *.sqlite3-journal
 *.sqlite3-shm
 *.sqlite3-wal
+*.dump
+*.backup
+*.bak
 *.log
 *.tmp
 
