@@ -301,6 +301,14 @@ class CheckScheduleTest(unittest.TestCase):
                 f"sqlite:///{database_path.as_posix()}",
                 connect_args={"check_same_thread": False, "timeout": 10},
             )
+
+            @event.listens_for(engine, "connect")
+            def enable_concurrent_writes(dbapi_connection, _record) -> None:
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=10000")
+                cursor.close()
+
             Base.metadata.create_all(bind=engine)
             session_factory = sessionmaker(
                 autocommit=False,
