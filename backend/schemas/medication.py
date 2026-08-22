@@ -339,6 +339,7 @@ class PrescriptionMedicationResponse(BaseModel):
 class PrescriptionAnalysisResponse(BaseModel):
     hospital_name: str = Field(max_length=_MAX_MEDICATION_NAME_LENGTH)
     prescription_date: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
+    prescription_batch_id: str = Field(pattern=_PRESCRIPTION_BATCH_ID_PATTERN)
     medications: list[PrescriptionMedicationResponse] = Field(default_factory=list)
     raw_medication_count: int = Field(ge=0)
     parsed_medication_count: int = Field(ge=0)
