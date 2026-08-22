@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 from boundaries.medication_completion_event_boundary import (
     MedicationCompletionEventBoundary,
 )
-from boundaries.push_notification_boundary import PushNotificationBoundary
+from boundaries.push_notification_boundary import (
+    PushDeliveryResult,
+    PushNotificationBoundary,
+)
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     _CaregiverNotification,
@@ -58,18 +61,21 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
     # - patient_hash: 복약을 완료한 환자의 식별 hash
     # - slot_key: 완료된 복약 시간대
     # 반환값:
-    # - 없음
+    # - 전체 보호자 기기의 성공, 영구 실패 토큰, 재시도 가능한 실패 집계
     def notifySlotCompleted(
         self,
         *,
         patient_hash: str,
         slot_key: str,
-    ) -> None:
+    ) -> PushDeliveryResult:
         caregiver_hashes = self._caregivers_for_completed_slot(
             patient_hash,
             slot_key,
         )
         slot_name = _SLOT_NAMES.get(slot_key, "복약")
+        success_count = 0
+        invalid_tokens: list[str] = []
+        retryable_failure_count = 0
         for caregiver_hash in caregiver_hashes:
             token_rows = (
                 self.db.query(_DevicePushToken)
@@ -91,8 +97,16 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                     "slot_key": slot_key,
                 },
             )
+            success_count += result.success_count
+            invalid_tokens.extend(result.invalid_tokens)
+            retryable_failure_count += result.retryable_failure_count
             if result.invalid_tokens:
                 self._disable_invalid_tokens(result.invalid_tokens)
+        return PushDeliveryResult(
+            success_count=success_count,
+            invalid_tokens=tuple(dict.fromkeys(invalid_tokens)),
+            retryable_failure_count=retryable_failure_count,
+        )
 
     # 함수명: _caregivers_for_completed_slot
     # 역할:

@@ -1,11 +1,14 @@
 # File Name: check_schedule_control.py
 # Role: Control class mapped from CheckSchedule in class diagram integrated v5.
 
-import logging
 import hashlib
+import logging
 from datetime import date, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from boundaries.medication_completion_event_boundary import (
@@ -290,8 +293,8 @@ class CheckSchedule:
 
     # 함수명: _get_or_create_completion_outbox
     # 역할:
-    # - 같은 환자·날짜·시간대의 알림 요청이 이미 있으면 재사용한다.
-    # - 없으면 현재 복약 상태 트랜잭션 안에 새 아웃박스 행을 추가한다.
+    # - DB 고유 제약과 원자적 삽입을 이용해 같은 완료 이벤트를 한 번만 저장한다.
+    # - 동시에 들어온 요청이 충돌해도 복약 상태 트랜잭션 전체를 되돌리지 않는다.
     def _get_or_create_completion_outbox(
         self,
         *,
@@ -299,20 +302,45 @@ class CheckSchedule:
         patient_hash: str,
         slot_key: str,
     ) -> _CaregiverAlertOutbox:
-        existing_row = (
+        values = {
+            "event_key": event_key,
+            "patient_hash": patient_hash,
+            "slot_key": slot_key,
+        }
+        dialect_name = self.db.get_bind().dialect.name
+        if dialect_name == "postgresql":
+            statement = postgresql_insert(_CaregiverAlertOutbox).values(**values)
+            self.db.execute(
+                statement.on_conflict_do_nothing(index_elements=["event_key"])
+            )
+        elif dialect_name == "sqlite":
+            statement = sqlite_insert(_CaregiverAlertOutbox).values(**values)
+            self.db.execute(
+                statement.on_conflict_do_nothing(index_elements=["event_key"])
+            )
+        else:
+            self._insert_outbox_with_savepoint(values)
+
+        outbox_row = (
             self.db.query(_CaregiverAlertOutbox)
             .filter(_CaregiverAlertOutbox.event_key == event_key)
-            .first()
+            .one_or_none()
         )
-        if existing_row is not None:
-            return existing_row
-        outbox_row = _CaregiverAlertOutbox(
-            event_key=event_key,
-            patient_hash=patient_hash,
-            slot_key=slot_key,
-        )
-        self.db.add(outbox_row)
+        if outbox_row is None:
+            raise RuntimeError("Caregiver alert outbox row could not be loaded.")
         return outbox_row
+
+    # 함수명: _insert_outbox_with_savepoint
+    # 역할:
+    # - PostgreSQL과 SQLite가 아닌 DB에서도 중복 삽입 오류를 현재 작업 범위로 제한한다.
+    # - 고유 키 충돌 후 바깥 복약 상태 트랜잭션을 계속 사용할 수 있게 유지한다.
+    def _insert_outbox_with_savepoint(self, values: dict[str, str]) -> None:
+        try:
+            with self.db.begin_nested():
+                self.db.add(_CaregiverAlertOutbox(**values))
+                self.db.flush()
+        except IntegrityError:
+            logger.debug("A duplicate caregiver alert outbox event was reused.")
 
     # 함수명: _notify_completion_event_boundary
     # 역할:

@@ -13,11 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 # 클래스명: PushDeliveryResult
-# 역할: 푸시 전송 성공 개수와 더 이상 사용할 수 없는 토큰을 전달한다.
+# 역할: 푸시 전송 성공, 영구 실패 토큰, 재시도 가능한 실패 개수를 전달한다.
 @dataclass(frozen=True)
 class PushDeliveryResult:
     success_count: int
     invalid_tokens: tuple[str, ...] = ()
+    retryable_failure_count: int = 0
+
+    @property
+    def all_valid_targets_succeeded(self) -> bool:
+        """유효한 대상에 일시적 전송 실패가 남지 않았는지 반환한다."""
+        return self.retryable_failure_count == 0
 
 
 # 클래스명: PushNotificationBoundary
@@ -89,6 +95,7 @@ class FirebasePushNotificationBoundary:
 
         success_count = 0
         invalid_tokens: list[str] = []
+        retryable_failure_count = 0
         for offset in range(0, len(normalized_tokens), self._MAX_MULTICAST_TOKENS):
             token_batch = normalized_tokens[
                 offset : offset + self._MAX_MULTICAST_TOKENS
@@ -120,8 +127,11 @@ class FirebasePushNotificationBoundary:
                     (messaging.UnregisteredError, messaging.SenderIdMismatchError),
                 ):
                     invalid_tokens.append(token)
+                else:
+                    retryable_failure_count += 1
 
         return PushDeliveryResult(
             success_count=success_count,
             invalid_tokens=tuple(invalid_tokens),
+            retryable_failure_count=retryable_failure_count,
         )

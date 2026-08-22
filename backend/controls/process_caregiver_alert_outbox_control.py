@@ -24,6 +24,12 @@ _PROCESSING_TIMEOUT = timedelta(minutes=5)
 _MAX_RETRY_DELAY_SECONDS = 15 * 60
 
 
+# 클래스명: _RetryablePushDeliveryError
+# 역할: 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
+class _RetryablePushDeliveryError(RuntimeError):
+    pass
+
+
 # 클래스명: ProcessCaregiverAlertOutbox
 # 역할: 보호자 알림 아웃박스를 한 건씩 선점하여 푸시 전송 결과를 기록한다.
 # 주요 책임:
@@ -133,13 +139,17 @@ class ProcessCaregiverAlertOutbox:
         if row is None:
             return "skipped"
         try:
-            DispatchCaregiverAlert(
+            delivery_result = DispatchCaregiverAlert(
                 db=self.db,
                 push_boundary=self.push_boundary,
             ).notifySlotCompleted(
                 patient_hash=str(row.patient_hash),
                 slot_key=str(row.slot_key),
             )
+            if not delivery_result.all_valid_targets_succeeded:
+                raise _RetryablePushDeliveryError(
+                    "Some valid caregiver devices did not receive the notification."
+                )
             row.status = CAREGIVER_ALERT_STATUS_SENT
             row.sent_at = utc_now()
             row.processing_started_at = None

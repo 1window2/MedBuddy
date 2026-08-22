@@ -2,9 +2,11 @@
 # 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 control을 검증한다.
 
 import sys
+import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import Barrier, Lock, Thread
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, event, inspect, text
@@ -291,6 +293,61 @@ class CheckScheduleTest(unittest.TestCase):
             ],
         )
         self.assertEqual(control.consumeCompletionEvents(), [])
+
+    def test_two_sessions_reuse_one_completion_outbox_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "outbox-concurrency.db"
+            engine = create_engine(
+                f"sqlite:///{database_path.as_posix()}",
+                connect_args={"check_same_thread": False, "timeout": 10},
+            )
+            Base.metadata.create_all(bind=engine)
+            session_factory = sessionmaker(
+                autocommit=False,
+                autoflush=False,
+                bind=engine,
+            )
+            start_barrier = Barrier(2)
+            result_lock = Lock()
+            outbox_ids: list[int] = []
+            errors: list[Exception] = []
+
+            # 두 요청이 같은 이벤트를 동시에 만들더라도 DB 고유 키가 한 행만 남긴다.
+            def insert_same_event() -> None:
+                session = session_factory()
+                try:
+                    start_barrier.wait(timeout=5)
+                    row = CheckSchedule(session)._get_or_create_completion_outbox(
+                        event_key="a" * 64,
+                        patient_hash="patient-a",
+                        slot_key="morning",
+                    )
+                    session.commit()
+                    with result_lock:
+                        outbox_ids.append(int(row.id))
+                except Exception as exc:  # pragma: no cover - assertion reports details
+                    session.rollback()
+                    with result_lock:
+                        errors.append(exc)
+                finally:
+                    session.close()
+
+            workers = [Thread(target=insert_same_event) for _ in range(2)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=15)
+
+            verification_session = session_factory()
+            try:
+                rows = verification_session.query(_CaregiverAlertOutbox).all()
+                self.assertFalse(any(worker.is_alive() for worker in workers))
+                self.assertEqual(errors, [])
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(outbox_ids, [int(rows[0].id), int(rows[0].id)])
+            finally:
+                verification_session.close()
+                engine.dispose()
 
     def test_completion_transition_is_computed_before_transaction_commit(
         self,
