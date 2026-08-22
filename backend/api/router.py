@@ -49,9 +49,6 @@ from boundaries.pill_identification_boundary import (
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
-from boundaries.prescription_ocr_boundary import (
-    PrescriptionPreprocessingCapacityError,
-)
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
@@ -60,7 +57,6 @@ from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.input_prescription_control import (
-    MAX_PRESCRIPTION_IMAGE_BYTES,
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
 )
@@ -70,7 +66,9 @@ from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
-from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
+from controls.process_caregiver_alert_outbox_control import (
+    ProcessCaregiverAlertOutbox,
+)
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
@@ -80,6 +78,7 @@ from core.database import SessionLocal
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
+    PrescriptionAnalysisResponse,
     MedicationStatusUpdate,
     MedicationAlarmUpdate,
     CaregiverNotificationUpdate,
@@ -109,10 +108,11 @@ auth_router = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-# Class Name: OCRParseRequest
-# Role: Request DTO for legacy OCR text parsing endpoint.
-# Attributes:
-#   - text: Raw OCR text from the frontend.
+# 클래스명: OCRParseRequest
+# 역할:
+# - 기기에서 개인정보를 제거한 처방전 OCR 텍스트를 전달받는다.
+# 속성:
+# - text: 프론트엔드에서 정제한 비식별 OCR 텍스트
 class OCRParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
 
@@ -450,23 +450,19 @@ def get_today_medication_info(
         ) from exc
 
 
-# 함수명: _dispatch_caregiver_completion_alert
+# 함수명: _process_caregiver_completion_alert
 # 역할:
-# - 복약 체크 응답이 끝난 뒤 별도 DB 세션으로 보호자 FCM 알림을 전송한다.
-# - 푸시 장애가 환자의 복약 상태 저장 결과에 영향을 주지 않도록 예외를 격리한다.
-def _dispatch_caregiver_completion_alert(
-    patient_hash: str,
-    slot_key: str,
+# - 복약 체크와 함께 저장된 아웃박스 요청을 별도 DB 세션에서 즉시 처리한다.
+# - 실패한 요청은 아웃박스 작업자가 다시 처리하므로 여기서는 예외를 격리한다.
+def _process_caregiver_completion_alert(
+    outbox_id: int,
 ) -> None:
     db = SessionLocal()
     try:
-        DispatchCaregiverAlert(
+        ProcessCaregiverAlertOutbox(
             db=db,
             push_boundary=get_push_notification_boundary(),
-        ).notifySlotCompleted(
-            patient_hash=patient_hash,
-            slot_key=slot_key,
-        )
+        ).processOne(outbox_id)
     except Exception as exc:
         logger.warning(
             "Caregiver push background dispatch failed: %s",
@@ -501,9 +497,8 @@ def update_medication_status(
     )
     for completion_event in check_schedule.consumeCompletionEvents():
         background_tasks.add_task(
-            _dispatch_caregiver_completion_alert,
-            completion_event["patient_hash"],
-            completion_event["slot_key"],
+            _process_caregiver_completion_alert,
+            int(completion_event["outbox_id"]),
         )
     return response
 
@@ -968,46 +963,15 @@ def delete_medication(
     return check_saved_medication.requestDelete(drug_id, authorized_patient_hash)
 
 
-# Function Name: parse_prescription_endpoint
-# Description:
-# - Parses OCR text into a structured prescription dictionary.
-# Parameters:
-# - request: OCRParseRequest containing raw OCR text.
-# Returns:
-# - API-compatible parse result dictionary.
-@router.post("/parse-prescription")
-def parse_prescription_endpoint(
-    request: OCRParseRequest,
-) -> dict[str, object]:
-    if not request.text:
-        raise HTTPException(status_code=400, detail="OCR 텍스트가 없습니다.")
-
-    try:
-        parsed_data = InputPrescription.parse_prescription_text(
-            request.text,
-        )
-        return {
-            "success": True,
-            "message": "처방전 파싱 성공",
-            "parsed": parsed_data,
-        }
-    except Exception as exc:
-        logger.error(
-            "Legacy prescription parsing failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="처방전 텍스트를 파싱하지 못했습니다.",
-        ) from exc
-
-
 # 함수명: analyze_masked_prescription_text
 # 역할:
 # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 분석한다.
 # 반환값:
 # - API 호환 처방 분석 결과
-@router.post("/analyze-prescription-text")
+@router.post(
+    "/analyze-prescription-text",
+    response_model=PrescriptionAnalysisResponse,
+)
 async def analyze_masked_prescription_text(
     request: OCRParseRequest,
     input_prescription: InputPrescription = Depends(get_input_prescription),
@@ -1095,58 +1059,4 @@ async def identify_loose_pill(
         raise HTTPException(
             status_code=500,
             detail="The pill could not be identified due to a server error.",
-        ) from exc
-
-
-# Function Name: upload_and_parse_prescription
-# Description:
-# - Receives a prescription image and returns structured medication candidates.
-# Parameters:
-# - file: Uploaded image file.
-# - input_prescription: InputPrescription injected by FastAPI.
-# Returns:
-# - API-compatible prescription analysis dictionary.
-@router.post("/upload-prescription")
-async def upload_and_parse_prescription(
-    file: UploadFile = File(...),
-    input_prescription: InputPrescription = Depends(
-        get_input_prescription
-    ),
-) -> dict[str, object]:
-    content_type = (file.content_type or "").strip().casefold()
-    if not content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=415,
-            detail="Prescription uploads must use an image content type.",
-        )
-    try:
-        image_bytes = await file.read(MAX_PRESCRIPTION_IMAGE_BYTES + 1)
-        logger.info(
-            "Prescription image upload received: bytes=%d",
-            len(image_bytes),
-        )
-        return await input_prescription.requestPrescriptionImage(
-            image_bytes
-        )
-    except PrescriptionAnalysisTimeoutError as exc:
-        logger.warning("Prescription OCR request timed out.")
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except PrescriptionPreprocessingCapacityError as exc:
-        logger.warning("Prescription preprocessing capacity is occupied.")
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-            headers={"Retry-After": "1"},
-        ) from exc
-    except ValueError as exc:
-        logger.warning("Prescription image upload rejected: %s", exc)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Prescription image parsing failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="데이터 추출 중 서버 오류가 발생했습니다.",
         ) from exc

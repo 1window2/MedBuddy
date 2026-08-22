@@ -20,7 +20,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       _userSetting = await manageUserSetting.requestUserSetting();
       await refreshMedicationOverview();
     } finally {
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.userSetting);
     }
   }
 
@@ -57,7 +57,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.idle;
     _statusMessage = '처방전을 촬영하거나 이미지를 선택해주세요.';
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   Future<UserSettingSaveResult> requestUserSettingSave({
@@ -72,7 +72,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       language: language,
     );
     _userSetting = saveResult.setting;
-    _notifyViewModelListeners();
+    _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;
   }
 

@@ -1,10 +1,14 @@
 # File Name: check_schedule_control.py
 # Role: Control class mapped from CheckSchedule in class diagram integrated v5.
 
+import hashlib
 import logging
 from datetime import date, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from boundaries.medication_completion_event_boundary import (
@@ -16,6 +20,7 @@ from entities.medication_completion_entity import (
     _MedicationCompletion,
     utc_now,
 )
+from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     MedicationSchedule,
@@ -24,6 +29,7 @@ from entities.medication_schedule_entity import (
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
+from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
@@ -43,12 +49,16 @@ class CheckSchedule:
         db: Session,
         course_policy: MedicationCoursePolicy | None = None,
         completion_event_boundary: MedicationCompletionEventBoundary | None = None,
+        medication_repository: SavedMedicationRepository | None = None,
     ) -> None:
         self.db = db
+        self.medication_repository = (
+            medication_repository or SavedMedicationRepository(db)
+        )
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
         self.completion_event_boundary = completion_event_boundary
-        self._pending_completion_events: list[dict[str, str]] = []
+        self._pending_completion_events: list[dict[str, str | int]] = []
 
     # Function Name: requestTodayMedicationSchedule
     # Description:
@@ -63,11 +73,8 @@ class CheckSchedule:
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         today = application_today()
-        medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == normalized_patient_hash)
-            .order_by(_SavedMedication.id.asc())
-            .all()
+        medications = self.medication_repository.list_by_patient(
+            normalized_patient_hash
         )
         active_medications = [
             medication
@@ -201,6 +208,21 @@ class CheckSchedule:
                     target_slot_keys,
                 )
             )
+            completion_events = self._new_slot_completion_events(
+                patient_hash=normalized_patient_hash,
+                schedule_date=today,
+                target_slot_keys=target_slot_keys,
+                previous_slot_completion_states=previous_slot_completion_states,
+                current_slot_completion_states=current_slot_completion_states,
+            )
+            for completion_event in completion_events:
+                outbox_row = self._get_or_create_completion_outbox(
+                    event_key=str(completion_event["event_key"]),
+                    patient_hash=normalized_patient_hash,
+                    slot_key=str(completion_event["slot_key"]),
+                )
+                self.db.flush()
+                completion_event["outbox_id"] = int(outbox_row.id)
             self.db.commit()
             self.db.refresh(medication)
         except Exception as exc:
@@ -214,38 +236,36 @@ class CheckSchedule:
                 detail="Medication status could not be updated.",
             ) from exc
 
-        self._dispatch_new_slot_completion_events(
-            patient_hash=normalized_patient_hash,
-            target_slot_keys=target_slot_keys,
-            previous_slot_completion_states=previous_slot_completion_states,
-            current_slot_completion_states=current_slot_completion_states,
-        )
+        self._pending_completion_events.extend(completion_events)
+        self._notify_completion_event_boundary(completion_events)
         return {
             "success": True,
             "message": "Medication status was updated.",
             "data": self._to_schedule_dict(medication, today),
         }
 
-    # 함수명: _dispatch_new_slot_completion_events
+    # 함수명: _new_slot_completion_events
     # 역할:
-    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 이벤트로 기록한다.
-    # - 직접 주입된 후속 처리기는 테스트와 내부 호출의 호환성을 위해 함께 실행한다.
-    # - 알림 장애가 환자의 복약 체크 저장을 되돌리지 않도록 예외를 격리한다.
+    # - 해당 시간대의 모든 약이 미완료에서 완료로 바뀐 경우만 이벤트를 생성한다.
+    # - 환자·날짜·시간대를 기반으로 같은 이벤트의 중복 전송 키를 만든다.
     # 매개변수:
     # - patient_hash: 환자 소유권 hash
     # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
     # - previous_slot_completion_states: 변경 전 시간대별 전체 완료 상태
     # - current_slot_completion_states: 변경 후 시간대별 전체 완료 상태
+    # - schedule_date: 복약 완료 날짜
     # 반환값:
-    # - 없음
-    def _dispatch_new_slot_completion_events(
+    # - 아웃박스에 저장할 신규 완료 이벤트 목록
+    def _new_slot_completion_events(
         self,
         *,
         patient_hash: str,
+        schedule_date: date,
         target_slot_keys: list[str],
         previous_slot_completion_states: dict[str, bool],
         current_slot_completion_states: dict[str, bool],
-    ) -> None:
+    ) -> list[dict[str, str | int]]:
+        completion_events: list[dict[str, str | int]] = []
         for target_slot_key in target_slot_keys:
             was_completed = previous_slot_completion_states.get(
                 target_slot_key,
@@ -257,18 +277,86 @@ class CheckSchedule:
             )
             if was_completed or not is_completed:
                 continue
-            self._pending_completion_events.append(
+            event_source = (
+                f"{patient_hash}:{schedule_date.isoformat()}:{target_slot_key}"
+            )
+            completion_events.append(
                 {
                     "patient_hash": patient_hash,
                     "slot_key": target_slot_key,
+                    "event_key": hashlib.sha256(
+                        event_source.encode("utf-8")
+                    ).hexdigest(),
                 }
             )
-            if self.completion_event_boundary is None:
-                continue
+        return completion_events
+
+    # 함수명: _get_or_create_completion_outbox
+    # 역할:
+    # - DB 고유 제약과 원자적 삽입을 이용해 같은 완료 이벤트를 한 번만 저장한다.
+    # - 동시에 들어온 요청이 충돌해도 복약 상태 트랜잭션 전체를 되돌리지 않는다.
+    def _get_or_create_completion_outbox(
+        self,
+        *,
+        event_key: str,
+        patient_hash: str,
+        slot_key: str,
+    ) -> _CaregiverAlertOutbox:
+        values = {
+            "event_key": event_key,
+            "patient_hash": patient_hash,
+            "slot_key": slot_key,
+        }
+        dialect_name = self.db.get_bind().dialect.name
+        if dialect_name == "postgresql":
+            statement = postgresql_insert(_CaregiverAlertOutbox).values(**values)
+            self.db.execute(
+                statement.on_conflict_do_nothing(index_elements=["event_key"])
+            )
+        elif dialect_name == "sqlite":
+            statement = sqlite_insert(_CaregiverAlertOutbox).values(**values)
+            self.db.execute(
+                statement.on_conflict_do_nothing(index_elements=["event_key"])
+            )
+        else:
+            self._insert_outbox_with_savepoint(values)
+
+        outbox_row = (
+            self.db.query(_CaregiverAlertOutbox)
+            .filter(_CaregiverAlertOutbox.event_key == event_key)
+            .one_or_none()
+        )
+        if outbox_row is None:
+            raise RuntimeError("Caregiver alert outbox row could not be loaded.")
+        return outbox_row
+
+    # 함수명: _insert_outbox_with_savepoint
+    # 역할:
+    # - PostgreSQL과 SQLite가 아닌 DB에서도 중복 삽입 오류를 현재 작업 범위로 제한한다.
+    # - 고유 키 충돌 후 바깥 복약 상태 트랜잭션을 계속 사용할 수 있게 유지한다.
+    def _insert_outbox_with_savepoint(self, values: dict[str, str]) -> None:
+        try:
+            with self.db.begin_nested():
+                self.db.add(_CaregiverAlertOutbox(**values))
+                self.db.flush()
+        except IntegrityError:
+            logger.debug("A duplicate caregiver alert outbox event was reused.")
+
+    # 함수명: _notify_completion_event_boundary
+    # 역할:
+    # - 복약 상태와 아웃박스가 커밋된 뒤 선택적으로 주입된 후속 처리기를 호출한다.
+    # - 테스트 또는 내부 호환 처리기의 장애가 저장 결과를 되돌리지 않도록 격리한다.
+    def _notify_completion_event_boundary(
+        self,
+        completion_events: list[dict[str, str | int]],
+    ) -> None:
+        if self.completion_event_boundary is None:
+            return
+        for completion_event in completion_events:
             try:
                 self.completion_event_boundary.notifySlotCompleted(
-                    patient_hash=patient_hash,
-                    slot_key=target_slot_key,
+                    patient_hash=str(completion_event["patient_hash"]),
+                    slot_key=str(completion_event["slot_key"]),
                 )
             except Exception as exc:
                 logger.warning(
@@ -281,7 +369,7 @@ class CheckSchedule:
     # - 이번 상태 변경에서 새로 완료된 시간대 이벤트를 반환하고 내부 대기 목록을 비운다.
     # 반환값:
     # - 환자 hash와 시간대 키를 담은 이벤트 목록
-    def consumeCompletionEvents(self) -> list[dict[str, str]]:
+    def consumeCompletionEvents(self) -> list[dict[str, str | int]]:
         completion_events = list(self._pending_completion_events)
         self._pending_completion_events.clear()
         return completion_events
@@ -302,12 +390,7 @@ class CheckSchedule:
         schedule_date: date,
         slot_keys: list[str],
     ) -> dict[str, bool]:
-        medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == patient_hash)
-            .order_by(_SavedMedication.id.asc())
-            .all()
-        )
+        medications = self.medication_repository.list_by_patient(patient_hash)
         active_medications = [
             medication
             for medication in medications
@@ -357,13 +440,9 @@ class CheckSchedule:
         patient_hash: str,
     ) -> _SavedMedication:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        medication = (
-            self.db.query(_SavedMedication)
-            .filter(
-                _SavedMedication.id == medication_id,
-                _SavedMedication.patient_hash == normalized_patient_hash,
-            )
-            .first()
+        medication = self.medication_repository.find_owned_by_id(
+            medication_id,
+            normalized_patient_hash,
         )
         if medication is None:
             raise HTTPException(

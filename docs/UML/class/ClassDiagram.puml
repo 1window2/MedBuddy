@@ -152,6 +152,11 @@ package "Flutter Frontend" {
             + requestAllAnalyzedMedicationSave(): Future<bool> {extension}
         }
 
+        class "MedBuddyFeatureUpdates" as MedBuddyFeatureUpdates <<Notifier: 기능별 화면 갱신>> {
+            + revision: int
+            + markChanged(): void
+        }
+
         class "InputPrescription" as FInputPrescription <<Controller: 처방전 입력>> {
             + baseUrl: String
             + requestTimeout: Duration
@@ -343,6 +348,10 @@ package "Flutter Frontend" {
             + dispose(): void
         }
 
+        class "CaregiverNotificationMonitorFactory" as CaregiverNotificationMonitorFactory <<Composition: 보호자 감시 조립>> {
+            + {static} create(caregiverHash, baseUrl, client): CaregiverNotificationMonitorService
+        }
+
         class "CaregiverNotificationBackgroundScheduler" as CaregiverNotificationBackgroundScheduler <<Service: Android 주기 작업 등록>> {
             + {static} initialize(): Future<void>
             + {static} register(caregiverHash): Future<void>
@@ -468,7 +477,6 @@ package "FastAPI Backend" {
             + model_name: str
             + requestPrescriptionImage(image): dict
             + requestPrescriptionText(masked_text): dict
-            + parse_prescription_text(text): dict
             + maskSensitiveInfo(rawText): str
         }
 
@@ -607,13 +615,25 @@ package "FastAPI Backend" {
             + allowed_hosts: list<str>
         }
 
+        class "ApiContractMiddleware" as BApiContractMiddleware <<Middleware: API 계약 버전>> {
+            + contract_version: str
+            + dispatch(request, call_next): Response
+        }
+
         interface "MedicationCompletionEventBoundary" as MedicationCompletionEventBoundary {
-            + notifyDoseCompleted(patient_hash, medication, slot_key): void
+            + notifySlotCompleted(patient_hash, slot_key): object
         }
 
         class "DispatchCaregiverAlert" as DispatchCaregiverAlert <<Control: 보호자 완료 알림>> {
             - db: Session
-            + notifyDoseCompleted(patient_hash, medication, slot_key): void
+            + notifySlotCompleted(patient_hash, slot_key): PushDeliveryResult
+        }
+
+        class "ProcessCaregiverAlertOutbox" as ProcessCaregiverAlertOutbox <<Control: 보호자 알림 재시도>> {
+            - db: Session
+            - push_boundary: PushNotificationBoundary
+            + processDue(limit): dict
+            + processOne(outbox_id): str
         }
     }
 
@@ -671,6 +691,29 @@ package "FastAPI Backend" {
             + sync_basic(): int
             + sync_approval(): int
             + sync_all(): dict<str, int>
+        }
+
+        class "SavedMedicationRepository" as SavedMedicationRepository <<Repository: 저장 복약정보 조회>> {
+            - db: Session
+            + list_by_patient(patient_hash): list
+            + list_recent_by_patient(patient_hash): list
+            + find_owned_by_id(medication_id, patient_hash): _SavedMedication?
+            + find_daily_duplicate(patient_hash, registration_date, deduplication_key): _SavedMedication?
+        }
+
+        class "PatientCaregiverLinkRepository" as PatientCaregiverLinkRepository <<Repository: 환자·보호자 연결 조회>> {
+            - db: Session
+            + list_active_for_user(user_hash): list
+            + list_active_for_patient(patient_hash): list
+            + find_active_for_user_by_id(link_id, user_hash): _PatientCaregiverLink?
+            + has_active_pair(caregiver_hash, patient_hash): bool
+        }
+
+        class "CaregiverAlertOutboxWorker" as CaregiverAlertOutboxWorker <<Service: 알림 아웃박스 작업자>> {
+            - session_factory: sessionmaker
+            - interval_seconds: int
+            + start(): void
+            + stop(): None
         }
     }
 
@@ -884,6 +927,17 @@ package "FastAPI Backend" {
             + enabled: Boolean
         }
 
+        class "_CaregiverAlertOutbox" as DBCaregiverAlertOutbox <<ORM: caregiver_alert_outbox>> {
+            + id: Integer
+            + event_key: String
+            + patient_hash: String
+            + slot_key: String
+            + status: String
+            + attempt_count: Integer
+            + available_at: DateTime
+            + sent_at: DateTime?
+        }
+
         class "_HealthRecommendationCache" as DBHealthRecommendationCache <<ORM: health_recommendation_cache>> {
             + id: Integer
             + patient_hash: String
@@ -978,6 +1032,7 @@ MedBuddyViewModel *-- FSetNotification
 MedBuddyViewModel *-- FManageUserSetting
 MedBuddyViewModel *-- FManageAccount
 MedBuddyViewModel o-- NotificationService
+MedBuddyViewModel *-- MedBuddyFeatureUpdates
 
 FInputPrescription o-- PrescriptionLocalOcrBoundary
 PrescriptionLocalOcrService ..|> PrescriptionLocalOcrBoundary
@@ -1010,6 +1065,12 @@ CaregiverNotificationMonitorService ..> NotificationService
 CaregiverNotificationMonitorService ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorService ..> FCheckCaregiverMedication
 CaregiverNotificationMonitorService ..> FSetCaregiverNotification
+CaregiverNotificationMonitorFactory ..> CaregiverNotificationMonitorService
+CaregiverNotificationMonitorFactory ..> FLinkPatientCaregiver
+CaregiverNotificationMonitorFactory ..> FCheckCaregiverMedication
+CaregiverNotificationMonitorFactory ..> FSetCaregiverNotification
+CaregiverNotificationMonitorFactory ..> NotificationService
+CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorFactory
 
 FInputPrescription ..> FMedicationSchedule
 FCheckMedicationDetail ..> FMedicationDetail
@@ -1055,11 +1116,14 @@ MedicationSummaryGenerator ..> DBDrugApprovalInfo
 BCheckSavedMedication *-- MedicationCoursePolicy
 BCheckSavedMedication *-- SavedMedicationRetentionPolicy
 BCheckSavedMedication --> DBSavedMedication
+BCheckSavedMedication o-- SavedMedicationRepository
 
 BCheckSchedule *-- MedicationCoursePolicy
 BCheckSchedule *-- SavedMedicationRetentionPolicy
 BCheckSchedule --> DBSavedMedication
 BCheckSchedule --> DBMedicationCompletion
+BCheckSchedule o-- SavedMedicationRepository
+BCheckSchedule --> DBCaregiverAlertOutbox
 BCheckSchedule o-- MedicationCompletionEventBoundary
 
 BCheckTodayMedicationInfo *-- BCheckSchedule
@@ -1088,6 +1152,7 @@ PillCatalogRepository --> DBPillIdentificationReference
 BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBPatientLinkCode
 BLinkPatientCaregiver --> DBCaregiverNotification
+BLinkPatientCaregiver o-- PatientCaregiverLinkRepository
 
 BCheckCaregiverMedication *-- BCheckSavedMedication
 BCheckCaregiverMedication *-- BCheckTodayMedicationInfo
@@ -1110,12 +1175,16 @@ BAccountDependencies --> BAuthenticatedPrincipal : freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
 BTrustedHostMiddleware ..> BAccountDependencies : rejects invalid Host before auth
+BApiContractMiddleware ..> AuthenticatedApiClient : 계약 version 응답
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary
-DispatchCaregiverAlert --> DBPatientCaregiverLink
+DispatchCaregiverAlert o-- PatientCaregiverLinkRepository
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken
+ProcessCaregiverAlertOutbox --> DBCaregiverAlertOutbox
+ProcessCaregiverAlertOutbox *-- DispatchCaregiverAlert
+CaregiverAlertOutboxWorker *-- ProcessCaregiverAlertOutbox
 
 FirebasePushNotificationBoundary ..> PushNotificationBoundary : 구조적 Protocol 충족
 
@@ -1140,6 +1209,7 @@ DBSavedMedication "1" -- "0..*" DBMedicationCompletion : {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBMedicationAlarm : {FK, CASCADE}
 DBUserAccount "1" -- "0..1" DBUserSetting : {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBDevicePushToken : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBCaregiverAlertOutbox : patient {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBHealthRecommendationCache : {FK, CASCADE}
 
 DBUserAccount "1" -- "0..*" DBPatientCaregiverLink : patient {FK, CASCADE}

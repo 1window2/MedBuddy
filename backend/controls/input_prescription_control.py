@@ -15,7 +15,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from boundaries.prescription_ocr_boundary import OCRServiceBoundary
 from core.config import settings
@@ -29,7 +29,6 @@ from entities.prescription_analysis_entity import (
 from services.prescription_parser import (
     INFO_UNAVAILABLE,
     normalize_prescription_candidates,
-    parse_prescription,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,8 +131,13 @@ class _PrescriptionMedicationNameVerifier:
         ai_client: genai.Client,
         model_name: str,
     ) -> list[_MedicationNameVerification]:
-        verifications = [self.verify(raw_name) for raw_name in raw_names]
-        fallback_requests = self._build_fallback_requests(raw_names, verifications)
+        if self._requires_current_thread_session():
+            verifications, fallback_requests = self._prepare_verifications(raw_names)
+        else:
+            verifications, fallback_requests = await asyncio.to_thread(
+                self._prepare_verifications_with_isolated_session,
+                raw_names,
+            )
         if not fallback_requests:
             return verifications
 
@@ -170,6 +174,68 @@ class _PrescriptionMedicationNameVerifier:
                 source="llm_catalog_candidate",
             )
         return corrected_verifications
+
+    # 함수이름: _prepare_verifications
+    # 함수역할:
+    # - 동기 SQLAlchemy 카탈로그 조회와 AI 보완 후보 생성을 한 작업 스레드에서 처리한다.
+    # - FastAPI 이벤트 루프가 로컬 DB 조회 동안 다른 요청을 계속 처리할 수 있게 한다.
+    # 매개변수:
+    # - raw_names: OCR에서 추출한 원본 약명 목록
+    # 반환값:
+    # - 로컬 검증 결과와 AI 보완이 필요한 후보 요청 목록
+    def _prepare_verifications(
+        self,
+        raw_names: list[str],
+    ) -> tuple[
+        list[_MedicationNameVerification],
+        list[_MedicationNameFallbackRequest],
+    ]:
+        verifications = [self.verify(raw_name) for raw_name in raw_names]
+        return verifications, self._build_fallback_requests(
+            raw_names,
+            verifications,
+        )
+
+    # 함수이름: _requires_current_thread_session
+    # 함수역할:
+    # - 별도 연결에서 데이터가 사라지는 인메모리 SQLite 테스트인지 확인한다.
+    # - 실제 파일 DB와 PostgreSQL은 독립 작업 세션을 사용하게 한다.
+    def _requires_current_thread_session(self) -> bool:
+        if self.db is None:
+            return True
+        bind = self.db.get_bind()
+        return bind.dialect.name == "sqlite" and bind.url.database in {
+            None,
+            "",
+            ":memory:",
+        }
+
+    # 함수이름: _prepare_verifications_with_isolated_session
+    # 함수역할:
+    # - 작업 스레드 안에서 새 SQLAlchemy 세션을 생성하여 스레드 간 세션 공유를 막는다.
+    # 매개변수:
+    # - raw_names: OCR에서 추출한 원본 약명 목록
+    # 반환값:
+    # - 로컬 검증 결과와 AI 보완 후보 요청 목록
+    def _prepare_verifications_with_isolated_session(
+        self,
+        raw_names: list[str],
+    ) -> tuple[
+        list[_MedicationNameVerification],
+        list[_MedicationNameFallbackRequest],
+    ]:
+        if self.db is None:
+            return self._prepare_verifications(raw_names)
+        worker_session_factory = sessionmaker(bind=self.db.get_bind())
+        worker_db = worker_session_factory()
+        try:
+            worker = _PrescriptionMedicationNameVerifier(
+                db=worker_db,
+                ai_timeout_seconds=self.ai_timeout_seconds,
+            )
+            return worker._prepare_verifications(raw_names)
+        finally:
+            worker_db.close()
 
     def _resolve_cached_fallbacks(
         self,
@@ -1035,11 +1101,6 @@ class InputPrescription:
                 }
             )
         return normalized_regions
-
-    @staticmethod
-    def parse_prescription_text(text: str) -> dict[str, object]:
-        """Parse legacy OCR text through the prescription control boundary."""
-        return parse_prescription(text.splitlines())
 
     # Function Name: buildAnalysisResult
     # Description:

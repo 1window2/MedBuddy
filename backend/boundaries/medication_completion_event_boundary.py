@@ -14,10 +14,10 @@ class MedicationCompletionEventBoundary(Protocol):
     # - patient_hash: 복약한 환자의 소유권 hash
     # - slot_key: 완료된 복약 시간대
     # 반환값:
-    # - 없음
+    # - 후속 처리 결과 객체 또는 결과가 필요 없는 구현의 None
     def notifySlotCompleted(
         self,
         *,
         patient_hash: str,
         slot_key: str,
-    ) -> None: ...
+    ) -> object | None: ...

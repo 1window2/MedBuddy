@@ -1,6 +1,8 @@
 // 파일명: api_config.dart
 // 역할: 프론트엔드에서 사용할 백엔드 API 기본 주소를 관리한다.
 
+import 'package:flutter/foundation.dart';
+
 // 클래스명: ApiConfig
 // 역할: 빌드/실행 환경에서 전달된 API base URL을 앱 전체에 제공한다.
 // 주요 책임:
@@ -8,6 +10,11 @@
 // - MEDBUDDY_API_BASE_URL 값이 주어지면 해당 주소를 우선 사용한다.
 
 class ApiConfig {
+  static const String contractVersion = String.fromEnvironment(
+    'MEDBUDDY_API_CONTRACT_VERSION',
+    defaultValue: 'medbuddy-api-v1',
+  );
+
   static const String baseUrl = String.fromEnvironment(
     'MEDBUDDY_API_BASE_URL',
     defaultValue: 'https://api.medbuddy.pp.ua/api/v1/medication',
@@ -39,7 +46,7 @@ class ApiConfig {
   }
 
   static void validate() {
-    validateUrl(baseUrl, requirePublicHttps: true);
+    validateUrl(baseUrl, requirePublicHttps: kReleaseMode || kProfileMode);
   }
 
   // 함수명: validateUrl
@@ -62,11 +69,14 @@ class ApiConfig {
         uri.hasFragment) {
       throw StateError('MEDBUDDY_API_BASE_URL is invalid.');
     }
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') {
+      throw StateError('MEDBUDDY_API_BASE_URL must use HTTP or HTTPS.');
+    }
     if (!requirePublicHttps) {
       return;
     }
-    if (uri.scheme.toLowerCase() != 'https' ||
-        (uri.hasPort && uri.port != 443)) {
+    if (scheme != 'https' || (uri.hasPort && uri.port != 443)) {
       throw StateError(
         'Release and profile builds require an HTTPS backend URL.',
       );

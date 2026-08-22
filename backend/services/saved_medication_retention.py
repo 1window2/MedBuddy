@@ -9,6 +9,7 @@ from core.application_clock import application_today
 from core.config import settings
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
+from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 
 
@@ -50,10 +51,12 @@ class SavedMedicationRetentionPolicy:
         commit: bool = True,
     ) -> int:
         reference_date = today or application_today()
-        query = db.query(_SavedMedication)
-        if patient_hash is not None:
-            query = query.filter(_SavedMedication.patient_hash == patient_hash)
-        medications = query.all()
+        repository = SavedMedicationRepository(db)
+        medications = (
+            repository.list_by_patient(patient_hash)
+            if patient_hash is not None
+            else repository.list_all()
+        )
         expired_medications = [
             medication
             for medication in medications

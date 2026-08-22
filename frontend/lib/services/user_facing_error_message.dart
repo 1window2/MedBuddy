@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'authenticated_api_client.dart';
+
 // 파일명: user_facing_error_message.dart
 // 역할: 기술 오류를 사용자가 이해하고 대응할 수 있는 안내 문구로 변환한다.
 
@@ -19,6 +21,11 @@ class UserFacingErrorMessage {
     required bool isEnglish,
     UserFacingErrorContext context = UserFacingErrorContext.general,
   }) {
+    if (error is ApiContractMismatchException) {
+      return isEnglish
+          ? 'This app version is not compatible with the server. Please update MedBuddy.'
+          : '현재 앱 버전이 서버와 호환되지 않습니다. MedBuddy를 업데이트해주세요.';
+    }
     if (error is TimeoutException) {
       return isEnglish
           ? 'The response is taking longer than expected. Please try again shortly.'

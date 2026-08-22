@@ -27,11 +27,12 @@ from api.dependencies import (
     close_public_drug_boundaries,
     get_app_check_token_verifier,
     get_oidc_token_verifier,
+    get_push_notification_boundary,
 )
 from boundaries.firebase_admin_boundary import verify_firebase_admin_credentials
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
-from controls.input_prescription_control import MAX_PRESCRIPTION_IMAGE_BYTES
 from core.config import settings
+from core.api_contract import ApiContractMiddleware
 from core.database import Base, SessionLocal, engine
 from core.request_limits import RequestBodyLimitMiddleware
 from core.request_rate_limits import (
@@ -44,6 +45,7 @@ from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
+from entities import caregiver_alert_outbox_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
@@ -56,6 +58,7 @@ from entities.medication_alarm_entity import ensure_medication_alarm_schema
 from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
 from services.data_maintenance import PeriodicDataMaintenanceRunner
+from services.caregiver_alert_outbox_worker import CaregiverAlertOutboxWorker
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parent
@@ -204,6 +207,13 @@ def configure_logging() -> None:
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     maintenance_runner: PeriodicDataMaintenanceRunner | None = None
+    alert_outbox_worker = CaregiverAlertOutboxWorker(
+        SessionLocal,
+        get_push_notification_boundary,
+        settings.CAREGIVER_ALERT_OUTBOX_POLL_SECONDS,
+    )
+    alert_outbox_worker.start()
+    app.state.caregiver_alert_outbox_worker = alert_outbox_worker
     app.state.readiness_probe_cache.reset()
     if settings.PERIODIC_MAINTENANCE_ENABLED:
         maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
@@ -212,6 +222,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await alert_outbox_worker.stop()
         if maintenance_runner is not None:
             await maintenance_runner.stop()
         await app.state.request_rate_limit_store.close()
@@ -257,14 +268,15 @@ def create_app() -> FastAPI:
     app.add_middleware(
         RequestBodyLimitMiddleware,
         limits={
-            "/api/v1/medication/upload-prescription": (
-                MAX_PRESCRIPTION_IMAGE_BYTES + multipart_overhead_bytes
-            ),
             "/api/v1/medication/pill-identification/candidates": (
                 2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
             ),
         },
         default_limit=1024 * 1024,
+    )
+    app.add_middleware(
+        ApiContractMiddleware,
+        contract_version=settings.API_CONTRACT_VERSION,
     )
     app.add_middleware(
         RequestRateLimitMiddleware,

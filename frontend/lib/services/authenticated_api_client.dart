@@ -23,6 +23,15 @@ class AuthenticationUnavailableException implements Exception {
   String toString() => 'Authentication is temporarily unavailable.';
 }
 
+class ApiContractMismatchException implements Exception {
+  const ApiContractMismatchException(this.serverVersion);
+
+  final String serverVersion;
+
+  @override
+  String toString() => 'MedBuddy API contract is incompatible: $serverVersion';
+}
+
 class AuthenticatedApiClient extends http.BaseClient {
   static const Duration _authenticationTimeout = Duration(seconds: 10);
   static const Duration _appCheckTimeout = Duration(seconds: 10);
@@ -100,7 +109,15 @@ class AuthenticatedApiClient extends http.BaseClient {
       request.headers['X-Firebase-AppCheck'] = appCheckToken.trim();
     }
     request.headers.putIfAbsent('Accept', () => 'application/json');
+    request.headers['X-MedBuddy-Api-Contract'] = ApiConfig.contractVersion;
     final response = await _inner.send(request);
+    final serverContract =
+        response.headers['x-medbuddy-api-contract']?.trim() ?? '';
+    if (serverContract.isNotEmpty &&
+        serverContract != ApiConfig.contractVersion) {
+      await response.stream.drain<void>();
+      throw ApiContractMismatchException(serverContract);
+    }
     if (response.statusCode == 401) {
       await _onUnauthorized?.call();
     }

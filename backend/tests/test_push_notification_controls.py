@@ -3,7 +3,9 @@
 
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -17,6 +19,9 @@ from controls.dispatch_caregiver_alert_control import (  # noqa: E402
     DispatchCaregiverAlert,
 )
 from controls.manage_push_token_control import ManagePushToken  # noqa: E402
+from controls.process_caregiver_alert_outbox_control import (  # noqa: E402
+    ProcessCaregiverAlertOutbox,
+)
 from core.database import Base  # noqa: E402
 from entities.caregiver_notification_entity import (  # noqa: E402
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
@@ -25,14 +30,25 @@ from entities.caregiver_notification_entity import (  # noqa: E402
     encode_slot_settings,
 )
 from entities.device_push_token_entity import _DevicePushToken  # noqa: E402
+from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_STATUS_FAILED,
+    CAREGIVER_ALERT_STATUS_PENDING,
+    CAREGIVER_ALERT_STATUS_SENT,
+    _CaregiverAlertOutbox,
+)
 from entities.patient_caregiver_link_entity import (  # noqa: E402
     _PatientCaregiverLink,
 )
 
 
 class _RecordingPushBoundary:
-    def __init__(self, invalid_tokens: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        invalid_tokens: tuple[str, ...] = (),
+        retryable_failure_count: int = 0,
+    ) -> None:
         self.invalid_tokens = invalid_tokens
+        self.retryable_failure_count = retryable_failure_count
         self.calls: list[dict[str, object]] = []
 
     def send_notification(
@@ -52,8 +68,14 @@ class _RecordingPushBoundary:
             }
         )
         return PushDeliveryResult(
-            success_count=len(tokens) - len(self.invalid_tokens),
+            success_count=max(
+                0,
+                len(tokens)
+                - len(self.invalid_tokens)
+                - self.retryable_failure_count,
+            ),
             invalid_tokens=self.invalid_tokens,
+            retryable_failure_count=self.retryable_failure_count,
         )
 
 
@@ -154,7 +176,7 @@ class PushNotificationControlTest(unittest.TestCase):
         )
         self.assertEqual(push_boundary.calls, [])
 
-        control.notifySlotCompleted(
+        delivery_result = control.notifySlotCompleted(
             patient_hash="patient-a",
             slot_key="morning",
         )
@@ -177,12 +199,103 @@ class PushNotificationControlTest(unittest.TestCase):
             push_boundary.calls[0]["body"],
             "환자가 아침에 복용할 약을 모두 복용했습니다.",
         )
+        self.assertEqual(delivery_result.success_count, 1)
+        self.assertTrue(delivery_result.all_valid_targets_succeeded)
         invalid_row = (
             self.db.query(_DevicePushToken)
             .filter(_DevicePushToken.token == invalid_token)
             .one()
         )
         self.assertFalse(invalid_row.enabled)
+
+    def test_outbox_marks_successful_delivery_as_sent(self) -> None:
+        row = _CaregiverAlertOutbox(
+            event_key="event-success",
+            patient_hash="patient-a",
+            slot_key="morning",
+            status=CAREGIVER_ALERT_STATUS_PENDING,
+        )
+        self.db.add(row)
+        self.db.commit()
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted",
+            return_value=PushDeliveryResult(success_count=1),
+        ) as notify:
+            result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processOne(int(row.id))
+
+        self.db.refresh(row)
+        self.assertEqual(result, "sent")
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_SENT)
+        self.assertIsNotNone(row.sent_at)
+        self.assertIsNone(row.processing_started_at)
+        notify.assert_called_once_with(
+            patient_hash="patient-a",
+            slot_key="morning",
+        )
+
+    def test_outbox_retries_after_partial_push_delivery(self) -> None:
+        row = _CaregiverAlertOutbox(
+            event_key="event-partial-delivery",
+            patient_hash="patient-a",
+            slot_key="lunch",
+            status=CAREGIVER_ALERT_STATUS_PENDING,
+        )
+        self.db.add(row)
+        self.db.commit()
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted",
+            return_value=PushDeliveryResult(
+                success_count=1,
+                retryable_failure_count=1,
+            ),
+        ):
+            result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processOne(int(row.id))
+
+        self.db.refresh(row)
+        self.assertEqual(result, "failed")
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_FAILED)
+        self.assertEqual(row.attempt_count, 1)
+        self.assertEqual(row.last_error, "_RetryablePushDeliveryError")
+        self.assertIsNone(row.sent_at)
+
+    def test_outbox_reschedules_failed_delivery(self) -> None:
+        row = _CaregiverAlertOutbox(
+            event_key="event-failure",
+            patient_hash="patient-a",
+            slot_key="evening",
+            status=CAREGIVER_ALERT_STATUS_PENDING,
+        )
+        self.db.add(row)
+        self.db.commit()
+        attempted_at = datetime.utcnow()
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted",
+            side_effect=RuntimeError("temporary push failure"),
+        ):
+            result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processOne(int(row.id))
+
+        self.db.refresh(row)
+        self.assertEqual(result, "failed")
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_FAILED)
+        self.assertEqual(row.attempt_count, 1)
+        self.assertGreater(row.available_at, attempted_at)
+        self.assertEqual(row.last_error, "RuntimeError")
+        self.assertIsNone(row.processing_started_at)
 
 
 if __name__ == "__main__":

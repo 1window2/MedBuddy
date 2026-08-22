@@ -5,7 +5,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from entities.caregiver_notification_entity import _CaregiverNotification
@@ -19,6 +18,9 @@ from entities.patient_hash_entity import (
     DEFAULT_PATIENT_HASH,
     PatientHash,
     normalize_patient_hash,
+)
+from repositories.patient_caregiver_link_repository import (
+    PatientCaregiverLinkRepository,
 )
 
 _PATIENT_CODE_TTL_MINUTES = 15
@@ -39,8 +41,15 @@ def _utc_now() -> datetime:
 # Attributes:
 #   - db: SQLAlchemy session used for link persistence operations.
 class LinkPatientCaregiver:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        link_repository: PatientCaregiverLinkRepository | None = None,
+    ) -> None:
         self.db = db
+        self.link_repository = (
+            link_repository or PatientCaregiverLinkRepository(db)
+        )
 
     # Function Name: requestLinkScreen
     # Description:
@@ -54,18 +63,7 @@ class LinkPatientCaregiver:
         user_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
-        links = (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                _PatientCaregiverLink.linked.is_(True),
-                or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
-                ),
-            )
-            .order_by(_PatientCaregiverLink.id.asc())
-            .all()
-        )
+        links = self.link_repository.list_active_for_user(normalized_user_hash)
         return {
             "success": True,
             "message": "Patient-caregiver link lookup succeeded.",
@@ -224,17 +222,9 @@ class LinkPatientCaregiver:
         user_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
-        link = (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                _PatientCaregiverLink.id == link_id,
-                _PatientCaregiverLink.linked.is_(True),
-                or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
-                ),
-            )
-            .first()
+        link = self.link_repository.find_active_for_user_by_id(
+            link_id,
+            normalized_user_hash,
         )
         if link is None:
             raise HTTPException(
@@ -293,18 +283,16 @@ class LinkPatientCaregiver:
         patient_hash: str | None = None,
     ) -> str:
         normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
-        query = self.db.query(_PatientCaregiverLink).filter(
-            _PatientCaregiverLink.caregiver_hash == normalized_caregiver_hash,
-            _PatientCaregiverLink.linked.is_(True),
-        )
         requested_patient_hash = (patient_hash or "").strip()
-        if requested_patient_hash:
-            normalized_patient_hash = normalize_patient_hash(requested_patient_hash)
-            query = query.filter(
-                _PatientCaregiverLink.patient_hash == normalized_patient_hash
-            )
-
-        link = query.order_by(_PatientCaregiverLink.id.asc()).first()
+        normalized_patient_hash = (
+            normalize_patient_hash(requested_patient_hash)
+            if requested_patient_hash
+            else None
+        )
+        link = self.link_repository.find_active_for_caregiver(
+            normalized_caregiver_hash,
+            normalized_patient_hash,
+        )
         if link is None:
             raise HTTPException(
                 status_code=404,
@@ -365,14 +353,7 @@ class LinkPatientCaregiver:
         patient_hash: str,
         caregiver_hash: str,
     ) -> _PatientCaregiverLink | None:
-        return (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                _PatientCaregiverLink.patient_hash == patient_hash,
-                _PatientCaregiverLink.caregiver_hash == caregiver_hash,
-            )
-            .first()
-        )
+        return self.link_repository.find_pair(patient_hash, caregiver_hash)
 
     def _to_response_dict(self, link: _PatientCaregiverLink) -> dict[str, object]:
         return {

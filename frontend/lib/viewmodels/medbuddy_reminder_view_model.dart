@@ -40,7 +40,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     }
 
     if (notifyAfterLoad) {
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
     }
   }
 
@@ -67,7 +67,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'There is no medication in this time slot.'
           : '이 시간대에 복용할 약이 없습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
 
@@ -78,14 +78,14 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not request notification permission.'
           : '알림 권한을 요청하지 못했습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
     if (!hasPermission) {
       _statusMessage = _isEnglishSetting
           ? 'Notification permission was not allowed.'
           : '알림 권한이 허용되지 않았습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
 
@@ -114,7 +114,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder is set for ${setting.timeLabel}.'
           : '$slotTitle 알림이 ${setting.timeLabel}으로 설정되었습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
     } on StateError catch (error) {
       await _rollbackMedicationReminderSave(
@@ -123,7 +123,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
         storageKey: storageKey,
       );
       _statusMessage = error.message;
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     } catch (_) {
       await _rollbackMedicationReminderSave(
@@ -134,7 +134,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not set the $slotTitle reminder.'
           : '$slotTitle 알림을 설정하지 못했습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
   }
@@ -167,13 +167,13 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
           : '$slotTitle 알림이 해제되었습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
     } catch (_) {
       _statusMessage = _isEnglishSetting
           ? 'Could not turn off the $slotTitle reminder.'
           : '$slotTitle 알림을 해제하지 못했습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
   }
@@ -308,7 +308,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'The schedule loaded, but reminders could not be synchronized.'
           : '복약 일정은 불러왔지만 알림을 동기화하지 못했습니다.';
-      _notifyViewModelListeners();
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
     }
   }
 

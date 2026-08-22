@@ -21,6 +21,10 @@ from entities.saved_medication_entity import _SavedMedication
 from boundaries.firebase_identity_boundary import IdentityDeletionBoundary
 from entities.user_account_entity import _UserAccount, utc_now
 from entities.user_setting_entity import _UserSetting
+from repositories.patient_caregiver_link_repository import (
+    PatientCaregiverLinkRepository,
+)
+from repositories.saved_medication_repository import SavedMedicationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +43,17 @@ class ManageAccount:
     def __init__(
         self,
         db: Session,
+        medication_repository: SavedMedicationRepository | None = None,
+        link_repository: PatientCaregiverLinkRepository | None = None,
         identity_deletion_boundary: IdentityDeletionBoundary | None = None,
     ) -> None:
         self.db = db
+        self.medication_repository = (
+            medication_repository or SavedMedicationRepository(db)
+        )
+        self.link_repository = (
+            link_repository or PatientCaregiverLinkRepository(db)
+        )
         self.identity_deletion_boundary = identity_deletion_boundary
 
     # 함수명: ensureAccount
@@ -67,10 +79,8 @@ class ManageAccount:
     # - 사용자가 소유하거나 보호자로 참여한 데이터를 JSON 응답용으로 묶는다.
     def exportAccountData(self, user_hash: str) -> dict[str, object]:
         normalized_user_hash = self.ensureAccount(user_hash)
-        saved_medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == normalized_user_hash)
-            .all()
+        saved_medications = self.medication_repository.list_by_patient(
+            normalized_user_hash
         )
         medication_ids = [row.id for row in saved_medications]
         completions = (
@@ -78,16 +88,7 @@ class ManageAccount:
             .filter(_MedicationCompletion.patient_hash == normalized_user_hash)
             .all()
         )
-        links = (
-            self.db.query(_PatientCaregiverLink)
-            .filter(
-                or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
-                )
-            )
-            .all()
-        )
+        links = self.link_repository.list_for_user(normalized_user_hash)
         caregiver_settings = (
             self.db.query(_CaregiverNotification)
             .filter(
