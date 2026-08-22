@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
+import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 
 void main() {
   test('adds a Firebase bearer token to API requests', () async {
@@ -51,6 +53,23 @@ void main() {
     );
 
     client.close();
+  });
+
+  test('maps an incompatible auth handshake to an update instruction', () {
+    const error = ApiContractMismatchException('medbuddy-api-v2');
+
+    expect(
+      AuthenticationControl.resolveBackendSessionError(error, isEnglish: false),
+      '현재 앱 버전이 서버와 호환되지 않습니다. MedBuddy를 업데이트해주세요.',
+    );
+    expect(
+      AuthenticationControl.resolveBackendSessionError(error, isEnglish: true),
+      'This app version is not compatible with the server. Please update MedBuddy.',
+    );
+    expect(
+      UserFacingErrorMessage.resolve(error, isEnglish: false),
+      contains('업데이트'),
+    );
   });
 
   test('does not send an empty authorization header', () async {

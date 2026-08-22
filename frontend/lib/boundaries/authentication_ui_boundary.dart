@@ -51,6 +51,9 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   Widget build(BuildContext context) {
     final control = widget.control;
     final text = _AuthenticationText(_languageControl.language);
+    final errorMessage = control.errorMessageForLanguage(
+      isEnglish: text.isEnglish,
+    );
     if (control.initializationFailed) {
       return Scaffold(
         body: SafeArea(
@@ -61,7 +64,7 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    control.errorMessage ??
+                    errorMessage ??
                         'MedBuddy secure services are temporarily unavailable.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18),
@@ -91,8 +94,7 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
             child: Padding(
               padding: const EdgeInsets.all(32),
               child: Text(
-                control.errorMessage ??
-                    'MedBuddy authentication is unavailable.',
+                errorMessage ?? 'MedBuddy authentication is unavailable.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 18),
               ),
@@ -187,10 +189,10 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
                               ? null
                               : text.invalidPassword,
                         ),
-                        if (control.errorMessage != null) ...[
+                        if (errorMessage != null) ...[
                           const SizedBox(height: 14),
                           Text(
-                            control.errorMessage!,
+                            errorMessage,
                             style: const TextStyle(color: Colors.redAccent),
                           ),
                         ],
@@ -451,7 +453,8 @@ class _AuthenticationText {
 
   const _AuthenticationText(this.language);
 
-  bool get _isEnglish => language == 'en';
+  bool get isEnglish => language == 'en';
+  bool get _isEnglish => isEnglish;
 
   String get signIn => _isEnglish ? 'Sign in' : '로그인';
   String get createAccountTitle =>

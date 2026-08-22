@@ -69,11 +69,14 @@ class ApiConfig {
         uri.hasFragment) {
       throw StateError('MEDBUDDY_API_BASE_URL is invalid.');
     }
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') {
+      throw StateError('MEDBUDDY_API_BASE_URL must use HTTP or HTTPS.');
+    }
     if (!requirePublicHttps) {
       return;
     }
-    if (uri.scheme.toLowerCase() != 'https' ||
-        (uri.hasPort && uri.port != 443)) {
+    if (scheme != 'https' || (uri.hasPort && uri.port != 443)) {
       throw StateError(
         'Release and profile builds require an HTTPS backend URL.',
       );

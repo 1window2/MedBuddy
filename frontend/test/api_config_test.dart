@@ -25,6 +25,16 @@ void main() {
     );
   });
 
+  test('debug policy still rejects non-HTTP API schemes', () {
+    expect(
+      () => ApiConfig.validateUrl(
+        'ftp://api.medbuddy.pp.ua/api/v1/medication',
+        requirePublicHttps: false,
+      ),
+      throwsStateError,
+    );
+  });
+
   test(
     'validation rejects localhost, private network, and clear-text endpoints',
     () {

@@ -12,6 +12,7 @@ import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/firebase_runtime_service.dart';
+import '../services/user_facing_error_message.dart';
 
 enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 
@@ -54,6 +55,41 @@ class AuthenticationControl extends ChangeNotifier
 
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
+  Object? _backendSessionError;
+
+  // 함수명: errorMessageForLanguage
+  // 역할:
+  // - 서버 세션 연결 오류를 로그인 화면의 현재 언어에 맞는 안내로 변환한다.
+  // - 버전 계약 불일치는 앱 업데이트가 필요하다는 구체적인 행동을 안내한다.
+  String? errorMessageForLanguage({required bool isEnglish}) {
+    if (_errorMessage == null) {
+      return null;
+    }
+    final backendSessionError = _backendSessionError;
+    if (backendSessionError == null) {
+      return _errorMessage;
+    }
+    return resolveBackendSessionError(
+      backendSessionError,
+      isEnglish: isEnglish,
+    );
+  }
+
+  // 함수명: resolveBackendSessionError
+  // 역할:
+  // - 인증 handshake 실패 원인을 기술 문구 대신 사용자가 대응할 수 있는 문구로 바꾼다.
+  // - 테스트와 로그인 UI가 동일한 변환 규칙을 공유한다.
+  static String resolveBackendSessionError(
+    Object error, {
+    required bool isEnglish,
+  }) {
+    if (error is ApiContractMismatchException) {
+      return UserFacingErrorMessage.resolve(error, isEnglish: isEnglish);
+    }
+    return isEnglish
+        ? 'The secure MedBuddy server session could not be established.'
+        : 'MedBuddy 보안 서버 세션을 연결하지 못했습니다.';
+  }
 
   bool _configurationFailed = false;
   bool get configurationFailed => _configurationFailed;
@@ -135,6 +171,7 @@ class AuthenticationControl extends ChangeNotifier
       AuthConfig.validate();
     } catch (_) {
       _configurationFailed = true;
+      _backendSessionError = null;
       _errorMessage = 'MedBuddy authentication is not configured correctly.';
       _finishInitialization();
       return;
@@ -167,6 +204,7 @@ class AuthenticationControl extends ChangeNotifier
     } catch (_) {
       _initializationFailed = true;
       _session = null;
+      _backendSessionError = null;
       _errorMessage =
           'MedBuddy could not initialize its secure services. Check the network and retry.';
     } finally {
@@ -690,7 +728,8 @@ class AuthenticationControl extends ChangeNotifier
       if (generation == _sessionGeneration) {
         _session = null;
         _setError(
-          'The secure MedBuddy server session could not be established.',
+          resolveBackendSessionError(error, isEnglish: false),
+          cause: error,
         );
       }
     } finally {
@@ -872,8 +911,9 @@ class AuthenticationControl extends ChangeNotifier
     }
   }
 
-  void _setError(String message) {
+  void _setError(String message, {Object? cause}) {
     _errorMessage = message;
+    _backendSessionError = cause;
     notifyListeners();
   }
 
