@@ -165,8 +165,10 @@ In Firebase mode, `PushNotificationService` registers the authenticated
 Android device token and follows Firebase token refresh. A patient's
 incomplete-to-complete transition invokes `DispatchCaregiverAlert`, which
 checks the active link and slot preference before sending FCM. Tokens rejected
-as unregistered or sender-mismatched are disabled instead of retried
-indefinitely. Push startup and token registration are tracked as lifecycle
+as malformed, unregistered, or sender-mismatched are disabled instead of
+retried indefinitely. Transient delivery failures use bounded exponential
+retries and move to a terminal dead-letter state after the retry budget is
+exhausted. Push startup and token registration are tracked as lifecycle
 operations, so signing out waits for any in-flight registration before it
 requests deactivation of the current token.
 

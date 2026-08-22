@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
     CAREGIVER_ALERT_STATUS_PENDING,
     CAREGIVER_ALERT_STATUS_PROCESSING,
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 _PROCESSING_TIMEOUT = timedelta(minutes=5)
 _MAX_RETRY_DELAY_SECONDS = 15 * 60
+_MAX_DELIVERY_ATTEMPTS = 8
 
 
 # 클래스명: _RetryablePushDeliveryError
@@ -35,6 +37,7 @@ class _RetryablePushDeliveryError(RuntimeError):
 # 주요 책임:
 # - 여러 서버가 같은 요청을 동시에 처리하지 않도록 원자적으로 선점한다.
 # - 실패한 요청을 지수 간격으로 다시 시도할 수 있게 만든다.
+# - 재시도 한도를 넘긴 요청을 종료 상태로 전환한다.
 # - 전송 완료 요청을 다시 보내지 않는다.
 class ProcessCaregiverAlertOutbox:
     def __init__(
@@ -161,19 +164,26 @@ class ProcessCaregiverAlertOutbox:
             if row is None:
                 return "failed"
             row.attempt_count = int(row.attempt_count or 0) + 1
-            retry_seconds = min(
-                2 ** min(row.attempt_count, 10) * 5,
-                _MAX_RETRY_DELAY_SECONDS,
-            )
-            row.status = CAREGIVER_ALERT_STATUS_FAILED
-            row.available_at = utc_now() + timedelta(seconds=retry_seconds)
+            attempts_exhausted = row.attempt_count >= _MAX_DELIVERY_ATTEMPTS
+            if attempts_exhausted:
+                row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+                row.available_at = utc_now()
+            else:
+                retry_seconds = min(
+                    2 ** min(row.attempt_count, 10) * 5,
+                    _MAX_RETRY_DELAY_SECONDS,
+                )
+                row.status = CAREGIVER_ALERT_STATUS_FAILED
+                row.available_at = utc_now() + timedelta(seconds=retry_seconds)
             row.processing_started_at = None
             row.last_error = type(exc).__name__[:500]
             self.db.commit()
             logger.warning(
-                "Caregiver alert outbox delivery failed (id=%s, attempt=%s): %s",
+                "Caregiver alert outbox delivery failed "
+                "(id=%s, attempt=%s, terminal=%s): %s",
                 outbox_id,
                 row.attempt_count,
+                attempts_exhausted,
                 type(exc).__name__,
             )
             return "failed"

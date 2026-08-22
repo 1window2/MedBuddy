@@ -110,7 +110,7 @@ package "Flutter / Entity" as FE_Entity {
 
 package "Flutter / External and Shared Services" as FE_Service {
   class ApiConfig <<configuration>> {
-    + validateUrl(value, requirePublicHttps) {static}
+    + validateUrl(value) {static}
   }
   class AuthConfig <<configuration>>
   class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<egress policy>>

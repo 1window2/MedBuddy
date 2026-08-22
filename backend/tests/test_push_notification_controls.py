@@ -5,8 +5,11 @@ import sys
 import unittest
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from firebase_admin import exceptions as firebase_exceptions
+from firebase_admin import messaging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,7 +17,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from boundaries.push_notification_boundary import PushDeliveryResult  # noqa: E402
+from boundaries.push_notification_boundary import (  # noqa: E402
+    FirebasePushNotificationBoundary,
+    PushDeliveryResult,
+)
 from controls.dispatch_caregiver_alert_control import (  # noqa: E402
     DispatchCaregiverAlert,
 )
@@ -31,6 +37,7 @@ from entities.caregiver_notification_entity import (  # noqa: E402
 )
 from entities.device_push_token_entity import _DevicePushToken  # noqa: E402
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
     CAREGIVER_ALERT_STATUS_PENDING,
     CAREGIVER_ALERT_STATUS_SENT,
@@ -208,6 +215,45 @@ class PushNotificationControlTest(unittest.TestCase):
         )
         self.assertFalse(invalid_row.enabled)
 
+    def test_fcm_permanent_token_error_is_disabled_without_retry(self) -> None:
+        malformed_token = "malformed-fcm-token-value-1234"
+        throttled_token = "throttled-fcm-token-value-1234"
+        response = SimpleNamespace(
+            success_count=0,
+            responses=[
+                SimpleNamespace(
+                    success=False,
+                    exception=firebase_exceptions.InvalidArgumentError(
+                        "Invalid registration token."
+                    ),
+                ),
+                SimpleNamespace(
+                    success=False,
+                    exception=messaging.QuotaExceededError("Quota exceeded."),
+                ),
+            ],
+        )
+        boundary = FirebasePushNotificationBoundary.__new__(
+            FirebasePushNotificationBoundary
+        )
+        boundary._app = object()
+
+        with patch(
+            "boundaries.push_notification_boundary.messaging."
+            "send_each_for_multicast",
+            return_value=response,
+        ):
+            result = boundary.send_notification(
+                tokens=[malformed_token, throttled_token],
+                title="Patient dose completed",
+                body="The scheduled dose was completed.",
+                data={"type": "caregiver_slot_completed"},
+            )
+
+        self.assertEqual(result.invalid_tokens, (malformed_token,))
+        self.assertEqual(result.retryable_failure_count, 1)
+        self.assertFalse(result.all_valid_targets_succeeded)
+
     def test_outbox_marks_successful_delivery_as_sent(self) -> None:
         row = _CaregiverAlertOutbox(
             event_key="event-success",
@@ -296,6 +342,45 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertGreater(row.available_at, attempted_at)
         self.assertEqual(row.last_error, "RuntimeError")
         self.assertIsNone(row.processing_started_at)
+
+    def test_outbox_dead_letters_after_retry_budget_is_exhausted(self) -> None:
+        row = _CaregiverAlertOutbox(
+            event_key="event-retry-exhausted",
+            patient_hash="patient-a",
+            slot_key="bedtime",
+            status=CAREGIVER_ALERT_STATUS_PENDING,
+            attempt_count=7,
+        )
+        self.db.add(row)
+        self.db.commit()
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted",
+            side_effect=RuntimeError("permanent delivery failure"),
+        ):
+            result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processOne(int(row.id))
+
+        self.db.refresh(row)
+        self.assertEqual(result, "failed")
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+        self.assertEqual(row.attempt_count, 8)
+        self.assertEqual(row.last_error, "RuntimeError")
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted"
+        ) as notify:
+            due_result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processDue()
+
+        self.assertEqual(due_result, {"sent": 0, "failed": 0, "skipped": 0})
+        notify.assert_not_called()
 
 
 if __name__ == "__main__":

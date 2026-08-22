@@ -1,12 +1,10 @@
 // 파일명: api_config.dart
 // 역할: 프론트엔드에서 사용할 백엔드 API 기본 주소를 관리한다.
 
-import 'package:flutter/foundation.dart';
-
 // 클래스명: ApiConfig
 // 역할: 빌드/실행 환경에서 전달된 API base URL을 앱 전체에 제공한다.
 // 주요 책임:
-// - Android 에뮬레이터 데모용 기본 주소를 제공한다.
+// - 운영용 공인 HTTPS 기본 주소를 제공한다.
 // - MEDBUDDY_API_BASE_URL 값이 주어지면 해당 주소를 우선 사용한다.
 
 class ApiConfig {
@@ -46,19 +44,18 @@ class ApiConfig {
   }
 
   static void validate() {
-    validateUrl(baseUrl, requirePublicHttps: kReleaseMode || kProfileMode);
+    validateUrl(baseUrl);
   }
 
   // 함수명: validateUrl
   // 역할:
-  // - API URL의 계약 경로와 기본 네트워크 안전 조건을 검증한다.
-  // - 릴리스 및 프로필 모드에서는 공인 HTTPS 호스트만 허용한다.
+  // - API URL의 계약 경로와 네트워크 안전 조건을 검증한다.
+  // - 모든 빌드 모드에서 공인 HTTPS 호스트만 허용한다.
   // 매개변수:
   // - value: 검증할 API 기본 URL
-  // - requirePublicHttps: 공인 HTTPS 엔드포인트를 강제할지 여부
   // 반환값:
   // - 없음. 조건을 충족하지 않으면 StateError를 발생시킨다.
-  static void validateUrl(String value, {required bool requirePublicHttps}) {
+  static void validateUrl(String value) {
     final uri = Uri.tryParse(value.trim());
     if (uri == null ||
         !uri.hasScheme ||
@@ -73,18 +70,11 @@ class ApiConfig {
     if (scheme != 'http' && scheme != 'https') {
       throw StateError('MEDBUDDY_API_BASE_URL must use HTTP or HTTPS.');
     }
-    if (!requirePublicHttps) {
-      return;
-    }
     if (scheme != 'https' || (uri.hasPort && uri.port != 443)) {
-      throw StateError(
-        'Release and profile builds require an HTTPS backend URL.',
-      );
+      throw StateError('MedBuddy requires an HTTPS backend URL.');
     }
     if (_isPrivateOrLocalHost(uri.host)) {
-      throw StateError(
-        'Release and profile builds require a public backend host.',
-      );
+      throw StateError('MedBuddy requires a public backend host.');
     }
   }
 

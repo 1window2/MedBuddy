@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
+from firebase_admin import exceptions as firebase_exceptions
 from firebase_admin import messaging
 
 from boundaries.firebase_admin_boundary import get_firebase_admin_app
@@ -64,7 +65,7 @@ class DisabledPushNotificationBoundary:
 # 주요 책임:
 #   - 애플리케이션 전용 Firebase Admin 인스턴스를 재사용한다.
 #   - 최대 500개 단위로 토큰을 묶어 알림을 전송한다.
-#   - 더 이상 유효하지 않은 토큰을 Control 계층에 반환한다.
+#   - 잘못되었거나 더 이상 유효하지 않은 토큰을 Control 계층에 반환한다.
 class FirebasePushNotificationBoundary:
     _MAX_MULTICAST_TOKENS = 500
 
@@ -78,7 +79,7 @@ class FirebasePushNotificationBoundary:
     # 역할:
     # - 중복 토큰을 제거하고 Firebase 제한 단위로 나눠 푸시를 전송한다.
     # 반환값:
-    # - 성공 개수와 비활성화할 토큰 목록
+    # - 성공 개수, 비활성화할 토큰, 재시도 가능한 실패 개수
     def send_notification(
         self,
         *,
@@ -124,7 +125,11 @@ class FirebasePushNotificationBoundary:
                     continue
                 if isinstance(
                     send_response.exception,
-                    (messaging.UnregisteredError, messaging.SenderIdMismatchError),
+                    (
+                        firebase_exceptions.InvalidArgumentError,
+                        messaging.UnregisteredError,
+                        messaging.SenderIdMismatchError,
+                    ),
                 ):
                     invalid_tokens.append(token)
                 else:

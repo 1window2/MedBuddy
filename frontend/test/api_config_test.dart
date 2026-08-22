@@ -9,27 +9,24 @@ void main() {
     expect(
       () => ApiConfig.validateUrl(
         'https://api.medbuddy.pp.ua/api/v1/medication',
-        requirePublicHttps: true,
       ),
       returnsNormally,
     );
   });
 
-  test('validation accepts an Android emulator URL in debug policy', () {
+  test('validation rejects an Android emulator URL in every build policy', () {
     expect(
       () => ApiConfig.validateUrl(
         'http://10.0.2.2:8000/api/v1/medication',
-        requirePublicHttps: false,
       ),
-      returnsNormally,
+      throwsStateError,
     );
   });
 
-  test('debug policy still rejects non-HTTP API schemes', () {
+  test('validation rejects non-HTTP API schemes', () {
     expect(
       () => ApiConfig.validateUrl(
         'ftp://api.medbuddy.pp.ua/api/v1/medication',
-        requirePublicHttps: false,
       ),
       throwsStateError,
     );
@@ -53,7 +50,7 @@ void main() {
 
       for (final url in rejectedUrls) {
         expect(
-          () => ApiConfig.validateUrl(url, requirePublicHttps: true),
+          () => ApiConfig.validateUrl(url),
           throwsStateError,
           reason: url,
         );

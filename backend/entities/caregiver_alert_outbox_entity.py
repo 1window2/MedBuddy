@@ -20,6 +20,7 @@ CAREGIVER_ALERT_STATUS_PENDING = "pending"
 CAREGIVER_ALERT_STATUS_PROCESSING = "processing"
 CAREGIVER_ALERT_STATUS_SENT = "sent"
 CAREGIVER_ALERT_STATUS_FAILED = "failed"
+CAREGIVER_ALERT_STATUS_DEAD_LETTER = "dead_letter"
 
 
 # 함수명: utc_now
@@ -34,7 +35,7 @@ def utc_now() -> datetime:
 # 주요 책임:
 # - 서버 재시작이나 일시적인 푸시 장애에도 전송 요청을 보존한다.
 # - 같은 환자·날짜·시간대 이벤트가 중복 전송되지 않게 식별한다.
-# - 재시도 횟수와 다음 시도 시각을 기록한다.
+# - 재시도 횟수와 다음 시도 시각, 종료 상태를 기록한다.
 class _CaregiverAlertOutbox(Base):
     __tablename__ = "caregiver_alert_outbox"
     __table_args__ = (

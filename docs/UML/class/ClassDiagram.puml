@@ -264,7 +264,7 @@ package "Flutter Frontend" {
 
         class "ApiConfig" as ApiConfig <<Configuration: API endpoint>> {
             + {static} validate(): void
-            + {static} validateUrl(value, requirePublicHttps): void
+            + {static} validateUrl(value): void
         }
 
         class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<Policy: image egress>>
@@ -632,6 +632,7 @@ package "FastAPI Backend" {
         class "ProcessCaregiverAlertOutbox" as ProcessCaregiverAlertOutbox <<Control: 보호자 알림 재시도>> {
             - db: Session
             - push_boundary: PushNotificationBoundary
+            - {static} MAX_DELIVERY_ATTEMPTS: int
             + processDue(limit): dict
             + processOne(outbox_id): str
         }
