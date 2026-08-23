@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../entities/chat_message_entity.dart';
+import '../entities/medication_detail_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/auth_config.dart';
@@ -84,6 +85,24 @@ class ManageLinkedChat {
               ChatMedicationContext.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(growable: false);
+  }
+
+  // 함수명: requestMedicationDetail
+  // 역할:
+  // - 채팅에 연결된 약의 상세정보를 연동 참여자 권한 범위에서 조회한다.
+  Future<MedicationDetail> requestMedicationDetail({
+    required int linkId,
+    required int medicationId,
+  }) async {
+    final response = await _client
+        .get(_buildUri('/links/$linkId/medications/$medicationId'))
+        .timeout(_requestTimeout);
+    final decoded = _decodeSuccessfulResponse(response, '약 상세정보를 불러오지 못했습니다.');
+    final rawMedication = decoded['data'];
+    if (rawMedication is! Map) {
+      throw StateError('약 상세정보 응답 형식이 올바르지 않습니다.');
+    }
+    return MedicationDetail.fromJson(Map<String, dynamic>.from(rawMedication));
   }
 
   // 함수명: sendMessage

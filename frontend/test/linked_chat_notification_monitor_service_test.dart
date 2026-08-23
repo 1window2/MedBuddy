@@ -19,9 +19,10 @@ void main() {
       eventSourceFactory: (linkId) {
         return sources.putIfAbsent(linkId, _FakeLinkedChatEventSource.new);
       },
-      sendAlert: ({required linkId, required messageId}) async {
-        alerts.add('$linkId:$messageId');
-      },
+      sendAlert:
+          ({required linkId, required messageId, required messageBody}) async {
+            alerts.add('$linkId:$messageId:$messageBody');
+          },
       permissionRequester: () async {
         permissionRequestCount += 1;
         return true;
@@ -42,7 +43,7 @@ void main() {
     sources[7]!.emit(event);
     await _flushEvents();
 
-    expect(alerts, ['7:31']);
+    expect(alerts, ['7:31:테스트 메시지']);
     expect(permissionRequestCount, 1);
   });
 
@@ -53,9 +54,10 @@ void main() {
       currentUserHash: 'patient_test',
       loadLinks: () async => [_activeLink(9)],
       eventSourceFactory: (_) => source,
-      sendAlert: ({required linkId, required messageId}) async {
-        alertCount += 1;
-      },
+      sendAlert:
+          ({required linkId, required messageId, required messageBody}) async {
+            alertCount += 1;
+          },
       permissionRequester: () async => true,
       linkRefreshInterval: const Duration(hours: 1),
     );
@@ -81,7 +83,12 @@ void main() {
       eventSourceFactory: (linkId) {
         return sources.putIfAbsent(linkId, _FakeLinkedChatEventSource.new);
       },
-      sendAlert: ({required linkId, required messageId}) async {},
+      sendAlert:
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+          }) async {},
       permissionRequester: () async => true,
       linkRefreshInterval: const Duration(hours: 1),
     );
@@ -102,9 +109,10 @@ void main() {
       currentUserHash: 'caregiver_test',
       loadLinks: () async => [_activeLink(13)],
       eventSourceFactory: (_) => source,
-      sendAlert: ({required linkId, required messageId}) async {
-        alertCount += 1;
-      },
+      sendAlert:
+          ({required linkId, required messageId, required messageBody}) async {
+            alertCount += 1;
+          },
       permissionRequester: () async => false,
       linkRefreshInterval: const Duration(hours: 1),
     );
@@ -131,9 +139,10 @@ void main() {
       currentUserHash: 'caregiver_test',
       loadLinks: () async => [_activeLink(15)],
       eventSourceFactory: (_) => source,
-      sendAlert: ({required linkId, required messageId}) async {
-        alertCount += 1;
-      },
+      sendAlert:
+          ({required linkId, required messageId, required messageBody}) async {
+            alertCount += 1;
+          },
       permissionRequester: () async => true,
       featureEnabledLoader: () async => featureEnabled,
       linkRefreshInterval: const Duration(hours: 1),

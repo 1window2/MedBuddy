@@ -150,7 +150,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('닫기'), findsOneWidget);
+      expect(find.bySemanticsLabel('뒤로가기'), findsOneWidget);
       expect(find.bySemanticsLabel('저장하기'), findsOneWidget);
       expect(find.bySemanticsLabel('English'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -261,9 +261,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final medicationNameCell = find.byKey(
-        const Key('ocr-table-cell-0-name'),
-      );
+      final medicationNameCell = find.byKey(const Key('ocr-table-cell-0-name'));
       expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
       await tester.ensureVisible(medicationNameCell);
       await tester.pumpAndSettle();
@@ -371,6 +369,35 @@ void main() {
 
       expect(find.text('약 상세정보'), findsOneWidget);
       await tester.drag(find.byType(ListView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('약 상세정보의 사진을 누르면 확대 화면을 열고 닫는다', (tester) async {
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 1,
+          home: const CheckMedicationDetailUI(
+            medicationDetail: MedicationDetail(
+              itemName: '사진 테스트정',
+              efficacy: '테스트 효능',
+              usageMethod: '하루 한 번 복용하세요.',
+              warning: '주의사항을 확인하세요.',
+              imageUrl: 'https://nedrug.mfds.go.kr/tablet.png',
+            ),
+            userSetting: UserSetting(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('medication-detail-image-button')));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('medication-image-viewer-close')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('medication-image-viewer-close')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });

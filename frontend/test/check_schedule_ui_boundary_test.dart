@@ -189,6 +189,7 @@ class _SuccessfulNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messagePreview,
   }) async {}
 
   @override
@@ -232,6 +233,7 @@ class _FailingNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messagePreview,
   }) async {}
 
   @override
@@ -343,6 +345,16 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(Image), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('schedule-medication-thumbnail-visual-tablet')),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('medication-image-viewer-close')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('medication-image-viewer-close')));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 

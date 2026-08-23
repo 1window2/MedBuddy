@@ -6,8 +6,11 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import 'check_schedule_ui_boundary.dart';
+import 'check_medication_detail_ui_boundary.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_realtime_service.dart';
@@ -69,6 +72,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   String? _pendingClientMessageId;
   String? _pendingMessageBody;
   int? _pendingMedicationId;
+  int? _loadingMedicationId;
   int _requestGeneration = 0;
 
   _LinkedChatText get _text => _LinkedChatText(widget.userSetting.language);
@@ -375,89 +379,41 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     if (_medicationContexts.isEmpty || _isSending) {
       return;
     }
-    final selected = await showModalBottomSheet<ChatMedicationContext>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.72,
+    final medicationsById = {
+      for (final medication in _medicationContexts)
+        medication.medicationId: medication,
+    };
+    final selectionSchedules = _medicationContexts
+        .map(
+          (medication) => MedicationSchedule(
+            medicationID: medication.medicationId.toString(),
+            medicationName: medication.medicationName,
+            dosage: medication.dosagePerTime,
+            scheduleSlotKeys: medication.scheduleSlotKeys,
+            imageUrl: medication.imageUrl,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(22, 4, 22, 14),
-                child: Text(
-                  _text.chooseMedication,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                  itemCount: _medicationContexts.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final medication = _medicationContexts[index];
-                    return ListTile(
-                      key: ValueKey(
-                        'chatMedicationOption_${medication.medicationId}',
-                      ),
-                      minVerticalPadding: 10,
-                      leading: _MedicationThumbnail(
-                        imageUrl: medication.imageUrl,
-                        size: 52,
-                      ),
-                      title: Text(
-                        medication.medicationName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: MedBuddyColors.textStrong,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      subtitle: medication.dosagePerTime.isEmpty
-                          ? null
-                          : Text(
-                              _text.dose(medication.dosagePerTime),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.pop(context, medication),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+        )
+        .toList(growable: false);
+    final selectedSchedule = await Navigator.push<MedicationSchedule>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CheckScheduleUI.selection(
+          schedules: selectionSchedules,
+          language: widget.userSetting.language,
         ),
       ),
     );
-    if (selected == null || !mounted) {
+    if (selectedSchedule == null || !mounted) {
+      return;
+    }
+    final selectedId = int.tryParse(selectedSchedule.medicationID);
+    final selected = medicationsById[selectedId];
+    if (selected == null) {
       return;
     }
     setState(() {
       _selectedMedicationContext = selected;
       _sendErrorMessage = null;
-      if (_messageController.text.trim().isEmpty) {
-        _messageController.text = _suggestedMessage(selected);
-        _messageController.selection = TextSelection.collapsed(
-          offset: _messageController.text.length,
-        );
-      }
     });
   }
 
@@ -470,6 +426,45 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       _peerName,
       medication.medicationName,
     );
+  }
+
+  // 함수명: _openMedicationDetail
+  // 역할:
+  // - 채팅 약 카드를 누르면 서버에서 권한이 확인된 상세정보를 불러와 공통 화면으로 연다.
+  Future<void> _openMedicationDetail(ChatMedicationContext medication) async {
+    if (_loadingMedicationId != null) {
+      return;
+    }
+    setState(() {
+      _loadingMedicationId = medication.medicationId;
+      _sendErrorMessage = null;
+    });
+    try {
+      final detail = await _control.requestMedicationDetail(
+        linkId: widget.linkId,
+        medicationId: medication.medicationId,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loadingMedicationId = null);
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => CheckMedicationDetailUI(
+            medicationDetail: detail,
+            userSetting: widget.userSetting,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loadingMedicationId = null);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text.medicationDetailLoadFailed)));
+    }
   }
 
   String _createClientMessageId() {
@@ -631,6 +626,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         message: _messages[index],
         isMine: _messages[index].senderHash == widget.currentUserHash,
         text: _text,
+        isMedicationLoading:
+            _loadingMedicationId ==
+            _messages[index].medicationContext?.medicationId,
+        onMedicationPressed: _openMedicationDetail,
       ),
     );
   }
@@ -648,6 +647,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
               _SelectedMedicationContext(
                 medication: _selectedMedicationContext!,
                 text: _text,
+                isLoading:
+                    _loadingMedicationId ==
+                    _selectedMedicationContext!.medicationId,
+                onOpenRequested: _loadingMedicationId == null
+                    ? () => _openMedicationDetail(_selectedMedicationContext!)
+                    : null,
                 onRemoveRequested: _isSending
                     ? null
                     : () => setState(() {
@@ -712,7 +717,9 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                           ? _text.noActiveMedication
                           : _selectedMedicationContext == null
                           ? _text.selectMedicationFirst
-                          : _text.enterMessage,
+                          : _text.exampleMessage(
+                              _suggestedMessage(_selectedMedicationContext!),
+                            ),
                       counterText: '',
                       filled: true,
                       fillColor: MedBuddyColors.surfaceSubtle,
@@ -729,6 +736,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
+                  key: const ValueKey('chatSendButton'),
                   tooltip: _text.sendMessage,
                   onPressed:
                       !_isSending &&
@@ -771,11 +779,15 @@ class _LinkedChatUIState extends State<LinkedChatUI>
 class _SelectedMedicationContext extends StatelessWidget {
   final ChatMedicationContext medication;
   final _LinkedChatText text;
+  final bool isLoading;
+  final VoidCallback? onOpenRequested;
   final VoidCallback? onRemoveRequested;
 
   const _SelectedMedicationContext({
     required this.medication,
     required this.text,
+    required this.isLoading,
+    required this.onOpenRequested,
     required this.onRemoveRequested,
   });
 
@@ -791,36 +803,63 @@ class _SelectedMedicationContext extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _MedicationThumbnail(imageUrl: medication.imageUrl, size: 42),
-          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medication.medicationName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                if (medication.dosagePerTime.isNotEmpty)
-                  Text(
-                    text.dose(medication.dosagePerTime),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: onOpenRequested,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    _MedicationThumbnail(
+                      imageUrl: medication.imageUrl,
+                      size: 42,
                     ),
-                  ),
-              ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            medication.medicationName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: MedBuddyColors.textStrong,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                          if (medication.dosagePerTime.isNotEmpty)
+                            Text(
+                              text.dose(medication.dosagePerTime),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: MedBuddyColors.textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    if (isLoading)
+                      const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: MedBuddyColors.textMuted,
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
           IconButton(
@@ -837,61 +876,83 @@ class _SelectedMedicationContext extends StatelessWidget {
 class _MessageMedicationContext extends StatelessWidget {
   final ChatMedicationContext medication;
   final bool isMine;
+  final bool isLoading;
   final _LinkedChatText text;
+  final VoidCallback? onPressed;
 
   const _MessageMedicationContext({
     required this.medication,
     required this.isMine,
+    required this.isLoading,
     required this.text,
+    required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: isMine
-            ? Colors.white.withValues(alpha: 0.16)
-            : const Color(0xFFEAFBF4),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          _MedicationThumbnail(imageUrl: medication.imageUrl, size: 46),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medication.medicationName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                if (medication.dosagePerTime.isNotEmpty)
-                  Text(
-                    text.dose(medication.dosagePerTime),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: foreground.withValues(alpha: 0.78),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                    ),
-                  ),
-              ],
-            ),
+        onTap: onPressed,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: isMine
+                ? Colors.white.withValues(alpha: 0.16)
+                : const Color(0xFFEAFBF4),
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
+          child: Row(
+            children: [
+              _MedicationThumbnail(imageUrl: medication.imageUrl, size: 46),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      medication.medicationName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    if (medication.dosagePerTime.isNotEmpty)
+                      Text(
+                        text.dose(medication.dosagePerTime),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: foreground.withValues(alpha: 0.78),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              if (isLoading)
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: foreground,
+                  ),
+                )
+              else
+                Icon(Icons.chevron_right_rounded, color: foreground),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -938,12 +999,16 @@ class _MedicationThumbnail extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
+  final bool isMedicationLoading;
   final _LinkedChatText text;
+  final ValueChanged<ChatMedicationContext> onMedicationPressed;
 
   const _MessageBubble({
     required this.message,
     required this.isMine,
+    required this.isMedicationLoading,
     required this.text,
+    required this.onMedicationPressed,
   });
 
   @override
@@ -974,7 +1039,11 @@ class _MessageBubble extends StatelessWidget {
               _MessageMedicationContext(
                 medication: message.medicationContext!,
                 isMine: isMine,
+                isLoading: isMedicationLoading,
                 text: text,
+                onPressed: isMedicationLoading
+                    ? null
+                    : () => onMedicationPressed(message.medicationContext!),
               ),
               const SizedBox(height: 8),
             ],
@@ -1022,6 +1091,9 @@ class _LinkedChatText {
   String get medicationLoadFailed => isEnglish
       ? 'Could not load active medication information.'
       : '복용 중인 약 정보를 불러오지 못했습니다.';
+  String get medicationDetailLoadFailed => isEnglish
+      ? 'Could not load the medication details.'
+      : '약 상세정보를 불러오지 못했습니다.';
   String get historyLoadFailed =>
       isEnglish ? 'Could not load the conversation.' : '대화 내용을 불러오지 못했습니다.';
   String get sendFailed => isEnglish
@@ -1037,6 +1109,8 @@ class _LinkedChatText {
       isEnglish
       ? '$peerName, have you taken $medicationName yet?'
       : '$peerName님, $medicationName 아직 안 드셨나요?';
+  String exampleMessage(String value) =>
+      isEnglish ? 'Example: $value' : '예: $value';
   String get medicationContextGuide => isEnglish
       ? 'Choose a medication to include its photo and dose with the message.'
       : '대화할 약을 선택하면 사진과 복용량이 메시지에 함께 표시됩니다.';
@@ -1049,7 +1123,6 @@ class _LinkedChatText {
   String get selectMedication => isEnglish ? 'Choose medication' : '대화할 약 선택';
   String get selectMedicationFirst =>
       isEnglish ? 'Choose a medication first' : '약을 먼저 선택하세요';
-  String get enterMessage => isEnglish ? 'Enter a message' : '메시지를 입력하세요';
   String get sendMessage => isEnglish ? 'Send message' : '메시지 보내기';
   String get connected => isEnglish ? 'Live connection' : '실시간 연결됨';
   String get connecting => isEnglish ? 'Connecting' : '연결 중';

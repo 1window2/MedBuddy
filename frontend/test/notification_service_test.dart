@@ -69,6 +69,7 @@ class _NoopNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messagePreview,
   }) async {}
 }
 

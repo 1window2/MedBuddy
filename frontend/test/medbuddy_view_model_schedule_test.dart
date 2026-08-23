@@ -769,6 +769,7 @@ class _FakeNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messagePreview,
   }) async {}
 
   final bool failRegistration;

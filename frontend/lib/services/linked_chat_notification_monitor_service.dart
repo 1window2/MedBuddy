@@ -16,14 +16,18 @@ typedef LinkedChatLinkLoader = Future<List<PatientCaregiverLink>> Function();
 typedef LinkedChatEventSourceFactory =
     LinkedChatEventSource Function(int linkId);
 typedef LinkedChatAlertSender =
-    Future<void> Function({required int linkId, required int messageId});
+    Future<void> Function({
+      required int linkId,
+      required int messageId,
+      required String messageBody,
+    });
 typedef LinkedChatPermissionRequester = Future<bool> Function();
 typedef LinkedChatFeatureEnabledLoader = Future<bool> Function();
 
 // 클래스명: LinkedChatNotificationMonitorService
 // 역할:
 // - Firebase 푸시를 사용하지 않는 로컬 데모에서 활성 연동별 WebSocket을 유지한다.
-// - 상대가 보낸 새 메시지를 한 번만 개인정보 비노출 로컬 알림으로 표시한다.
+// - 상대가 보낸 새 메시지를 한 번만 내용 미리보기와 함께 로컬 알림으로 표시한다.
 // 주요 책임:
 // - 연동 추가와 삭제를 주기적으로 동기화한다.
 // - 본인이 보낸 메시지와 중복 이벤트를 알림 대상에서 제외한다.
@@ -230,7 +234,11 @@ class LinkedChatNotificationMonitorService {
         return;
       }
       try {
-        await _sendAlert(linkId: watchedLinkId, messageId: message.messageId);
+        await _sendAlert(
+          linkId: watchedLinkId,
+          messageId: message.messageId,
+          messageBody: message.body,
+        );
       } catch (error, stackTrace) {
         _notifiedMessageKeys.remove(messageKey);
         developer.log(

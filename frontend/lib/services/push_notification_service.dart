@@ -248,10 +248,15 @@ class PushNotificationService {
         return;
       }
       final source = message.messageId ?? 'linked-chat|$linkId';
+      final notificationBody = message.notification?.body?.trim() ?? '';
+      final dataPreview = message.data['message_preview']?.trim() ?? '';
       await NotificationService.instance.showLinkedChatAlert(
         id: source.hashCode & 0x7fffffff,
         linkId: linkId,
         language: language,
+        messagePreview: notificationBody.isNotEmpty
+            ? notificationBody
+            : dataPreview,
       );
       return;
     }

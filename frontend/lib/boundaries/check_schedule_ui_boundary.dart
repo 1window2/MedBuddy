@@ -14,6 +14,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
@@ -25,7 +26,23 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 // - 1일 복용 횟수를 기준으로 아침/점심/저녁/취침 전 슬롯에 약을 배치한다.
 // - 시간대별 알림 설정 팝업을 열고 로컬 알림 예약을 요청한다.
 class CheckScheduleUI extends StatefulWidget {
-  const CheckScheduleUI({super.key});
+  final List<MedicationSchedule>? selectionSchedules;
+  final String selectionLanguage;
+
+  const CheckScheduleUI({super.key})
+    : selectionSchedules = null,
+      selectionLanguage = 'ko';
+
+  // 생성자명: CheckScheduleUI.selection
+  // 역할: 오늘 일정의 시간대 카드 구성을 재사용해 채팅에 첨부할 약을 선택한다.
+  const CheckScheduleUI.selection({
+    super.key,
+    required List<MedicationSchedule> schedules,
+    required String language,
+  }) : selectionSchedules = schedules,
+       selectionLanguage = language;
+
+  bool get isSelectionMode => selectionSchedules != null;
 
   @override
   State<CheckScheduleUI> createState() => _CheckScheduleUIState();
@@ -69,6 +86,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   @override
   void initState() {
     super.initState();
+    if (widget.isSelectionMode) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
       await viewModel.refreshMedicationSchedule();
@@ -77,6 +97,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isSelectionMode) {
+      return _buildSelectionScreen(context);
+    }
     final viewModel = context.read<MedBuddyViewModel>();
     return ListenableBuilder(
       listenable: Listenable.merge([
@@ -85,6 +108,46 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         viewModel.updatesFor(MedBuddyFeature.userSetting),
       ]),
       builder: (context, _) => _buildScreen(context, viewModel),
+    );
+  }
+
+  Widget _buildSelectionScreen(BuildContext context) {
+    final text = _ScheduleText(widget.selectionLanguage);
+    final schedules = widget.selectionSchedules ?? const <MedicationSchedule>[];
+    final slots = _buildSelectionSlots(schedules);
+    return Scaffold(
+      backgroundColor: MedBuddyColors.surface,
+      body: Column(
+        children: [
+          _ScheduleSelectionHeader(
+            text: text,
+            onBackRequested: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(34, 14, 34, 24),
+              children: [
+                for (final slot in slots) ...[
+                  _TimeSlotCard(
+                    text: text,
+                    slot: slot,
+                    reminderSetting: MedicationAlarm.defaults(slot.key),
+                    isCompletedProvider: (_) => false,
+                    onReminderRequested: () {},
+                    onGuideRequested: (_) {},
+                    onStatusChanged: (_, _) async {},
+                    isSelectionMode: true,
+                    onSelectionRequested: (schedule) {
+                      Navigator.pop(context, schedule);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -289,6 +352,35 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           );
         })
         .toList(growable: false);
+  }
+
+  List<_ScheduleSlot> _buildSelectionSlots(List<MedicationSchedule> schedules) {
+    return _slotDefinitions
+        .map((definition) {
+          final medications = schedules
+              .where(
+                (schedule) =>
+                    _selectionSlotKeys(schedule).contains(definition.key),
+              )
+              .toList(growable: false);
+          return _ScheduleSlot(
+            definition: definition,
+            medications: medications,
+          );
+        })
+        .toList(growable: false);
+  }
+
+  List<String> _selectionSlotKeys(MedicationSchedule schedule) {
+    if (schedule.scheduleSlotKeys.isNotEmpty) {
+      return schedule.slotKeys;
+    }
+    if (schedule.dailyFrequencyCount > 0) {
+      return medicationScheduleSlotKeysForFrequency(
+        schedule.dailyFrequencyCount,
+      );
+    }
+    return schedule.slotKeys;
   }
 
   Future<void> _showReminderDialog(
@@ -531,6 +623,71 @@ class _ScheduleHeader extends StatelessWidget {
   }
 }
 
+// 클래스명: _ScheduleSelectionHeader
+// 역할: 오늘 일정 화면과 같은 상단 구조로 채팅에 첨부할 약 선택 목적을 안내한다.
+class _ScheduleSelectionHeader extends StatelessWidget {
+  final _ScheduleText text;
+  final VoidCallback onBackRequested;
+
+  const _ScheduleSelectionHeader({
+    required this.text,
+    required this.onBackRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: MedBuddyColors.topBar,
+      padding: EdgeInsets.fromLTRB(
+        18,
+        MediaQuery.of(context).padding.top + 12,
+        28,
+        20,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            tooltip: text.back,
+            onPressed: onBackRequested,
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text.selectionTitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  text.selectionDescription,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TimeSlotCard extends StatelessWidget {
   final _ScheduleText text;
   final _ScheduleSlot slot;
@@ -543,6 +700,8 @@ class _TimeSlotCard extends StatelessWidget {
     bool medicationStatus,
   )
   onStatusChanged;
+  final bool isSelectionMode;
+  final void Function(MedicationSchedule schedule)? onSelectionRequested;
 
   const _TimeSlotCard({
     required this.text,
@@ -552,6 +711,8 @@ class _TimeSlotCard extends StatelessWidget {
     required this.onReminderRequested,
     required this.onGuideRequested,
     required this.onStatusChanged,
+    this.isSelectionMode = false,
+    this.onSelectionRequested,
   });
 
   @override
@@ -607,12 +768,13 @@ class _TimeSlotCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _ReminderIconButton(
-                    text: text,
-                    slotTitle: slotTitle,
-                    isEnabled: reminderSetting.isEnabled,
-                    onPressed: onReminderRequested,
-                  ),
+                  if (!isSelectionMode)
+                    _ReminderIconButton(
+                      text: text,
+                      slotTitle: slotTitle,
+                      isEnabled: reminderSetting.isEnabled,
+                      onPressed: onReminderRequested,
+                    ),
                 ],
               ),
             ),
@@ -636,6 +798,10 @@ class _TimeSlotCard extends StatelessWidget {
                   isCompleted: isCompletedProvider(schedule),
                   onGuideRequested: () => onGuideRequested(schedule),
                   onStatusChanged: (value) => onStatusChanged(schedule, value),
+                  isSelectionMode: isSelectionMode,
+                  onSelectionRequested: onSelectionRequested == null
+                      ? null
+                      : () => onSelectionRequested!(schedule),
                 ),
           ],
         ),
@@ -650,6 +816,8 @@ class _MedicationScheduleRow extends StatelessWidget {
   final bool isCompleted;
   final VoidCallback onGuideRequested;
   final Future<void> Function(bool medicationStatus) onStatusChanged;
+  final bool isSelectionMode;
+  final VoidCallback? onSelectionRequested;
 
   const _MedicationScheduleRow({
     required this.text,
@@ -657,11 +825,18 @@ class _MedicationScheduleRow extends StatelessWidget {
     required this.isCompleted,
     required this.onGuideRequested,
     required this.onStatusChanged,
+    this.isSelectionMode = false,
+    this.onSelectionRequested,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: isSelectionMode
+          ? ValueKey(
+              'scheduleMedicationSelectionOption_${schedule.medicationID}',
+            )
+          : null,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: MedBuddyColors.divider)),
@@ -669,17 +844,25 @@ class _MedicationScheduleRow extends StatelessWidget {
       child: Row(
         children: [
           Tooltip(
-            message: isCompleted ? text.undoComplete : text.complete,
+            message: isSelectionMode
+                ? text.selectMedication
+                : (isCompleted ? text.undoComplete : text.complete),
             child: InkWell(
               customBorder: const CircleBorder(),
-              onTap: () => onStatusChanged(!isCompleted),
+              onTap: isSelectionMode
+                  ? onSelectionRequested
+                  : () => onStatusChanged(!isCompleted),
               child: Padding(
                 padding: const EdgeInsets.all(4),
                 child: Icon(
-                  isCompleted
+                  isSelectionMode
+                      ? Icons.radio_button_unchecked
+                      : isCompleted
                       ? Icons.check_circle_outline
                       : Icons.circle_outlined,
-                  color: isCompleted
+                  color: isSelectionMode
+                      ? MedBuddyColors.primary
+                      : isCompleted
                       ? MedBuddyColors.primary
                       : MedBuddyColors.outline,
                   size: 28,
@@ -691,7 +874,7 @@ class _MedicationScheduleRow extends StatelessWidget {
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: onGuideRequested,
+              onTap: isSelectionMode ? onSelectionRequested : onGuideRequested,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
@@ -732,7 +915,7 @@ class _MedicationScheduleRow extends StatelessWidget {
           _MedicationThumbnail(
             schedule: schedule,
             displayName: schedule.displayNameForLanguage(text.language),
-            onPressed: onGuideRequested,
+            language: text.language,
           ),
         ],
       ),
@@ -748,12 +931,12 @@ class _MedicationScheduleRow extends StatelessWidget {
 class _MedicationThumbnail extends StatelessWidget {
   final MedicationSchedule schedule;
   final String displayName;
-  final VoidCallback onPressed;
+  final String language;
 
   const _MedicationThumbnail({
     required this.schedule,
     required this.displayName,
-    required this.onPressed,
+    required this.language,
   });
 
   @override
@@ -768,7 +951,14 @@ class _MedicationThumbnail extends StatelessWidget {
       message: displayName,
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: onPressed,
+        onTap: hasNetworkImage
+            ? () => MedicationImageViewer.show(
+                context,
+                medicationName: displayName,
+                imageUrl: imageUrl,
+                language: language,
+              )
+            : null,
         child: Container(
           key: Key('schedule-medication-thumbnail-$thumbnailKey'),
           width: 54,
@@ -1013,6 +1203,10 @@ class _ScheduleText {
 
   String get back => isEnglish ? 'Back' : '뒤로가기';
   String get title => isEnglish ? "Today's Medication Schedule" : '오늘의 복약 일정';
+  String get selectionTitle => isEnglish ? 'Choose a Medication' : '대화할 약 선택';
+  String get selectionDescription => isEnglish
+      ? 'Choose a medication to include with your message.'
+      : '메시지에 함께 보낼 약을 선택해주세요.';
   String get progress => isEnglish ? 'Progress' : '복용 진행률';
   String get healthRecommendation =>
       isEnglish ? 'View Health Recommendations' : '건강 관리 추천 보기';
@@ -1022,6 +1216,7 @@ class _ScheduleText {
       isEnglish ? 'No medication scheduled for today' : '오늘 복용할 약이 없습니다';
   String get complete => isEnglish ? 'Mark as taken' : '복용 완료';
   String get undoComplete => isEnglish ? 'Undo taken' : '복용 완료 취소';
+  String get selectMedication => isEnglish ? 'Select medication' : '약 선택';
   String get close => isEnglish ? 'Close' : '닫기';
   String get statusUpdateFailed =>
       isEnglish ? 'Could not update medication status.' : '복약 상태를 변경하지 못했습니다.';

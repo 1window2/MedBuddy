@@ -10,6 +10,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_medication_detail_ui_boundary.dart
 // 역할: 약 상세정보 화면을 구성하고 음성 안내 요청을 처리한다.
@@ -69,6 +70,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                   displayName: widget.medicationDetail.displayNameForLanguage(
                     widget.userSetting.language,
                   ),
+                  language: widget.userSetting.language,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
@@ -202,11 +204,13 @@ class _DetailHeader extends StatelessWidget {
 class _MedicationHeroCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final String displayName;
+  final String language;
   final double scale;
 
   const _MedicationHeroCard({
     required this.medicationDetail,
     required this.displayName,
+    required this.language,
     required this.scale,
   });
 
@@ -226,7 +230,11 @@ class _MedicationHeroCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _MedicationImageBox(medicationDetail: medicationDetail),
+          _MedicationImageBox(
+            medicationDetail: medicationDetail,
+            displayName: displayName,
+            language: language,
+          ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -261,8 +269,14 @@ class _MedicationHeroCard extends StatelessWidget {
 
 class _MedicationImageBox extends StatelessWidget {
   final MedicationDetail medicationDetail;
+  final String displayName;
+  final String language;
 
-  const _MedicationImageBox({required this.medicationDetail});
+  const _MedicationImageBox({
+    required this.medicationDetail,
+    required this.displayName,
+    required this.language,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -273,44 +287,66 @@ class _MedicationImageBox extends StatelessWidget {
         ? null
         : File(medicationDetail.localImagePath.trim());
     final hasLocalImage = localImageFile?.existsSync() ?? false;
+    final hasImage = hasLocalImage || normalizedImageUrl.isNotEmpty;
 
-    return Container(
-      width: 112,
-      height: 112,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Semantics(
+      button: hasImage,
+      label: hasImage
+          ? (language.trim().toLowerCase().startsWith('en')
+                ? 'Enlarge $displayName image'
+                : '$displayName 사진 확대')
+          : null,
+      child: InkWell(
+        key: const Key('medication-detail-image-button'),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.16),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: !hasLocalImage && normalizedImageUrl.isEmpty
-            ? const ColoredBox(
-                color: MedBuddyColors.divider,
-                child: Icon(
-                  Icons.medication_outlined,
-                  color: MedBuddyColors.textLight,
-                  size: 42,
-                ),
+        onTap: hasImage
+            ? () => MedicationImageViewer.show(
+                context,
+                medicationName: displayName,
+                imageUrl: normalizedImageUrl,
+                localImagePath: medicationDetail.localImagePath,
+                language: language,
               )
-            : hasLocalImage
-            ? Image.file(
-                localImageFile!,
-                fit: BoxFit.cover,
-                errorBuilder: _buildImageError,
-              )
-            : Image.network(
-                normalizedImageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: _buildImageError,
+            : null,
+        child: Container(
+          width: 112,
+          height: 112,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.16),
+                blurRadius: 10,
+                offset: Offset(0, 4),
               ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: !hasLocalImage && normalizedImageUrl.isEmpty
+                ? const ColoredBox(
+                    color: MedBuddyColors.divider,
+                    child: Icon(
+                      Icons.medication_outlined,
+                      color: MedBuddyColors.textLight,
+                      size: 42,
+                    ),
+                  )
+                : hasLocalImage
+                ? Image.file(
+                    localImageFile!,
+                    fit: BoxFit.cover,
+                    errorBuilder: _buildImageError,
+                  )
+                : Image.network(
+                    normalizedImageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: _buildImageError,
+                  ),
+          ),
+        ),
       ),
     );
   }

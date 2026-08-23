@@ -523,18 +523,22 @@ class NotificationService {
 
   // 함수명: showLinkedChatAlert
   // 역할:
-  // - 전경에서 받은 가족 채팅 푸시를 본문 노출 없이 로컬 알림으로 표시한다.
+  // - 전경에서 받은 가족 채팅 푸시를 제한된 메시지 미리보기와 함께 표시한다.
   Future<void> showLinkedChatAlert({
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messagePreview,
   }) async {
     await initialize();
     final isEnglish = _isEnglish(language);
+    final normalizedPreview = _linkedChatMessagePreview(messagePreview);
     await _plugin.show(
       id: id,
       title: isEnglish ? 'New family message' : '새 가족 메시지',
-      body: isEnglish
+      body: normalizedPreview.isNotEmpty
+          ? normalizedPreview
+          : isEnglish
           ? 'You received a new message from a linked family member.'
           : '연동된 가족에게 새 메시지가 도착했습니다.',
       notificationDetails: NotificationDetails(
@@ -551,5 +555,21 @@ class NotificationService {
       ),
       payload: 'chat:$linkId',
     );
+  }
+
+  // 함수명: _linkedChatMessagePreview
+  // 역할:
+  // - 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
+  static String _linkedChatMessagePreview(String? value) {
+    const maximumLength = 120;
+    final normalized = (value ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    if (normalized.length <= maximumLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maximumLength - 1).trimRight()}…';
   }
 }

@@ -40,14 +40,16 @@ class LinkedChatNotificationMonitorFactory {
           authenticationClient: client,
         );
       },
-      sendAlert: ({required linkId, required messageId}) async {
-        final setting = await settingControl.requestUserSetting();
-        return NotificationService.instance.showLinkedChatAlert(
-          id: _notificationId(linkId, messageId),
-          linkId: linkId,
-          language: setting.language,
-        );
-      },
+      sendAlert:
+          ({required linkId, required messageId, required messageBody}) async {
+            final setting = await settingControl.requestUserSetting();
+            return NotificationService.instance.showLinkedChatAlert(
+              id: _notificationId(linkId, messageId),
+              linkId: linkId,
+              language: setting.language,
+              messagePreview: messageBody,
+            );
+          },
       permissionRequester: NotificationService.instance.requestPermission,
       featureEnabledLoader: () async {
         final setting = await settingControl.requestUserSetting();

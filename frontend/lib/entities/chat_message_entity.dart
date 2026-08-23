@@ -6,12 +6,14 @@ class ChatMedicationContext {
   final String medicationName;
   final String imageUrl;
   final String dosagePerTime;
+  final List<String> scheduleSlotKeys;
 
   const ChatMedicationContext({
     required this.medicationId,
     required this.medicationName,
     this.imageUrl = '',
     this.dosagePerTime = '',
+    this.scheduleSlotKeys = const [],
   });
 
   // 함수명: fromJson
@@ -28,7 +30,20 @@ class ChatMedicationContext {
       medicationName: medicationName,
       imageUrl: ChatMessage._readString(json['image_url']),
       dosagePerTime: ChatMessage._readString(json['dosage_per_time']),
+      scheduleSlotKeys: _readScheduleSlotKeys(json['schedule_slot_keys']),
     );
+  }
+
+  static List<String> _readScheduleSlotKeys(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
+    return value
+        .map((item) => item?.toString().trim().toLowerCase() ?? '')
+        .where(supportedKeys.contains)
+        .toSet()
+        .toList(growable: false);
   }
 }
 

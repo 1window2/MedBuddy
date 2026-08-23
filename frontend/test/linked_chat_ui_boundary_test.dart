@@ -10,12 +10,14 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 
 class _RetryChatControl extends ManageLinkedChat {
   final List<String> clientMessageIds = [];
   int sendAttempts = 0;
+  int detailRequests = 0;
 
   _RetryChatControl()
     : super(
@@ -38,8 +40,25 @@ class _RetryChatControl extends ManageLinkedChat {
       medicationId: 91,
       medicationName: '테스트정',
       dosagePerTime: '1정',
+      scheduleSlotKeys: ['morning'],
     ),
   ];
+
+  @override
+  Future<MedicationDetail> requestMedicationDetail({
+    required int linkId,
+    required int medicationId,
+  }) async {
+    detailRequests += 1;
+    return const MedicationDetail(
+      id: 91,
+      itemName: '테스트정',
+      efficacy: '테스트 효능',
+      usageMethod: '하루 한 번 복용하세요.',
+      warning: '주의사항을 확인하세요.',
+      dosagePerTime: '1정',
+    );
+  }
 
   @override
   Future<ChatMessage> sendMessage({
@@ -134,6 +153,7 @@ void main() {
           child: LinkedChatUI(
             linkId: 17,
             currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
             peerName: '보호자 이름이 매우 긴 경우',
             control: control,
             realtimeService: realtimeService,
@@ -146,18 +166,45 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('chatMedicationOption_91')));
+    expect(find.text('대화할 약 선택'), findsOneWidget);
+    expect(find.text('아침'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+    );
     await tester.pumpAndSettle();
+    final messageField = tester.widget<TextField>(find.byType(TextField));
+    expect(messageField.controller?.text, isEmpty);
+    expect(messageField.decoration?.hintText, '예: 테스트정 복용을 완료했어요.');
     await tester.enterText(find.byType(TextField), '저녁 약을 복용했어요.');
-    await tester.tap(find.byTooltip('메시지 보내기'));
+    await tester.pump();
+    final sendButtonFinder = find.byKey(const ValueKey('chatSendButton'));
+    final firstSendButton = tester.widget<IconButton>(sendButtonFinder);
+    expect(firstSendButton.onPressed, isNotNull);
+    firstSendButton.onPressed!();
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('메시지 보내기'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('메시지를 보내지 못했습니다. 다시 눌러주세요.'), findsOneWidget);
+    final retryButton = tester.widget<IconButton>(sendButtonFinder);
+    expect(retryButton.onPressed, isNotNull);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '저녁 약을 복용했어요.',
+    );
+    retryButton.onPressed!();
     await tester.pumpAndSettle();
 
     expect(control.sendAttempts, 2);
     expect(control.clientMessageIds, hasLength(2));
     expect(control.clientMessageIds[0], control.clientMessageIds[1]);
     expect(find.text('저녁 약을 복용했어요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('테스트정'));
+    await tester.pumpAndSettle();
+    expect(control.detailRequests, 1);
+    expect(find.text('약 상세정보'), findsOneWidget);
+    expect(find.text('테스트 효능'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

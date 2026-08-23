@@ -195,6 +195,43 @@ class ManageLinkedChatTest(unittest.TestCase):
 
         self.assertEqual(patient_response["data"], caregiver_response["data"])
         self.assertEqual(patient_response["data"][0]["medication_name"], "테스트정")
+        self.assertEqual(
+            patient_response["data"][0]["schedule_slot_keys"],
+            ["morning", "lunch", "evening"],
+        )
+
+    def test_participants_can_open_patient_medication_detail(self) -> None:
+        """두 참여자가 채팅 약 카드에서 동일한 환자 약 상세정보를 보는지 검증한다."""
+        self.medication.efficacy = "테스트 효능"
+        self.medication.use_method = "하루 세 번 복용"
+        self.medication.warning_message = "복용 전 주의사항 확인"
+        self.db.commit()
+
+        patient_response = self.chat.request_medication_detail(
+            link_id=self.link_id,
+            user_hash="patient-a",
+            medication_id=int(self.medication.id),
+        )
+        caregiver_response = self.chat.request_medication_detail(
+            link_id=self.link_id,
+            user_hash="caregiver-a",
+            medication_id=int(self.medication.id),
+        )
+
+        self.assertEqual(patient_response["data"], caregiver_response["data"])
+        self.assertEqual(patient_response["data"]["item_name"], "테스트정")
+        self.assertEqual(patient_response["data"]["efficacy"], "테스트 효능")
+
+    def test_unrelated_user_cannot_open_chat_medication_detail(self) -> None:
+        """연동 참여자가 아닌 사용자는 채팅 약 상세정보를 볼 수 없는지 검증한다."""
+        with self.assertRaises(HTTPException) as context:
+            self.chat.request_medication_detail(
+                link_id=self.link_id,
+                user_hash="stranger",
+                medication_id=int(self.medication.id),
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
 
     def test_sent_message_preserves_medication_snapshot(self) -> None:
         """전송 당시 약명, 용량, 사진이 메시지 응답에 보존되는지 검증한다."""
