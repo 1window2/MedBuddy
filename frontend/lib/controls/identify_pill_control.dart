@@ -1,3 +1,6 @@
+// 파일명: identify_pill_control.dart
+// 역할: 낱알약 이미지 식별 요청, 응답 변환과 결과 저장을 수행한다.
+
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -29,6 +32,7 @@ class PillIdentificationException implements Exception {
 
 class IdentifyPill {
   static const int maxImageBytes = 10 * 1024 * 1024;
+  static const int maxBatchImageCount = 10;
 
   final String baseUrl;
   final ImagePicker _imagePicker;
@@ -64,6 +68,44 @@ class IdentifyPill {
         requestFullMetadata: false,
       );
       return image == null ? null : await _readBoundedImage(image);
+    } on PillIdentificationException {
+      rethrow;
+    } on FileSystemException catch (error) {
+      developer.log(
+        'Pill image file access failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.fileUnreadable,
+      );
+    }
+  }
+
+  // 함수명: requestMultiplePillImagesFromGallery
+  // 역할: 서로 다른 알약을 한 장씩 촬영한 사진을 갤러리에서 여러 장 선택해 순서대로 읽는다.
+  Future<List<Uint8List>> requestMultiplePillImagesFromGallery({
+    int limit = maxBatchImageCount,
+  }) async {
+    if (limit < 1 || limit > maxBatchImageCount) {
+      throw ArgumentError.value(
+        limit,
+        'limit',
+        'must be between 1 and $maxBatchImageCount',
+      );
+    }
+    try {
+      final images = await _imagePicker.pickMultiImage(
+        imageQuality: 88,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        limit: limit,
+        requestFullMetadata: false,
+      );
+      final imageBytes = <Uint8List>[];
+      for (final image in images) {
+        imageBytes.add(await _readBoundedImage(image));
+      }
+      return List<Uint8List>.unmodifiable(imageBytes);
     } on PillIdentificationException {
       rethrow;
     } on FileSystemException catch (error) {
