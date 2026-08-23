@@ -83,7 +83,7 @@ release.
 - This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
-- Results can be filtered by currently open, 24-hour, or all pharmacies and are ordered by operating status and distance. Users can call a pharmacy or open directions without embedding a map-provider API key in the app.
+- Results can be filtered by currently open or all pharmacies and are ordered by operating status and distance. When public data identifies continuous operation, the pharmacy card still shows that it is open 24 hours. Users can call a pharmacy or open directions without embedding a map-provider API key in the app.
 - Manual refresh uses a cooldown to prevent accidental repeated public-data requests.
 - Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting.
 

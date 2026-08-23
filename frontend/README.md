@@ -68,8 +68,9 @@ reminders, caregiver views, and filtering do not branch into a second storage
 model.
 
 The nearby-pharmacy laboratory flow requests foreground location only when opened, calls
-the authenticated MedBuddy pharmacy endpoint, and supports currently open,
-24-hour, and all-result filters. Public-data credentials remain on the backend;
+the authenticated MedBuddy pharmacy endpoint, and supports open-now and
+all-result filters. A pharmacy's 24-hour operating status remains available
+as card information. Public-data credentials remain on the backend;
 the client only receives the pharmacy fields needed for display, calling, and
 external directions. Manual refresh is throttled in the UI to avoid accidental
 repeat traffic.
