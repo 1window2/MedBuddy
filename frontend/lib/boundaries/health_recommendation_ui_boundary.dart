@@ -1,3 +1,6 @@
+// 파일명: health_recommendation_ui_boundary.dart
+// 역할: 복용 중인 약 조합에 따른 건강 관리 추천과 주의사항 화면을 제공한다.
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -214,8 +217,10 @@ class _HealthRecommendationContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(42, 24, 42, 28),
+      padding: EdgeInsets.fromLTRB(42, 24, 42, bottomSafeArea + 28),
       children: [
         _RecommendationCard(
           title: text.diet,
@@ -318,6 +323,7 @@ class _CautionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const ValueKey('healthRecommendationCautionCard'),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFBEB),
         borderRadius: MedBuddyRadii.card,
