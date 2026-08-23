@@ -466,6 +466,43 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('건강 관리 추천의 마지막 카드는 하단 안전영역 위에서 끝난다', (tester) async {
+      await _setViewport(tester, const Size(320, 568));
+      final viewModel = MedBuddyViewModel(
+        checkHealthRecommendation: _AccessibilityHealthRecommendationControl(),
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: _scaledMaterialApp(
+            textScale: 1.3,
+            home: const MediaQuery(
+              data: MediaQueryData(
+                size: Size(320, 568),
+                padding: EdgeInsets.only(bottom: 32),
+                viewPadding: EdgeInsets.only(bottom: 32),
+              ),
+              child: HealthRecommendationUI(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final list = find.byType(ListView);
+      await tester.fling(list, const Offset(0, -4000), 10000);
+      await tester.pumpAndSettle();
+
+      final cautionCard = find.byKey(
+        const ValueKey('healthRecommendationCautionCard'),
+      );
+      expect(cautionCard, findsOneWidget);
+      expect(tester.getBottomRight(cautionCard).dy, lessThanOrEqualTo(508));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('로그인 화면은 작은 화면과 2배 글씨에서도 모든 인증 수단을 스크롤한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       final authenticationControl = AuthenticationControl.development();
