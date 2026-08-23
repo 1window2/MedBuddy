@@ -1,7 +1,7 @@
 @startuml
 scale max 4096*4096
 
-title beta/v0.1.0 전체 시스템 주요 동작 Sequence Diagram
+title beta/v0.2.0 전체 시스템 주요 동작 Sequence Diagram
 
 autonumber
 hide footbox
@@ -23,20 +23,23 @@ actor "Camera / Gallery Service" as MediaService
 actor "OS Local Notification" as LocalNotification
 actor "OS TTS" as OSTTS
 actor "Android Workmanager" as Workmanager
+actor "OS Location Service" as LocationService
+actor "OS Phone / Map App" as ExternalApp
+actor "응급의료기관 약국 API" as PharmacyAPI
 
 box "Flutter Frontend"
     boundary "UI Layer\nMedBuddyApp\nAuthenticationUI\nHomeScreen\n각 Boundary UI" as UI
     control "AuthenticationControl" as AuthControl
     control "MedBuddyViewModel" as ViewModel
-    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nLinkPatientCaregiver 등" as FrontControl
-    participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nNotificationService\nTTSService\nCaregiverNotificationMonitorService" as FrontService
+    control "Frontend Controller\nInputPrescription\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
+    participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionImageCropService\nDeviceLocationBoundary\nLinkedChatRealtimeService 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
 end box
 
 box "FastAPI Backend"
-    participant "API Router\napi/router.py" as Router
-    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nLinkPatientCaregiver 등" as BackControl
-    participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug API Boundary\nPillVisionBoundary" as BackService
+    participant "API Router\napi.router\napi.pharmacy_router\napi.chat_router" as Router
+    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckNearbyPharmacy\nManageLinkedChat 등" as BackControl
+    participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager" as BackService
     participant "PillIdentificationCatalogRepository" as Repository
     database "Application Database\nSQLAlchemy" as Database
     database "Pill Catalog Database" as PillDatabase
@@ -192,7 +195,9 @@ alt 가이드 카메라 촬영
     User -> UI : 촬영 버튼 선택
     UI -> MediaService : 처방전 이미지 촬영
     MediaService --> UI : 촬영 이미지
-    UI -> ViewModel : requestCapturedPrescriptionImage(image)
+    UI -> FrontService : PrescriptionImageCropService.cropToGuide()
+    FrontService --> UI : 화면 가이드 영역으로 잘린 이미지
+    UI -> ViewModel : requestCapturedPrescriptionImage(croppedImage)
 else 사진첩 이미지 선택
     UI -> ViewModel : requestPrescriptionImageFromGallery()
     ViewModel -> FrontControl : InputPrescription.requestPrescriptionImageFromGallery()
@@ -253,6 +258,9 @@ end
 == 3. 약 정보 조회 및 분석 결과 생성 ==
 
 User -> UI : 분석 시작 선택
+UI --> User : MedicationScheduleReviewBoundary 출력
+User -> UI : 시작일, 기간, 1일 횟수, 1회 용량과 시간대 확인 또는 수정
+UI -> UI : 날짜 범위와 일정 일관성 검증
 UI -> ViewModel : requestPrescriptionAnalysis()
 
 loop 인식된 MedicationSchedule마다
@@ -333,43 +341,57 @@ opt 사용자가 분석 약을 저장하는 경우
     ViewModel --> UI : 저장 결과와 갱신된 일정 상태 출력
 end
 
-== 4. 선택적 낱알 약 후보 식별 ==
+== 4. 단일·다중 낱알 약 후보 식별 ==
 
 opt 사용자가 낱알 약 식별을 선택하는 경우
-    User -> UI : 낱알 앞면 및 선택적 뒷면 이미지 입력
-    UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
-    FrontControl -> ApiClient : POST /pill-identification/candidates
-    ApiClient -> Router : 낱알 이미지 분석 요청
-    Router -> BackControl : IdentifyPill.requestPillIdentification()
-    BackControl -> BackService : PillVisionBoundary.extractVisualFeatures()
-    BackService -> Gemini : GeminiPillVisionAPI 요청
-    Gemini --> BackService : 모양, 색상, 각인, 분할선 특징
-    BackService --> BackControl : PillVisualFeatures
-
-    BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog()
-    BackService -> Repository : list_all() / is_fresh()
-    Repository -> PillDatabase : pill_identification_references 조회
-
-    alt 저장된 Catalog가 최신 상태
-        PillDatabase --> Repository : PillCatalogEntry 목록
-        Repository --> BackService : Local Catalog
-    else Catalog가 없거나 오래된 경우
-        PillDatabase --> Repository : 비어 있거나 오래된 Catalog
-        BackService -> MFDS : MFDSPillAPI.requestCatalog()
-        MFDS --> BackService : 낱알식별정보
-        BackService -> Repository : replace_all(entries)
-        Repository -> PillDatabase : Catalog 교체 저장
-        PillDatabase --> Repository : 저장 완료
-        Repository --> BackService : 갱신된 Catalog
+    alt 단일 낱알 식별
+        User -> UI : 앞면 필수 및 선택적 뒷면 이미지 입력
+        UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
+    else 다중 낱알 일괄 식별
+        User -> UI : 최대 10개 항목에 앞면 필수·뒷면 선택 이미지 입력
+        UI -> FrontControl : IdentifyPillBatch.requestBatchIdentification(inputs)
+        loop 입력 순서를 보존하며 최대 2개 동시 실행
+            FrontControl -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
+        end
     end
 
-    BackService --> BackControl : PillCatalogEntry 목록
-    BackControl -> BackControl : 결정론적 Candidate Ranking
-    BackControl --> Router : PillIdentificationResult
-    Router --> ApiClient : 후보와 Match Score
-    ApiClient --> FrontControl : PillIdentificationResult
-    FrontControl --> UI : 후보 목록 출력
+    loop 각 낱알 입력마다
+        FrontControl -> ApiClient : POST /pill-identification/candidates
+        ApiClient -> Router : 낱알 이미지 분석 요청
+        Router -> BackControl : IdentifyPill.requestPillIdentification()
+        BackControl -> BackService : PillVisionBoundary.extractVisualFeatures()
+        BackService -> Gemini : GeminiPillVisionAPI 요청
+        Gemini --> BackService : 모양, 색상, 각인, 분할선 특징
+        BackService --> BackControl : PillVisualFeatures
+
+        BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog()
+        BackService -> Repository : list_all() / is_fresh()
+        Repository -> PillDatabase : pill_identification_references 조회
+
+        alt 저장된 Catalog가 최신 상태
+            PillDatabase --> Repository : PillCatalogEntry 목록
+            Repository --> BackService : Local Catalog
+        else Catalog가 없거나 오래된 경우
+            PillDatabase --> Repository : 비어 있거나 오래된 Catalog
+            BackService -> MFDS : MFDSPillAPI.requestCatalog()
+            MFDS --> BackService : 낱알식별정보
+            BackService -> Repository : replace_all(entries)
+            Repository -> PillDatabase : Catalog 교체 저장
+            PillDatabase --> Repository : 저장 완료
+            Repository --> BackService : 갱신된 Catalog
+        end
+
+        BackService --> BackControl : PillCatalogEntry 목록
+        BackControl -> BackControl : 결정론적 Candidate Ranking
+        BackControl --> Router : PillIdentificationResult
+        Router --> ApiClient : 후보와 Match Score
+        ApiClient --> FrontControl : 항목별 후보 또는 실패
+    end
+    FrontControl --> UI : 입력 순서의 후보와 부분 실패 출력
     User -> UI : 실제 약과 일치하는 후보 확인
+    UI --> User : MedicationScheduleReviewBoundary 출력
+    User -> UI : 복용 시작일, 기간, 횟수, 용량과 시간대 확인 또는 수정
+    UI -> FrontControl : 확인된 후보와 일정만 공통 저장 흐름으로 전달
 end
 
 == 5. 복약 일정 확인 및 복약 완료 ==
@@ -595,7 +617,87 @@ opt 사용자가 재생 중지 또는 화면 종료
     FrontService -> OSTTS : 음성 재생 중지
 end
 
-== 11. 운영 Catalog 주기 갱신 ==
+== 11. 복약정보 직접 등록 ==
+
+User -> UI : 약 정보 입력에서 직접 등록 선택
+UI --> User : 약명, 용량·단위, 복용기간, 시간대와 선택 사진 입력 화면
+User -> UI : 필수 정보 입력 및 저장 선택
+UI -> UI : 필수값, 날짜 범위와 시간대 검증
+opt 사용자가 약 사진을 선택한 경우
+    UI -> FrontService : ManualMedicationImageStore.saveImage()
+    FrontService --> UI : 앱 전용 저장 경로
+end
+UI -> FrontControl : ManualMedicationEntry를 MedicationSchedule과 저장 요청으로 변환
+FrontControl -> ApiClient : 기존 POST /save 계약 재사용
+ApiClient -> Router : 직접 입력 복약정보 저장 요청
+Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
+BackControl -> Database : 같은 환자·등록일·복용과정 중복 검증 후 저장
+Database --> BackControl : 저장 또는 중복 결과
+BackControl --> Router : 저장 또는 중복 결과
+Router --> ApiClient : 저장 응답
+ApiClient --> FrontControl : MedicationSaveResult
+FrontControl --> UI : 저장 결과와 갱신된 일정
+
+== 12. 근처 운영 약국 실험실 기능 ==
+
+User -> UI : 실험실에서 근처 운영 약국 활성화 후 홈 기능 선택
+UI -> FrontControl : CheckNearbyPharmacy.requestNearbyPharmacies()
+FrontControl -> FrontService : DeviceLocationBoundary.requestCurrentCoordinate()
+FrontService -> LocationService : 전경 위치 권한과 현재 좌표 요청
+LocationService --> FrontService : 현재 좌표 또는 권한 오류
+FrontService --> FrontControl : DeviceCoordinate
+FrontControl -> ApiClient : GET /pharmacy/nearby?latitude&longitude
+ApiClient -> Router : 인증된 근처 약국 요청
+Router -> BackControl : CheckNearbyPharmacy.requestNearbyPharmacies()
+BackControl -> BackService : PharmacyLookupBoundary.searchNearby()
+BackService -> PharmacyAPI : 공공데이터 인증키로 위치 기반 조회
+PharmacyAPI --> BackService : 약국 위치와 요일별 운영시간
+BackService --> BackControl : PharmacyLocationRecord 목록
+BackControl -> BackControl : 거리, 현재 영업 여부와 24시간 여부 계산
+BackControl --> UI : 거리순 NearbyPharmacy 목록
+User -> UI : 전화 또는 길찾기 선택
+UI -> ExternalApp : 전화번호 또는 약국명·좌표로 운영체제 앱 열기
+opt 사용자가 제한 시간 안에 새로고침 반복
+    UI --> User : 추가 호출 없이 남은 대기시간 안내
+end
+
+== 13. 복약 맥락 채팅 실험실 기능 ==
+
+User -> UI : 활성 환자-보호자 연결의 채팅 선택
+UI -> FrontControl : ManageLinkedChat.requestHistory(linkId)
+FrontControl -> ApiClient : GET /chat/links/{linkId}/messages
+ApiClient -> Router : Bearer Token과 연결 범위 요청
+Router -> BackControl : ManageLinkedChat.require_active_link()
+BackControl -> Database : 활성 연결 검증 및 최근 메시지 조회
+Database --> BackControl : 연결과 ChatMessage 목록
+BackControl --> Router : 복약 문맥 Snapshot을 포함한 채팅 이력
+Router --> ApiClient : 채팅 이력 응답
+ApiClient --> FrontControl : ChatMessage 목록
+FrontControl --> UI : 채팅 이력 출력
+UI -> FrontService : LinkedChatRealtimeService.start()
+FrontService -> Router : WSS /chat/links/{linkId}/stream
+Router -> BackControl : 연결 참가자 권한 재검증
+BackControl --> FrontService : WebSocket 연결 승인
+
+User -> UI : 환자의 활성 복용 약 선택 후 메시지 전송
+UI -> FrontControl : sendMessage(clientMessageId, medicationId, body)
+FrontControl -> ApiClient : POST /chat/links/{linkId}/messages
+ApiClient -> Router : 채팅 전송 요청
+Router -> BackControl : ManageLinkedChat.send_message()
+BackControl -> Database : 연결, 약 소유권·복용기간, clientMessageId 검증 후 저장
+Database --> BackControl : 저장 ChatMessage 또는 기존 중복 응답
+BackControl -> BackService : ChatConnectionManager.broadcast()
+BackService --> UI : 상대 WebSocket에 새 메시지 Event
+alt 상대 사용자가 실시간 연결 중이 아님
+    BackControl -> FCM : 식별 가능한 약명을 제외한 일반 채팅 알림
+    FCM --> User : 새 복약 대화 알림
+end
+UI -> FrontControl : markRead(throughMessageId)
+FrontControl -> ApiClient : POST /chat/links/{linkId}/read
+ApiClient -> Router : 읽음 범위 갱신
+Router -> Database : 상대 메시지 read_at 일괄 갱신
+
+== 14. 운영 Catalog 주기 갱신 ==
 
 loop 설정된 주기마다 catalog-refresh 실행
     BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청

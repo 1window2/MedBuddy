@@ -3,7 +3,7 @@
 ## Decision Status
 
 - Status: production infrastructure provisioned and public HTTPS smoke-tested; authenticated Android device and final signed-release validation remain
-- Applies to: Android beta and FastAPI production deployment
+- Applies to: Android v0.2.0 beta and FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
 
@@ -33,6 +33,9 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend external boundary | `AuthenticatedApiClient` | Attach fresh bearer tokens to the existing HTTP control calls. |
 | Frontend external boundary | `FirebaseRuntimeService` | Initialize Firebase and Android App Check once in foreground and background isolates. |
 | Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
+| Frontend local boundary | `ManualMedicationImageStore` | Copy optional direct-entry images into patient-scoped app storage and remove unreferenced copies without touching gallery originals. |
+| Frontend external boundary | `DeviceLocationBoundary` | Request foreground coordinates only for the nearby-pharmacy screen and expose permission/service failures as typed states. |
+| Frontend external boundary | `LinkedChatRealtimeService` | Maintain the authenticated linked-chat WebSocket, heartbeat, bounded reconnect, and event stream independently of chat UI state. |
 | Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
 | Backend boundary | `OIDCTokenVerifier` | Verify signature, issuer, audience, expiry, and subject. |
@@ -43,6 +46,11 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend control | `AuthorizationControl` | Resolve owned patient scope and validate active caregiver links. |
 | Backend control | `ManagePushToken` | Register or disable device tokens within the authenticated user scope. |
 | Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
+| Backend external boundary | `NationalEmergencyMedicalCenterPharmacyAPI` | Send the minimum coordinate query to the public pharmacy service and normalize its untrusted response. |
+| Backend control | `CheckNearbyPharmacy` | Validate coordinates, apply result bounds, and return only presentation-safe pharmacy fields. |
+| Backend control | `ManageLinkedChat` | Authorize the active link, validate active medication context, persist idempotent messages, and track participant read state. |
+| Backend control | `DispatchChatMessageAlert` | Notify only the linked recipient with generic content after the message transaction succeeds. |
+| Backend runtime service | `ChatConnectionManager` | Own in-process WebSocket memberships and broadcast only to connections authorized for the same active link. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
 | Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
 | Backend dependency policy | `_lock_account_operation` | Serialize every authenticated account request with deletion using a transaction-scoped PostgreSQL advisory lock or a local SQLite write transaction. |
@@ -83,6 +91,11 @@ that every identifier will be detected. User-facing notices and release privacy
 review must disclose that privacy-filtered text can still be processed by an
 external model. Loose-pill photos remain a separate external
 visible-attribute-extraction flow and must not be persisted or logged.
+
+Direct medication entry does not reuse either external image-analysis path.
+Its optional image is copied into app-owned local storage for display and is
+not uploaded by the direct-entry request. The copied image is deleted when it
+is no longer referenced; user-owned gallery originals are never removed.
 
 ## Target Request Flow
 
@@ -132,6 +145,9 @@ Router --> AuthenticatedApiClient : JSON response
 6. Release mode has no unauthenticated `local_patient`, query-role, or
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
+7. Linked-chat history, message, read, unread-count, and WebSocket routes repeat
+   the same active-link authorization. A laboratory toggle controls only UI
+   visibility and cannot grant chat or pharmacy access.
 
 ## Irreversible Account Deletion
 
@@ -197,6 +213,45 @@ the server-side reminder preference remains available for a later sign-in.
 Permanent account deletion performs the same local cleanup before the backend
 deletion request. Caregiver alerts and unrelated notification categories are
 not removed by patient-reminder cleanup.
+
+## Nearby Pharmacy Location Boundary
+
+Nearby-pharmacy lookup is a user-initiated laboratory feature. Flutter requests
+foreground location only while the screen is active and sends latitude and
+longitude to the authenticated MedBuddy backend over HTTPS. The backend keeps
+the public-data key private, validates coordinate ranges, requests only the
+bounded search radius needed for the screen, and returns normalized pharmacy
+name, address, telephone, operating-hours, distance, and destination coordinate
+fields.
+
+Neither Flutter nor FastAPI persists the current coordinate. Application logs,
+error messages, analytics, and notification payloads must not contain precise
+location. The UI applies a refresh cooldown and the backend retains an
+independent request quota. Opening call or directions delegates to the
+operating system; MedBuddy does not claim real-time stock or guaranteed opening
+hours and asks the user to confirm by phone.
+
+## Linked Medication Chat Boundary
+
+The chat laboratory feature requires an active patient-caregiver link and at
+least one active medication belonging to the linked patient. The client may
+attach only a server-returned medication context. `ManageLinkedChat` rechecks
+the saved medication, course activity, and link ownership rather than trusting
+the client snapshot.
+
+REST history and WebSocket events share the same principal-to-link
+authorization. Client-generated message identifiers are normalized and unique
+per sender so a retry returns the existing message instead of duplicating it.
+Message length and page size are bounded, read state is participant-specific,
+and unlinking immediately blocks subsequent history, send, read, unread, and
+stream operations.
+
+Chat message bodies and medication context are stored medical-adjacent data and
+must not appear in logs or lock-screen notifications. FCM or local chat alerts
+use generic text and include only the private link routing value required for
+authenticated in-app navigation. `ChatConnectionManager` is an in-process
+delivery optimization; persisted history remains the source of truth after a
+disconnect or server restart.
 
 ## Migration Without Pipeline Breakage
 
@@ -399,6 +454,10 @@ The current ordered Alembic chain records the beta data boundary:
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
 | `b71d8c2e4f10` | Add account-deletion tombstone and external-identity completion timestamps. |
 | `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
+| `ae4c7d19f2b0` | Add prescription-batch identifiers used for course grouping, duplicate control, and history comparison. |
+| `7d2e4f1a8c63` | Add the durable caregiver-alert outbox used for retryable transition delivery. |
+| `3a9f5c7d2e10` | Add linked patient-caregiver chat messages, idempotent client message identifiers, and participant read timestamps. |
+| `6e1b4a9c2d80` | Bind each chat message to a validated active saved-medication context and preserve its display snapshot. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still

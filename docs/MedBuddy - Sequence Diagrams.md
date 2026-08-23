@@ -2,17 +2,11 @@
 
 이 문서는 MedBuddy의 주요 상호작용을 Boundary-Control-Entity 관점으로 정리한 PlantUML 시퀀스 다이어그램 제안본이다.
 
-> **Implementation status (2026-07-20):** The six UC-1 through UC-14 groups
-> below preserve the first-semester behavioral baseline. Current implementation
-> names are defined by `MedBuddy - Class Diagram.md`: use `Caregiver`,
-> `LinkPatientCaregiver`, and `CaregiverNotification` where older diagrams say
-> `Guardian`, `PatientGuardianLinkControl`, or `GuardianAlertSetting`. UC-15
-> loose-pill identification is documented in `MedBuddy - v0.0.9 Pill
-> Identification Extension.md`. Caregiver preference persistence is implemented,
-> but cross-device caregiver alert delivery is a beta requirement and must not
-> be inferred from the external notification messages in this historical flow.
-> Authentication and HTTPS are cross-cutting beta additions defined in
-> `MedBuddy - Beta Security Architecture.md`.
+> **구현 상태 (2026-08-23):** 1~6번은 1학기 핵심 동작을 보존하되 현재
+> 구현 이름과 설정 동작을 반영한다. 7~10번은 `beta/v0.2.0`에서 추가한
+> 직접 등록, 다중 낱알 식별, 근처 운영 약국, 복약 맥락 채팅 흐름이다.
+> 인증·인가·HTTPS와 실험실 기능의 보안 경계는
+> `MedBuddy - Beta Security Architecture.md`를 따른다.
 
 ## 수정 기준과 논거
 
@@ -27,7 +21,7 @@
 - `critical`은 DB 상태 변경과 외부 알림 등록처럼 원자성이 필요한 변경 구간에 사용한다.
 - `par`는 하나의 커밋 이후 서로 독립적으로 갱신 가능한 UI/알림 흐름에만 제한적으로 사용한다.
 
-최종 시퀀스 다이어그램은 다음 6개로 구성한다.
+최종 시퀀스 다이어그램은 다음 10개로 구성한다.
 
 | No. | 시나리오 | 관련 유스케이스 |
 | --- | --- | --- |
@@ -37,6 +31,10 @@
 | 4 | 오늘의 복약 일정 확인, 건강 추천, 음성 안내, 알림, 복약 완료 | UC-3, UC-8, UC-10, UC-11, UC-12 |
 | 5 | 환자/보호자 연동 및 연동 해제 | UC-6, UC-7 |
 | 6 | 사용자 설정 | UC-14 |
+| 7 | 복약정보 직접 등록 및 일정 검토 | UC-25, UC-29 |
+| 8 | 다중 낱알 약 일괄 식별 및 일정 검토 | UC-20, UC-26, UC-29 |
+| 9 | 근처 운영 약국 조회 | UC-27 |
+| 10 | 복약 맥락 채팅 | UC-28 |
 
 ## 1. 처방전/약봉투 이미지 입력, 분석, 결과 확인
 
@@ -910,19 +908,21 @@ end
 ### 수정 논거
 
 - 사용자 설정이 없으면 기본 설정을 생성해야 하므로 `alt [setting exists] / [setting not found]`로 초기 조회 결과를 분리했다.
-- 사용자는 설정 화면을 닫기 전까지 여러 항목을 반복 변경할 수 있으므로 `loop [while setting page is open]`를 사용했다.
-- 한 번의 변경 이벤트에서 글씨 크기, 읽기 속도, 언어 변경은 동시에 발생하는 것이 아니라 상호 배타적 선택이므로 `alt`로 표현했다.
-- 설정 저장은 사용자 경험에 즉시 반영되어야 하는 상태 변경이므로 각 변경을 `critical persist user setting`으로 묶었다.
+- 글자 크기와 언어 선택은 저장 전에도 현재 설정 화면에 즉시 반영되므로 `loop` 안에서 미리보기 상태만 갱신한다.
+- 읽기 속도는 TTS 미리듣기로 확인하며 사용자가 직접 중지한 경우 오류로 처리하지 않는다.
+- 명시적인 저장을 선택할 때만 서버 설정을 변경하고, 저장 후에도 설정 화면에 남는다.
 
 ```plantuml
 @startuml SD06_User_Setting
 autonumber
 actor "환자 또는 보호자" as User
 boundary "MainUI_boundary" as MainUI
-boundary "UserSettingUI_boundary" as SettingUI
-control "UserSetting_control" as C
+boundary "ManageUserSettingUI_boundary" as SettingUI
+control "ManageUserSetting_control" as C
+control "AppLanguageControl" as LanguageControl
+boundary "TTSService_boundary" as TTS
 entity "UserSetting_entity" as Setting
-boundary "LocalSettingStorage_boundary" as Storage
+database "UserSettingStorage" as Storage
 
 User -> MainUI : clickSettingButton()
 activate MainUI
@@ -955,69 +955,217 @@ deactivate C
 deactivate MainUI
 SettingUI --> User : displayUserSettingPage()
 
-loop [while setting page is open and user changes settings]
+loop [설정 화면에서 값을 미리 보는 동안]
   alt [font size selected]
     User -> SettingUI : selectFontSize(fontSize)
-    SettingUI -> C : updateFontSize(fontSize)
-    activate C
-    critical persist user setting
-      C -> Setting : changeFontSize(fontSize)
-      activate Setting
-      Setting -> Storage : saveFontSize(fontSize)
-      activate Storage
-      Storage --> Setting : savedFontSize
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
-    end
-    C --> SettingUI : applyFontSize(updatedUserSetting)
-    deactivate C
+    SettingUI -> SettingUI : updateLivePreview(fontSize)
     SettingUI --> User : displayUpdatedFontSize()
   else [reading speed selected]
     User -> SettingUI : selectReadingSpeed(readingSpeed)
-    SettingUI -> C : updateReadingSpeed(readingSpeed)
-    activate C
-    critical persist user setting
-      C -> Setting : changeReadingSpeed(readingSpeed)
-      activate Setting
-      Setting -> Storage : saveReadingSpeed(readingSpeed)
-      activate Storage
-      Storage --> Setting : savedReadingSpeed
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
+    SettingUI -> SettingUI : updateLivePreview(readingSpeed)
+    opt [음성으로 들어보기]
+      SettingUI -> TTS : speak(previewText, language, readingSpeed)
+      TTS --> User : 선택 속도로 미리듣기
+      opt [사용자가 듣기 중지]
+        User -> SettingUI : stopVoicePreview()
+        SettingUI -> TTS : stop()
+        SettingUI --> User : 오류 문구 없이 중지 상태 표시
+      end
     end
-    C --> SettingUI : applyReadingSpeed(updatedUserSetting)
-    deactivate C
-    SettingUI --> User : displayUpdatedReadingSpeed()
   else [language selected]
     User -> SettingUI : selectLanguage(language)
-    SettingUI -> C : updateLanguage(language)
-    activate C
-    critical persist user setting
-      C -> Setting : changeLanguage(language)
-      activate Setting
-      Setting -> Storage : saveLanguage(language)
-      activate Storage
-      Storage --> Setting : savedLanguage
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
-    end
-    C --> SettingUI : applyLanguage(updatedUserSetting)
-    deactivate C
+    SettingUI -> LanguageControl : setLanguage(language)
+    LanguageControl --> SettingUI : 전역 언어 즉시 갱신
     SettingUI --> User : displayUpdatedLanguage()
   end
 end
 
-User -> SettingUI : closeSettingPage()
-SettingUI -> C : finishUserSetting()
+User -> SettingUI : saveUserSetting()
+SettingUI -> C : saveUserSetting(fontSize, readingSpeed, language, labFlags)
 activate C
-C --> MainUI : returnToMainScreen()
-activate MainUI
+critical [사용자 설정 저장]
+  C -> Setting : applyConfirmedValues()
+  Setting -> Storage : upsertUserSetting()
+  Storage --> Setting : savedUserSetting
+end
+C --> SettingUI : savedUserSetting
 deactivate C
-MainUI --> User : displayMainScreen()
-deactivate MainUI
-deactivate SettingUI
+SettingUI --> User : 저장 완료 안내 후 설정 화면 유지
+
+opt [사용자가 닫기 선택]
+  User -> SettingUI : closeSettingPage()
+  SettingUI --> MainUI : returnToMainScreen()
+  MainUI --> User : displayMainScreen()
+end
+@enduml
+```
+
+## 7. 복약정보 직접 등록 및 일정 검토
+
+### 수정 논거
+
+- 직접 입력도 별도 저장 체계를 만들지 않고 기존 저장 복약정보와 일정 모델을 재사용한다.
+- 선택 사진은 앱 전용 저장소에 보관하고 서버에는 로컬 경로를 전송하지 않는다.
+- 저장 전 날짜·횟수·용량·시간대를 검토하여 사진 기반 입력과 동일한 일정 품질을 유지한다.
+
+```plantuml
+@startuml SD07_Manual_Medication_Entry
+autonumber
+actor "사용자" as User
+boundary "ManualMedicationEntryUI" as UI
+boundary "ManualMedicationImageStore" as ImageStore
+control "CheckSavedMedication" as SaveControl
+entity "ManualMedicationEntry" as Entry
+entity "MedicationSchedule" as Schedule
+database "Medication Database" as DB
+
+User -> UI : 직접 등록 선택
+UI --> User : 약명, 용량, 기간, 시간대, 선택 사진 입력 화면
+User -> UI : 값 입력 및 저장 선택
+UI -> Entry : validateRequiredValues()
+Entry --> UI : validatedEntry
+opt [사진을 선택함]
+  UI -> ImageStore : saveImage(patientHash, sourcePath)
+  ImageStore --> UI : appOwnedImagePath
+end
+UI -> Schedule : convertToMedicationSchedule(validatedEntry)
+Schedule --> UI : confirmedSchedule
+UI -> SaveControl : saveMedicationDetail(confirmedSchedule)
+SaveControl -> DB : 중복 확인 및 저장
+DB --> SaveControl : 저장 또는 중복 결과
+SaveControl --> UI : MedicationSaveResult
+UI --> User : 결과 안내 및 일정 갱신
+@enduml
+```
+
+## 8. 다중 낱알 약 일괄 식별 및 일정 검토
+
+### 수정 논거
+
+- 일괄 식별은 검증된 단일 낱알 식별 컨트롤을 재사용한다.
+- 최대 10개 입력과 최대 2개 동시 요청으로 외부 분석 호출을 제한한다.
+- 한 항목이 실패해도 성공한 항목을 유지하고, 확인된 후보만 일정 검토와 저장으로 전달한다.
+
+```plantuml
+@startuml SD08_Multi_Pill_Batch
+autonumber
+actor "사용자" as User
+boundary "PillIdentificationUI" as UI
+control "IdentifyPillBatch" as Batch
+control "IdentifyPill" as Single
+boundary "Pill Identification API" as API
+boundary "MedicationScheduleReviewBoundary" as Review
+entity "PillIdentificationResult" as Result
+
+User -> UI : 최대 10개 알약의 앞면 필수·뒷면 선택 사진 입력
+UI -> Batch : requestBatchIdentification(inputs)
+loop [입력 순서 보존, 최대 2개 동시 실행]
+  Batch -> Single : requestPillIdentification(front, back)
+  Single -> API : requestCandidateRanking()
+  alt [항목 성공]
+    API --> Single : PillIdentificationResult
+    Single --> Batch : success(index, result)
+  else [항목 실패]
+    API --> Single : item error
+    Single --> Batch : failure(index, error)
+  end
+end
+Batch --> UI : ordered item outcomes
+UI --> User : 후보와 항목별 실패 표시
+User -> UI : 실제 약 후보 확인
+UI -> Review : showMedicationScheduleReview(confirmedCandidates)
+Review --> User : 시작일, 기간, 횟수, 용량, 시간대 검토
+User -> Review : 확인 또는 수정 완료
+Review --> UI : normalized schedules
+@enduml
+```
+
+## 9. 근처 운영 약국 조회
+
+### 수정 논거
+
+- 기기는 좌표만 제공하고 공공데이터 인증키는 Backend가 소유한다.
+- 위치 권한, 공공 API 조회, 거리·영업상태 계산, 전화·길찾기 실행을 분리한다.
+- 반복 새로고침은 화면에서 제한하여 불필요한 외부 API 호출을 줄인다.
+
+```plantuml
+@startuml SD09_Nearby_Pharmacy
+autonumber
+actor "사용자" as User
+boundary "CheckNearbyPharmacyUI" as UI
+control "CheckNearbyPharmacy (Flutter)" as FE
+boundary "DeviceLocationBoundary" as Location
+control "CheckNearbyPharmacy (FastAPI)" as BE
+boundary "PharmacyLookupBoundary" as PublicAPI
+boundary "OS Phone / Map" as ExternalApp
+
+User -> UI : 실험실 기능을 켠 뒤 근처 운영 약국 선택
+UI -> FE : requestNearbyPharmacies()
+FE -> Location : requestCurrentCoordinate()
+Location --> FE : DeviceCoordinate
+FE -> BE : GET /pharmacy/nearby
+BE -> PublicAPI : searchNearby(latitude, longitude, radius)
+PublicAPI --> BE : PharmacyLocationRecord 목록
+BE -> BE : 거리, 영업 중, 24시간 여부 계산 및 정렬
+BE --> FE : NearbyPharmacy 목록
+FE --> UI : 목록과 필터 상태
+UI --> User : 거리·운영시간·연락처 표시
+opt [전화 또는 길찾기]
+  User -> UI : 약국 동작 선택
+  UI -> ExternalApp : 전화번호 또는 약국명·좌표 열기
+end
+opt [짧은 시간 안에 새로고침 반복]
+  UI --> User : API 재호출 없이 남은 대기시간 안내
+end
+@enduml
+```
+
+## 10. 복약 맥락 채팅
+
+### 수정 논거
+
+- 실험실 기능이 켜져 있어도 활성 환자-보호자 연결과 현재 복용 약이 있어야 채팅을 사용할 수 있다.
+- 메시지 저장은 REST, 실시간 수신은 WebSocket으로 분리하고 재연결 시 이력으로 누락을 보완한다.
+- `clientMessageId`로 재전송 중복을 막고 선택 약은 전송 시점의 표시용 스냅샷으로 보존한다.
+
+```plantuml
+@startuml SD10_Linked_Medication_Chat
+autonumber
+actor "환자 또는 보호자" as User
+actor "연결 상대" as Peer
+boundary "LinkedChatUI" as UI
+control "ManageLinkedChat (Flutter)" as FE
+boundary "LinkedChatRealtimeService" as Realtime
+control "ManageLinkedChat (FastAPI)" as BE
+database "Chat Message Database" as DB
+boundary "ChatConnectionManager" as Connections
+boundary "PushNotificationBoundary" as Push
+
+User -> UI : 활성 연결의 채팅 선택
+UI -> FE : requestHistory(linkId)
+FE -> BE : GET message history
+BE -> DB : 연결 권한 검증 및 최근 이력 조회
+DB --> BE : 메시지와 복약 스냅샷
+BE --> UI : ChatMessage 목록
+UI -> Realtime : start(linkId, userHash)
+Realtime -> BE : WSS stream 연결
+BE -> DB : 활성 연결 재검증
+BE --> Realtime : connection accepted
+
+User -> UI : 활성 복용 약 선택 후 메시지 전송
+UI -> FE : sendMessage(clientMessageId, medicationId, body)
+FE -> BE : POST message
+BE -> DB : 연결·약 소유권·복용기간 검증 및 멱등 저장
+DB --> BE : 저장 메시지 또는 기존 중복 응답
+BE -> Connections : broadcast(linkId, messageEvent)
+Connections --> Peer : 실시간 메시지
+opt [상대가 실시간 연결 중이 아님]
+  BE -> Push : 일반화된 새 대화 알림
+  Push --> Peer : 약명·본문을 노출하지 않는 알림
+end
+Peer -> UI : 채팅 열기
+UI -> FE : markRead(throughMessageId)
+FE -> BE : POST read marker
+BE -> DB : 상대 메시지 readAt 일괄 갱신
 @enduml
 ```

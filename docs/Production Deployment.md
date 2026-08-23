@@ -7,7 +7,7 @@ MedBuddy production runs on a dedicated Ubuntu mini PC.
 ```text
 Android client
     |
-    | HTTPS
+    | HTTPS / WSS
     v
 api.medbuddy.pp.ua
     |
@@ -63,6 +63,20 @@ deploy/backend.env.example
 Never commit the real `.env` files, Firebase Admin credential, Cloudflare Tunnel
 token, API keys, database passwords, or Android signing material.
 
+The backend environment must include one public-data credential authorized for
+the configured medication services and the National Emergency Medical Center
+pharmacy service. Keep the pharmacy endpoint on the backend only:
+
+```text
+PUBLIC_DATA_API_KEY=...
+PHARMACY_API_BASE_URL=https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService
+PHARMACY_API_TIMEOUT_SECONDS=12
+```
+
+Do not place the public-data key in Flutter compile-time values. The client
+sends only its current coordinates to the authenticated `/api/v1/pharmacy`
+boundary when the user explicitly opens the laboratory feature.
+
 Set `POSTGRES_PASSWORD` once in `deploy/.env` as the raw PostgreSQL password.
 The backend receives structured host/user/password fields and lets SQLAlchemy
 encode the connection URL, so passwords containing URL-reserved characters
@@ -117,6 +131,19 @@ curl -i https://api.medbuddy.pp.ua/ready
 
 Both must return HTTP 200 with the expected API contract.
 
+Verify that the database reached the latest migration, including linked chat
+messages and medication context:
+
+```bash
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  exec -T backend alembic current
+```
+
+The reported head must include the v0.2.0 chat migration chain before chat is
+enabled for users. Cloudflare Tunnel must also permit WebSocket upgrades for
+`/api/v1/chat/links/*/stream`; no separate public port or second backend is
+required.
+
 Verify that the pill-identification catalog was populated:
 
 ```bash
@@ -152,6 +179,18 @@ The production Android API base URL is:
 ```text
 https://api.medbuddy.pp.ua/api/v1/medication
 ```
+
+Flutter derives sibling authenticated endpoints from that trusted origin:
+
+```text
+https://api.medbuddy.pp.ua/api/v1/pharmacy
+https://api.medbuddy.pp.ua/api/v1/chat
+wss://api.medbuddy.pp.ua/api/v1/chat
+```
+
+Nearby-pharmacy and linked medication chat are disabled by default in user
+settings. Enabling the UI does not weaken backend authentication, active-link
+authorization, location minimization, or chat medication-context validation.
 
 ADB, Flutter hot reload, breakpoints, and physical-device debugging do not
 require the backend to run on the development laptop or on the same LAN.

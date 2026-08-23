@@ -15,7 +15,10 @@ actor "식품의약품안전처\n공공데이터 서비스" as MFDS
 actor "기기 카메라 및 사진첩" as Camera
 actor "운영체제 로컬 알림 서비스" as LocalNotification
 actor "운영체제 음성 합성 서비스" as TTS
+actor "운영체제 위치 서비스" as Location
+actor "운영체제 전화 및 지도 앱" as ExternalApp
 actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
+actor "국립중앙의료원\n약국 공공데이터 서비스" as PharmacyAPI
 actor "운영 실행 환경" as Ops
 actor "시간 트리거" as Timer
 
@@ -30,6 +33,9 @@ rectangle "메드버디" {
         usecase "UC-19\n처방 변경 비교 확인" as UC19
         usecase "UC-20\n낱알 약 후보 식별" as UC20
         usecase "UC-21\n가이드 기반 처방전 촬영" as UC21
+        usecase "UC-25\n복약정보 직접 등록" as UC25
+        usecase "UC-26\n다중 낱알 약 일괄 식별" as UC26
+        usecase "UC-29\n복약 일정 검토 및 보정" as UC29
     }
 
     package "복약 관리" {
@@ -48,6 +54,7 @@ rectangle "메드버디" {
         usecase "UC-07\n환자-보호자 연결 해제" as UC7
         usecase "UC-13\n보호자 복약 완료 알림 수신" as UC13
         usecase "UC-22\n보호자 미복약 알림 정책\n설정 및 감지" as UC22
+        usecase "UC-28\n복약 맥락 채팅" as UC28
     }
 
     package "인증 및 사용자 설정" {
@@ -60,6 +67,10 @@ rectangle "메드버디" {
     package "운영 및 유지관리" {
         usecase "UC-23\n의약품 목록 동기화" as UC23
         usecase "UC-24\n데이터 생명주기 정리" as UC24
+    }
+
+    package "실험실 편의 기능" {
+        usecase "UC-27\n근처 운영 약국 조회" as UC27
     }
 }
 
@@ -84,6 +95,10 @@ U -- UC18
 U -- UC19
 U -- UC20
 U -- UC21
+U -- UC25
+U -- UC26
+U -- UC27
+U -- UC29
 
 P -- UC3P
 P -- UC4P
@@ -93,6 +108,7 @@ P -- UC7
 P -- UC8
 P -- UC10
 P -- UC12
+P -- UC28
 
 C -- UC4C
 C -- UC6
@@ -100,6 +116,7 @@ C -- UC7
 C -- UC9
 C -- UC13
 C -- UC22
+C -- UC28
 
 FirebaseAuth -- UC14
 FirebaseAuth -- UC15
@@ -118,17 +135,27 @@ MFDS -- UC2
 MFDS -- UC20
 MFDS -- UC23
 
+PharmacyAPI -- UC27
+
 Camera -- UC1
 Camera -- UC20
 Camera -- UC21
+Camera -- UC25
+Camera -- UC26
+
+Location -- UC27
+ExternalApp -- UC27
 
 LocalNotification -- UC12
 LocalNotification -- UC22
+LocalNotification -- UC28
 
 TTS -- UC11
 TTS -- UC14
 
 Workmanager -- UC22
+
+FCM -- UC28
 
 Ops -- UC23
 Timer -- UC24
@@ -150,5 +177,12 @@ UC1 <.. UC17 : <<extend>>
 UC2 <.. UC18 : <<extend>>
 UC1 <.. UC21 : <<extend>>
 UC4C <.. UC22 : <<extend>>
+UC4P <.. UC25 : <<extend>>
+UC26 ..> UC20 : <<include>>
+UC1 <.. UC29 : <<extend>>
+UC20 <.. UC29 : <<extend>>
+UC6 <.. UC28 : <<extend>>
+UC14 <.. UC27 : <<extend>>
+UC14 <.. UC28 : <<extend>>
 
 @enduml

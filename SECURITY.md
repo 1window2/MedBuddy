@@ -2,14 +2,16 @@
 
 ## Project Status
 
-MedBuddy is preparing its first Android beta. Published alpha demos remain
-pre-release builds and are not production-ready stable releases.
+MedBuddy is developing the Android v0.2.0 beta on top of the published v0.1.0
+baseline. Laboratory pharmacy and linked-chat features are not production-ready
+until the v0.2.0 privacy and two-device release checks are complete.
 
 ## Supported Versions
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.1.0-beta` source | Beta candidate | Security fixes are applied to the beta branch before publication. |
+| `beta/v0.2.0` source | Beta candidate | Security fixes are applied before the v0.2.0 beta is published. |
+| `v0.1.0` | Current baseline | Critical fixes are evaluated for the supported release branch. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.
@@ -94,8 +96,36 @@ as untrusted input:
 - Loose-pill photos follow a separate flow and may be sent to an external AI
   service for visible-attribute extraction. Do not persist or log those
   images.
+- Direct medication-entry images are optional and remain in app-owned local
+  storage. They are not uploaded by the direct-entry flow. Delete unreferenced
+  copies when an entry is abandoned or removed, without deleting gallery
+  originals owned by the user.
+- Nearby-pharmacy lookup sends the current latitude and longitude to the
+  authenticated MedBuddy backend only after foreground permission is granted.
+  The backend forwards the minimum query to the National Emergency Medical
+  Center public API. Do not persist coordinates, include them in application
+  logs, or expose the public-data credential to Flutter.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
+
+## Linked Medication Chat
+
+Medication-context chat is an experimental linked-care feature, not a general
+messenger. Every history, send, read, unread-count, and WebSocket operation must
+verify the authenticated principal, the active patient-caregiver link, and the
+requested link identifier on the server. A selected medication must belong to
+the linked patient and be active on the current date.
+
+Chat text and medication context are stored medical-adjacent communication
+data. Apply bounded message length, normalize client-generated message IDs,
+enforce idempotent retries, and never log message bodies. Revoking a link must
+immediately deny REST and WebSocket access. The laboratory setting controls UI
+visibility only; it is not an authorization mechanism.
+
+Chat notifications must use generic lock-screen wording. The private routing
+payload may contain the link identifier needed for authenticated in-app
+navigation, but it must not contain the message body, medication name, patient
+display name, or image URL.
 
 ## Push Notification Data
 
@@ -113,6 +143,11 @@ per-slot preference before dispatch. Firebase mode sends newly completed-dose
 events through FCM. Missed-deadline checks currently run through the
 authenticated Android background monitor; local demo mode polls for both event
 types and displays local notifications without remote push delivery.
+
+Linked-chat notifications follow the same token lifecycle but use a separate
+event category. The backend sends only a generic new-message notice after
+rechecking the active link; local demo polling must apply the same generic
+content and deduplicate already observed messages.
 
 ## Identity and Authorization Boundary
 
@@ -141,6 +176,9 @@ revalidated before API responses. Prescription-region responses retain only
 validated categories and coordinates, never model-returned region text.
 Caregiver lock-screen notification content remains generic while the private
 payload retains the patient scope needed for authenticated in-app navigation.
+Chat REST and WebSocket routes apply the same principal and active-link checks;
+WebSocket authentication does not create a weaker alternate path. Nearby
+pharmacy and chat laboratory toggles never grant data access by themselves.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).

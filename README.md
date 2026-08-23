@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-caregiver linked views with caregiver notification preferences.
+> A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and experimental nearby-pharmacy and chat flows.
 
 ## Key Features
 
@@ -34,17 +34,34 @@
 
 ### Experimental Loose-Pill Identification
 
-- Users can provide a front photo and an optional reverse-side photo of one loose pill.
+- Users can add up to ten loose pills as separate photo sets. Each set requires a front photo and can include an optional reverse-side photo.
+- The Flutter batch control identifies at most two photo sets concurrently, preserves input order, and reports per-pill failures without discarding successful candidates.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
 - The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
+- Before identified candidates are saved, users review and can correct the medication start date, course duration, daily frequency, dose, and morning, lunch, evening, or bedtime slots. When dosage directions are unknown, the review screen applies explicit pill-flow defaults instead of presenting them as OCR facts.
 - This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
+
+### Direct Medication Entry
+
+- Users can register a medication without a prescription or pill-identification request by entering its name, dose, unit, start date, end date, and schedule slots.
+- An optional camera or gallery image is copied into app-owned patient storage. Orphaned local images are removed when they are no longer referenced.
+- Direct entries reuse the same saved-medication and schedule contracts as analyzed medications, so filtering, reminders, completion tracking, caregiver views, and medication-context chat do not require a separate data path.
+
+### Nearby Operating Pharmacies
+
+- This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
+- Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
+- The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
+- Results can be filtered by currently open, 24-hour, or all pharmacies and are ordered by operating status and distance. Users can call a pharmacy or open directions without embedding a map-provider API key in the app.
+- Manual refresh uses a cooldown to prevent accidental repeated public-data requests.
+- Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting.
 
 ### User Settings and Voice Playback
 
-- Users can save display font size, reading speed, and language settings.
+- Users can preview display font size and Korean/English language changes immediately while the settings screen remains open, then save the selected display, reading-speed, language, and laboratory-feature settings without being forced back to the home screen.
 - User settings are persisted through the backend and cached locally for offline fallback.
-- Medication voice guidance uses the selected language and reading speed, with local guide text fallback when the backend voice-guide endpoint is unavailable.
+- Medication voice guidance uses the selected language and visibly differentiated slow, medium, or fast reading speeds, with local guide text fallback when the backend voice-guide endpoint is unavailable. An intentional stop is treated as a normal user action rather than a playback failure.
 
 ### Saved Medication and Schedule Management
 
@@ -71,6 +88,9 @@
   FCM push alerts when a dose is newly completed. Missed-deadline checks remain
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
+- The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
+- Patients and caregivers can attach an active medication context, including a validated public image when available, to a message. REST history and WebSocket events share the same server authorization check, client message identifiers make retries idempotent, and unread state is tracked per participant.
+- Chat notifications use generic lock-screen text and route the recipient back to the authorized linked conversation; the notification payload does not expose the message body.
 
 ### Health Recommendations and Reminders
 
@@ -83,21 +103,23 @@
 
 ## Roadmap
 
-1. **Android beta verification:** Validate the dedicated
+1. **v0.2.0 beta verification:** Validate direct entry, multi-pill partial failure, schedule review, laboratory feature toggles, pharmacy location states, medication-context chat, and two-device notification behavior on supported Android devices.
+2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,
    cellular, outage-recovery, and signed-device smoke tests.
-2. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
+3. **Local pill-vision model:** Evaluate a licensed or locally trained lightweight model against the current `PillVisualFeatures` boundary before replacing the external visual-attribute adapter. The current MFDS ranking and mandatory confirmation contract must remain unchanged.
 
 ## Architecture
 
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
-- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, and privacy filtering. Backend boundaries receive de-identified prescription text and isolate public drug APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
-- **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, and external services.
-- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, user settings, notification preferences, and patient-caregiver links.
-- Backend routers remain thin boundary adapters around control classes.
+- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, local notifications, TTS, and linked-chat WebSocket events.
+- **Backend boundaries** receive de-identified prescription text and isolate public drug and pharmacy APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
+- **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, bounded multi-pill work, nearby-pharmacy queries, and linked chat without placing domain logic in screens or routers.
+- **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, manual entries, nearby pharmacies, chat messages and medication context, user settings, notification preferences, and patient-caregiver links.
+- Backend medication, pharmacy, and chat routers remain thin boundary adapters around cohesive controls.
 
 The implementation-grounded class view is maintained in
 [`docs/MedBuddy - Class Diagram.md`](docs/MedBuddy%20-%20Class%20Diagram.md).
@@ -148,7 +170,7 @@ Contribution rules for preserving the UML-aligned structure are documented in
 - Flutter SDK and Android Studio
 - A running Android emulator or physical Android device
 - Gemini API key
-- Korean public data portal API key for the drug APIs
+- Korean public data portal API key authorized for the drug APIs and the National Emergency Medical Center pharmacy service
 - Redis server, optional for local cache and rate-limit testing; required for distributed production quotas
 - Optional local medication catalog database at `backend/medbuddy.db`
 
@@ -182,7 +204,7 @@ PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS=30
 ```
 
 The public-data key must be authorized for the `e약은요`, medication approval,
-and medication pill-identification APIs. Pill images are optional; lookups keep
+medication pill-identification, and pharmacy-location APIs. Pill images are optional; lookups keep
 working with the existing placeholder when that API is unavailable or the dosage
 form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
 optional saved-medication image enrichment must be disabled. The experimental

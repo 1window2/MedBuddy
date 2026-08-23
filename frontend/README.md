@@ -2,7 +2,8 @@
 
 Flutter client for the MedBuddy Android beta source and local demo.
 
-Current app version: **0.1.0+11**.
+Declared app version: **0.1.0+11**. Active development line:
+**`beta/v0.2.0`**.
 
 ## Role
 
@@ -30,6 +31,10 @@ prescription-text request leaves the device, the privacy filter removes
 sensitive lines and masks inline identifiers. The preview shows recognized and
 masked regions, and users can correct medication names and confirm the
 prescription date and morning, lunch, evening, or bedtime slots.
+The guided camera adapts its document frame to portrait or landscape use and
+crops app-owned captures to the confirmed guide region before OCR. After
+prescription analysis, users review and can correct the start date, course
+duration, daily frequency, dose, and schedule slots before continuing.
 Analysis and medication-lookup failures are converted into actionable messages
 for connection, timeout, response-data, and OCR review cases. Depending on the
 failed step, users can retry the analysis, return to OCR review, retake the
@@ -49,9 +54,37 @@ completed-dose pushes. The authenticated background monitor checks missed-dose
 deadlines. Local demo mode uses hash-scoped data and polling-based local
 caregiver notifications instead of remote push delivery.
 
-The experimental loose-pill flow introduced in v0.0.9 presents identification candidates
-with mandatory user confirmation. It follows a separate image-analysis path
-and does not save a candidate automatically or assert a diagnosis.
+The experimental loose-pill flow introduced in v0.0.9 presents identification
+candidates with mandatory user confirmation. The v0.2.0 frontend can collect
+up to ten separate pill photo sets and processes at most two sets concurrently,
+preserving successful candidates when another set fails. It follows a separate
+image-analysis path, does not save a candidate automatically, and requires a
+schedule review before a confirmed candidate is stored.
+
+Direct medication entry supports an optional locally owned medication image,
+name, dose and unit, start and end dates, and schedule slots. It produces the
+same saved-medication contract used by analyzed medications, so schedules,
+reminders, caregiver views, and filtering do not branch into a second storage
+model.
+
+The nearby-pharmacy laboratory flow requests foreground location only when opened, calls
+the authenticated MedBuddy pharmacy endpoint, and supports currently open,
+24-hour, and all-result filters. Public-data credentials remain on the backend;
+the client only receives the pharmacy fields needed for display, calling, and
+external directions. Manual refresh is throttled in the UI to avoid accidental
+repeat traffic.
+
+The linked medication chat laboratory flow is available only for an active
+patient-caregiver link with active patient medication. The screen combines
+authenticated REST history with a reconnecting WebSocket event source, lets a
+participant attach medication context and an optional validated public image,
+uses client message identifiers for retry-safe sends, tracks reads, and sends
+generic local or push notifications without exposing message text.
+
+Font-size and language choices preview immediately while Settings remains open.
+Saving persists all display, reading-speed, language, and laboratory toggles
+without closing the screen. Stopping a TTS preview intentionally is handled as
+a normal action rather than a playback error.
 
 ## Common Commands
 
@@ -64,7 +97,10 @@ flutter test --no-pub
 ## Quality Assurance
 
 Automated widget tests cover compact viewports, large system text, accessibility
-labels, app pause/resume, and network recovery. They also verify the home
+labels, app pause/resume, network recovery, guided-camera layout and crop math,
+manual-entry validation, schedule review, multi-pill ordering and partial
+failure, pharmacy location states, linked-chat retry and lifecycle behavior,
+and laboratory feature visibility. They also verify the home
 schedule summary, OCR-review recovery, post-save navigation, medication-course
 filtering and sorting, dose-completion undo, and reminder result feedback.
 Android behaviors that require real devices, including TalkBack, reboot
