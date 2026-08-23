@@ -147,7 +147,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('닫기'), findsOneWidget);
+      expect(find.bySemanticsLabel('뒤로가기'), findsOneWidget);
       expect(find.bySemanticsLabel('저장하기'), findsOneWidget);
       expect(find.bySemanticsLabel('English'), findsOneWidget);
       expect(tester.takeException(), isNull);
