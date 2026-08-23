@@ -59,6 +59,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _language;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
+  int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
 
   @override
@@ -84,147 +85,163 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final contentScale = UserSetting(
+    final draftSetting = widget.initialSetting.copyWith(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
-    ).contentTextScale;
+      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+      language: _language,
+    );
+    final platformMediaQuery = MediaQueryData.fromView(View.of(context));
+    final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
+    final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
+    final mediaQuery = MediaQuery.of(context);
+    final contentScale = draftSetting.contentTextScale;
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CloseButton(
-                          tooltip: text.close,
-                          onTap: () => Navigator.maybePop(context),
-                        ),
-                        const SizedBox(height: 22),
-                        _SettingTitle(text.fontSizeTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(
-                              value: 'small',
-                              label: text.small,
-                              labelFontSize: 14,
-                            ),
-                            _SettingOption(
-                              value: 'medium',
-                              label: text.medium,
-                              labelFontSize: 17,
-                            ),
-                            _SettingOption(
-                              value: 'large',
-                              label: text.large,
-                              labelFontSize: 23,
-                            ),
-                          ],
-                          selectedValue: _fontSize,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _fontSize = value),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.readingSpeedTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(value: 'slow', label: text.slow),
-                            _SettingOption(value: 'medium', label: text.medium),
-                            _SettingOption(value: 'fast', label: text.fast),
-                          ],
-                          selectedValue: _readingSpeed,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              unawaited(_selectReadingSpeed(value)),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.languageTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: const [
-                            _SettingOption(value: 'ko', label: '한국어'),
-                            _SettingOption(value: 'en', label: 'English'),
-                          ],
-                          selectedValue: _language,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _language = value),
-                        ),
-                        const SizedBox(height: 42),
-                        _PreviewPanel(
-                          text: text,
-                          fontSize: _fontSize,
-                          readingSpeed: _readingSpeed,
-                          isSpeaking: _isPreviewSpeaking,
-                          onVoicePreviewRequested: _toggleVoicePreview,
-                        ),
-                        if (widget
-                            .authenticationControl
-                            .phoneAuthenticationEnabled) ...[
-                          const SizedBox(height: 28),
-                          ListenableBuilder(
-                            listenable: widget.authenticationControl,
-                            builder: (context, _) => _MfaSettingsPanel(
-                              enabled: widget
-                                  .authenticationControl
-                                  .hasEnrolledSmsMfa,
-                              available:
-                                  widget.authenticationControl.canEnrollSmsMfa,
-                              onEnrollRequested: _showMfaEnrollment,
-                            ),
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: TextScaler.linear(selectedTextScale),
+      ),
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _CloseButton(
+                            tooltip: text.close,
+                            onTap: () => Navigator.maybePop(context),
                           ),
-                        ],
-                        if (widget.onSignOutRequested != null) ...[
-                          const SizedBox(height: 28),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _isSaving
-                                  ? null
-                                  : _handleSignOutRequested,
-                              icon: const Icon(Icons.logout),
-                              label: Text(text.signOut),
-                            ),
-                          ),
-                        ],
-                        if (widget.onDeleteAccountRequested != null) ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: MedBuddyColors.danger,
-                                side: const BorderSide(
-                                  color: MedBuddyColors.danger,
-                                ),
+                          const SizedBox(height: 22),
+                          _SettingTitle(text.fontSizeTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(
+                                value: 'small',
+                                label: text.small,
+                                labelFontSize: 14,
                               ),
-                              onPressed: _isSaving
-                                  ? null
-                                  : _confirmAccountDeletion,
-                              icon: const Icon(Icons.delete_forever_outlined),
-                              label: Text(text.deleteAccount),
-                            ),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                                labelFontSize: 17,
+                              ),
+                              _SettingOption(
+                                value: 'large',
+                                label: text.large,
+                                labelFontSize: 23,
+                              ),
+                            ],
+                            selectedValue: _fontSize,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _fontSize = value),
                           ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.readingSpeedTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(value: 'slow', label: text.slow),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                              ),
+                              _SettingOption(value: 'fast', label: text.fast),
+                            ],
+                            selectedValue: _readingSpeed,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                unawaited(_selectReadingSpeed(value)),
+                          ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.languageTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: const [
+                              _SettingOption(value: 'ko', label: '한국어'),
+                              _SettingOption(value: 'en', label: 'English'),
+                            ],
+                            selectedValue: _language,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _language = value),
+                          ),
+                          const SizedBox(height: 42),
+                          _PreviewPanel(
+                            text: text,
+                            fontSize: _fontSize,
+                            readingSpeed: _readingSpeed,
+                            isSpeaking: _isPreviewSpeaking,
+                            onVoicePreviewRequested: _toggleVoicePreview,
+                          ),
+                          if (widget
+                              .authenticationControl
+                              .phoneAuthenticationEnabled) ...[
+                            const SizedBox(height: 28),
+                            ListenableBuilder(
+                              listenable: widget.authenticationControl,
+                              builder: (context, _) => _MfaSettingsPanel(
+                                enabled: widget
+                                    .authenticationControl
+                                    .hasEnrolledSmsMfa,
+                                available: widget
+                                    .authenticationControl
+                                    .canEnrollSmsMfa,
+                                onEnrollRequested: _showMfaEnrollment,
+                              ),
+                            ),
+                          ],
+                          if (widget.onSignOutRequested != null) ...[
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isSaving
+                                    ? null
+                                    : _handleSignOutRequested,
+                                icon: const Icon(Icons.logout),
+                                label: Text(text.signOut),
+                              ),
+                            ),
+                          ],
+                          if (widget.onDeleteAccountRequested != null) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: MedBuddyColors.danger,
+                                  side: const BorderSide(
+                                    color: MedBuddyColors.danger,
+                                  ),
+                                ),
+                                onPressed: _isSaving
+                                    ? null
+                                    : _confirmAccountDeletion,
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                label: Text(text.deleteAccount),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                _SettingSaveFooter(
-                  text: text,
-                  isSaving: _isSaving,
-                  onSaveRequested: _handleSaveRequested,
-                ),
-              ],
+                  _SettingSaveFooter(
+                    text: text,
+                    isSaving: _isSaving,
+                    onSaveRequested: _handleSaveRequested,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -258,6 +275,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       return;
     }
 
+    final requestId = ++_voicePreviewRequestId;
     final text = _SettingText(_language);
     final previewSetting = UserSetting(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
@@ -271,10 +289,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       await speaker(
         text.previewSentence,
         previewSetting,
-        onComplete: _finishVoicePreview,
+        onComplete: () => _finishVoicePreview(requestId),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || requestId != _voicePreviewRequestId) {
         return;
       }
       setState(() => _isPreviewSpeaking = false);
@@ -290,16 +308,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 반환값:
   // - 없음
   Future<void> _stopVoicePreview() async {
+    // 사용자가 중지를 누르면 진행 중인 재생 요청을 먼저 무효화해 취소를 오류와 구분한다.
+    _voicePreviewRequestId += 1;
+    if (mounted && _isPreviewSpeaking) {
+      setState(() => _isPreviewSpeaking = false);
+    }
+
     final stopper = widget.previewStopper;
-    if (stopper != null) {
-      await stopper();
-    } else {
-      await _ownedTtsService?.stop();
+    try {
+      if (stopper != null) {
+        await stopper();
+      } else {
+        await _ownedTtsService?.stop();
+      }
+    } catch (_) {
+      // 사용자가 직접 중지한 경우 플랫폼의 취소 응답은 재생 실패로 안내하지 않는다.
     }
-    if (!mounted || !_isPreviewSpeaking) {
-      return;
-    }
-    setState(() => _isPreviewSpeaking = false);
   }
 
   // 함수명: _finishVoicePreview
@@ -307,8 +331,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // - TTS 엔진이 재생 완료를 알리면 미리보기 버튼 상태를 복구한다.
   // 반환값:
   // - 없음
-  void _finishVoicePreview() {
-    if (!mounted || !_isPreviewSpeaking) {
+  void _finishVoicePreview(int requestId) {
+    if (!mounted ||
+        requestId != _voicePreviewRequestId ||
+        !_isPreviewSpeaking) {
       return;
     }
     setState(() => _isPreviewSpeaking = false);
@@ -346,7 +372,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           ),
         ),
       );
-      Navigator.maybePop(context);
     } catch (_) {
       if (!mounted) {
         return;
