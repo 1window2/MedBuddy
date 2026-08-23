@@ -1,3 +1,6 @@
+// 파일명: prescription_analysis_preview_ui_boundary.dart
+// 역할: 기기 내 OCR 결과, 개인정보 마스킹과 약명 보정 화면을 제공한다.
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -20,11 +23,11 @@ typedef MedicationScheduleChangedCallback =
 // 역할: UC-1 OCR 결과를 사용자에게 먼저 확인시키는 분석 예비 화면을 구성한다.
 
 // 클래스명: PrescriptionAnalysisPreviewUI
-// 역할: 처방전에서 인식된 약 목록과 복약 횟수를 페이지 단위로 보여준다.
+// 역할: 처방전에서 인식된 약별 복약 정보를 하나의 수정 가능한 표로 보여준다.
 // 주요 책임:
-// - OCR 결과가 여러 개인 경우 PageView로 나누어 보여준다.
-// - 신뢰도가 낮거나 잘못 인식된 OCR 결과를 사용자가 직접 수정하게 한다.
-// - 사용자가 인식 결과를 확인한 뒤 실제 약품 상세 분석을 시작하게 한다.
+// - OCR 결과의 모든 항목을 가로 스크롤 표로 비교하게 한다.
+// - 사용자가 표의 각 셀을 눌러 잘못 인식된 값을 바로 수정하게 한다.
+// - 별도의 중복 검토 화면 없이 현재 표의 값으로 실제 약품 분석을 시작한다.
 // - 분석 전에 뒤로가기를 통해 촬영 단계로 돌아갈 수 있게 한다.
 class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final List<MedicationSchedule> medicationScheduleList;
@@ -55,14 +58,20 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
 
 class _PrescriptionAnalysisPreviewUIState
     extends State<PrescriptionAnalysisPreviewUI> {
-  static const int _itemsPerPage = 4;
+  final ScrollController _tableScrollController = ScrollController();
+  bool _isAnalysisRequested = false;
 
-  final PageController _pageController = PageController();
-  int _currentPageIndex = 0;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showTableScrollHint();
+    });
+  }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _tableScrollController.dispose();
     super.dispose();
   }
 
@@ -70,22 +79,9 @@ class _PrescriptionAnalysisPreviewUIState
   Widget build(BuildContext context) {
     final text = _PreviewText(widget.userSetting.language);
     final scale = widget.userSetting.contentTextScale;
-    final pageCount = _pageCount;
     final recognitionNotice = widget.recognitionNotice.trim();
     final hasReviewRequired = widget.medicationScheduleList.any(
       (schedule) => schedule.isNameReviewRequired,
-    );
-    final hasSupplementalRowContent = widget.medicationScheduleList.any(
-      (schedule) =>
-          schedule.hasNameCorrection ||
-          schedule.isNameReviewRequired ||
-          schedule.isNameConfirmed,
-    );
-    final systemTextScale = MediaQuery.textScalerOf(context).scale(18) / 18;
-    final effectiveTextScale = scale * systemTextScale;
-    final medicationPageHeight = _resolveMedicationPageHeight(
-      hasSupplementalRowContent: hasSupplementalRowContent,
-      effectiveTextScale: effectiveTextScale,
     );
 
     return Scaffold(
@@ -95,7 +91,7 @@ class _PrescriptionAnalysisPreviewUIState
             ? text.reviewBeforeAnalyze
             : text.confirmAndAnalyze,
         scale: scale,
-        onPressed: widget.onAnalysisRequested,
+        onPressed: _isAnalysisRequested ? null : _requestAnalysis,
       ),
       body: SafeArea(
         top: false,
@@ -159,49 +155,14 @@ class _PrescriptionAnalysisPreviewUIState
                           ),
                           const SizedBox(height: 16),
                         ],
-                        SizedBox(
-                          height: medicationPageHeight,
-                          child: PageView.builder(
-                            controller: _pageController,
-                            itemCount: pageCount,
-                            onPageChanged: (index) {
-                              setState(() => _currentPageIndex = index);
-                            },
-                            itemBuilder: (context, pageIndex) {
-                              return _PreviewMedicationPage(
-                                medicationScheduleList: _pageItems(pageIndex),
-                                firstScheduleIndex: pageIndex * _itemsPerPage,
-                                previewText: text,
-                                userSetting: widget.userSetting,
-                                onEditRequested: _showMedicationEditor,
-                              );
-                            },
-                          ),
+                        _PreviewMedicationTable(
+                          medicationScheduleList: widget.medicationScheduleList,
+                          previewText: text,
+                          userSetting: widget.userSetting,
+                          scrollController: _tableScrollController,
+                          onEditRequested: _showMedicationEditor,
                         ),
-                        if (_remainingCount > 0) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            text.moreCount(_remainingCount),
-                            style: TextStyle(
-                              color: MedBuddyColors.textLight,
-                              fontSize: 13 * scale,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 18),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (int index = 0; index < pageCount; index++)
-                              _PreviewDot(
-                                active: index == _currentPageIndex,
-                                onTap: () => _animateToPage(index),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
@@ -214,84 +175,21 @@ class _PrescriptionAnalysisPreviewUIState
     );
   }
 
-  int get _pageCount {
-    final count = (widget.medicationScheduleList.length / _itemsPerPage).ceil();
-    return count <= 0 ? 1 : count;
-  }
-
-  int get _remainingCount {
-    final shownCount = (_currentPageIndex + 1) * _itemsPerPage;
-    final remainingCount = widget.medicationScheduleList.length - shownCount;
-    return remainingCount > 0 ? remainingCount : 0;
-  }
-
-  List<MedicationSchedule> _pageItems(int pageIndex) {
-    final start = pageIndex * _itemsPerPage;
-    final end = (start + _itemsPerPage).clamp(
-      0,
-      widget.medicationScheduleList.length,
-    );
-    if (start >= widget.medicationScheduleList.length) {
-      return const [];
-    }
-    return widget.medicationScheduleList.sublist(start, end);
-  }
-
-  // 함수이름: _resolveMedicationPageHeight
-  // 함수역할:
-  // - 수정 버튼, 신뢰도 배지, OCR 원문을 포함한 최대 네 행의 필요 높이를 계산한다.
-  // - 글자 크기가 커진 경우에도 PageView 내부가 넘치지 않도록 여유 높이를 반영한다.
-  // 매개변수:
-  // - hasSupplementalRowContent: 보정 원문이나 신뢰도 배지를 추가로 표시하는지 여부
-  // - effectiveTextScale: 앱 설정과 시스템 접근성 설정을 합친 글자 배율
-  // 반환값:
-  // - OCR 결과 PageView에 적용할 높이
-  double _resolveMedicationPageHeight({
-    required bool hasSupplementalRowContent,
-    required double effectiveTextScale,
-  }) {
-    final medicationCount = widget.medicationScheduleList.length;
-    final visibleRowCount = medicationCount <= 0
-        ? 1
-        : medicationCount > _itemsPerPage
-        ? _itemsPerPage
-        : medicationCount;
-    final appliedScale = effectiveTextScale > 1 ? effectiveTextScale : 1.0;
-    final usesStackedRow = effectiveTextScale > 1.5;
-    final rowBaseHeight = usesStackedRow
-        ? (hasSupplementalRowContent ? 92.0 : 58.0)
-        : (hasSupplementalRowContent ? 52.0 : 44.0);
-    final rowHeight = rowBaseHeight * appliedScale;
-    final dividerHeight = (visibleRowCount - 1) * 22.0;
-    final requiredHeight = visibleRowCount * rowHeight + dividerHeight;
-    final minimumHeight =
-        (hasSupplementalRowContent ? 238.0 : 206.0) * appliedScale;
-    final baseHeight = requiredHeight > minimumHeight
-        ? requiredHeight
-        : minimumHeight;
-    return baseHeight + 24;
-  }
-
-  void _animateToPage(int index) {
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-    );
-  }
-
   // 함수이름: _showMedicationEditor
   // 함수역할:
-  // - 선택한 OCR 인식 결과를 수정하는 대화상자를 연다.
+  // - 선택한 표 셀의 OCR 인식 결과를 수정하는 대화상자를 연다.
+  // - 누른 셀에 해당하는 입력란으로 바로 이동해 중복 검토 화면 없이 수정하게 한다.
   // - 수정이 완료되면 목록의 실제 인덱스와 변경값을 상위 상태로 전달한다.
   // 매개변수:
   // - scheduleIndex: 전체 OCR 결과 목록에서 수정할 항목의 인덱스
   // - medicationSchedule: 대화상자에 표시할 현재 OCR 인식 결과
+  // - initialField: 처음 입력 초점을 둘 표 열
   // 반환값:
   // - 없음
   Future<void> _showMedicationEditor(
     int scheduleIndex,
     MedicationSchedule medicationSchedule,
+    _MedicationScheduleEditField initialField,
   ) async {
     final updatedSchedule = await showDialog<MedicationSchedule>(
       context: context,
@@ -299,6 +197,7 @@ class _PrescriptionAnalysisPreviewUIState
         medicationSchedule: medicationSchedule,
         previewText: _PreviewText(widget.userSetting.language),
         userSetting: widget.userSetting,
+        initialField: initialField,
       ),
     );
     if (!mounted || updatedSchedule == null) {
@@ -306,5 +205,42 @@ class _PrescriptionAnalysisPreviewUIState
     }
 
     widget.onMedicationScheduleChanged(scheduleIndex, updatedSchedule);
+  }
+
+  // 함수명: _showTableScrollHint
+  // 역할:
+  // - OCR 표가 처음 표시될 때 가로로 더 볼 수 있다는 안내를 잠시 노출한다.
+  void _showTableScrollHint() {
+    if (!mounted || widget.medicationScheduleList.isEmpty) {
+      return;
+    }
+    final text = _PreviewText(widget.userSetting.language);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        key: const Key('ocr-table-scroll-hint'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+        content: Row(
+          children: [
+            const Icon(Icons.swipe_left_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(text.tableScrollHint)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 함수명: _requestAnalysis
+  // 역할:
+  // - 현재 표에서 확인한 OCR 값을 그대로 사용해 상세 분석을 시작한다.
+  // - 빠른 연속 입력으로 같은 분석이 중복 요청되지 않게 막는다.
+  void _requestAnalysis() {
+    if (_isAnalysisRequested) {
+      return;
+    }
+    setState(() => _isAnalysisRequested = true);
+    ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+    widget.onAnalysisRequested();
   }
 }

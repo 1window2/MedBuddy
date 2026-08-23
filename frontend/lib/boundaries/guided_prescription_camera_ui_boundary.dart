@@ -1,3 +1,6 @@
+// 파일명: guided_prescription_camera_ui_boundary.dart
+// 역할: 처방전 촬영 가이드, 기기 회전 대응과 가이드 영역 촬영을 제공한다.
+
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -8,6 +11,8 @@ import '../entities/prescription_camera_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/camera_lifecycle_coordinator.dart';
 import '../services/prescription_frame_analyzer.dart';
+import '../services/prescription_guide_layout.dart';
+import '../services/prescription_image_crop_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: guided_prescription_camera_ui_boundary.dart
@@ -37,6 +42,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
 
   final PrescriptionFrameAnalyzer _frameAnalyzer =
       const PrescriptionFrameAnalyzer();
+  final PrescriptionImageCropService _imageCropService =
+      const PrescriptionImageCropService();
   final CameraLifecycleCoordinator _cameraLifecycleCoordinator =
       CameraLifecycleCoordinator();
   CameraController? _cameraController;
@@ -48,6 +55,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   bool _isCapturing = false;
   bool _isTorchEnabled = false;
   int _cameraGeneration = 0;
+  Rect _normalizedGuideRect = const Rect.fromLTWH(0, 0, 1, 1);
 
   bool get _isEnglish =>
       widget.userSetting.language.trim().toLowerCase().startsWith('en');
@@ -90,12 +98,12 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     return _cameraLifecycleCoordinator.schedule(_initializeCameraNow);
   }
 
-  // Function Name: _initializeCameraNow
-  // Description:
-  // - Replaces the current controller and starts the back-camera preview.
-  // - Runs only through CameraLifecycleCoordinator to avoid permission lifecycle races.
-  // Returns:
-  // - Completes after the camera is ready or a recoverable error is shown.
+  // 함수명: _initializeCameraNow
+  // 역할:
+  // - 기존 제어 객체를 교체하고 후면 카메라 미리보기를 시작한다.
+  // - 권한과 생명주기 전환이 겹치지 않도록 CameraLifecycleCoordinator 안에서만 실행한다.
+  // 반환값:
+  // - 카메라가 준비되거나 복구 가능한 오류를 표시한 뒤 완료된다.
   Future<void> _initializeCameraNow() async {
     final generation = ++_cameraGeneration;
     await _disposeCurrentController();
@@ -158,12 +166,12 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     return _cameraLifecycleCoordinator.schedule(_releaseCameraNow);
   }
 
-  // Function Name: _releaseCameraNow
-  // Description:
-  // - Invalidates the active generation and releases the current camera controller.
-  // - Runs only after earlier queued camera transitions have completed.
-  // Returns:
-  // - Completes after camera resources are released.
+  // 함수명: _releaseCameraNow
+  // 역할:
+  // - 진행 중인 카메라 세대를 무효화하고 현재 카메라 제어 객체를 해제한다.
+  // - 앞서 예약된 카메라 전환 작업이 끝난 뒤 순서대로 실행한다.
+  // 반환값:
+  // - 카메라 자원이 해제된 뒤 완료된다.
   Future<void> _releaseCameraNow() async {
     _cameraGeneration += 1;
     await _disposeCurrentController();
@@ -212,6 +220,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         height: image.height,
         bytesPerRow: luminancePlane.bytesPerRow,
         bytesPerPixel: luminancePlane.bytesPerPixel ?? 1,
+        normalizedRegion: _normalizedGuideRect,
+        rotationDegrees: _cameraRotationDegrees(_cameraController),
       );
       if (mounted && result.status != _guideStatus) {
         setState(() {
@@ -225,7 +235,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
 
   // 함수이름: _capturePrescription
   // 함수역할:
-  // - 현재 카메라 프레임을 파일로 저장하고 호출 화면에 반환한다.
+  // - 현재 카메라 프레임을 저장하고 화면 가이드 안쪽만 잘라 호출 화면에 반환한다.
   // 반환값:
   // - 없음
   Future<void> _capturePrescription() async {
@@ -242,12 +252,35 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         await controller.stopImageStream();
       }
       final image = await controller.takePicture();
+      final croppedImage = await _imageCropService.cropToGuide(
+        sourceImage: image,
+        normalizedGuideRect: _normalizedGuideRect,
+      );
       if (mounted) {
-        Navigator.pop(context, image);
+        Navigator.pop(context, croppedImage);
       }
     } catch (_) {
       await _recoverFromCaptureFailure(controller);
     }
+  }
+
+  int _cameraRotationDegrees(CameraController? controller) {
+    if (controller == null) {
+      return 0;
+    }
+    const deviceOrientations = <DeviceOrientation, int>{
+      DeviceOrientation.portraitUp: 0,
+      DeviceOrientation.landscapeLeft: 90,
+      DeviceOrientation.portraitDown: 180,
+      DeviceOrientation.landscapeRight: 270,
+    };
+    final deviceRotation =
+        deviceOrientations[controller.value.deviceOrientation] ?? 0;
+    final sensorOrientation = controller.description.sensorOrientation;
+    if (controller.description.lensDirection == CameraLensDirection.front) {
+      return (sensorOrientation + deviceRotation) % 360;
+    }
+    return (sensorOrientation - deviceRotation + 360) % 360;
   }
 
   // 함수이름: _recoverFromCaptureFailure
@@ -336,16 +369,40 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       child: Scaffold(
         backgroundColor: const Color(0xFF111827),
         body: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(controller),
-              Expanded(
-                child: _cameraErrorMessage.isNotEmpty
-                    ? _buildCameraError()
-                    : _buildPreview(controller),
-              ),
-              _buildCapturePanel(controller),
-            ],
+          child: OrientationBuilder(
+            builder: (context, orientation) {
+              final preview = _cameraErrorMessage.isNotEmpty
+                  ? _buildCameraError()
+                  : _buildPreview(controller);
+              if (orientation == Orientation.landscape) {
+                return Column(
+                  children: [
+                    _buildHeader(controller),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(child: preview),
+                          SizedBox(
+                            width: 230,
+                            child: _buildCapturePanel(
+                              controller,
+                              isLandscape: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  _buildHeader(controller),
+                  Expanded(child: preview),
+                  _buildCapturePanel(controller),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -403,6 +460,23 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         final guideColor = _guideStatus == PrescriptionCameraGuideStatus.aligned
             ? MedBuddyColors.primary
             : const Color(0xFFFFC247);
+        final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        final previewSize = controller.value.previewSize;
+        final isLandscape = viewportSize.width > viewportSize.height;
+        final displayedImageSize = previewSize == null
+            ? viewportSize
+            : isLandscape
+            ? Size(previewSize.width, previewSize.height)
+            : Size(previewSize.height, previewSize.width);
+        final guideRect = PrescriptionGuideLayout.guideRect(viewportSize);
+        _normalizedGuideRect = PrescriptionGuideLayout.normalizedSourceRect(
+          viewportSize: viewportSize,
+          displayedImageSize: displayedImageSize,
+          guideRect: guideRect,
+        );
+        final guideMessageTop = (guideRect.bottom + 14)
+            .clamp(12.0, constraints.maxHeight - 78)
+            .toDouble();
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -410,23 +484,22 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: SizedBox(
-                  width:
-                      controller.value.previewSize?.height ??
-                      constraints.maxWidth,
-                  height:
-                      controller.value.previewSize?.width ??
-                      constraints.maxHeight,
+                  width: displayedImageSize.width,
+                  height: displayedImageSize.height,
                   child: CameraPreview(controller),
                 ),
               ),
             ),
             CustomPaint(
-              painter: _PrescriptionGuidePainter(guideColor: guideColor),
+              painter: _PrescriptionGuidePainter(
+                guideColor: guideColor,
+                guideRect: guideRect,
+              ),
             ),
             Positioned(
-              left: 24,
-              right: 24,
-              bottom: 22,
+              left: isLandscape ? 18 : 24,
+              right: isLandscape ? 18 : 24,
+              top: guideMessageTop,
               child: _GuideMessage(
                 message: _text.guideMessage(_guideStatus),
                 color: guideColor,
@@ -476,14 +549,22 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     );
   }
 
-  Widget _buildCapturePanel(CameraController? controller) {
+  Widget _buildCapturePanel(
+    CameraController? controller, {
+    bool isLandscape = false,
+  }) {
     final canCapture =
         controller?.value.isInitialized == true &&
         !_isCapturing &&
         _cameraErrorMessage.isEmpty;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
+      padding: EdgeInsets.fromLTRB(
+        isLandscape ? 16 : 24,
+        16,
+        isLandscape ? 16 : 24,
+        isLandscape ? 16 : 22,
+      ),
       color: const Color(0xFF171717),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -496,6 +577,12 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _text.cropNotice,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 14),
           Semantics(
@@ -569,27 +656,16 @@ class _GuideMessage extends StatelessWidget {
 // - 가이드 바깥 영역을 어둡게 표시한다.
 // - 거리 판정 상태 색상으로 네 모서리 선을 표시한다.
 class _PrescriptionGuidePainter extends CustomPainter {
-  static const double _landscapePrescriptionAspectRatio = 21.5 / 15;
   final Color guideColor;
+  final Rect guideRect;
 
-  const _PrescriptionGuidePainter({required this.guideColor});
+  const _PrescriptionGuidePainter({
+    required this.guideColor,
+    required this.guideRect,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final maximumGuideWidth = size.width * 0.86;
-    final maximumGuideHeight = size.height * 0.58;
-    final preferredGuideHeight =
-        maximumGuideWidth / _landscapePrescriptionAspectRatio;
-    final guideHeight = preferredGuideHeight <= maximumGuideHeight
-        ? preferredGuideHeight
-        : maximumGuideHeight;
-    final guideWidth = guideHeight * _landscapePrescriptionAspectRatio;
-    final guideRect = Rect.fromLTWH(
-      (size.width - guideWidth) / 2,
-      size.height * 0.12,
-      guideWidth,
-      guideHeight,
-    );
     final guideRRect = RRect.fromRectAndRadius(
       guideRect,
       const Radius.circular(18),
@@ -654,7 +730,8 @@ class _PrescriptionGuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PrescriptionGuidePainter oldDelegate) {
-    return oldDelegate.guideColor != guideColor;
+    return oldDelegate.guideColor != guideColor ||
+        oldDelegate.guideRect != guideRect;
   }
 }
 
@@ -666,8 +743,11 @@ class _GuidedCameraText {
   String get title => isEnglish ? 'Prescription Camera' : '처방전 촬영';
   String get capture => isEnglish ? 'Take photo' : '촬영';
   String get captureHint => isEnglish
-      ? 'Keep the entire prescription clear and inside the guide.'
-      : '처방전 전체가 선명하게 보이도록 촬영해주세요';
+      ? 'Fit the medication table inside the green guide.'
+      : '약 이름과 복용 정보 표를 초록색 가이드 안에 맞춰주세요';
+  String get cropNotice => isEnglish
+      ? 'Only the area inside the guide will be used.'
+      : '가이드 안쪽 영역만 촬영 결과로 사용합니다.';
   String get cameraUnavailable =>
       isEnglish ? 'The camera is unavailable.' : '카메라를 사용할 수 없습니다.';
   String get permissionDenied => isEnglish
@@ -697,8 +777,8 @@ class _GuidedCameraText {
             : '좋아요. 흔들리지 않게 촬영해주세요.',
       PrescriptionCameraGuideStatus.searching =>
         isEnglish
-            ? 'Fit the entire prescription inside the guide.'
-            : '처방전 전체를 가이드 안에 맞춰주세요.',
+            ? 'Fit the medication table inside the guide.'
+            : '약 이름과 복용 정보 표를 가이드 안에 맞춰주세요.',
     };
   }
 }

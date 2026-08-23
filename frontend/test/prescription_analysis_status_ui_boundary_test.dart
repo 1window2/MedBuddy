@@ -85,8 +85,9 @@ class _EmptySchedule extends CheckSchedule {
 }
 
 void main() {
-  testWidgets('analysis failure offers camera and gallery retry actions',
-      (tester) async {
+  testWidgets('analysis failure offers camera and gallery retry actions', (
+    tester,
+  ) async {
     var cameraRetryCount = 0;
     var galleryRetryCount = 0;
 
@@ -108,12 +109,11 @@ void main() {
     await tester.tap(cameraRetryButton);
     await tester.pump();
 
-    final galleryRetryButton =
-        find.byKey(const Key('prescription-gallery-retry-button'));
-    await tester.ensureVisible(galleryRetryButton);
-    await tester.tap(
-      galleryRetryButton,
+    final galleryRetryButton = find.byKey(
+      const Key('prescription-gallery-retry-button'),
     );
+    await tester.ensureVisible(galleryRetryButton);
+    await tester.tap(galleryRetryButton);
 
     expect(cameraRetryCount, 1);
     expect(galleryRetryCount, 1);
@@ -124,8 +124,9 @@ void main() {
     expect(find.text('Possible reasons'), findsOneWidget);
   });
 
-  testWidgets('medication analysis failure offers stage-specific retry',
-      (tester) async {
+  testWidgets('medication analysis failure offers stage-specific retry', (
+    tester,
+  ) async {
     var analysisRetryCount = 0;
 
     await tester.pumpWidget(
@@ -145,16 +146,18 @@ void main() {
     expect(find.text('Medication analysis failed'), findsOneWidget);
     expect(find.text('Possible reasons'), findsNothing);
 
-    final analysisRetryButton =
-        find.byKey(const Key('prescription-analysis-retry-button'));
+    final analysisRetryButton = find.byKey(
+      const Key('prescription-analysis-retry-button'),
+    );
     await tester.ensureVisible(analysisRetryButton);
     await tester.tap(analysisRetryButton);
 
     expect(analysisRetryCount, 1);
   });
 
-  testWidgets('gallery retry re-enters the gallery recognition flow',
-      (tester) async {
+  testWidgets('gallery retry re-enters the gallery recognition flow', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -166,7 +169,9 @@ void main() {
 
     await viewModel.requestPrescriptionImageFromGallery();
     expect(
-        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisFailed,
+    );
     expect(inputPrescription.galleryRequestCount, 1);
 
     await tester.pumpWidget(
@@ -176,19 +181,23 @@ void main() {
       ),
     );
 
-    final galleryRetryButton =
-        find.byKey(const Key('prescription-gallery-retry-button'));
+    final galleryRetryButton = find.byKey(
+      const Key('prescription-gallery-retry-button'),
+    );
     await tester.ensureVisible(galleryRetryButton);
     await tester.tap(galleryRetryButton);
     await tester.pumpAndSettle();
 
     expect(inputPrescription.galleryRequestCount, 2);
     expect(
-        viewModel.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisFailed,
+    );
   });
 
-  testWidgets('system back from prescription result returns to home',
-      (tester) async {
+  testWidgets('system back from prescription result returns to home', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -219,8 +228,9 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('back actions stay blocked until bulk save completes',
-      (tester) async {
+  testWidgets('back actions stay blocked until bulk save completes', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -274,8 +284,9 @@ void main() {
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
   });
 
-  testWidgets('analysis failure actions fit a compact large-text viewport',
-      (tester) async {
+  testWidgets('analysis failure actions fit a compact large-text viewport', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -284,9 +295,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: const TextScaler.linear(1.3),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.3)),
           child: child!,
         ),
         home: PrescriptionAnalysisFailureUI(

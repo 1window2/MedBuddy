@@ -1,3 +1,6 @@
+// 파일명: prescription_analysis_preview_ui_boundary_test.dart
+// 역할: OCR 미리보기, 개인정보 마스킹, 복약 정보 표 수정과 분석 이동을 검증한다.
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,8 +35,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PrescriptionAnalysisPreviewUI(
-          medicationScheduleList: const [
-            MedicationSchedule(medicationName: '테스트정'),
+          medicationScheduleList: [
+            MedicationSchedule(
+              medicationName: '테스트정',
+              prescriptionDate: DateTime(2026, 8, 23),
+              dosage: '1정',
+              intakeTime: '2회',
+              medicationTime: 3,
+              scheduleSlotKeys: ['morning', 'evening'],
+            ),
           ],
           recognizedTextRegions: const [
             RecognizedTextRegion(
@@ -70,6 +80,14 @@ void main() {
     expect(find.textContaining('인식 문구:'), findsNothing);
     expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsNothing);
     expect(find.byKey(const Key('ocr-image-canvas')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-table-scroll-hint')), findsOneWidget);
+    expect(find.text('약 이름'), findsOneWidget);
+    expect(find.text('1회 투약량'), findsOneWidget);
+    expect(find.text('1일 횟수'), findsOneWidget);
+    expect(find.text('총 투약일'), findsOneWidget);
+    expect(find.text('복용 시작일'), findsOneWidget);
+    expect(find.text('실제 복약 시간대'), findsOneWidget);
     expect(
       find.byKey(const Key('prescription-analyze-button')).hitTestable(),
       findsOneWidget,
@@ -99,6 +117,8 @@ void main() {
     expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsNothing);
 
     await tester.tap(find.byKey(const Key('prescription-analyze-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 정보 확인'), findsNothing);
     expect(analysisRequested, isTrue);
   });
 
@@ -122,8 +142,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
-    expect(find.textContaining('+1'), findsOneWidget);
+    expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
+    expect(find.textContaining('+1'), findsNothing);
+    expect(find.byKey(const Key('ocr-table-cell-4-name')), findsOneWidget);
+
+    final tableScroll = tester.widget<SingleChildScrollView>(
+      find.byKey(const Key('ocr-medication-table-scroll')),
+    );
+    expect(tableScroll.scrollDirection, Axis.horizontal);
+    expect(tableScroll.controller?.offset, 0);
+    await tester.drag(
+      find.byKey(const Key('ocr-medication-table-scroll')),
+      const Offset(-420, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tableScroll.controller?.offset, greaterThan(0));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('preview card remains scrollable on a compact viewport', (
@@ -154,10 +188,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    await tester.drag(
-      find.byType(SingleChildScrollView),
-      const Offset(0, -200),
+    final verticalScroll = find.byWidgetPredicate(
+      (widget) =>
+          widget is SingleChildScrollView &&
+          widget.scrollDirection == Axis.vertical,
     );
+    await tester.drag(verticalScroll.first, const Offset(0, -200));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
@@ -186,7 +222,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('검토 필요'), findsNWidgets(4));
-    expect(find.byIcon(Icons.edit_outlined), findsNWidgets(4));
+    expect(find.byKey(const Key('ocr-table-cell-3-name')), findsOneWidget);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -218,9 +255,13 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
+    await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('ocr-edit-0')));
+
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-0-name')));
+    await tester.pumpAndSettle();
+    final nameCell = find.byKey(const Key('ocr-table-cell-0-name'));
+    await tester.tapAt(tester.getTopLeft(nameCell) + const Offset(24, 18));
     await tester.pumpAndSettle();
     expect(find.text('OCR 인식 결과 수정'), findsOneWidget);
 
@@ -285,9 +326,13 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
+    await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('ocr-edit-0')));
+
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-0-name')));
+    await tester.pumpAndSettle();
+    final nameCell = find.byKey(const Key('ocr-table-cell-0-name'));
+    await tester.tapAt(tester.getTopLeft(nameCell) + const Offset(24, 18));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('ocr-edit-dosage')),
@@ -340,8 +385,8 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.byKey(const Key('ocr-edit-0')));
-    await tester.tap(find.byKey(const Key('ocr-edit-0')));
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-0-date')));
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-date')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('ocr-edit-prescription-date')),

@@ -1,3 +1,6 @@
+// 파일명: input_prescription_ui_boundary.dart
+// 역할: 처방전, 낱알약과 직접 등록 중 입력 방법을 선택하는 화면을 제공한다.
+
 import 'package:flutter/material.dart';
 
 import 'check_today_medication_info_ui_boundary.dart';
@@ -27,9 +30,11 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onPillIdentificationRequested;
+  final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final VoidCallback? onSavedMedicationRequested;
   final VoidCallback? onPatientCaregiverLinkRequested;
+  final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
@@ -45,9 +50,11 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
+    this.onManualMedicationRequested,
     required this.onTodayScheduleRequested,
     required this.onSavedMedicationRequested,
     required this.onPatientCaregiverLinkRequested,
+    this.onNearbyPharmacyRequested,
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
@@ -61,9 +68,11 @@ class InputPrescriptionUI extends StatelessWidget {
       onPrescriptionScanRequested = null,
       onPrescriptionGalleryRequested = null,
       onPillIdentificationRequested = null,
+      onManualMedicationRequested = null,
       onTodayScheduleRequested = null,
       onSavedMedicationRequested = null,
       onPatientCaregiverLinkRequested = null,
+      onNearbyPharmacyRequested = null,
       onUserSettingRequested = null,
       isAnalyzing = true;
 
@@ -81,7 +90,7 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(onSettingPressed: onUserSettingRequested),
+            _HomeHeader(text: text, onSettingPressed: onUserSettingRequested),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
@@ -128,6 +137,18 @@ class InputPrescriptionUI extends StatelessWidget {
                       userSetting: userSetting,
                       onTap: onPatientCaregiverLinkRequested,
                     ),
+                    if (onNearbyPharmacyRequested != null) ...[
+                      const SizedBox(height: 22),
+                      _HomeActionCard(
+                        cardKey: const ValueKey('homeNearbyPharmacyCard'),
+                        icon: Icons.local_pharmacy_outlined,
+                        title: text.nearbyPharmacy,
+                        subtitle: text.nearbyPharmacySubtitle,
+                        filled: false,
+                        userSetting: userSetting,
+                        onTap: onNearbyPharmacyRequested,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -140,7 +161,7 @@ class InputPrescriptionUI extends StatelessWidget {
 
   // 함수이름: _showAnalysisTaskOptions
   // 함수역할:
-  // - 공통 선택 화면에서 처방전 분석 또는 낱알약 식별 작업을 선택하게 한다.
+  // - 공통 선택 화면에서 처방전 분석, 낱알약 식별, 직접 등록 작업을 선택하게 한다.
   // - 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
   // 매개변수:
   // - context: 선택 화면 표시와 화면 활성 상태 확인에 사용할 BuildContext
@@ -157,6 +178,10 @@ class InputPrescriptionUI extends StatelessWidget {
     }
     if (task == MedicationCaptureTask.pill) {
       onPillIdentificationRequested?.call();
+      return;
+    }
+    if (task == MedicationCaptureTask.manual) {
+      onManualMedicationRequested?.call();
       return;
     }
     final source = await showPrescriptionImageSourceOptions(
@@ -259,9 +284,10 @@ class InputPrescriptionUI extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
+  final _HomeText text;
   final VoidCallback? onSettingPressed;
 
-  const _HomeHeader({required this.onSettingPressed});
+  const _HomeHeader({required this.text, required this.onSettingPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -273,13 +299,13 @@ class _HomeHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FittedBox(
+                const FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -295,9 +321,9 @@ class _HomeHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  '건강한 복약 관리 도우미',
+                  text.brandSubtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textScaler: TextScaler.noScaling,
@@ -426,6 +452,9 @@ class _HomeText {
 
   bool get isEnglish => language == 'en';
 
+  String get brandSubtitle =>
+      isEnglish ? 'Your healthy medication companion' : '건강한 복약 관리 도우미';
+
   String get todaySchedule => isEnglish ? 'Today\'s Medication' : '오늘의 복약 일정';
   String get noMedication => isEnglish
       ? 'No medicine registered\nScan a prescription'
@@ -443,6 +472,10 @@ class _HomeText {
   String get patientCaregiverLinkSubtitle => isEnglish
       ? 'Connect patient and caregiver medication schedules'
       : '환자와 보호자의 복약 일정을 연결';
+  String get nearbyPharmacy => isEnglish ? 'Nearby Pharmacy' : '근처 운영 약국';
+  String get nearbyPharmacySubtitle => isEnglish
+      ? 'Find pharmacies near your current location'
+      : '현재 위치에서 가까운 약국 찾기';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }

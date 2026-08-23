@@ -1,3 +1,6 @@
+// 파일명: input_prescription_ui_boundary_test.dart
+// 역할: 처방전, 낱알약과 직접 등록 입력 방식 선택 화면을 검증한다.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
@@ -8,14 +11,13 @@ import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('home camera entry separates prescription and pill tasks', (
-    tester,
-  ) async {
+  testWidgets('약 정보 입력은 처방전, 낱알약, 직접 등록 작업을 구분한다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     var pillTaskRequested = false;
+    var manualTaskRequested = false;
     await tester.pumpWidget(
       MaterialApp(
         home: InputPrescriptionUI(
@@ -25,6 +27,9 @@ void main() {
           onPrescriptionGalleryRequested: () {},
           onPillIdentificationRequested: () {
             pillTaskRequested = true;
+          },
+          onManualMedicationRequested: () {
+            manualTaskRequested = true;
           },
           onTodayScheduleRequested: () {},
           onSavedMedicationRequested: () {},
@@ -39,10 +44,17 @@ void main() {
 
     expect(find.text('처방전 분석'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsOneWidget);
+    expect(find.text('직접 등록'), findsOneWidget);
 
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
     expect(pillTaskRequested, isTrue);
+
+    await tester.tap(find.text('약 정보 촬영하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('직접 등록'));
+    await tester.pumpAndSettle();
+    expect(manualTaskRequested, isTrue);
   });
 
   testWidgets('home owns navigation into loose-pill identification', (
@@ -95,5 +107,67 @@ void main() {
     expect(tester.getSize(linkCard).height, tester.getSize(savedCard).height);
     expect(find.byIcon(Icons.people_alt_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('근처 운영 약국 카드는 실험실 기능을 켠 경우에만 표시한다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Widget buildHome({VoidCallback? onNearbyPharmacyRequested}) {
+      return MaterialApp(
+        home: InputPrescriptionUI(
+          statusMessage: '',
+          userSetting: const UserSetting(language: 'ko'),
+          onPrescriptionScanRequested: () {},
+          onPrescriptionGalleryRequested: () {},
+          onPillIdentificationRequested: () {},
+          onTodayScheduleRequested: () {},
+          onSavedMedicationRequested: () {},
+          onPatientCaregiverLinkRequested: () {},
+          onNearbyPharmacyRequested: onNearbyPharmacyRequested,
+          onUserSettingRequested: () {},
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildHome());
+    expect(find.byKey(const ValueKey('homeNearbyPharmacyCard')), findsNothing);
+
+    await tester.pumpWidget(buildHome(onNearbyPharmacyRequested: () {}));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('homeNearbyPharmacyCard')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('영어 설정은 메인 화면 제목과 설명에 함께 반영된다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InputPrescriptionUI(
+          statusMessage: '',
+          userSetting: const UserSetting(language: 'en'),
+          onPrescriptionScanRequested: () {},
+          onPrescriptionGalleryRequested: () {},
+          onPillIdentificationRequested: () {},
+          onTodayScheduleRequested: () {},
+          onSavedMedicationRequested: () {},
+          onPatientCaregiverLinkRequested: () {},
+          onUserSettingRequested: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Your healthy medication companion'), findsOneWidget);
+    expect(find.text('오늘의 복약 일정'), findsNothing);
+    expect(find.text("Today's Medication"), findsOneWidget);
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import '../entities/prescription_camera_guide_entity.dart';
 
@@ -39,6 +40,8 @@ class PrescriptionFrameAnalyzer {
     required int height,
     required int bytesPerRow,
     required int bytesPerPixel,
+    Rect normalizedRegion = const Rect.fromLTWH(0, 0, 1, 1),
+    int rotationDegrees = 0,
   }) {
     if (luminanceBytes.isEmpty ||
         width <= 0 ||
@@ -54,6 +57,8 @@ class PrescriptionFrameAnalyzer {
       height: height,
       bytesPerRow: bytesPerRow,
       bytesPerPixel: bytesPerPixel,
+      normalizedRegion: normalizedRegion,
+      rotationDegrees: rotationDegrees,
     );
     final range = _readLuminanceRange(sample);
     if (range.maximum - range.minimum < 24) {
@@ -67,14 +72,22 @@ class PrescriptionFrameAnalyzer {
     }
 
     final documentCoverage = candidate.boundingBoxCoverage;
-    if (documentCoverage < _minimumDocumentCoverage) {
+    final analyzesGuideRegion =
+        normalizedRegion.width < 0.99 || normalizedRegion.height < 0.99;
+    final minimumCoverage = analyzesGuideRegion
+        ? 0.24
+        : _minimumDocumentCoverage;
+    if (documentCoverage < minimumCoverage) {
       return PrescriptionCameraGuideResult(
         status: PrescriptionCameraGuideStatus.tooFar,
         documentCoverage: documentCoverage,
       );
     }
-    if (documentCoverage > _maximumDocumentCoverage ||
-        candidate.touchedEdgeCount >= 3) {
+    final isTooClose = analyzesGuideRegion
+        ? documentCoverage > 0.995 && candidate.pixelCoverage > 0.94
+        : documentCoverage > _maximumDocumentCoverage ||
+              candidate.touchedEdgeCount >= 3;
+    if (isTooClose) {
       return PrescriptionCameraGuideResult(
         status: PrescriptionCameraGuideStatus.tooClose,
         documentCoverage: documentCoverage,
@@ -93,12 +106,31 @@ class PrescriptionFrameAnalyzer {
     required int height,
     required int bytesPerRow,
     required int bytesPerPixel,
+    required Rect normalizedRegion,
+    required int rotationDegrees,
   }) {
     final sample = Uint8List(_sampleWidth * _sampleHeight);
     for (var sampleY = 0; sampleY < _sampleHeight; sampleY += 1) {
-      final sourceY = sampleY * (height - 1) ~/ (_sampleHeight - 1);
+      final normalizedY =
+          normalizedRegion.top +
+          normalizedRegion.height * sampleY / (_sampleHeight - 1);
       for (var sampleX = 0; sampleX < _sampleWidth; sampleX += 1) {
-        final sourceX = sampleX * (width - 1) ~/ (_sampleWidth - 1);
+        final normalizedX =
+            normalizedRegion.left +
+            normalizedRegion.width * sampleX / (_sampleWidth - 1);
+        final rawPosition = _mapDisplayedPointToRawFrame(
+          normalizedX,
+          normalizedY,
+          rotationDegrees,
+        );
+        final sourceX = (rawPosition.dx * (width - 1)).round().clamp(
+          0,
+          width - 1,
+        );
+        final sourceY = (rawPosition.dy * (height - 1)).round().clamp(
+          0,
+          height - 1,
+        );
         final sourceIndex = sourceY * bytesPerRow + sourceX * bytesPerPixel;
         if (sourceIndex < luminanceBytes.length) {
           sample[sampleY * _sampleWidth + sampleX] =
@@ -107,6 +139,19 @@ class PrescriptionFrameAnalyzer {
       }
     }
     return sample;
+  }
+
+  Offset _mapDisplayedPointToRawFrame(
+    double displayedX,
+    double displayedY,
+    int rotationDegrees,
+  ) {
+    return switch (rotationDegrees % 360) {
+      90 => Offset(displayedY, 1 - displayedX),
+      180 => Offset(1 - displayedX, 1 - displayedY),
+      270 => Offset(1 - displayedY, displayedX),
+      _ => Offset(displayedX, displayedY),
+    };
   }
 
   _LuminanceRange _readLuminanceRange(Uint8List sample) {

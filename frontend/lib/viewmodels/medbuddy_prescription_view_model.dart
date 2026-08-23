@@ -15,7 +15,9 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   Future<void> requestPrescriptionImage() async {
     await _requestPrescriptionRecognition(
       imageRequest: inputPrescription.requestPrescriptionImage,
-      cancelledMessage: '사진 촬영이 취소되었습니다.',
+      cancelledMessage: _isEnglishSetting
+          ? 'Photo capture was canceled.'
+          : '사진 촬영이 취소되었습니다.',
     );
   }
 
@@ -34,7 +36,9 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
           onImageSelected: onImageSelected,
         );
       },
-      cancelledMessage: '사진 촬영이 취소되었습니다.',
+      cancelledMessage: _isEnglishSetting
+          ? 'Photo capture was canceled.'
+          : '사진 촬영이 취소되었습니다.',
     );
   }
 
@@ -46,7 +50,9 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   Future<void> requestPrescriptionImageFromGallery() async {
     await _requestPrescriptionRecognition(
       imageRequest: inputPrescription.requestPrescriptionImageFromGallery,
-      cancelledMessage: '이미지 선택이 취소되었습니다.',
+      cancelledMessage: _isEnglishSetting
+          ? 'Image selection was canceled.'
+          : '이미지 선택이 취소되었습니다.',
     );
   }
 
@@ -140,7 +146,11 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   Future<void> requestPrescriptionAnalysis() async {
     if (_recognizedMedicationScheduleList.isEmpty) {
       _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
-      _showAnalysisFailure('인식된 처방 내역이 없습니다.');
+      _showAnalysisFailure(
+        _isEnglishSetting
+            ? 'No recognized prescription information is available.'
+            : '인식된 처방 내역이 없습니다.',
+      );
       return;
     }
 
@@ -150,7 +160,9 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     );
     _analysisProgressStep = AnalysisProgressStep.medicationAnalysis;
     _prescriptionFlowState = PrescriptionFlowState.analyzingMedication;
-    _statusMessage = '약물 정보를 분석 중입니다...';
+    _statusMessage = _isEnglishSetting
+        ? 'Analyzing medication information...'
+        : '약물 정보를 분석 중입니다...';
     _analysisErrorMessage = '';
     _analyzedMedicationList = [];
     _prescriptionChangeRadar = null;
@@ -184,8 +196,12 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       _analyzedMedicationList = analyzedMedicationList;
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
       _statusMessage = failedAnalysisCount > 0
-          ? '처방전 분석은 완료되었지만 $failedAnalysisCount개 약 정보는 확인하지 못했습니다.'
-          : '처방전 분석이 완료되었습니다.';
+          ? (_isEnglishSetting
+                ? 'Analysis completed, but $failedAnalysisCount medication item(s) could not be verified.'
+                : '처방전 분석은 완료되었지만 $failedAnalysisCount개 약 정보는 확인하지 못했습니다.')
+          : (_isEnglishSetting
+                ? 'Prescription analysis completed.'
+                : '처방전 분석이 완료되었습니다.');
       _notifyViewModelListeners(MedBuddyFeature.prescription);
     } on StateError catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
@@ -296,7 +312,11 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   // - 없음
   void showMedicationAnalysisResult() {
     if (_analyzedMedicationList.isEmpty) {
-      _showAnalysisFailure('확인할 분석 결과가 없습니다.');
+      _showAnalysisFailure(
+        _isEnglishSetting
+            ? 'No analysis result is available.'
+            : '확인할 분석 결과가 없습니다.',
+      );
       return;
     }
 
@@ -331,17 +351,23 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
     int medicationIndex,
   ) async {
     if (_savingMedicationIndex != null || _isAllMedicationSaving) {
-      _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'Another medication is being saved.'
+          : '다른 복약 정보를 저장하고 있습니다.';
       _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
     if (_completedMedicationSaveIndexes.contains(medicationIndex)) {
-      _statusMessage = '이미 추가된 약입니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'This medication is already saved.'
+          : '이미 추가된 약입니다.';
       _notifyViewModelListeners(MedBuddyFeature.prescription);
       return true;
     }
 
-    _statusMessage = '${analyzedMedication.displayName} 저장 중...';
+    _statusMessage = _isEnglishSetting
+        ? 'Saving ${analyzedMedication.displayName}...'
+        : '${analyzedMedication.displayName} 저장 중...';
     _setSavingMedicationIndex(medicationIndex);
 
     try {
@@ -361,18 +387,24 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
 
   Future<bool> requestAllAnalyzedMedicationSave() async {
     if (_savingMedicationIndex != null || _isAllMedicationSaving) {
-      _statusMessage = '다른 복약 정보를 저장하고 있습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'Another medication is being saved.'
+          : '다른 복약 정보를 저장하고 있습니다.';
       _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
     if (_analyzedMedicationList.isEmpty) {
-      _statusMessage = '저장할 분석 결과가 없습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'There are no analysis results to save.'
+          : '저장할 분석 결과가 없습니다.';
       _notifyViewModelListeners(MedBuddyFeature.prescription);
       return false;
     }
 
     _isAllMedicationSaving = true;
-    _statusMessage = '전체 복약 일정을 저장 중입니다...';
+    _statusMessage = _isEnglishSetting
+        ? 'Saving all medication schedules...'
+        : '전체 복약 일정을 저장 중입니다...';
     _notifyViewModelListeners(MedBuddyFeature.prescription);
 
     var savedCount = 0;
@@ -470,7 +502,11 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       }
 
       if (result.isEmpty) {
-        _showAnalysisFailure('처방전에서 약 정보를 찾지 못했습니다.');
+        _showAnalysisFailure(
+          _isEnglishSetting
+              ? 'No medication information was found in the prescription.'
+              : '처방전에서 약 정보를 찾지 못했습니다.',
+        );
         return;
       }
 
@@ -479,8 +515,12 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
       _recordPrescriptionRecognitionCounts(result);
       _prescriptionFlowState = PrescriptionFlowState.previewReady;
       _statusMessage = prescriptionRecognitionNotice.isEmpty
-          ? '처방전 인식이 완료되었습니다.'
-          : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.';
+          ? (_isEnglishSetting
+                ? 'Prescription recognition completed.'
+                : '처방전 인식이 완료되었습니다.')
+          : (_isEnglishSetting
+                ? 'Prescription recognition completed. Review the recognized information.'
+                : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.');
       _notifyViewModelListeners(MedBuddyFeature.prescription);
     } on StateError catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
@@ -515,7 +555,9 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   void _showPrescriptionRecognitionProgress() {
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.recognizingPrescription;
-    _statusMessage = '처방전을 인식 중입니다...';
+    _statusMessage = _isEnglishSetting
+        ? 'Recognizing the prescription...'
+        : '처방전을 인식 중입니다...';
     _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
@@ -564,18 +606,24 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   }) {
     final parts = <String>[];
     if (savedCount > 0) {
-      parts.add('$savedCount개 저장');
+      parts.add(_isEnglishSetting ? '$savedCount saved' : '$savedCount개 저장');
     }
     if (duplicateCount > 0) {
-      parts.add('$duplicateCount개 중복');
+      parts.add(
+        _isEnglishSetting ? '$duplicateCount duplicate' : '$duplicateCount개 중복',
+      );
     }
     if (failedCount > 0) {
-      parts.add('$failedCount개 실패');
+      parts.add(_isEnglishSetting ? '$failedCount failed' : '$failedCount개 실패');
     }
     if (parts.isEmpty) {
-      return '이미 추가된 약입니다.';
+      return _isEnglishSetting
+          ? 'These medications are already saved.'
+          : '이미 추가된 약입니다.';
     }
-    return '전체 저장 완료: ${parts.join(', ')}';
+    return _isEnglishSetting
+        ? 'Save complete: ${parts.join(', ')}'
+        : '전체 저장 완료: ${parts.join(', ')}';
   }
 
   List<String> _slotKeysForSchedule(MedicationSchedule schedule) {

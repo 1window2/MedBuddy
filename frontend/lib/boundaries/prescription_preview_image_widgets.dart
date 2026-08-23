@@ -569,7 +569,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
 class _AnalysisBottomBar extends StatelessWidget {
   final String label;
   final double scale;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _AnalysisBottomBar({
     required this.label,

@@ -32,4 +32,19 @@ class AnalyzedMedication {
     }
     return schedule.displayName;
   }
+
+  // 함수명: displayNameForLanguage
+  // 함수역할:
+  // - 사용자 수정명과 공공데이터 약품명 우선순위는 유지한다.
+  // - 두 이름이 모두 비어 있을 때만 현재 언어에 맞는 대체 문구를 사용한다.
+  String displayNameForLanguage(String language) {
+    if (schedule.nameCorrectionSource == 'user_edit' &&
+        schedule.medicationName.trim().isNotEmpty) {
+      return schedule.medicationName.trim();
+    }
+    if (detail.itemName.trim().isNotEmpty) {
+      return detail.itemName.trim();
+    }
+    return schedule.displayNameForLanguage(language);
+  }
 }
