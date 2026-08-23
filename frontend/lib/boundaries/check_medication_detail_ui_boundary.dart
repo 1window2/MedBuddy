@@ -1,3 +1,8 @@
+// 파일명: check_medication_detail_ui_boundary.dart
+// 역할: 약품 상세정보, 사진, 복용 가이드와 음성 안내 화면을 제공한다.
+
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../controls/request_voice_guide_control.dart';
@@ -43,6 +48,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
   @override
   Widget build(BuildContext context) {
     final scale = widget.userSetting.contentTextScale;
+    final text = _MedicationDetailText(widget.userSetting.language);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -53,45 +59,61 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
               padding: const EdgeInsets.fromLTRB(42, 32, 42, 140),
               children: [
                 _DetailHeader(
-                  title: '약 상세정보',
+                  title: text.title,
+                  backTooltip: text.back,
                   onBackRequested: () => Navigator.pop(context),
                 ),
                 const SizedBox(height: 28),
                 _MedicationHeroCard(
                   medicationDetail: widget.medicationDetail,
+                  displayName: widget.medicationDetail.displayNameForLanguage(
+                    widget.userSetting.language,
+                  ),
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
                 _DetailQuestionSection(
-                  title: '이 약은 어디가 좋아지나요?',
-                  values: _summaryValues(widget.medicationDetail.efficacy),
+                  title: text.efficacyQuestion,
+                  values: _summaryValues(
+                    widget.medicationDetail.efficacy,
+                    text.noInformation,
+                  ),
+                  noInformation: text.noInformation,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
                 _DetailQuestionSection(
-                  title: '어떻게 먹나요?',
-                  values: widget.medicationDetail.compactDosageGuideLines,
+                  title: text.dosageQuestion,
+                  values: widget.medicationDetail
+                      .compactDosageGuideLinesForLanguage(
+                        widget.userSetting.language,
+                      ),
+                  noInformation: text.noInformation,
                   scale: scale,
                 ),
                 const SizedBox(height: 24),
                 _RecommendedDosageCard(
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
+                  text: text,
                 ),
                 const SizedBox(height: 22),
                 _DetailedDosageGuideCard(
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
+                  text: text,
                 ),
                 const SizedBox(height: 18),
                 _MedicationRiskCard(
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
+                  text: text,
                 ),
                 const SizedBox(height: 18),
                 _MedicationChecklistCard(
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
+                  text: text,
                 ),
               ],
             ),
@@ -102,6 +124,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
               child: _TtsButton(
                 isSpeaking: _isSpeaking,
                 onPressed: _handleTtsButtonPressed,
+                text: text,
               ),
             ),
           ],
@@ -140,16 +163,21 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
 
 class _DetailHeader extends StatelessWidget {
   final String title;
+  final String backTooltip;
   final VoidCallback onBackRequested;
 
-  const _DetailHeader({required this.title, required this.onBackRequested});
+  const _DetailHeader({
+    required this.title,
+    required this.backTooltip,
+    required this.onBackRequested,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         IconButton(
-          tooltip: '뒤로가기',
+          tooltip: backTooltip,
           onPressed: onBackRequested,
           icon: const Icon(Icons.arrow_back_ios_new, size: 28),
         ),
@@ -173,10 +201,12 @@ class _DetailHeader extends StatelessWidget {
 
 class _MedicationHeroCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
+  final String displayName;
   final double scale;
 
   const _MedicationHeroCard({
     required this.medicationDetail,
+    required this.displayName,
     required this.scale,
   });
 
@@ -196,7 +226,7 @@ class _MedicationHeroCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _MedicationImageBox(imageUrl: medicationDetail.imageUrl),
+          _MedicationImageBox(medicationDetail: medicationDetail),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -209,7 +239,7 @@ class _MedicationHeroCard extends StatelessWidget {
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
-                  medicationDetail.displayName,
+                  displayName,
                   textAlign: TextAlign.center,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -230,13 +260,19 @@ class _MedicationHeroCard extends StatelessWidget {
 }
 
 class _MedicationImageBox extends StatelessWidget {
-  final String imageUrl;
+  final MedicationDetail medicationDetail;
 
-  const _MedicationImageBox({required this.imageUrl});
+  const _MedicationImageBox({required this.medicationDetail});
 
   @override
   Widget build(BuildContext context) {
-    final normalizedImageUrl = safeMedicationImageUrl(imageUrl);
+    final normalizedImageUrl = safeMedicationImageUrl(
+      medicationDetail.imageUrl,
+    );
+    final localImageFile = medicationDetail.localImagePath.trim().isEmpty
+        ? null
+        : File(medicationDetail.localImagePath.trim());
+    final hasLocalImage = localImageFile?.existsSync() ?? false;
 
     return Container(
       width: 112,
@@ -255,7 +291,7 @@ class _MedicationImageBox extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: normalizedImageUrl.isEmpty
+        child: !hasLocalImage && normalizedImageUrl.isEmpty
             ? const ColoredBox(
                 color: MedBuddyColors.divider,
                 child: Icon(
@@ -264,20 +300,32 @@ class _MedicationImageBox extends StatelessWidget {
                   size: 42,
                 ),
               )
+            : hasLocalImage
+            ? Image.file(
+                localImageFile!,
+                fit: BoxFit.cover,
+                errorBuilder: _buildImageError,
+              )
             : Image.network(
                 normalizedImageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const ColoredBox(
-                    color: MedBuddyColors.divider,
-                    child: Icon(
-                      Icons.image_not_supported_outlined,
-                      color: MedBuddyColors.textLight,
-                      size: 38,
-                    ),
-                  );
-                },
+                errorBuilder: _buildImageError,
               ),
+      ),
+    );
+  }
+
+  Widget _buildImageError(
+    BuildContext context,
+    Object error,
+    StackTrace? stackTrace,
+  ) {
+    return const ColoredBox(
+      color: MedBuddyColors.divider,
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        color: MedBuddyColors.textLight,
+        size: 38,
       ),
     );
   }
@@ -286,18 +334,20 @@ class _MedicationImageBox extends StatelessWidget {
 class _DetailQuestionSection extends StatelessWidget {
   final String title;
   final List<String> values;
+  final String noInformation;
   final double scale;
 
   const _DetailQuestionSection({
     required this.title,
     required this.values,
+    required this.noInformation,
     required this.scale,
   });
 
   @override
   Widget build(BuildContext context) {
     final visibleValues = values
-        .map((value) => _summaryValue(value))
+        .map((value) => _summaryValue(value, noInformation))
         .toList(growable: false);
 
     return Column(
@@ -361,16 +411,20 @@ class _DetailValueTile extends StatelessWidget {
 class _RecommendedDosageCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final double scale;
+  final _MedicationDetailText text;
 
   const _RecommendedDosageCard({
     required this.medicationDetail,
     required this.scale,
+    required this.text,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dosageLines = medicationDetail.compactDosageGuideLines;
-    final warning = _summaryValue(medicationDetail.warning);
+    final dosageLines = medicationDetail.compactDosageGuideLinesForLanguage(
+      text.isEnglish ? 'en' : 'ko',
+    );
+    final warning = _summaryValue(medicationDetail.warning, text.noInformation);
 
     return Container(
       width: double.infinity,
@@ -383,7 +437,7 @@ class _RecommendedDosageCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '권장된 복용방법',
+            text.recommendedDosage,
             style: TextStyle(
               color: const Color(0xFF0A0A0A),
               fontSize: 16 * scale,
@@ -424,7 +478,7 @@ class _RecommendedDosageCard extends StatelessWidget {
           ],
           const SizedBox(height: 20),
           Text(
-            '주의사항',
+            text.warning,
             style: TextStyle(
               color: const Color(0xFF0A0A0A),
               fontSize: 16 * scale,
@@ -460,18 +514,23 @@ class _RecommendedDosageCard extends StatelessWidget {
 class _DetailedDosageGuideCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final double scale;
+  final _MedicationDetailText text;
 
   const _DetailedDosageGuideCard({
     required this.medicationDetail,
     required this.scale,
+    required this.text,
   });
 
   @override
   Widget build(BuildContext context) {
     return _DetailListCard(
-      title: '상세 복용 가이드',
-      items: medicationDetail.compactDosageGuideLines,
+      title: text.detailedGuide,
+      items: medicationDetail.compactDosageGuideLinesForLanguage(
+        text.isEnglish ? 'en' : 'ko',
+      ),
       scale: scale,
+      noInformation: text.noInformation,
     );
   }
 }
@@ -479,16 +538,18 @@ class _DetailedDosageGuideCard extends StatelessWidget {
 class _MedicationRiskCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final double scale;
+  final _MedicationDetailText text;
 
   const _MedicationRiskCard({
     required this.medicationDetail,
     required this.scale,
+    required this.text,
   });
 
   @override
   Widget build(BuildContext context) {
     return _DetailListCard(
-      title: '주요 주의사항 및 부작용',
+      title: text.risksAndSideEffects,
       items: _uniqueNonEmptyValues([
         medicationDetail.warning,
         medicationDetail.precaution,
@@ -497,6 +558,7 @@ class _MedicationRiskCard extends StatelessWidget {
       ]),
       scale: scale,
       useInsetSurface: true,
+      noInformation: text.noInformation,
     );
   }
 }
@@ -504,21 +566,24 @@ class _MedicationRiskCard extends StatelessWidget {
 class _MedicationChecklistCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final double scale;
+  final _MedicationDetailText text;
 
   const _MedicationChecklistCard({
     required this.medicationDetail,
     required this.scale,
+    required this.text,
   });
 
   @override
   Widget build(BuildContext context) {
     return _DetailListCard(
-      title: '간편한 가이드 (Checklist)',
+      title: text.checklist,
       items: _uniqueNonEmptyValues([
         medicationDetail.storageMethod,
         medicationDetail.aiGuide,
       ]),
       scale: scale,
+      noInformation: text.noInformation,
     );
   }
 }
@@ -528,17 +593,19 @@ class _DetailListCard extends StatelessWidget {
   final List<String> items;
   final double scale;
   final bool useInsetSurface;
+  final String noInformation;
 
   const _DetailListCard({
     required this.title,
     required this.items,
     required this.scale,
     this.useInsetSurface = false,
+    required this.noInformation,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visibleItems = items.isEmpty ? const ['정보 없음'] : items;
+    final visibleItems = items.isEmpty ? [noInformation] : items;
     final itemList = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -596,10 +663,10 @@ class _DetailListCard extends StatelessWidget {
   }
 }
 
-List<String> _summaryValues(String value) {
+List<String> _summaryValues(String value, String noInformation) {
   final normalizedValue = value.trim();
   if (normalizedValue.isEmpty) {
-    return const ['정보 없음'];
+    return [noInformation];
   }
 
   final values = normalizedValue
@@ -611,14 +678,14 @@ List<String> _summaryValues(String value) {
   return values.isEmpty ? [fallback] : values;
 }
 
-// Function Name: _compactIndicationLabel
-// Description:
-// - Removes sentence scaffolding from efficacy text for display-only tiles.
-// - Keeps the source efficacy unchanged for backend voice-guide generation.
-// Parameters:
-// - value: One efficacy clause returned by the medication detail source.
-// Returns:
-// - A concise indication label suitable for the detail screen.
+// 함수이름: _compactIndicationLabel
+// 함수역할:
+// - 상세 화면 요약 타일에 맞게 효능 문장의 반복 서술을 제거한다.
+// - 음성 안내에 쓰는 원본 효능 문구는 변경하지 않는다.
+// 매개변수:
+// - value: 약품 상세정보에서 받은 효능 문장 한 항목
+// 반환값:
+// - 상세 화면에 표시할 간결한 효능 문구
 String _compactIndicationLabel(String value) {
   var label = value.trim();
   label = label.replaceFirst(RegExp(r'^(?:이\s*약(?:은|이)?|본\s*약은)\s*'), '');
@@ -633,9 +700,9 @@ String _compactIndicationLabel(String value) {
   return label.replaceFirst(RegExp(r'[.!?。]+$'), '').trim();
 }
 
-String _summaryValue(String value) {
+String _summaryValue(String value, String noInformation) {
   final normalizedValue = value.trim();
-  return normalizedValue.isEmpty ? '정보 없음' : normalizedValue;
+  return normalizedValue.isEmpty ? noInformation : normalizedValue;
 }
 
 List<String> _uniqueNonEmptyValues(List<String> values) {
@@ -652,15 +719,20 @@ List<String> _uniqueNonEmptyValues(List<String> values) {
 class _TtsButton extends StatelessWidget {
   final bool isSpeaking;
   final Future<void> Function() onPressed;
+  final _MedicationDetailText text;
 
-  const _TtsButton({required this.isSpeaking, required this.onPressed});
+  const _TtsButton({
+    required this.isSpeaking,
+    required this.onPressed,
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {
     return FilledButton.icon(
       onPressed: onPressed,
       icon: Icon(isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up),
-      label: Text(isSpeaking ? '읽기 중지' : '큰 소리로 읽어주세요'),
+      label: Text(isSpeaking ? text.stopReading : text.readAloud),
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(60),
         backgroundColor: MedBuddyColors.primary,
@@ -674,4 +746,29 @@ class _TtsButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// 클래스명: _MedicationDetailText
+// 역할: 약 상세정보 화면의 구조 문구를 설정 언어에 맞게 제공한다.
+class _MedicationDetailText {
+  final bool isEnglish;
+
+  const _MedicationDetailText(String language) : isEnglish = language == 'en';
+
+  String get title => isEnglish ? 'Medication Details' : '약 상세정보';
+  String get back => isEnglish ? 'Back' : '뒤로가기';
+  String get efficacyQuestion =>
+      isEnglish ? 'What is this medication for?' : '이 약은 어디가 좋아지나요?';
+  String get dosageQuestion => isEnglish ? 'How should I take it?' : '어떻게 먹나요?';
+  String get recommendedDosage =>
+      isEnglish ? 'Recommended directions' : '권장된 복용방법';
+  String get warning => isEnglish ? 'Warnings' : '주의사항';
+  String get detailedGuide =>
+      isEnglish ? 'Detailed medication guide' : '상세 복용 가이드';
+  String get risksAndSideEffects =>
+      isEnglish ? 'Important warnings and side effects' : '주요 주의사항 및 부작용';
+  String get checklist => isEnglish ? 'Quick checklist' : '간편한 가이드 (Checklist)';
+  String get noInformation => isEnglish ? 'No information' : '정보 없음';
+  String get stopReading => isEnglish ? 'Stop reading' : '읽기 중지';
+  String get readAloud => isEnglish ? 'Read aloud' : '큰 소리로 읽어주세요';
 }

@@ -1,5 +1,5 @@
-// File Name: medbuddy_view_model_schedule_test.dart
-// Role: Verifies schedule status updates are routed through the ViewModel.
+// 파일명: medbuddy_view_model_schedule_test.dart
+// 역할: 복약 일정 상태 변경이 ViewModel을 통해 전달되는지 검증한다.
 
 import 'dart:async';
 import 'dart:convert';
@@ -764,6 +764,13 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 }
 
 class _FakeNotificationService implements NotificationService {
+  @override
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
+  }) async {}
+
   final bool failRegistration;
   bool canceledAllMedicationReminders = false;
   final List<int> canceledIds = [];
@@ -815,5 +822,6 @@ class _FakeNotificationService implements NotificationService {
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
   }) async {}
 }

@@ -1,3 +1,6 @@
+// 파일명: check_schedule_ui_boundary_test.dart
+// 역할: 오늘의 복약 일정, 체크 동작과 알림 설정 화면을 검증한다.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
@@ -182,6 +185,13 @@ class _MutableSetNotification extends SetNotification {
 // 역할: 플랫폼 알림 예약과 취소가 성공한 상황을 일정 화면 테스트에 제공한다.
 class _SuccessfulNotificationService implements NotificationService {
   @override
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
+  }) async {}
+
+  @override
   Future<void> initialize() async {}
 
   @override
@@ -212,10 +222,18 @@ class _SuccessfulNotificationService implements NotificationService {
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
   }) async {}
 }
 
 class _FailingNotificationService implements NotificationService {
+  @override
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
+  }) async {}
+
   @override
   Future<void> initialize() async {}
 
@@ -249,6 +267,7 @@ class _FailingNotificationService implements NotificationService {
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
   }) async {}
 }
 
@@ -363,6 +382,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text("Today's Medication Schedule"), findsOneWidget);
+    expect(find.text('0.5 tablet'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

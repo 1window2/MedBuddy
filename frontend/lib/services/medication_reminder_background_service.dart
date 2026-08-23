@@ -1,5 +1,5 @@
-// File Name: medication_reminder_background_service.dart
-// Role: Replenishes the rolling local medication-reminder window in background.
+// 파일명: medication_reminder_background_service.dart
+// 역할: 백그라운드에서 로컬 복약 알림 예약 기간을 주기적으로 보충한다.
 
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -41,12 +41,12 @@ const String medicationReminderBackgroundTask =
     'medbuddy_medication_reminder_refresh';
 const String _medicationReminderBackgroundTag = 'medbuddy_medication_reminder';
 
-// Class Name: MedicationReminderRefreshService
-// Role: Rebuilds the bounded local reminder window from server-owned state.
-// Responsibilities:
-// - Load the current user's enabled reminder settings and active schedules.
-// - Schedule the next 14 days while respecting each medication course end.
-// - Cancel stale local slots without disabling the user's server preference.
+// 클래스명: MedicationReminderRefreshService
+// 역할: 서버 상태를 기준으로 제한된 로컬 복약 알림 기간을 다시 구성한다.
+// 주요 책임:
+// - 현재 사용자의 활성 알림 설정과 복약 일정을 불러온다.
+// - 복용 종료일을 넘지 않는 범위에서 다음 14일 알림을 예약한다.
+// - 서버 설정을 끄지 않고 오래된 로컬 알림만 취소한다.
 class MedicationReminderRefreshService {
   static const int maximumReminderDatesPerSlot = 14;
 
@@ -105,12 +105,11 @@ class MedicationReminderRefreshService {
     );
   }
 
-  // Function Name: synchronize
-  // Description:
-  // - Refreshes every local reminder slot from authenticated server state.
-  // - Returns false on transient failure so Workmanager can retry later.
-  // Returns:
-  // - True when every slot was synchronized; otherwise false.
+  // 함수이름: synchronize
+  // 함수역할:
+  // - 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다.
+  // - 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
+  // 반환값: 모든 시간대가 동기화되면 true, 아니면 false
   Future<bool> synchronize() async {
     try {
       final results = await Future.wait<Object>([
@@ -151,7 +150,7 @@ class MedicationReminderRefreshService {
           hour: setting.hour,
           minute: setting.minute,
           medicationNames: slotSchedules
-              .map((schedule) => schedule.displayName)
+              .map((schedule) => schedule.displayNameForLanguage(language))
               .where((name) => name.trim().isNotEmpty)
               .toSet()
               .toList(growable: false),
@@ -160,6 +159,7 @@ class MedicationReminderRefreshService {
             slotSchedules,
             activeDates: activeDates,
             now: now,
+            language: language,
           ),
           language: language,
         );
@@ -176,14 +176,12 @@ class MedicationReminderRefreshService {
     }
   }
 
-  // Function Name: activeReminderDates
-  // Description:
-  // - Calculates a rolling 14-day reminder window bounded by course end dates.
-  // Parameters:
-  // - schedules: Active medication schedules for one reminder slot.
-  // - now: Current local time used as the rolling-window anchor.
-  // Returns:
-  // - Sorted unique local calendar dates that should have reminders.
+  // 함수이름: activeReminderDates
+  // 함수역할: 복용 종료일을 넘지 않는 14일 단위 알림 날짜를 계산한다.
+  // 매개변수:
+  // - schedules: 한 알림 시간대의 활성 복약 일정
+  // - now: 계산 기준이 되는 현재 지역 시각
+  // 반환값: 정렬되고 중복 제거된 지역 달력 날짜 목록
   static List<DateTime> activeReminderDates(
     List<MedicationSchedule> schedules, {
     required DateTime now,
@@ -220,20 +218,18 @@ class MedicationReminderRefreshService {
     return activeDateKeys.values.toList(growable: false)..sort();
   }
 
-  // Function Name: medicationNamesForDates
-  // Description:
-  // - Builds each reminder date from only the medication courses active on
-  //   that calendar date.
-  // Parameters:
-  // - schedules: Medication courses assigned to one reminder slot.
-  // - activeDates: Bounded dates that will receive local notifications.
-  // - now: Current local time used for schedules missing a persisted start.
-  // Returns:
-  // - Medication display names keyed by local ISO calendar date.
+  // 함수이름: medicationNamesForDates
+  // 함수역할: 각 알림 날짜에 실제 복용 중인 약 이름만 구성한다.
+  // 매개변수:
+  // - schedules: 한 알림 시간대에 배정된 복약 일정
+  // - activeDates: 로컬 알림을 받을 제한된 날짜 목록
+  // - now: 시작일이 없는 일정의 기준이 되는 현재 지역 시각
+  // 반환값: 지역 ISO 달력 날짜별 약 표시 이름 목록
   static Map<String, List<String>> medicationNamesForDates(
     List<MedicationSchedule> schedules, {
     required List<DateTime> activeDates,
     required DateTime now,
+    required String language,
   }) {
     final today = DateTime(now.year, now.month, now.day);
     return {
@@ -246,7 +242,7 @@ class MedicationReminderRefreshService {
                 fallbackStartDate: today,
               ),
             )
-            .map((schedule) => schedule.displayName.trim())
+            .map((schedule) => schedule.displayNameForLanguage(language).trim())
             .where((name) => name.isNotEmpty)
             .toSet()
             .toList(growable: false),
@@ -295,8 +291,8 @@ class MedicationReminderRefreshService {
   }
 }
 
-// Class Name: MedicationReminderBackgroundScheduler
-// Role: Registers and cancels the authenticated rolling reminder refresh task.
+// 클래스명: MedicationReminderBackgroundScheduler
+// 역할: 인증된 사용자의 복약 알림 보충 작업을 등록하고 취소한다.
 class MedicationReminderBackgroundScheduler {
   MedicationReminderBackgroundScheduler._();
 
@@ -306,13 +302,10 @@ class MedicationReminderBackgroundScheduler {
         Platform.isAndroid;
   }
 
-  // Function Name: register
-  // Description:
-  // - Registers a twice-daily network-backed refresh for the signed-in user.
-  // Parameters:
-  // - patientHash: Server-owned user scope restored by Firebase in background.
-  // Returns:
-  // - Completes after Workmanager accepts the periodic task.
+  // 함수이름: register
+  // 함수역할: 로그인 사용자를 위해 하루 두 번 네트워크 기반 갱신 작업을 등록한다.
+  // 매개변수: patientHash - 백그라운드에서 복구할 서버 소유 사용자 범위
+  // 반환값: Workmanager가 주기 작업을 등록하면 완료된다.
   static Future<void> register(String patientHash) async {
     if (!_supportsBackgroundWork) {
       return;
@@ -333,11 +326,9 @@ class MedicationReminderBackgroundScheduler {
     );
   }
 
-  // Function Name: cancel
-  // Description:
-  // - Prevents a signed-out or deleted account from replenishing reminders.
-  // Returns:
-  // - Completes after all medication reminder refresh work is canceled.
+  // 함수이름: cancel
+  // 함수역할: 로그아웃하거나 삭제된 계정의 알림 보충 작업을 중단한다.
+  // 반환값: 모든 복약 알림 갱신 작업이 취소되면 완료된다.
   static Future<void> cancel() async {
     if (!_supportsBackgroundWork) {
       return;

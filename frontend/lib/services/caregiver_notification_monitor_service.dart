@@ -1,3 +1,6 @@
+// 파일명: caregiver_notification_monitor_service.dart
+// 역할: 앱 실행 중 연동 환자의 시간대별 복용 상태와 보호자 알림을 감시한다.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -24,6 +27,7 @@ typedef CaregiverAlertSender =
     });
 typedef NotificationPermissionRequester = Future<bool> Function();
 typedef PreferencesLoader = Future<SharedPreferences> Function();
+typedef CaregiverLanguageProvider = String Function();
 
 // 클래스명: CaregiverNotificationMonitorService
 // 역할:
@@ -44,6 +48,7 @@ class CaregiverNotificationMonitorService {
   final CaregiverAlertSender _sendAlert;
   final NotificationPermissionRequester _requestPermission;
   final PreferencesLoader _loadPreferences;
+  final CaregiverLanguageProvider _languageProvider;
   final DateTime Function() _now;
   final Duration pollingInterval;
   final Duration idlePollingInterval;
@@ -71,6 +76,7 @@ class CaregiverNotificationMonitorService {
     required CaregiverAlertSender sendAlert,
     required NotificationPermissionRequester permissionRequester,
     PreferencesLoader preferencesLoader = SharedPreferences.getInstance,
+    CaregiverLanguageProvider? languageProvider,
     DateTime Function()? now,
     this.pollingInterval = defaultPollingInterval,
     this.idlePollingInterval = defaultIdlePollingInterval,
@@ -84,9 +90,12 @@ class CaregiverNotificationMonitorService {
        _sendAlert = sendAlert,
        _requestPermission = permissionRequester,
        _loadPreferences = preferencesLoader,
+       _languageProvider = languageProvider ?? _defaultLanguage,
        _now = now ?? DateTime.now,
        _onCaregiverStatusChanged = onCaregiverStatusChanged,
        _onDispose = onDispose;
+
+  static String _defaultLanguage() => 'ko';
 
   // 함수명: start
   // 역할:
@@ -358,11 +367,12 @@ class CaregiverNotificationMonitorService {
     if (!permissionGranted) {
       return;
     }
-    final slotName = _slotName(slotKey);
+    final text = _CaregiverNotificationText(_languageProvider());
+    final slotName = text.slotName(slotKey);
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
-      title: '환자 복약 완료',
-      body: '연동된 환자의 $slotName 복약이 모두 완료되었습니다.',
+      title: text.completedTitle,
+      body: text.completedBody(slotName),
       patientHash: patientHash,
     );
     await preferences.setString('$scope.completion_notice', noticeSignature);
@@ -419,14 +429,16 @@ class CaregiverNotificationMonitorService {
     final deadlineLabel =
         '${setting.deadlineHour!.toString().padLeft(2, '0')}:'
         '${setting.deadlineMinute!.toString().padLeft(2, '0')}';
-    final slotName = _slotName(slotKey);
+    final text = _CaregiverNotificationText(_languageProvider());
+    final slotName = text.slotName(slotKey);
     await _sendAlert(
       id: _stableNotificationId('missed|$patientHash|$noticeSignature'),
-      title: '미복용 일정 확인',
-      body:
-          '연동된 환자의 $slotName 복약 중 $deadlineLabel 기준으로 '
-          '아직 체크되지 않은 일정이 '
-          '$remainingCount건 있습니다.',
+      title: text.missedTitle,
+      body: text.missedBody(
+        slotName: slotName,
+        deadlineLabel: deadlineLabel,
+        remainingCount: remainingCount,
+      ),
       patientHash: patientHash,
     );
     await preferences.setString('$scope.deadline_notice', noticeSignature);
@@ -504,16 +516,6 @@ class CaregiverNotificationMonitorService {
         '${dateTime.day.toString().padLeft(2, '0')}';
   }
 
-  String _slotName(String slotKey) {
-    return switch (slotKey) {
-      'morning' => '아침',
-      'lunch' => '점심',
-      'evening' => '저녁',
-      'bedtime' => '취침 전',
-      _ => '복약 일정',
-    };
-  }
-
   int _stableNotificationId(String source) {
     var hash = 0x811C9DC5;
     for (final codeUnit in source.codeUnits) {
@@ -533,5 +535,49 @@ class CaregiverNotificationMonitorService {
     _timer?.cancel();
     _timer = null;
     _onDispose?.call();
+  }
+}
+
+// 클래스명: _CaregiverNotificationText
+// 역할: 보호자 복약 완료 및 미복용 알림 문구를 현재 앱 언어로 제공한다.
+class _CaregiverNotificationText {
+  final bool isEnglish;
+
+  _CaregiverNotificationText(String language)
+    : isEnglish = language.trim().toLowerCase() == 'en';
+
+  String get completedTitle =>
+      isEnglish ? 'Patient medication completed' : '환자 복약 완료';
+
+  String completedBody(String slotName) {
+    return isEnglish
+        ? 'The linked patient completed all $slotName medications.'
+        : '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
+  }
+
+  String get missedTitle => isEnglish ? 'Medication not checked' : '미복용 일정 확인';
+
+  String missedBody({
+    required String slotName,
+    required String deadlineLabel,
+    required int remainingCount,
+  }) {
+    if (isEnglish) {
+      final itemLabel = remainingCount == 1 ? 'item remains' : 'items remain';
+      return '$remainingCount $slotName medication $itemLabel unchecked '
+          'as of $deadlineLabel.';
+    }
+    return '연동된 환자의 $slotName 복약 중 $deadlineLabel 기준으로 '
+        '아직 체크되지 않은 일정이 $remainingCount건 있습니다.';
+  }
+
+  String slotName(String slotKey) {
+    return switch (slotKey) {
+      'morning' => isEnglish ? 'morning' : '아침',
+      'lunch' => isEnglish ? 'lunch' : '점심',
+      'evening' => isEnglish ? 'evening' : '저녁',
+      'bedtime' => isEnglish ? 'bedtime' : '취침 전',
+      _ => isEnglish ? 'scheduled' : '복약 일정',
+    };
   }
 }

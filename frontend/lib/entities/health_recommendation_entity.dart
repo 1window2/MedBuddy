@@ -19,18 +19,27 @@ class HealthRecommendation {
     this.medicationNames = const [],
   });
 
-  factory HealthRecommendation.fromJson(Map<String, dynamic> json) {
+  factory HealthRecommendation.fromJson(
+    Map<String, dynamic> json, {
+    String language = 'ko',
+  }) {
+    final isEnglish = language.trim().toLowerCase().startsWith('en');
     return HealthRecommendation(
       dietRecommendation: _readString(
         json['diet_recommendation'] ?? json['dietRecommendation'],
-        '식사 추천 정보를 불러오지 못했습니다.',
+        isEnglish
+            ? 'Diet recommendation is unavailable.'
+            : '식사 추천 정보를 불러오지 못했습니다.',
       ),
       exerciseRecommendation: _readString(
         json['exercise_recommendation'] ?? json['exerciseRecommendation'],
-        '운동 추천 정보를 불러오지 못했습니다.',
+        isEnglish
+            ? 'Exercise recommendation is unavailable.'
+            : '운동 추천 정보를 불러오지 못했습니다.',
       ),
-      cautionItems:
-          _readStringList(json['caution_items'] ?? json['cautionItems']),
+      cautionItems: _readStringList(
+        json['caution_items'] ?? json['cautionItems'],
+      ),
       medicationNames: _readStringList(
         json['medication_names'] ?? json['medicationNames'],
       ),

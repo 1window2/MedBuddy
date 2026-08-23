@@ -1,3 +1,6 @@
+// 파일명: check_schedule_ui_boundary.dart
+// 역할: 오늘의 복약 일정, 복용 완료와 시간대별 알림 설정 화면을 제공한다.
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -206,7 +209,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (!medicationStatus) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(text.completionCancelled(schedule.displayName)),
+          content: Text(
+            text.completionCancelled(
+              schedule.displayNameForLanguage(text.language),
+            ),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -217,7 +224,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          text.completionSaved(text.slotTitle(slot.key), schedule.displayName),
+          text.completionSaved(
+            text.slotTitle(slot.key),
+            schedule.displayNameForLanguage(text.language),
+          ),
         ),
         duration: _completionSnackBarDuration,
         action: SnackBarAction(
@@ -233,7 +243,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               SnackBar(
                 content: Text(
                   undoSucceeded
-                      ? text.completionCancelled(schedule.displayName)
+                      ? text.completionCancelled(
+                          schedule.displayNameForLanguage(text.language),
+                        )
                       : text.statusUpdateFailed,
                 ),
                 duration: const Duration(seconds: 2),
@@ -686,7 +698,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      schedule.displayName,
+                      schedule.displayNameForLanguage(text.language),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -717,7 +729,11 @@ class _MedicationScheduleRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _MedicationThumbnail(schedule: schedule, onPressed: onGuideRequested),
+          _MedicationThumbnail(
+            schedule: schedule,
+            displayName: schedule.displayNameForLanguage(text.language),
+            onPressed: onGuideRequested,
+          ),
         ],
       ),
     );
@@ -731,9 +747,14 @@ class _MedicationScheduleRow extends StatelessWidget {
 // - URL이 없거나 이미지 로딩에 실패하면 이미지 없음 아이콘을 표시한다.
 class _MedicationThumbnail extends StatelessWidget {
   final MedicationSchedule schedule;
+  final String displayName;
   final VoidCallback onPressed;
 
-  const _MedicationThumbnail({required this.schedule, required this.onPressed});
+  const _MedicationThumbnail({
+    required this.schedule,
+    required this.displayName,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -741,10 +762,10 @@ class _MedicationThumbnail extends StatelessWidget {
     final hasNetworkImage = imageUrl.isNotEmpty;
     final thumbnailKey = schedule.medicationID.trim().isNotEmpty
         ? schedule.medicationID.trim()
-        : schedule.displayName;
+        : displayName;
 
     return Tooltip(
-      message: schedule.displayName,
+      message: displayName,
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onPressed,
@@ -1031,44 +1052,7 @@ class _ScheduleText {
   // 반환값:
   // - 화면에 표시할 단위 포함 투약량 또는 정보 없음 문구
   String dosageLabel(MedicationSchedule schedule) {
-    final dosage = schedule.dosage.trim();
-    if (dosage.isEmpty) {
-      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
-    }
-    if (!RegExp(r'^(?:\d+(?:[.,]\d+)?|\d+/\d+)$').hasMatch(dosage)) {
-      return dosage;
-    }
-
-    final unit = _dosageUnit(schedule.medicationName);
-    if (!isEnglish) {
-      return '$dosage$unit';
-    }
-    final englishUnit = switch (unit) {
-      '캡슐' => 'capsule',
-      '포' => 'sachet',
-      _ => 'tablet',
-    };
-    return '$dosage $englishUnit';
-  }
-
-  // 함수이름: _dosageUnit
-  // 함수역할:
-  // - 약 이름에 포함된 제형을 기준으로 숫자 투약량에 붙일 단위를 결정한다.
-  // 매개변수:
-  // - medicationName: OCR 또는 공공데이터에서 받은 약 이름
-  // 반환값:
-  // - 캡슐, 포 또는 기본 단위인 정
-  String _dosageUnit(String medicationName) {
-    final normalizedName = medicationName.replaceAll(' ', '');
-    if (normalizedName.contains('캡슐')) {
-      return '캡슐';
-    }
-    if (normalizedName.contains('시럽') ||
-        normalizedName.contains('과립') ||
-        normalizedName.endsWith('산')) {
-      return '포';
-    }
-    return '정';
+    return schedule.dosageLabelForLanguage(language);
   }
 
   String reminderTooltip(String slotTitle) {

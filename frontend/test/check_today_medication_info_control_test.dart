@@ -6,54 +6,56 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 
 void main() {
-  test('requestTodayMedicationInfo decodes schedules from summary payload',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/schedule/today/info');
-      expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters.containsKey('role'), isFalse);
-      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'patient_hash': 'patient-a',
-            'medication_count': 1,
-            'total_dose_count': 3,
-            'completed_dose_count': 1,
-            'remaining_dose_count': 2,
-            'progress_ratio': 1 / 3,
-            'schedules': [
-              {
-                'medication_id': '7',
-                'drug_name': 'test-tablet',
-                'daily_frequency': '3 times',
-                'slot_statuses': {
-                  'morning': true,
-                  'lunch': false,
-                  'evening': false,
+  test(
+    'requestTodayMedicationInfo decodes schedules from summary payload',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/schedule/today/info');
+        expect(request.url.queryParameters['patient_hash'], 'patient-a');
+        expect(request.url.queryParameters.containsKey('role'), isFalse);
+        expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'patient_hash': 'patient-a',
+              'medication_count': 1,
+              'total_dose_count': 3,
+              'completed_dose_count': 1,
+              'remaining_dose_count': 2,
+              'progress_ratio': 1 / 3,
+              'schedules': [
+                {
+                  'medication_id': '7',
+                  'drug_name': 'test-tablet',
+                  'daily_frequency': '3 times',
+                  'slot_statuses': {
+                    'morning': true,
+                    'lunch': false,
+                    'evening': false,
+                  },
+                  'patient_hash': 'patient-a',
                 },
-                'patient_hash': 'patient-a',
-              },
-            ],
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+              ],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckTodayMedicationInfo(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
       );
-    });
-    final control = CheckTodayMedicationInfo(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
 
-    final schedules = await control.requestTodayMedicationInfo();
+      final schedules = await control.requestTodayMedicationInfo();
 
-    expect(schedules, hasLength(1));
-    expect(schedules.first.patientID, 'patient-a');
-    expect(schedules.first.medicationID, '7');
-    expect(schedules.first.isSlotCompleted('morning'), isTrue);
-  });
+      expect(schedules, hasLength(1));
+      expect(schedules.first.patientID, 'patient-a');
+      expect(schedules.first.medicationID, '7');
+      expect(schedules.first.isSlotCompleted('morning'), isTrue);
+    },
+  );
 }

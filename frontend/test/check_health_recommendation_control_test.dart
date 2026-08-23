@@ -9,77 +9,119 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 
 void main() {
-  test('requestHealthRecommendation scopes request and decodes recommendation',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/health/recommendation');
-      expect(request.url.queryParameters['patient_hash'], 'patient-a');
-      expect(request.url.queryParameters.containsKey('role'), isFalse);
-      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
-      expect(request.url.queryParameters['language'], 'en');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'diet_recommendation': '위 자극을 줄이는 식사를 권장합니다.',
-            'exercise_recommendation': '가벼운 산책을 권장합니다.',
-            'caution_items': ['이상 증상이 있으면 의료진과 상담하세요.'],
-            'medication_names': ['test-tablet'],
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'requestHealthRecommendation scopes request and decodes recommendation',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/health/recommendation');
+        expect(request.url.queryParameters['patient_hash'], 'patient-a');
+        expect(request.url.queryParameters.containsKey('role'), isFalse);
+        expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+        expect(request.url.queryParameters['language'], 'en');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'diet_recommendation': '위 자극을 줄이는 식사를 권장합니다.',
+              'exercise_recommendation': '가벼운 산책을 권장합니다.',
+              'caution_items': ['이상 증상이 있으면 의료진과 상담하세요.'],
+              'medication_names': ['test-tablet'],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckHealthRecommendation(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
       );
-    });
-    final control = CheckHealthRecommendation(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-a',
-      client: client,
-    );
 
-    final recommendation = await control.requestHealthRecommendation(
-      language: 'en',
-    );
-
-    expect(recommendation.dietRecommendation, '위 자극을 줄이는 식사를 권장합니다.');
-    expect(recommendation.exerciseRecommendation, '가벼운 산책을 권장합니다.');
-    expect(recommendation.cautionItems, ['이상 증상이 있으면 의료진과 상담하세요.']);
-    expect(recommendation.medicationNames, ['test-tablet']);
-  });
-
-  test('requestHealthRecommendation supports a selected patient scope',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/health/recommendation');
-      expect(request.url.queryParameters['patient_hash'], 'patient-b');
-      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
-      expect(request.url.queryParameters.containsKey('role'), isFalse);
-      expect(request.url.queryParameters['language'], 'ko');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'diet_recommendation': '식사',
-            'exercise_recommendation': '운동',
-            'caution_items': ['주의'],
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+      final recommendation = await control.requestHealthRecommendation(
+        language: 'en',
       );
-    });
-    final control = CheckHealthRecommendation(
-      baseUrl: 'http://localhost',
-      patientHash: 'patient-b',
-      client: client,
-    );
 
-    final recommendation = await control.requestHealthRecommendation();
+      expect(recommendation.dietRecommendation, '위 자극을 줄이는 식사를 권장합니다.');
+      expect(recommendation.exerciseRecommendation, '가벼운 산책을 권장합니다.');
+      expect(recommendation.cautionItems, ['이상 증상이 있으면 의료진과 상담하세요.']);
+      expect(recommendation.medicationNames, ['test-tablet']);
+    },
+  );
 
-    expect(recommendation.dietRecommendation, '식사');
-    expect(recommendation.exerciseRecommendation, '운동');
-    expect(recommendation.cautionItems, ['주의']);
-  });
+  test(
+    'requestHealthRecommendation supports a selected patient scope',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/health/recommendation');
+        expect(request.url.queryParameters['patient_hash'], 'patient-b');
+        expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+        expect(request.url.queryParameters.containsKey('role'), isFalse);
+        expect(request.url.queryParameters['language'], 'ko');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'diet_recommendation': '식사',
+              'exercise_recommendation': '운동',
+              'caution_items': ['주의'],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckHealthRecommendation(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-b',
+        client: client,
+      );
+
+      final recommendation = await control.requestHealthRecommendation();
+
+      expect(recommendation.dietRecommendation, '식사');
+      expect(recommendation.exerciseRecommendation, '운동');
+      expect(recommendation.cautionItems, ['주의']);
+    },
+  );
+
+  test(
+    'requestHealthRecommendation localizes empty English fallbacks',
+    () async {
+      final client = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'diet_recommendation': '',
+              'exercise_recommendation': '',
+              'caution_items': <String>[],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckHealthRecommendation(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-c',
+        client: client,
+      );
+
+      final recommendation = await control.requestHealthRecommendation(
+        language: 'en',
+      );
+
+      expect(
+        recommendation.dietRecommendation,
+        'Diet recommendation is unavailable.',
+      );
+      expect(
+        recommendation.exerciseRecommendation,
+        'Exercise recommendation is unavailable.',
+      );
+    },
+  );
 }

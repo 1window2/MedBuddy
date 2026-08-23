@@ -26,8 +26,10 @@ extension MedBuddyHealthRecommendationViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Health recommendations loaded.'
           : '건강 관리 추천을 불러왔습니다.';
-    } on StateError catch (error) {
-      _statusMessage = error.message;
+    } on StateError {
+      _statusMessage = _isEnglishSetting
+          ? 'Could not create recommendations. Check that you have active medications.'
+          : '건강 관리 추천을 만들지 못했습니다. 현재 복용 중인 약이 있는지 확인해주세요.';
     } catch (_) {
       _statusMessage = _isEnglishSetting
           ? 'Could not load health recommendations.'

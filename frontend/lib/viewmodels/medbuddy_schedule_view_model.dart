@@ -138,7 +138,9 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       _notifyViewModelListeners(MedBuddyFeature.schedule);
       return false;
     } catch (_) {
-      _statusMessage = '복약 상태를 업데이트하지 못했습니다.';
+      _statusMessage = _isEnglishSetting
+          ? 'Could not update the medication status.'
+          : '복약 상태를 업데이트하지 못했습니다.';
       _notifyViewModelListeners(MedBuddyFeature.schedule);
       return false;
     }

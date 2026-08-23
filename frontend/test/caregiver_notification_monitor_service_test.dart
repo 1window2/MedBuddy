@@ -1,3 +1,6 @@
+// 파일명: caregiver_notification_monitor_service_test.dart
+// 역할: 보호자 알림 감시의 시간대별 완료와 미복용 조건을 검증한다.
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -88,6 +91,26 @@ void main() {
     expect(alerts.single.body, isNot(contains('TEST')));
     expect(alerts.single.body, contains('20:00'));
     expect(alerts.single.body, contains('1건'));
+  });
+
+  test('영어 설정은 보호자 알림 제목과 본문에 함께 반영된다', () async {
+    final alerts = <_AlertRecord>[];
+    final monitor = _buildMonitor(
+      mode: CaregiverNotificationMode.missedDeadline,
+      deadlineHour: 20,
+      deadlineMinute: 0,
+      schedules: [_schedule(morningCompleted: false)],
+      now: () => DateTime(2026, 7, 29, 20, 5),
+      language: 'en',
+      alerts: alerts,
+    );
+    addTearDown(monitor.dispose);
+
+    await monitor.checkNow();
+
+    expect(alerts.single.title, 'Medication not checked');
+    expect(alerts.single.body, contains('morning medication'));
+    expect(alerts.single.body, isNot(contains('미복용')));
   });
 
   test('알림 끄기 모드에서는 환자 일정을 조회하거나 알리지 않는다', () async {
@@ -306,6 +329,7 @@ CaregiverNotificationMonitorService _buildMonitor({
   int? deadlineHour,
   int? deadlineMinute,
   DateTime Function()? now,
+  String language = 'ko',
   required List<_AlertRecord> alerts,
 }) {
   return CaregiverNotificationMonitorService(
@@ -350,6 +374,7 @@ CaregiverNotificationMonitorService _buildMonitor({
           ));
         },
     permissionRequester: () async => true,
+    languageProvider: () => language,
     now: now,
   );
 }

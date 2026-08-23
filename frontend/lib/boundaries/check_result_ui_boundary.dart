@@ -1,3 +1,6 @@
+// 파일명: check_result_ui_boundary.dart
+// 역할: 처방전 분석 결과와 저장 가능한 약품 일정을 사용자에게 보여준다.
+
 import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
@@ -567,7 +570,7 @@ class _MedicationResultCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    analyzedMedication.displayName,
+                    analyzedMedication.displayNameForLanguage(text.language),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -596,21 +599,27 @@ class _MedicationResultCard extends StatelessWidget {
                 _DoseInfoRow(
                   icon: Icons.medication_liquid_outlined,
                   label: text.dose,
-                  value: _displayValue(schedule.dosage),
+                  value: _displayValue(
+                    schedule.dosageLabelForLanguage(text.language),
+                  ),
                   userSetting: userSetting,
                 ),
                 const SizedBox(height: 14),
                 _DoseInfoRow(
                   icon: Icons.schedule_outlined,
                   label: text.frequency,
-                  value: _displayValue(schedule.intakeTime),
+                  value: _displayValue(
+                    schedule.dailyFrequencyLabelForLanguage(text.language),
+                  ),
                   userSetting: userSetting,
                 ),
                 const SizedBox(height: 14),
                 _DoseInfoRow(
                   icon: Icons.calendar_today_outlined,
                   label: text.duration,
-                  value: _displayValue(schedule.medicationTimeLabel),
+                  value: _displayValue(
+                    schedule.durationLabelForLanguage(text.language),
+                  ),
                   userSetting: userSetting,
                 ),
               ],

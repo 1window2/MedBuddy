@@ -28,6 +28,7 @@ class MedicationDetail {
   final String dailyFrequency;
   final String totalDays;
   final String imageUrl;
+  final String localImagePath;
   final String aiGuide;
 
   const MedicationDetail({
@@ -48,6 +49,7 @@ class MedicationDetail {
     this.dailyFrequency = '',
     this.totalDays = '',
     this.imageUrl = '',
+    this.localImagePath = '',
     this.aiGuide = '',
   });
 
@@ -80,6 +82,7 @@ class MedicationDetail {
       dailyFrequency: _readString(json['daily_frequency']),
       totalDays: _readString(json['total_days']),
       imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
+      localImagePath: '',
       aiGuide: _readString(json['ai_guide']),
     );
   }
@@ -94,6 +97,54 @@ class MedicationDetail {
       dailyFrequency: schedule.intakeTime,
       totalDays: schedule.medicationTimeLabel,
       imageUrl: safeMedicationImageUrl(schedule.imageUrl),
+    );
+  }
+
+  // 함수명: copyWith
+  // 함수역할:
+  // - 서버 응답으로 만든 약 정보에 기기 내부 사진처럼 화면 전용 값을 덧붙인다.
+  // - 지정하지 않은 값은 원본을 그대로 유지한다.
+  MedicationDetail copyWith({
+    int? id,
+    String? patientHash,
+    String? itemSeq,
+    DateTime? createdDate,
+    DateTime? prescriptionDate,
+    String? itemName,
+    String? efficacy,
+    String? usageMethod,
+    String? warning,
+    String? precaution,
+    String? interaction,
+    String? sideEffect,
+    String? storageMethod,
+    String? dosagePerTime,
+    String? dailyFrequency,
+    String? totalDays,
+    String? imageUrl,
+    String? localImagePath,
+    String? aiGuide,
+  }) {
+    return MedicationDetail(
+      id: id ?? this.id,
+      patientHash: patientHash ?? this.patientHash,
+      itemSeq: itemSeq ?? this.itemSeq,
+      createdDate: createdDate ?? this.createdDate,
+      prescriptionDate: prescriptionDate ?? this.prescriptionDate,
+      itemName: itemName ?? this.itemName,
+      efficacy: efficacy ?? this.efficacy,
+      usageMethod: usageMethod ?? this.usageMethod,
+      warning: warning ?? this.warning,
+      precaution: precaution ?? this.precaution,
+      interaction: interaction ?? this.interaction,
+      sideEffect: sideEffect ?? this.sideEffect,
+      storageMethod: storageMethod ?? this.storageMethod,
+      dosagePerTime: dosagePerTime ?? this.dosagePerTime,
+      dailyFrequency: dailyFrequency ?? this.dailyFrequency,
+      totalDays: totalDays ?? this.totalDays,
+      imageUrl: imageUrl ?? this.imageUrl,
+      localImagePath: localImagePath ?? this.localImagePath,
+      aiGuide: aiGuide ?? this.aiGuide,
     );
   }
 
@@ -122,6 +173,17 @@ class MedicationDetail {
   String get displayName {
     final normalizedName = itemName.trim();
     return normalizedName.isEmpty ? '약품명 확인 필요' : normalizedName;
+  }
+
+  // 함수명: displayNameForLanguage
+  // 역할:
+  // - 약 이름이 비어 있을 때 현재 앱 언어에 맞는 확인 문구를 반환한다.
+  String displayNameForLanguage(String language) {
+    final normalizedName = itemName.trim();
+    if (normalizedName.isNotEmpty) {
+      return normalizedName;
+    }
+    return _isEnglish(language) ? 'Medication name needs review' : '약품명 확인 필요';
   }
 
   DateTime? get medicationEndDate {
@@ -162,49 +224,97 @@ class MedicationDetail {
   }
 
   List<String> get detailedDosageGuideLines {
-    final dosage = _normalizeOrFallback(dosagePerTime, '복용량 정보 없음');
-    final slotLabels = _slotLabelsFromFrequency(dailyFrequency);
+    return detailedDosageGuideLinesForLanguage('ko');
+  }
+
+  // 함수명: detailedDosageGuideLinesForLanguage
+  // 역할:
+  // - OCR 복용 정보를 앱 언어에 맞는 시간대와 기간 문구로 조합한다.
+  List<String> detailedDosageGuideLinesForLanguage(String language) {
+    final isEnglish = _isEnglish(language);
+    final dosage = dosagePerTime.trim().isEmpty
+        ? (isEnglish ? 'Dose unavailable' : '복용량 정보 없음')
+        : _localizedDosageValue(dosagePerTime, language);
+    final slotLabels = _slotLabelsFromFrequency(dailyFrequency, language);
     final lines = slotLabels.map((slot) => '$slot: $dosage').toList();
 
     final period = totalDays.trim();
     if (period.isNotEmpty) {
-      lines.add('$period 복용하세요.');
+      final localizedPeriod = _localizedDurationValue(period, language);
+      lines.add(
+        isEnglish ? 'Take for $localizedPeriod.' : '$localizedPeriod 복용하세요.',
+      );
     }
     if (lines.isEmpty) {
-      lines.add('처방전에서 추출된 상세 복용 정보가 없습니다.');
+      lines.add(
+        isEnglish
+            ? 'No detailed dosage information was extracted.'
+            : '처방전에서 추출된 상세 복용 정보가 없습니다.',
+      );
     }
     return lines;
   }
 
-  // Getter Name: compactDosageGuideLines
-  // Description:
-  // - Builds short, display-only dosage facts for medication detail cards.
-  // - Keeps the original usageMethod and other sentence fields unchanged for TTS.
-  // Returns:
-  // - A list of concise dose, frequency, duration, and timing labels.
+  // 속성명: compactDosageGuideLines
+  // 역할:
+  // - 기존 호출부 호환을 위해 한국어 기준의 간단한 복용 정보를 반환한다.
   List<String> get compactDosageGuideLines {
+    return compactDosageGuideLinesForLanguage('ko');
+  }
+
+  // 함수명: compactDosageGuideLinesForLanguage
+  // 역할:
+  // - 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
+  List<String> compactDosageGuideLinesForLanguage(String language) {
+    final isEnglish = _isEnglish(language);
     final lines = <String>[];
     if (dosagePerTime.trim().isNotEmpty) {
-      lines.add('1회 복용량 · ${dosagePerTime.trim()}');
+      final dosage = _localizedDosageValue(dosagePerTime, language);
+      lines.add(isEnglish ? 'Dose per intake · $dosage' : '1회 복용량 · $dosage');
     }
     if (dailyFrequency.trim().isNotEmpty) {
-      lines.add('복용 횟수 · ${dailyFrequency.trim()}');
+      final frequency = _localizedFrequencyValue(dailyFrequency, language);
+      lines.add(
+        isEnglish ? 'Daily frequency · $frequency' : '복용 횟수 · $frequency',
+      );
     }
     if (totalDays.trim().isNotEmpty) {
-      lines.add('복용 기간 · ${totalDays.trim()}');
+      final duration = _localizedDurationValue(totalDays, language);
+      lines.add(isEnglish ? 'Duration · $duration' : '복용 기간 · $duration');
     }
     final timing = _readDosageTiming(usageMethod);
     if (timing != null) {
-      lines.add('복용 시점 · $timing');
+      final localizedTiming = _localizedTiming(timing, language);
+      lines.add(
+        isEnglish
+            ? 'When to take · $localizedTiming'
+            : '복용 시점 · $localizedTiming',
+      );
     }
-    return lines.isEmpty ? const ['복용 정보 없음'] : lines;
+    if (lines.isNotEmpty) {
+      return lines;
+    }
+    return [isEnglish ? 'No dosage information' : '복용 정보 없음'];
   }
 
   String get voiceGuideText {
+    return voiceGuideTextForLanguage('ko');
+  }
+
+  // 함수명: voiceGuideTextForLanguage
+  // 역할:
+  // - 서버 음성 안내를 사용할 수 없을 때 재생할 최소 안내를 앱 언어로 만든다.
+  String voiceGuideTextForLanguage(String language) {
+    final isEnglish = _isEnglish(language);
     final sections = [
-      displayName,
-      if (usageMethod.trim().isNotEmpty) '복용 방법. ${usageMethod.trim()}',
-      '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
+      displayNameForLanguage(language),
+      if (usageMethod.trim().isNotEmpty)
+        isEnglish
+            ? 'How to take it. ${usageMethod.trim()}'
+            : '복용 방법. ${usageMethod.trim()}',
+      isEnglish
+          ? 'Warnings. ${_normalizeOrFallback(warning, 'No information')}'
+          : '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
     ];
     return sections.join('\n');
   }
@@ -214,21 +324,95 @@ class MedicationDetail {
     return normalizedValue.isEmpty ? fallback : normalizedValue;
   }
 
-  static List<String> _slotLabelsFromFrequency(String dailyFrequency) {
+  static List<String> _slotLabelsFromFrequency(
+    String dailyFrequency,
+    String language,
+  ) {
+    final isEnglish = _isEnglish(language);
     final frequencyCount = _readInt(dailyFrequency) ?? 0;
     if (frequencyCount >= 4) {
-      return const ['아침', '점심', '저녁', '취침 전'];
+      return isEnglish
+          ? const ['Morning', 'Lunch', 'Evening', 'Bedtime']
+          : const ['아침', '점심', '저녁', '취침 전'];
     }
     if (frequencyCount == 3) {
-      return const ['아침', '점심', '저녁'];
+      return isEnglish
+          ? const ['Morning', 'Lunch', 'Evening']
+          : const ['아침', '점심', '저녁'];
     }
     if (frequencyCount == 2) {
-      return const ['아침', '저녁'];
+      return isEnglish ? const ['Morning', 'Evening'] : const ['아침', '저녁'];
     }
     if (frequencyCount == 1) {
-      return const ['아침'];
+      return isEnglish ? const ['Morning'] : const ['아침'];
     }
     return const [];
+  }
+
+  static String _localizedDosageValue(String value, String language) {
+    final normalizedValue = value.trim();
+    if (!_isEnglish(language)) {
+      return normalizedValue;
+    }
+    final match = RegExp(
+      r'^(\d+(?:\.\d+)?)\s*(정|캡슐|포|방울)$',
+    ).firstMatch(normalizedValue);
+    if (match == null) {
+      return normalizedValue;
+    }
+    final amount = match.group(1)!;
+    final isSingular = double.tryParse(amount) == 1;
+    final unit = switch (match.group(2)) {
+      '정' => isSingular ? 'tablet' : 'tablets',
+      '캡슐' => isSingular ? 'capsule' : 'capsules',
+      '포' => isSingular ? 'packet' : 'packets',
+      '방울' => isSingular ? 'drop' : 'drops',
+      _ => '',
+    };
+    return '$amount $unit'.trim();
+  }
+
+  static String _localizedFrequencyValue(String value, String language) {
+    final normalizedValue = value.trim();
+    if (!_isEnglish(language)) {
+      return normalizedValue;
+    }
+    final count = _readInt(normalizedValue);
+    if (count == null) {
+      return normalizedValue;
+    }
+    return count == 1 ? 'once daily' : '$count times daily';
+  }
+
+  static String _localizedDurationValue(String value, String language) {
+    final normalizedValue = value.trim();
+    if (!_isEnglish(language)) {
+      return normalizedValue;
+    }
+    final days = _readInt(normalizedValue);
+    if (days == null) {
+      return normalizedValue;
+    }
+    return days == 1 ? '1 day' : '$days days';
+  }
+
+  static String _localizedTiming(String timing, String language) {
+    if (!_isEnglish(language)) {
+      return timing;
+    }
+    return switch (timing) {
+      '식사 직전' => 'immediately before meals',
+      '식사 직후' => 'immediately after meals',
+      '식전' => 'before meals',
+      '식후' => 'after meals',
+      '공복' => 'on an empty stomach',
+      '취침 전' => 'at bedtime',
+      _ => timing,
+    };
+  }
+
+  static bool _isEnglish(String language) {
+    return language.trim().toLowerCase() == 'en';
   }
 
   static String? _readDosageTiming(String usageMethod) {

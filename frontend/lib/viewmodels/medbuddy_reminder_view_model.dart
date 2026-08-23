@@ -116,13 +116,15 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
           : '$slotTitle 알림이 ${setting.timeLabel}으로 설정되었습니다.';
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
-    } on StateError catch (error) {
+    } on StateError {
       await _rollbackMedicationReminderSave(
         alarmControl: setNotification,
         setting: persistedSetting,
         storageKey: storageKey,
       );
-      _statusMessage = error.message;
+      _statusMessage = _isEnglishSetting
+          ? 'Could not set the $slotTitle reminder.'
+          : '$slotTitle 알림을 설정하지 못했습니다.';
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     } catch (_) {
@@ -342,7 +344,9 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       hour: setting.hour,
       minute: setting.minute,
       medicationNames: schedules
-          .map((schedule) => schedule.displayName)
+          .map(
+            (schedule) => schedule.displayNameForLanguage(userSetting.language),
+          )
           .where((name) => name.trim().isNotEmpty)
           .toList(growable: false),
       activeDates: activeDates,
@@ -351,6 +355,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
             schedules,
             activeDates: activeDates,
             now: now,
+            language: userSetting.language,
           ),
       language: userSetting.language,
     );

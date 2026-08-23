@@ -1,3 +1,6 @@
+// 파일명: check_caregiver_medication_ui_boundary.dart
+// 역할: 보호자가 연동 환자의 시간대별 복약 상태와 알림을 확인하는 화면을 제공한다.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -858,7 +861,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    schedule.displayName,
+                    schedule.displayNameForLanguage(isEnglish ? 'en' : 'ko'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -892,14 +895,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
   }
 
   static String _dosageLabel(MedicationSchedule schedule, bool isEnglish) {
-    final dosage = schedule.dosage.trim();
-    if (dosage.isEmpty) {
-      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
-    }
-    if (!RegExp(r'^(?:\d+(?:[.,]\d+)?|\d+/\d+)$').hasMatch(dosage)) {
-      return dosage;
-    }
-    return isEnglish ? '$dosage tablet' : '$dosage정';
+    return schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko');
   }
 }
 

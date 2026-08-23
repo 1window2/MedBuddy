@@ -1,12 +1,17 @@
+// 파일명: caregiver_notification_background_service.dart
+// 역할: 백그라운드에서 보호자 미복용 알림 상태를 주기적으로 확인한다.
+
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../composition/caregiver_notification_monitor_factory.dart';
+import '../controls/app_language_control.dart';
 import '../entities/patient_hash_entity.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
@@ -81,10 +86,15 @@ void caregiverNotificationCallbackDispatcher() {
       if (caregiverHash.trim().isEmpty) {
         return true;
       }
+      final preferences = await SharedPreferences.getInstance();
+      final language = AppLanguageControl.normalizeLanguage(
+        preferences.getString(AppLanguageControl.preferenceKey) ?? 'ko',
+      );
       monitor = CaregiverNotificationMonitorFactory.create(
         caregiverHash: caregiverHash,
         baseUrl: baseUrl,
         client: authenticatedClient,
+        languageProvider: () => language,
         requestPermission: false,
         monitorCompletionTransitions:
             AuthConfig.mode != AuthenticationMode.firebase,

@@ -1,3 +1,6 @@
+// 파일명: caregiver_notification_monitor_factory.dart
+// 역할: 실행 환경에 맞는 보호자 복약 알림 감시 서비스를 조합한다.
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -26,6 +29,7 @@ class CaregiverNotificationMonitorFactory {
         CaregiverNotificationMonitorService.defaultIdlePollingInterval,
     bool requestPermission = true,
     bool monitorCompletionTransitions = true,
+    String Function()? languageProvider,
     ValueChanged<bool>? onCaregiverStatusChanged,
   }) {
     final linkControl = LinkPatientCaregiver(
@@ -70,6 +74,7 @@ class CaregiverNotificationMonitorFactory {
               title: title,
               body: body,
               patientHash: patientHash,
+              language: languageProvider?.call() ?? 'ko',
             );
           },
       permissionRequester: NotificationService.instance.requestPermission,
@@ -77,6 +82,7 @@ class CaregiverNotificationMonitorFactory {
       idlePollingInterval: idlePollingInterval,
       requestPermission: requestPermission,
       monitorCompletionTransitions: monitorCompletionTransitions,
+      languageProvider: languageProvider,
       onCaregiverStatusChanged: onCaregiverStatusChanged,
       onDispose: () {
         linkControl.dispose();

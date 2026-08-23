@@ -1,3 +1,6 @@
+// 파일명: check_health_recommendation_control.dart
+// 역할: 건강 관리 추천의 서버 조회, 언어별 캐시와 오류 처리를 수행한다.
+
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
@@ -58,6 +61,7 @@ class CheckHealthRecommendation {
       if (rawRecommendation is Map) {
         return HealthRecommendation.fromJson(
           Map<String, dynamic>.from(rawRecommendation),
+          language: language,
         );
       }
       throw StateError(

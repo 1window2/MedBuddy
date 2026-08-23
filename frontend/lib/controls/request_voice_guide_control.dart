@@ -1,3 +1,6 @@
+// 파일명: request_voice_guide_control.dart
+// 역할: 복약 음성 안내 문구 생성과 기기 TTS 재생을 조율한다.
+
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -134,7 +137,7 @@ class RequestVoiceGuide {
         error: error,
         stackTrace: stackTrace,
       );
-      return medicationDetail.voiceGuideText;
+      return medicationDetail.voiceGuideTextForLanguage(language);
     }
   }
 
