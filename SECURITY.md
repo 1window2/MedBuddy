@@ -122,10 +122,13 @@ enforce idempotent retries, and never log message bodies. Revoking a link must
 immediately deny REST and WebSocket access. The laboratory setting controls UI
 visibility only; it is not an authorization mechanism.
 
-Chat notifications must use generic lock-screen wording. The private routing
-payload may contain the link identifier needed for authenticated in-app
-navigation, but it must not contain the message body, medication name, patient
-display name, or image URL.
+Chat notifications may show a whitespace-normalized message preview capped at
+120 characters so the recipient can understand the conversation without
+opening the app. The preview is sensitive delivery data and can appear on a
+device lock screen according to operating-system notification settings. The
+notification must not add medication names, patient display names, image URLs,
+or any data beyond the user-authored preview and the private link identifier
+needed for authenticated in-app navigation.
 
 ## Push Notification Data
 
@@ -145,9 +148,10 @@ authenticated Android background monitor; local demo mode polls for both event
 types and displays local notifications without remote push delivery.
 
 Linked-chat notifications follow the same token lifecycle but use a separate
-event category. The backend sends only a generic new-message notice after
-rechecking the active link; local demo polling must apply the same generic
-content and deduplicate already observed messages.
+event category. After rechecking the active link, the backend sends the bounded
+message preview or a generic fallback when the body is empty. Local demo
+monitoring applies the same normalization and length limit and deduplicates
+already observed messages.
 
 ## Identity and Authorization Boundary
 

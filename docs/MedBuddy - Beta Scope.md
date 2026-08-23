@@ -25,16 +25,19 @@ The following implemented flows are in v0.2.0 verification:
    medication detail lookup, actionable failure recovery back to OCR review,
    schedule review for start date, duration, frequency, dose and slots, and
    saved-medication creation with post-save navigation.
-2. Saved-medication listing, detail guidance, image enrichment, deletion, and
-   medication-course retention, with active/completed filtering and
-   registration- or medication-date sorting in either direction.
+2. Saved-medication listing, detail guidance, image enrichment, shared
+   full-screen image inspection, deletion, and medication-course retention,
+   with active/completed filtering and registration- or medication-date
+   sorting in either direction.
 3. Today's schedule generation, per-slot completion, progress display, local
    medication reminders, notification-to-schedule navigation, next-dose home
-   summaries, completion undo, and reminder setup or cancellation feedback.
+   summaries, tappable medication-image inspection, completion undo, and
+   reminder setup or cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
 5. User display, Korean/English language, reading-speed, and laboratory feature
-   settings, including immediate font/language preview and in-place saving.
+   settings, including immediate font/language preview, in-place saving, and a
+   fixed back control that remains available while settings content scrolls.
 6. Patient-caregiver code linking, linked-patient per-slot schedule views,
    unlinking, per-slot caregiver notification preferences, Firebase
    dose-completion delivery, and background missed-deadline checks.
@@ -48,9 +51,10 @@ The following implemented flows are in v0.2.0 verification:
     public-data credentials, open/24-hour/all filters, refresh cooldown, phone
     launch, and external directions.
 11. Laboratory linked medication chat for active patient-caregiver links and
-    active patient medications, with medication context, authenticated REST
-    history, WebSocket updates, idempotent retries, read state, and generic
-    recipient notifications.
+    active patient medications, with a schedule-style medication picker,
+    authorized medication-detail navigation, authenticated REST history,
+    WebSocket updates, idempotent retries, read state, and bounded recipient
+    notification previews.
 
 ## Required Beta Hardening
 

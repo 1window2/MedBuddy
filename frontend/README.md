@@ -77,14 +77,21 @@ repeat traffic.
 The linked medication chat laboratory flow is available only for an active
 patient-caregiver link with active patient medication. The screen combines
 authenticated REST history with a reconnecting WebSocket event source, lets a
-participant attach medication context and an optional validated public image,
-uses client message identifiers for retry-safe sends, tracks reads, and sends
-generic local or push notifications without exposing message text.
+participant select medication context through the same time-slot layout as
+today's schedule, and opens the authorized medication-detail screen when a
+medication card is pressed. Client message identifiers provide retry-safe
+sends, reads are tracked per participant, and local or push notifications show
+a whitespace-normalized message preview capped at 120 characters.
+
+Medication detail and today's schedule share one full-screen image viewer. A
+validated public medication image can be tapped to inspect it with pan and zoom
+without duplicating image-loading policy in each screen.
 
 Font-size and language choices preview immediately while Settings remains open.
 Saving persists all display, reading-speed, language, and laboratory toggles
-without closing the screen. Stopping a TTS preview intentionally is handled as
-a normal action rather than a playback error.
+without closing the screen. A fixed back button remains in the same position
+while the settings body scrolls. Stopping a TTS preview intentionally is
+handled as a normal action rather than a playback error.
 
 ## Common Commands
 

@@ -247,11 +247,14 @@ and unlinking immediately blocks subsequent history, send, read, unread, and
 stream operations.
 
 Chat message bodies and medication context are stored medical-adjacent data and
-must not appear in logs or lock-screen notifications. FCM or local chat alerts
-use generic text and include only the private link routing value required for
-authenticated in-app navigation. `ChatConnectionManager` is an in-process
-delivery optimization; persisted history remains the source of truth after a
-disconnect or server restart.
+must not appear in logs. FCM and local chat alerts may show only the
+whitespace-normalized user-authored message preview capped at 120 characters;
+the operating system may display that preview on the lock screen. The private
+payload contains the link routing value required for authenticated in-app
+navigation and does not add medication names, patient display names, or image
+URLs. `ChatConnectionManager` is an in-process delivery optimization;
+persisted history remains the source of truth after a disconnect or server
+restart.
 
 ## Migration Without Pipeline Breakage
 

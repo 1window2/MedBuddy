@@ -59,6 +59,7 @@ package "Flutter / Boundary" as FE_Boundary {
   class CheckResultUI <<boundary>>
   class PrescriptionChangeRadarUI <<boundary>>
   class CheckMedicationDetailUI <<boundary>>
+  class MedicationImageViewer <<shared boundary>>
   class CheckSavedMedicationUI <<boundary>>
   class CheckTodayMedicationInfoUI <<boundary>>
   class CheckScheduleUI <<boundary>>
@@ -136,6 +137,8 @@ package "Flutter / External and Shared Services" as FE_Service {
   class PushNotificationService <<external boundary>>
   class CaregiverNotificationMonitorService <<application service>>
   class CaregiverNotificationBackgroundScheduler <<runtime scheduler>>
+  class LinkedChatNotificationMonitorService <<application service>>
+  class LinkedChatNotificationMonitorFactory <<composition root>>
   interface DeviceLocationBoundary <<device boundary>>
   class GeolocatorDeviceLocationService <<device boundary>>
   class PrescriptionGuideLayout <<layout service>>
@@ -292,6 +295,8 @@ SetCaregiverNotificationUI ..> SetNotificationUI : selects deadline
 SetNotificationUI --> FE_SetNotification
 CheckMedicationDetailUI --> FE_CheckMedicationDetail
 CheckMedicationDetailUI --> FE_RequestVoiceGuide
+CheckMedicationDetailUI ..> MedicationImageViewer : opens image
+CheckScheduleUI ..> MedicationImageViewer : opens image
 PillIdentificationUI --> FE_IdentifyPill
 PillIdentificationUI --> FE_IdentifyPillBatch
 PillIdentificationUI ..> MedicationScheduleReviewBoundary
@@ -303,6 +308,8 @@ CheckNearbyPharmacyUI --> FE_CheckNearbyPharmacy
 CheckCaregiverMedicationUI ..> LinkedChatUI
 LinkedChatUI --> FE_ManageLinkedChat
 LinkedChatUI --> LinkedChatRealtimeService
+LinkedChatUI ..> CheckScheduleUI : reuses medication selection
+LinkedChatUI ..> CheckMedicationDetailUI : opens authorized detail
 
 ' Frontend entities and local external services
 FE_InputPrescription --> FE_AnalyzedMedication
@@ -340,6 +347,11 @@ FE_RequestVoiceGuide ..> TTSService
 PushNotificationService --> AuthenticatedApiClient : token lifecycle
 CaregiverNotificationMonitorService --> AuthenticatedApiClient : adherence polling
 CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorService
+LinkedChatNotificationMonitorService --> LinkedChatRealtimeService : active-link events
+LinkedChatNotificationMonitorService --> NotificationService : bounded preview alert
+LinkedChatNotificationMonitorFactory ..> LinkedChatNotificationMonitorService
+LinkedChatNotificationMonitorFactory ..> FE_LinkPatientCaregiver
+LinkedChatNotificationMonitorFactory ..> FE_ManageUserSetting
 
 ' Every Flutter control reaches the backend only through authenticated HTTP
 FE_Control ..> AuthenticatedApiClient
@@ -450,7 +462,8 @@ BE_ManageLinkedChat --> BE_PatientCaregiverLink
 BE_ManageLinkedChat --> BE_MedicationSchedule
 BE_ManageLinkedChat --> BE_ChatMessage
 DispatchChatMessageAlert --> PushNotificationBoundary
-DispatchChatMessageAlert --> ChatConnectionManager
+ChatRouter --> ChatConnectionManager : suppress push for live recipient
+ChatRouter --> DispatchChatMessageAlert : offline recipient alert
 ChatMessageRepository --> ChatMessageStore
 
 ' Persistence is logical; private ORM rows implement these mappings
@@ -568,7 +581,8 @@ nodes:
 | Direct medication entry | `ManualMedicationEntryUI`, `ManualMedicationImageStore`, shared saved-medication control | Manual input reuses the established medication persistence and schedule model instead of creating a parallel domain. |
 | Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency and per-item outcomes extend the single-pill control without duplicating the identification pipeline. |
 | Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `PharmacyLookupBoundary` | Device location, server API-key ownership, normalization, and presentation remain separate cohesive boundaries. |
-| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, medication snapshots, and generic push alerts are separated by responsibility. |
+| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, schedule-style medication selection, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
+| Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps
 

@@ -679,7 +679,15 @@ FrontService -> Router : WSS /chat/links/{linkId}/stream
 Router -> BackControl : 연결 참가자 권한 재검증
 BackControl --> FrontService : WebSocket 연결 승인
 
-User -> UI : 환자의 활성 복용 약 선택 후 메시지 전송
+User -> UI : 오늘 일정형 화면에서 환자의 활성 복용 약 선택
+UI -> FrontControl : requestMedicationDetail(linkId, medicationId)
+FrontControl -> ApiClient : GET /chat/links/{linkId}/medications/{medicationId}
+ApiClient -> Router : 약 상세정보 요청
+Router -> BackControl : 활성 연결과 환자 소유 약 검증
+BackControl -> Database : 저장 복약 상세정보 조회
+Database --> BackControl : MedicationDetail
+BackControl --> UI : 권한이 확인된 공통 약 상세정보
+User -> UI : 선택 약을 포함한 메시지 전송
 UI -> FrontControl : sendMessage(clientMessageId, medicationId, body)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/messages
 ApiClient -> Router : 채팅 전송 요청
@@ -689,8 +697,8 @@ Database --> BackControl : 저장 ChatMessage 또는 기존 중복 응답
 BackControl -> BackService : ChatConnectionManager.broadcast()
 BackService --> UI : 상대 WebSocket에 새 메시지 Event
 alt 상대 사용자가 실시간 연결 중이 아님
-    BackControl -> FCM : 식별 가능한 약명을 제외한 일반 채팅 알림
-    FCM --> User : 새 복약 대화 알림
+    BackControl -> FCM : 공백 정리·최대 120자 메시지 미리보기
+    FCM --> User : 사용자 작성 본문 미리보기와 채팅 이동 정보
 end
 UI -> FrontControl : markRead(throughMessageId)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/read

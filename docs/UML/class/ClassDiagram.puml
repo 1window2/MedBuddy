@@ -81,6 +81,10 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "MedicationImageViewer" as MedicationImageViewer <<Boundary: 약 사진 확대>> {
+            + {static} show(context, medicationName, imageUrl, localImagePath, language): Future<bool>
+        }
+
         class "HealthRecommendationUI" as HealthRecommendationUI <<UI: 건강 추천>> {
             + createState(): State
         }
@@ -251,6 +255,7 @@ package "Flutter Frontend" {
             + userHash: String
             + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
             + requestMedicationContexts(linkId): Future<List<ChatMedicationContext>>
+            + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
             + sendMessage(linkId, body, clientMessageId, medicationId): Future<ChatMessage>
             + markRead(linkId, throughMessageId): Future<void>
         }
@@ -447,6 +452,18 @@ package "Flutter Frontend" {
             + {static} initialize(): Future<void>
             + {static} register(caregiverHash): Future<void>
             + {static} cancel(): Future<void>
+        }
+
+        class "LinkedChatNotificationMonitorService" as LinkedChatNotificationMonitorService <<Service: 로컬 채팅 알림 감시>> {
+            + currentUserHash: String
+            + linkRefreshInterval: Duration
+            + start(): Future<void>
+            + refreshNow(): Future<bool>
+            + dispose(): Future<void>
+        }
+
+        class "LinkedChatNotificationMonitorFactory" as LinkedChatNotificationMonitorFactory <<Composition: 채팅 알림 감시 조립>> {
+            + {static} create(userHash, client): LinkedChatNotificationMonitorService
         }
     }
 
@@ -681,6 +698,7 @@ package "FastAPI Backend" {
             - db: Session
             + request_history(user_hash, link_id, before_id): list<ChatMessage>
             + request_medication_contexts(user_hash, link_id): list<dict>
+            + request_medication_detail(user_hash, link_id, medication_id): dict
             + send_message(user_hash, link_id, body, client_message_id, medication_id): ChatSendResult
             + mark_read(user_hash, link_id, through_message_id): int
             + request_unread_count(user_hash, link_id): int
@@ -690,7 +708,7 @@ package "FastAPI Backend" {
         class "DispatchChatMessageAlert" as DispatchChatMessageAlert <<Control: 채팅 Push 알림>> {
             - db: Session
             - push_boundary: PushNotificationBoundary
-            + notify_new_message(link, sender_hash, message_id): PushDeliveryResult
+            + notify_new_message(recipient_hash, link_id, message_body): PushDeliveryResult
         }
 
         class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control: 연결 권한 관리>> {
@@ -1250,6 +1268,8 @@ CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 CheckCaregiverMedicationUI ..> LinkedChatUI
 LinkedChatUI o-- FManageLinkedChat
 LinkedChatUI o-- LinkedChatRealtimeService
+LinkedChatUI ..> CheckScheduleUI : 일정형 약 선택 화면 재사용
+LinkedChatUI ..> CheckMedicationDetailUI : 권한 검증 후 상세 열기
 ManageUserSettingUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
@@ -1260,6 +1280,8 @@ PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
 CheckResultUI --> "0..*" FAnalyzedMedication
 CheckResultUI --> "0..1" FPrescriptionChangeRadar
 CheckMedicationDetailUI --> FMedicationDetail
+CheckMedicationDetailUI ..> MedicationImageViewer : 사진 확대
+CheckScheduleUI ..> MedicationImageViewer : 사진 확대
 
 FAuthenticationControl *-- AuthenticatedApiClient
 FAuthenticationControl --> "0..1" FAuthSession
@@ -1321,6 +1343,11 @@ CaregiverNotificationMonitorFactory ..> FCheckCaregiverMedication
 CaregiverNotificationMonitorFactory ..> FSetCaregiverNotification
 CaregiverNotificationMonitorFactory ..> NotificationService
 CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorFactory
+LinkedChatNotificationMonitorService ..> LinkedChatRealtimeService
+LinkedChatNotificationMonitorService ..> NotificationService : 120자 이내 미리보기
+LinkedChatNotificationMonitorFactory ..> LinkedChatNotificationMonitorService
+LinkedChatNotificationMonitorFactory ..> FLinkPatientCaregiver
+LinkedChatNotificationMonitorFactory ..> FManageUserSetting
 
 FInputPrescription ..> FMedicationSchedule
 FCheckMedicationDetail ..> FMedicationDetail
@@ -1416,8 +1443,9 @@ BManageLinkedChat --> DBSavedMedication
 BManageLinkedChat --> DBChatMessage
 BManageLinkedChat ..> BChatMessage
 DispatchChatMessageAlert o-- PushNotificationBoundary
-DispatchChatMessageAlert o-- ChatConnectionManager
 DispatchChatMessageAlert --> DBDevicePushToken
+ChatRouter ..> ChatConnectionManager : 실시간 연결 수신자 확인
+ChatRouter ..> DispatchChatMessageAlert : 오프라인 수신자 알림
 ChatMessageRepository --> DBChatMessage
 ChatConnectionManager ..> BChatMessage
 

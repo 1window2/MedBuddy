@@ -30,6 +30,7 @@
 - The Flutter app can present medication details and voice guidance through the TTS service.
 - Voice guidance reads only the medication name, administration method, and warnings, in that order.
 - Medication images use validated `e약은요` URLs first, then the MFDS pill-identification API for exact solid-medication matches; unsupported dosage forms retain the placeholder.
+- Validated medication images can be opened from medication details or today's schedule in a shared full-screen pan-and-zoom viewer.
 - OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
 
 ### Experimental Loose-Pill Identification
@@ -60,6 +61,7 @@
 ### User Settings and Voice Playback
 
 - Users can preview display font size and Korean/English language changes immediately while the settings screen remains open, then save the selected display, reading-speed, language, and laboratory-feature settings without being forced back to the home screen.
+- A fixed back control remains available while the settings content scrolls, matching the navigation behavior of the rest of the app.
 - User settings are persisted through the backend and cached locally for offline fallback.
 - Medication voice guidance uses the selected language and visibly differentiated slow, medium, or fast reading speeds, with local guide text fallback when the backend voice-guide endpoint is unavailable. An intentional stop is treated as a normal user action rather than a playback failure.
 
@@ -89,8 +91,9 @@
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
 - The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
-- Patients and caregivers can attach an active medication context, including a validated public image when available, to a message. REST history and WebSocket events share the same server authorization check, client message identifiers make retries idempotent, and unread state is tracked per participant.
-- Chat notifications use generic lock-screen text and route the recipient back to the authorized linked conversation; the notification payload does not expose the message body.
+- Patients and caregivers select an active medication through the same slot-grouped layout used by today's schedule. A selected or previously sent medication card opens the authorized medication-detail screen.
+- REST history and WebSocket events share the same server authorization check, client message identifiers make retries idempotent, and unread state is tracked per participant.
+- Chat notifications route the recipient back to the authorized linked conversation and show a whitespace-normalized message preview limited to 120 characters. Message previews are sensitive notification content and remain subject to the device's lock-screen privacy settings.
 
 ### Health Recommendations and Reminders
 
@@ -309,6 +312,6 @@ Development workflow, verification commands, UML alignment rules, documentation 
 | Profile | Name | Role | GitHub |
 | :---: | :---: | :---: | :---: |
 | <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Architecture & AI Pipeline Lead | [@1window2](https://github.com/1window2) |
-| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Full-Stack Feature Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
+| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Team Lead & Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
 | <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | UML Documentation & Legal Compliance Lead | [@jeeon0318](https://github.com/jeeon0318) |
 | <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | UI/UX Design Lead | [@onlyone130](https://github.com/onlyone130) |
