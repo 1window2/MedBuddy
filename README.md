@@ -6,6 +6,17 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and experimental nearby-pharmacy and chat flows.
 
+## 브랜치 목적
+
+`beta/v0.2.0`은 `v0.1.x`의 안정적인 복약 관리 흐름을 유지하면서 다음
+주요 기능을 개발하고 검증하는 브랜치입니다.
+
+- 복약정보 직접 등록
+- 여러 낱알약의 일괄 식별과 개별 결과 확인
+- 근처 운영 약국 조회
+- 환자·보호자 복약 맥락 채팅
+- 처방전 촬영 가이드와 OCR·복약 일정 검토 개선
+
 ## Key Features
 
 ### Prescription and Pill-Envelope Analysis
