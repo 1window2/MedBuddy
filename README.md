@@ -6,7 +6,9 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and experimental nearby-pharmacy and chat flows.
 
-## 브랜치 목적
+## 브랜치 목적 / Branch Purpose
+
+**한국어**
 
 `beta/v0.2.0`은 `v0.1.x`의 안정적인 복약 관리 흐름을 유지하면서 다음
 주요 기능을 개발하고 검증하는 브랜치입니다.
@@ -16,6 +18,22 @@
 - 근처 운영 약국 조회
 - 환자·보호자 복약 맥락 채팅
 - 처방전 촬영 가이드와 OCR·복약 일정 검토 개선
+
+이 기능들이 정식 버전에 반영된 뒤에는 이 브랜치를 정리할 예정입니다.
+
+**English**
+
+`beta/v0.2.0` keeps the stable medication-management flow from `v0.1.x`
+while we develop and verify the following features:
+
+- Direct medication entry
+- Batch identification and individual review of multiple loose pills
+- Nearby open-pharmacy lookup
+- Medication-context chat between patients and caregivers
+- Improved prescription capture guidance and OCR/schedule review
+
+We'll clean up this branch after these features are merged into the stable
+release.
 
 ## Key Features
 
