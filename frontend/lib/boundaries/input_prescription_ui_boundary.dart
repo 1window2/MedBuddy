@@ -81,7 +81,10 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(onSettingPressed: onUserSettingRequested),
+            _HomeHeader(
+              subtitle: text.brandSubtitle,
+              onSettingPressed: onUserSettingRequested,
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
@@ -259,9 +262,13 @@ class InputPrescriptionUI extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
+  final String subtitle;
   final VoidCallback? onSettingPressed;
 
-  const _HomeHeader({required this.onSettingPressed});
+  const _HomeHeader({
+    required this.subtitle,
+    required this.onSettingPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -273,13 +280,13 @@ class _HomeHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FittedBox(
+                const FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -295,13 +302,13 @@ class _HomeHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  '건강한 복약 관리 도우미',
+                  subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textScaler: TextScaler.noScaling,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     height: 1.2,
@@ -425,6 +432,9 @@ class _HomeText {
   const _HomeText(this.language);
 
   bool get isEnglish => language == 'en';
+
+  String get brandSubtitle =>
+      isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
 
   String get todaySchedule => isEnglish ? 'Today\'s Medication' : '오늘의 복약 일정';
   String get noMedication => isEnglish

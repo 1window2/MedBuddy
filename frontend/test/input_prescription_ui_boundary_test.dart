@@ -96,4 +96,31 @@ void main() {
     expect(find.byIcon(Icons.people_alt_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('영어 설정은 메인 화면 제목과 설명에 함께 반영된다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InputPrescriptionUI(
+          statusMessage: '',
+          userSetting: const UserSetting(language: 'en'),
+          onPrescriptionScanRequested: () {},
+          onPrescriptionGalleryRequested: () {},
+          onPillIdentificationRequested: () {},
+          onTodayScheduleRequested: () {},
+          onSavedMedicationRequested: () {},
+          onPatientCaregiverLinkRequested: () {},
+          onUserSettingRequested: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Your medication guide'), findsOneWidget);
+    expect(find.text('오늘의 복약 일정'), findsNothing);
+    expect(find.text("Today's Medication"), findsOneWidget);
+  });
 }
