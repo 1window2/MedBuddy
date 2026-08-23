@@ -8,7 +8,7 @@ import '../theme/medbuddy_theme.dart';
 
 // 열거형명: MedicationCaptureTask
 // 역할: 사용자가 선택한 약 정보 분석 작업을 구분한다.
-enum MedicationCaptureTask { prescription, pill }
+enum MedicationCaptureTask { prescription, pill, manual }
 
 // 열거형명: PrescriptionImageSource
 // 역할: 처방전 분석에 사용할 이미지 출처를 구분한다.
@@ -16,7 +16,7 @@ enum PrescriptionImageSource { camera, gallery }
 
 // 함수이름: showMedicationCaptureTaskOptions
 // 함수역할:
-// - 처방전 분석과 낱알약 식별 중 수행할 작업을 선택하는 공통 하단 시트를 표시한다.
+// - 처방전 분석, 낱알약 식별, 직접 등록 중 수행할 작업을 선택하는 공통 하단 시트를 표시한다.
 // 매개변수:
 // - context: 하단 시트를 표시할 화면의 BuildContext
 // - userSetting: 언어와 글자 크기 설정
@@ -55,6 +55,16 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
             userSetting: userSetting,
             onTap: () {
               Navigator.pop(sheetContext, MedicationCaptureTask.pill);
+            },
+          ),
+          const SizedBox(height: 10),
+          _MedicationCaptureOption(
+            icon: Icons.edit_note_rounded,
+            title: text.manualTask,
+            subtitle: text.manualTaskSubtitle,
+            userSetting: userSetting,
+            onTap: () {
+              Navigator.pop(sheetContext, MedicationCaptureTask.manual);
             },
           ),
         ],
@@ -246,6 +256,10 @@ class _MedicationCaptureText {
   String get pillTaskSubtitle => isEnglish
       ? 'Compare a photographed pill with MFDS candidates.'
       : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
+  String get manualTask => isEnglish ? 'Add manually' : '직접 등록';
+  String get manualTaskSubtitle => isEnglish
+      ? 'Enter a medication name and schedule without a photo.'
+      : '사진이 없어도 약 이름과 복용 일정을 직접 입력합니다.';
   String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
   String get cameraOptionSubtitle =>
       isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
