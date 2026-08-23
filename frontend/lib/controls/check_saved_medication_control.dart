@@ -1,3 +1,6 @@
+// 파일명: check_saved_medication_control.dart
+// 역할: 저장 복약정보의 등록, 조회, 중복 판정과 삭제 요청을 수행한다.
+
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -15,8 +18,13 @@ enum MedicationSaveStatus { saved, duplicate, failed }
 class MedicationSaveResult {
   final MedicationSaveStatus status;
   final String message;
+  final int? savedMedicationId;
 
-  const MedicationSaveResult({required this.status, required this.message});
+  const MedicationSaveResult({
+    required this.status,
+    required this.message,
+    this.savedMedicationId,
+  });
 
   bool get isCompleted {
     return status == MedicationSaveStatus.saved ||
@@ -80,16 +88,19 @@ class CheckSavedMedication {
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       final message = _readMessage(decodedData, '저장되었습니다.');
+      final savedMedicationId = _readPositiveInt(decodedData['id']);
       if (decodedData['duplicate'] == true) {
         return MedicationSaveResult(
           status: MedicationSaveStatus.duplicate,
           message: message,
+          savedMedicationId: savedMedicationId,
         );
       }
       if (decodedData['success'] == true) {
         return MedicationSaveResult(
           status: MedicationSaveStatus.saved,
           message: message,
+          savedMedicationId: savedMedicationId,
         );
       }
 
@@ -128,13 +139,14 @@ class CheckSavedMedication {
     final prescriptionDate =
         medicationSchedule?.prescriptionDate ??
         medicationDetail.prescriptionDate;
-    final userEditedMedicationName =
-        medicationSchedule?.nameCorrectionSource == 'user_edit'
+    final preferredScheduleMedicationName =
+        medicationSchedule?.nameCorrectionSource == 'user_edit' ||
+            medicationSchedule?.nameCorrectionSource == 'manual_entry'
         ? medicationSchedule?.medicationName.trim() ?? ''
         : '';
     savePayload['patient_hash'] = patientHash;
-    if (userEditedMedicationName.isNotEmpty) {
-      savePayload['item_name'] = userEditedMedicationName;
+    if (preferredScheduleMedicationName.isNotEmpty) {
+      savePayload['item_name'] = preferredScheduleMedicationName;
     }
     savePayload['prescription_date'] = _formatDate(prescriptionDate);
     final prescriptionBatchId =
@@ -173,14 +185,14 @@ class CheckSavedMedication {
         '${value.day.toString().padLeft(2, '0')}';
   }
 
-  // Function Name: _readScheduleValue
-  // Description:
-  // - Prefers prescription schedule text and falls back to existing saved detail text.
-  // Parameters:
-  // - scheduleValue: Value extracted from prescription analysis.
-  // - fallbackValue: Value already present on the medication detail.
-  // Returns:
-  // - Trimmed non-empty schedule value, fallback value, or an empty string.
+  // 함수이름: _readScheduleValue
+  // 함수역할:
+  // - 처방전에서 확인한 일정 값을 우선 사용하고 없으면 기존 상세 값을 사용한다.
+  // 매개변수:
+  // - scheduleValue: 처방전 분석에서 확인한 값
+  // - fallbackValue: 약품 상세정보에 이미 있는 대체 값
+  // 반환값:
+  // - 공백을 제거한 일정 값, 대체 값 또는 빈 문자열
   String _readScheduleValue(String? scheduleValue, String fallbackValue) {
     final normalizedScheduleValue = scheduleValue?.trim() ?? '';
     if (normalizedScheduleValue.isNotEmpty) {
@@ -268,6 +280,13 @@ class CheckSavedMedication {
   String _readMessage(Map<String, dynamic> decodedData, String fallback) {
     final message = decodedData['message']?.toString().trim() ?? '';
     return message.isEmpty ? fallback : message;
+  }
+
+  int? _readPositiveInt(dynamic value) {
+    final parsedValue = value is int
+        ? value
+        : int.tryParse(value?.toString().trim() ?? '');
+    return parsedValue != null && parsedValue > 0 ? parsedValue : null;
   }
 
   // 함수명: _buildMedicationUri

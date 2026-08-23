@@ -18,6 +18,10 @@ class _MedicationImageDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
     final imageUrl = safeMedicationImageUrl(medication.imageUrl);
+    final localImageFile = medication.localImagePath.trim().isEmpty
+        ? null
+        : File(medication.localImagePath.trim());
+    final hasLocalImage = localImageFile?.existsSync() ?? false;
     final screenSize = MediaQuery.sizeOf(context);
 
     return Dialog(
@@ -64,30 +68,41 @@ class _MedicationImageDialog extends StatelessWidget {
                     key: const Key('medication-image-viewer'),
                     minScale: 1,
                     maxScale: 4,
-                    child: Image.network(
-                      imageUrl,
-                      width: double.infinity,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Text(
-                            text.imageLoadFailed,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: MedBuddyColors.textMuted,
-                              fontSize: 14 * scale,
-                              letterSpacing: 0,
-                            ),
+                    child: hasLocalImage
+                        ? Image.file(
+                            localImageFile!,
+                            width: double.infinity,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildImageLoadFailure(scale),
+                          )
+                        : Image.network(
+                            imageUrl,
+                            width: double.infinity,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildImageLoadFailure(scale),
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageLoadFailure(double scale) {
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Text(
+        text.imageLoadFailed,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: MedBuddyColors.textMuted,
+          fontSize: 14 * scale,
+          letterSpacing: 0,
         ),
       ),
     );

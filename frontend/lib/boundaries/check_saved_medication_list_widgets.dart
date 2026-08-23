@@ -402,7 +402,11 @@ class _MedicationImageButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = safeMedicationImageUrl(medication.imageUrl);
-    if (imageUrl.isEmpty) {
+    final localImageFile = medication.localImagePath.trim().isEmpty
+        ? null
+        : File(medication.localImagePath.trim());
+    final hasLocalImage = localImageFile?.existsSync() ?? false;
+    if (!hasLocalImage && imageUrl.isEmpty) {
       return Tooltip(
         message: text.noImage,
         child: Container(
@@ -435,19 +439,31 @@ class _MedicationImageButton extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(7),
-          child: Image.network(
-            imageUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return const Icon(
-                Icons.image_not_supported_outlined,
-                color: MedBuddyColors.textLight,
-                size: 22,
-              );
-            },
-          ),
+          child: hasLocalImage
+              ? Image.file(
+                  localImageFile!,
+                  fit: BoxFit.cover,
+                  errorBuilder: _buildMedicationImageError,
+                )
+              : Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: _buildMedicationImageError,
+                ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMedicationImageError(
+    BuildContext context,
+    Object error,
+    StackTrace? stackTrace,
+  ) {
+    return const Icon(
+      Icons.image_not_supported_outlined,
+      color: MedBuddyColors.textLight,
+      size: 22,
     );
   }
 }

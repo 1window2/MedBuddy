@@ -1,9 +1,15 @@
+// 파일명: check_saved_medication_ui_boundary.dart
+// 역할: 저장된 복약정보의 조회, 정렬, 선택 삭제와 상세 이동 화면을 제공한다.
+
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'check_medication_detail_ui_boundary.dart';
 import 'guided_prescription_camera_ui_boundary.dart';
+import 'manual_medication_entry_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 import '../entities/medication_detail_entity.dart';
@@ -358,8 +364,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
 
   // 함수이름: _showMedicationCaptureOptions
   // 함수역할:
-  // - 저장 목록이 비어 있을 때 처방전 분석과 낱알약 식별 중 작업을 선택하게 한다.
-  // - 처방전 분석은 이미지 출처를 추가로 선택하고 낱알약 식별은 전용 화면으로 이동한다.
+  // - 저장 목록이 비어 있을 때 처방전 분석, 낱알약 식별, 직접 등록 중 작업을 선택하게 한다.
+  // - 처방전 분석은 이미지 출처를 추가로 선택하고 나머지는 전용 화면으로 이동한다.
   // 매개변수:
   // - viewModel: 사용자 설정과 처방전 입력 요청을 제공하는 ViewModel
   // 반환값:
@@ -378,8 +384,23 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              PillIdentificationUI(userSetting: viewModel.userSetting),
+          builder: (context) => PillIdentificationUI(
+            userSetting: viewModel.userSetting,
+            onSaveRequested: viewModel.saveIdentifiedPill,
+            onBatchSaveRequested: viewModel.saveIdentifiedPills,
+          ),
+        ),
+      );
+      return;
+    }
+    if (task == MedicationCaptureTask.manual) {
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute<bool>(
+          builder: (context) => ManualMedicationEntryUI(
+            userSetting: viewModel.userSetting,
+            onSaveRequested: viewModel.saveManualMedication,
+          ),
         ),
       );
       return;

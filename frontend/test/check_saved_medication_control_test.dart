@@ -1,3 +1,6 @@
+// 파일명: check_saved_medication_control_test.dart
+// 역할: 저장 복약정보의 등록, 중복 판정, 조회와 삭제 요청을 검증한다.
+
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +21,7 @@ void main() {
       expect(request.method, 'POST');
       expect(request.url.toString(), 'http://localhost/save');
       requestBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return http.Response('{"success":true}', 200);
+      return http.Response('{"success":true,"id":37}', 200);
     });
     final control = CheckSavedMedication(
       baseUrl: 'http://localhost',
@@ -46,6 +49,7 @@ void main() {
 
     expect(result.status, MedicationSaveStatus.saved);
     expect(result.isCompleted, isTrue);
+    expect(result.savedMedicationId, 37);
     expect(requestBody['patient_hash'], 'patient-a');
     expect(requestBody['item_seq'], '200000001');
     expect(requestBody['item_name'], 'test-tablet');
@@ -83,6 +87,44 @@ void main() {
     );
 
     expect(requestBody['item_name'], '애니코프캡슐');
+  });
+
+  test('직접 등록한 약명과 복용 시간대를 저장 요청에 반영한다', () async {
+    late Map<String, dynamic> requestBody;
+    final client = MockClient((http.Request request) async {
+      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response('{"success":true,"id":42}', 200);
+    });
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    final result = await control.saveMedicationDetail(
+      const MedicationDetail(
+        itemName: '공공데이터 후보명',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+      ),
+      medicationSchedule: const MedicationSchedule(
+        medicationName: '직접 입력한 약',
+        nameCorrectionSource: 'manual_entry',
+        dosage: '0.5정',
+        intakeTime: '2회',
+        medicationTime: 4,
+        scheduleSlotKeys: ['morning', 'evening'],
+      ),
+    );
+
+    expect(result.status, MedicationSaveStatus.saved);
+    expect(result.savedMedicationId, 42);
+    expect(requestBody['item_name'], '직접 입력한 약');
+    expect(requestBody['dosage_per_time'], '0.5정');
+    expect(requestBody['daily_frequency'], '2회');
+    expect(requestBody['total_days'], '4일');
+    expect(requestBody['schedule_slot_keys'], ['morning', 'evening']);
   });
 
   test('saveMedicationDetail reports duplicate result', () async {

@@ -1,3 +1,6 @@
+// 파일명: check_saved_medication_ui_boundary_test.dart
+// 역할: 저장 복약정보 화면의 필터, 정렬, 삭제와 빈 상태를 검증한다.
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -14,7 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('빈 저장 목록의 촬영 버튼은 처방전 분석과 낱알약 식별을 제공한다', (tester) async {
+  testWidgets('빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -43,6 +46,7 @@ void main() {
 
     expect(find.text('처방전 분석'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsOneWidget);
+    expect(find.text('직접 등록'), findsOneWidget);
 
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
