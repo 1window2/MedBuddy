@@ -679,20 +679,27 @@ FrontService -> Router : WSS /chat/links/{linkId}/stream
 Router -> BackControl : 연결 참가자 권한 재검증
 BackControl --> FrontService : WebSocket 연결 승인
 
-User -> UI : 오늘 일정형 화면에서 환자의 활성 복용 약 선택
-UI -> FrontControl : requestMedicationDetail(linkId, medicationId)
-FrontControl -> ApiClient : GET /chat/links/{linkId}/medications/{medicationId}
-ApiClient -> Router : 약 상세정보 요청
-Router -> BackControl : 활성 연결과 환자 소유 약 검증
-BackControl -> Database : 저장 복약 상세정보 조회
-Database --> BackControl : MedicationDetail
-BackControl --> UI : 권한이 확인된 공통 약 상세정보
-User -> UI : 선택 약을 포함한 메시지 전송
-UI -> FrontControl : sendMessage(clientMessageId, medicationId, body)
+opt 메시지에 약 문맥 첨부
+    User -> UI : 오늘 일정형 화면에서 환자의 활성 복용 약 선택
+    UI -> FrontControl : selectMedicationContext(medicationId)
+    FrontControl --> UI : 선택 약 표시용 Snapshot
+end
+opt 선택 약 또는 이전 메시지의 약 카드 상세보기
+    User -> UI : 약 카드 선택
+    UI -> FrontControl : requestMedicationDetail(linkId, medicationId)
+    FrontControl -> ApiClient : GET /chat/links/{linkId}/medications/{medicationId}
+    ApiClient -> Router : 약 상세정보 요청
+    Router -> BackControl : 활성 연결과 환자 소유 약 검증
+    BackControl -> Database : 저장 복약 상세정보 조회
+    Database --> BackControl : MedicationDetail
+    BackControl --> UI : 권한이 확인된 공통 약 상세정보
+end
+User -> UI : 일반 메시지 또는 선택 약을 포함한 메시지 전송
+UI -> FrontControl : sendMessage(clientMessageId, medicationId?, body)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/messages
 ApiClient -> Router : 채팅 전송 요청
 Router -> BackControl : ManageLinkedChat.send_message()
-BackControl -> Database : 연결, 약 소유권·복용기간, clientMessageId 검증 후 저장
+BackControl -> Database : 연결·clientMessageId 검증 및 선택 약이 있으면 소유권·복용기간 검증 후 저장
 Database --> BackControl : 저장 ChatMessage 또는 기존 중복 응답
 BackControl -> BackService : ChatConnectionManager.broadcast()
 BackService --> UI : 상대 WebSocket에 새 메시지 Event

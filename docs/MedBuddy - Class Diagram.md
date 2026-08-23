@@ -581,7 +581,7 @@ nodes:
 | Direct medication entry | `ManualMedicationEntryUI`, `ManualMedicationImageStore`, shared saved-medication control | Manual input reuses the established medication persistence and schedule model instead of creating a parallel domain. |
 | Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency and per-item outcomes extend the single-pill control without duplicating the identification pipeline. |
 | Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `PharmacyLookupBoundary` | Device location, server API-key ownership, normalization, and presentation remain separate cohesive boundaries. |
-| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, schedule-style medication selection, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
+| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, optional schedule-style medication attachment, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
 | Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps

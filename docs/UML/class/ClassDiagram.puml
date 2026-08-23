@@ -256,7 +256,7 @@ package "Flutter Frontend" {
             + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
             + requestMedicationContexts(linkId): Future<List<ChatMedicationContext>>
             + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
-            + sendMessage(linkId, body, clientMessageId, medicationId): Future<ChatMessage>
+            + sendMessage(linkId, body, clientMessageId, medicationId?): Future<ChatMessage>
             + markRead(linkId, throughMessageId): Future<void>
         }
 
@@ -699,7 +699,7 @@ package "FastAPI Backend" {
             + request_history(user_hash, link_id, before_id): list<ChatMessage>
             + request_medication_contexts(user_hash, link_id): list<dict>
             + request_medication_detail(user_hash, link_id, medication_id): dict
-            + send_message(user_hash, link_id, body, client_message_id, medication_id): ChatSendResult
+            + send_message(user_hash, link_id, body, client_message_id, medication_id?): ChatSendResult
             + mark_read(user_hash, link_id, through_message_id): int
             + request_unread_count(user_hash, link_id): int
             + require_active_link(user_hash, link_id): _PatientCaregiverLink

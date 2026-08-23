@@ -89,6 +89,7 @@ release.
 
 ### User Settings and Voice Playback
 
+- Settings opens with a compact account summary and three focused entry points: Display & Voice, Labs, and Account. Each section keeps the same back-navigation position, and partially edited values remain available while moving between sections.
 - Users can preview display font size and Korean/English language changes immediately while the settings screen remains open, then save the selected display, reading-speed, language, and laboratory-feature settings without being forced back to the home screen.
 - A fixed back control remains available while the settings content scrolls, matching the navigation behavior of the rest of the app.
 - User settings are persisted through the backend and cached locally for offline fallback.

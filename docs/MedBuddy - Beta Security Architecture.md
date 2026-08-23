@@ -48,7 +48,7 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
 | Backend external boundary | `NationalEmergencyMedicalCenterPharmacyAPI` | Send the minimum coordinate query to the public pharmacy service and normalize its untrusted response. |
 | Backend control | `CheckNearbyPharmacy` | Validate coordinates, apply result bounds, and return only presentation-safe pharmacy fields. |
-| Backend control | `ManageLinkedChat` | Authorize the active link, validate active medication context, persist idempotent messages, and track participant read state. |
+| Backend control | `ManageLinkedChat` | Authorize the active link, validate optional medication context when attached, persist idempotent messages, and track participant read state. |
 | Backend control | `DispatchChatMessageAlert` | Notify only the linked recipient with generic content after the message transaction succeeds. |
 | Backend runtime service | `ChatConnectionManager` | Own in-process WebSocket memberships and broadcast only to connections authorized for the same active link. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
@@ -234,10 +234,11 @@ hours and asks the user to confirm by phone.
 ## Linked Medication Chat Boundary
 
 The chat laboratory feature requires an active patient-caregiver link and at
-least one active medication belonging to the linked patient. The client may
-attach only a server-returned medication context. `ManageLinkedChat` rechecks
-the saved medication, course activity, and link ownership rather than trusting
-the client snapshot.
+least one active medication belonging to the linked patient. A message may be
+sent without medication context. When context is attached, the client may use
+only a server-returned medication context, and `ManageLinkedChat` rechecks the
+saved medication, course activity, and link ownership rather than trusting the
+client snapshot.
 
 REST history and WebSocket events share the same principal-to-link
 authorization. Client-generated message identifiers are normalized and unique

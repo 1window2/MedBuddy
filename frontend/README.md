@@ -88,11 +88,14 @@ Medication detail and today's schedule share one full-screen image viewer. A
 validated public medication image can be tapped to inspect it with pan and zoom
 without duplicating image-loading policy in each screen.
 
-Font-size and language choices preview immediately while Settings remains open.
-Saving persists all display, reading-speed, language, and laboratory toggles
-without closing the screen. A fixed back button remains in the same position
-while the settings body scrolls. Stopping a TTS preview intentionally is
-handled as a normal action rather than a playback error.
+Settings starts from an account-aware hub that separates Display & Voice,
+Labs, and Account actions. The account summary masks email or phone details,
+and moving between sections preserves unsaved choices. Font-size and language
+choices preview immediately while Settings remains open. Saving persists all
+display, reading-speed, language, and laboratory toggles without closing the
+screen. A fixed back button remains in the same position while each settings
+section scrolls. Stopping a TTS preview intentionally is handled as a normal
+action rather than a playback error.
 
 ## Common Commands
 

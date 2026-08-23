@@ -1126,8 +1126,8 @@ end
 
 - 실험실 기능이 켜져 있어도 활성 환자-보호자 연결과 현재 복용 약이 있어야 채팅을 사용할 수 있다.
 - 메시지 저장은 REST, 실시간 수신은 WebSocket으로 분리하고 재연결 시 이력으로 누락을 보완한다.
-- `clientMessageId`로 재전송 중복을 막고 선택 약은 전송 시점의 표시용 스냅샷으로 보존한다.
-- 약 선택은 오늘 일정의 시간대별 화면을 재사용하고, 선택 약과 이전 메시지의 약 카드는 권한 확인 후 공통 상세 화면으로 이동한다.
+- `clientMessageId`로 재전송 중복을 막고, 사용자가 약을 선택한 메시지는 전송 시점의 표시용 스냅샷을 선택적으로 보존한다.
+- 일반 메시지는 약 선택 없이 전송할 수 있다. 약을 첨부할 때는 오늘 일정의 시간대별 화면을 재사용하고, 선택 약과 이전 메시지의 약 카드는 권한 확인 후 공통 상세 화면으로 이동한다.
 - 상대가 채팅 화면에 없으면 공백을 정리하고 120자로 제한한 메시지 미리보기를 알림에 표시한다.
 
 ```plantuml
@@ -1154,16 +1154,23 @@ Realtime -> BE : WSS stream 연결
 BE -> DB : 활성 연결 재검증
 BE --> Realtime : connection accepted
 
-User -> UI : 오늘 일정형 화면에서 활성 복용 약 선택
-UI -> FE : requestMedicationDetail(linkId, medicationId)
-FE -> BE : GET authorized medication detail
-BE -> DB : 활성 연결과 환자 소유 약 검증
-DB --> BE : 저장 복약 상세정보
-BE --> UI : 공통 약 상세 화면용 정보
-User -> UI : 선택 약을 포함한 메시지 전송
-UI -> FE : sendMessage(clientMessageId, medicationId, body)
+opt [메시지에 약 문맥 첨부]
+  User -> UI : 오늘 일정형 화면에서 활성 복용 약 선택
+  UI -> FE : selectMedicationContext(medicationId)
+  FE --> UI : 선택 약 표시용 Snapshot
+end
+opt [선택 약 또는 이전 메시지의 약 카드 상세보기]
+  User -> UI : 약 카드 선택
+  UI -> FE : requestMedicationDetail(linkId, medicationId)
+  FE -> BE : GET authorized medication detail
+  BE -> DB : 활성 연결과 환자 소유 약 검증
+  DB --> BE : 저장 복약 상세정보
+  BE --> UI : 공통 약 상세 화면용 정보
+end
+User -> UI : 일반 메시지 또는 선택 약을 포함한 메시지 전송
+UI -> FE : sendMessage(clientMessageId, medicationId?, body)
 FE -> BE : POST message
-BE -> DB : 연결·약 소유권·복용기간 검증 및 멱등 저장
+BE -> DB : 연결 검증 및 선택 약이 있으면 소유권·복용기간 검증 후 멱등 저장
 DB --> BE : 저장 메시지 또는 기존 중복 응답
 BE -> Connections : broadcast(linkId, messageEvent)
 Connections --> Peer : 실시간 메시지
