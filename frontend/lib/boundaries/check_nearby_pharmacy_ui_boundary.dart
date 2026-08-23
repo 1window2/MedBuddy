@@ -11,7 +11,7 @@ import '../entities/user_setting_entity.dart';
 import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
 
-enum _PharmacyFilter { openNow, allDay, all }
+enum _PharmacyFilter { openNow, all }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 
@@ -124,10 +124,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         _pharmacies
             .where((pharmacy) => pharmacy.isOpenNow == true)
             .toList(growable: false),
-      _PharmacyFilter.allDay =>
-        _pharmacies
-            .where((pharmacy) => pharmacy.is24Hours)
-            .toList(growable: false),
       _PharmacyFilter.all => _pharmacies,
     };
   }
@@ -239,10 +235,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   label: Text(text.openNow),
                 ),
                 ButtonSegment(
-                  value: _PharmacyFilter.allDay,
-                  label: Text(text.allDay),
-                ),
-                ButtonSegment(
                   value: _PharmacyFilter.all,
                   label: Text(text.all),
                 ),
@@ -261,7 +253,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   icon: Icons.local_pharmacy_outlined,
                   title: switch (_filter) {
                     _PharmacyFilter.openNow => text.noOpenPharmacy,
-                    _PharmacyFilter.allDay => text.noAllDayPharmacy,
                     _PharmacyFilter.all => text.noNearbyPharmacy,
                   },
                   message: _filter == _PharmacyFilter.all
@@ -661,14 +652,10 @@ class _NearbyPharmacyText {
       isEnglish ? 'Pharmacy information is unavailable' : '약국 정보를 확인할 수 없습니다';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get openNow => isEnglish ? 'Open now' : '영업 중';
-  String get allDay => isEnglish ? '24 hours' : '24시간';
   String get all => isEnglish ? 'All' : '전체';
   String get noOpenPharmacy => isEnglish
       ? 'No open pharmacies were found within 20 km'
       : '20km 안에 영업 중인 약국이 없습니다';
-  String get noAllDayPharmacy => isEnglish
-      ? 'No 24-hour pharmacies were found within 20 km'
-      : '20km 안에 24시간 약국이 없습니다';
   String get noNearbyPharmacy =>
       isEnglish ? 'No nearby pharmacies were found' : '주변 약국을 찾지 못했습니다';
   String get checkLocation => isEnglish

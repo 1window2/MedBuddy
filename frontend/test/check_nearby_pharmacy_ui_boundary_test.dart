@@ -104,6 +104,9 @@ void main() {
 
     expect(find.text('영업중 메드버디약국'), findsOneWidget);
     expect(find.text('영업종료 메드버디약국'), findsNothing);
+    expect(find.text('영업 중'), findsWidgets);
+    expect(find.text('24시간'), findsNothing);
+    expect(find.text('전체'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('전체'));

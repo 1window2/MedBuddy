@@ -1079,7 +1079,7 @@ class _SettingText {
       isEnglish ? 'Nearby open pharmacies' : '근처 운영 약국';
   String get nearbyPharmacyLabDescription => isEnglish
       ? 'Show the experimental nearby pharmacy feature on the home screen.'
-      : '현재 위치 주변의 영업 중·24시간 약국 기능을 메인 화면에 표시합니다.';
+      : '현재 위치 주변의 운영 약국 기능을 메인 화면에 표시합니다.';
   String get linkedMedicationChatLabTitle =>
       isEnglish ? 'Medication conversation' : '복약 대화';
   String get linkedMedicationChatLabDescription => isEnglish
