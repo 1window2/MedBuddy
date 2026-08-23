@@ -453,7 +453,7 @@ class _HomeText {
   bool get isEnglish => language == 'en';
 
   String get brandSubtitle =>
-      isEnglish ? 'Your healthy medication companion' : '건강한 복약 관리 도우미';
+      isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
 
   String get todaySchedule => isEnglish ? 'Today\'s Medication' : '오늘의 복약 일정';
   String get noMedication => isEnglish
