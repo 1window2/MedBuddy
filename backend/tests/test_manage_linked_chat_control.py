@@ -252,6 +252,20 @@ class ManageLinkedChatTest(unittest.TestCase):
             "https://nedrug.mfds.go.kr/pill.png",
         )
 
+    def test_message_without_medication_context_is_allowed(self) -> None:
+        """약을 고르지 않은 일반 메시지도 복약 카드 없이 저장되는지 검증한다."""
+        sent = self.chat.send_message(
+            link_id=self.link_id,
+            sender_hash="patient-a",
+            client_message_id="message_request_006",
+            body="오늘은 몸 상태가 괜찮아요.",
+        )
+
+        response = sent.message.to_response_dict()
+        self.assertTrue(sent.created)
+        self.assertEqual(response["body"], "오늘은 몸 상태가 괜찮아요.")
+        self.assertIsNone(response["medication_context"])
+
     def test_unowned_or_inactive_medication_is_rejected(self) -> None:
         """다른 사용자의 약과 복용 종료 약을 채팅에 첨부할 수 없는지 검증한다."""
         other_medication = self._save_medication(patient_hash="caregiver-a")

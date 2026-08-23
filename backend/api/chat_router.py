@@ -115,7 +115,7 @@ def get_chat_medication_detail(
 
 
 # 함수이름: post_chat_message
-# 함수역할: 복약 맥락 메시지를 한 번만 저장하고 실시간 전송과 푸시를 연결한다.
+# 함수역할: 일반 또는 복약 맥락 메시지를 한 번만 저장하고 실시간 전송과 푸시를 연결한다.
 # 매개변수: link_id, 메시지 DTO, 사용자 식별값과 요청 의존성
 # 반환값: 생성 여부와 저장된 메시지
 @router.post("/links/{link_id}/messages")

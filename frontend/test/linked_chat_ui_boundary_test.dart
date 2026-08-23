@@ -16,10 +16,12 @@ import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 
 class _RetryChatControl extends ManageLinkedChat {
   final List<String> clientMessageIds = [];
+  final List<int?> medicationIds = [];
+  final bool failFirstSend;
   int sendAttempts = 0;
   int detailRequests = 0;
 
-  _RetryChatControl()
+  _RetryChatControl({this.failFirstSend = true})
     : super(
         userHash: 'patient-a',
         client: MockClient((request) async => http.Response('{}', 200)),
@@ -65,11 +67,12 @@ class _RetryChatControl extends ManageLinkedChat {
     required int linkId,
     required String clientMessageId,
     required String body,
-    required int medicationId,
+    int? medicationId,
   }) async {
     sendAttempts += 1;
     clientMessageIds.add(clientMessageId);
-    if (sendAttempts == 1) {
+    medicationIds.add(medicationId);
+    if (failFirstSend && sendAttempts == 1) {
       throw StateError('temporary failure');
     }
     return ChatMessage(
@@ -79,11 +82,13 @@ class _RetryChatControl extends ManageLinkedChat {
       clientMessageId: clientMessageId,
       body: body,
       createdAt: DateTime.utc(2026, 8, 23, 9),
-      medicationContext: const ChatMedicationContext(
-        medicationId: 91,
-        medicationName: '테스트정',
-        dosagePerTime: '1정',
-      ),
+      medicationContext: medicationId == null
+          ? null
+          : const ChatMedicationContext(
+              medicationId: 91,
+              medicationName: '테스트정',
+              dosagePerTime: '1정',
+            ),
     );
   }
 
@@ -137,6 +142,48 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
 }
 
 void main() {
+  testWidgets('안내는 자동으로 사라지고 약 선택 없이 일반 메시지를 보낸다', (tester) async {
+    final control = _RetryChatControl(failFirstSend: false);
+    final realtimeService = _FakeRealtimeService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const guide = '대화할 약을 선택하면 사진과 복용량이 메시지에 함께 표시됩니다.';
+    expect(find.text(guide), findsOneWidget);
+    final initialField = tester.widget<TextField>(find.byType(TextField));
+    expect(initialField.enabled, isTrue);
+    expect(initialField.decoration?.hintText, isNull);
+
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.text(guide), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '오늘은 몸 상태가 괜찮아요.');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('chatSendButton')));
+    await tester.pumpAndSettle();
+
+    expect(control.sendAttempts, 1);
+    expect(control.medicationIds, [null]);
+    expect(find.text('오늘은 몸 상태가 괜찮아요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
   testWidgets('큰 글씨에서도 메시지 실패 재시도는 같은 요청 식별자를 사용한다', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));

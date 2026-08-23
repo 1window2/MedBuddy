@@ -107,12 +107,12 @@ class ManageLinkedChat {
 
   // 함수명: sendMessage
   // 역할:
-  // - 클라이언트 요청 식별자와 함께 메시지를 보내 재시도 중복 저장을 방지한다.
+  // - 일반 또는 복약 맥락 메시지를 보내고 재시도 중복 저장을 방지한다.
   Future<ChatMessage> sendMessage({
     required int linkId,
     required String clientMessageId,
     required String body,
-    required int medicationId,
+    int? medicationId,
   }) async {
     final response = await _client
         .post(
@@ -121,7 +121,7 @@ class ManageLinkedChat {
           body: jsonEncode({
             'client_message_id': clientMessageId,
             'body': body,
-            'medication_id': medicationId,
+            'medication_id': ?medicationId,
           }),
         )
         .timeout(_requestTimeout);

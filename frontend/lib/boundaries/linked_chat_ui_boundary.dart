@@ -60,6 +60,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   StreamSubscription<Map<String, dynamic>>? _eventSubscription;
   StreamSubscription<LinkedChatConnectionState>? _stateSubscription;
   Timer? _fallbackRefreshTimer;
+  Timer? _medicationContextGuideTimer;
   List<ChatMessage> _messages = const [];
   List<ChatMedicationContext> _medicationContexts = const [];
   ChatMedicationContext? _selectedMedicationContext;
@@ -74,6 +75,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   int? _pendingMedicationId;
   int? _loadingMedicationId;
   int _requestGeneration = 0;
+  bool _showMedicationContextGuide = true;
 
   _LinkedChatText get _text => _LinkedChatText(widget.userSetting.language);
 
@@ -109,6 +111,11 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         setState(() => _connectionState = state);
       }
     });
+    _medicationContextGuideTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() => _showMedicationContextGuide = false);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_initializeChat());
     });
@@ -119,6 +126,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     WidgetsBinding.instance.removeObserver(this);
     _requestGeneration += 1;
     _fallbackRefreshTimer?.cancel();
+    _medicationContextGuideTimer?.cancel();
     unawaited(_eventSubscription?.cancel());
     unawaited(_stateSubscription?.cancel());
     if (_ownsRealtimeService) {
@@ -320,7 +328,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     }
     final body = _messageController.text.trim();
     final medication = _selectedMedicationContext;
-    if (body.isEmpty || medication == null) {
+    if (body.isEmpty) {
       return;
     }
     FocusScope.of(context).unfocus();
@@ -330,19 +338,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     });
     final canReusePendingRequest =
         _pendingMessageBody == body &&
-        _pendingMedicationId == medication.medicationId;
+        _pendingMedicationId == medication?.medicationId;
     final clientMessageId = canReusePendingRequest
         ? _pendingClientMessageId ?? _createClientMessageId()
         : _createClientMessageId();
     _pendingClientMessageId = clientMessageId;
     _pendingMessageBody = body;
-    _pendingMedicationId = medication.medicationId;
+    _pendingMedicationId = medication?.medicationId;
     try {
       final message = await _control.sendMessage(
         linkId: widget.linkId,
         clientMessageId: clientMessageId,
         body: body,
-        medicationId: medication.medicationId,
+        medicationId: medication?.medicationId,
       );
       if (!mounted) {
         return;
@@ -536,22 +544,26 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         top: false,
         child: Column(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              color: const Color(0xFFEAFBF4),
-              child: Text(
-                _text.medicationContextGuide,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: MedBuddyColors.textMuted,
-                  fontSize: 12,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0,
+            if (_showMedicationContextGuide)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                color: const Color(0xFFEAFBF4),
+                child: Text(
+                  _text.medicationContextGuide,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
-            ),
             Expanded(child: _buildMessageArea()),
             _buildComposer(),
           ],
@@ -706,17 +718,15 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                 Expanded(
                   child: TextField(
                     controller: _messageController,
-                    enabled: _medicationContexts.isNotEmpty && !_isSending,
+                    enabled: !_isSending,
                     minLines: 1,
                     maxLines: 4,
                     maxLength: 500,
                     textInputAction: TextInputAction.newline,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
-                      hintText: _medicationContexts.isEmpty
-                          ? _text.noActiveMedication
-                          : _selectedMedicationContext == null
-                          ? _text.selectMedicationFirst
+                      hintText: _selectedMedicationContext == null
+                          ? null
                           : _text.exampleMessage(
                               _suggestedMessage(_selectedMedicationContext!),
                             ),
@@ -739,9 +749,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                   key: const ValueKey('chatSendButton'),
                   tooltip: _text.sendMessage,
                   onPressed:
-                      !_isSending &&
-                          _selectedMedicationContext != null &&
-                          _messageController.text.trim().isNotEmpty
+                      !_isSending && _messageController.text.trim().isNotEmpty
                       ? _sendMessage
                       : null,
                   constraints: const BoxConstraints.tightFor(
@@ -1099,8 +1107,6 @@ class _LinkedChatText {
   String get sendFailed => isEnglish
       ? 'Could not send the message. Tap send again.'
       : '메시지를 보내지 못했습니다. 다시 눌러주세요.';
-  String get chooseMedication =>
-      isEnglish ? 'Choose a medication to discuss' : '대화할 약을 선택하세요';
   String dose(String value) => isEnglish ? 'Dose: $value' : '1회 $value';
   String patientSuggestedMessage(String medicationName) => isEnglish
       ? 'I finished taking $medicationName.'
@@ -1116,13 +1122,11 @@ class _LinkedChatText {
       : '대화할 약을 선택하면 사진과 복용량이 메시지에 함께 표시됩니다.';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get emptyConversation => isEnglish
-      ? 'No messages yet.\nChoose an active medication to start the conversation.'
-      : '아직 대화가 없습니다.\n복용 중인 약을 골라 첫 메시지를 보내보세요.';
+      ? 'No messages yet.\nSend a message to start the conversation.'
+      : '아직 대화가 없습니다.\n메시지를 보내 대화를 시작해보세요.';
   String get noActiveMedication =>
       isEnglish ? 'No active medications' : '복용 중인 약이 없습니다';
   String get selectMedication => isEnglish ? 'Choose medication' : '대화할 약 선택';
-  String get selectMedicationFirst =>
-      isEnglish ? 'Choose a medication first' : '약을 먼저 선택하세요';
   String get sendMessage => isEnglish ? 'Send message' : '메시지 보내기';
   String get connected => isEnglish ? 'Live connection' : '실시간 연결됨';
   String get connecting => isEnglish ? 'Connecting' : '연결 중';

@@ -150,7 +150,7 @@ class ManageLinkedChat:
         }
 
     # 함수이름: send_message
-    # 함수역할: 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
+    # 함수역할: 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
     # 매개변수: link_id, sender_hash, client_message_id, body, medication_id
     # 반환값: ChatSendResult
     def send_message(
@@ -177,16 +177,30 @@ class ManageLinkedChat:
                 created=False,
             )
 
-        medication = self._resolve_active_medication(link, medication_id)
+        medication = (
+            self._resolve_active_medication(link, medication_id)
+            if medication_id is not None
+            else None
+        )
         row = _ChatMessage(
             link_id=link_id,
             sender_hash=sender_hash,
             client_message_id=client_message_id,
             body=body,
-            medication_id=int(medication.id),
-            medication_name=str(medication.item_name),
-            medication_image_url=safe_medication_image_url(medication.image_url),
-            medication_dosage=(medication.dosage_per_time or "").strip(),
+            medication_id=(int(medication.id) if medication is not None else None),
+            medication_name=(
+                str(medication.item_name) if medication is not None else None
+            ),
+            medication_image_url=(
+                safe_medication_image_url(medication.image_url)
+                if medication is not None
+                else None
+            ),
+            medication_dosage=(
+                (medication.dosage_per_time or "").strip()
+                if medication is not None
+                else None
+            ),
         )
         try:
             self.message_repository.add(row)
@@ -286,14 +300,9 @@ class ManageLinkedChat:
     def _resolve_active_medication(
         self,
         link: _PatientCaregiverLink,
-        medication_id: int | None,
+        medication_id: int,
     ) -> _SavedMedication:
         """선택한 약이 연동 환자의 현재 복용 약인지 검증한다."""
-        if medication_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Select an active medication before sending a message.",
-            )
         medication = self.medication_repository.find_owned_by_id(
             medication_id,
             str(link.patient_hash),

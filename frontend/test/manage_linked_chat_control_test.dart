@@ -108,6 +108,43 @@ void main() {
     control.dispose();
   });
 
+  test('약을 선택하지 않은 일반 메시지는 복약 식별자 없이 전송한다', () async {
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['client_message_id'], 'message_request_003');
+      expect(body['body'], '오늘은 몸 상태가 괜찮아요.');
+      expect(body.containsKey('medication_id'), isFalse);
+      return _jsonResponse({
+        'success': true,
+        'created': true,
+        'data': {
+          'message_id': 53,
+          'link_id': 17,
+          'sender_hash': 'patient-a',
+          'client_message_id': 'message_request_003',
+          'body': '오늘은 몸 상태가 괜찮아요.',
+          'created_at': '2026-08-23T03:01:00+00:00',
+          'medication_context': null,
+          'read_at': null,
+        },
+      }, 200);
+    });
+    final control = ManageLinkedChat(
+      userHash: 'patient-a',
+      client: client,
+      chatUrlBuilder: (path) => '$baseUrl$path',
+    );
+
+    final message = await control.sendMessage(
+      linkId: 17,
+      clientMessageId: 'message_request_003',
+      body: '오늘은 몸 상태가 괜찮아요.',
+    );
+
+    expect(message.medicationContext, isNull);
+    control.dispose();
+  });
+
   test('연동 환자의 활성 복약 목록을 채팅 선택 정보로 변환한다', () async {
     final client = MockClient((request) async {
       expect(request.method, 'GET');
