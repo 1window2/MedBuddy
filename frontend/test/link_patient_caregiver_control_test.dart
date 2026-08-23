@@ -83,75 +83,76 @@ void main() {
       patientCode.isExpired(DateTime.utc(2026, 6, 17, 0, 14, 59)),
       isFalse,
     );
-    expect(
-      patientCode.isExpired(DateTime.utc(2026, 6, 17, 0, 15)),
-      isTrue,
-    );
+    expect(patientCode.isExpired(DateTime.utc(2026, 6, 17, 0, 15)), isTrue);
   });
 
-  test('generatePatientHash preserves the diagram-level control name',
-      () async {
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'POST');
-      expect(request.url.path, '/link/code');
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'patient_hash': 'patient-a',
-            'patient_code': 'WXYZ5678',
-            'expires_at': '2026-06-17T00:15:00+00:00',
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'generatePatientHash preserves the diagram-level control name',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/link/code');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'patient_hash': 'patient-a',
+              'patient_code': 'WXYZ5678',
+              'expires_at': '2026-06-17T00:15:00+00:00',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = LinkPatientCaregiver(
+        baseUrl: 'http://localhost',
+        userHash: 'patient-a',
+        client: client,
       );
-    });
-    final control = LinkPatientCaregiver(
-      baseUrl: 'http://localhost',
-      userHash: 'patient-a',
-      client: client,
-    );
 
-    final patientCode = await control.generatePatientHash();
+      final patientCode = await control.generatePatientHash();
 
-    expect(patientCode.code, 'WXYZ5678');
-  });
+      expect(patientCode.code, 'WXYZ5678');
+    },
+  );
 
-  test('requestPatientCaregiverLink sends caregiver hash and patient code',
-      () async {
-    late Map<String, dynamic> requestBody;
-    final client = MockClient((http.Request request) async {
-      expect(request.method, 'POST');
-      expect(request.url.path, '/link/register');
-      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
-      return http.Response(
-        jsonEncode({
-          'success': true,
-          'data': {
-            'id': 7,
-            'patient_hash': 'patient-a',
-            'caregiver_hash': 'caregiver-a',
-            'linked': true,
-          },
-        }),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'},
+  test(
+    'requestPatientCaregiverLink sends caregiver hash and patient code',
+    () async {
+      late Map<String, dynamic> requestBody;
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/link/register');
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'id': 7,
+              'patient_hash': 'patient-a',
+              'caregiver_hash': 'caregiver-a',
+              'linked': true,
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = LinkPatientCaregiver(
+        baseUrl: 'http://localhost',
+        userHash: 'caregiver-a',
+        client: client,
       );
-    });
-    final control = LinkPatientCaregiver(
-      baseUrl: 'http://localhost',
-      userHash: 'caregiver-a',
-      client: client,
-    );
 
-    final link = await control.requestPatientCaregiverLink('ABCD1234');
+      final link = await control.requestPatientCaregiverLink('ABCD1234');
 
-    expect(requestBody['caregiver_hash'], 'caregiver-a');
-    expect(requestBody['patient_code'], 'ABCD1234');
-    expect(link.linkId, 7);
-    expect(link.linkStatus, isTrue);
-  });
+      expect(requestBody['caregiver_hash'], 'caregiver-a');
+      expect(requestBody['patient_code'], 'ABCD1234');
+      expect(link.linkId, 7);
+      expect(link.linkStatus, isTrue);
+    },
+  );
 
   test('requestUnlink scopes unlink request by user hash', () async {
     final client = MockClient((http.Request request) async {
@@ -217,7 +218,9 @@ void main() {
 
   test('PatientHash normalizes an empty local patient scope', () {
     expect(
-        PatientHash.normalizePatientHash(' '), PatientHash.defaultPatientHash);
+      PatientHash.normalizePatientHash(' '),
+      PatientHash.defaultPatientHash,
+    );
   });
 
   test('PatientCaregiverLink preserves diagram lifecycle methods', () {
