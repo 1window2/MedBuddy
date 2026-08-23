@@ -265,31 +265,24 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                       ? _requestRefresh
                       : () => setState(() => _filter = _PharmacyFilter.all),
                 )
-              : RefreshIndicator(
-                  onRefresh: _requestRefresh,
-                  color: MedBuddyColors.primary,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    itemCount: visiblePharmacies.length + 1,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      if (index == visiblePharmacies.length) {
-                        return _PharmacySourceNotice(
-                          message: text.sourceNotice,
-                        );
-                      }
-                      final pharmacy = visiblePharmacies[index];
-                      return _PharmacyCard(
-                        pharmacy: pharmacy,
-                        text: text,
-                        onPhoneRequested: pharmacy.telephone.isEmpty
-                            ? null
-                            : () => _requestPhoneCall(pharmacy),
-                        onDirectionsRequested: () =>
-                            _requestDirections(pharmacy),
-                      );
-                    },
-                  ),
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                  itemCount: visiblePharmacies.length + 1,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    if (index == visiblePharmacies.length) {
+                      return _PharmacySourceNotice(message: text.sourceNotice);
+                    }
+                    final pharmacy = visiblePharmacies[index];
+                    return _PharmacyCard(
+                      pharmacy: pharmacy,
+                      text: text,
+                      onPhoneRequested: pharmacy.telephone.isEmpty
+                          ? null
+                          : () => _requestPhoneCall(pharmacy),
+                      onDirectionsRequested: () => _requestDirections(pharmacy),
+                    );
+                  },
                 ),
         ),
       ],

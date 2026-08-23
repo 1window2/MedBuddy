@@ -107,6 +107,7 @@ void main() {
     expect(find.text('영업 중'), findsWidgets);
     expect(find.text('24시간'), findsNothing);
     expect(find.text('전체'), findsOneWidget);
+    expect(find.byType(RefreshIndicator), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('전체'));
