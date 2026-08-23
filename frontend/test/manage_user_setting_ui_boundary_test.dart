@@ -10,6 +10,41 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 역할: 설정의 실시간 미리보기, 저장과 음성 안내 상호작용을 검증한다.
 
 void main() {
+  testWidgets('뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    final backButton = find.byKey(const ValueKey('settingsBackButton'));
+    final initialPosition = tester.getTopLeft(backButton);
+
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -700),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(backButton), initialPosition);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다', (tester) async {
     String? savedLanguage;
     final authenticationControl = AuthenticationControl.development();

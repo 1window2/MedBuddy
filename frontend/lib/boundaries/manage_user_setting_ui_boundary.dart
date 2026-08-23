@@ -108,17 +108,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               constraints: const BoxConstraints(maxWidth: 430),
               child: Column(
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _SettingsBackButton(
+                        tooltip: text.back,
+                        onTap: () => Navigator.maybePop(context),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
+                      padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _CloseButton(
-                            tooltip: text.close,
-                            onTap: () => Navigator.maybePop(context),
-                          ),
-                          const SizedBox(height: 22),
                           _SettingTitle(text.fontSizeTitle),
                           const SizedBox(height: 22),
                           _OptionRow(
@@ -640,11 +645,11 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
   }
 }
 
-class _CloseButton extends StatelessWidget {
+class _SettingsBackButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
 
-  const _CloseButton({required this.tooltip, required this.onTap});
+  const _SettingsBackButton({required this.tooltip, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -653,12 +658,17 @@ class _CloseButton extends StatelessWidget {
       button: true,
       child: ExcludeSemantics(
         child: IconButton(
+          key: const ValueKey('settingsBackButton'),
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           tooltip: tooltip,
           onPressed: onTap,
-          icon: const Icon(Icons.close, color: Color(0xFF4A5565), size: 31),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF4A5565),
+            size: 31,
+          ),
         ),
       ),
     );
@@ -955,7 +965,7 @@ class _SettingText {
 
   bool get isEnglish => language == 'en';
 
-  String get close => isEnglish ? 'Close' : '닫기';
+  String get back => isEnglish ? 'Back' : '뒤로가기';
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
   String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
   String get languageTitle => isEnglish ? 'Language' : '언어';
