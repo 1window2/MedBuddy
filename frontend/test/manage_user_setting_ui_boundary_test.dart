@@ -13,6 +13,41 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 역할: 환경설정 저장 중복 방지와 실패 복구 동작을 검증한다.
 
 void main() {
+  testWidgets('뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    final backButton = find.byKey(const ValueKey('settingsBackButton'));
+    final initialPosition = tester.getTopLeft(backButton);
+
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -700),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(backButton), initialPosition);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다', (tester) async {
     String? savedLanguage;
     final authenticationControl = AuthenticationControl.development();
