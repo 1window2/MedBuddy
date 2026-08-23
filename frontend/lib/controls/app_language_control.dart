@@ -1,17 +1,17 @@
-// File Name: app_language_control.dart
-// Role: Owns the device-wide MedBuddy language preference.
+// 파일명: app_language_control.dart
+// 역할: 기기 전체에서 사용하는 MedBuddy 언어 설정을 관리한다.
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Class Name: AppLanguageControl
-// Role: Keeps authentication and signed-in settings on one persisted language.
-// Responsibilities:
-// - Load the last device-wide language without delaying application startup.
-// - Validate and persist Korean or English selections.
-// - Notify the application root so every active boundary can rebuild.
+// 클래스명: AppLanguageControl
+// 역할: 인증 화면과 로그인 후 화면이 하나의 저장된 언어 설정을 사용하게 한다.
+// 주요 책임:
+// - 앱 시작을 지연하지 않고 마지막 언어 설정을 불러온다.
+// - 한국어 또는 영어 선택값을 검증하고 기기에 저장한다.
+// - 언어 변경 시 앱 루트에 알려 현재 화면을 다시 구성한다.
 class AppLanguageControl extends ChangeNotifier {
   static const String preferenceKey = 'medbuddy_app_language';
 
@@ -29,12 +29,12 @@ class AppLanguageControl extends ChangeNotifier {
 
   bool get isEnglish => _language == 'en';
 
-  // Function Name: load
-  // Description:
-  // - Loads the persisted device-wide language.
-  // - Does not overwrite a newer selection made while storage was loading.
-  // Returns:
-  // - Completes after the stored preference has been considered.
+  // 함수명: load
+  // 역할:
+  // - 기기에 저장된 앱 언어를 불러온다.
+  // - 저장소를 읽는 동안 사용자가 새 언어를 선택했다면 해당 선택을 덮어쓰지 않는다.
+  // 반환값:
+  // - 저장된 언어 확인이 끝나면 완료된다.
   Future<void> load() async {
     final revision = _selectionRevision;
     final preferences = await SharedPreferences.getInstance();
@@ -50,13 +50,13 @@ class AppLanguageControl extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Function Name: setLanguage
-  // Description:
-  // - Updates and persists the device-wide Korean or English selection.
-  // Parameters:
-  // - language: Requested ISO-style application language code.
-  // Returns:
-  // - Completes after persistence succeeds.
+  // 함수명: setLanguage
+  // 역할:
+  // - 앱 전체의 한국어 또는 영어 선택값을 변경하고 기기에 저장한다.
+  // 매개변수:
+  // - language: 변경할 앱 언어 코드
+  // 반환값:
+  // - 언어 저장이 끝나면 완료된다.
   Future<void> setLanguage(String language) async {
     final normalizedLanguage = normalizeLanguage(language);
     _selectionRevision += 1;

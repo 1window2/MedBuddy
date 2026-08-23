@@ -1,3 +1,6 @@
+// 파일명: manage_user_setting_control_test.dart
+// 역할: 사용자 설정의 로컬 저장과 서버 동기화 규칙을 검증한다.
+
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +35,52 @@ void main() {
     expect(setting.userHash, 'local_patient');
     expect(setting.fontSizeOption, 'large');
     expect(setting.readingSpeedOption, 'fast');
+  });
+
+  test('근처 운영 약국 실험 설정은 사용자별 기기에 저장된다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+
+    final savedSetting = await control.saveNearbyPharmacyLabSetting(
+      currentSetting: const UserSetting(),
+      enabled: true,
+    );
+    final restoredSetting = await control.requestUserSetting();
+
+    expect(savedSetting.nearbyPharmacyLabEnabled, isTrue);
+    expect(restoredSetting.nearbyPharmacyLabEnabled, isTrue);
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getBool('user_setting_user-a_nearby_pharmacy_lab_enabled'),
+      isTrue,
+    );
+  });
+
+  test('복약 대화 실험 설정은 사용자별 기기에 저장된다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+
+    final savedSetting = await control.saveLinkedMedicationChatLabSetting(
+      currentSetting: const UserSetting(),
+      enabled: true,
+    );
+    final restoredSetting = await control.requestUserSetting();
+
+    expect(savedSetting.linkedMedicationChatLabEnabled, isTrue);
+    expect(restoredSetting.linkedMedicationChatLabEnabled, isTrue);
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getBool(
+        'user_setting_user-a_linked_medication_chat_lab_enabled',
+      ),
+      isTrue,
+    );
   });
 
   test('requestUserSetting restores saved values', () async {
@@ -72,7 +121,10 @@ void main() {
   });
 
   test('requestUserSetting prefers backend setting and caches it', () async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'user_setting_user-a_nearby_pharmacy_lab_enabled': true,
+      'user_setting_user-a_linked_medication_chat_lab_enabled': true,
+    });
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
       expect(request.url.path, '/settings/user');
@@ -103,6 +155,8 @@ void main() {
     expect(setting.fontSizeOption, 'large');
     expect(setting.readingSpeedOption, 'fast');
     expect(setting.language, 'en');
+    expect(setting.nearbyPharmacyLabEnabled, isTrue);
+    expect(setting.linkedMedicationChatLabEnabled, isTrue);
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getInt('user_setting_user-a_font_size'), 20);
     control.dispose();
@@ -112,6 +166,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient((http.Request request) async {
       expect(request.method, 'PUT');
+      final requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(requestBody.containsKey('nearby_pharmacy_lab_enabled'), isFalse);
+      expect(
+        requestBody.containsKey('linked_medication_chat_lab_enabled'),
+        isFalse,
+      );
       return http.Response(
         jsonEncode({
           'success': true,
@@ -133,7 +193,10 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
+      currentSetting: const UserSetting(
+        nearbyPharmacyLabEnabled: true,
+        linkedMedicationChatLabEnabled: true,
+      ),
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
       language: 'ko',
@@ -142,6 +205,8 @@ void main() {
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.fontSizeOption, 'large');
     expect(result.setting.readingSpeedOption, 'fast');
+    expect(result.setting.nearbyPharmacyLabEnabled, isTrue);
+    expect(result.setting.linkedMedicationChatLabEnabled, isTrue);
     control.dispose();
   });
 

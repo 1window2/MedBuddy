@@ -1,3 +1,6 @@
+// 파일명: manage_user_setting_control.dart
+// 역할: 사용자 설정의 로컬 영속화와 서버 동기화를 수행한다.
+
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -52,8 +55,9 @@ class ManageUserSetting {
   // 반환값:
   // - 저장값이 없으면 기본값으로 채운 UserSetting
   Future<UserSetting> requestUserSetting() async {
+    final cachedSetting = await _requestCachedUserSetting();
     if (!useRemotePersistence) {
-      return _requestCachedUserSetting();
+      return cachedSetting;
     }
 
     try {
@@ -68,7 +72,12 @@ class ManageUserSetting {
         );
       }
 
-      final setting = _decodeUserSetting(responseBody);
+      // 실험실 설정은 기기 전용 값이므로 서버 응답에 덮어쓰이지 않게 합친다.
+      final setting = _decodeUserSetting(responseBody).copyWith(
+        nearbyPharmacyLabEnabled: cachedSetting.nearbyPharmacyLabEnabled,
+        linkedMedicationChatLabEnabled:
+            cachedSetting.linkedMedicationChatLabEnabled,
+      );
       await _cacheUserSetting(setting);
       return setting;
     } catch (error, stackTrace) {
@@ -78,7 +87,7 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
-      return _requestCachedUserSetting();
+      return cachedSetting;
     }
   }
 
@@ -132,7 +141,12 @@ class ManageUserSetting {
         );
       }
 
-      final savedSetting = _decodeUserSetting(responseBody);
+      // 서버에는 접근성 설정만 저장하고 실험실 설정은 기기 값을 유지한다.
+      final savedSetting = _decodeUserSetting(responseBody).copyWith(
+        nearbyPharmacyLabEnabled: nextSetting.nearbyPharmacyLabEnabled,
+        linkedMedicationChatLabEnabled:
+            nextSetting.linkedMedicationChatLabEnabled,
+      );
       await _cacheUserSetting(savedSetting);
       return UserSettingSaveResult(
         setting: savedSetting,
@@ -150,6 +164,42 @@ class ManageUserSetting {
         synchronizedWithServer: false,
       );
     }
+  }
+
+  // 함수명: saveNearbyPharmacyLabSetting
+  // 함수역할:
+  // - 근처 운영 약국 실험 기능의 노출 여부를 사용자별 기기에 저장한다.
+  // - 베타 기능이 서버 설정 스키마에 영향을 주지 않도록 원격 전송은 하지 않는다.
+  // 반환값:
+  // - 실험실 설정이 반영된 사용자 설정
+  Future<UserSetting> saveNearbyPharmacyLabSetting({
+    required UserSetting currentSetting,
+    required bool enabled,
+  }) async {
+    final nextSetting = currentSetting.copyWith(
+      userHash: _normalizedUserHash,
+      nearbyPharmacyLabEnabled: enabled,
+    );
+    await _cacheUserSetting(nextSetting);
+    return nextSetting;
+  }
+
+  // 함수명: saveLinkedMedicationChatLabSetting
+  // 함수역할:
+  // - 복약 맥락 채팅의 노출 여부를 사용자별 기기에 저장한다.
+  // - 실험 기능 값은 서버의 정식 사용자 설정 스키마로 전송하지 않는다.
+  // 반환값:
+  // - 복약 맥락 채팅 설정이 반영된 사용자 설정
+  Future<UserSetting> saveLinkedMedicationChatLabSetting({
+    required UserSetting currentSetting,
+    required bool enabled,
+  }) async {
+    final nextSetting = currentSetting.copyWith(
+      userHash: _normalizedUserHash,
+      linkedMedicationChatLabEnabled: enabled,
+    );
+    await _cacheUserSetting(nextSetting);
+    return nextSetting;
   }
 
   Future<UserSetting> _requestCachedUserSetting() async {
@@ -170,6 +220,10 @@ class ManageUserSetting {
           preferences.getString(_languageKey) ??
           preferences.getString(_legacyLanguageKey) ??
           fallbackSetting.language,
+      nearbyPharmacyLabEnabled:
+          preferences.getBool(_nearbyPharmacyLabEnabledKey) ?? false,
+      linkedMedicationChatLabEnabled:
+          preferences.getBool(_linkedMedicationChatLabEnabledKey) ?? false,
     );
   }
 
@@ -178,6 +232,14 @@ class ManageUserSetting {
     await preferences.setInt(_fontSizeKey, setting.fontSize);
     await preferences.setDouble(_readingSpeedKey, setting.readingSpeed);
     await preferences.setString(_languageKey, setting.language);
+    await preferences.setBool(
+      _nearbyPharmacyLabEnabledKey,
+      setting.nearbyPharmacyLabEnabled,
+    );
+    await preferences.setBool(
+      _linkedMedicationChatLabEnabledKey,
+      setting.linkedMedicationChatLabEnabled,
+    );
   }
 
   UserSetting _decodeUserSetting(String responseBody) {
@@ -203,6 +265,12 @@ class ManageUserSetting {
       'user_setting_${_normalizedUserHash}_reading_speed';
 
   String get _languageKey => 'user_setting_${_normalizedUserHash}_language';
+
+  String get _nearbyPharmacyLabEnabledKey =>
+      'user_setting_${_normalizedUserHash}_nearby_pharmacy_lab_enabled';
+
+  String get _linkedMedicationChatLabEnabledKey =>
+      'user_setting_${_normalizedUserHash}_linked_medication_chat_lab_enabled';
 
   void dispose() {
     if (_ownsClient) {

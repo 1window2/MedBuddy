@@ -56,7 +56,9 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.idle;
-    _statusMessage = '처방전을 촬영하거나 이미지를 선택해주세요.';
+    _statusMessage = _isEnglishSetting
+        ? 'Take a prescription photo or choose an image.'
+        : '처방전을 촬영하거나 이미지를 선택해주세요.';
     _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
@@ -74,6 +76,32 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _userSetting = saveResult.setting;
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;
+  }
+
+  // 함수명: requestNearbyPharmacyLabSettingSave
+  // 함수역할:
+  // - 근처 운영 약국 실험 기능의 노출 설정을 기기에 저장하고 홈 화면에 반영한다.
+  // 반환값:
+  // - 없음
+  Future<void> requestNearbyPharmacyLabSettingSave(bool enabled) async {
+    _userSetting = await manageUserSetting.saveNearbyPharmacyLabSetting(
+      currentSetting: _userSetting,
+      enabled: enabled,
+    );
+    _notifyViewModelListeners(MedBuddyFeature.userSetting);
+  }
+
+  // 함수명: requestLinkedMedicationChatLabSettingSave
+  // 함수역할:
+  // - 복약 맥락 채팅 실험 기능의 노출 설정을 기기에 저장하고 연동 화면에 반영한다.
+  // 반환값:
+  // - 없음
+  Future<void> requestLinkedMedicationChatLabSettingSave(bool enabled) async {
+    _userSetting = await manageUserSetting.saveLinkedMedicationChatLabSetting(
+      currentSetting: _userSetting,
+      enabled: enabled,
+    );
+    _notifyViewModelListeners(MedBuddyFeature.userSetting);
   }
 
   // 함수명: requestAccountDataDeletion

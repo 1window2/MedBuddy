@@ -12,12 +12,16 @@ class UserSetting {
   final int fontSize;
   final double readingSpeed;
   final String language;
+  final bool nearbyPharmacyLabEnabled;
+  final bool linkedMedicationChatLabEnabled;
 
   const UserSetting({
     this.userHash = '',
     this.fontSize = 16,
     this.readingSpeed = 1.0,
     this.language = 'ko',
+    this.nearbyPharmacyLabEnabled = false,
+    this.linkedMedicationChatLabEnabled = false,
   });
 
   factory UserSetting.fromJson(Map<String, dynamic> json) {
@@ -28,6 +32,12 @@ class UserSetting {
       readingSpeed:
           _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
       language: language.isEmpty ? 'ko' : language,
+      nearbyPharmacyLabEnabled:
+          json['nearby_pharmacy_lab_enabled'] == true ||
+          json['nearbyPharmacyLabEnabled'] == true,
+      linkedMedicationChatLabEnabled:
+          json['linked_medication_chat_lab_enabled'] == true ||
+          json['linkedMedicationChatLabEnabled'] == true,
     );
   }
 
@@ -102,12 +112,18 @@ class UserSetting {
     int? fontSize,
     double? readingSpeed,
     String? language,
+    bool? nearbyPharmacyLabEnabled,
+    bool? linkedMedicationChatLabEnabled,
   }) {
     return UserSetting(
       userHash: userHash ?? this.userHash,
       fontSize: fontSize ?? this.fontSize,
       readingSpeed: readingSpeed ?? this.readingSpeed,
       language: language ?? this.language,
+      nearbyPharmacyLabEnabled:
+          nearbyPharmacyLabEnabled ?? this.nearbyPharmacyLabEnabled,
+      linkedMedicationChatLabEnabled:
+          linkedMedicationChatLabEnabled ?? this.linkedMedicationChatLabEnabled,
     );
   }
 

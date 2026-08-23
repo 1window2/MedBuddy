@@ -1,3 +1,6 @@
+// 파일명: manage_user_setting_ui_boundary.dart
+// 역할: 글씨 크기, 읽기 속도, 언어와 실험실 기능 설정 화면을 제공한다.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,7 +25,7 @@ typedef SettingPreviewStopper = Future<void> Function();
 // 역할: 사용자가 접근성 관련 표시 설정을 선택하고 저장할 수 있게 한다.
 // 주요 책임:
 // - 현재 저장된 설정을 초기 선택값으로 표시한다.
-// - 설정 변경 시 미리보기 문구에 즉시 반영한다.
+// - 글씨 크기와 언어 변경을 현재 설정 화면에 즉시 반영한다.
 // - 저장 버튼을 통해 변경값을 ViewModel로 전달한다.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
@@ -31,6 +34,10 @@ class ManageUserSettingUI extends StatefulWidget {
   final Future<void> Function()? onDeleteAccountRequested;
   final SettingPreviewSpeaker? previewSpeaker;
   final SettingPreviewStopper? previewStopper;
+  final Future<void> Function(bool enabled)?
+  onNearbyPharmacyLabSettingSaveRequested;
+  final Future<void> Function(bool enabled)?
+  onLinkedMedicationChatLabSettingSaveRequested;
   final Future<UserSettingSaveResult> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -47,6 +54,8 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onDeleteAccountRequested,
     this.previewSpeaker,
     this.previewStopper,
+    this.onNearbyPharmacyLabSettingSaveRequested,
+    this.onLinkedMedicationChatLabSettingSaveRequested,
   });
 
   @override
@@ -57,8 +66,11 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _fontSize;
   late String _readingSpeed;
   late String _language;
+  late bool _nearbyPharmacyLabEnabled;
+  late bool _linkedMedicationChatLabEnabled;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
+  int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
 
   @override
@@ -67,6 +79,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
     _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
+    _nearbyPharmacyLabEnabled = widget.initialSetting.nearbyPharmacyLabEnabled;
+    _linkedMedicationChatLabEnabled =
+        widget.initialSetting.linkedMedicationChatLabEnabled;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -84,147 +99,192 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final contentScale = UserSetting(
+    final draftSetting = widget.initialSetting.copyWith(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
-    ).contentTextScale;
+      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+      language: _language,
+      nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
+      linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
+    );
+    final platformMediaQuery = MediaQueryData.fromView(View.of(context));
+    final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
+    final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
+    final mediaQuery = MediaQuery.of(context);
+    final contentScale = draftSetting.contentTextScale;
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CloseButton(
-                          tooltip: text.close,
-                          onTap: () => Navigator.maybePop(context),
-                        ),
-                        const SizedBox(height: 22),
-                        _SettingTitle(text.fontSizeTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(
-                              value: 'small',
-                              label: text.small,
-                              labelFontSize: 14,
-                            ),
-                            _SettingOption(
-                              value: 'medium',
-                              label: text.medium,
-                              labelFontSize: 17,
-                            ),
-                            _SettingOption(
-                              value: 'large',
-                              label: text.large,
-                              labelFontSize: 23,
-                            ),
-                          ],
-                          selectedValue: _fontSize,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _fontSize = value),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.readingSpeedTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(value: 'slow', label: text.slow),
-                            _SettingOption(value: 'medium', label: text.medium),
-                            _SettingOption(value: 'fast', label: text.fast),
-                          ],
-                          selectedValue: _readingSpeed,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              unawaited(_selectReadingSpeed(value)),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.languageTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: const [
-                            _SettingOption(value: 'ko', label: '한국어'),
-                            _SettingOption(value: 'en', label: 'English'),
-                          ],
-                          selectedValue: _language,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _language = value),
-                        ),
-                        const SizedBox(height: 42),
-                        _PreviewPanel(
-                          text: text,
-                          fontSize: _fontSize,
-                          readingSpeed: _readingSpeed,
-                          isSpeaking: _isPreviewSpeaking,
-                          onVoicePreviewRequested: _toggleVoicePreview,
-                        ),
-                        if (widget
-                            .authenticationControl
-                            .phoneAuthenticationEnabled) ...[
-                          const SizedBox(height: 28),
-                          ListenableBuilder(
-                            listenable: widget.authenticationControl,
-                            builder: (context, _) => _MfaSettingsPanel(
-                              enabled: widget
-                                  .authenticationControl
-                                  .hasEnrolledSmsMfa,
-                              available:
-                                  widget.authenticationControl.canEnrollSmsMfa,
-                              onEnrollRequested: _showMfaEnrollment,
-                            ),
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: TextScaler.linear(selectedTextScale),
+      ),
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _CloseButton(
+                            tooltip: text.close,
+                            onTap: () => Navigator.maybePop(context),
                           ),
-                        ],
-                        if (widget.onSignOutRequested != null) ...[
-                          const SizedBox(height: 28),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _isSaving
-                                  ? null
-                                  : _handleSignOutRequested,
-                              icon: const Icon(Icons.logout),
-                              label: Text(text.signOut),
-                            ),
-                          ),
-                        ],
-                        if (widget.onDeleteAccountRequested != null) ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: MedBuddyColors.danger,
-                                side: const BorderSide(
-                                  color: MedBuddyColors.danger,
-                                ),
+                          const SizedBox(height: 22),
+                          _SettingTitle(text.fontSizeTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(
+                                value: 'small',
+                                label: text.small,
+                                labelFontSize: 14,
                               ),
-                              onPressed: _isSaving
-                                  ? null
-                                  : _confirmAccountDeletion,
-                              icon: const Icon(Icons.delete_forever_outlined),
-                              label: Text(text.deleteAccount),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                                labelFontSize: 17,
+                              ),
+                              _SettingOption(
+                                value: 'large',
+                                label: text.large,
+                                labelFontSize: 23,
+                              ),
+                            ],
+                            selectedValue: _fontSize,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _fontSize = value),
+                          ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.readingSpeedTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(value: 'slow', label: text.slow),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                              ),
+                              _SettingOption(value: 'fast', label: text.fast),
+                            ],
+                            selectedValue: _readingSpeed,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                unawaited(_selectReadingSpeed(value)),
+                          ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.languageTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: const [
+                              _SettingOption(value: 'ko', label: '한국어'),
+                              _SettingOption(value: 'en', label: 'English'),
+                            ],
+                            selectedValue: _language,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _language = value),
+                          ),
+                          const SizedBox(height: 42),
+                          _PreviewPanel(
+                            text: text,
+                            fontSize: _fontSize,
+                            readingSpeed: _readingSpeed,
+                            isSpeaking: _isPreviewSpeaking,
+                            onVoicePreviewRequested: _toggleVoicePreview,
+                          ),
+                          const SizedBox(height: 42),
+                          _SettingTitle(text.laboratoryTitle),
+                          const SizedBox(height: 18),
+                          _ExperimentalFeatureToggle(
+                            switchKey: const ValueKey(
+                              'nearbyPharmacyLabSwitch',
+                            ),
+                            title: text.nearbyPharmacyLabTitle,
+                            description: text.nearbyPharmacyLabDescription,
+                            enabled: _nearbyPharmacyLabEnabled,
+                            onChanged: (enabled) => setState(
+                              () => _nearbyPharmacyLabEnabled = enabled,
                             ),
                           ),
+                          const SizedBox(height: 14),
+                          _ExperimentalFeatureToggle(
+                            switchKey: const ValueKey(
+                              'linkedMedicationChatLabSwitch',
+                            ),
+                            title: text.linkedMedicationChatLabTitle,
+                            description:
+                                text.linkedMedicationChatLabDescription,
+                            enabled: _linkedMedicationChatLabEnabled,
+                            onChanged: (enabled) => setState(
+                              () => _linkedMedicationChatLabEnabled = enabled,
+                            ),
+                          ),
+                          if (widget
+                              .authenticationControl
+                              .phoneAuthenticationEnabled) ...[
+                            const SizedBox(height: 28),
+                            ListenableBuilder(
+                              listenable: widget.authenticationControl,
+                              builder: (context, _) => _MfaSettingsPanel(
+                                enabled: widget
+                                    .authenticationControl
+                                    .hasEnrolledSmsMfa,
+                                available: widget
+                                    .authenticationControl
+                                    .canEnrollSmsMfa,
+                                onEnrollRequested: _showMfaEnrollment,
+                              ),
+                            ),
+                          ],
+                          if (widget.onSignOutRequested != null) ...[
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isSaving
+                                    ? null
+                                    : _handleSignOutRequested,
+                                icon: const Icon(Icons.logout),
+                                label: Text(text.signOut),
+                              ),
+                            ),
+                          ],
+                          if (widget.onDeleteAccountRequested != null) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: MedBuddyColors.danger,
+                                  side: const BorderSide(
+                                    color: MedBuddyColors.danger,
+                                  ),
+                                ),
+                                onPressed: _isSaving
+                                    ? null
+                                    : _confirmAccountDeletion,
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                label: Text(text.deleteAccount),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                _SettingSaveFooter(
-                  text: text,
-                  isSaving: _isSaving,
-                  onSaveRequested: _handleSaveRequested,
-                ),
-              ],
+                  _SettingSaveFooter(
+                    text: text,
+                    isSaving: _isSaving,
+                    onSaveRequested: _handleSaveRequested,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -258,6 +318,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       return;
     }
 
+    final requestId = ++_voicePreviewRequestId;
     final text = _SettingText(_language);
     final previewSetting = UserSetting(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
@@ -271,10 +332,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       await speaker(
         text.previewSentence,
         previewSetting,
-        onComplete: _finishVoicePreview,
+        onComplete: () => _finishVoicePreview(requestId),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || requestId != _voicePreviewRequestId) {
         return;
       }
       setState(() => _isPreviewSpeaking = false);
@@ -290,16 +351,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 반환값:
   // - 없음
   Future<void> _stopVoicePreview() async {
+    // 사용자가 중지를 누르면 진행 중인 재생 요청을 먼저 무효화해 취소를 오류와 구분한다.
+    _voicePreviewRequestId += 1;
+    if (mounted && _isPreviewSpeaking) {
+      setState(() => _isPreviewSpeaking = false);
+    }
+
     final stopper = widget.previewStopper;
-    if (stopper != null) {
-      await stopper();
-    } else {
-      await _ownedTtsService?.stop();
+    try {
+      if (stopper != null) {
+        await stopper();
+      } else {
+        await _ownedTtsService?.stop();
+      }
+    } catch (_) {
+      // 사용자가 직접 중지한 경우 플랫폼의 취소 응답은 재생 실패로 안내하지 않는다.
     }
-    if (!mounted || !_isPreviewSpeaking) {
-      return;
-    }
-    setState(() => _isPreviewSpeaking = false);
   }
 
   // 함수명: _finishVoicePreview
@@ -307,8 +374,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // - TTS 엔진이 재생 완료를 알리면 미리보기 버튼 상태를 복구한다.
   // 반환값:
   // - 없음
-  void _finishVoicePreview() {
-    if (!mounted || !_isPreviewSpeaking) {
+  void _finishVoicePreview(int requestId) {
+    if (!mounted ||
+        requestId != _voicePreviewRequestId ||
+        !_isPreviewSpeaking) {
       return;
     }
     setState(() => _isPreviewSpeaking = false);
@@ -332,6 +401,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         readingSpeedOption: _readingSpeed,
         language: _language,
       );
+      await widget.onNearbyPharmacyLabSettingSaveRequested?.call(
+        _nearbyPharmacyLabEnabled,
+      );
+      await widget.onLinkedMedicationChatLabSettingSaveRequested?.call(
+        _linkedMedicationChatLabEnabled,
+      );
       if (!mounted) {
         return;
       }
@@ -346,7 +421,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           ),
         ),
       );
-      Navigator.maybePop(context);
     } catch (_) {
       if (!mounted) {
         return;
@@ -359,13 +433,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     }
   }
 
-  // Function Name: _handleSignOutRequested
-  // Description:
-  // - Warns anonymous users that signing out permanently deletes their guest
-  //   data because a later guest login creates a different Firebase identity.
-  // - Blocks repeated taps while the sign-out or deletion request is running.
-  // Returns:
-  // - Completes after cancellation, successful root navigation, or error UI.
+  // 함수이름: _handleSignOutRequested
+  // 함수역할:
+  // - 익명 사용자의 로그아웃 시 게스트 데이터가 영구 삭제됨을 안내한다.
+  // - 로그아웃 또는 삭제 요청 중에는 중복 입력을 차단한다.
+  // 반환값:
+  // - 취소, 초기 화면 이동 또는 오류 안내가 끝나면 완료된다.
   Future<void> _handleSignOutRequested() async {
     if (_isSaving) {
       return;
@@ -710,6 +783,63 @@ class _SettingTitle extends StatelessWidget {
   }
 }
 
+class _ExperimentalFeatureToggle extends StatelessWidget {
+  final Key switchKey;
+  final String title;
+  final String description;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _ExperimentalFeatureToggle({
+    required this.switchKey,
+    required this.title,
+    required this.description,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        key: switchKey,
+        value: enabled,
+        onChanged: onChanged,
+        activeThumbColor: MedBuddyColors.primary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            description,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _OptionRow extends StatelessWidget {
   final List<_SettingOption> options;
   final String selectedValue;
@@ -934,6 +1064,17 @@ class _SettingText {
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
   String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
   String get languageTitle => isEnglish ? 'Language' : '언어';
+  String get laboratoryTitle => isEnglish ? 'Labs' : '실험실';
+  String get nearbyPharmacyLabTitle =>
+      isEnglish ? 'Nearby open pharmacies' : '근처 운영 약국';
+  String get nearbyPharmacyLabDescription => isEnglish
+      ? 'Show the experimental nearby pharmacy feature on the home screen.'
+      : '현재 위치 주변의 영업 중·24시간 약국 기능을 메인 화면에 표시합니다.';
+  String get linkedMedicationChatLabTitle =>
+      isEnglish ? 'Medication conversation' : '복약 대화';
+  String get linkedMedicationChatLabDescription => isEnglish
+      ? 'Let linked patients and caregivers discuss an active medication.'
+      : '복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다.';
   String get small => isEnglish ? 'Small' : '작게';
   String get medium => isEnglish ? 'Medium' : '중간';
   String get large => isEnglish ? 'Large' : '크게';
