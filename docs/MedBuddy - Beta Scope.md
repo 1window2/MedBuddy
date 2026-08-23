@@ -48,8 +48,10 @@ The following implemented flows are in v0.2.0 verification:
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held
-    public-data credentials, open/all filters, 24-hour operating-status
-    metadata, refresh cooldown, phone launch, and external directions.
+    public-data credentials, open/all filters, an attributed in-app
+    OpenStreetMap view with synchronized card/marker selection, 24-hour
+    operating-status metadata, refresh cooldown, phone launch, and external
+    directions.
 11. Laboratory linked medication chat for active patient-caregiver links and
     active patient medications, with a schedule-style medication picker,
     authorized medication-detail navigation, authenticated REST history,
@@ -132,7 +134,8 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Validate prescription and loose-pill latency, timeout, offline, malformed
   response, partial-failure, and external-service failure paths.
 - Validate nearby-pharmacy permission denial, disabled location service, empty
-  result, holiday-hours disclaimer, repeated refresh, call, and directions paths.
+  result, map tile failure, card/marker selection synchronization, attribution,
+  holiday-hours disclaimer, repeated refresh, call, and directions paths.
 
 ## Explicitly Out of Scope
 

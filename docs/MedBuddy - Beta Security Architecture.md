@@ -35,6 +35,7 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
 | Frontend local boundary | `ManualMedicationImageStore` | Copy optional direct-entry images into patient-scoped app storage and remove unreferenced copies without touching gallery originals. |
 | Frontend external boundary | `DeviceLocationBoundary` | Request foreground coordinates only for the nearby-pharmacy screen and expose permission/service failures as typed states. |
+| Frontend map boundary | `NearbyPharmacyMap` | Render only backend-normalized pharmacy coordinates, synchronize card/marker selection, and retain OpenStreetMap attribution without owning a map API credential. |
 | Frontend external boundary | `LinkedChatRealtimeService` | Maintain the authenticated linked-chat WebSocket, heartbeat, bounded reconnect, and event stream independently of chat UI state. |
 | Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
@@ -227,9 +228,17 @@ fields.
 Neither Flutter nor FastAPI persists the current coordinate. Application logs,
 error messages, analytics, and notification payloads must not contain precise
 location. The UI applies a refresh cooldown and the backend retains an
-independent request quota. Opening call or directions delegates to the
-operating system; MedBuddy does not claim real-time stock or guaranteed opening
-hours and asks the user to confirm by phone.
+independent request quota.
+
+The in-app map requests raster tiles directly from OpenStreetMap for the visible
+viewport. This does not expose the MedBuddy public-data credential, but the map
+provider necessarily receives requested tile coordinates and ordinary network
+metadata such as the device IP address. MedBuddy does not persist those tile
+requests. Pharmacy cards and markers share one local selection state, so
+centering the map does not repeat the pharmacy API request. The attribution
+action remains available in the map. Opening call or turn-by-turn directions
+delegates to the operating system; MedBuddy does not claim real-time stock or
+guaranteed opening hours and asks the user to confirm by phone.
 
 ## Linked Medication Chat Boundary
 

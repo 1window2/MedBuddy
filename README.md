@@ -15,7 +15,7 @@
 
 - 복약정보 직접 등록
 - 여러 낱알약의 일괄 식별과 개별 결과 확인
-- 근처 운영 약국 조회
+- 근처 운영 약국 조회와 앱 내 지도 확인
 - 환자·보호자 복약 맥락 채팅
 - 처방전 촬영 가이드와 OCR·복약 일정 검토 개선
 
@@ -28,7 +28,7 @@ while we develop and verify the following features:
 
 - Direct medication entry
 - Batch identification and individual review of multiple loose pills
-- Nearby open-pharmacy lookup
+- Nearby open-pharmacy lookup with an in-app map
 - Medication-context chat between patients and caregivers
 - Improved prescription capture guidance and OCR/schedule review
 
@@ -83,7 +83,8 @@ release.
 - This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
-- Results can be filtered by currently open or all pharmacies and are ordered by operating status and distance. When public data identifies continuous operation, the pharmacy card still shows that it is open 24 hours. Users can call a pharmacy or open directions without embedding a map-provider API key in the app.
+- Results can be filtered by currently open or all pharmacies and are ordered by operating status and distance. An OpenStreetMap view appears above the filters; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. When public data identifies continuous operation, the pharmacy card still shows that it is open 24 hours.
+- Map tiles are loaded without an app-owned map API key and retain an OpenStreetMap attribution link. Calling and external turn-by-turn directions remain available from each pharmacy card.
 - Manual refresh uses a cooldown to prevent accidental repeated public-data requests.
 - Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting.
 
@@ -148,7 +149,7 @@ release.
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
-- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, local notifications, TTS, and linked-chat WebSocket events.
+- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, embedded pharmacy-map rendering, local notifications, TTS, and linked-chat WebSocket events.
 - **Backend boundaries** receive de-identified prescription text and isolate public drug and pharmacy APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, bounded multi-pill work, nearby-pharmacy queries, and linked chat without placing domain logic in screens or routers.
 - **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, manual entries, nearby pharmacies, chat messages and medication context, user settings, notification preferences, and patient-caregiver links.

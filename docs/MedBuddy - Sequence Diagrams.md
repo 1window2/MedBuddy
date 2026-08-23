@@ -1085,7 +1085,8 @@ Review --> UI : normalized schedules
 ### 수정 논거
 
 - 기기는 좌표만 제공하고 공공데이터 인증키는 Backend가 소유한다.
-- 위치 권한, 공공 API 조회, 거리·영업상태 계산, 전화·길찾기 실행을 분리한다.
+- 위치 권한, 공공 API 조회, 거리·영업상태 계산, 앱 내 지도, 전화·길찾기 실행을 분리한다.
+- 약국 카드와 지도 마커는 하나의 선택 상태를 공유하며 지도 이동만으로 공공 API를 다시 호출하지 않는다.
 - 반복 새로고침은 화면에서 제한하여 불필요한 외부 API 호출을 줄인다.
 
 ```plantuml
@@ -1095,9 +1096,11 @@ actor "사용자" as User
 boundary "CheckNearbyPharmacyUI" as UI
 control "CheckNearbyPharmacy (Flutter)" as FE
 boundary "DeviceLocationBoundary" as Location
+boundary "NearbyPharmacyMap" as Map
 control "CheckNearbyPharmacy (FastAPI)" as BE
 boundary "PharmacyLookupBoundary" as PublicAPI
-boundary "OS Phone / Map" as ExternalApp
+boundary "OpenStreetMap Tiles" as OSM
+boundary "OS Phone / Directions" as ExternalApp
 
 User -> UI : 실험실 기능을 켠 뒤 근처 운영 약국 선택
 UI -> FE : requestNearbyPharmacies()
@@ -1109,7 +1112,15 @@ PublicAPI --> BE : PharmacyLocationRecord 목록
 BE -> BE : 거리, 영업 중, 24시간 여부 계산 및 정렬
 BE --> FE : NearbyPharmacy 목록
 FE --> UI : 목록과 필터 상태
-UI --> User : 거리·운영시간·연락처 표시
+UI -> Map : 약국 좌표와 공통 선택 상태 전달
+Map -> OSM : 현재 화면 범위 지도 타일 요청
+OSM --> Map : 지도 타일
+UI --> User : 지도·거리·운영시간·연락처 표시
+opt [약국 카드 또는 지도 마커 선택]
+  User -> UI : 약국 선택
+  UI -> Map : selectedPharmacyId 갱신
+  Map --> User : 선택 약국 중심으로 지도 이동
+end
 opt [전화 또는 길찾기]
   User -> UI : 약국 동작 선택
   UI -> ExternalApp : 전화번호 또는 약국명·좌표 열기

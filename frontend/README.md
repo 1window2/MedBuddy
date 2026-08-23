@@ -67,13 +67,16 @@ same saved-medication contract used by analyzed medications, so schedules,
 reminders, caregiver views, and filtering do not branch into a second storage
 model.
 
-The nearby-pharmacy laboratory flow requests foreground location only when opened, calls
-the authenticated MedBuddy pharmacy endpoint, and supports open-now and
-all-result filters. A pharmacy's 24-hour operating status remains available
-as card information. Public-data credentials remain on the backend;
-the client only receives the pharmacy fields needed for display, calling, and
-external directions. Manual refresh is throttled in the UI to avoid accidental
-repeat traffic.
+The nearby-pharmacy laboratory flow requests foreground location only when
+opened, calls the authenticated MedBuddy pharmacy endpoint, and supports
+open-now and all-result filters. An OpenStreetMap view is rendered above the
+filters. Selecting a pharmacy card or map marker updates one shared selection
+and centers the map without repeating the pharmacy API request. A pharmacy's
+24-hour operating status remains available as card information. Public-data
+credentials remain on the backend; the client only receives the pharmacy
+fields needed for display, calling, mapping, and external directions. Manual
+refresh is throttled in the UI to avoid accidental repeat traffic, and the map
+keeps a visible OpenStreetMap attribution action.
 
 The linked medication chat laboratory flow is available only for an active
 patient-caregiver link with active patient medication. The screen combines
