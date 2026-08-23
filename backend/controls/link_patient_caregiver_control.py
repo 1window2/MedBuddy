@@ -1,5 +1,5 @@
-# File Name: link_patient_caregiver_control.py
-# Role: Control mapped from LinkPatientCaregiver in integrated class diagram v5.
+# 파일명: link_patient_caregiver_control.py
+# 역할: 통합 클래스 다이어그램의 LinkPatientCaregiver 사용 사례를 수행한다.
 
 import logging
 from datetime import UTC, datetime, timedelta
@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from entities.caregiver_notification_entity import _CaregiverNotification
+from entities.chat_message_entity import _ChatMessage
 from entities.patient_caregiver_link_entity import (
     PatientCaregiverLink,
     PatientLinkCode,
@@ -32,14 +33,14 @@ def _utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# Class Name: LinkPatientCaregiver
-# Role: Coordinates patient-caregiver linking and unlinking.
-# Responsibilities:
-#   - Create temporary patient link codes.
-#   - Register a caregiver with a valid patient code.
-#   - List or unlink existing patient-caregiver links.
-# Attributes:
-#   - db: SQLAlchemy session used for link persistence operations.
+# 클래스명: LinkPatientCaregiver
+# 역할: 환자·보호자 연동 생성과 해제를 조율한다.
+# 주요 책임:
+#   - 임시 환자 연동 코드를 생성한다.
+#   - 유효한 코드로 보호자를 환자에게 등록한다.
+#   - 기존 연동을 조회하거나 해제한다.
+# 속성:
+#   - db: 연동 영속성 작업에 사용하는 SQLAlchemy 세션
 class LinkPatientCaregiver:
     def __init__(
         self,
@@ -51,13 +52,10 @@ class LinkPatientCaregiver:
             link_repository or PatientCaregiverLinkRepository(db)
         )
 
-    # Function Name: requestLinkScreen
-    # Description:
-    # - Lists active links that include the current patient or caregiver.
-    # Parameters:
-    # - user_hash: Patient or caregiver ownership key.
-    # Returns:
-    # - API-compatible link list response dictionary.
+    # 함수이름: requestLinkScreen
+    # 함수역할: 현재 환자 또는 보호자가 참여한 활성 연동을 조회한다.
+    # 매개변수: user_hash - 환자 또는 보호자 소유권 식별값
+    # 반환값: API 응답 형식의 연동 목록
     def requestLinkScreen(
         self,
         user_hash: str = DEFAULT_PATIENT_HASH,
@@ -70,13 +68,10 @@ class LinkPatientCaregiver:
             "data": [self._to_response_dict(link) for link in links],
         }
 
-    # Function Name: generatePatientHash
-    # Description:
-    # - Creates a temporary patient link code for caregiver registration.
-    # Parameters:
-    # - patient_hash: Patient ownership key encoded in the generated code.
-    # Returns:
-    # - API-compatible code response dictionary.
+    # 함수이름: generatePatientHash
+    # 함수역할: 보호자 등록에 사용할 임시 환자 연동 코드를 생성한다.
+    # 매개변수: patient_hash - 코드에 연결할 환자 소유권 식별값
+    # 반환값: API 응답 형식의 코드 정보
     def generatePatientHash(
         self,
         patient_hash: str = DEFAULT_PATIENT_HASH,
@@ -116,14 +111,12 @@ class LinkPatientCaregiver:
             "data": patient_link_code.to_response_dict(),
         }
 
-    # Function Name: requestPatientCaregiverLink
-    # Description:
-    # - Validates a patient code and creates or restores the caregiver link.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
-    # - patient_code: Temporary patient code.
-    # Returns:
-    # - API-compatible link response dictionary.
+    # 함수이름: requestPatientCaregiverLink
+    # 함수역할: 환자 코드를 검증하고 보호자 연동을 생성하거나 복구한다.
+    # 매개변수:
+    # - caregiver_hash: 보호자 소유권 식별값
+    # - patient_code: 임시 환자 코드
+    # 반환값: API 응답 형식의 연동 정보
     def requestPatientCaregiverLink(
         self,
         caregiver_hash: str,
@@ -208,14 +201,12 @@ class LinkPatientCaregiver:
             "data": self._to_response_dict(link),
         }
 
-    # Function Name: requestUnlink
-    # Description:
-    # - Soft-deletes a link when the requester participates in that link.
-    # Parameters:
-    # - link_id: Link row identifier.
-    # - user_hash: Patient or caregiver ownership key allowed to unlink.
-    # Returns:
-    # - API-compatible unlink response dictionary.
+    # 함수이름: requestUnlink
+    # 함수역할: 요청자가 참여한 연동을 논리 삭제한다.
+    # 매개변수:
+    # - link_id: 연동 행 식별자
+    # - user_hash: 해제 권한을 가진 환자 또는 보호자 식별값
+    # 반환값: API 응답 형식의 해제 결과
     def requestUnlink(
         self,
         link_id: int,
@@ -242,6 +233,7 @@ class LinkPatientCaregiver:
             ).removePatientCaregiverLink()
             link.linked = link_state.link_status
             self._revoke_caregiver_notification(link)
+            self._remove_chat_history(link.id)
             self.db.commit()
             self.db.refresh(link)
         except Exception as exc:
@@ -270,13 +262,16 @@ class LinkPatientCaregiver:
             _CaregiverNotification.caregiver_hash == link.caregiver_hash,
         ).delete(synchronize_session=False)
 
-    # Function Name: getLinkedPatientHash
-    # Description:
-    # - Reads the selected linked patient hash for a caregiver.
-    # Parameters:
-    # - caregiver_hash: Caregiver ownership key.
-    # Returns:
-    # - Linked patient hash.
+    def _remove_chat_history(self, link_id: int) -> None:
+        """연동 해제와 함께 더 이상 접근할 수 없는 대화 기록을 삭제한다."""
+        self.db.query(_ChatMessage).filter(
+            _ChatMessage.link_id == link_id,
+        ).delete(synchronize_session=False)
+
+    # 함수이름: getLinkedPatientHash
+    # 함수역할: 보호자가 선택한 연동 환자의 식별값을 확인한다.
+    # 매개변수: caregiver_hash - 보호자 소유권 식별값
+    # 반환값: 연동된 환자 식별값
     def getLinkedPatientHash(
         self,
         caregiver_hash: str,

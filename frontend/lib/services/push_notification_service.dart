@@ -1,3 +1,6 @@
+// 파일명: push_notification_service.dart
+// 역할: Firebase 푸시 토큰 등록, 갱신, 수신과 선택 동작을 관리한다.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -25,6 +28,7 @@ class PushNotificationService {
 
   final String userHash;
   final http.Client _client;
+  final String Function() _languageProvider;
   FirebaseMessaging? _messaging;
 
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -40,8 +44,12 @@ class PushNotificationService {
     required this.userHash,
     required http.Client client,
     FirebaseMessaging? messaging,
+    String Function()? languageProvider,
   }) : _client = client,
+       _languageProvider = languageProvider ?? _defaultLanguage,
        _messaging = messaging;
+
+  static String _defaultLanguage() => 'ko';
 
   // 함수명: start
   // 역할:
@@ -233,6 +241,20 @@ class PushNotificationService {
   // 역할:
   // - 앱 전경에서 받은 보호자 복약 알림을 로컬 알림 형태로 표시한다.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
+    final language = _languageProvider();
+    if (message.data['type'] == 'linked_chat_message') {
+      final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
+      if (linkId == null || linkId < 1) {
+        return;
+      }
+      final source = message.messageId ?? 'linked-chat|$linkId';
+      await NotificationService.instance.showLinkedChatAlert(
+        id: source.hashCode & 0x7fffffff,
+        linkId: linkId,
+        language: language,
+      );
+      return;
+    }
     const supportedTypes = {
       'caregiver_slot_completed',
       'caregiver_dose_completed',
@@ -241,15 +263,19 @@ class PushNotificationService {
       return;
     }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
-    final slotName = _slotName(message.data['slot_key']);
-    const title = '환자 복약 완료';
-    final body = '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
+    final isEnglish = language.trim().toLowerCase() == 'en';
+    final slotName = _slotName(message.data['slot_key'], language);
+    final title = isEnglish ? 'Patient medication completed' : '환자 복약 완료';
+    final body = isEnglish
+        ? 'The linked patient completed all $slotName medications.'
+        : '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
     final source = message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       id: source.hashCode & 0x7fffffff,
       title: title,
       body: body,
       patientHash: patientHash,
+      language: language,
     );
   }
 
@@ -261,6 +287,13 @@ class PushNotificationService {
   // 반환값:
   // - 없음
   void _handleOpenedMessage(RemoteMessage message) {
+    if (message.data['type'] == 'linked_chat_message') {
+      final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
+      if (linkId != null && linkId > 0) {
+        NotificationService.handleNotificationPayload('chat:$linkId');
+      }
+      return;
+    }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
     if (patientHash.isEmpty) {
       return;
@@ -270,13 +303,14 @@ class PushNotificationService {
     );
   }
 
-  String _slotName(String? slotKey) {
+  String _slotName(String? slotKey, String language) {
+    final isEnglish = language.trim().toLowerCase() == 'en';
     return switch (slotKey) {
-      'morning' => '아침',
-      'lunch' => '점심',
-      'evening' => '저녁',
-      'bedtime' => '취침 전',
-      _ => '복약',
+      'morning' => isEnglish ? 'morning' : '아침',
+      'lunch' => isEnglish ? 'lunch' : '점심',
+      'evening' => isEnglish ? 'evening' : '저녁',
+      'bedtime' => isEnglish ? 'bedtime' : '취침 전',
+      _ => isEnglish ? 'scheduled' : '복약',
     };
   }
 

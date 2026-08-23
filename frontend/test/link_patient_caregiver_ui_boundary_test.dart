@@ -1,3 +1,6 @@
+// 파일명: link_patient_caregiver_ui_boundary_test.dart
+// 역할: 환자 코드 생성, 보호자 등록과 연동 목록 상호작용을 검증한다.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
+import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
+import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -52,9 +57,103 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   }
 }
 
+class _FakeChatControl extends ManageLinkedChat {
+  final List<ChatMedicationContext> medications;
+
+  _FakeChatControl(this.medications)
+    : super(
+        userHash: 'caregiver-a',
+        client: MockClient((request) async => http.Response('{}', 500)),
+      );
+
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async => medications;
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('복약 대화는 실험 기능이 켜지면 노출되고 활성 약이 없을 때 이유를 안내한다', (tester) async {
+    _useLinkScreenViewport(tester);
+    const link = PatientCaregiverLink(
+      linkId: 1,
+      patientHash: 'patient-a',
+      caregiverHash: 'caregiver-a',
+      linkStatus: true,
+    );
+    final hiddenLinkControl = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          key: const ValueKey('chat-hidden-link-screen'),
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => hiddenLinkControl,
+        ),
+      ),
+    );
+    await tester.pump();
+    hiddenLinkControl.linkRequests.single.complete(const [link]);
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
+
+    final disabledLinkControl = _FakeLinkPatientCaregiver('caregiver-a');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          key: const ValueKey('chat-disabled-link-screen'),
+          initialUserHash: 'caregiver-a',
+          chatLabEnabled: true,
+          controlFactory: (_) => disabledLinkControl,
+          chatControlFactory: (_) => _FakeChatControl(const []),
+        ),
+      ),
+    );
+    await tester.pump();
+    disabledLinkControl.linkRequests.single.complete(const [link]);
+    await tester.pumpAndSettle();
+
+    final disabledChatButton = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.chat_bubble_outline),
+    );
+    expect(disabledChatButton.onPressed, isNotNull);
+    await tester.tap(
+      find.widgetWithIcon(IconButton, Icons.chat_bubble_outline),
+    );
+    await tester.pump();
+    expect(find.text('현재 복용 중인 약이 없어 채팅을 시작할 수 없습니다.'), findsOneWidget);
+
+    final enabledLinkControl = _FakeLinkPatientCaregiver('caregiver-a');
+    final chatControl = _FakeChatControl(const [
+      ChatMedicationContext(
+        medicationId: 91,
+        medicationName: '테스트정',
+        dosagePerTime: '1정',
+      ),
+    ]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          key: const ValueKey('chat-enabled-link-screen'),
+          initialUserHash: 'caregiver-a',
+          chatLabEnabled: true,
+          controlFactory: (_) => enabledLinkControl,
+          chatControlFactory: (_) => chatControl,
+        ),
+      ),
+    );
+    await tester.pump();
+    enabledLinkControl.linkRequests.single.complete(const [link]);
+    await tester.pumpAndSettle();
+
+    final chatButton = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.chat_bubble_outline),
+    );
+    expect(chatButton.onPressed, isNotNull);
   });
 
   testWidgets('link actions stay disabled while one request is in flight', (

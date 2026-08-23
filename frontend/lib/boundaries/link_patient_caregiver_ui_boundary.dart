@@ -1,3 +1,6 @@
+// 파일명: link_patient_caregiver_ui_boundary.dart
+// 역할: 환자 코드 생성, 보호자 등록과 연동 목록 관리 화면을 제공한다.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,14 +8,19 @@ import 'package:flutter/services.dart';
 
 import '../controls/link_patient_caregiver_control.dart';
 import '../controls/manage_caregiver_patient_local_state_control.dart';
+import '../controls/manage_linked_chat_control.dart';
+import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
 import 'check_caregiver_medication_ui_boundary.dart';
+import 'linked_chat_ui_boundary.dart';
 
 typedef LinkPatientCaregiverFactory =
     LinkPatientCaregiver Function(String userHash);
+typedef LinkedChatControlFactory = ManageLinkedChat Function(String userHash);
 
 // 파일명: link_patient_caregiver_ui_boundary.dart
 // 역할: 환자와 보호자 연동을 관리하는 화면을 구성한다.
@@ -25,12 +33,18 @@ typedef LinkPatientCaregiverFactory =
 // - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
 class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
+  final bool chatLabEnabled;
+  final UserSetting userSetting;
   final LinkPatientCaregiverFactory? controlFactory;
+  final LinkedChatControlFactory? chatControlFactory;
 
   const LinkPatientCaregiverUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
+    this.chatLabEnabled = false,
+    this.userSetting = const UserSetting(),
     this.controlFactory,
+    this.chatControlFactory,
   });
 
   @override
@@ -43,44 +57,49 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   late final TextEditingController _patientCodeController;
   late String _committedUserHash;
   late LinkPatientCaregiver _control;
+  late ManageLinkedChat _chatControl;
 
   List<PatientCaregiverLink> _links = const [];
   Map<String, String> _patientLabels = const {};
-  String _statusMessage =
-      '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
+  Map<int, List<ChatMedicationContext>> _medicationContextsByLink = const {};
+  late String _statusMessage;
   bool _isLoading = false;
   int _requestGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _statusMessage = _text.loadingLinks;
     _patientCodeController = TextEditingController();
     _committedUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
     );
     _control = _createControl(_committedUserHash);
+    _chatControl = _createChatControl(_committedUserHash);
     _scheduleRefresh();
   }
 
   @override
   void didUpdateWidget(covariant LinkPatientCaregiverUI oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialUserHash == oldWidget.initialUserHash) {
-      return;
-    }
-
     final nextUserHash = PatientHash.normalizePatientHash(
       widget.initialUserHash,
     );
-    if (nextUserHash == _committedUserHash) {
+    final userChanged = nextUserHash != _committedUserHash;
+    final chatSettingChanged =
+        widget.chatLabEnabled != oldWidget.chatLabEnabled;
+    final languageChanged =
+        widget.userSetting.language != oldWidget.userSetting.language;
+    if (!userChanged && !chatSettingChanged && !languageChanged) {
       return;
     }
-
-    _replaceControl(nextUserHash);
+    if (userChanged) {
+      _replaceControl(nextUserHash);
+    }
     _links = const [];
     _patientLabels = const {};
-    _statusMessage =
-        '\uC5F0\uB3D9 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.';
+    _medicationContextsByLink = const {};
+    _statusMessage = _text.loadingLinks;
     _scheduleRefresh();
   }
 
@@ -88,6 +107,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   void dispose() {
     _requestGeneration += 1;
     _control.dispose();
+    _chatControl.dispose();
     _patientCodeController.dispose();
     super.dispose();
   }
@@ -124,28 +144,34 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // 반환값:
   // - 현재 화면 크기에 맞게 구성한 환자·보호자 연동 화면 내용
   Widget _buildLinkContent({required bool usesScrollableList}) {
+    final text = _text;
     final linkList = _LinkListCard(
       links: _links,
       currentUserHash: _committedUserHash,
       isEnabled: !_isLoading,
       shrinkWrap: usesScrollableList,
       patientLabels: _patientLabels,
+      showChatAction: widget.chatLabEnabled,
+      medicationContextsByLink: _medicationContextsByLink,
+      onChatRequested: _openLinkedChat,
       onPatientMedicationRequested: _openPatientMedicationInfo,
       onPatientLabelRequested: _showPatientLabelDialog,
       onUnlinkRequested: _removePatientCaregiverLink,
+      text: text,
     );
     final footer = _LinkActionFooter(
       onGeneratePatientCodeRequested: _isLoading ? null : _generatePatientHash,
       onRegisterPatientRequested: _isLoading
           ? null
           : _showRegisterPatientDialog,
+      text: text,
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         IconButton(
-          tooltip: '닫기',
+          tooltip: text.close,
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints.tightFor(width: 42, height: 42),
@@ -157,9 +183,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           ),
         ),
         SizedBox(height: usesScrollableList ? 20 : 30),
-        const Text(
-          '환자/보호자 연동하기',
-          style: TextStyle(
+        Text(
+          text.screenTitle,
+          style: const TextStyle(
             color: Color(0xFF0A0A0A),
             fontSize: 27,
             fontWeight: FontWeight.w800,
@@ -176,6 +202,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     );
   }
 
+  _LinkPatientCaregiverText get _text =>
+      _LinkPatientCaregiverText(widget.userSetting.language);
+
   Future<void> _refreshLinks() async {
     await _runLinkAction((request) async {
       final links = await request.control.requestLinkScreen();
@@ -186,12 +215,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final medicationContexts = await _loadChatMedicationContexts(links);
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
       setState(() {
         _links = links;
         _patientLabels = labels;
+        _medicationContextsByLink = medicationContexts;
         _statusMessage = links.isEmpty
-            ? '\uC800\uC7A5\uB41C \uC5F0\uB3D9\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
-            : '\uCD1D ${links.length}\uAC1C\uC758 \uC5F0\uB3D9\uC774 \uC788\uC2B5\uB2C8\uB2E4.';
+            ? _text.noSavedLinks
+            : _text.linkCount(links.length);
       });
     });
   }
@@ -205,8 +239,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       }
       patientCode = generatedCode;
       setState(() {
-        _statusMessage =
-            '\uBCF4\uD638\uC790\uC5D0\uAC8C \uACF5\uC720\uD560 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC0DD\uC131\uD588\uC2B5\uB2C8\uB2E4.';
+        _statusMessage = _text.codeGenerated;
       });
     });
 
@@ -228,8 +261,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final patientCode = _patientCodeController.text.trim();
     if (patientCode.isEmpty) {
       setState(() {
-        _statusMessage =
-            '\uB4F1\uB85D\uD560 \uD658\uC790 \uC5F0\uB3D9 \uCF54\uB4DC\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.';
+        _statusMessage = _text.enterPatientCode;
       });
       return false;
     }
@@ -248,12 +280,16 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final medicationContexts = await _loadChatMedicationContexts(links);
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
       setState(() {
         _links = links;
         _patientLabels = labels;
+        _medicationContextsByLink = medicationContexts;
         _patientCodeController.clear();
-        _statusMessage =
-            '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uB4F1\uB85D\uD588\uC2B5\uB2C8\uB2E4.';
+        _statusMessage = _text.linkRegistered;
         registered = true;
       });
     });
@@ -268,8 +304,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final linkId = link.linkId;
     if (linkId == null) {
       setState(() {
-        _statusMessage =
-            '\uC5F0\uB3D9 \uC2DD\uBCC4\uC790\uAC00 \uC5C6\uC5B4 \uD574\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
+        _statusMessage = _text.missingLinkId;
       });
       return;
     }
@@ -291,11 +326,15 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final medicationContexts = await _loadChatMedicationContexts(links);
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
       setState(() {
         _links = links;
         _patientLabels = labels;
-        _statusMessage =
-            '\uD658\uC790-\uBCF4\uD638\uC790 \uC5F0\uB3D9\uC744 \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.';
+        _medicationContextsByLink = medicationContexts;
+        _statusMessage = _text.linkRemoved;
       });
     });
   }
@@ -313,6 +352,37 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     return _localStateControl.loadLabels(
       caregiverHash: _committedUserHash,
       links: links,
+    );
+  }
+
+  // 함수이름: _loadChatMedicationContexts
+  // 함수역할:
+  // - 실험 기능이 켜졌을 때 각 연동 환자의 활성 복약 목록을 병렬로 불러온다.
+  // - 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 빈 목록으로 격리한다.
+  Future<Map<int, List<ChatMedicationContext>>> _loadChatMedicationContexts(
+    List<PatientCaregiverLink> links,
+  ) async {
+    if (!widget.chatLabEnabled) {
+      return const {};
+    }
+    final entries = await Future.wait(
+      links.map((link) async {
+        final linkId = link.linkId;
+        if (linkId == null || !link.linkStatus) {
+          return null;
+        }
+        try {
+          final medications = await _chatControl.requestMedicationContexts(
+            linkId: linkId,
+          );
+          return MapEntry(linkId, medications);
+        } catch (_) {
+          return MapEntry<int, List<ChatMedicationContext>>(linkId, const []);
+        }
+      }),
+    );
+    return Map<int, List<ChatMedicationContext>>.fromEntries(
+      entries.whereType<MapEntry<int, List<ChatMedicationContext>>>(),
     );
   }
 
@@ -340,7 +410,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         setState(() {
           _statusMessage = UserFacingErrorMessage.resolve(
             error,
-            isEnglish: false,
+            isEnglish: _text.isEnglish,
           );
         });
       }
@@ -366,17 +436,26 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
   void _replaceControl(String userHash) {
     final previousControl = _control;
+    final previousChatControl = _chatControl;
     final nextControl = _createControl(userHash);
+    final nextChatControl = _createChatControl(userHash);
     _requestGeneration += 1;
     _committedUserHash = userHash;
     _control = nextControl;
+    _chatControl = nextChatControl;
     _isLoading = false;
     previousControl.dispose();
+    previousChatControl.dispose();
   }
 
   LinkPatientCaregiver _createControl(String userHash) {
     return widget.controlFactory?.call(userHash) ??
         LinkPatientCaregiver(userHash: userHash);
+  }
+
+  ManageLinkedChat _createChatControl(String userHash) {
+    return widget.chatControlFactory?.call(userHash) ??
+        ManageLinkedChat(userHash: userHash);
   }
 
   bool _isCurrentRequest(_LinkRequest request) {
@@ -404,15 +483,15 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('환자 표시 이름'),
+          title: Text(_text.patientLabelTitle),
           content: TextFormField(
             initialValue: draftLabel,
             autofocus: true,
             maxLength: ManageCaregiverPatientLocalState.maximumLabelLength,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              hintText: '예: 어머니, 아버지',
-              helperText: '이 이름은 현재 보호자 기기에만 저장됩니다.',
+            decoration: InputDecoration(
+              hintText: _text.patientLabelHint,
+              helperText: _text.patientLabelHelper,
             ),
             onChanged: (value) => draftLabel = value,
             onFieldSubmitted: (value) => Navigator.pop(dialogContext, value),
@@ -420,11 +499,11 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('취소'),
+              child: Text(_text.cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, draftLabel),
-              child: const Text('저장'),
+              child: Text(_text.save),
             ),
           ],
         );
@@ -449,7 +528,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('$savedLabel 표시 이름을 저장했습니다.'),
+          content: Text(_text.patientLabelSaved(savedLabel)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -465,8 +544,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         link.caregiverHash != caregiverHash ||
         link.patientHash.trim().isEmpty) {
       setState(() {
-        _statusMessage =
-            '\uC5F0\uB3D9\uB41C \uD658\uC790\uC758 \uBCF5\uC57D \uC815\uBCF4\uB9CC \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
+        _statusMessage = _text.linkedPatientOnly;
       });
       return;
     }
@@ -477,6 +555,51 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           caregiverHash: caregiverHash,
           patientHash: link.patientHash,
           patientLabel: _patientLabels[link.patientHash],
+          userSetting: widget.userSetting,
+        ),
+      ),
+    );
+  }
+
+  // 함수명: _openLinkedChat
+  // 역할:
+  // - 현재 사용자가 참여한 연동의 실시간 가족 채팅 화면을 연다.
+  void _openLinkedChat(PatientCaregiverLink link) {
+    final linkId = link.linkId;
+    final medicationContexts = linkId == null
+        ? const <ChatMedicationContext>[]
+        : _medicationContextsByLink[linkId] ?? const [];
+    if (_isLoading ||
+        !widget.chatLabEnabled ||
+        linkId == null ||
+        !link.linkStatus) {
+      return;
+    }
+    if (medicationContexts.isEmpty) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(_text.chatUnavailable),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      return;
+    }
+    final isCaregiver = link.caregiverHash == _committedUserHash;
+    final peerName = isCaregiver
+        ? (_patientLabels[link.patientHash] ?? _text.patientPeer)
+        : _text.caregiverPeer;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => LinkedChatUI(
+          linkId: linkId,
+          currentUserHash: _committedUserHash,
+          patientHash: link.patientHash,
+          peerName: peerName,
+          initialMedicationContexts: medicationContexts,
+          userSetting: widget.userSetting,
         ),
       ),
     );
@@ -486,7 +609,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     return showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
-      builder: (context) => _PatientCodeDialog(patientCode: patientCode),
+      builder: (context) =>
+          _PatientCodeDialog(patientCode: patientCode, text: _text),
     );
   }
 
@@ -498,6 +622,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         patientCodeController: _patientCodeController,
         onRegisterRequested: _requestPatientCaregiverLink,
         statusMessageProvider: () => _statusMessage,
+        text: _text,
       ),
     );
   }
@@ -518,10 +643,12 @@ class _LinkRequest {
 class _LinkActionFooter extends StatelessWidget {
   final VoidCallback? onGeneratePatientCodeRequested;
   final VoidCallback? onRegisterPatientRequested;
+  final _LinkPatientCaregiverText text;
 
   const _LinkActionFooter({
     required this.onGeneratePatientCodeRequested,
     required this.onRegisterPatientRequested,
+    required this.text,
   });
 
   @override
@@ -531,9 +658,9 @@ class _LinkActionFooter extends StatelessWidget {
         Expanded(
           child: _LinkActionButton(
             icon: Icons.person_outline_rounded,
-            title: '환자 코드 생성',
-            subtitle: '약을 복용하는 환자',
-            semanticLabel: '약을 복용하는 환자입니다. 보호자에게 전달할 연동 코드를 만듭니다.',
+            title: text.generatePatientCode,
+            subtitle: text.patientRole,
+            semanticLabel: text.generatePatientCodeSemantic,
             onPressed: onGeneratePatientCodeRequested,
           ),
         ),
@@ -541,9 +668,9 @@ class _LinkActionFooter extends StatelessWidget {
         Expanded(
           child: _LinkActionButton(
             icon: Icons.health_and_safety_outlined,
-            title: '환자 관리 등록',
-            subtitle: '복약을 확인하는 보호자',
-            semanticLabel: '복약을 확인하는 보호자입니다. 환자에게 받은 연동 코드를 등록합니다.',
+            title: text.registerPatient,
+            subtitle: text.caregiverRole,
+            semanticLabel: text.registerPatientSemantic,
             onPressed: onRegisterPatientRequested,
           ),
         ),
@@ -675,11 +802,13 @@ class _RegisterPatientDialog extends StatefulWidget {
   final TextEditingController patientCodeController;
   final Future<bool> Function() onRegisterRequested;
   final String Function() statusMessageProvider;
+  final _LinkPatientCaregiverText text;
 
   const _RegisterPatientDialog({
     required this.patientCodeController,
     required this.onRegisterRequested,
     required this.statusMessageProvider,
+    required this.text,
   });
 
   @override
@@ -710,7 +839,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                 Row(
                   children: [
                     IconButton(
-                      tooltip: '닫기',
+                      tooltip: widget.text.close,
                       visualDensity: VisualDensity.compact,
                       constraints: const BoxConstraints.tightFor(
                         width: 36,
@@ -725,11 +854,11 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                         size: 22,
                       ),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '환자 관리 등록',
+                        widget.text.registerPatient,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Color(0xFF0A0A0A),
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -754,7 +883,10 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                     ),
                     const _UpperCaseTextFormatter(),
                   ],
-                  decoration: _inputDecoration('환자 코드', 'ABCD1234'),
+                  decoration: _inputDecoration(
+                    widget.text.patientCodeLabel,
+                    'ABCD1234',
+                  ),
                   textInputAction: TextInputAction.done,
                   validator: _validatePatientCode,
                   onFieldSubmitted: (_) => _handleRegisterRequested(),
@@ -786,7 +918,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                               strokeWidth: 2.5,
                             ),
                           )
-                        : const Text('등록하기'),
+                        : Text(widget.text.register),
                   ),
                 ),
               ],
@@ -807,7 +939,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
   String? _validatePatientCode(String? value) {
     final patientCode = (value ?? '').trim();
     if (!RegExp(r'^[A-Z0-9]{8}$').hasMatch(patientCode)) {
-      return '환자 코드는 영문과 숫자 8자리로 입력해 주세요.';
+      return widget.text.invalidPatientCode;
     }
     return null;
   }
@@ -860,8 +992,9 @@ class _UpperCaseTextFormatter extends TextInputFormatter {
 
 class _PatientCodeDialog extends StatefulWidget {
   final PatientLinkCode patientCode;
+  final _LinkPatientCaregiverText text;
 
-  const _PatientCodeDialog({required this.patientCode});
+  const _PatientCodeDialog({required this.patientCode, required this.text});
 
   @override
   State<_PatientCodeDialog> createState() => _PatientCodeDialogState();
@@ -913,7 +1046,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                 Row(
                   children: [
                     IconButton(
-                      tooltip: '\uB2EB\uAE30',
+                      tooltip: widget.text.close,
                       visualDensity: VisualDensity.compact,
                       constraints: const BoxConstraints.tightFor(
                         width: 36,
@@ -926,11 +1059,11 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         size: 22,
                       ),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        '\uD658\uC790 \uCF54\uB4DC \uC0DD\uC131',
+                        widget.text.patientCodeDialogTitle,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Color(0xFF0A0A0A),
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -952,11 +1085,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         ClipboardData(text: widget.patientCode.code),
                       );
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            '\uCF54\uB4DC\uB97C \uBCF5\uC0AC\uD588\uC2B5\uB2C8\uB2E4.',
-                          ),
-                        ),
+                        SnackBar(content: Text(widget.text.codeCopied)),
                       );
                     },
                     child: Container(
@@ -996,10 +1125,10 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                   ),
                 ),
                 const SizedBox(height: 7),
-                const Text(
-                  '(\uCF54\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uBCF5\uC0AC\uB429\uB2C8\uB2E4)',
+                Text(
+                  widget.text.copyHint,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: MedBuddyColors.textSubtle,
                     fontSize: 13,
                     letterSpacing: 0,
@@ -1009,21 +1138,19 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                 _PatientCodeNotice(
                   backgroundColor: MedBuddyColors.successSurface,
                   foregroundColor: MedBuddyColors.textBody,
-                  text:
-                      '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uD734\uB300\uD3F0\uC5D0\n\uB4F1\uB85D\uD574\uC8FC\uC138\uC694',
+                  text: widget.text.codeInstruction,
                 ),
                 const SizedBox(height: 15),
                 _PatientCodeNotice(
                   backgroundColor: Color(0xFFFEF2F2),
                   foregroundColor: Color(0xFFE7000B),
                   fontWeight: FontWeight.w700,
-                  text:
-                      '\uD574\uB2F9 \uCF54\uB4DC\uB97C \uBCF4\uD638\uC790 \uC678\n\uB2E4\uB978 \uC0AC\uB78C\uACFC \uACF5\uC720\uD558\uC9C0 \uB9C8\uC138\uC694!',
+                  text: widget.text.codeWarning,
                 ),
                 const SizedBox(height: 24),
                 Text.rich(
                   TextSpan(
-                    text: '\uB0A8\uC740 \uC2DC\uAC04: ',
+                    text: widget.text.remainingTime,
                     children: [
                       TextSpan(
                         text: _remainingTimeText,
@@ -1109,10 +1236,14 @@ class _LinkListCard extends StatelessWidget {
   final bool isEnabled;
   final bool shrinkWrap;
   final Map<String, String> patientLabels;
+  final bool showChatAction;
+  final Map<int, List<ChatMedicationContext>> medicationContextsByLink;
+  final void Function(PatientCaregiverLink link) onChatRequested;
   final void Function(PatientCaregiverLink link) onPatientMedicationRequested;
   final Future<void> Function(PatientCaregiverLink link)
   onPatientLabelRequested;
   final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
+  final _LinkPatientCaregiverText text;
 
   const _LinkListCard({
     required this.links,
@@ -1120,9 +1251,13 @@ class _LinkListCard extends StatelessWidget {
     required this.isEnabled,
     this.shrinkWrap = false,
     required this.patientLabels,
+    required this.showChatAction,
+    required this.medicationContextsByLink,
+    required this.onChatRequested,
     required this.onPatientMedicationRequested,
     required this.onPatientLabelRequested,
     required this.onUnlinkRequested,
+    required this.text,
   });
 
   @override
@@ -1140,10 +1275,17 @@ class _LinkListCard extends StatelessWidget {
       separatorBuilder: (context, index) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final link = links[index];
+        final linkId = link.linkId;
+        final medicationContexts = linkId == null
+            ? const <ChatMedicationContext>[]
+            : medicationContextsByLink[linkId] ?? const [];
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
           patientLabel: patientLabels[link.patientHash],
+          showChatAction: showChatAction,
+          isChatAvailable: medicationContexts.isNotEmpty,
+          onChatRequested: isEnabled ? () => onChatRequested(link) : null,
           onPatientMedicationRequested: isEnabled
               ? () => onPatientMedicationRequested(link)
               : null,
@@ -1152,6 +1294,7 @@ class _LinkListCard extends StatelessWidget {
               ? () => onPatientLabelRequested(link)
               : null,
           onUnlinkRequested: isEnabled ? () => onUnlinkRequested(link) : null,
+          text: text,
         );
       },
     );
@@ -1162,17 +1305,25 @@ class _LinkedUserTile extends StatelessWidget {
   final PatientCaregiverLink link;
   final String currentUserHash;
   final String? patientLabel;
+  final bool showChatAction;
+  final bool isChatAvailable;
+  final VoidCallback? onChatRequested;
   final VoidCallback? onPatientMedicationRequested;
   final VoidCallback? onPatientLabelRequested;
   final VoidCallback? onUnlinkRequested;
+  final _LinkPatientCaregiverText text;
 
   const _LinkedUserTile({
     required this.link,
     required this.currentUserHash,
     required this.patientLabel,
+    required this.showChatAction,
+    required this.isChatAvailable,
+    required this.onChatRequested,
     required this.onPatientMedicationRequested,
     required this.onPatientLabelRequested,
     required this.onUnlinkRequested,
+    required this.text,
   });
 
   @override
@@ -1190,7 +1341,7 @@ class _LinkedUserTile extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  patientLabel ?? '연동 정보',
+                  patientLabel ?? text.linkInformation,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1201,9 +1352,32 @@ class _LinkedUserTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (showChatAction)
+                IconButton(
+                  tooltip: !isChatAvailable
+                      ? text.chatUnavailable
+                      : text.medicationChat,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
+                  ),
+                  onPressed: onChatRequested,
+                  icon: Icon(
+                    Icons.chat_bubble_outline,
+                    color: !isChatAvailable || onChatRequested == null
+                        ? MedBuddyColors.textMuted
+                        : MedBuddyColors.primary,
+                  ),
+                ),
               if (onPatientLabelRequested != null)
                 IconButton(
-                  tooltip: '환자 표시 이름 수정',
+                  tooltip: text.editPatientLabel,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
+                  ),
                   onPressed: onPatientLabelRequested,
                   icon: const Icon(
                     Icons.edit_outlined,
@@ -1212,9 +1386,13 @@ class _LinkedUserTile extends StatelessWidget {
                 ),
               if (_canOpenPatientMedication)
                 IconButton(
-                  tooltip:
-                      '\uD658\uC790 \uBCF5\uC57D \uC815\uBCF4 \uD655\uC778',
+                  tooltip: text.openPatientMedication,
                   onPressed: onPatientMedicationRequested,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
+                  ),
                   icon: const Icon(
                     Icons.medication_outlined,
                     color: MedBuddyColors.primary,
@@ -1224,13 +1402,13 @@ class _LinkedUserTile extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _LinkedIdentityField(
-            label: '환자 해시',
-            value: _displayHash(link.patientHash),
+            label: text.patientHash,
+            value: _displayHash(link.patientHash, text.noInformation),
           ),
           const SizedBox(height: 10),
           _LinkedIdentityField(
-            label: '보호자 해시',
-            value: _displayHash(link.caregiverHash),
+            label: text.caregiverHash,
+            value: _displayHash(link.caregiverHash, text.noInformation),
           ),
           const SizedBox(height: 8),
           TextButton(
@@ -1244,7 +1422,7 @@ class _LinkedUserTile extends StatelessWidget {
                 letterSpacing: 0,
               ),
             ),
-            child: const Text('삭제하기'),
+            child: Text(text.delete),
           ),
         ],
       ),
@@ -1319,10 +1497,101 @@ InputDecoration _inputDecoration(String labelText, String hintText) {
   );
 }
 
-String _displayHash(String value) {
+String _displayHash(String value, String fallback) {
   final displayValue = value.trim();
   if (displayValue.isEmpty) {
-    return '\uC815\uBCF4 \uC5C6\uC74C';
+    return fallback;
   }
   return displayValue;
+}
+
+// 클래스명: _LinkPatientCaregiverText
+// 역할: 환자·보호자 연동 화면에서 사용하는 문구를 언어별로 한곳에서 제공한다.
+class _LinkPatientCaregiverText {
+  final bool isEnglish;
+
+  const _LinkPatientCaregiverText(String language)
+    : isEnglish = language == 'en';
+
+  String get close => isEnglish ? 'Close' : '닫기';
+  String get screenTitle =>
+      isEnglish ? 'Link Patient/Caregiver' : '환자/보호자 연동하기';
+  String get loadingLinks =>
+      isEnglish ? 'Loading linked accounts.' : '연동 정보를 불러오는 중입니다.';
+  String get noSavedLinks =>
+      isEnglish ? 'No linked accounts yet.' : '저장된 연동정보가 없습니다.';
+  String linkCount(int count) => isEnglish
+      ? '$count linked account${count == 1 ? '' : 's'}.'
+      : '총 $count개의 연동이 있습니다.';
+  String get codeGenerated => isEnglish
+      ? 'Created a link code to share with a caregiver.'
+      : '보호자에게 공유할 연동 코드를 생성했습니다.';
+  String get enterPatientCode =>
+      isEnglish ? 'Enter the patient link code.' : '등록할 환자 연동 코드를 입력해 주세요.';
+  String get linkRegistered => isEnglish
+      ? 'Patient and caregiver are now linked.'
+      : '환자-보호자 연동을 등록했습니다.';
+  String get missingLinkId => isEnglish
+      ? 'This link cannot be removed because its identifier is missing.'
+      : '연동 식별자가 없어 해제할 수 없습니다.';
+  String get linkRemoved =>
+      isEnglish ? 'Patient and caregiver link removed.' : '환자-보호자 연동을 해제했습니다.';
+  String get linkedPatientOnly => isEnglish
+      ? 'You can only view medication information for a linked patient.'
+      : '연동된 환자의 복약 정보만 확인할 수 있습니다.';
+  String get patientLabelTitle =>
+      isEnglish ? 'Patient display name' : '환자 표시 이름';
+  String get patientLabelHint =>
+      isEnglish ? 'Example: Mom, Dad' : '예: 어머니, 아버지';
+  String get patientLabelHelper => isEnglish
+      ? 'This name is stored only on this caregiver device.'
+      : '이 이름은 현재 보호자 기기에만 저장됩니다.';
+  String get cancel => isEnglish ? 'Cancel' : '취소';
+  String get save => isEnglish ? 'Save' : '저장';
+  String patientLabelSaved(String label) =>
+      isEnglish ? 'Saved the display name $label.' : '$label 표시 이름을 저장했습니다.';
+  String get patientPeer => isEnglish ? 'Patient' : '환자';
+  String get caregiverPeer => isEnglish ? 'Caregiver' : '보호자';
+  String get generatePatientCode =>
+      isEnglish ? 'Create patient code' : '환자 코드 생성';
+  String get patientRole =>
+      isEnglish ? 'Patient taking medication' : '약을 복용하는 환자';
+  String get generatePatientCodeSemantic => isEnglish
+      ? 'Create a patient link code to share with a caregiver.'
+      : '약을 복용하는 환자입니다. 보호자에게 전달할 연동 코드를 만듭니다.';
+  String get registerPatient => isEnglish ? 'Register patient' : '환자 관리 등록';
+  String get caregiverRole =>
+      isEnglish ? 'Caregiver checking medication' : '복약을 확인하는 보호자';
+  String get registerPatientSemantic => isEnglish
+      ? 'Register the link code received from a patient.'
+      : '복약을 확인하는 보호자입니다. 환자에게 받은 연동 코드를 등록합니다.';
+  String get patientCodeLabel => isEnglish ? 'Patient code' : '환자 코드';
+  String get register => isEnglish ? 'Register' : '등록하기';
+  String get invalidPatientCode => isEnglish
+      ? 'Enter an 8-character code using letters and numbers.'
+      : '환자 코드는 영문과 숫자 8자리로 입력해 주세요.';
+  String get patientCodeDialogTitle => isEnglish ? 'Patient code' : '환자 코드 생성';
+  String get codeCopied => isEnglish ? 'Code copied.' : '코드를 복사했습니다.';
+  String get copyHint =>
+      isEnglish ? '(Tap the code to copy)' : '(코드를 클릭하면 복사됩니다)';
+  String get codeInstruction => isEnglish
+      ? 'Register this code on the caregiver phone.'
+      : '해당 코드를 보호자 휴대폰에\n등록해주세요';
+  String get codeWarning => isEnglish
+      ? 'Share this code only with your caregiver.'
+      : '해당 코드를 보호자 외\n다른 사람과 공유하지 마세요!';
+  String get remainingTime => isEnglish ? 'Time left: ' : '남은 시간: ';
+  String get linkInformation => isEnglish ? 'Linked account' : '연동 정보';
+  String get chatUnavailable => isEnglish
+      ? 'Chat is unavailable because the patient has no active medication.'
+      : '현재 복용 중인 약이 없어 채팅을 시작할 수 없습니다.';
+  String get medicationChat => isEnglish ? 'Medication chat' : '복약 대화';
+  String get editPatientLabel =>
+      isEnglish ? 'Edit patient display name' : '환자 표시 이름 수정';
+  String get openPatientMedication =>
+      isEnglish ? 'View patient medication' : '환자 복약 정보 확인';
+  String get patientHash => isEnglish ? 'Patient ID' : '환자 해시';
+  String get caregiverHash => isEnglish ? 'Caregiver ID' : '보호자 해시';
+  String get delete => isEnglish ? 'Remove link' : '삭제하기';
+  String get noInformation => isEnglish ? 'No information' : '정보 없음';
 }

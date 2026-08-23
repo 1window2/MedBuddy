@@ -8,6 +8,7 @@ from sqlalchemy import inspect as sqlalchemy_inspect, or_
 from sqlalchemy.orm import Session
 
 from entities.caregiver_notification_entity import _CaregiverNotification
+from entities.chat_message_entity import _ChatMessage
 from entities.device_push_token_entity import _DevicePushToken
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.medication_alarm_entity import _MedicationAlarm
@@ -99,6 +100,20 @@ class ManageAccount:
             )
             .all()
         )
+        chat_messages = (
+            self.db.query(_ChatMessage)
+            .join(
+                _PatientCaregiverLink,
+                _PatientCaregiverLink.id == _ChatMessage.link_id,
+            )
+            .filter(
+                or_(
+                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
+                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                )
+            )
+            .all()
+        )
         return {
             "success": True,
             "data": {
@@ -119,20 +134,21 @@ class ManageAccount:
                 "caregiver_notification_settings": [
                     self._row_to_dict(row) for row in caregiver_settings
                 ],
+                "chat_messages": [
+                    self._row_to_dict(row) for row in chat_messages
+                ],
                 "saved_medication_ids": medication_ids,
             },
         }
 
-    # Function Name: deleteAccountData
-    # Description:
-    # - Purges the authenticated user's MedBuddy data in one database transaction.
-    # - In Firebase mode, retains a tombstone before deleting the external identity
-    #   so a retry cannot recreate an empty account after a provider outage.
-    # Parameters:
-    # - user_hash: Server-derived MedBuddy ownership key.
-    # - external_subject: Verified Firebase UID; never supplied by the client body.
-    # Returns:
-    # - Deletion counts and whether the external identity was removed.
+    # 함수이름: deleteAccountData
+    # 함수역할:
+    # - 인증된 사용자의 MedBuddy 데이터를 하나의 DB 트랜잭션에서 삭제한다.
+    # - Firebase 모드에서는 외부 계정 삭제 전 삭제 표식을 남겨 재시도 시 복구를 막는다.
+    # 매개변수:
+    # - user_hash: 서버에서 확인한 MedBuddy 소유권 식별값
+    # - external_subject: 서버에서 검증한 Firebase UID
+    # 반환값: 항목별 삭제 개수와 외부 계정 삭제 여부
     def deleteAccountData(
         self,
         user_hash: str,
@@ -195,6 +211,25 @@ class ManageAccount:
         delete_account: bool,
     ) -> dict[str, int]:
         deleted_counts: dict[str, int] = {}
+        linked_ids = [
+            int(row.id)
+            for row in self.db.query(_PatientCaregiverLink.id)
+            .filter(
+                or_(
+                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
+                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                )
+            )
+            .all()
+        ]
+        deleted_counts["chat_messages"] = (
+            self._delete(
+                _ChatMessage,
+                _ChatMessage.link_id.in_(linked_ids),
+            )
+            if linked_ids
+            else 0
+        )
         deleted_counts["medication_completions"] = self._delete(
             _MedicationCompletion,
             _MedicationCompletion.patient_hash == normalized_user_hash,

@@ -1,3 +1,6 @@
+// 파일명: notification_service.dart
+// 역할: 복약, 보호자와 채팅 로컬 알림의 초기화, 예약, 표시와 취소를 담당한다.
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
@@ -6,17 +9,23 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/medication_alarm_entity.dart';
 
-enum MedicationNotificationDestination { schedule, caregiverSchedule }
+enum MedicationNotificationDestination {
+  schedule,
+  caregiverSchedule,
+  linkedChat,
+}
 
 // 클래스명: MedicationNotificationSelection
 // 역할: 사용자가 누른 알림의 이동 화면과 선택 환자를 함께 전달한다.
 class MedicationNotificationSelection {
   final MedicationNotificationDestination destination;
   final String? patientHash;
+  final int? linkId;
 
   const MedicationNotificationSelection({
     required this.destination,
     this.patientHash,
+    this.linkId,
   });
 }
 
@@ -100,6 +109,16 @@ class NotificationService {
         return null;
       }
     }
+    if (segments.length == 2 && segments[0] == 'chat') {
+      final linkId = int.tryParse(segments[1]);
+      if (linkId == null || linkId < 1) {
+        return null;
+      }
+      return MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.linkedChat,
+        linkId: linkId,
+      );
+    }
     return null;
   }
 
@@ -119,7 +138,8 @@ class NotificationService {
   @visibleForTesting
   static bool isSessionNotificationPayload(String? payload) {
     return payload?.startsWith('schedule:') == true ||
-        payload?.startsWith('caregiver:') == true;
+        payload?.startsWith('caregiver:') == true ||
+        payload?.startsWith('chat:') == true;
   }
 
   // 함수명: initialize
@@ -394,15 +414,17 @@ class NotificationService {
       title: title,
       body: body,
       scheduledDate: scheduledDate,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_medication_reminders',
-          '복약 알림',
-          channelDescription: 'MedBuddy 복약 시간 알림',
+          _isEnglish(language) ? 'Medication reminders' : '복약 알림',
+          channelDescription: _isEnglish(language)
+              ? 'MedBuddy medication time reminders'
+              : 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
       payload: 'schedule:$slotKey:$id',
@@ -425,12 +447,12 @@ class NotificationService {
     await _plugin.cancel(id: id);
   }
 
-  // Function Name: cancelAllMedicationReminders
-  // Description:
-  // - Cancels every pending medication reminder and every displayed caregiver
-  //   alert before session exit, while preserving unrelated notifications.
-  // Returns:
-  // - Completes after session-owned notifications and selections are removed.
+  // 함수이름: cancelAllMedicationReminders
+  // 함수역할:
+  // - 세션 종료 전 예약된 복약 알림과 표시 중인 보호자 알림을 모두 취소한다.
+  // - MedBuddy 세션과 관계없는 알림은 유지한다.
+  // 반환값:
+  // - 현재 세션의 알림과 선택 정보가 제거되면 완료된다.
   Future<void> cancelAllMedicationReminders() async {
     await initialize();
     final pendingRequests = await _plugin.pendingNotificationRequests();
@@ -465,6 +487,7 @@ class NotificationService {
   // - title: 보호자 알림 제목
   // - body: 보호자에게 보여줄 복약 상태 설명
   // - patientHash: 알림을 누를 때 열어야 하는 환자 식별 hash
+  // - language: 알림 채널 안내에 사용할 언어 코드
   // 반환값:
   // - 없음
   Future<void> showCaregiverAlert({
@@ -472,25 +495,61 @@ class NotificationService {
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
   }) async {
     await initialize();
+    final isEnglish = _isEnglish(language);
     await _plugin.show(
       id: id,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_caregiver_updates',
-          '보호자 복약 확인',
-          channelDescription: '연동된 환자의 복약 완료 및 미복용 상태 알림',
+          isEnglish ? 'Caregiver medication updates' : '보호자 복약 확인',
+          channelDescription: isEnglish
+              ? 'Medication completion and missed-dose updates for linked patients'
+              : '연동된 환자의 복약 완료 및 미복용 상태 알림',
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
       payload: patientHash == null || patientHash.trim().isEmpty
           ? null
           : 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+    );
+  }
+
+  // 함수명: showLinkedChatAlert
+  // 역할:
+  // - 전경에서 받은 가족 채팅 푸시를 본문 노출 없이 로컬 알림으로 표시한다.
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
+  }) async {
+    await initialize();
+    final isEnglish = _isEnglish(language);
+    await _plugin.show(
+      id: id,
+      title: isEnglish ? 'New family message' : '새 가족 메시지',
+      body: isEnglish
+          ? 'You received a new message from a linked family member.'
+          : '연동된 가족에게 새 메시지가 도착했습니다.',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medbuddy_linked_chat',
+          isEnglish ? 'Family chat' : '가족 채팅',
+          channelDescription: isEnglish
+              ? 'New chat messages between linked patients and caregivers'
+              : '연동된 환자와 보호자의 새 채팅 메시지 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: 'chat:$linkId',
     );
   }
 }

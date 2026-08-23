@@ -1,3 +1,6 @@
+// 파일명: notification_service_test.dart
+// 역할: 복약, 보호자와 채팅 로컬 알림의 예약·취소 정책을 검증한다.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
@@ -58,6 +61,14 @@ class _NoopNotificationService implements NotificationService {
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
+  }) async {}
+
+  @override
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
   }) async {}
 }
 
@@ -120,24 +131,42 @@ void main() {
     expect(selection?.patientHash, 'patient_test');
   });
 
-  test('session cleanup classifies schedule and caregiver notifications', () {
+  test('chat payload keeps only the linked conversation identifier', () {
+    final selection = NotificationService.selectionFromPayload('chat:37');
+
     expect(
-      NotificationService.isSessionNotificationPayload(
-        'schedule:morning:17',
-      ),
-      isTrue,
+      selection?.destination,
+      MedicationNotificationDestination.linkedChat,
     );
-    expect(
-      NotificationService.isSessionNotificationPayload(
-        'caregiver:patient_test',
-      ),
-      isTrue,
-    );
-    expect(
-      NotificationService.isSessionNotificationPayload('settings:17'),
-      isFalse,
-    );
+    expect(selection?.linkId, 37);
+    expect(selection?.patientHash, isNull);
+    expect(NotificationService.selectionFromPayload('chat:not-an-id'), isNull);
+    expect(NotificationService.selectionFromPayload('chat:0'), isNull);
   });
+
+  test(
+    'session cleanup classifies schedule, caregiver, and chat notifications',
+    () {
+      expect(
+        NotificationService.isSessionNotificationPayload('schedule:morning:17'),
+        isTrue,
+      );
+      expect(
+        NotificationService.isSessionNotificationPayload(
+          'caregiver:patient_test',
+        ),
+        isTrue,
+      );
+      expect(
+        NotificationService.isSessionNotificationPayload('chat:37'),
+        isTrue,
+      );
+      expect(
+        NotificationService.isSessionNotificationPayload('settings:17'),
+        isFalse,
+      );
+    },
+  );
 
   testWidgets('the notification selection handler opens the dose screen', (
     tester,

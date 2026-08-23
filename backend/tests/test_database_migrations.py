@@ -1,8 +1,13 @@
+# 파일명: test_database_migrations.py
+# 역할: 데이터베이스 마이그레이션 체인과 스키마 호환성을 검증한다.
+
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+
+from entities.chat_message_entity import _ChatMessage
 
 
 def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
@@ -41,6 +46,7 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "user_settings",
         "user_accounts",
         "pill_identification_references",
+        "chat_messages",
     }.issubset(tables)
     assert "deduplication_key" in saved_columns
     assert "prescription_batch_id" in saved_columns
@@ -52,6 +58,34 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         foreign_key["referred_table"] == "saved_medications"
         for foreign_key in completion_foreign_keys
     )
+
+
+def test_chat_migration_adopts_auto_created_local_table(tmp_path: Path) -> None:
+    """로컬 자동 생성 테이블이 있어도 채팅 마이그레이션을 완료한다."""
+    database_path = tmp_path / "auto-created-chat.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = database_url
+
+    command.upgrade(config, "7d2e4f1a8c63")
+    engine = create_engine(database_url)
+    try:
+        _ChatMessage.__table__.create(bind=engine)
+        command.upgrade(config, "head")
+        inspector = inspect(engine)
+        index_names = {
+            str(index["name"])
+            for index in inspector.get_indexes("chat_messages")
+        }
+    finally:
+        engine.dispose()
+
+    assert {
+        "ix_chat_messages_id",
+        "ix_chat_messages_link_id",
+        "ix_chat_messages_sender_hash",
+        "ix_chat_messages_created_at",
+    }.issubset(index_names)
 
 
 # 함수이름: test_guardian_alert_migration_contains_slot_columns
