@@ -1,3 +1,6 @@
+// 파일명: authenticated_api_client_test.dart
+// 역할: API 계약, 인증과 App Check 헤더 적용을 검증한다.
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -140,6 +143,53 @@ void main() {
     expect(tokenProviderWasCalled, isFalse);
     expect(appCheckProviderWasCalled, isFalse);
 
+    client.close();
+  });
+
+  test(
+    'builds the same trusted authentication headers for WebSocket',
+    () async {
+      final client = AuthenticatedApiClient(
+        inner: MockClient((request) async => http.Response('{}', 200)),
+        tokenProvider: () async => 'verified-token',
+        appCheckTokenProvider: () async => 'verified-app-token',
+        trustedBaseUri: Uri.parse(
+          'https://api.medbuddy.example/api/v1/medication',
+        ),
+      );
+
+      final headers = await client.buildAuthenticationHeaders(
+        Uri.parse('wss://api.medbuddy.example/api/v1/chat/links/17/stream'),
+      );
+
+      expect(headers['Authorization'], 'Bearer verified-token');
+      expect(headers['X-Firebase-AppCheck'], 'verified-app-token');
+      expect(headers['X-MedBuddy-Api-Contract'], 'medbuddy-api-v1');
+      client.close();
+    },
+  );
+
+  test('refuses to build WebSocket headers for an untrusted origin', () async {
+    var tokenProviderWasCalled = false;
+    final client = AuthenticatedApiClient(
+      inner: MockClient((request) async => http.Response('{}', 200)),
+      tokenProvider: () async {
+        tokenProviderWasCalled = true;
+        return 'verified-token';
+      },
+      appCheckTokenProvider: () async => 'verified-app-token',
+      trustedBaseUri: Uri.parse(
+        'https://api.medbuddy.example/api/v1/medication',
+      ),
+    );
+
+    await expectLater(
+      client.buildAuthenticationHeaders(
+        Uri.parse('wss://untrusted.example/api/v1/chat/links/17/stream'),
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(tokenProviderWasCalled, isFalse);
     client.close();
   });
 

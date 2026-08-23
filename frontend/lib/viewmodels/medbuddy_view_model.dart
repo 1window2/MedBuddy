@@ -1,3 +1,6 @@
+// 파일명: medbuddy_view_model.dart
+// 역할: 홈 화면과 주요 복약 기능의 상태를 기능별 ViewModel에 연결한다.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -19,16 +22,21 @@ import '../controls/manage_account_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/health_recommendation_entity.dart';
+import '../entities/identified_pill_save_request_entity.dart';
+import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/pill_identification_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/medication_reminder_background_service.dart';
+import '../services/manual_medication_image_store.dart';
 import '../services/notification_service.dart';
 import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
@@ -86,6 +94,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final ManageUserSetting manageUserSetting;
   late final ManageAccount manageAccount;
   final NotificationService notificationService;
+  final ManualMedicationImageStore manualMedicationImageStore;
   final String patientHash;
   final http.Client _apiClient;
   final bool _ownsApiClient;
@@ -140,8 +149,15 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool _isHealthRecommendationLoading = false;
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
 
-  String _statusMessage = '처방전을 촬영하거나 이미지를 선택해주세요.';
-  String get statusMessage => _statusMessage;
+  String _statusMessage = '';
+  String get statusMessage {
+    if (_statusMessage.isNotEmpty) {
+      return _statusMessage;
+    }
+    return _isEnglishSetting
+        ? 'Take a prescription photo or choose an image.'
+        : '처방전을 촬영하거나 이미지를 선택해주세요.';
+  }
 
   String _analysisErrorMessage = '';
   String get analysisErrorMessage => _analysisErrorMessage;
@@ -268,13 +284,16 @@ class MedBuddyViewModel extends ChangeNotifier {
     ManageUserSetting? manageUserSetting,
     ManageAccount? manageAccount,
     NotificationService? notificationService,
+    ManualMedicationImageStore? manualMedicationImageStore,
     String patientHash = PatientHash.defaultPatientHash,
     http.Client? apiClient,
   }) : patientHash = PatientHash.normalizePatientHash(patientHash),
        _apiClient = apiClient ?? AuthenticatedApiClient(),
        _ownsApiClient = apiClient == null,
        notificationService =
-           notificationService ?? NotificationService.instance {
+           notificationService ?? NotificationService.instance,
+       manualMedicationImageStore =
+           manualMedicationImageStore ?? const ManualMedicationImageStore() {
     this.inputPrescription =
         inputPrescription ?? InputPrescription(client: _apiClient);
     this.checkMedicationDetail =

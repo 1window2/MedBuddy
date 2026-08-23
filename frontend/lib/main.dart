@@ -1,12 +1,18 @@
+// 파일명: main.dart
+// 역할: MedBuddy 앱의 인증, 전역 설정, 알림과 초기 화면 구성을 시작한다.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
+import 'boundaries/linked_chat_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
+import 'composition/linked_chat_notification_monitor_factory.dart';
 import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
 import 'entities/user_setting_entity.dart';
@@ -15,6 +21,7 @@ import 'services/caregiver_notification_monitor_service.dart';
 import 'services/caregiver_notification_background_service.dart';
 import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
+import 'services/linked_chat_notification_monitor_service.dart';
 import 'services/medication_reminder_background_service.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
@@ -99,6 +106,7 @@ class MedBuddyApp extends StatefulWidget {
 class _MedBuddyAppState extends State<MedBuddyApp> {
   static const String _scheduleRouteName = '/schedule';
   static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
+  static const String _linkedChatRoutePrefix = '/linked-chat/';
 
   late final GlobalKey<NavigatorState> _navigatorKey;
   late final AuthenticationControl _authenticationControl;
@@ -107,8 +115,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   late final bool _ownsAppLanguageControl;
   bool _isScheduleRouteOpen = false;
   String? _openCaregiverScheduleRouteName;
+  String? _openLinkedChatRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
+  LinkedChatNotificationMonitorService? _linkedChatNotificationMonitor;
   PushNotificationService? _pushNotificationService;
   String? _monitoredUserHash;
   int _monitorGeneration = 0;
@@ -132,6 +142,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void dispose() {
     _monitorGeneration += 1;
     _caregiverNotificationMonitor?.dispose();
+    unawaited(_linkedChatNotificationMonitor?.dispose());
     unawaited(_pushNotificationService?.stop());
     unawaited(CaregiverNotificationBackgroundScheduler.cancel());
     _registerNotificationSelectionHandler(null);
@@ -146,12 +157,12 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     super.dispose();
   }
 
-  // Function Name: _prepareSessionEnd
-  // Description:
-  // - Cancels local medication reminders and their replenishment task.
-  // - Unregisters the push token while Firebase can authorize the DELETE.
-  // Returns:
-  // - Completes only after privacy-sensitive notification cleanup succeeds.
+  // 함수이름: _prepareSessionEnd
+  // 함수역할:
+  // - 로컬 복약 알림과 보충 작업을 취소한다.
+  // - Firebase 인증이 유효한 동안 서버의 푸시 토큰 등록을 해제한다.
+  // 반환값:
+  // - 현재 사용자 알림 정보 정리가 완료되면 종료된다.
   Future<void> _prepareSessionEnd() async {
     final reminderCleanup = widget.sessionReminderCleanup;
     if (reminderCleanup != null) {
@@ -192,6 +203,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
+      _openLinkedChatRouteName = null;
       _navigatorKey.currentState?.popUntil((route) => route.isFirst);
       return;
     }
@@ -215,11 +227,14 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
     final generation = ++_monitorGeneration;
     final previousMonitor = _caregiverNotificationMonitor;
+    final previousChatMonitor = _linkedChatNotificationMonitor;
     final previousPushService = _pushNotificationService;
     _caregiverNotificationMonitor = null;
+    _linkedChatNotificationMonitor = null;
     _pushNotificationService = null;
     _monitoredUserHash = userHash;
     previousMonitor?.dispose();
+    unawaited(previousChatMonitor?.dispose());
     if (previousPushService != null) {
       unawaited(previousPushService.stop());
     }
@@ -233,10 +248,39 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     final pushService = PushNotificationService(
       userHash: userHash,
       client: _authenticationControl.apiClient,
+      languageProvider: () => _appLanguageControl.language,
     );
     _pushNotificationService = pushService;
     unawaited(pushService.start());
+    if (AuthConfig.mode == AuthenticationMode.disabled) {
+      unawaited(_startLinkedChatNotificationMonitor(userHash, generation));
+    }
     unawaited(_startCaregiverNotificationMonitor(userHash, generation));
+  }
+
+  // 함수명: _startLinkedChatNotificationMonitor
+  // 역할:
+  // - 로컬 데모 모드에서 현재 사용자의 활성 연동 채팅을 알림 감시 대상으로 등록한다.
+  Future<void> _startLinkedChatNotificationMonitor(
+    String userHash,
+    int generation,
+  ) async {
+    final monitor = LinkedChatNotificationMonitorFactory.create(
+      userHash: userHash,
+      client: _authenticationControl.apiClient,
+    );
+    if (!mounted || generation != _monitorGeneration) {
+      await monitor.dispose();
+      return;
+    }
+    _linkedChatNotificationMonitor = monitor;
+    await monitor.start();
+    if (!mounted || generation != _monitorGeneration) {
+      if (identical(_linkedChatNotificationMonitor, monitor)) {
+        _linkedChatNotificationMonitor = null;
+      }
+      await monitor.dispose();
+    }
   }
 
   Future<void> _startCaregiverNotificationMonitor(
@@ -246,6 +290,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     final monitor = CaregiverNotificationMonitorFactory.create(
       caregiverHash: userHash,
       client: _authenticationControl.apiClient,
+      languageProvider: () => _appLanguageControl.language,
       pollingInterval: AuthConfig.mode == AuthenticationMode.firebase
           ? const Duration(minutes: 1)
           : CaregiverNotificationMonitorService.defaultPollingInterval,
@@ -345,6 +390,23 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       _navigateToScheduleWhenReady();
       return;
     }
+    if (selection.destination == MedicationNotificationDestination.linkedChat) {
+      final linkId = selection.linkId;
+      if (linkId == null || linkId < 1) {
+        return;
+      }
+      final navigator = _navigatorKey.currentState;
+      if (navigator != null) {
+        _openLinkedChat(navigator, linkId);
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _navigatorKey.currentState != null) {
+          _openLinkedChat(_navigatorKey.currentState!, linkId);
+        }
+      });
+      return;
+    }
     final patientHash = selection.patientHash?.trim() ?? '';
     if (patientHash.isEmpty) {
       return;
@@ -412,12 +474,47 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             builder: (context) => CheckCaregiverMedicationUI(
               caregiverHash: session.userHash,
               patientHash: patientHash,
+              userSetting: UserSetting(language: _appLanguageControl.language),
             ),
           ),
         )
         .whenComplete(() {
           if (_openCaregiverScheduleRouteName == routeName) {
             _openCaregiverScheduleRouteName = null;
+          }
+        });
+  }
+
+  // 함수명: _openLinkedChat
+  // 역할:
+  // - 채팅 알림에 포함된 연동 식별자의 대화 화면을 중복 없이 연다.
+  void _openLinkedChat(NavigatorState navigator, int linkId) {
+    final session = _authenticationControl.session;
+    if (session == null) {
+      return;
+    }
+    final routeName = '$_linkedChatRoutePrefix$linkId';
+    if (_openLinkedChatRouteName == routeName) {
+      navigator.popUntil(
+        (route) => route.settings.name == routeName || route.isFirst,
+      );
+      return;
+    }
+    _openLinkedChatRouteName = routeName;
+    navigator
+        .push(
+          MaterialPageRoute<void>(
+            settings: RouteSettings(name: routeName),
+            builder: (context) => LinkedChatUI(
+              linkId: linkId,
+              currentUserHash: session.userHash,
+              userSetting: UserSetting(language: _appLanguageControl.language),
+            ),
+          ),
+        )
+        .whenComplete(() {
+          if (_openLinkedChatRouteName == routeName) {
+            _openLinkedChatRouteName = null;
           }
         });
   }
@@ -440,6 +537,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             navigatorKey: _navigatorKey,
             title: 'MedBuddy',
             debugShowCheckedModeBanner: false,
+            locale: Locale(appLanguage.language),
+            supportedLocales: const [Locale('ko'), Locale('en')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
             builder: (context, child) {
               if (session == null) {
                 return MedBuddyTextScale(
@@ -496,14 +596,14 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     );
   }
 
-  // Function Name: _loadUserSettingAndSyncLanguage
-  // Description:
-  // - Loads the authenticated user's setting through the existing ViewModel.
-  // - Mirrors its language into the device-wide authentication preference.
-  // Parameters:
-  // - viewModel: Authenticated MedBuddy application state.
-  // Returns:
-  // - Completes after the setting load and language synchronization attempt.
+  // 함수명: _loadUserSettingAndSyncLanguage
+  // 역할:
+  // - 로그인한 사용자의 설정을 ViewModel로 불러온다.
+  // - 불러온 언어를 인증 화면에서도 사용하는 기기 공통 설정과 동기화한다.
+  // 매개변수:
+  // - viewModel: 로그인한 사용자의 MedBuddy 앱 상태
+  // 반환값:
+  // - 사용자 설정 조회와 언어 동기화 시도가 끝나면 완료된다.
   Future<void> _loadUserSettingAndSyncLanguage(
     MedBuddyViewModel viewModel,
   ) async {

@@ -7,7 +7,16 @@
 // - 운영용 공인 HTTPS 기본 주소를 제공한다.
 // - MEDBUDDY_API_BASE_URL 값이 주어지면 해당 주소를 우선 사용한다.
 
+import 'package:flutter/foundation.dart';
+
 class ApiConfig {
+  static const bool _localHttpRequested = bool.fromEnvironment(
+    'MEDBUDDY_ALLOW_LOCAL_HTTP',
+    defaultValue: true,
+  );
+  static const bool _allowLocalHttpForDevelopment =
+      kDebugMode && _localHttpRequested;
+
   static const String contractVersion = String.fromEnvironment(
     'MEDBUDDY_API_CONTRACT_VERSION',
     defaultValue: 'medbuddy-api-v1',
@@ -26,6 +35,32 @@ class ApiConfig {
     return authUrl('/push-token');
   }
 
+  // 함수명: pharmacyUrl
+  // 역할:
+  // - 복약 API와 같은 서버의 약국 API 주소를 조합한다.
+  // 매개변수:
+  // - path: /api/v1/pharmacy 뒤에 붙일 하위 경로
+  // 반환값:
+  // - 완성된 약국 API 주소
+  static String pharmacyUrl(String path) {
+    return _siblingApiUrl('pharmacy', path);
+  }
+
+  // 함수명: chatUrl
+  // 역할:
+  // - 복약 API와 같은 서버의 환자·보호자 채팅 REST 주소를 조합한다.
+  static String chatUrl(String path) {
+    return _siblingApiUrl('chat', path);
+  }
+
+  // 함수명: chatWebSocketUrl
+  // 역할:
+  // - 채팅 REST 주소를 같은 서버의 보안 WebSocket 주소로 변환한다.
+  static String chatWebSocketUrl(String path) {
+    final uri = Uri.parse(chatUrl(path));
+    return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws').toString();
+  }
+
   // 함수명: authUrl
   // 역할:
   // - 복약 API 기본 주소와 같은 서버의 인증 API 주소를 조합한다.
@@ -34,13 +69,20 @@ class ApiConfig {
   // 반환값:
   // - 완성된 인증 API 주소
   static String authUrl(String path) {
+    return _siblingApiUrl('auth', path);
+  }
+
+  // 함수명: _siblingApiUrl
+  // 역할:
+  // - 설정된 복약 API와 같은 origin의 다른 v1 API 주소를 안전하게 만든다.
+  static String _siblingApiUrl(String resource, String path) {
     const medicationPath = '/api/v1/medication';
     if (!baseUrl.endsWith(medicationPath)) {
       throw StateError('MEDBUDDY_API_BASE_URL has an unexpected path.');
     }
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     return '${baseUrl.substring(0, baseUrl.length - medicationPath.length)}'
-        '/api/v1/auth$normalizedPath';
+        '/api/v1/$resource$normalizedPath';
   }
 
   static void validate() {
@@ -50,12 +92,17 @@ class ApiConfig {
   // 함수명: validateUrl
   // 역할:
   // - API URL의 계약 경로와 네트워크 안전 조건을 검증한다.
-  // - 모든 빌드 모드에서 공인 HTTPS 호스트만 허용한다.
+  // - 개발 모드에서는 Android 에뮬레이터의 로컬 백엔드만 예외로 허용한다.
+  // - 운영 빌드에서는 공인 HTTPS 호스트만 허용한다.
   // 매개변수:
   // - value: 검증할 API 기본 URL
+  // - allowLocalHttp: 로컬 개발용 HTTP 주소 허용 여부
   // 반환값:
   // - 없음. 조건을 충족하지 않으면 StateError를 발생시킨다.
-  static void validateUrl(String value) {
+  static void validateUrl(
+    String value, {
+    bool allowLocalHttp = _allowLocalHttpForDevelopment,
+  }) {
     final uri = Uri.tryParse(value.trim());
     if (uri == null ||
         !uri.hasScheme ||
@@ -70,12 +117,29 @@ class ApiConfig {
     if (scheme != 'http' && scheme != 'https') {
       throw StateError('MEDBUDDY_API_BASE_URL must use HTTP or HTTPS.');
     }
+    if (_isAllowedLocalDevelopmentUrl(uri, allowLocalHttp)) {
+      return;
+    }
     if (scheme != 'https' || (uri.hasPort && uri.port != 443)) {
       throw StateError('MedBuddy requires an HTTPS backend URL.');
     }
     if (_isPrivateOrLocalHost(uri.host)) {
       throw StateError('MedBuddy requires a public backend host.');
     }
+  }
+
+  // 함수명: _isAllowedLocalDevelopmentUrl
+  // 역할:
+  // - 디버그 실행에서 사용하는 로컬 백엔드 주소만 좁게 허용한다.
+  // - 다른 사설망 주소나 임의 포트는 허용하지 않는다.
+  static bool _isAllowedLocalDevelopmentUrl(Uri uri, bool allowLocalHttp) {
+    if (!allowLocalHttp || uri.scheme.toLowerCase() != 'http') {
+      return false;
+    }
+
+    final host = uri.host.toLowerCase();
+    const allowedHosts = {'10.0.2.2', '127.0.0.1', 'localhost', '::1'};
+    return allowedHosts.contains(host) && uri.hasPort && uri.port == 8000;
   }
 
   static bool _isPrivateOrLocalHost(String rawHost) {

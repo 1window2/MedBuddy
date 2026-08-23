@@ -1,5 +1,5 @@
-# File Name: dependencies.py
-# Role: Provides FastAPI dependency factories for backend use-case collaborators.
+# 파일명: dependencies.py
+# 역할: 백엔드 사용 사례 협력 객체를 생성하는 FastAPI 의존성 팩토리를 제공한다.
 
 import asyncio
 import logging
@@ -25,6 +25,9 @@ from boundaries.public_drug_api_boundary import (
     PublicDrugLargeAPI,
     PublicDrugSmallAPI,
     _PublicDrugTransport,
+)
+from boundaries.pharmacy_api_boundary import (
+    NationalEmergencyMedicalCenterPharmacyAPI,
 )
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
@@ -52,6 +55,7 @@ from controls.check_medication_detail_control import (
     CheckMedicationDetail,
     _MedicationDetailCache,
 )
+from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
@@ -67,6 +71,7 @@ from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.manage_push_token_control import ManagePushToken
+from controls.manage_linked_chat_control import ManageLinkedChat
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
@@ -78,6 +83,7 @@ _public_drug_transport = _PublicDrugTransport()
 _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
 _pill_image_api = PillImageAPI(transport=_public_drug_transport)
+_pharmacy_api = NationalEmergencyMedicalCenterPharmacyAPI()
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
@@ -195,15 +201,14 @@ def get_authenticated_principal(
         )
     return principal
 
-# Function Name: get_recently_authenticated_principal
-# Description:
-# - Requires recent Firebase authentication before irreversible account deletion.
-# - Preserves the authenticated server-derived subject and explicitly exempts
-#   anonymous guests because they have no reusable credential for step-up auth.
-# Parameters:
-# - principal: Verified request principal supplied by Firebase authentication.
-# Returns:
-# - The same principal when the deletion freshness policy is satisfied.
+# 함수이름: get_recently_authenticated_principal
+# 함수역할:
+# - 되돌릴 수 없는 계정 삭제 전에 최근 Firebase 인증 여부를 확인한다.
+# - 서버에서 검증한 사용자를 유지하고 추가 인증 수단이 없는 익명 사용자는 예외 처리한다.
+# 매개변수:
+# - principal: Firebase 인증으로 검증된 요청 사용자
+# 반환값:
+# - 최근 인증 정책을 만족한 동일 사용자
 def get_recently_authenticated_principal(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
 ) -> AuthenticatedPrincipal:
@@ -231,16 +236,15 @@ def get_recently_authenticated_principal(
     return principal
 
 
-# Function Name: _lock_account_operation
-# Description:
-# - Serializes each authenticated account request with account deletion.
-# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and
-#   a SQLite write transaction for deterministic local/test behavior.
-# Parameters:
-# - db: Request-scoped SQLAlchemy session shared by endpoint controls.
-# - user_hash: Server-derived account scope used only as a lock namespace.
-# Returns:
-# - None. The lock remains held until the request transaction commits/rolls back.
+# 함수이름: _lock_account_operation
+# 함수역할:
+# - 인증된 계정 요청과 계정 삭제가 동시에 실행되지 않도록 직렬화한다.
+# - 운영 PostgreSQL에서는 트랜잭션 잠금, 로컬 SQLite에서는 쓰기 트랜잭션을 사용한다.
+# 매개변수:
+# - db: 요청 범위 SQLAlchemy 세션
+# - user_hash: 잠금 구분에만 쓰는 서버 검증 사용자 식별값
+# 반환값:
+# - 없음. 요청 트랜잭션이 끝날 때까지 잠금을 유지한다.
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
@@ -414,11 +418,22 @@ async def close_public_drug_boundaries() -> None:
         )
 
 
-# Function Name: get_input_prescription
-# Description:
-# - Builds the image prescription analysis control service.
-# Returns:
-# - InputPrescription instance.
+# 함수명: close_pharmacy_boundary
+# 역할:
+# - 약국 공공데이터 API가 재사용한 HTTP 연결 풀을 서버 종료 시 정리한다.
+async def close_pharmacy_boundary() -> None:
+    try:
+        await _pharmacy_api.close()
+    except Exception as exc:
+        logger.warning(
+            "Pharmacy API boundary shutdown failed: %s",
+            type(exc).__name__,
+        )
+
+
+# 함수이름: get_input_prescription
+# 함수역할: 처방전 분석 Control을 생성한다.
+# 반환값: InputPrescription 인스턴스
 def get_input_prescription(
     db: Session = Depends(get_db),
 ) -> InputPrescription:
@@ -471,13 +486,10 @@ def get_identify_pill() -> IdentifyPill:
     )
 
 
-# Function Name: get_check_medication_detail
-# Description:
-# - Builds the medication detail lookup control service with optional local DB access.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - CheckMedicationDetail instance.
+# 함수이름: get_check_medication_detail
+# 함수역할: 로컬 DB 조회를 포함하는 약품 상세정보 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: CheckMedicationDetail 인스턴스
 def get_check_medication_detail(
     db: Session = Depends(get_db),
     medication_cache: _MedicationDetailCache = Depends(
@@ -493,6 +505,13 @@ def get_check_medication_detail(
     )
 
 
+# 함수명: get_check_nearby_pharmacy
+# 역할:
+# - 공유 약국 API Boundary를 사용하는 위치 기반 약국 조회 Control을 생성한다.
+def get_check_nearby_pharmacy() -> CheckNearbyPharmacy:
+    return CheckNearbyPharmacy(pharmacy_boundary=_pharmacy_api)
+
+
 # 함수이름: get_check_prescription_change
 # 함수역할:
 # - 요청 단위 DB 세션을 포함한 처방 변화 비교 Control을 생성한다.
@@ -506,26 +525,20 @@ def get_check_prescription_change(
     return CheckPrescriptionChange(db=db)
 
 
-# Function Name: get_check_saved_medication
-# Description:
-# - Builds the saved medication control service with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - CheckSavedMedication instance.
+# 함수이름: get_check_saved_medication
+# 함수역할: 요청 범위 DB 세션을 사용하는 저장 복약정보 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: CheckSavedMedication 인스턴스
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
     return CheckSavedMedication(db=db)
 
 
-# Function Name: get_check_schedule
-# Description:
-# - Builds the medication schedule control service with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - CheckSchedule instance.
+# 함수이름: get_check_schedule
+# 함수역할: 요청 범위 DB 세션을 사용하는 복약 일정 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: CheckSchedule 인스턴스
 def get_check_schedule(
     db: Session = Depends(get_db),
 ) -> CheckSchedule:
@@ -545,20 +558,17 @@ def get_manage_push_token(
     return ManagePushToken(db=db)
 
 
-# Function Name: get_check_today_medication_info
-# Description:
-# - Builds the today medication summary control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - CheckTodayMedicationInfo instance.
+# 함수이름: get_check_today_medication_info
+# 함수역할: 요청 범위 DB 세션을 사용하는 오늘의 복약 요약 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: CheckTodayMedicationInfo 인스턴스
 def get_check_today_medication_info(
     db: Session = Depends(get_db),
 ) -> CheckTodayMedicationInfo:
     return CheckTodayMedicationInfo(db=db)
 
 
-# Function Name: get_check_health_recommendation
+# 함수이름: get_check_health_recommendation
 # 함수역할:
 # - 요청 단위 DB 세션을 포함한 건강 관리 추천 control 서비스를 생성한다.
 # 매개변수:
@@ -571,71 +581,65 @@ def get_check_health_recommendation(
     return CheckHealthRecommendation(db=db)
 
 
-# Function Name: get_link_patient_caregiver_control
-# Description:
-# - Builds the patient-caregiver link control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - LinkPatientCaregiver instance.
+# 함수이름: get_link_patient_caregiver_control
+# 함수역할: 요청 범위 DB 세션을 사용하는 환자·보호자 연동 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: LinkPatientCaregiver 인스턴스
 def get_link_patient_caregiver_control(
     db: Session = Depends(get_db),
 ) -> LinkPatientCaregiver:
     return LinkPatientCaregiver(db=db)
 
 
-# Function Name: get_check_caregiver_medication
-# Description:
-# - Builds the read-only caregiver medication control for one request.
+# 함수명: get_manage_linked_chat
+# 역할:
+# - 요청 단위 DB 세션을 사용하는 연동 채팅 Control을 생성한다.
+def get_manage_linked_chat(
+    db: Session = Depends(get_db),
+) -> ManageLinkedChat:
+    return ManageLinkedChat(db=db)
+
+
+# 함수이름: get_check_caregiver_medication
+# 함수역할: 한 요청에서 사용하는 보호자용 읽기 전용 복약 Control을 생성한다.
 def get_check_caregiver_medication(
     db: Session = Depends(get_db),
 ) -> CheckCaregiverMedication:
     return CheckCaregiverMedication(db=db)
 
 
-# Function Name: get_set_notification
-# Description:
-# - Builds the medication alarm control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - SetNotification instance.
+# 함수이름: get_set_notification
+# 함수역할: 요청 범위 DB 세션을 사용하는 복약 알림 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: SetNotification 인스턴스
 def get_set_notification(
     db: Session = Depends(get_db),
 ) -> SetNotification:
     return SetNotification(db=db)
 
 
-# Function Name: get_set_caregiver_notification
-# Description:
-# - Builds the caregiver notification control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - SetCaregiverNotification instance.
+# 함수이름: get_set_caregiver_notification
+# 함수역할: 요청 범위 DB 세션을 사용하는 보호자 알림 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: SetCaregiverNotification 인스턴스
 def get_set_caregiver_notification(
     db: Session = Depends(get_db),
 ) -> SetCaregiverNotification:
     return SetCaregiverNotification(db=db)
 
 
-# Function Name: get_manage_user_setting
-# Description:
-# - Builds the user setting control with a request-scoped DB session.
-# Parameters:
-# - db: SQLAlchemy session supplied by FastAPI dependency injection.
-# Returns:
-# - ManageUserSetting instance.
+# 함수이름: get_manage_user_setting
+# 함수역할: 요청 범위 DB 세션을 사용하는 사용자 설정 Control을 생성한다.
+# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값: ManageUserSetting 인스턴스
 def get_manage_user_setting(
     db: Session = Depends(get_db),
 ) -> ManageUserSetting:
     return ManageUserSetting(db=db)
 
 
-# Function Name: get_request_voice_guide
-# Description:
-# - Builds the medication voice guide text control.
-# Returns:
-# - RequestVoiceGuide instance.
+# 함수이름: get_request_voice_guide
+# 함수역할: 복약 음성 안내 문구 Control을 생성한다.
+# 반환값: RequestVoiceGuide 인스턴스
 def get_request_voice_guide() -> RequestVoiceGuide:
     return RequestVoiceGuide()

@@ -1,13 +1,18 @@
+// 파일명: home_screen.dart
+// 역할: 오늘의 복약 일정과 주요 기능 진입점을 제공하는 홈 화면을 구성한다.
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../boundaries/check_result_ui_boundary.dart';
+import '../boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
+import '../boundaries/manual_medication_entry_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
@@ -170,8 +175,22 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                PillIdentificationUI(userSetting: viewModel.userSetting),
+            builder: (context) => PillIdentificationUI(
+              userSetting: viewModel.userSetting,
+              onSaveRequested: viewModel.saveIdentifiedPill,
+              onBatchSaveRequested: viewModel.saveIdentifiedPills,
+            ),
+          ),
+        );
+      },
+      onManualMedicationRequested: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ManualMedicationEntryUI(
+              userSetting: viewModel.userSetting,
+              onSaveRequested: viewModel.saveManualMedication,
+            ),
           ),
         );
       },
@@ -193,11 +212,26 @@ class HomeScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LinkPatientCaregiverUI(initialUserHash: viewModel.patientHash),
+            builder: (context) => LinkPatientCaregiverUI(
+              initialUserHash: viewModel.patientHash,
+              chatLabEnabled:
+                  viewModel.userSetting.linkedMedicationChatLabEnabled,
+              userSetting: viewModel.userSetting,
+            ),
           ),
         );
       },
+      onNearbyPharmacyRequested: viewModel.userSetting.nearbyPharmacyLabEnabled
+          ? () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      CheckNearbyPharmacyUI(userSetting: viewModel.userSetting),
+                ),
+              );
+            }
+          : null,
       onUserSettingRequested: () {
         final authenticationControl = context.read<AuthenticationControl>();
         final appLanguageControl = context.read<AppLanguageControl>();
@@ -214,6 +248,10 @@ class HomeScreen extends StatelessWidget {
             builder: (context) => ManageUserSettingUI(
               initialSetting: viewModel.userSetting,
               authenticationControl: authenticationControl,
+              onNearbyPharmacyLabSettingSaveRequested:
+                  viewModel.requestNearbyPharmacyLabSettingSave,
+              onLinkedMedicationChatLabSettingSaveRequested:
+                  viewModel.requestLinkedMedicationChatLabSettingSave,
               onSettingSaveRequested:
                   ({
                     required String fontSizeOption,

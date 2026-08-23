@@ -1,5 +1,5 @@
-# File Name: config.py
-# Role: Loads backend environment variables and external service settings.
+# 파일명: config.py
+# 역할: 백엔드 환경 변수와 외부 서비스 설정을 불러온다.
 
 from pathlib import Path
 from typing import Any, Literal
@@ -20,19 +20,19 @@ _DEFAULT_API_CONTRACT_VERSION = (
 )
 
 
-# Class Name: Settings
-# Role: Provides application configuration loaded from environment variables.
-# Responsibilities:
-#   - Load API keys and external service URLs.
-#   - Provide default URLs for public drug data APIs.
-#   - Provide a single settings object for the backend.
-# Attributes:
-#   - GEMINI_API_KEY: Gemini API key.
-#   - PUBLIC_DATA_API_KEY: Korean public data portal API key.
-#   - BASIC_DRUG_API_BASE_URL: e약은요 API endpoint.
-#   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
-#   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
-#   - PILL_IMAGE_API_ENABLED: Enables optional MFDS pill-image enrichment.
+# 클래스명: Settings
+# 역할: 환경 변수에서 읽은 애플리케이션 설정을 제공한다.
+# 주요 책임:
+#   - API 인증키와 외부 서비스 주소를 불러온다.
+#   - 공공 약품 데이터 API의 기본 주소를 제공한다.
+#   - 백엔드 전역에서 사용하는 단일 설정 객체를 구성한다.
+# 속성:
+#   - GEMINI_API_KEY: Gemini API 인증키
+#   - PUBLIC_DATA_API_KEY: 공공데이터포털 API 인증키
+#   - BASIC_DRUG_API_BASE_URL: e약은요 API 주소
+#   - ADVANCED_DRUG_API_BASE_URL: 의약품 허가 상세 API 주소
+#   - PILL_IMAGE_API_BASE_URL: 낱알약 식별 API 주소
+#   - PILL_IMAGE_API_ENABLED: 식약처 낱알 이미지 보강 사용 여부
 #   - PILL_IMAGE_API_TIMEOUT_SECONDS: Maximum optional image lookup duration.
 #   - PILL_IDENTIFICATION_MODEL_NAME: Visual feature extraction model.
 #   - PILL_IDENTIFICATION_TIMEOUT_SECONDS: Maximum pill image analysis duration.
@@ -100,6 +100,10 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/1471000/"
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
+    PHARMACY_API_BASE_URL: str = (
+        "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService"
+    )
+    PHARMACY_API_TIMEOUT_SECONDS: float = Field(default=12.0, gt=0, le=120)
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
@@ -179,16 +183,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
 
-    # Function Name: build_structured_database_url
-    # Description:
-    # - Builds DATABASE_URL from separate connection fields when a deployment
-    #   supplies structured PostgreSQL settings.
-    # - Delegates escaping to SQLAlchemy so reserved password characters cannot
-    #   be misinterpreted as hostname or URL delimiters.
-    # Parameters:
-    # - values: Raw settings values collected by Pydantic.
-    # Returns:
-    # - Settings values containing a safely rendered DATABASE_URL.
+    # 함수이름: build_structured_database_url
+    # 함수역할:
+    # - 배포 환경이 분리된 PostgreSQL 연결 값을 제공하면 DATABASE_URL을 구성한다.
+    # - 비밀번호의 예약 문자가 주소 구분자로 해석되지 않도록 SQLAlchemy에 변환을 맡긴다.
+    # 매개변수: values - Pydantic이 수집한 원시 설정값
+    # 반환값: 안전하게 구성한 DATABASE_URL을 포함한 설정값
     @model_validator(mode="before")
     @classmethod
     def build_structured_database_url(cls, values: Any) -> Any:
@@ -254,6 +254,7 @@ class Settings(BaseSettings):
         "BASIC_DRUG_API_BASE_URL",
         "ADVANCED_DRUG_API_BASE_URL",
         "PILL_IMAGE_API_BASE_URL",
+        "PHARMACY_API_BASE_URL",
     )
     @classmethod
     def validate_external_api_url(cls, value: str) -> str:
@@ -263,15 +264,12 @@ class Settings(BaseSettings):
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
 
-    # Function Name: validate_trusted_hosts
-    # Description:
-    # - Normalizes the comma-separated Host allowlist used by production ASGI.
-    # - Rejects wildcard or empty configurations so Host validation cannot be
-    #   silently disabled by deployment configuration.
-    # Parameters:
-    # - value: Comma-separated hostnames or literal IP addresses.
-    # Returns:
-    # - A normalized comma-separated allowlist.
+    # 함수이름: validate_trusted_hosts
+    # 함수역할:
+    # - 운영 ASGI에서 사용하는 쉼표 구분 Host 허용 목록을 정규화한다.
+    # - 와일드카드와 빈 설정을 거부해 Host 검증이 우회되지 않게 한다.
+    # 매개변수: value - 쉼표로 구분한 호스트 이름 또는 IP 주소
+    # 반환값: 정규화된 Host 허용 목록
     @field_validator("TRUSTED_HOSTS")
     @classmethod
     def validate_trusted_hosts(cls, value: str) -> str:

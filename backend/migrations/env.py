@@ -1,3 +1,6 @@
+# 파일명: env.py
+# 역할: Alembic 마이그레이션 실행 환경과 데이터베이스 연결을 구성한다.
+
 from logging.config import fileConfig
 
 from alembic import context
@@ -6,6 +9,7 @@ from sqlalchemy import engine_from_config, pool
 from core.config import settings
 from core.database import Base
 from entities import caregiver_notification_entity  # noqa: F401
+from entities import chat_message_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401

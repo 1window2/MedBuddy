@@ -1,5 +1,5 @@
-# File Name: main.py
-# Role: Creates and configures the MedBuddy FastAPI application.
+# 파일명: main.py
+# 역할: MedBuddy FastAPI 애플리케이션을 생성하고 구성한다.
 
 import asyncio
 import logging
@@ -20,8 +20,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from api.chat_router import router as chat_router
+from api.pharmacy_router import router as pharmacy_router
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
+    close_pharmacy_boundary,
     close_medication_detail_cache,
     close_pill_identification_boundaries,
     close_public_drug_boundaries,
@@ -46,6 +49,7 @@ from entities import medication_completion_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
 from entities import caregiver_alert_outbox_entity  # noqa: F401
+from entities import chat_message_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
@@ -59,6 +63,7 @@ from entities.saved_medication_entity import ensure_saved_medication_schema
 from entities.user_setting_entity import ensure_user_setting_schema
 from services.data_maintenance import PeriodicDataMaintenanceRunner
 from services.caregiver_alert_outbox_worker import CaregiverAlertOutboxWorker
+from services.chat_connection_manager import ChatConnectionManager
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parent
@@ -73,14 +78,14 @@ _READINESS_EXCEPTIONS = (
 )
 
 
-# Class Name: _ReadinessProbeCache
-# Role: Bounds repeated public readiness checks against production dependencies.
-# Responsibilities:
-#   - Coalesce concurrent readiness probes behind one dependency check.
-#   - Cache only the generic ready/not-ready result for a short interval.
-#   - Avoid retaining exception details or dependency response data.
-# Attributes:
-#   - ttl_seconds: Number of seconds before the cached result expires.
+# 클래스명: _ReadinessProbeCache
+# 역할: 운영 의존성에 대한 반복 준비 상태 검사를 제한한다.
+# 주요 책임:
+#   - 동시에 들어온 준비 상태 요청을 한 번의 의존성 검사로 합친다.
+#   - 준비 여부만 짧은 시간 동안 저장한다.
+#   - 예외 상세와 외부 서비스 응답 데이터는 보관하지 않는다.
+# 속성:
+#   - ttl_seconds: 저장된 결과가 만료되기까지의 초 단위 시간
 class _ReadinessProbeCache:
     def __init__(self, ttl_seconds: float) -> None:
         self.ttl_seconds = ttl_seconds
@@ -88,14 +93,10 @@ class _ReadinessProbeCache:
         self._expires_at = 0.0
         self._is_ready = False
 
-    # Function Name: request_readiness
-    # Description:
-    # - Returns a short-lived readiness result and performs at most one
-    #   dependency check when the cached result has expired.
-    # Parameters:
-    # - check: Awaitable dependency check that raises on unavailable services.
-    # Returns:
-    # - True when dependencies are ready; otherwise False.
+    # 함수이름: request_readiness
+    # 함수역할: 짧게 저장된 준비 상태를 반환하고 만료 시 의존성을 한 번만 검사한다.
+    # 매개변수: check - 사용할 수 없는 서비스에서 예외를 발생시키는 비동기 검사
+    # 반환값: 모든 의존성이 준비됐으면 true, 아니면 false
     async def request_readiness(
         self,
         check: Callable[[], Awaitable[None]],
@@ -116,11 +117,9 @@ class _ReadinessProbeCache:
             self._expires_at = time.monotonic() + self.ttl_seconds
             return self._is_ready
 
-    # Function Name: reset
-    # Description:
-    # - Invalidates the cached result when an application lifespan starts.
-    # Returns:
-    # - None.
+    # 함수이름: reset
+    # 함수역할: 애플리케이션 수명 주기가 시작될 때 저장된 준비 상태를 무효화한다.
+    # 반환값: 없음
     def reset(self) -> None:
         self._expires_at = 0.0
         self._is_ready = False
@@ -170,11 +169,9 @@ async def _ping_required_redis() -> None:
         await redis.aclose()
 
 
-# Function Name: _verify_runtime_dependencies
-# Description:
-# - Performs the database, Firebase, App Check, and Redis readiness checks.
-# Returns:
-# - None when every configured dependency is ready.
+# 함수이름: _verify_runtime_dependencies
+# 함수역할: 데이터베이스, Firebase, App Check와 Redis의 준비 상태를 검사한다.
+# 반환값: 모든 설정된 의존성이 준비되면 없음
 async def _verify_runtime_dependencies() -> None:
     await run_in_threadpool(_verify_database_dependencies)
     if settings.AUTH_MODE == "firebase":
@@ -189,11 +186,9 @@ async def _verify_runtime_dependencies() -> None:
         await _ping_required_redis()
 
 
-# Function Name: configure_logging
-# Description:
-# - Configures application logging in the bootstrap layer.
-# Returns:
-# - None.
+# 함수이름: configure_logging
+# 함수역할: 애플리케이션 시작 계층에서 로그 형식과 수준을 구성한다.
+# 반환값: 없음
 def configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -229,15 +224,14 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await close_pill_identification_boundaries()
         await close_medication_detail_cache()
         await close_public_drug_boundaries()
+        await close_pharmacy_boundary()
 
 
-# Function Name: create_app
-# Description:
-# - Loads environment variables.
-# - Creates database tables for currently implemented models.
-# - Registers medication API routes.
-# Returns:
-# - Configured FastAPI application.
+# 함수이름: create_app
+# 함수역할:
+# - 환경 설정을 적용하고 필요한 로컬 스키마를 확인한다.
+# - 복약, 연동 채팅과 근처 약국 API 라우터를 등록한다.
+# 반환값: 구성된 FastAPI 애플리케이션
 def create_app() -> FastAPI:
     configure_logging()
     if settings.AUTO_CREATE_SCHEMA:
@@ -261,6 +255,7 @@ def create_app() -> FastAPI:
         require_redis=settings.RATE_LIMIT_REQUIRE_REDIS,
     )
     app.state.request_rate_limit_store = rate_limit_store
+    app.state.chat_connection_manager = ChatConnectionManager()
     app.state.readiness_probe_cache = _ReadinessProbeCache(
         _READINESS_CACHE_TTL_SECONDS
     )
@@ -293,6 +288,16 @@ def create_app() -> FastAPI:
         medication_router,
         prefix="/api/v1/medication",
         tags=["Medication"],
+    )
+    app.include_router(
+        pharmacy_router,
+        prefix="/api/v1/pharmacy",
+        tags=["Pharmacy"],
+    )
+    app.include_router(
+        chat_router,
+        prefix="/api/v1/chat",
+        tags=["Chat"],
     )
     app.include_router(auth_router)
 

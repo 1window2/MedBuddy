@@ -1,3 +1,6 @@
+// 파일명: authenticated_api_client.dart
+// 역할: API 계약, Firebase 인증과 App Check 헤더를 일관되게 적용한다.
+
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -77,39 +80,7 @@ class AuthenticatedApiClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    if (!_hasTrustedOrigin(request.url)) {
-      throw StateError(
-        'Authenticated API requests must target the configured MedBuddy backend.',
-      );
-    }
-    late final String? token;
-    try {
-      token = await _tokenProvider().timeout(_authenticationTimeout);
-    } catch (_) {
-      throw const AuthenticationUnavailableException();
-    }
-    if (AuthConfig.mode == AuthenticationMode.firebase &&
-        (token == null || token.trim().isEmpty)) {
-      throw const AuthenticationUnavailableException();
-    }
-    if (token != null && token.trim().isNotEmpty) {
-      request.headers['Authorization'] = 'Bearer ${token.trim()}';
-    }
-    late final String? appCheckToken;
-    try {
-      appCheckToken = await _appCheckTokenProvider().timeout(_appCheckTimeout);
-    } catch (_) {
-      throw const AppAttestationUnavailableException();
-    }
-    if (AuthConfig.mode == AuthenticationMode.firebase &&
-        (appCheckToken == null || appCheckToken.trim().isEmpty)) {
-      throw const AppAttestationUnavailableException();
-    }
-    if (appCheckToken != null && appCheckToken.trim().isNotEmpty) {
-      request.headers['X-Firebase-AppCheck'] = appCheckToken.trim();
-    }
-    request.headers.putIfAbsent('Accept', () => 'application/json');
-    request.headers['X-MedBuddy-Api-Contract'] = ApiConfig.contractVersion;
+    request.headers.addAll(await buildAuthenticationHeaders(request.url));
     final response = await _inner.send(request);
     final serverContract =
         response.headers['x-medbuddy-api-contract']?.trim() ?? '';
@@ -124,15 +95,66 @@ class AuthenticatedApiClient extends http.BaseClient {
     return response;
   }
 
+  // 함수명: buildAuthenticationHeaders
+  // 역할:
+  // - REST와 WebSocket이 동일한 Firebase 및 API 계약 헤더를 사용하도록 한다.
+  // - 설정된 MedBuddy 서버가 아닌 주소에는 인증 정보를 절대 제공하지 않는다.
+  Future<Map<String, String>> buildAuthenticationHeaders(Uri requestUri) async {
+    if (!_hasTrustedOrigin(requestUri)) {
+      throw StateError(
+        'Authenticated API requests must target the configured MedBuddy backend.',
+      );
+    }
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'X-MedBuddy-Api-Contract': ApiConfig.contractVersion,
+    };
+    late final String? token;
+    try {
+      token = await _tokenProvider().timeout(_authenticationTimeout);
+    } catch (_) {
+      throw const AuthenticationUnavailableException();
+    }
+    if (AuthConfig.mode == AuthenticationMode.firebase &&
+        (token == null || token.trim().isEmpty)) {
+      throw const AuthenticationUnavailableException();
+    }
+    if (token != null && token.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer ${token.trim()}';
+    }
+    late final String? appCheckToken;
+    try {
+      appCheckToken = await _appCheckTokenProvider().timeout(_appCheckTimeout);
+    } catch (_) {
+      throw const AppAttestationUnavailableException();
+    }
+    if (AuthConfig.mode == AuthenticationMode.firebase &&
+        (appCheckToken == null || appCheckToken.trim().isEmpty)) {
+      throw const AppAttestationUnavailableException();
+    }
+    if (appCheckToken != null && appCheckToken.trim().isNotEmpty) {
+      headers['X-Firebase-AppCheck'] = appCheckToken.trim();
+    }
+    return headers;
+  }
+
   bool _hasTrustedOrigin(Uri requestUri) {
-    if (!requestUri.isScheme('http') && !requestUri.isScheme('https')) {
+    final requestScheme = requestUri.scheme.toLowerCase();
+    if (!const {'http', 'https', 'ws', 'wss'}.contains(requestScheme)) {
       return false;
     }
     if (!_trustedBaseUri.isScheme('http') &&
         !_trustedBaseUri.isScheme('https')) {
       return false;
     }
-    return requestUri.origin == _trustedBaseUri.origin;
+    final normalizedRequestUri = requestUri.replace(
+      scheme: switch (requestScheme) {
+        'ws' => 'http',
+        'wss' => 'https',
+        _ => requestScheme,
+      },
+    );
+    return normalizedRequestUri.origin == _trustedBaseUri.origin;
   }
 
   @override
