@@ -1,5 +1,5 @@
 // 파일명: manage_user_setting_ui_boundary.dart
-// 역할: 글씨 크기, 읽기 속도, 언어와 실험실 기능 설정 화면을 제공한다.
+// 역할: 화면·음성, 실험 기능과 계정 설정 화면을 제공한다.
 
 import 'dart:async';
 
@@ -17,9 +17,6 @@ typedef SettingPreviewSpeaker =
       void Function()? onComplete,
     });
 typedef SettingPreviewStopper = Future<void> Function();
-
-// 파일명: manage_user_setting_ui_boundary.dart
-// 역할: 글씨 크기, 읽기 속도, 언어 설정 화면을 구성한다.
 
 // 클래스명: ManageUserSettingUI
 // 역할: 사용자가 접근성 관련 표시 설정을 선택하고 저장할 수 있게 한다.
@@ -62,6 +59,8 @@ class ManageUserSettingUI extends StatefulWidget {
   State<ManageUserSettingUI> createState() => _ManageUserSettingUIState();
 }
 
+enum _SettingSection { overview, displayAndVoice, laboratory, account }
+
 class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _fontSize;
   late String _readingSpeed;
@@ -72,6 +71,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   bool _isPreviewSpeaking = false;
   int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
+  _SettingSection _selectedSection = _SettingSection.overview;
 
   @override
   void initState() {
@@ -111,190 +111,321 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
     final mediaQuery = MediaQuery.of(context);
     final contentScale = draftSetting.contentTextScale;
+    final accountPresentation = _resolveAccountPresentation(text);
 
     return MediaQuery(
       data: mediaQuery.copyWith(
         textScaler: TextScaler.linear(selectedTextScale),
       ),
-      child: Scaffold(
-        backgroundColor: MedBuddyColors.pageBackground,
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 430),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _SettingsBackButton(
-                        tooltip: text.back,
-                        onTap: () => Navigator.maybePop(context),
+      child: PopScope<void>(
+        canPop: _selectedSection == _SettingSection.overview,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) {
+            _showSettingsOverview();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: MedBuddyColors.pageBackground,
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _SettingsBackButton(
+                          tooltip: text.back,
+                          onTap: _handleBackRequested,
+                        ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SettingTitle(text.fontSizeTitle),
-                          const SizedBox(height: 22),
-                          _OptionRow(
-                            options: [
-                              _SettingOption(
-                                value: 'small',
-                                label: text.small,
-                                labelFontSize: 14,
-                              ),
-                              _SettingOption(
-                                value: 'medium',
-                                label: text.medium,
-                                labelFontSize: 17,
-                              ),
-                              _SettingOption(
-                                value: 'large',
-                                label: text.large,
-                                labelFontSize: 23,
-                              ),
-                            ],
-                            selectedValue: _fontSize,
-                            contentScale: contentScale,
-                            onSelected: (value) =>
-                                setState(() => _fontSize = value),
-                          ),
-                          const SizedBox(height: 45),
-                          _SettingTitle(text.readingSpeedTitle),
-                          const SizedBox(height: 22),
-                          _OptionRow(
-                            options: [
-                              _SettingOption(value: 'slow', label: text.slow),
-                              _SettingOption(
-                                value: 'medium',
-                                label: text.medium,
-                              ),
-                              _SettingOption(value: 'fast', label: text.fast),
-                            ],
-                            selectedValue: _readingSpeed,
-                            contentScale: contentScale,
-                            onSelected: (value) =>
-                                unawaited(_selectReadingSpeed(value)),
-                          ),
-                          const SizedBox(height: 45),
-                          _SettingTitle(text.languageTitle),
-                          const SizedBox(height: 22),
-                          _OptionRow(
-                            options: const [
-                              _SettingOption(value: 'ko', label: '한국어'),
-                              _SettingOption(value: 'en', label: 'English'),
-                            ],
-                            selectedValue: _language,
-                            contentScale: contentScale,
-                            onSelected: (value) =>
-                                setState(() => _language = value),
-                          ),
-                          const SizedBox(height: 42),
-                          _PreviewPanel(
-                            text: text,
-                            fontSize: _fontSize,
-                            readingSpeed: _readingSpeed,
-                            isSpeaking: _isPreviewSpeaking,
-                            onVoicePreviewRequested: _toggleVoicePreview,
-                          ),
-                          const SizedBox(height: 42),
-                          _SettingTitle(text.laboratoryTitle),
-                          const SizedBox(height: 18),
-                          _ExperimentalFeatureToggle(
-                            switchKey: const ValueKey(
-                              'nearbyPharmacyLabSwitch',
-                            ),
-                            title: text.nearbyPharmacyLabTitle,
-                            description: text.nearbyPharmacyLabDescription,
-                            enabled: _nearbyPharmacyLabEnabled,
-                            onChanged: (enabled) => setState(
-                              () => _nearbyPharmacyLabEnabled = enabled,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          _ExperimentalFeatureToggle(
-                            switchKey: const ValueKey(
-                              'linkedMedicationChatLabSwitch',
-                            ),
-                            title: text.linkedMedicationChatLabTitle,
-                            description:
-                                text.linkedMedicationChatLabDescription,
-                            enabled: _linkedMedicationChatLabEnabled,
-                            onChanged: (enabled) => setState(
-                              () => _linkedMedicationChatLabEnabled = enabled,
-                            ),
-                          ),
-                          if (widget
-                              .authenticationControl
-                              .phoneAuthenticationEnabled) ...[
-                            const SizedBox(height: 28),
-                            ListenableBuilder(
-                              listenable: widget.authenticationControl,
-                              builder: (context, _) => _MfaSettingsPanel(
-                                enabled: widget
-                                    .authenticationControl
-                                    .hasEnrolledSmsMfa,
-                                available: widget
-                                    .authenticationControl
-                                    .canEnrollSmsMfa,
-                                onEnrollRequested: _showMfaEnrollment,
-                              ),
-                            ),
-                          ],
-                          if (widget.onSignOutRequested != null) ...[
-                            const SizedBox(height: 28),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _isSaving
-                                    ? null
-                                    : _handleSignOutRequested,
-                                icon: const Icon(Icons.logout),
-                                label: Text(text.signOut),
-                              ),
-                            ),
-                          ],
-                          if (widget.onDeleteAccountRequested != null) ...[
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: MedBuddyColors.danger,
-                                  side: const BorderSide(
-                                    color: MedBuddyColors.danger,
-                                  ),
-                                ),
-                                onPressed: _isSaving
-                                    ? null
-                                    : _confirmAccountDeletion,
-                                icon: const Icon(Icons.delete_forever_outlined),
-                                label: Text(text.deleteAccount),
-                              ),
-                            ),
-                          ],
-                        ],
+                    Expanded(
+                      child: SingleChildScrollView(
+                        key: ValueKey(_selectedSection),
+                        padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
+                        child: _buildSelectedSection(
+                          text: text,
+                          contentScale: contentScale,
+                          accountPresentation: accountPresentation,
+                        ),
                       ),
                     ),
-                  ),
-                  _SettingSaveFooter(
-                    text: text,
-                    isSaving: _isSaving,
-                    onSaveRequested: _handleSaveRequested,
-                  ),
-                ],
+                    if (_selectedSection == _SettingSection.displayAndVoice ||
+                        _selectedSection == _SettingSection.laboratory)
+                      _SettingSaveFooter(
+                        text: text,
+                        isSaving: _isSaving,
+                        onSaveRequested: _handleSaveRequested,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // 함수명: _buildSelectedSection
+  // 역할:
+  // - 설정 홈과 각 설정 영역을 동일한 상태값으로 전환해 저장 전 선택을 유지한다.
+  Widget _buildSelectedSection({
+    required _SettingText text,
+    required double contentScale,
+    required _AccountPresentation accountPresentation,
+  }) {
+    return switch (_selectedSection) {
+      _SettingSection.overview => _SettingsOverview(
+        text: text,
+        accountPresentation: accountPresentation,
+        displayAndVoiceSummary: text.displayAndVoiceSummary(
+          fontSize: _fontSize,
+          readingSpeed: _readingSpeed,
+          language: _language,
+        ),
+        laboratorySummary: text.laboratorySummary(
+          nearbyPharmacyEnabled: _nearbyPharmacyLabEnabled,
+          medicationChatEnabled: _linkedMedicationChatLabEnabled,
+        ),
+        onSectionSelected: (section) {
+          setState(() => _selectedSection = section);
+        },
+      ),
+      _SettingSection.displayAndVoice => _buildDisplayAndVoiceSettings(
+        text,
+        contentScale,
+      ),
+      _SettingSection.laboratory => _buildLaboratorySettings(text),
+      _SettingSection.account => _buildAccountSettings(
+        text,
+        accountPresentation,
+      ),
+    };
+  }
+
+  Widget _buildDisplayAndVoiceSettings(_SettingText text, double contentScale) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingTitle(text.displayAndVoiceTitle),
+        const SizedBox(height: 28),
+        _SettingFieldTitle(text.fontSizeTitle),
+        const SizedBox(height: 16),
+        _OptionRow(
+          options: [
+            _SettingOption(
+              value: 'small',
+              label: text.small,
+              labelFontSize: 14,
+            ),
+            _SettingOption(
+              value: 'medium',
+              label: text.medium,
+              labelFontSize: 17,
+            ),
+            _SettingOption(
+              value: 'large',
+              label: text.large,
+              labelFontSize: 23,
+            ),
+          ],
+          selectedValue: _fontSize,
+          contentScale: contentScale,
+          onSelected: (value) => setState(() => _fontSize = value),
+        ),
+        const SizedBox(height: 34),
+        _SettingFieldTitle(text.readingSpeedTitle),
+        const SizedBox(height: 16),
+        _OptionRow(
+          options: [
+            _SettingOption(value: 'slow', label: text.slow),
+            _SettingOption(value: 'medium', label: text.medium),
+            _SettingOption(value: 'fast', label: text.fast),
+          ],
+          selectedValue: _readingSpeed,
+          contentScale: contentScale,
+          onSelected: (value) => unawaited(_selectReadingSpeed(value)),
+        ),
+        const SizedBox(height: 34),
+        _SettingFieldTitle(text.languageTitle),
+        const SizedBox(height: 16),
+        _OptionRow(
+          options: const [
+            _SettingOption(value: 'ko', label: '한국어'),
+            _SettingOption(value: 'en', label: 'English'),
+          ],
+          selectedValue: _language,
+          contentScale: contentScale,
+          onSelected: (value) => setState(() => _language = value),
+        ),
+        const SizedBox(height: 34),
+        _PreviewPanel(
+          text: text,
+          fontSize: _fontSize,
+          readingSpeed: _readingSpeed,
+          isSpeaking: _isPreviewSpeaking,
+          onVoicePreviewRequested: _toggleVoicePreview,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLaboratorySettings(_SettingText text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingTitle(text.laboratoryTitle),
+        const SizedBox(height: 24),
+        _ExperimentalFeatureToggle(
+          switchKey: const ValueKey('nearbyPharmacyLabSwitch'),
+          title: text.nearbyPharmacyLabTitle,
+          description: text.nearbyPharmacyLabDescription,
+          enabled: _nearbyPharmacyLabEnabled,
+          onChanged: (enabled) =>
+              setState(() => _nearbyPharmacyLabEnabled = enabled),
+        ),
+        const SizedBox(height: 14),
+        _ExperimentalFeatureToggle(
+          switchKey: const ValueKey('linkedMedicationChatLabSwitch'),
+          title: text.linkedMedicationChatLabTitle,
+          description: text.linkedMedicationChatLabDescription,
+          enabled: _linkedMedicationChatLabEnabled,
+          onChanged: (enabled) =>
+              setState(() => _linkedMedicationChatLabEnabled = enabled),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccountSettings(
+    _SettingText text,
+    _AccountPresentation accountPresentation,
+  ) {
+    final hasMfaSettings =
+        widget.authenticationControl.phoneAuthenticationEnabled;
+    final hasSignOut = widget.onSignOutRequested != null;
+    final hasDeleteAccount = widget.onDeleteAccountRequested != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingTitle(text.accountTitle),
+        const SizedBox(height: 24),
+        _AccountWelcomePanel(presentation: accountPresentation, compact: true),
+        if (hasMfaSettings) ...[
+          const SizedBox(height: 18),
+          ListenableBuilder(
+            listenable: widget.authenticationControl,
+            builder: (context, _) => _MfaSettingsPanel(
+              enabled: widget.authenticationControl.hasEnrolledSmsMfa,
+              available: widget.authenticationControl.canEnrollSmsMfa,
+              onEnrollRequested: _showMfaEnrollment,
+            ),
+          ),
+        ],
+        if (hasSignOut) ...[
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isSaving ? null : _handleSignOutRequested,
+              icon: const Icon(Icons.logout),
+              label: Text(text.signOut),
+            ),
+          ),
+        ],
+        if (hasDeleteAccount) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: MedBuddyColors.danger,
+                side: const BorderSide(color: MedBuddyColors.danger),
+              ),
+              onPressed: _isSaving ? null : _confirmAccountDeletion,
+              icon: const Icon(Icons.delete_forever_outlined),
+              label: Text(text.deleteAccount),
+            ),
+          ),
+        ],
+        if (!hasMfaSettings && !hasSignOut && !hasDeleteAccount) ...[
+          const SizedBox(height: 18),
+          Text(
+            text.noAccountActions,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 15,
+              height: 1.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  _AccountPresentation _resolveAccountPresentation(_SettingText text) {
+    final control = widget.authenticationControl;
+    final displayName = control.signedInDisplayName;
+    final email = control.signedInEmail ?? control.session?.email;
+    final phoneNumber = control.signedInPhoneNumber;
+    final accountName = displayName != null && displayName.isNotEmpty
+        ? displayName
+        : email != null && email.isNotEmpty
+        ? email.split('@').first
+        : text.defaultUserName;
+
+    final detail = control.isAnonymous
+        ? text.guestAccount
+        : email != null && email.isNotEmpty
+        ? _maskEmail(email)
+        : phoneNumber != null && phoneNumber.isNotEmpty
+        ? _maskPhoneNumber(phoneNumber)
+        : control.session?.authenticated == false
+        ? text.localDemoAccount
+        : text.signedInAccount;
+    return _AccountPresentation(
+      greeting: text.welcome(accountName),
+      detail: detail,
+    );
+  }
+
+  String _maskEmail(String email) {
+    final atIndex = email.indexOf('@');
+    if (atIndex <= 0) {
+      return email;
+    }
+    final localPart = email.substring(0, atIndex);
+    final visibleLength = localPart.length <= 2 ? 1 : 2;
+    return '${localPart.substring(0, visibleLength)}***${email.substring(atIndex)}';
+  }
+
+  String _maskPhoneNumber(String phoneNumber) {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 7) {
+      return phoneNumber;
+    }
+    return '${digits.substring(0, digits.length - 7)}***${digits.substring(digits.length - 4)}';
+  }
+
+  void _handleBackRequested() {
+    if (_selectedSection == _SettingSection.overview) {
+      Navigator.maybePop(context);
+      return;
+    }
+    _showSettingsOverview();
+  }
+
+  void _showSettingsOverview() {
+    if (_selectedSection == _SettingSection.displayAndVoice) {
+      unawaited(_stopVoicePreview());
+    }
+    setState(() => _selectedSection = _SettingSection.overview);
   }
 
   // 함수명: _selectReadingSpeed
@@ -560,6 +691,218 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }
 }
 
+class _AccountPresentation {
+  final String greeting;
+  final String detail;
+
+  const _AccountPresentation({required this.greeting, required this.detail});
+}
+
+class _SettingsOverview extends StatelessWidget {
+  final _SettingText text;
+  final _AccountPresentation accountPresentation;
+  final String displayAndVoiceSummary;
+  final String laboratorySummary;
+  final ValueChanged<_SettingSection> onSectionSelected;
+
+  const _SettingsOverview({
+    required this.text,
+    required this.accountPresentation,
+    required this.displayAndVoiceSummary,
+    required this.laboratorySummary,
+    required this.onSectionSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingTitle(text.settingsTitle),
+        const SizedBox(height: 24),
+        _AccountWelcomePanel(presentation: accountPresentation),
+        const SizedBox(height: 28),
+        _SettingsMenuTile(
+          tileKey: const ValueKey('settingsDisplayAndVoiceMenu'),
+          icon: Icons.text_fields_rounded,
+          title: text.displayAndVoiceTitle,
+          summary: displayAndVoiceSummary,
+          onTap: () => onSectionSelected(_SettingSection.displayAndVoice),
+        ),
+        const SizedBox(height: 14),
+        _SettingsMenuTile(
+          tileKey: const ValueKey('settingsLaboratoryMenu'),
+          icon: Icons.science_outlined,
+          title: text.laboratoryTitle,
+          summary: laboratorySummary,
+          onTap: () => onSectionSelected(_SettingSection.laboratory),
+        ),
+        const SizedBox(height: 14),
+        _SettingsMenuTile(
+          tileKey: const ValueKey('settingsAccountMenu'),
+          icon: Icons.manage_accounts_outlined,
+          title: text.accountTitle,
+          summary: text.accountMenuSummary,
+          onTap: () => onSectionSelected(_SettingSection.account),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountWelcomePanel extends StatelessWidget {
+  final _AccountPresentation presentation;
+  final bool compact;
+
+  const _AccountWelcomePanel({
+    required this.presentation,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 18 : 20),
+      decoration: BoxDecoration(
+        color: MedBuddyColors.successSurface,
+        borderRadius: MedBuddyRadii.card,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: MedBuddyRadii.card,
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.person_outline_rounded,
+              color: MedBuddyColors.primary,
+              size: 29,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  presentation.greeting,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 19,
+                    height: 1.3,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  presentation.detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 14,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsMenuTile extends StatelessWidget {
+  final Key tileKey;
+  final IconData icon;
+  final String title;
+  final String summary;
+  final VoidCallback onTap;
+
+  const _SettingsMenuTile({
+    required this.tileKey,
+    required this.icon,
+    required this.title,
+    required this.summary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$title, $summary',
+      button: true,
+      child: ExcludeSemantics(
+        child: Material(
+          key: tileKey,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: MedBuddyRadii.card,
+            side: const BorderSide(color: MedBuddyColors.divider),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              child: Row(
+                children: [
+                  Icon(icon, color: MedBuddyColors.primary, size: 30),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontSize: 19,
+                            height: 1.25,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          summary,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textMuted,
+                            fontSize: 14,
+                            height: 1.4,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: MedBuddyColors.textLight,
+                    size: 28,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MfaSettingsPanel extends StatelessWidget {
   final bool enabled;
   final bool available;
@@ -787,6 +1130,26 @@ class _SettingTitle extends StatelessWidget {
         fontSize: 32,
         fontWeight: FontWeight.w800,
         height: 1,
+        letterSpacing: 0,
+      ),
+    );
+  }
+}
+
+class _SettingFieldTitle extends StatelessWidget {
+  final String text;
+
+  const _SettingFieldTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: MedBuddyColors.textStrong,
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        height: 1.2,
         letterSpacing: 0,
       ),
     );
@@ -1071,10 +1434,25 @@ class _SettingText {
   bool get isEnglish => language == 'en';
 
   String get back => isEnglish ? 'Back' : '뒤로가기';
+  String get settingsTitle => isEnglish ? 'Settings' : '환경설정';
+  String get displayAndVoiceTitle => isEnglish ? 'Display & Voice' : '화면 및 음성';
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
   String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
   String get languageTitle => isEnglish ? 'Language' : '언어';
   String get laboratoryTitle => isEnglish ? 'Labs' : '실험실';
+  String get accountTitle => isEnglish ? 'Account' : '계정';
+  String get defaultUserName => isEnglish ? 'MedBuddy User' : '사용자';
+  String welcome(String name) => isEnglish ? 'Welcome, $name' : '$name님, 안녕하세요';
+  String get guestAccount =>
+      isEnglish ? 'Using a guest account' : '게스트 계정으로 사용 중';
+  String get localDemoAccount => isEnglish ? 'Local demo account' : '로컬 데모 계정';
+  String get signedInAccount =>
+      isEnglish ? 'Signed in to MedBuddy' : 'MedBuddy 계정으로 로그인됨';
+  String get accountMenuSummary =>
+      isEnglish ? 'Sign-in, security, and account data' : '로그인, 보안 및 계정 데이터 관리';
+  String get noAccountActions => isEnglish
+      ? 'No additional account actions are available in this mode.'
+      : '현재 실행 모드에서는 추가로 변경할 계정 설정이 없습니다.';
   String get nearbyPharmacyLabTitle =>
       isEnglish ? 'Nearby open pharmacies' : '근처 운영 약국';
   String get nearbyPharmacyLabDescription => isEnglish
@@ -1085,6 +1463,39 @@ class _SettingText {
   String get linkedMedicationChatLabDescription => isEnglish
       ? 'Let linked patients and caregivers discuss an active medication.'
       : '복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다.';
+  String displayAndVoiceSummary({
+    required String fontSize,
+    required String readingSpeed,
+    required String language,
+  }) {
+    final fontSizeLabel = switch (fontSize) {
+      'small' => small,
+      'large' => large,
+      _ => medium,
+    };
+    final readingSpeedLabel = switch (readingSpeed) {
+      'slow' => slow,
+      'fast' => fast,
+      _ => medium,
+    };
+    final languageLabel = language == 'en' ? 'English' : '한국어';
+    return '$fontSizeLabel · $readingSpeedLabel · $languageLabel';
+  }
+
+  String laboratorySummary({
+    required bool nearbyPharmacyEnabled,
+    required bool medicationChatEnabled,
+  }) {
+    final enabledFeatures = <String>[
+      if (nearbyPharmacyEnabled) nearbyPharmacyLabTitle,
+      if (medicationChatEnabled) linkedMedicationChatLabTitle,
+    ];
+    if (enabledFeatures.isEmpty) {
+      return isEnglish ? 'No experimental features enabled' : '사용 중인 실험 기능 없음';
+    }
+    return enabledFeatures.join(' · ');
+  }
+
   String get small => isEnglish ? 'Small' : '작게';
   String get medium => isEnglish ? 'Medium' : '중간';
   String get large => isEnglish ? 'Large' : '크게';

@@ -77,6 +77,9 @@ void main() {
       ),
     );
 
+    await tester.tap(find.byKey(const ValueKey('settingsAccountMenu')));
+    await tester.pumpAndSettle();
+
     expect(find.text('SMS two-step verification'), findsNothing);
     expect(find.text('Enable SMS MFA'), findsNothing);
   });

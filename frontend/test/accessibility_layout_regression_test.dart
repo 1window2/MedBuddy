@@ -116,6 +116,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await _openDisplayAndVoiceSettings(tester);
 
         expect(find.text('글씨크기'), findsOneWidget);
         expect(find.widgetWithText(FilledButton, '저장하기'), findsOneWidget);
@@ -149,6 +150,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _openDisplayAndVoiceSettings(tester);
 
       expect(find.bySemanticsLabel('뒤로가기'), findsOneWidget);
       expect(find.bySemanticsLabel('저장하기'), findsOneWidget);
@@ -178,6 +180,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _openDisplayAndVoiceSettings(tester);
       await tester.tap(find.text('크게'));
       await tester.pump();
 
@@ -630,6 +633,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+Future<void> _openDisplayAndVoiceSettings(WidgetTester tester) async {
+  final menu = find.byKey(const ValueKey('settingsDisplayAndVoiceMenu'));
+  await tester.ensureVisible(menu);
+  await tester.tap(menu);
+  await tester.pumpAndSettle();
 }
 
 // 함수명: _setViewport

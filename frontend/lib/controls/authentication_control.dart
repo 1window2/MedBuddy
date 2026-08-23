@@ -47,6 +47,10 @@ class AuthenticationControl extends ChangeNotifier
 
   String? _signedInEmail;
   String? get signedInEmail => _signedInEmail;
+  String? get signedInDisplayName =>
+      _firebaseAuth?.currentUser?.displayName?.trim();
+  String? get signedInPhoneNumber =>
+      _firebaseAuth?.currentUser?.phoneNumber?.trim();
 
   bool get isAnonymous => _firebaseAuth?.currentUser?.isAnonymous == true;
 
