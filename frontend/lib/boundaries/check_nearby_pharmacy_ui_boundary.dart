@@ -10,10 +10,26 @@ import '../entities/nearby_pharmacy_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
+import 'nearby_pharmacy_map_widget.dart';
 
 enum _PharmacyFilter { openNow, all }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
+
+// 타입명: NearbyPharmacyMapBuilder
+// 역할: 지도 구현을 화면의 목록·필터 로직과 분리하고 테스트 대체 지점을 제공한다.
+typedef NearbyPharmacyMapBuilder =
+    Widget Function({
+      required List<NearbyPharmacy> pharmacies,
+      required String? selectedPharmacyId,
+      required ValueChanged<NearbyPharmacy> onPharmacySelected,
+      required VoidCallback onAttributionRequested,
+      required String? statusText,
+      required String selectMarkerHint,
+      required String zoomInTooltip,
+      required String zoomOutTooltip,
+      required String unavailableText,
+    });
 
 // 클래스명: CheckNearbyPharmacyUI
 // 역할: 사용자가 현재 위치 주변의 운영 약국을 확인하게 한다.
@@ -24,11 +40,13 @@ const _refreshCooldownDuration = Duration(seconds: 10);
 class CheckNearbyPharmacyUI extends StatefulWidget {
   final UserSetting userSetting;
   final CheckNearbyPharmacy? control;
+  final NearbyPharmacyMapBuilder? mapBuilder;
 
   const CheckNearbyPharmacyUI({
     super.key,
     required this.userSetting,
     this.control,
+    this.mapBuilder,
   });
 
   @override
@@ -45,6 +63,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
+  String? _selectedPharmacyId;
 
   _NearbyPharmacyText get _text =>
       _NearbyPharmacyText(widget.userSetting.language);
@@ -80,7 +99,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       if (!mounted) {
         return;
       }
-      setState(() => _pharmacies = pharmacies);
+      setState(() {
+        _pharmacies = pharmacies;
+        final selectedStillExists = pharmacies.any(
+          (pharmacy) => pharmacy.pharmacyId == _selectedPharmacyId,
+        );
+        if (!selectedStillExists) {
+          _selectedPharmacyId = null;
+        }
+      });
     } on DeviceLocationException catch (error) {
       if (mounted) {
         setState(() => _locationFailure = error.failure);
@@ -119,7 +146,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   }
 
   List<NearbyPharmacy> get _visiblePharmacies {
-    return switch (_filter) {
+    return _pharmaciesForFilter(_filter);
+  }
+
+  List<NearbyPharmacy> _pharmaciesForFilter(_PharmacyFilter filter) {
+    return switch (filter) {
       _PharmacyFilter.openNow =>
         _pharmacies
             .where((pharmacy) => pharmacy.isOpenNow == true)
@@ -224,8 +255,18 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     final visiblePharmacies = _visiblePharmacies;
     return Column(
       children: [
+        if (visiblePharmacies.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+            child: _buildPharmacyMap(visiblePharmacies),
+          ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            visiblePharmacies.isEmpty ? 18 : 2,
+            20,
+            10,
+          ),
           child: SizedBox(
             width: double.infinity,
             child: SegmentedButton<_PharmacyFilter>(
@@ -242,7 +283,17 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
               selected: {_filter},
               showSelectedIcon: false,
               onSelectionChanged: (selection) {
-                setState(() => _filter = selection.first);
+                final nextFilter = selection.first;
+                final nextPharmacies = _pharmaciesForFilter(nextFilter);
+                setState(() {
+                  _filter = nextFilter;
+                  final selectionRemainsVisible = nextPharmacies.any(
+                    (pharmacy) => pharmacy.pharmacyId == _selectedPharmacyId,
+                  );
+                  if (!selectionRemainsVisible) {
+                    _selectedPharmacyId = null;
+                  }
+                });
               },
             ),
           ),
@@ -277,6 +328,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                     return _PharmacyCard(
                       pharmacy: pharmacy,
                       text: text,
+                      isSelected: pharmacy.pharmacyId == _selectedPharmacyId,
+                      onSelected: () => _selectPharmacy(pharmacy),
                       onPhoneRequested: pharmacy.telephone.isEmpty
                           ? null
                           : () => _requestPhoneCall(pharmacy),
@@ -287,6 +340,50 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         ),
       ],
     );
+  }
+
+  Widget _buildPharmacyMap(List<NearbyPharmacy> pharmacies) {
+    final text = _text;
+    final selectedPharmacy = _findSelectedPharmacy(pharmacies);
+    final statusText = selectedPharmacy == null ? text.mapInstruction : null;
+    final mapBuilder = widget.mapBuilder;
+    if (mapBuilder != null) {
+      return mapBuilder(
+        pharmacies: pharmacies,
+        selectedPharmacyId: _selectedPharmacyId,
+        onPharmacySelected: _selectPharmacy,
+        onAttributionRequested: _requestMapAttribution,
+        statusText: statusText,
+        selectMarkerHint: text.selectMarkerHint,
+        zoomInTooltip: text.zoomInTooltip,
+        zoomOutTooltip: text.zoomOutTooltip,
+        unavailableText: text.mapUnavailable,
+      );
+    }
+    return NearbyPharmacyMap(
+      pharmacies: pharmacies,
+      selectedPharmacyId: _selectedPharmacyId,
+      onPharmacySelected: _selectPharmacy,
+      onAttributionRequested: _requestMapAttribution,
+      statusText: statusText,
+      selectMarkerHint: text.selectMarkerHint,
+      zoomInTooltip: text.zoomInTooltip,
+      zoomOutTooltip: text.zoomOutTooltip,
+      unavailableText: text.mapUnavailable,
+    );
+  }
+
+  NearbyPharmacy? _findSelectedPharmacy(List<NearbyPharmacy> pharmacies) {
+    for (final pharmacy in pharmacies) {
+      if (pharmacy.pharmacyId == _selectedPharmacyId) {
+        return pharmacy;
+      }
+    }
+    return null;
+  }
+
+  void _selectPharmacy(NearbyPharmacy pharmacy) {
+    setState(() => _selectedPharmacyId = pharmacy.pharmacyId);
   }
 
   Widget _buildLocationFailure(DeviceLocationFailure failure) {
@@ -343,6 +440,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   Future<void> _requestDirections(NearbyPharmacy pharmacy) async {
     if (!await _control.requestDirections(pharmacy) && mounted) {
       _showActionFailure(_text.mapAppFailed);
+    }
+  }
+
+  Future<void> _requestMapAttribution() async {
+    if (!await _control.requestMapAttribution() && mounted) {
+      _showActionFailure(_text.mapAttributionFailed);
     }
   }
 
@@ -444,12 +547,16 @@ class _PharmacyMessageState extends StatelessWidget {
 class _PharmacyCard extends StatelessWidget {
   final NearbyPharmacy pharmacy;
   final _NearbyPharmacyText text;
+  final bool isSelected;
+  final VoidCallback onSelected;
   final VoidCallback? onPhoneRequested;
   final VoidCallback onDirectionsRequested;
 
   const _PharmacyCard({
     required this.pharmacy,
     required this.text,
+    required this.isSelected,
+    required this.onSelected,
     required this.onPhoneRequested,
     required this.onDirectionsRequested,
   });
@@ -470,95 +577,109 @@ class _PharmacyCard extends StatelessWidget {
 
     return Semantics(
       container: true,
+      button: true,
+      selected: isSelected,
       label: '${pharmacy.name}, $statusLabel, ${pharmacy.distanceLabel}',
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
+      hint: text.showOnMap,
+      child: Material(
+        key: ValueKey('pharmacy-card-${pharmacy.pharmacyId}'),
+        color: isSelected ? MedBuddyColors.successSurface : Colors.white,
+        elevation: isSelected ? 2 : 1,
+        shadowColor: Colors.black.withValues(alpha: 0.14),
+        shape: RoundedRectangleBorder(
           borderRadius: MedBuddyRadii.card,
-          border: Border.all(color: MedBuddyColors.outline),
-          boxShadow: MedBuddyShadows.soft,
+          side: BorderSide(
+            color: isSelected ? MedBuddyColors.primary : MedBuddyColors.outline,
+            width: isSelected ? 2 : 1,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onSelected,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    pharmacy.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 20,
-                      height: 1.25,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        pharmacy.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: MedBuddyColors.textStrong,
+                          fontSize: 20,
+                          height: 1.25,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusSurface,
+                        borderRadius: MedBuddyRadii.pill,
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+                const SizedBox(height: 12),
+                _PharmacyInfoLine(
+                  icon: Icons.near_me_outlined,
+                  text: text.distance(pharmacy.distanceLabel),
+                ),
+                const SizedBox(height: 7),
+                _PharmacyInfoLine(
+                  icon: Icons.schedule_outlined,
+                  text: text.todayHours(pharmacy),
+                ),
+                if (pharmacy.address.isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  _PharmacyInfoLine(
+                    icon: Icons.location_on_outlined,
+                    text: pharmacy.address,
                   ),
-                  decoration: BoxDecoration(
-                    color: statusSurface,
-                    borderRadius: MedBuddyRadii.pill,
-                  ),
-                  child: Text(
-                    statusLabel,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onPhoneRequested,
+                        icon: const Icon(Icons.call_outlined),
+                        label: Text(text.phone),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: onDirectionsRequested,
+                        icon: const Icon(Icons.directions_outlined),
+                        label: Text(text.directions),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _PharmacyInfoLine(
-              icon: Icons.near_me_outlined,
-              text: text.distance(pharmacy.distanceLabel),
-            ),
-            const SizedBox(height: 7),
-            _PharmacyInfoLine(
-              icon: Icons.schedule_outlined,
-              text: text.todayHours(pharmacy),
-            ),
-            if (pharmacy.address.isNotEmpty) ...[
-              const SizedBox(height: 7),
-              _PharmacyInfoLine(
-                icon: Icons.location_on_outlined,
-                text: pharmacy.address,
-              ),
-            ],
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onPhoneRequested,
-                    icon: const Icon(Icons.call_outlined),
-                    label: Text(text.phone),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: onDirectionsRequested,
-                    icon: const Icon(Icons.directions_outlined),
-                    label: Text(text.directions),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -688,6 +809,21 @@ class _NearbyPharmacyText {
       isEnglish ? 'Could not open the phone app.' : '전화 앱을 열 수 없습니다.';
   String get mapAppFailed =>
       isEnglish ? 'Could not open the map app.' : '지도 앱을 열 수 없습니다.';
+  String get mapAttributionFailed => isEnglish
+      ? 'Could not open the map copyright information.'
+      : '지도 저작권 정보를 열 수 없습니다.';
+  String get mapInstruction => isEnglish
+      ? 'Tap a pharmacy below to view its location'
+      : '아래 약국을 누르면 지도에서 위치를 확인할 수 있습니다';
+  String get selectMarkerHint =>
+      isEnglish ? 'Show this pharmacy on the map' : '이 약국을 지도에서 보기';
+  String get showOnMap =>
+      isEnglish ? 'Tap to show on the map' : '누르면 지도에서 위치를 표시합니다';
+  String get zoomInTooltip => isEnglish ? 'Zoom in' : '지도 확대';
+  String get zoomOutTooltip => isEnglish ? 'Zoom out' : '지도 축소';
+  String get mapUnavailable => isEnglish
+      ? 'Map coordinates are unavailable for these pharmacies.'
+      : '표시할 수 있는 약국 좌표가 없습니다.';
   String get findingNearby => isEnglish
       ? 'Finding pharmacies near your current location'
       : '현재 위치 주변 약국을 찾고 있습니다';

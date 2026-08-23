@@ -90,7 +90,44 @@ Widget _testApp(CheckNearbyPharmacy control) {
       child: CheckNearbyPharmacyUI(
         userSetting: const UserSetting(fontSize: 20),
         control: control,
+        mapBuilder: _buildTestMap,
       ),
+    ),
+  );
+}
+
+Widget _buildTestMap({
+  required List<NearbyPharmacy> pharmacies,
+  required String? selectedPharmacyId,
+  required ValueChanged<NearbyPharmacy> onPharmacySelected,
+  required VoidCallback onAttributionRequested,
+  required String? statusText,
+  required String selectMarkerHint,
+  required String zoomInTooltip,
+  required String zoomOutTooltip,
+  required String unavailableText,
+}) {
+  return SizedBox(
+    key: const Key('test-nearby-pharmacy-map'),
+    height: 80,
+    child: Column(
+      children: [
+        if (statusText != null) Text('map-status:$statusText'),
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: pharmacies
+                .map(
+                  (pharmacy) => TextButton(
+                    key: ValueKey('test-map-marker-${pharmacy.pharmacyId}'),
+                    onPressed: () => onPharmacySelected(pharmacy),
+                    child: Text('map:${pharmacy.name}'),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -108,12 +145,31 @@ void main() {
     expect(find.text('24시간'), findsNothing);
     expect(find.text('전체'), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsNothing);
+    expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('전체'));
     await tester.pumpAndSettle();
 
     expect(find.text('영업종료 메드버디약국'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selecting a pharmacy card updates the map focus state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_testApp(_buildControl()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('map-status:아래 약국을 누르면 지도에서 위치를 확인할 수 있습니다'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pharmacy-card-open')));
+    await tester.pump();
+
+    expect(find.textContaining('map-status:'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

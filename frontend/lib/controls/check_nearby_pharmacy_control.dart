@@ -117,6 +117,12 @@ class CheckNearbyPharmacy {
     );
   }
 
+  // 함수명: requestMapAttribution
+  // 역할: 앱 내 지도에 표시된 OpenStreetMap 저작권 정보를 연다.
+  Future<bool> requestMapAttribution() {
+    return _uriLauncher(Uri.https('www.openstreetmap.org', '/copyright'));
+  }
+
   Future<bool> openApplicationSettings() =>
       _locationBoundary.openApplicationSettings();
 
