@@ -192,6 +192,65 @@ class DispatchChatMessageAlertTest(unittest.TestCase):
         self.assertEqual(len(preview), 120)
         self.assertTrue(str(preview).endswith("…"))
 
+    def test_disabled_chat_notification_skips_push(self) -> None:
+        """수신자가 채팅 알림을 끄면 푸시 경계를 호출하지 않는지 검증한다."""
+        self.db.add_all(
+            [
+                _UserSetting(
+                    user_hash="caregiver-a",
+                    chat_notifications_enabled=False,
+                ),
+                _DevicePushToken(
+                    user_hash="caregiver-a",
+                    token="disabled-chat-token-value-12345",
+                    platform="android",
+                    enabled=True,
+                ),
+            ]
+        )
+        self.db.commit()
+        boundary = _RecordingPushBoundary()
+
+        result = DispatchChatMessageAlert(self.db, boundary).notify_new_message(
+            recipient_hash="caregiver-a",
+            link_id=41,
+            message_body="저녁 약을 복용했어요.",
+        )
+
+        self.assertEqual(result.success_count, 0)
+        self.assertEqual(boundary.calls, [])
+
+    def test_type_only_notification_hides_chat_preview(self) -> None:
+        """알림 종류만 표시하면 채팅 원문을 푸시 본문과 데이터에서 숨긴다."""
+        self.db.add_all(
+            [
+                _UserSetting(
+                    user_hash="caregiver-a",
+                    notification_detail_mode="type_only",
+                ),
+                _DevicePushToken(
+                    user_hash="caregiver-a",
+                    token="private-chat-token-value-12345",
+                    platform="android",
+                    enabled=True,
+                ),
+            ]
+        )
+        self.db.commit()
+        boundary = _RecordingPushBoundary()
+
+        DispatchChatMessageAlert(self.db, boundary).notify_new_message(
+            recipient_hash="caregiver-a",
+            link_id=42,
+            message_body="저녁 약을 복용했어요.",
+        )
+
+        self.assertEqual(
+            boundary.calls[0]["body"],
+            "연동된 가족에게 새 메시지가 도착했습니다.",
+        )
+        self.assertEqual(boundary.calls[0]["data"]["message_preview"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

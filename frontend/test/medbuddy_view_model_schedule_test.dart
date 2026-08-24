@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
+import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
@@ -580,6 +581,57 @@ void main() {
     },
   );
 
+  test('기본 복약 시각을 바꿔도 기존 비활성 알림 시각은 유지된다', () async {
+    SharedPreferences.setMockInitialValues({
+      'user_setting_local_patient_default_morning_time': '07:00',
+    });
+    final notificationService = _FakeNotificationService();
+    final client = MockClient((http.Request request) async {
+      if (request.url.path.endsWith('/notification/settings')) {
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 9,
+              'minute': 45,
+              'is_enabled': false,
+            },
+          ],
+        });
+      }
+      if (request.url.path.endsWith('/schedule/today/info')) {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'schedules': <Map<String, dynamic>>[],
+          },
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+      manageUserSetting: ManageUserSetting(
+        userHash: PatientHash.defaultPatientHash,
+        useRemotePersistence: false,
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.loadUserSetting();
+
+    expect(viewModel.userSetting.defaultMorningTime, '07:00');
+    final existingSetting = viewModel.medicationReminderSettings['morning'];
+    expect(existingSetting, isNotNull);
+    expect(existingSetting!.hour, 9);
+    expect(existingSetting.minute, 45);
+    expect(existingSetting.isEnabled, isFalse);
+  });
+
   test('복약 알림 날짜는 처방된 복용 종료일을 넘지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
     final notificationService = _FakeNotificationService();
@@ -803,6 +855,17 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 }
 
 class _FakeNotificationService implements NotificationService {
+  @override
+  void setShowSensitiveDetails(bool showSensitiveDetails) {}
+
+  @override
+  Future<void> openSystemNotificationSettings() async {}
+
+  @override
+  Future<void> cancelAllScheduledMedicationReminders() async {
+    canceledAllMedicationReminders = true;
+  }
+
   @override
   Future<void> showLinkedChatAlert({
     required int id,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/caregiver_notification_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'set_notification_ui_boundary.dart';
 
@@ -15,6 +16,7 @@ class SetCaregiverNotificationUI {
     required CaregiverNotification setting,
     String language = 'ko',
     String? slotLabel,
+    UserSetting userSetting = const UserSetting(),
   }) {
     final isEnglish = language.trim().toLowerCase().startsWith('en');
     var selectedMode = setting.mode;
@@ -135,7 +137,7 @@ class SetCaregiverNotificationUI {
                           icon: const Icon(Icons.schedule_outlined),
                           label: Text(
                             '${isEnglish ? 'Check at' : '확인 시각'} '
-                            '${_formatTime(deadline)}',
+                            '${userSetting.formatTime(deadline.hour, deadline.minute)}',
                           ),
                         ),
                       ],
@@ -166,11 +168,6 @@ class SetCaregiverNotificationUI {
         );
       },
     );
-  }
-
-  static String _formatTime(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}';
   }
 }
 

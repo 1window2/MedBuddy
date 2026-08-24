@@ -234,6 +234,7 @@ class _CheckCaregiverMedicationUIState
           _CaregiverTimeSlotCard(
             slot: slot,
             isEnglish: _isEnglish,
+            userSetting: widget.userSetting,
             medications: schedules
                 .where((schedule) => schedule.slotKeys.contains(slot.key))
                 .toList(growable: false),
@@ -380,6 +381,7 @@ class _CheckCaregiverMedicationUIState
           setting: currentSetting,
           language: widget.userSetting.language,
           slotLabel: slot.title(_isEnglish),
+          userSetting: widget.userSetting,
         );
     if (selectedSetting == null || !mounted) {
       return;
@@ -696,6 +698,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
 class _CaregiverTimeSlotCard extends StatelessWidget {
   final _CaregiverScheduleSlot slot;
   final bool isEnglish;
+  final UserSetting userSetting;
   final List<MedicationSchedule> medications;
   final CaregiverNotification? notificationSetting;
   final bool isNotificationLoading;
@@ -705,6 +708,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   const _CaregiverTimeSlotCard({
     required this.slot,
     required this.isEnglish,
+    required this.userSetting,
     required this.medications,
     required this.notificationSetting,
     required this.isNotificationLoading,
@@ -750,7 +754,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        slot.timeLabel,
+                        userSetting.formatTime(slot.hour, 0),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,

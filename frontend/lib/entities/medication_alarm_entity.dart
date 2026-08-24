@@ -21,11 +21,11 @@ class MedicationAlarm {
     required this.enabled,
   });
 
-  factory MedicationAlarm.defaults(String slotKey) {
+  factory MedicationAlarm.defaults(String slotKey, {int? hour, int? minute}) {
     return MedicationAlarm(
       slotKey: slotKey,
-      hour: defaultHourFor(slotKey),
-      minute: 0,
+      hour: hour ?? defaultHourFor(slotKey),
+      minute: minute ?? 0,
       enabled: false,
     );
   }

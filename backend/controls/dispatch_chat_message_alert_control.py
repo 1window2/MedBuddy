@@ -49,7 +49,12 @@ class DispatchChatMessageAlert:
         )
         if not token_rows:
             return PushDeliveryResult(success_count=0)
-        language = self._recipient_language(recipient_hash)
+        recipient_setting = self._recipient_setting(recipient_hash)
+        if recipient_setting is not None and not bool(
+            recipient_setting.chat_notifications_enabled
+        ):
+            return PushDeliveryResult(success_count=0)
+        language = self._recipient_language(recipient_setting)
         is_english = language == "en"
         message_preview = self._message_preview(message_body)
         fallback_body = (
@@ -57,14 +62,19 @@ class DispatchChatMessageAlert:
             if is_english
             else "연동된 가족에게 새 메시지가 도착했습니다."
         )
+        show_details = (
+            recipient_setting is None
+            or recipient_setting.notification_detail_mode != "type_only"
+        )
+        notification_body = (message_preview or fallback_body) if show_details else fallback_body
         result = self.push_boundary.send_notification(
             tokens=[str(row.token) for row in token_rows],
             title="New family message" if is_english else "새 가족 메시지",
-            body=message_preview or fallback_body,
+            body=notification_body,
             data={
                 "type": "linked_chat_message",
                 "link_id": str(link_id),
-                "message_preview": message_preview,
+                "message_preview": message_preview if show_details else "",
                 "message_kind": message_kind,
                 "slot_key": slot_key or "",
             },
@@ -88,18 +98,25 @@ class DispatchChatMessageAlert:
             return normalized
         return f"{normalized[: cls._MAXIMUM_PREVIEW_LENGTH - 1].rstrip()}…"
 
-    # 함수이름: _recipient_language
-    # 함수역할: 수신자의 저장 언어를 조회하고 지원하지 않는 값은 한국어로 보정한다.
+    # 함수이름: _recipient_setting
+    # 함수역할: 수신자의 채팅 알림과 개인정보 표시 설정을 조회한다.
     # 매개변수: recipient_hash - 알림을 받을 사용자 식별값
-    # 반환값: ko 또는 en 언어 코드
-    def _recipient_language(self, recipient_hash: str) -> str:
-        """수신자 설정이 없거나 잘못된 경우 한국어를 기본값으로 사용한다."""
-        row = (
-            self.db.query(_UserSetting.language)
+    # 반환값: 사용자 설정 DB 행 또는 설정이 없으면 None
+    def _recipient_setting(self, recipient_hash: str) -> _UserSetting | None:
+        """설정이 없는 기존 사용자는 이전처럼 알림을 받도록 None을 반환한다."""
+        return (
+            self.db.query(_UserSetting)
             .filter(_UserSetting.user_hash == recipient_hash)
             .first()
         )
-        if row is None:
+
+    # 함수이름: _recipient_language
+    # 함수역할: 저장된 언어를 읽고 지원하지 않는 값은 한국어로 보정한다.
+    # 매개변수: setting - 수신자의 사용자 설정 DB 행
+    # 반환값: ko 또는 en 언어 코드
+    def _recipient_language(self, setting: _UserSetting | None) -> str:
+        """수신자 설정이 없거나 잘못된 경우 한국어를 기본값으로 사용한다."""
+        if setting is None:
             return "ko"
-        language = str(row[0] or "").strip().lower()
+        language = str(setting.language or "").strip().lower()
         return "en" if language == "en" else "ko"

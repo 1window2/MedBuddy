@@ -11,16 +11,19 @@ import 'package:workmanager/workmanager.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/check_schedule_control.dart';
+import '../controls/manage_user_setting_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/user_setting_entity.dart';
 import 'api_config.dart';
 import 'notification_service.dart';
 
 typedef MedicationAlarmSettingsLoader =
     Future<List<MedicationAlarm>> Function();
 typedef MedicationScheduleLoader = Future<List<MedicationSchedule>> Function();
+typedef ReminderUserSettingLoader = Future<UserSetting> Function();
 typedef MedicationReminderRegistrar =
     Future<void> Function({
       required int id,
@@ -36,6 +39,7 @@ typedef MedicationReminderRegistrar =
 typedef MedicationReminderCanceler =
     Future<void> Function(int id, {String? slotKey});
 typedef ReminderPreferencesLoader = Future<SharedPreferences> Function();
+typedef ReminderPrivacySetter = void Function(bool showSensitiveDetails);
 
 const String medicationReminderBackgroundTask =
     'medbuddy_medication_reminder_refresh';
@@ -52,25 +56,31 @@ class MedicationReminderRefreshService {
 
   final MedicationAlarmSettingsLoader _loadSettings;
   final MedicationScheduleLoader _loadSchedules;
+  final ReminderUserSettingLoader _loadUserSetting;
   final MedicationReminderRegistrar _registerReminder;
   final MedicationReminderCanceler _cancelReminder;
   final ReminderPreferencesLoader _loadPreferences;
+  final ReminderPrivacySetter? _setPrivacy;
   final DateTime Function() _now;
   final VoidCallback? _onDispose;
 
   MedicationReminderRefreshService({
     required MedicationAlarmSettingsLoader loadSettings,
     required MedicationScheduleLoader loadSchedules,
+    ReminderUserSettingLoader? loadUserSetting,
     required MedicationReminderRegistrar registerReminder,
     required MedicationReminderCanceler cancelReminder,
     ReminderPreferencesLoader preferencesLoader = SharedPreferences.getInstance,
+    ReminderPrivacySetter? setPrivacy,
     DateTime Function()? now,
     VoidCallback? onDispose,
   }) : _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
+       _loadUserSetting = loadUserSetting ?? (() async => const UserSetting()),
        _registerReminder = registerReminder,
        _cancelReminder = cancelReminder,
        _loadPreferences = preferencesLoader,
+       _setPrivacy = setPrivacy,
        _now = now ?? DateTime.now,
        _onDispose = onDispose;
 
@@ -91,16 +101,25 @@ class MedicationReminderRefreshService {
       patientHash: normalizedPatientHash,
       client: client,
     );
+    final userSettingControl = ManageUserSetting(
+      baseUrl: baseUrl,
+      userHash: normalizedPatientHash,
+      client: client,
+      useRemotePersistence: false,
+    );
     final resolvedNotificationService =
         notificationService ?? NotificationService.instance;
     return MedicationReminderRefreshService(
       loadSettings: alarmControl.requestMedicationAlarm,
       loadSchedules: scheduleControl.requestMedicationScheduleWindow,
+      loadUserSetting: userSettingControl.requestUserSetting,
       registerReminder: resolvedNotificationService.registerNotification,
       cancelReminder: resolvedNotificationService.cancelReminder,
+      setPrivacy: resolvedNotificationService.setShowSensitiveDetails,
       onDispose: () {
         alarmControl.dispose();
         scheduleControl.dispose();
+        userSettingControl.dispose();
       },
     );
   }
@@ -116,17 +135,34 @@ class MedicationReminderRefreshService {
         _loadSettings(),
         _loadSchedules(),
         _loadPreferences(),
+        _loadUserSetting(),
       ]);
       final settings = results[0] as List<MedicationAlarm>;
       final schedules = results[1] as List<MedicationSchedule>;
       final preferences = results[2] as SharedPreferences;
-      final language = AppLanguageControl.normalizeLanguage(
-        preferences.getString(AppLanguageControl.preferenceKey) ?? 'ko',
+      final userSetting = results[3] as UserSetting;
+      final language = AppLanguageControl.resolveLanguage(
+        userSetting.languageMode.isEmpty
+            ? preferences.getString(AppLanguageControl.preferenceKey) ?? 'ko'
+            : userSetting.languageMode,
       );
+      _setPrivacy?.call(userSetting.showNotificationDetails);
       final settingsBySlot = {
         for (final setting in settings)
           setting.slotKey.trim().toLowerCase(): setting,
       };
+
+      if (!userSetting.medicationNotificationsEnabled) {
+        for (final slotKey in medicationScheduleSlotKeys) {
+          final setting =
+              settingsBySlot[slotKey] ?? MedicationAlarm.defaults(slotKey);
+          await _cancelReminder(
+            setting.notificationId,
+            slotKey: setting.slotKey,
+          );
+        }
+        return true;
+      }
 
       for (final slotKey in medicationScheduleSlotKeys) {
         final setting =

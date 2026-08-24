@@ -20,10 +20,11 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       final settings = await setNotification.requestMedicationAlarm();
       final settingsBySlot = {
         for (final slotKey in MedBuddyViewModel._reminderSlotKeys)
-          slotKey: MedicationAlarm.defaults(slotKey),
+          slotKey: _defaultMedicationAlarm(slotKey),
       };
       for (final setting in settings) {
         if (MedBuddyViewModel._reminderSlotKeys.contains(setting.slotKey)) {
+          // 비활성 상태에서도 사용자가 마지막으로 지정한 시각을 보존한다.
           settingsBySlot[setting.slotKey] = setting;
         }
       }
@@ -63,6 +64,13 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     required List<MedicationSchedule> schedules,
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
+    if (!userSetting.medicationNotificationsEnabled) {
+      _statusMessage = _isEnglishSetting
+          ? 'Turn on medication notifications in Settings first.'
+          : '환경설정에서 내 복약 알림을 먼저 켜주세요.';
+      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      return false;
+    }
     if (schedules.isEmpty) {
       _statusMessage = _isEnglishSetting
           ? 'There is no medication in this time slot.'
@@ -111,9 +119,10 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
         storageKey: storageKey,
       );
       _medicationReminderSettings[setting.slotKey] = setting;
+      final displayTime = userSetting.formatTime(setting.hour, setting.minute);
       _statusMessage = _isEnglishSetting
-          ? '$slotTitle reminder is set for ${setting.timeLabel}.'
-          : '$slotTitle 알림이 ${setting.timeLabel}으로 설정되었습니다.';
+          ? '$slotTitle reminder is set for $displayTime.'
+          : '$slotTitle 알림이 $displayTime으로 설정되었습니다.';
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
     } on StateError {
@@ -242,28 +251,30 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
           preferences.getString(_reminderStorageKey(slotKey)) ??
           preferences.getString(_legacyReminderStorageKey(slotKey));
       if (rawSetting == null || rawSetting.trim().isEmpty) {
-        _medicationReminderSettings[slotKey] = MedicationAlarm.defaults(
-          slotKey,
-        );
+        _medicationReminderSettings[slotKey] = _defaultMedicationAlarm(slotKey);
         continue;
       }
 
       try {
         final decodedSetting = jsonDecode(rawSetting);
         if (decodedSetting is Map<String, dynamic>) {
-          _medicationReminderSettings[slotKey] = MedicationAlarm.fromJson(
-            decodedSetting,
-          );
+          final cachedSetting = MedicationAlarm.fromJson(decodedSetting);
+          // 서버 연결이 끊겨도 기존 알림 시각을 기본값으로 덮어쓰지 않는다.
+          _medicationReminderSettings[slotKey] = cachedSetting;
           continue;
         }
       } catch (_) {
         // Invalid cache entries are ignored and replaced with defaults.
       }
-      _medicationReminderSettings[slotKey] = MedicationAlarm.defaults(slotKey);
+      _medicationReminderSettings[slotKey] = _defaultMedicationAlarm(slotKey);
     }
   }
 
   Future<void> _synchronizeMedicationReminderSchedules() async {
+    if (!userSetting.medicationNotificationsEnabled) {
+      await notificationService.cancelAllScheduledMedicationReminders();
+      return;
+    }
     if (_medicationReminderSettings.isEmpty) {
       return;
     }
@@ -272,7 +283,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     for (final slotKey in MedBuddyViewModel._reminderSlotKeys) {
       final setting =
           _medicationReminderSettings[slotKey] ??
-          MedicationAlarm.defaults(slotKey);
+          _defaultMedicationAlarm(slotKey);
       if (!setting.isEnabled) {
         await _cancelMedicationReminder(setting);
         continue;
@@ -331,6 +342,9 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     required String slotTitle,
     required List<MedicationSchedule> schedules,
   }) async {
+    notificationService.setShowSensitiveDetails(
+      userSetting.showNotificationDetails,
+    );
     await _cancelLegacyMedicationReminder(setting);
     final now = DateTime.now();
     final activeDates = MedicationReminderRefreshService.activeReminderDates(
@@ -393,5 +407,14 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
       _ => isEnglish ? 'Schedule' : '일정',
     };
+  }
+
+  // 함수명: _defaultMedicationAlarm
+  // 역할: 사용자 환경설정의 기본 시각으로 비활성 복약 알림을 만든다.
+  MedicationAlarm _defaultMedicationAlarm(String slotKey) {
+    final timeParts = userSetting.defaultTimeForSlot(slotKey).split(':');
+    final hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) : null;
+    final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) : null;
+    return MedicationAlarm.defaults(slotKey, hour: hour, minute: minute);
   }
 }

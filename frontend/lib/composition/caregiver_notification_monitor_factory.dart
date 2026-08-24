@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../controls/check_caregiver_medication_control.dart';
 import '../controls/link_patient_caregiver_control.dart';
+import '../controls/manage_user_setting_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
 import '../services/api_config.dart';
 import '../services/caregiver_notification_monitor_service.dart';
@@ -47,6 +48,12 @@ class CaregiverNotificationMonitorFactory {
       caregiverHash: caregiverHash,
       client: client,
     );
+    final userSettingControl = ManageUserSetting(
+      baseUrl: baseUrl,
+      userHash: caregiverHash,
+      client: client,
+      useRemotePersistence: false,
+    );
 
     return CaregiverNotificationMonitorService(
       caregiverHash: caregiverHash,
@@ -68,7 +75,14 @@ class CaregiverNotificationMonitorFactory {
             required String title,
             required String body,
             required String patientHash,
-          }) {
+          }) async {
+            final userSetting = await userSettingControl.requestUserSetting();
+            if (!userSetting.caregiverNotificationsEnabled) {
+              return;
+            }
+            NotificationService.instance.setShowSensitiveDetails(
+              userSetting.showNotificationDetails,
+            );
             return NotificationService.instance.showCaregiverAlert(
               id: id,
               title: title,
@@ -88,6 +102,7 @@ class CaregiverNotificationMonitorFactory {
         linkControl.dispose();
         settingControl.dispose();
         medicationControl.dispose();
+        userSettingControl.dispose();
       },
     );
   }

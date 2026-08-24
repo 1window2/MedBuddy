@@ -185,6 +185,15 @@ class _MutableSetNotification extends SetNotification {
 // 역할: 플랫폼 알림 예약과 취소가 성공한 상황을 일정 화면 테스트에 제공한다.
 class _SuccessfulNotificationService implements NotificationService {
   @override
+  void setShowSensitiveDetails(bool showSensitiveDetails) {}
+
+  @override
+  Future<void> openSystemNotificationSettings() async {}
+
+  @override
+  Future<void> cancelAllScheduledMedicationReminders() async {}
+
+  @override
   Future<void> showLinkedChatAlert({
     required int id,
     required int linkId,
@@ -230,6 +239,15 @@ class _SuccessfulNotificationService implements NotificationService {
 }
 
 class _FailingNotificationService implements NotificationService {
+  @override
+  void setShowSensitiveDetails(bool showSensitiveDetails) {}
+
+  @override
+  Future<void> openSystemNotificationSettings() async {}
+
+  @override
+  Future<void> cancelAllScheduledMedicationReminders() async {}
+
   @override
   Future<void> showLinkedChatAlert({
     required int id,

@@ -46,6 +46,7 @@ from entities.caregiver_alert_outbox_entity import (  # noqa: E402
 from entities.patient_caregiver_link_entity import (  # noqa: E402
     _PatientCaregiverLink,
 )
+from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
 class _RecordingPushBoundary:
@@ -253,6 +254,71 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(result.invalid_tokens, (malformed_token,))
         self.assertEqual(result.retryable_failure_count, 1)
         self.assertFalse(result.all_valid_targets_succeeded)
+
+    def test_caregiver_global_setting_controls_completed_dose_push(self) -> None:
+        self.db.add_all(
+            [
+                _PatientCaregiverLink(
+                    patient_hash="patient-a",
+                    caregiver_hash="caregiver-a",
+                    linked=True,
+                ),
+                _CaregiverNotification(
+                    patient_hash="patient-a",
+                    caregiver_hash="caregiver-a",
+                    enabled=True,
+                    alert_option=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                    slot_settings=encode_slot_settings(
+                        {
+                            "evening": {
+                                "notification_type": (
+                                    CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED
+                                ),
+                                "deadline_hour": None,
+                                "deadline_minute": None,
+                            }
+                        }
+                    ),
+                ),
+                _DevicePushToken(
+                    user_hash="caregiver-a",
+                    token="caregiver-setting-token-value-12345",
+                    platform="android",
+                    enabled=True,
+                ),
+                _UserSetting(
+                    user_hash="caregiver-a",
+                    caregiver_notifications_enabled=False,
+                ),
+            ]
+        )
+        self.db.commit()
+        boundary = _RecordingPushBoundary()
+        control = DispatchCaregiverAlert(self.db, boundary)
+
+        disabled_result = control.notifySlotCompleted(
+            patient_hash="patient-a",
+            slot_key="evening",
+        )
+
+        self.assertEqual(disabled_result.success_count, 0)
+        self.assertEqual(boundary.calls, [])
+
+        setting = self.db.query(_UserSetting).filter_by(user_hash="caregiver-a").one()
+        setting.caregiver_notifications_enabled = True
+        setting.notification_detail_mode = "type_only"
+        self.db.commit()
+
+        enabled_result = control.notifySlotCompleted(
+            patient_hash="patient-a",
+            slot_key="evening",
+        )
+
+        self.assertEqual(enabled_result.success_count, 1)
+        self.assertEqual(
+            boundary.calls[0]["body"],
+            "연동된 환자의 복약 상태가 변경되었습니다.",
+        )
 
     def test_outbox_marks_successful_delivery_as_sent(self) -> None:
         row = _CaregiverAlertOutbox(

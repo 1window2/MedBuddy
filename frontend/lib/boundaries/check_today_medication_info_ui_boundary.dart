@@ -229,9 +229,10 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
         pendingSlots.first;
     final isPastDue = nextSlot.scheduledAt.isBefore(now);
     final slotLabel = _slotLabel(nextSlot.slotKey);
-    final timeLabel =
-        '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:'
-        '${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
+    final timeLabel = userSetting.formatTime(
+      nextSlot.scheduledAt.hour,
+      nextSlot.scheduledAt.minute,
+    );
     final primaryLabel = _isEnglish
         ? (isPastDue ? 'Check missed dose' : 'Next medication')
         : (isPastDue ? '미복용 확인' : '다음 복약');

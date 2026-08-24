@@ -18,6 +18,7 @@ from entities.caregiver_notification_entity import (
     decode_slot_settings,
 )
 from entities.device_push_token_entity import _DevicePushToken
+from entities.user_setting_entity import _UserSetting
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
@@ -29,6 +30,12 @@ _SLOT_NAMES = {
     "lunch": "점심",
     "evening": "저녁",
     "bedtime": "취침 전",
+}
+_ENGLISH_SLOT_NAMES = {
+    "morning": "morning",
+    "lunch": "lunch",
+    "evening": "evening",
+    "bedtime": "bedtime",
 }
 
 
@@ -77,6 +84,11 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         invalid_tokens: list[str] = []
         retryable_failure_count = 0
         for caregiver_hash in caregiver_hashes:
+            user_setting = self._user_setting(caregiver_hash)
+            if user_setting is not None and not bool(
+                user_setting.caregiver_notifications_enabled
+            ):
+                continue
             token_rows = (
                 self.db.query(_DevicePushToken)
                 .filter(
@@ -87,10 +99,32 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             )
             if not token_rows:
                 continue
+            is_english = (
+                user_setting is not None
+                and str(user_setting.language or "").strip().lower() == "en"
+            )
+            show_details = (
+                user_setting is None
+                or user_setting.notification_detail_mode != "type_only"
+            )
+            if is_english:
+                title = "Medication completed"
+                body = (
+                    f"The patient completed all {_ENGLISH_SLOT_NAMES.get(slot_key, 'scheduled')} medications."
+                    if show_details
+                    else "A linked patient's medication status was updated."
+                )
+            else:
+                title = "환자 복약 완료"
+                body = (
+                    f"환자가 {slot_name}에 복용할 약을 모두 복용했습니다."
+                    if show_details
+                    else "연동된 환자의 복약 상태가 변경되었습니다."
+                )
             result = self.push_boundary.send_notification(
                 tokens=[str(row.token) for row in token_rows],
-                title="환자 복약 완료",
-                body=f"환자가 {slot_name}에 복용할 약을 모두 복용했습니다.",
+                title=title,
+                body=body,
                 data={
                     "type": "caregiver_slot_completed",
                     "patient_hash": patient_hash,
@@ -139,6 +173,15 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             ):
                 caregiver_hashes.append(str(link.caregiver_hash))
         return caregiver_hashes
+
+    # 함수명: _user_setting
+    # 역할: 보호자의 전역 알림 및 잠금 화면 개인정보 설정을 조회한다.
+    def _user_setting(self, user_hash: str) -> _UserSetting | None:
+        return (
+            self.db.query(_UserSetting)
+            .filter(_UserSetting.user_hash == user_hash)
+            .first()
+        )
 
     # 함수명: _disable_invalid_tokens
     # 역할:

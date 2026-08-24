@@ -49,6 +49,12 @@ class LinkedChatNotificationMonitorFactory {
             required slotKey,
           }) async {
             final setting = await settingControl.requestUserSetting();
+            if (!setting.chatNotificationsEnabled) {
+              return;
+            }
+            NotificationService.instance.setShowSensitiveDetails(
+              setting.showNotificationDetails,
+            );
             return NotificationService.instance.showLinkedChatAlert(
               id: _notificationId(linkId, messageId),
               linkId: linkId,

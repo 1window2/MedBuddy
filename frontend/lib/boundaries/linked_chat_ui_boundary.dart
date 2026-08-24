@@ -851,6 +851,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         message: _messages[index],
         isMine: _messages[index].senderHash == widget.currentUserHash,
         text: _text,
+        userSetting: widget.userSetting,
         loadingMedicationId: _loadingMedicationId,
         onMedicationPressed: _openMedicationDetail,
         onSchedulePressed: _isPatient ? _openPatientSchedule : null,
@@ -1721,6 +1722,7 @@ class _MessageBubble extends StatelessWidget {
   final bool isMine;
   final int? loadingMedicationId;
   final _LinkedChatText text;
+  final UserSetting userSetting;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
   final ValueChanged<ChatScheduleContext>? onSchedulePressed;
   final ValueChanged<ChatPharmacyContext> onPharmacyCallRequested;
@@ -1732,6 +1734,7 @@ class _MessageBubble extends StatelessWidget {
     required this.isMine,
     required this.loadingMedicationId,
     required this.text,
+    required this.userSetting,
     required this.onMedicationPressed,
     required this.onSchedulePressed,
     required this.onPharmacyCallRequested,
@@ -1742,9 +1745,7 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final localTime = message.createdAt.toLocal();
-    final timeLabel =
-        '${localTime.hour.toString().padLeft(2, '0')}:'
-        '${localTime.minute.toString().padLeft(2, '0')}';
+    final timeLabel = userSetting.formatTime(localTime.hour, localTime.minute);
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

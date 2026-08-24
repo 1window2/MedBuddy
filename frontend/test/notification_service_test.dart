@@ -31,6 +31,15 @@ class _EmptySetNotification extends SetNotification {
 
 class _NoopNotificationService implements NotificationService {
   @override
+  void setShowSensitiveDetails(bool showSensitiveDetails) {}
+
+  @override
+  Future<void> openSystemNotificationSettings() async {}
+
+  @override
+  Future<void> cancelAllScheduledMedicationReminders() async {}
+
+  @override
   Future<void> initialize() async {}
 
   @override

@@ -11,6 +11,7 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
@@ -172,6 +173,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   _TimeSlotCard(
                     text: text,
                     slot: slot,
+                    userSetting: UserSetting(language: text.language),
                     reminderSetting: MedicationAlarm.defaults(slot.key),
                     isCompletedProvider: (_) => false,
                     onReminderRequested: () {},
@@ -288,6 +290,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             child: _TimeSlotCard(
               text: text,
               slot: slot,
+              userSetting: viewModel.userSetting,
               reminderSetting:
                   viewModel.medicationReminderSettings[slot.key] ??
                   MedicationAlarm.defaults(slot.key),
@@ -837,6 +840,7 @@ class _ScheduleSelectionFooter extends StatelessWidget {
 class _TimeSlotCard extends StatelessWidget {
   final _ScheduleText text;
   final _ScheduleSlot slot;
+  final UserSetting userSetting;
   final MedicationAlarm reminderSetting;
   final bool Function(MedicationSchedule schedule) isCompletedProvider;
   final VoidCallback onReminderRequested;
@@ -853,6 +857,7 @@ class _TimeSlotCard extends StatelessWidget {
   const _TimeSlotCard({
     required this.text,
     required this.slot,
+    required this.userSetting,
     required this.reminderSetting,
     required this.isCompletedProvider,
     required this.onReminderRequested,
@@ -904,9 +909,14 @@ class _TimeSlotCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          reminderSetting.isEnabled
-                              ? reminderSetting.timeLabel
-                              : slot.timeLabel,
+                          userSetting.formatTime(
+                            reminderSetting.isEnabled
+                                ? reminderSetting.hour
+                                : slot.hour,
+                            reminderSetting.isEnabled
+                                ? reminderSetting.minute
+                                : 0,
+                          ),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 13,

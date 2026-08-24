@@ -52,8 +52,27 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  static const MethodChannel _settingsChannel = MethodChannel(
+    'com.medbuddy.app/settings',
+  );
   bool _isInitialized = false;
   Future<void>? _initializationFuture;
+  bool _showSensitiveDetails = true;
+
+  // 함수명: setShowSensitiveDetails
+  // 역할: 잠금 화면 알림에서 약 이름과 채팅 내용을 표시할지 설정한다.
+  void setShowSensitiveDetails(bool showSensitiveDetails) {
+    _showSensitiveDetails = showSensitiveDetails;
+  }
+
+  // 함수명: openSystemNotificationSettings
+  // 역할: 사용자가 MedBuddy의 휴대폰 알림 권한과 잠금 화면 정책을 확인하게 한다.
+  Future<void> openSystemNotificationSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw UnsupportedError('Notification settings are unavailable.');
+    }
+    await _settingsChannel.invokeMethod<void>('openNotificationSettings');
+  }
 
   static void setNotificationSelectionHandler(
     MedicationNotificationSelectionHandler? handler,
@@ -349,6 +368,11 @@ class NotificationService {
   // - 알림 본문 문자열
   String _buildReminderBody(List<String> medicationNames, String language) {
     final isEnglish = _isEnglish(language);
+    if (!_showSensitiveDetails) {
+      return isEnglish
+          ? 'Please check your scheduled medication.'
+          : '예정된 복약 일정을 확인해 주세요.';
+    }
     final names = medicationNames
         .map((name) => name.trim())
         .where((name) => name.isNotEmpty)
@@ -482,6 +506,23 @@ class NotificationService {
     }
   }
 
+  // 함수명: cancelAllScheduledMedicationReminders
+  // 역할: 보호자·채팅 알림은 유지하고 사용자의 복약 시간 알림 예약만 취소한다.
+  Future<void> cancelAllScheduledMedicationReminders() async {
+    await initialize();
+    final pendingRequests = await _plugin.pendingNotificationRequests();
+    for (final request in pendingRequests) {
+      if ((request.payload ?? '').startsWith('schedule:')) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+      await _plugin.cancel(
+        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
+      );
+    }
+  }
+
   // 함수명: showCaregiverAlert
   // 역할:
   // - 환자의 복약 체크 변화를 보호자 기기의 즉시 로컬 알림으로 표시한다.
@@ -502,10 +543,15 @@ class NotificationService {
   }) async {
     await initialize();
     final isEnglish = _isEnglish(language);
+    final visibleBody = _showSensitiveDetails
+        ? body
+        : isEnglish
+        ? 'A linked patient has a medication update.'
+        : '연동된 환자의 복약 상태가 변경되었습니다.';
     await _plugin.show(
       id: id,
       title: title,
-      body: body,
+      body: visibleBody,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_caregiver_updates',
@@ -538,14 +584,15 @@ class NotificationService {
     await initialize();
     final isEnglish = _isEnglish(language);
     final normalizedPreview = _linkedChatMessagePreview(messagePreview);
+    final fallbackBody = isEnglish
+        ? 'You received a new message from a linked family member.'
+        : '연동된 가족에게 새 메시지가 도착했습니다.';
     await _plugin.show(
       id: id,
       title: isEnglish ? 'New family message' : '새 가족 메시지',
-      body: normalizedPreview.isNotEmpty
+      body: _showSensitiveDetails && normalizedPreview.isNotEmpty
           ? normalizedPreview
-          : isEnglish
-          ? 'You received a new message from a linked family member.'
-          : '연동된 가족에게 새 메시지가 도착했습니다.',
+          : fallbackBody,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_linked_chat',
