@@ -30,6 +30,7 @@ CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE = "medication_shortage"
 CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT = "medication_discomfort"
 CHAT_MESSAGE_KIND_PHARMACY_SHARE = "pharmacy_share"
 CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED = "pharmacy_phone_verified"
+MAX_CHAT_MEDICATION_CONTEXTS = 10
 CHAT_MESSAGE_KINDS = (
     CHAT_MESSAGE_KIND_TEXT,
     CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
@@ -154,6 +155,9 @@ class ChatMessage(BaseModel):
     def to_response_dict(self) -> dict[str, object]:
         """모바일 앱이 사용하는 JSON 필드 형식으로 변환한다."""
         medication_context = self._medication_context_response()
+        medication_contexts = self._medication_contexts_response(
+            fallback=medication_context,
+        )
         return {
             "message_id": self.message_id,
             "link_id": self.link_id,
@@ -164,6 +168,7 @@ class ChatMessage(BaseModel):
             "context": self.context_payload,
             "created_at": _as_utc_isoformat(self.created_at),
             "medication_context": medication_context,
+            "medication_contexts": medication_contexts,
             "read_at": (
                 _as_utc_isoformat(self.read_at) if self.read_at is not None else None
             ),
@@ -180,6 +185,44 @@ class ChatMessage(BaseModel):
             "image_url": safe_medication_image_url(self.medication_image_url),
             "dosage_per_time": (self.medication_dosage or "").strip(),
         }
+
+    def _medication_contexts_response(
+        self,
+        *,
+        fallback: dict[str, object] | None,
+    ) -> list[dict[str, object]]:
+        """다중 약 스냅샷을 정리하고 이전 단일 약 메시지도 목록으로 보완한다."""
+        payload = self.context_payload if isinstance(self.context_payload, dict) else {}
+        raw_contexts = payload.get("medication_contexts")
+        if not isinstance(raw_contexts, list):
+            return [fallback] if fallback is not None else []
+
+        contexts: list[dict[str, object]] = []
+        seen_ids: set[int] = set()
+        for raw_context in raw_contexts:
+            if not isinstance(raw_context, dict):
+                continue
+            try:
+                medication_id = int(raw_context.get("medication_id"))
+            except (TypeError, ValueError):
+                continue
+            medication_name = str(raw_context.get("medication_name") or "").strip()
+            if medication_id < 1 or not medication_name or medication_id in seen_ids:
+                continue
+            seen_ids.add(medication_id)
+            contexts.append(
+                {
+                    "medication_id": medication_id,
+                    "medication_name": medication_name,
+                    "image_url": safe_medication_image_url(
+                        raw_context.get("image_url")
+                    ),
+                    "dosage_per_time": str(
+                        raw_context.get("dosage_per_time") or ""
+                    ).strip(),
+                }
+            )
+        return contexts or ([fallback] if fallback is not None else [])
 
 
 # 함수이름: _as_utc_isoformat

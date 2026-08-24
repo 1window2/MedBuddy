@@ -180,6 +180,7 @@ class ChatMessage {
   final DateTime createdAt;
   final ChatMessageKind messageKind;
   final ChatMedicationContext? medicationContext;
+  final List<ChatMedicationContext> medicationContexts;
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
   final int? remainingDays;
@@ -196,6 +197,7 @@ class ChatMessage {
     required this.createdAt,
     this.messageKind = ChatMessageKind.text,
     this.medicationContext,
+    this.medicationContexts = const [],
     this.scheduleContext,
     this.pharmacyContext,
     this.remainingDays,
@@ -224,12 +226,26 @@ class ChatMessage {
     }
     final readAtText = _readString(json['read_at']);
     final rawMedicationContext = json['medication_context'];
+    final rawMedicationContexts = json['medication_contexts'];
     final rawContext = json['context'];
     final context = rawContext is Map
         ? Map<String, dynamic>.from(rawContext)
         : const <String, dynamic>{};
     final rawScheduleContext = context['schedule_context'];
     final rawPharmacyContext = context['pharmacy_context'];
+    final singleMedicationContext = rawMedicationContext is Map
+        ? ChatMedicationContext.fromJson(
+            Map<String, dynamic>.from(rawMedicationContext),
+          )
+        : null;
+    final parsedMedicationContexts = _readMedicationContexts(
+      rawMedicationContexts ?? context['medication_contexts'],
+    );
+    final medicationContexts = parsedMedicationContexts.isNotEmpty
+        ? parsedMedicationContexts
+        : singleMedicationContext == null
+        ? const <ChatMedicationContext>[]
+        : <ChatMedicationContext>[singleMedicationContext];
     return ChatMessage(
       messageId: messageId,
       linkId: linkId,
@@ -238,11 +254,10 @@ class ChatMessage {
       body: body,
       createdAt: createdAt,
       messageKind: ChatMessageKind.fromWireName(json['message_kind']),
-      medicationContext: rawMedicationContext is Map
-          ? ChatMedicationContext.fromJson(
-              Map<String, dynamic>.from(rawMedicationContext),
-            )
-          : null,
+      medicationContext: medicationContexts.isEmpty
+          ? null
+          : medicationContexts.first,
+      medicationContexts: medicationContexts,
       scheduleContext: rawScheduleContext is Map
           ? ChatScheduleContext.fromJson(
               Map<String, dynamic>.from(rawScheduleContext),
@@ -270,6 +285,7 @@ class ChatMessage {
       createdAt: createdAt,
       messageKind: messageKind,
       medicationContext: medicationContext,
+      medicationContexts: medicationContexts,
       scheduleContext: scheduleContext,
       pharmacyContext: pharmacyContext,
       remainingDays: remainingDays,
@@ -293,5 +309,29 @@ class ChatMessage {
       return value.toDouble();
     }
     return double.tryParse(_readString(value)) ?? 0;
+  }
+
+  // 함수명: attachedMedicationContexts
+  // 역할: 새 다중 약 응답과 이전 단일 약 응답을 같은 목록 형태로 제공한다.
+  List<ChatMedicationContext> get attachedMedicationContexts {
+    if (medicationContexts.isNotEmpty) {
+      return medicationContexts;
+    }
+    final singleContext = medicationContext;
+    return singleContext == null ? const [] : [singleContext];
+  }
+
+  static List<ChatMedicationContext> _readMedicationContexts(dynamic value) {
+    if (value is! List) {
+      return const [];
+    }
+    final contextsById = <int, ChatMedicationContext>{};
+    for (final item in value.whereType<Map>()) {
+      final context = ChatMedicationContext.fromJson(
+        Map<String, dynamic>.from(item),
+      );
+      contextsById.putIfAbsent(context.medicationId, () => context);
+    }
+    return contextsById.values.toList(growable: false);
   }
 }

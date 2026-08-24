@@ -19,6 +19,7 @@ from entities.chat_message_entity import (
     CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
     CHAT_MESSAGE_KIND_SLOT_COMPLETION,
     CHAT_MESSAGE_KIND_TEXT,
+    MAX_CHAT_MEDICATION_CONTEXTS,
     ChatMessage,
     _ChatMessage,
 )
@@ -189,7 +190,7 @@ class ManageLinkedChat:
 
     # 함수이름: send_message
     # 함수역할: 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
-    # 매개변수: link_id, sender_hash, client_message_id, body, medication_id
+    # 매개변수: link_id, sender_hash, client_message_id, body, medication_id, medication_ids
     # 반환값: ChatSendResult
     def send_message(
         self,
@@ -199,6 +200,7 @@ class ManageLinkedChat:
         client_message_id: str,
         body: str,
         medication_id: int | None = None,
+        medication_ids: list[int] | None = None,
         message_kind: str = CHAT_MESSAGE_KIND_TEXT,
         slot_key: str | None = None,
         pharmacy_id: str | None = None,
@@ -219,11 +221,23 @@ class ManageLinkedChat:
                 created=False,
             )
 
-        medication = (
-            self._resolve_active_medication(link, medication_id)
-            if medication_id is not None
-            else None
-        )
+        selected_medication_ids: list[int] = []
+        for selected_id in [medication_id, *(medication_ids or [])]:
+            if selected_id is not None and selected_id not in selected_medication_ids:
+                selected_medication_ids.append(selected_id)
+        if len(selected_medication_ids) > MAX_CHAT_MEDICATION_CONTEXTS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A chat message can include at most "
+                    f"{MAX_CHAT_MEDICATION_CONTEXTS} medications."
+                ),
+            )
+        medications = [
+            self._resolve_active_medication(link, selected_id)
+            for selected_id in selected_medication_ids
+        ]
+        medication = medications[0] if medications else None
         context_payload = self._build_message_context(
             link=link,
             sender_hash=sender_hash,
@@ -233,6 +247,11 @@ class ManageLinkedChat:
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
         )
+        if medications:
+            context_payload = dict(context_payload or {})
+            context_payload["medication_contexts"] = [
+                self._medication_context_response(item) for item in medications
+            ]
         row = _ChatMessage(
             link_id=link_id,
             sender_hash=sender_hash,

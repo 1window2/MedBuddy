@@ -157,6 +157,7 @@ async def post_chat_message(
         client_message_id=payload.client_message_id,
         body=payload.body,
         medication_id=payload.medication_id,
+        medication_ids=payload.medication_ids,
         message_kind=payload.message_kind,
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,

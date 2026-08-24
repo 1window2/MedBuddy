@@ -5,7 +5,11 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from entities.chat_message_entity import CHAT_MESSAGE_KINDS, CHAT_MESSAGE_KIND_TEXT
+from entities.chat_message_entity import (
+    CHAT_MESSAGE_KINDS,
+    CHAT_MESSAGE_KIND_TEXT,
+    MAX_CHAT_MEDICATION_CONTEXTS,
+)
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 
 
@@ -23,6 +27,10 @@ class ChatMessageCreate(BaseModel):
     body: str = Field(min_length=1, max_length=500)
     message_kind: str = Field(default=CHAT_MESSAGE_KIND_TEXT, max_length=40)
     medication_id: int | None = Field(default=None, ge=1)
+    medication_ids: list[int] = Field(
+        default_factory=list,
+        max_length=MAX_CHAT_MEDICATION_CONTEXTS,
+    )
     slot_key: str | None = Field(default=None, max_length=20)
     pharmacy_id: str | None = Field(default=None, max_length=32)
 
@@ -46,6 +54,18 @@ class ChatMessageCreate(BaseModel):
         normalized = value.strip().lower()
         if normalized not in CHAT_MESSAGE_KINDS:
             raise ValueError("Unsupported chat message kind.")
+        return normalized
+
+    @field_validator("medication_ids")
+    @classmethod
+    def normalize_medication_ids(cls, value: list[int]) -> list[int]:
+        """양의 약 식별자만 입력 순서대로 중복 없이 유지한다."""
+        normalized: list[int] = []
+        for medication_id in value:
+            if medication_id < 1:
+                raise ValueError("Medication identifiers must be positive.")
+            if medication_id not in normalized:
+                normalized.append(medication_id)
         return normalized
 
     @field_validator("slot_key")

@@ -252,6 +252,60 @@ class ManageLinkedChatTest(unittest.TestCase):
             "https://nedrug.mfds.go.kr/pill.png",
         )
 
+    def test_sent_message_preserves_multiple_medication_snapshots(self) -> None:
+        """여러 약을 첨부한 메시지가 전송 당시의 모든 약 정보를 보존한다."""
+        evening_medication = self._save_medication(item_name="저녁정")
+
+        sent = self.chat.send_message(
+            link_id=self.link_id,
+            sender_hash="caregiver-a",
+            client_message_id="message_request_multiple_001",
+            body="두 약 모두 복용하셨나요?",
+            medication_id=int(self.medication.id),
+            medication_ids=[
+                int(self.medication.id),
+                int(evening_medication.id),
+            ],
+        )
+
+        response = sent.message.to_response_dict()
+        contexts = response["medication_contexts"]
+        history = self.chat.request_history(
+            link_id=self.link_id,
+            user_hash="patient-a",
+            before_message_id=None,
+            limit=50,
+        )
+
+        self.assertEqual(
+            response["medication_context"]["medication_name"],
+            "테스트정",
+        )
+        self.assertEqual(
+            [context["medication_name"] for context in contexts],
+            ["테스트정", "저녁정"],
+        )
+        self.assertEqual(history["data"][0]["medication_contexts"], contexts)
+
+    def test_sent_message_rejects_more_than_ten_medication_contexts(self) -> None:
+        """구형 단일 약 필드를 함께 보내도 전체 선택 약을 10개로 제한한다."""
+        medications = [
+            self._save_medication(item_name=f"추가약{index}")
+            for index in range(10)
+        ]
+
+        with self.assertRaises(HTTPException) as context:
+            self.chat.send_message(
+                link_id=self.link_id,
+                sender_hash="caregiver-a",
+                client_message_id="message_request_too_many_medications",
+                body="선택 약 개수 제한 확인",
+                medication_id=int(self.medication.id),
+                medication_ids=[int(item.id) for item in medications],
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+
     def test_message_without_medication_context_is_allowed(self) -> None:
         """약을 고르지 않은 일반 메시지도 복약 카드 없이 저장되는지 검증한다."""
         sent = self.chat.send_message(
@@ -285,6 +339,19 @@ class ManageLinkedChatTest(unittest.TestCase):
                     medication_id=int(medication.id),
                 )
             self.assertEqual(context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as plural_context:
+            self.chat.send_message(
+                link_id=self.link_id,
+                sender_hash="patient-a",
+                client_message_id="message_request_invalid_multiple",
+                body="여러 약 권한 검증",
+                medication_ids=[
+                    int(self.medication.id),
+                    int(other_medication.id),
+                ],
+            )
+        self.assertEqual(plural_context.exception.status_code, 400)
 
     def _save_medication(
         self,

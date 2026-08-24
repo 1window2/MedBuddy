@@ -61,7 +61,7 @@ void main() {
     control.dispose();
   });
 
-  test('클라이언트 요청 식별자와 메시지 본문을 함께 전송한다', () async {
+  test('클라이언트 요청 식별자와 여러 약 식별자를 함께 전송한다', () async {
     final client = MockClient((request) async {
       expect(request.method, 'POST');
       expect(request.url.path, '/api/v1/chat/links/17/messages');
@@ -70,6 +70,7 @@ void main() {
       expect(body['client_message_id'], 'message_request_002');
       expect(body['body'], '점심 약을 복용했어요.');
       expect(body['medication_id'], 91);
+      expect(body['medication_ids'], [91, 92]);
       return _jsonResponse({
         'success': true,
         'created': true,
@@ -86,6 +87,20 @@ void main() {
             'image_url': 'https://example.com/pill.png',
             'dosage_per_time': '1정',
           },
+          'medication_contexts': [
+            {
+              'medication_id': 91,
+              'medication_name': '테스트정',
+              'image_url': 'https://example.com/pill.png',
+              'dosage_per_time': '1정',
+            },
+            {
+              'medication_id': 92,
+              'medication_name': '저녁정',
+              'image_url': null,
+              'dosage_per_time': '0.5정',
+            },
+          ],
           'read_at': null,
         },
       }, 200);
@@ -101,11 +116,17 @@ void main() {
       clientMessageId: 'message_request_002',
       body: '점심 약을 복용했어요.',
       medicationId: 91,
+      medicationIds: const [91, 92],
     );
 
     expect(message.messageId, 52);
     expect(message.senderHash, 'patient-a');
     expect(message.medicationContext?.medicationName, '테스트정');
+    expect(message.attachedMedicationContexts, hasLength(2));
+    expect(
+      message.attachedMedicationContexts.map((item) => item.medicationId),
+      [91, 92],
+    );
     control.dispose();
   });
 
@@ -115,6 +136,7 @@ void main() {
       expect(body['client_message_id'], 'message_request_003');
       expect(body['body'], '오늘은 몸 상태가 괜찮아요.');
       expect(body.containsKey('medication_id'), isFalse);
+      expect(body.containsKey('medication_ids'), isFalse);
       return _jsonResponse({
         'success': true,
         'created': true,

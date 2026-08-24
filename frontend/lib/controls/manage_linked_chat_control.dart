@@ -139,10 +139,20 @@ class ManageLinkedChat {
     required String clientMessageId,
     required String body,
     int? medicationId,
+    List<int> medicationIds = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
   }) async {
+    final normalizedMedicationIds = medicationIds
+        .where((id) => id > 0)
+        .toSet()
+        .toList(growable: false);
+    final primaryMedicationId =
+        medicationId ??
+        (normalizedMedicationIds.isEmpty
+            ? null
+            : normalizedMedicationIds.first);
     final response = await _client
         .post(
           _buildUri('/links/$linkId/messages'),
@@ -151,7 +161,9 @@ class ManageLinkedChat {
             'client_message_id': clientMessageId,
             'body': body,
             'message_kind': messageKind.wireName,
-            'medication_id': ?medicationId,
+            'medication_id': ?primaryMedicationId,
+            if (normalizedMedicationIds.isNotEmpty)
+              'medication_ids': normalizedMedicationIds,
             'slot_key': ?slotKey,
             'pharmacy_id': ?pharmacyId,
           }),
