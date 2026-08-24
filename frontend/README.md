@@ -68,15 +68,16 @@ reminders, caregiver views, and filtering do not branch into a second storage
 model.
 
 The nearby-pharmacy laboratory flow requests foreground location only when
-opened, calls the authenticated MedBuddy pharmacy endpoint, and supports
-selected-time, officially designated late-night, reported late-hours,
-weekend/holiday, and all-result filters. One filter button opens an explained
-option sheet, while filters are applied by the backend before its result limit
-and the user can select the target date/time. A Naver Map view is rendered above
-the filter. Selecting a pharmacy card or map marker
+opened, calls the authenticated MedBuddy pharmacy endpoint, and defaults to
+pharmacies that are open now. One explained filter sheet offers open-now,
+late-hours, weekend/holiday, and all-result views. The late-hours view combines
+official public late-night designations with reported late operating hours,
+while date-based views ask for a date without requiring a time. Filters are
+applied by the backend before its result limit. A Naver Map view is rendered
+above the filter. Selecting a pharmacy card or map marker
 updates one shared selection and centers the map. Device-scoped favorites are
-shown first without changing the server result, and each card distinguishes
-closing-soon, next-opening, and catalog-refresh information. A pharmacy's
+applied after open and late-hours pharmacies are prioritized, and each
+card distinguishes closing-soon, next-opening, and catalog-refresh information. A pharmacy's
 24-hour operating status remains available as card information. Public-data
 credentials remain on the backend; the client only receives the pharmacy
 fields needed for display, calling, mapping, and external directions. Manual
