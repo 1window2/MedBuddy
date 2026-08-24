@@ -275,6 +275,11 @@ class CheckNearbyPharmacy:
         pharmacies.sort(
             key=lambda item: (
                 item.is_open_now is not True,
+                not (
+                    item.is_open_late
+                    or item.is_24_hours
+                    or item.is_official_late_night
+                ),
                 item.distance_km,
                 item.name,
             )
@@ -441,7 +446,11 @@ class CheckNearbyPharmacy:
         if search_mode is PharmacySearchMode.OPEN_AT_TIME:
             return pharmacy.is_open_now is True
         if search_mode is PharmacySearchMode.LATE_HOURS:
-            return pharmacy.is_open_late or pharmacy.is_24_hours
+            return (
+                pharmacy.is_open_late
+                or pharmacy.is_24_hours
+                or pharmacy.is_official_late_night
+            )
         if search_mode is PharmacySearchMode.OFFICIAL_LATE_NIGHT:
             return pharmacy.is_official_late_night
         return (

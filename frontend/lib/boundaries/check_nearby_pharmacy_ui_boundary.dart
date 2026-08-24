@@ -13,13 +13,7 @@ import '../services/pharmacy_favorite_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
 
-enum _PharmacyFilter {
-  openNow,
-  officialLateNight,
-  lateHours,
-  weekendHoliday,
-  all,
-}
+enum _PharmacyFilter { openNow, lateHours, weekendHoliday, all }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 
@@ -204,6 +198,16 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   List<NearbyPharmacy> get _visiblePharmacies {
     final visiblePharmacies = List<NearbyPharmacy>.of(_pharmacies);
     visiblePharmacies.sort((left, right) {
+      final leftOpenRank = left.isOpenNow == true ? 0 : 1;
+      final rightOpenRank = right.isOpenNow == true ? 0 : 1;
+      if (leftOpenRank != rightOpenRank) {
+        return leftOpenRank.compareTo(rightOpenRank);
+      }
+      final leftLateRank = _operatesLate(left) ? 0 : 1;
+      final rightLateRank = _operatesLate(right) ? 0 : 1;
+      if (leftLateRank != rightLateRank) {
+        return leftLateRank.compareTo(rightLateRank);
+      }
       final leftFavorite = _favoritePharmacyIds.contains(left.pharmacyId);
       final rightFavorite = _favoritePharmacyIds.contains(right.pharmacyId);
       if (leftFavorite != rightFavorite) {
@@ -212,6 +216,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       return left.distanceKm.compareTo(right.distanceKm);
     });
     return visiblePharmacies;
+  }
+
+  bool _operatesLate(NearbyPharmacy pharmacy) {
+    return pharmacy.is24Hours ||
+        pharmacy.isOpenLate ||
+        pharmacy.isOfficialLateNight;
   }
 
   Future<void> _loadFavorites() async {
@@ -243,7 +253,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   PharmacySearchMode _searchModeForFilter(_PharmacyFilter filter) {
     return switch (filter) {
       _PharmacyFilter.openNow => PharmacySearchMode.openAtTime,
-      _PharmacyFilter.officialLateNight => PharmacySearchMode.officialLateNight,
       _PharmacyFilter.lateHours => PharmacySearchMode.lateHours,
       _PharmacyFilter.weekendHoliday => PharmacySearchMode.weekendHoliday,
       _PharmacyFilter.all => PharmacySearchMode.all,
@@ -415,7 +424,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   String _filterLabel(_PharmacyFilter filter) {
     return switch (filter) {
       _PharmacyFilter.openNow => _text.openFilter,
-      _PharmacyFilter.officialLateNight => _text.officialLateNight,
       _PharmacyFilter.lateHours => _text.lateHours,
       _PharmacyFilter.weekendHoliday => _text.weekendHoliday,
       _PharmacyFilter.all => _text.allPharmacies,
@@ -438,28 +446,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         selected.year,
         selected.month,
         selected.day,
-        _filter == _PharmacyFilter.openNow ? today.hour : 12,
-        _filter == _PharmacyFilter.openNow ? today.minute : 0,
-      );
-    });
-    await _loadPharmacies();
-  }
-
-  Future<void> _pickSearchTime() async {
-    final selected = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_targetDateTime),
-    );
-    if (selected == null || !mounted) {
-      return;
-    }
-    setState(() {
-      _targetDateTime = DateTime(
-        _targetDateTime.year,
-        _targetDateTime.month,
-        _targetDateTime.day,
-        selected.hour,
-        selected.minute,
+        12,
+        0,
       );
     });
     await _loadPharmacies();
@@ -610,24 +598,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _pickSearchDate,
-                    icon: const Icon(Icons.event_outlined),
-                    label: Text(text.searchDate(_targetDateTime)),
-                  ),
-                  if (_filter == _PharmacyFilter.openNow)
-                    OutlinedButton.icon(
-                      onPressed: _pickSearchTime,
-                      icon: const Icon(Icons.schedule_outlined),
-                      label: Text(text.searchTime(_targetDateTime)),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
+              if (_filter != _PharmacyFilter.openNow) ...[
+                OutlinedButton.icon(
+                  key: const Key('pharmacy-search-date'),
+                  onPressed: _pickSearchDate,
+                  icon: const Icon(Icons.event_outlined),
+                  label: Text(text.searchDate(_targetDateTime)),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -681,8 +660,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   icon: Icons.local_pharmacy_outlined,
                   title: switch (_filter) {
                     _PharmacyFilter.openNow => text.noOpenPharmacy,
-                    _PharmacyFilter.officialLateNight =>
-                      text.noOfficialLateNightPharmacy,
                     _PharmacyFilter.lateHours => text.noLateNightPharmacy,
                     _PharmacyFilter.weekendHoliday =>
                       text.noWeekendHolidayPharmacy,
@@ -1264,9 +1241,7 @@ class _NearbyPharmacyText {
       isEnglish ? 'Pharmacy information is unavailable' : '약국 정보를 확인할 수 없습니다';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get openNow => isEnglish ? 'Open now' : '영업 중';
-  String get openFilter => isEnglish ? 'Open at selected time' : '선택 시각에 영업';
-  String get officialLateNight =>
-      isEnglish ? 'Official late-night pharmacy' : '공공심야약국';
+  String get openFilter => isEnglish ? 'Open now' : '현재 영업 중';
   String get lateHours => isEnglish ? 'Open late' : '늦게까지 영업';
   String get weekendHoliday =>
       isEnglish ? 'Open on weekends / holidays' : '주말·공휴일 영업';
@@ -1283,16 +1258,12 @@ class _NearbyPharmacyText {
     return switch (filter) {
       _PharmacyFilter.openNow =>
         isEnglish
-            ? 'Find pharmacies open at the selected date and time.'
-            : '선택한 날짜와 시간에 문을 여는 약국을 찾습니다.',
-      _PharmacyFilter.officialLateNight =>
-        isEnglish
-            ? 'Find officially designated public late-night pharmacies.'
-            : '공식 지정된 공공심야약국을 찾습니다.',
+            ? 'Show pharmacies you can visit right now.'
+            : '지금 바로 방문할 수 있는 약국을 표시합니다.',
       _PharmacyFilter.lateHours =>
         isEnglish
-            ? 'Find pharmacies with reported late operating hours.'
-            : '등록된 운영시간을 기준으로 늦게까지 여는 약국을 찾습니다.',
+            ? 'Find public late-night pharmacies and pharmacies with late operating hours.'
+            : '공공심야약국과 늦은 시간까지 운영하는 약국을 함께 찾습니다.',
       _PharmacyFilter.weekendHoliday =>
         isEnglish
             ? 'Find pharmacies operating on the selected weekend or holiday.'
@@ -1310,9 +1281,6 @@ class _NearbyPharmacyText {
   String get noLateNightPharmacy => isEnglish
       ? 'No late-night pharmacies were found within 20 km'
       : '20km 안에 심야 운영 약국이 없습니다';
-  String get noOfficialLateNightPharmacy => isEnglish
-      ? 'No officially designated late-night pharmacies were found within 20 km'
-      : '20km 안에 공식 지정 공공심야약국이 없습니다';
   String get noWeekendHolidayPharmacy => isEnglish
       ? 'No pharmacies with weekend or holiday hours were found within 20 km'
       : '20km 안에 주말·공휴일 운영 약국이 없습니다';
@@ -1393,16 +1361,11 @@ class _NearbyPharmacyText {
 
   String scheduleTags(NearbyPharmacy pharmacy) {
     final labels = <String>[];
-    if (pharmacy.isOfficialLateNight) {
-      labels.add(
-        isEnglish ? 'Official public late-night pharmacy' : '공식 공공심야약국',
-      );
+    if (pharmacy.isOfficialLateNight || pharmacy.isOpenLate) {
+      labels.add(isEnglish ? 'Open late' : '늦게까지 영업');
       if (pharmacy.designationIsStale) {
-        labels.add(isEnglish ? 'Designation needs rechecking' : '지정 현황 재확인 필요');
+        labels.add(isEnglish ? 'Schedule needs rechecking' : '운영 정보 재확인 필요');
       }
-    }
-    if (pharmacy.isOpenLate) {
-      labels.add(isEnglish ? 'Late-night hours today' : '오늘 심야 운영');
     }
     if (pharmacy.hasWeekendOrHolidayHours) {
       labels.add(isEnglish ? 'Weekend/holiday hours available' : '주말·공휴일 운영');
@@ -1416,13 +1379,6 @@ class _NearbyPharmacyText {
         '${value.month.toString().padLeft(2, '0')}-'
         '${value.day.toString().padLeft(2, '0')}';
     return isEnglish ? 'Search date: $formatted' : '조회 날짜: $formatted';
-  }
-
-  String searchTime(DateTime value) {
-    final formatted =
-        '${value.hour.toString().padLeft(2, '0')}:'
-        '${value.minute.toString().padLeft(2, '0')}';
-    return isEnglish ? 'Time: $formatted' : '시각: $formatted';
   }
 
   String get phone => isEnglish ? 'Call' : '전화';
