@@ -202,20 +202,17 @@ void main() {
     expect(find.text('영업종료 메드버디약국'), findsNothing);
     expect(find.text('영업 중'), findsWidgets);
     expect(find.text('24시간'), findsNothing);
-    expect(find.text('전체'), findsOneWidget);
+    expect(find.text('조회 조건: 선택 시각에 영업'), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsNothing);
     expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.drag(
-      find.ancestor(
-        of: find.text('전체'),
-        matching: find.byType(SingleChildScrollView),
-      ),
-      const Offset(-600, 0),
-    );
+    await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('전체'));
+    expect(find.text('공공심야약국'), findsOneWidget);
+    expect(find.text('늦게까지 영업'), findsOneWidget);
+    expect(find.text('주말·공휴일 영업'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-all')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('pharmacy-card-closed')),
@@ -263,18 +260,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.drag(
-      find.ancestor(
-        of: find.text('공공심야'),
-        matching: find.byType(SingleChildScrollView),
-      ),
-      const Offset(-300, 0),
-    );
+    await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('공공심야'));
+    await tester.tap(
+      find.byKey(const ValueKey('pharmacy-filter-option-officialLateNight')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('공식 지정 공공심야약국이 없습니다'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('전체 약국 보기'),
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('전체 약국 보기'));
     await tester.pumpAndSettle();
 

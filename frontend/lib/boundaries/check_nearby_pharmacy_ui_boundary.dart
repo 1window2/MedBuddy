@@ -261,6 +261,167 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     await _loadPharmacies();
   }
 
+  // 함수명: _showFilterPicker
+  // 역할: 여러 조회 조건을 한곳에 모아 현재 조건을 명확하게 선택하게 한다.
+  Future<void> _showFilterPicker() async {
+    final selectedFilter = await showModalBottomSheet<_PharmacyFilter>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      builder: (sheetContext) {
+        return FractionallySizedBox(
+          heightFactor: 0.78,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _text.filterPickerTitle,
+                            style: const TextStyle(
+                              color: MedBuddyColors.textStrong,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _text.filterPickerDescription,
+                            style: const TextStyle(
+                              color: MedBuddyColors.textMuted,
+                              fontSize: 14,
+                              height: 1.35,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _text.close,
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  itemCount: _PharmacyFilter.values.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final filter = _PharmacyFilter.values[index];
+                    final isSelected = filter == _filter;
+                    return Semantics(
+                      selected: isSelected,
+                      button: true,
+                      child: Material(
+                        color: isSelected
+                            ? MedBuddyColors.successSurface
+                            : Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: isSelected
+                                ? MedBuddyColors.primary
+                                : MedBuddyColors.outline,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          key: ValueKey(
+                            'pharmacy-filter-option-${filter.name}',
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => Navigator.pop(sheetContext, filter),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  isSelected
+                                      ? Icons.radio_button_checked
+                                      : Icons.radio_button_off,
+                                  color: isSelected
+                                      ? MedBuddyColors.primary
+                                      : MedBuddyColors.textSubtle,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _filterLabel(filter),
+                                        style: const TextStyle(
+                                          color: MedBuddyColors.textStrong,
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _text.filterDescription(filter),
+                                        style: const TextStyle(
+                                          color: MedBuddyColors.textMuted,
+                                          fontSize: 14,
+                                          height: 1.35,
+                                          fontWeight: FontWeight.w500,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || selectedFilter == null || selectedFilter == _filter) {
+      return;
+    }
+    await _selectFilter(selectedFilter);
+  }
+
+  String _filterLabel(_PharmacyFilter filter) {
+    return switch (filter) {
+      _PharmacyFilter.openNow => _text.openFilter,
+      _PharmacyFilter.officialLateNight => _text.officialLateNight,
+      _PharmacyFilter.lateHours => _text.lateHours,
+      _PharmacyFilter.weekendHoliday => _text.weekendHoliday,
+      _PharmacyFilter.all => _text.allPharmacies,
+    };
+  }
+
   Future<void> _pickSearchDate() async {
     final today = DateTime.now();
     final selected = await showDatePicker(
@@ -467,35 +628,48 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                 ],
               ),
               const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SegmentedButton<_PharmacyFilter>(
-                  segments: [
-                    ButtonSegment(
-                      value: _PharmacyFilter.openNow,
-                      label: Text(text.openFilter),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  key: const Key('pharmacy-filter-selector'),
+                  onPressed: _showFilterPicker,
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
                     ),
-                    ButtonSegment(
-                      value: _PharmacyFilter.officialLateNight,
-                      label: Text(text.officialLateNight),
+                    side: const BorderSide(color: MedBuddyColors.outline),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    ButtonSegment(
-                      value: _PharmacyFilter.lateHours,
-                      label: Text(text.lateHours),
-                    ),
-                    ButtonSegment(
-                      value: _PharmacyFilter.weekendHoliday,
-                      label: Text(text.weekendHoliday),
-                    ),
-                    ButtonSegment(
-                      value: _PharmacyFilter.all,
-                      label: Text(text.all),
-                    ),
-                  ],
-                  selected: {_filter},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (selection) =>
-                      _selectFilter(selection.first),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.filter_alt_outlined,
+                        color: MedBuddyColors.primaryDark,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          text.selectedFilter(_filterLabel(_filter)),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: MedBuddyColors.textMuted,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1090,11 +1264,46 @@ class _NearbyPharmacyText {
       isEnglish ? 'Pharmacy information is unavailable' : '약국 정보를 확인할 수 없습니다';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get openNow => isEnglish ? 'Open now' : '영업 중';
-  String get openFilter => isEnglish ? 'Open at time' : '선택 시각 영업';
-  String get officialLateNight => isEnglish ? 'Official late-night' : '공공심야';
-  String get lateHours => isEnglish ? 'Reported late hours' : '심야 운영정보';
-  String get weekendHoliday => isEnglish ? 'Weekend / holiday' : '주말·공휴일';
+  String get openFilter => isEnglish ? 'Open at selected time' : '선택 시각에 영업';
+  String get officialLateNight =>
+      isEnglish ? 'Official late-night pharmacy' : '공공심야약국';
+  String get lateHours => isEnglish ? 'Open late' : '늦게까지 영업';
+  String get weekendHoliday =>
+      isEnglish ? 'Open on weekends / holidays' : '주말·공휴일 영업';
   String get all => isEnglish ? 'All' : '전체';
+  String get allPharmacies => isEnglish ? 'All pharmacies' : '전체 약국';
+  String get close => isEnglish ? 'Close' : '닫기';
+  String get filterPickerTitle => isEnglish ? 'Search filter' : '조회 조건';
+  String get filterPickerDescription => isEnglish
+      ? 'Choose one condition for the pharmacy list.'
+      : '약국 목록에 적용할 조건을 하나 선택해주세요.';
+  String selectedFilter(String label) =>
+      isEnglish ? 'Search filter: $label' : '조회 조건: $label';
+  String filterDescription(_PharmacyFilter filter) {
+    return switch (filter) {
+      _PharmacyFilter.openNow =>
+        isEnglish
+            ? 'Find pharmacies open at the selected date and time.'
+            : '선택한 날짜와 시간에 문을 여는 약국을 찾습니다.',
+      _PharmacyFilter.officialLateNight =>
+        isEnglish
+            ? 'Find officially designated public late-night pharmacies.'
+            : '공식 지정된 공공심야약국을 찾습니다.',
+      _PharmacyFilter.lateHours =>
+        isEnglish
+            ? 'Find pharmacies with reported late operating hours.'
+            : '등록된 운영시간을 기준으로 늦게까지 여는 약국을 찾습니다.',
+      _PharmacyFilter.weekendHoliday =>
+        isEnglish
+            ? 'Find pharmacies operating on the selected weekend or holiday.'
+            : '선택한 주말이나 공휴일에 운영하는 약국을 찾습니다.',
+      _PharmacyFilter.all =>
+        isEnglish
+            ? 'Show every nearby pharmacy regardless of operating hours.'
+            : '운영시간과 관계없이 주변 약국을 모두 표시합니다.',
+    };
+  }
+
   String get noOpenPharmacy => isEnglish
       ? 'No open pharmacies were found within 20 km'
       : '20km 안에 영업 중인 약국이 없습니다';
