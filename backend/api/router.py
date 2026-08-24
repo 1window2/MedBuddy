@@ -646,6 +646,16 @@ def save_user_setting(
         request.font_size,
         request.reading_speed,
         request.language,
+        request.language_mode,
+        request.time_format,
+        request.medication_notifications_enabled,
+        request.caregiver_notifications_enabled,
+        request.chat_notifications_enabled,
+        request.notification_detail_mode,
+        request.default_morning_time,
+        request.default_lunch_time,
+        request.default_evening_time,
+        request.default_bedtime,
     )
 
 

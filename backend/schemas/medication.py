@@ -213,6 +213,19 @@ class UserSettingUpdate(BaseModel):
     font_size: int = Field(ge=12, le=24)
     reading_speed: float = Field(ge=0.5, le=2.0)
     language: str = Field(pattern=r"^(ko|en)$")
+    language_mode: str = Field(default="ko", pattern=r"^(system|ko|en)$")
+    time_format: str = Field(default="24h", pattern=r"^(12h|24h)$")
+    medication_notifications_enabled: bool = True
+    caregiver_notifications_enabled: bool = True
+    chat_notifications_enabled: bool = True
+    notification_detail_mode: str = Field(
+        default="full",
+        pattern=r"^(full|type_only)$",
+    )
+    default_morning_time: str = Field(default="08:00", pattern=r"^\d{2}:\d{2}$")
+    default_lunch_time: str = Field(default="12:00", pattern=r"^\d{2}:\d{2}$")
+    default_evening_time: str = Field(default="18:00", pattern=r"^\d{2}:\d{2}$")
+    default_bedtime: str = Field(default="22:00", pattern=r"^\d{2}:\d{2}$")
 
 
 # Class Name: VoiceGuideRequest

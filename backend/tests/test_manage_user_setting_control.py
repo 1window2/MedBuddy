@@ -1,5 +1,5 @@
-# File Name: test_manage_user_setting_control.py
-# Role: Verifies user setting persistence and schema upgrade behavior.
+# 파일명: test_manage_user_setting_control.py
+# 역할: 사용자 설정 저장과 기존 DB 스키마 확장을 검증한다.
 
 import sys
 import unittest
@@ -46,6 +46,16 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(response["data"]["font_size"], 16)
         self.assertEqual(response["data"]["reading_speed"], 1.0)
         self.assertEqual(response["data"]["language"], "ko")
+        self.assertEqual(response["data"]["language_mode"], "ko")
+        self.assertEqual(response["data"]["time_format"], "24h")
+        self.assertTrue(response["data"]["medication_notifications_enabled"])
+        self.assertTrue(response["data"]["caregiver_notifications_enabled"])
+        self.assertTrue(response["data"]["chat_notifications_enabled"])
+        self.assertEqual(response["data"]["notification_detail_mode"], "full")
+        self.assertEqual(response["data"]["default_morning_time"], "08:00")
+        self.assertEqual(response["data"]["default_lunch_time"], "12:00")
+        self.assertEqual(response["data"]["default_evening_time"], "18:00")
+        self.assertEqual(response["data"]["default_bedtime"], "22:00")
         self.assertEqual(self.db.query(_UserSetting).count(), 0)
 
     def test_save_user_setting_persists_and_updates_values(self) -> None:
@@ -64,6 +74,39 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(update_response["data"]["language"], "ko")
         self.assertEqual(self.db.query(_UserSetting).count(), 1)
 
+    def test_save_user_setting_persists_notification_and_display_options(self) -> None:
+        response = self.control.saveUserSetting(
+            "user-a",
+            20,
+            1.2,
+            "en",
+            language_mode="system",
+            time_format="12h",
+            medication_notifications_enabled=False,
+            caregiver_notifications_enabled=False,
+            chat_notifications_enabled=False,
+            notification_detail_mode="type_only",
+            default_morning_time="07:10",
+            default_lunch_time="12:10",
+            default_evening_time="19:10",
+            default_bedtime="23:10",
+        )
+
+        data = response["data"]
+        self.assertEqual(data["language_mode"], "system")
+        self.assertEqual(data["time_format"], "12h")
+        self.assertFalse(data["medication_notifications_enabled"])
+        self.assertFalse(data["caregiver_notifications_enabled"])
+        self.assertFalse(data["chat_notifications_enabled"])
+        self.assertEqual(data["notification_detail_mode"], "type_only")
+        self.assertEqual(data["default_morning_time"], "07:10")
+        self.assertEqual(data["default_lunch_time"], "12:10")
+        self.assertEqual(data["default_evening_time"], "19:10")
+        self.assertEqual(data["default_bedtime"], "23:10")
+
+        restored = self.control.requestUserSetting("user-a")["data"]
+        self.assertEqual(restored, data)
+
     def test_invalid_user_setting_values_are_rejected(self) -> None:
         with self.assertRaises(HTTPException) as font_context:
             self.control.saveUserSetting("user-a", 40, 1.0, "ko")
@@ -76,6 +119,46 @@ class ManageUserSettingTest(unittest.TestCase):
         with self.assertRaises(HTTPException) as language_context:
             self.control.saveUserSetting("user-a", 16, 1.0, "jp")
         self.assertEqual(language_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as language_mode_context:
+            self.control.saveUserSetting(
+                "user-a",
+                16,
+                1.0,
+                "ko",
+                language_mode="automatic",
+            )
+        self.assertEqual(language_mode_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as time_format_context:
+            self.control.saveUserSetting(
+                "user-a",
+                16,
+                1.0,
+                "ko",
+                time_format="locale",
+            )
+        self.assertEqual(time_format_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as detail_mode_context:
+            self.control.saveUserSetting(
+                "user-a",
+                16,
+                1.0,
+                "ko",
+                notification_detail_mode="hidden",
+            )
+        self.assertEqual(detail_mode_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as default_time_context:
+            self.control.saveUserSetting(
+                "user-a",
+                16,
+                1.0,
+                "ko",
+                default_morning_time="25:00",
+            )
+        self.assertEqual(default_time_context.exception.status_code, 400)
 
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
         legacy_engine = create_engine(
@@ -112,6 +195,20 @@ class ManageUserSettingTest(unittest.TestCase):
                 self.assertIn("font_size", columns)
                 self.assertIn("reading_speed", columns)
                 self.assertIn("language", columns)
+                self.assertTrue(
+                    {
+                        "language_mode",
+                        "time_format",
+                        "medication_notifications_enabled",
+                        "caregiver_notifications_enabled",
+                        "chat_notifications_enabled",
+                        "notification_detail_mode",
+                        "default_morning_time",
+                        "default_lunch_time",
+                        "default_evening_time",
+                        "default_bedtime",
+                    }.issubset(columns)
+                )
                 row_count = connection.execute(
                     text(
                         "SELECT COUNT(*) FROM user_settings "
