@@ -10,11 +10,18 @@ import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// 파일명: manage_user_setting_control_test.dart
-// 역할: 사용자 설정 저장/복원 control이 SharedPreferences와 올바르게 연결되는지 검증한다.
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('사용자 설정에 따라 시각을 12시간제와 24시간제로 표시한다', () {
+    const koreanSetting = UserSetting(language: 'ko', timeFormat: '12h');
+    const englishSetting = UserSetting(language: 'en', timeFormat: '12h');
+    const twentyFourHourSetting = UserSetting(timeFormat: '24h');
+
+    expect(koreanSetting.formatTime(18, 5), '오후 6:05');
+    expect(englishSetting.formatTime(18, 5), 'PM 6:05');
+    expect(twentyFourHourSetting.formatTime(18, 5), '18:05');
+  });
 
   test('saveUserSetting updates all user setting fields', () async {
     SharedPreferences.setMockInitialValues({});
@@ -25,6 +32,16 @@ void main() {
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
       language: 'en',
+      languageMode: 'system',
+      timeFormat: '12h',
+      medicationNotificationsEnabled: false,
+      caregiverNotificationsEnabled: false,
+      chatNotificationsEnabled: false,
+      notificationDetailMode: 'type_only',
+      defaultMorningTime: '07:30',
+      defaultLunchTime: '12:30',
+      defaultEveningTime: '19:10',
+      defaultBedtime: '23:20',
     );
     final setting = result.setting;
 
@@ -35,6 +52,16 @@ void main() {
     expect(setting.userHash, 'local_patient');
     expect(setting.fontSizeOption, 'large');
     expect(setting.readingSpeedOption, 'fast');
+    expect(setting.languageMode, 'system');
+    expect(setting.timeFormat, '12h');
+    expect(setting.medicationNotificationsEnabled, isFalse);
+    expect(setting.caregiverNotificationsEnabled, isFalse);
+    expect(setting.chatNotificationsEnabled, isFalse);
+    expect(setting.notificationDetailMode, 'type_only');
+    expect(setting.defaultMorningTime, '07:30');
+    expect(setting.defaultLunchTime, '12:30');
+    expect(setting.defaultEveningTime, '19:10');
+    expect(setting.defaultBedtime, '23:20');
   });
 
   test('근처 운영 약국 실험 설정은 사용자별 기기에 저장된다', () async {
@@ -137,6 +164,16 @@ void main() {
             'font_size': 20,
             'reading_speed': 1.2,
             'language': 'en',
+            'language_mode': 'system',
+            'time_format': '12h',
+            'medication_notifications_enabled': false,
+            'caregiver_notifications_enabled': false,
+            'chat_notifications_enabled': false,
+            'notification_detail_mode': 'type_only',
+            'default_morning_time': '07:10',
+            'default_lunch_time': '12:10',
+            'default_evening_time': '19:10',
+            'default_bedtime': '23:10',
           },
         }),
         200,
@@ -155,6 +192,16 @@ void main() {
     expect(setting.fontSizeOption, 'large');
     expect(setting.readingSpeedOption, 'fast');
     expect(setting.language, 'en');
+    expect(setting.languageMode, 'system');
+    expect(setting.timeFormat, '12h');
+    expect(setting.medicationNotificationsEnabled, isFalse);
+    expect(setting.caregiverNotificationsEnabled, isFalse);
+    expect(setting.chatNotificationsEnabled, isFalse);
+    expect(setting.notificationDetailMode, 'type_only');
+    expect(setting.defaultMorningTime, '07:10');
+    expect(setting.defaultLunchTime, '12:10');
+    expect(setting.defaultEveningTime, '19:10');
+    expect(setting.defaultBedtime, '23:10');
     expect(setting.nearbyPharmacyLabEnabled, isTrue);
     expect(setting.linkedMedicationChatLabEnabled, isTrue);
     final preferences = await SharedPreferences.getInstance();
@@ -172,6 +219,16 @@ void main() {
         requestBody.containsKey('linked_medication_chat_lab_enabled'),
         isFalse,
       );
+      expect(requestBody['language_mode'], 'system');
+      expect(requestBody['time_format'], '12h');
+      expect(requestBody['medication_notifications_enabled'], isFalse);
+      expect(requestBody['caregiver_notifications_enabled'], isFalse);
+      expect(requestBody['chat_notifications_enabled'], isFalse);
+      expect(requestBody['notification_detail_mode'], 'type_only');
+      expect(requestBody['default_morning_time'], '07:15');
+      expect(requestBody['default_lunch_time'], '12:15');
+      expect(requestBody['default_evening_time'], '19:15');
+      expect(requestBody['default_bedtime'], '23:15');
       return http.Response(
         jsonEncode({
           'success': true,
@@ -180,6 +237,16 @@ void main() {
             'font_size': 20,
             'reading_speed': 1.2,
             'language': 'ko',
+            'language_mode': 'system',
+            'time_format': '12h',
+            'medication_notifications_enabled': false,
+            'caregiver_notifications_enabled': false,
+            'chat_notifications_enabled': false,
+            'notification_detail_mode': 'type_only',
+            'default_morning_time': '07:15',
+            'default_lunch_time': '12:15',
+            'default_evening_time': '19:15',
+            'default_bedtime': '23:15',
           },
         }),
         200,
@@ -200,11 +267,27 @@ void main() {
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
       language: 'ko',
+      languageMode: 'system',
+      timeFormat: '12h',
+      medicationNotificationsEnabled: false,
+      caregiverNotificationsEnabled: false,
+      chatNotificationsEnabled: false,
+      notificationDetailMode: 'type_only',
+      defaultMorningTime: '07:15',
+      defaultLunchTime: '12:15',
+      defaultEveningTime: '19:15',
+      defaultBedtime: '23:15',
     );
 
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.fontSizeOption, 'large');
     expect(result.setting.readingSpeedOption, 'fast');
+    expect(result.setting.languageMode, 'system');
+    expect(result.setting.timeFormat, '12h');
+    expect(result.setting.medicationNotificationsEnabled, isFalse);
+    expect(result.setting.caregiverNotificationsEnabled, isFalse);
+    expect(result.setting.chatNotificationsEnabled, isFalse);
+    expect(result.setting.notificationDetailMode, 'type_only');
     expect(result.setting.nearbyPharmacyLabEnabled, isTrue);
     expect(result.setting.linkedMedicationChatLabEnabled, isTrue);
     control.dispose();

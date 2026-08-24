@@ -5,10 +5,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+import 'set_notification_ui_boundary.dart';
 
 typedef SettingPreviewSpeaker =
     Future<void> Function(
@@ -17,6 +19,8 @@ typedef SettingPreviewSpeaker =
       void Function()? onComplete,
     });
 typedef SettingPreviewStopper = Future<void> Function();
+typedef ExtendedUserSettingSaver =
+    Future<UserSettingSaveResult> Function(UserSetting setting);
 
 // 클래스명: ManageUserSettingUI
 // 역할: 사용자가 접근성 관련 표시 설정을 선택하고 저장할 수 있게 한다.
@@ -35,6 +39,9 @@ class ManageUserSettingUI extends StatefulWidget {
   onNearbyPharmacyLabSettingSaveRequested;
   final Future<void> Function(bool enabled)?
   onLinkedMedicationChatLabSettingSaveRequested;
+  final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
+  final VoidCallback? onMedicationScheduleRequested;
+  final Future<void> Function()? onDeviceNotificationSettingsRequested;
   final Future<UserSettingSaveResult> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
@@ -53,18 +60,37 @@ class ManageUserSettingUI extends StatefulWidget {
     this.previewStopper,
     this.onNearbyPharmacyLabSettingSaveRequested,
     this.onLinkedMedicationChatLabSettingSaveRequested,
+    this.onExtendedSettingSaveRequested,
+    this.onMedicationScheduleRequested,
+    this.onDeviceNotificationSettingsRequested,
   });
 
   @override
   State<ManageUserSettingUI> createState() => _ManageUserSettingUIState();
 }
 
-enum _SettingSection { overview, displayAndVoice, laboratory, account }
+enum _SettingSection {
+  overview,
+  medicationAndNotifications,
+  displayAndVoice,
+  laboratory,
+  account,
+}
 
 class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _fontSize;
   late String _readingSpeed;
   late String _language;
+  late String _languageMode;
+  late String _timeFormat;
+  late bool _medicationNotificationsEnabled;
+  late bool _caregiverNotificationsEnabled;
+  late bool _chatNotificationsEnabled;
+  late String _notificationDetailMode;
+  late String _defaultMorningTime;
+  late String _defaultLunchTime;
+  late String _defaultEveningTime;
+  late String _defaultBedtime;
   late bool _nearbyPharmacyLabEnabled;
   late bool _linkedMedicationChatLabEnabled;
   bool _isSaving = false;
@@ -79,6 +105,18 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
     _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
+    _languageMode = widget.initialSetting.languageMode;
+    _timeFormat = widget.initialSetting.timeFormat;
+    _medicationNotificationsEnabled =
+        widget.initialSetting.medicationNotificationsEnabled;
+    _caregiverNotificationsEnabled =
+        widget.initialSetting.caregiverNotificationsEnabled;
+    _chatNotificationsEnabled = widget.initialSetting.chatNotificationsEnabled;
+    _notificationDetailMode = widget.initialSetting.notificationDetailMode;
+    _defaultMorningTime = widget.initialSetting.defaultMorningTime;
+    _defaultLunchTime = widget.initialSetting.defaultLunchTime;
+    _defaultEveningTime = widget.initialSetting.defaultEveningTime;
+    _defaultBedtime = widget.initialSetting.defaultBedtime;
     _nearbyPharmacyLabEnabled = widget.initialSetting.nearbyPharmacyLabEnabled;
     _linkedMedicationChatLabEnabled =
         widget.initialSetting.linkedMedicationChatLabEnabled;
@@ -103,6 +141,16 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
       readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
       language: _language,
+      languageMode: _languageMode,
+      timeFormat: _timeFormat,
+      medicationNotificationsEnabled: _medicationNotificationsEnabled,
+      caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
+      chatNotificationsEnabled: _chatNotificationsEnabled,
+      notificationDetailMode: _notificationDetailMode,
+      defaultMorningTime: _defaultMorningTime,
+      defaultLunchTime: _defaultLunchTime,
+      defaultEveningTime: _defaultEveningTime,
+      defaultBedtime: _defaultBedtime,
       nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
       linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
     );
@@ -153,7 +201,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         ),
                       ),
                     ),
-                    if (_selectedSection == _SettingSection.displayAndVoice ||
+                    if (_selectedSection ==
+                            _SettingSection.medicationAndNotifications ||
+                        _selectedSection == _SettingSection.displayAndVoice ||
                         _selectedSection == _SettingSection.laboratory)
                       _SettingSaveFooter(
                         text: text,
@@ -182,10 +232,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       _SettingSection.overview => _SettingsOverview(
         text: text,
         accountPresentation: accountPresentation,
+        medicationAndNotificationSummary: text.medicationAndNotificationSummary(
+          medicationEnabled: _medicationNotificationsEnabled,
+          caregiverEnabled: _caregiverNotificationsEnabled,
+          chatEnabled: _chatNotificationsEnabled,
+        ),
         displayAndVoiceSummary: text.displayAndVoiceSummary(
           fontSize: _fontSize,
           readingSpeed: _readingSpeed,
-          language: _language,
+          languageMode: _languageMode,
         ),
         laboratorySummary: text.laboratorySummary(
           nearbyPharmacyEnabled: _nearbyPharmacyLabEnabled,
@@ -195,6 +250,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           setState(() => _selectedSection = section);
         },
       ),
+      _SettingSection.medicationAndNotifications =>
+        _buildMedicationAndNotificationSettings(text),
       _SettingSection.displayAndVoice => _buildDisplayAndVoiceSettings(
         text,
         contentScale,
@@ -205,6 +262,105 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         accountPresentation,
       ),
     };
+  }
+
+  // 함수명: _buildMedicationAndNotificationSettings
+  // 역할: 전체 알림 정책, 신규 일정 기본 시각과 잠금 화면 공개 범위를 구성한다.
+  Widget _buildMedicationAndNotificationSettings(_SettingText text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingTitle(text.medicationAndNotificationsTitle),
+        const SizedBox(height: 24),
+        _SettingToggle(
+          switchKey: const ValueKey('medicationNotificationsSwitch'),
+          title: text.medicationNotificationsTitle,
+          description: text.medicationNotificationsDescription,
+          enabled: _medicationNotificationsEnabled,
+          onChanged: (enabled) =>
+              setState(() => _medicationNotificationsEnabled = enabled),
+        ),
+        const SizedBox(height: 12),
+        _SettingToggle(
+          switchKey: const ValueKey('caregiverNotificationsSwitch'),
+          title: text.caregiverNotificationsTitle,
+          description: text.caregiverNotificationsDescription,
+          enabled: _caregiverNotificationsEnabled,
+          onChanged: (enabled) =>
+              setState(() => _caregiverNotificationsEnabled = enabled),
+        ),
+        const SizedBox(height: 12),
+        _SettingToggle(
+          switchKey: const ValueKey('chatNotificationsSwitch'),
+          title: text.chatNotificationsTitle,
+          description: text.chatNotificationsDescription,
+          enabled: _chatNotificationsEnabled,
+          onChanged: (enabled) =>
+              setState(() => _chatNotificationsEnabled = enabled),
+        ),
+        const SizedBox(height: 18),
+        _SettingsActionTile(
+          icon: Icons.notifications_active_outlined,
+          title: text.deviceNotificationSettingsTitle,
+          description: text.deviceNotificationSettingsDescription,
+          onTap: _openDeviceNotificationSettings,
+        ),
+        const SizedBox(height: 32),
+        _SettingFieldTitle(text.defaultMedicationTimeTitle),
+        const SizedBox(height: 8),
+        Text(
+          text.defaultMedicationTimeDescription,
+          style: const TextStyle(
+            color: MedBuddyColors.textMuted,
+            fontSize: 14,
+            height: 1.45,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _DefaultMedicationTimePanel(
+          text: text,
+          userSetting: _draftSetting,
+          morningTime: _defaultMorningTime,
+          lunchTime: _defaultLunchTime,
+          eveningTime: _defaultEveningTime,
+          bedtime: _defaultBedtime,
+          onTimeRequested: _selectDefaultMedicationTime,
+        ),
+        const SizedBox(height: 14),
+        _SettingsActionTile(
+          icon: Icons.schedule_outlined,
+          title: text.detailedScheduleSettingsTitle,
+          description: text.detailedScheduleSettingsDescription,
+          onTap: widget.onMedicationScheduleRequested,
+        ),
+        const SizedBox(height: 32),
+        _SettingFieldTitle(text.notificationPrivacyTitle),
+        const SizedBox(height: 8),
+        Text(
+          text.notificationPrivacyDescription,
+          style: const TextStyle(
+            color: MedBuddyColors.textMuted,
+            fontSize: 14,
+            height: 1.45,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _StackedOptionList(
+          options: [
+            _SettingOption(value: 'full', label: text.notificationPrivacyFull),
+            _SettingOption(
+              value: 'type_only',
+              label: text.notificationPrivacyTypeOnly,
+            ),
+          ],
+          selectedValue: _notificationDetailMode,
+          onSelected: (value) =>
+              setState(() => _notificationDetailMode = value),
+        ),
+      ],
+    );
   }
 
   Widget _buildDisplayAndVoiceSettings(_SettingText text, double contentScale) {
@@ -253,14 +409,26 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         const SizedBox(height: 34),
         _SettingFieldTitle(text.languageTitle),
         const SizedBox(height: 16),
-        _OptionRow(
-          options: const [
-            _SettingOption(value: 'ko', label: '한국어'),
-            _SettingOption(value: 'en', label: 'English'),
+        _StackedOptionList(
+          options: [
+            _SettingOption(value: 'system', label: text.followDeviceLanguage),
+            const _SettingOption(value: 'ko', label: '한국어'),
+            const _SettingOption(value: 'en', label: 'English'),
           ],
-          selectedValue: _language,
+          selectedValue: _languageMode,
+          onSelected: _selectLanguageMode,
+        ),
+        const SizedBox(height: 34),
+        _SettingFieldTitle(text.timeFormatTitle),
+        const SizedBox(height: 16),
+        _OptionRow(
+          options: [
+            _SettingOption(value: '12h', label: text.twelveHourTime),
+            _SettingOption(value: '24h', label: text.twentyFourHourTime),
+          ],
+          selectedValue: _timeFormat,
           contentScale: contentScale,
-          onSelected: (value) => setState(() => _language = value),
+          onSelected: (value) => setState(() => _timeFormat = value),
         ),
         const SizedBox(height: 34),
         _PreviewPanel(
@@ -428,6 +596,90 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _selectedSection = _SettingSection.overview);
   }
 
+  UserSetting get _draftSetting => widget.initialSetting.copyWith(
+    fontSize: UserSetting.fontSizeFromOption(_fontSize),
+    readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+    language: _language,
+    languageMode: _languageMode,
+    timeFormat: _timeFormat,
+    medicationNotificationsEnabled: _medicationNotificationsEnabled,
+    caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
+    chatNotificationsEnabled: _chatNotificationsEnabled,
+    notificationDetailMode: _notificationDetailMode,
+    defaultMorningTime: _defaultMorningTime,
+    defaultLunchTime: _defaultLunchTime,
+    defaultEveningTime: _defaultEveningTime,
+    defaultBedtime: _defaultBedtime,
+    nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
+    linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
+  );
+
+  // 함수명: _selectLanguageMode
+  // 역할: 선택한 언어 모드를 즉시 현재 설정 화면의 표시 언어에 반영한다.
+  void _selectLanguageMode(String languageMode) {
+    setState(() {
+      _languageMode = languageMode;
+      _language = AppLanguageControl.resolveLanguage(languageMode);
+    });
+  }
+
+  // 함수명: _selectDefaultMedicationTime
+  // 역할: 기존 복약 알림과 같은 시간 선택기를 사용해 신규 일정 기본 시각을 바꾼다.
+  Future<void> _selectDefaultMedicationTime(String slotKey) async {
+    final currentValue = _draftSetting.defaultTimeForSlot(slotKey);
+    final initialTime = _parseTime(currentValue);
+    final selectedTime = await SetNotificationUI.showNotificationPopup(
+      context,
+      slotTitle: _SettingText(_language).defaultTimeLabel(slotKey),
+      initialTime: initialTime,
+      language: _language,
+    );
+    if (!mounted || selectedTime == null) {
+      return;
+    }
+    final formattedTime =
+        '${selectedTime.hour.toString().padLeft(2, '0')}:'
+        '${selectedTime.minute.toString().padLeft(2, '0')}';
+    setState(() {
+      switch (slotKey) {
+        case 'morning':
+          _defaultMorningTime = formattedTime;
+          break;
+        case 'lunch':
+          _defaultLunchTime = formattedTime;
+          break;
+        case 'evening':
+          _defaultEveningTime = formattedTime;
+          break;
+        case 'bedtime':
+          _defaultBedtime = formattedTime;
+          break;
+      }
+    });
+  }
+
+  TimeOfDay _parseTime(String value) {
+    final parts = value.split(':');
+    return TimeOfDay(
+      hour: parts.isNotEmpty ? int.tryParse(parts.first) ?? 8 : 8,
+      minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+    );
+  }
+
+  Future<void> _openDeviceNotificationSettings() async {
+    final text = _SettingText(_language);
+    try {
+      await widget.onDeviceNotificationSettingsRequested?.call();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(text.deviceNotificationSettingsFailed)),
+      );
+    }
+  }
+
   // 함수명: _selectReadingSpeed
   // 함수역할:
   // - 재생 중인 미리보기를 중지한 뒤 새 읽기 속도를 선택한다.
@@ -532,11 +784,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _isSaving = true);
     final text = _SettingText(_language);
     try {
-      final saveResult = await widget.onSettingSaveRequested(
-        fontSizeOption: _fontSize,
-        readingSpeedOption: _readingSpeed,
-        language: _language,
-      );
+      final extendedSaver = widget.onExtendedSettingSaveRequested;
+      final saveResult = extendedSaver != null
+          ? await extendedSaver(_draftSetting)
+          : await widget.onSettingSaveRequested(
+              fontSizeOption: _fontSize,
+              readingSpeedOption: _readingSpeed,
+              language: _language,
+            );
       await widget.onNearbyPharmacyLabSettingSaveRequested?.call(
         _nearbyPharmacyLabEnabled,
       );
@@ -701,6 +956,7 @@ class _AccountPresentation {
 class _SettingsOverview extends StatelessWidget {
   final _SettingText text;
   final _AccountPresentation accountPresentation;
+  final String medicationAndNotificationSummary;
   final String displayAndVoiceSummary;
   final String laboratorySummary;
   final ValueChanged<_SettingSection> onSectionSelected;
@@ -708,6 +964,7 @@ class _SettingsOverview extends StatelessWidget {
   const _SettingsOverview({
     required this.text,
     required this.accountPresentation,
+    required this.medicationAndNotificationSummary,
     required this.displayAndVoiceSummary,
     required this.laboratorySummary,
     required this.onSectionSelected,
@@ -722,6 +979,15 @@ class _SettingsOverview extends StatelessWidget {
         const SizedBox(height: 24),
         _AccountWelcomePanel(presentation: accountPresentation),
         const SizedBox(height: 28),
+        _SettingsMenuTile(
+          tileKey: const ValueKey('settingsMedicationAndNotificationsMenu'),
+          icon: Icons.notifications_active_outlined,
+          title: text.medicationAndNotificationsTitle,
+          summary: medicationAndNotificationSummary,
+          onTap: () =>
+              onSectionSelected(_SettingSection.medicationAndNotifications),
+        ),
+        const SizedBox(height: 14),
         _SettingsMenuTile(
           tileKey: const ValueKey('settingsDisplayAndVoiceMenu'),
           icon: Icons.text_fields_rounded,
@@ -1213,6 +1479,245 @@ class _ExperimentalFeatureToggle extends StatelessWidget {
   }
 }
 
+class _SettingToggle extends StatelessWidget {
+  final Key switchKey;
+  final String title;
+  final String description;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _SettingToggle({
+    required this.switchKey,
+    required this.title,
+    required this.description,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        key: switchKey,
+        value: enabled,
+        onChanged: onChanged,
+        activeThumbColor: MedBuddyColors.primary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(
+            description,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback? onTap;
+
+  const _SettingsActionTile({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            children: [
+              Icon(icon, color: MedBuddyColors.primary, size: 28),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textMuted,
+                        fontSize: 13,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: MedBuddyColors.textLight,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DefaultMedicationTimePanel extends StatelessWidget {
+  final _SettingText text;
+  final UserSetting userSetting;
+  final String morningTime;
+  final String lunchTime;
+  final String eveningTime;
+  final String bedtime;
+  final ValueChanged<String> onTimeRequested;
+
+  const _DefaultMedicationTimePanel({
+    required this.text,
+    required this.userSetting,
+    required this.morningTime,
+    required this.lunchTime,
+    required this.eveningTime,
+    required this.bedtime,
+    required this.onTimeRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = [
+      ('morning', text.morning, morningTime, Icons.wb_sunny_outlined),
+      ('lunch', text.lunch, lunchTime, Icons.lunch_dining_outlined),
+      ('evening', text.evening, eveningTime, Icons.wb_twilight_outlined),
+      ('bedtime', text.bedtime, bedtime, Icons.bedtime_outlined),
+    ];
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int index = 0; index < entries.length; index++) ...[
+            ListTile(
+              onTap: () => onTimeRequested(entries[index].$1),
+              leading: Icon(entries[index].$4, color: MedBuddyColors.primary),
+              title: Text(
+                entries[index].$2,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              trailing: Text(
+                userSetting.formatTimeValue(entries[index].$3),
+                style: const TextStyle(
+                  color: MedBuddyColors.primary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (index != entries.length - 1)
+              const Divider(height: 1, color: MedBuddyColors.divider),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StackedOptionList extends StatelessWidget {
+  final List<_SettingOption> options;
+  final String selectedValue;
+  final ValueChanged<String> onSelected;
+
+  const _StackedOptionList({
+    required this.options,
+    required this.selectedValue,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int index = 0; index < options.length; index++) ...[
+            Semantics(
+              selected: options[index].value == selectedValue,
+              button: true,
+              child: ListTile(
+                onTap: () => onSelected(options[index].value),
+                leading: Icon(
+                  options[index].value == selectedValue
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: options[index].value == selectedValue
+                      ? MedBuddyColors.primary
+                      : MedBuddyColors.textLight,
+                ),
+                title: Text(
+                  options[index].label,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            if (index != options.length - 1)
+              const Divider(height: 1, color: MedBuddyColors.divider),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _OptionRow extends StatelessWidget {
   final List<_SettingOption> options;
   final String selectedValue;
@@ -1435,6 +1940,8 @@ class _SettingText {
 
   String get back => isEnglish ? 'Back' : '뒤로가기';
   String get settingsTitle => isEnglish ? 'Settings' : '환경설정';
+  String get medicationAndNotificationsTitle =>
+      isEnglish ? 'Medication & Notifications' : '복약 및 알림';
   String get displayAndVoiceTitle => isEnglish ? 'Display & Voice' : '화면 및 음성';
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
   String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
@@ -1463,10 +1970,87 @@ class _SettingText {
   String get linkedMedicationChatLabDescription => isEnglish
       ? 'Let linked patients and caregivers discuss an active medication.'
       : '복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다.';
+  String get medicationNotificationsTitle =>
+      isEnglish ? 'My medication reminders' : '내 복약 알림';
+  String get medicationNotificationsDescription => isEnglish
+      ? 'Receive reminders for your scheduled medication times.'
+      : '복용 시간에 맞춰 내 휴대폰으로 알림을 받습니다.';
+  String get caregiverNotificationsTitle =>
+      isEnglish ? 'Caregiver updates' : '보호자 알림';
+  String get caregiverNotificationsDescription => isEnglish
+      ? 'Receive medication updates for linked patients.'
+      : '연동된 환자의 복약 상태 알림을 받습니다.';
+  String get chatNotificationsTitle =>
+      isEnglish ? 'Chat notifications' : '채팅 알림';
+  String get chatNotificationsDescription => isEnglish
+      ? 'Receive notifications for new medication conversations.'
+      : '복약 대화에 새 메시지가 오면 알림을 받습니다.';
+  String get deviceNotificationSettingsTitle =>
+      isEnglish ? 'Phone notification settings' : '휴대폰 알림 설정';
+  String get deviceNotificationSettingsDescription => isEnglish
+      ? 'Review notification permission and lock-screen behavior.'
+      : '알림 권한과 휴대폰 잠금 화면 표시를 확인합니다.';
+  String get deviceNotificationSettingsFailed => isEnglish
+      ? 'Could not open the phone notification settings.'
+      : '휴대폰 알림 설정을 열지 못했습니다.';
+  String get defaultMedicationTimeTitle =>
+      isEnglish ? 'Default medication times' : '기본 복약 시간';
+  String get defaultMedicationTimeDescription => isEnglish
+      ? 'Used only as the initial time for newly added medication schedules.'
+      : '새로 등록하는 복약 일정의 처음 시각으로만 사용합니다.';
+  String get detailedScheduleSettingsTitle =>
+      isEnglish ? 'Schedule-specific settings' : '시간대별 세부 설정';
+  String get detailedScheduleSettingsDescription => isEnglish
+      ? 'Open today’s medication schedule to adjust existing reminders.'
+      : '오늘의 복약 일정에서 기존 알림 시각을 따로 조정합니다.';
+  String get notificationPrivacyTitle =>
+      isEnglish ? 'Lock-screen privacy' : '잠금 화면 개인정보';
+  String get notificationPrivacyDescription => isEnglish
+      ? 'Choose whether medication names and chat messages appear in notifications.'
+      : '알림에 약 이름과 채팅 내용을 표시할지 선택합니다.';
+  String get notificationPrivacyFull =>
+      isEnglish ? 'Show medication names and messages' : '약 이름과 메시지 모두 표시';
+  String get notificationPrivacyTypeOnly =>
+      isEnglish ? 'Show notification type only' : '알림 종류만 표시';
+  String get followDeviceLanguage =>
+      isEnglish ? 'Use device language' : '기기 설정 따르기';
+  String get timeFormatTitle => isEnglish ? 'Time display' : '시간 표시';
+  String get twelveHourTime => isEnglish ? 'AM/PM' : '오전/오후';
+  String get twentyFourHourTime => isEnglish ? '24-hour' : '24시간제';
+  String get morning => isEnglish ? 'Morning' : '아침';
+  String get lunch => isEnglish ? 'Lunch' : '점심';
+  String get evening => isEnglish ? 'Evening' : '저녁';
+  String get bedtime => isEnglish ? 'Bedtime' : '취침 전';
+  String defaultTimeLabel(String slotKey) {
+    final slotTitle = switch (slotKey) {
+      'morning' => morning,
+      'lunch' => lunch,
+      'evening' => evening,
+      'bedtime' => bedtime,
+      _ => isEnglish ? 'Medication' : '복약',
+    };
+    return isEnglish ? '$slotTitle default time' : '$slotTitle 기본 시간';
+  }
+
+  String medicationAndNotificationSummary({
+    required bool medicationEnabled,
+    required bool caregiverEnabled,
+    required bool chatEnabled,
+  }) {
+    final enabledCount = [
+      medicationEnabled,
+      caregiverEnabled,
+      chatEnabled,
+    ].where((enabled) => enabled).length;
+    return isEnglish
+        ? '$enabledCount of 3 notification types enabled'
+        : '알림 $enabledCount/3개 사용 중 · 기본 복약 시간';
+  }
+
   String displayAndVoiceSummary({
     required String fontSize,
     required String readingSpeed,
-    required String language,
+    required String languageMode,
   }) {
     final fontSizeLabel = switch (fontSize) {
       'small' => small,
@@ -1478,7 +2062,11 @@ class _SettingText {
       'fast' => fast,
       _ => medium,
     };
-    final languageLabel = language == 'en' ? 'English' : '한국어';
+    final languageLabel = switch (languageMode) {
+      'system' => followDeviceLanguage,
+      'en' => 'English',
+      _ => '한국어',
+    };
     return '$fontSizeLabel · $readingSpeedLabel · $languageLabel';
   }
 

@@ -8,16 +8,15 @@ part of 'medbuddy_view_model.dart';
 extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
   // 함수명: loadUserSetting
   // 함수역할:
-  // - 앱 시작 시 로컬 저장소에 보관된 사용자 설정을 불러온다.
-  // 반환값:
-  // 함수명: loadUserSetting
-  // 함수역할:
   // - 앱 시작 시 로컬 사용자 설정, 알림 설정, 오늘 복약 일정을 함께 불러온다.
   // 반환값:
   // - 없음
   Future<void> loadUserSetting() async {
     try {
       _userSetting = await manageUserSetting.requestUserSetting();
+      notificationService.setShowSensitiveDetails(
+        _userSetting.showNotificationDetails,
+      );
       await refreshMedicationOverview();
     } finally {
       _notifyViewModelListeners(MedBuddyFeature.userSetting);
@@ -66,14 +65,57 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
+    String? languageMode,
+    String? timeFormat,
+    bool? medicationNotificationsEnabled,
+    bool? caregiverNotificationsEnabled,
+    bool? chatNotificationsEnabled,
+    String? notificationDetailMode,
+    String? defaultMorningTime,
+    String? defaultLunchTime,
+    String? defaultEveningTime,
+    String? defaultBedtime,
   }) async {
+    final previousMedicationNotificationsEnabled =
+        _userSetting.medicationNotificationsEnabled;
+    final previousNotificationDetailMode = _userSetting.notificationDetailMode;
+    final previousIsEnglishSetting = _isEnglishSetting;
     final saveResult = await manageUserSetting.saveUserSetting(
       currentSetting: _userSetting,
       fontSizeOption: fontSizeOption,
       readingSpeedOption: readingSpeedOption,
       language: language,
+      languageMode: languageMode,
+      timeFormat: timeFormat,
+      medicationNotificationsEnabled: medicationNotificationsEnabled,
+      caregiverNotificationsEnabled: caregiverNotificationsEnabled,
+      chatNotificationsEnabled: chatNotificationsEnabled,
+      notificationDetailMode: notificationDetailMode,
+      defaultMorningTime: defaultMorningTime,
+      defaultLunchTime: defaultLunchTime,
+      defaultEveningTime: defaultEveningTime,
+      defaultBedtime: defaultBedtime,
     );
     _userSetting = saveResult.setting;
+    notificationService.setShowSensitiveDetails(
+      _userSetting.showNotificationDetails,
+    );
+    final shouldRefreshScheduledMessages =
+        previousMedicationNotificationsEnabled &&
+        _userSetting.medicationNotificationsEnabled &&
+        (previousNotificationDetailMode !=
+                _userSetting.notificationDetailMode ||
+            previousIsEnglishSetting != _isEnglishSetting);
+    if (previousMedicationNotificationsEnabled &&
+        !_userSetting.medicationNotificationsEnabled) {
+      await notificationService.cancelAllScheduledMedicationReminders();
+    } else if (!previousMedicationNotificationsEnabled &&
+        _userSetting.medicationNotificationsEnabled) {
+      await refreshMedicationSchedule();
+    } else if (shouldRefreshScheduledMessages) {
+      // 이미 예약된 알림에도 새 언어와 잠금 화면 공개 수준을 즉시 반영한다.
+      await refreshMedicationSchedule();
+    }
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;
   }

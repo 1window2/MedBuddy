@@ -77,7 +77,10 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('settingsAccountMenu')));
+    final accountMenu = find.byKey(const ValueKey('settingsAccountMenu'));
+    await tester.ensureVisible(accountMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(accountMenu);
     await tester.pumpAndSettle();
 
     expect(find.text('SMS two-step verification'), findsNothing);

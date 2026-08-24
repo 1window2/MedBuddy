@@ -3,7 +3,7 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 클래스명: AppLanguageControl
@@ -12,22 +12,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 // - 앱 시작을 지연하지 않고 마지막 언어 설정을 불러온다.
 // - 한국어 또는 영어 선택값을 검증하고 기기에 저장한다.
 // - 언어 변경 시 앱 루트에 알려 현재 화면을 다시 구성한다.
-class AppLanguageControl extends ChangeNotifier {
+class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
   static const String preferenceKey = 'medbuddy_app_language';
 
-  String _language;
+  String _languageMode;
   int _selectionRevision = 0;
 
   AppLanguageControl({String initialLanguage = 'ko', bool loadPersisted = true})
-    : _language = normalizeLanguage(initialLanguage) {
+    : _languageMode = normalizeLanguageMode(initialLanguage) {
+    WidgetsBinding.instance.addObserver(this);
     if (loadPersisted) {
       unawaited(load());
     }
   }
 
-  String get language => _language;
+  String get language => resolveLanguage(_languageMode);
 
-  bool get isEnglish => _language == 'en';
+  String get languageMode => _languageMode;
+
+  bool get isEnglish => language == 'en';
 
   // 함수명: load
   // 역할:
@@ -42,11 +45,11 @@ class AppLanguageControl extends ChangeNotifier {
     if (revision != _selectionRevision || storedLanguage == null) {
       return;
     }
-    final normalizedLanguage = normalizeLanguage(storedLanguage);
-    if (normalizedLanguage == _language) {
+    final normalizedMode = normalizeLanguageMode(storedLanguage);
+    if (normalizedMode == _languageMode) {
       return;
     }
-    _language = normalizedLanguage;
+    _languageMode = normalizedMode;
     notifyListeners();
   }
 
@@ -58,14 +61,20 @@ class AppLanguageControl extends ChangeNotifier {
   // 반환값:
   // - 언어 저장이 끝나면 완료된다.
   Future<void> setLanguage(String language) async {
-    final normalizedLanguage = normalizeLanguage(language);
+    return setLanguageMode(language);
+  }
+
+  // 함수명: setLanguageMode
+  // 역할: 기기 설정 따르기, 한국어, 영어 중 선택한 언어 모드를 저장한다.
+  Future<void> setLanguageMode(String languageMode) async {
+    final normalizedMode = normalizeLanguageMode(languageMode);
     _selectionRevision += 1;
-    if (_language != normalizedLanguage) {
-      _language = normalizedLanguage;
+    if (_languageMode != normalizedMode) {
+      _languageMode = normalizedMode;
       notifyListeners();
     }
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(preferenceKey, normalizedLanguage);
+    await preferences.setString(preferenceKey, normalizedMode);
   }
 
   Future<void> toggleLanguage() {
@@ -73,6 +82,39 @@ class AppLanguageControl extends ChangeNotifier {
   }
 
   static String normalizeLanguage(String language) {
-    return language.trim().toLowerCase() == 'en' ? 'en' : 'ko';
+    return resolveLanguage(normalizeLanguageMode(language));
+  }
+
+  static String normalizeLanguageMode(String languageMode) {
+    final normalized = languageMode.trim().toLowerCase();
+    if (normalized == 'system' || normalized == 'en') {
+      return normalized;
+    }
+    return 'ko';
+  }
+
+  // 함수명: resolveLanguage
+  // 역할: 언어 모드를 현재 기기 언어에 맞는 실제 앱 언어 코드로 변환한다.
+  static String resolveLanguage(String languageMode, {Locale? locale}) {
+    final normalizedMode = normalizeLanguageMode(languageMode);
+    if (normalizedMode != 'system') {
+      return normalizedMode;
+    }
+    final deviceLocale =
+        locale ?? WidgetsBinding.instance.platformDispatcher.locale;
+    return deviceLocale.languageCode.toLowerCase() == 'en' ? 'en' : 'ko';
+  }
+
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    if (_languageMode == 'system') {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 }

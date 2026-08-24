@@ -606,7 +606,9 @@ Future<void> _openLaboratory(WidgetTester tester) async {
 }
 
 Future<void> _openAccount(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('settingsAccountMenu')));
+  final accountMenu = find.byKey(const ValueKey('settingsAccountMenu'));
+  await tester.ensureVisible(accountMenu);
+  await tester.tap(accountMenu);
   await tester.pumpAndSettle();
 }
 

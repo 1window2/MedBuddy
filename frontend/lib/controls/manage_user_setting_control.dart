@@ -106,6 +106,16 @@ class ManageUserSetting {
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
+    String? languageMode,
+    String? timeFormat,
+    bool? medicationNotificationsEnabled,
+    bool? caregiverNotificationsEnabled,
+    bool? chatNotificationsEnabled,
+    String? notificationDetailMode,
+    String? defaultMorningTime,
+    String? defaultLunchTime,
+    String? defaultEveningTime,
+    String? defaultBedtime,
   }) async {
     final nextSetting = currentSetting
         .copyWith(userHash: _normalizedUserHash)
@@ -113,6 +123,18 @@ class ManageUserSetting {
           fontSize: UserSetting.fontSizeFromOption(fontSizeOption),
           readingSpeed: UserSetting.readingSpeedFromOption(readingSpeedOption),
           language: language,
+        )
+        .copyWith(
+          languageMode: languageMode,
+          timeFormat: timeFormat,
+          medicationNotificationsEnabled: medicationNotificationsEnabled,
+          caregiverNotificationsEnabled: caregiverNotificationsEnabled,
+          chatNotificationsEnabled: chatNotificationsEnabled,
+          notificationDetailMode: notificationDetailMode,
+          defaultMorningTime: defaultMorningTime,
+          defaultLunchTime: defaultLunchTime,
+          defaultEveningTime: defaultEveningTime,
+          defaultBedtime: defaultBedtime,
         );
 
     await _cacheUserSetting(nextSetting);
@@ -220,6 +242,36 @@ class ManageUserSetting {
           preferences.getString(_languageKey) ??
           preferences.getString(_legacyLanguageKey) ??
           fallbackSetting.language,
+      languageMode:
+          preferences.getString(_languageModeKey) ??
+          preferences.getString(_languageKey) ??
+          fallbackSetting.languageMode,
+      timeFormat:
+          preferences.getString(_timeFormatKey) ?? fallbackSetting.timeFormat,
+      medicationNotificationsEnabled:
+          preferences.getBool(_medicationNotificationsEnabledKey) ??
+          fallbackSetting.medicationNotificationsEnabled,
+      caregiverNotificationsEnabled:
+          preferences.getBool(_caregiverNotificationsEnabledKey) ??
+          fallbackSetting.caregiverNotificationsEnabled,
+      chatNotificationsEnabled:
+          preferences.getBool(_chatNotificationsEnabledKey) ??
+          fallbackSetting.chatNotificationsEnabled,
+      notificationDetailMode:
+          preferences.getString(_notificationDetailModeKey) ??
+          fallbackSetting.notificationDetailMode,
+      defaultMorningTime:
+          preferences.getString(_defaultMorningTimeKey) ??
+          fallbackSetting.defaultMorningTime,
+      defaultLunchTime:
+          preferences.getString(_defaultLunchTimeKey) ??
+          fallbackSetting.defaultLunchTime,
+      defaultEveningTime:
+          preferences.getString(_defaultEveningTimeKey) ??
+          fallbackSetting.defaultEveningTime,
+      defaultBedtime:
+          preferences.getString(_defaultBedtimeKey) ??
+          fallbackSetting.defaultBedtime,
       nearbyPharmacyLabEnabled:
           preferences.getBool(_nearbyPharmacyLabEnabledKey) ?? false,
       linkedMedicationChatLabEnabled:
@@ -232,6 +284,34 @@ class ManageUserSetting {
     await preferences.setInt(_fontSizeKey, setting.fontSize);
     await preferences.setDouble(_readingSpeedKey, setting.readingSpeed);
     await preferences.setString(_languageKey, setting.language);
+    await preferences.setString(_languageModeKey, setting.languageMode);
+    await preferences.setString(_timeFormatKey, setting.timeFormat);
+    await preferences.setBool(
+      _medicationNotificationsEnabledKey,
+      setting.medicationNotificationsEnabled,
+    );
+    await preferences.setBool(
+      _caregiverNotificationsEnabledKey,
+      setting.caregiverNotificationsEnabled,
+    );
+    await preferences.setBool(
+      _chatNotificationsEnabledKey,
+      setting.chatNotificationsEnabled,
+    );
+    await preferences.setString(
+      _notificationDetailModeKey,
+      setting.notificationDetailMode,
+    );
+    await preferences.setString(
+      _defaultMorningTimeKey,
+      setting.defaultMorningTime,
+    );
+    await preferences.setString(_defaultLunchTimeKey, setting.defaultLunchTime);
+    await preferences.setString(
+      _defaultEveningTimeKey,
+      setting.defaultEveningTime,
+    );
+    await preferences.setString(_defaultBedtimeKey, setting.defaultBedtime);
     await preferences.setBool(
       _nearbyPharmacyLabEnabledKey,
       setting.nearbyPharmacyLabEnabled,
@@ -265,6 +345,36 @@ class ManageUserSetting {
       'user_setting_${_normalizedUserHash}_reading_speed';
 
   String get _languageKey => 'user_setting_${_normalizedUserHash}_language';
+
+  String get _languageModeKey =>
+      'user_setting_${_normalizedUserHash}_language_mode';
+
+  String get _timeFormatKey =>
+      'user_setting_${_normalizedUserHash}_time_format';
+
+  String get _medicationNotificationsEnabledKey =>
+      'user_setting_${_normalizedUserHash}_medication_notifications_enabled';
+
+  String get _caregiverNotificationsEnabledKey =>
+      'user_setting_${_normalizedUserHash}_caregiver_notifications_enabled';
+
+  String get _chatNotificationsEnabledKey =>
+      'user_setting_${_normalizedUserHash}_chat_notifications_enabled';
+
+  String get _notificationDetailModeKey =>
+      'user_setting_${_normalizedUserHash}_notification_detail_mode';
+
+  String get _defaultMorningTimeKey =>
+      'user_setting_${_normalizedUserHash}_default_morning_time';
+
+  String get _defaultLunchTimeKey =>
+      'user_setting_${_normalizedUserHash}_default_lunch_time';
+
+  String get _defaultEveningTimeKey =>
+      'user_setting_${_normalizedUserHash}_default_evening_time';
+
+  String get _defaultBedtimeKey =>
+      'user_setting_${_normalizedUserHash}_default_bedtime';
 
   String get _nearbyPharmacyLabEnabledKey =>
       'user_setting_${_normalizedUserHash}_nearby_pharmacy_lab_enabled';

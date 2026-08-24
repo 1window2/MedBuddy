@@ -21,6 +21,8 @@ import '../boundaries/prescription_analysis_status_ui_boundary.dart';
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
+import '../entities/user_setting_entity.dart';
+import '../services/notification_service.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 
@@ -252,6 +254,39 @@ class HomeScreen extends StatelessWidget {
                   viewModel.requestNearbyPharmacyLabSettingSave,
               onLinkedMedicationChatLabSettingSaveRequested:
                   viewModel.requestLinkedMedicationChatLabSettingSave,
+              onMedicationScheduleRequested: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CheckScheduleUI(),
+                  ),
+                );
+              },
+              onDeviceNotificationSettingsRequested:
+                  NotificationService.instance.openSystemNotificationSettings,
+              onExtendedSettingSaveRequested: (UserSetting setting) async {
+                final result = await viewModel.requestUserSettingSave(
+                  fontSizeOption: setting.fontSizeOption,
+                  readingSpeedOption: setting.readingSpeedOption,
+                  language: setting.language,
+                  languageMode: setting.languageMode,
+                  timeFormat: setting.timeFormat,
+                  medicationNotificationsEnabled:
+                      setting.medicationNotificationsEnabled,
+                  caregiverNotificationsEnabled:
+                      setting.caregiverNotificationsEnabled,
+                  chatNotificationsEnabled: setting.chatNotificationsEnabled,
+                  notificationDetailMode: setting.notificationDetailMode,
+                  defaultMorningTime: setting.defaultMorningTime,
+                  defaultLunchTime: setting.defaultLunchTime,
+                  defaultEveningTime: setting.defaultEveningTime,
+                  defaultBedtime: setting.defaultBedtime,
+                );
+                await appLanguageControl.setLanguageMode(
+                  result.setting.languageMode,
+                );
+                return result;
+              },
               onSettingSaveRequested:
                   ({
                     required String fontSizeOption,
