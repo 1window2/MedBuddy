@@ -54,6 +54,31 @@ void main() {
     await expectLater(loadFuture, completes);
   });
 
+  test('최신 일정 조회가 끝나면 이전 요청이 대기 중이어도 로딩이 종료된다', () async {
+    final firstResponse = Completer<List<MedicationSchedule>>();
+    final secondResponse = Completer<List<MedicationSchedule>>();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _SequentialCheckSchedule([
+        firstResponse.future,
+        secondResponse.future,
+      ]),
+    );
+    addTearDown(viewModel.dispose);
+
+    final firstLoad = viewModel.fetchTodayMedicationSchedule();
+    final secondLoad = viewModel.fetchTodayMedicationSchedule();
+    expect(viewModel.isTodayScheduleLoading, isTrue);
+
+    secondResponse.complete(const <MedicationSchedule>[]);
+    await secondLoad;
+
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+
+    firstResponse.complete(const <MedicationSchedule>[]);
+    await firstLoad;
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+  });
+
   test('dose status update uses slot-scoped backend status flow', () async {
     var patchCalled = false;
     late Map<String, dynamic> patchBody;
@@ -714,6 +739,20 @@ class _DelayedCheckSchedule extends CheckSchedule {
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() {
     return responseFuture;
+  }
+}
+
+// 클래스명: _SequentialCheckSchedule
+// 역할: 일정 조회가 겹친 상황에서 각 요청을 원하는 순서로 완료한다.
+class _SequentialCheckSchedule extends CheckSchedule {
+  final List<Future<List<MedicationSchedule>>> responseFutures;
+  int _requestIndex = 0;
+
+  _SequentialCheckSchedule(this.responseFutures);
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() {
+    return responseFutures[_requestIndex++];
   }
 }
 

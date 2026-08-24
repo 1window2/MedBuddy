@@ -27,7 +27,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     Future<List<MedicationSchedule>> Function() loader,
   ) async {
     final loadEpoch = ++_todayScheduleEpoch;
-    _todayScheduleLoadCount += 1;
+    _activeTodayScheduleLoadEpoch = loadEpoch;
     _isTodayScheduleLoading = true;
     _hasTodayScheduleLoadError = false;
     _notifyViewModelListeners(MedBuddyFeature.schedule);
@@ -60,9 +60,12 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
         _hasTodayScheduleLoadError = true;
       }
     } finally {
-      _todayScheduleLoadCount -= 1;
-      _isTodayScheduleLoading = _todayScheduleLoadCount > 0;
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      // 이전 요청이 늦게 끝나도 최신 요청의 로딩 상태를 덮어쓰지 않는다.
+      if (_activeTodayScheduleLoadEpoch == loadEpoch) {
+        _activeTodayScheduleLoadEpoch = null;
+        _isTodayScheduleLoading = false;
+        _notifyViewModelListeners(MedBuddyFeature.schedule);
+      }
     }
   }
 
