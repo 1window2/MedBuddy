@@ -2,8 +2,9 @@
 # Role: Resolves Korean legal holidays through the government special-day API.
 
 import asyncio
-from datetime import date
+from datetime import date, timedelta
 import logging
+from typing import Protocol
 import xml.etree.ElementTree as ElementTree
 
 import httpx
@@ -30,7 +31,11 @@ class KoreanHolidayAPI:
         self._cache: dict[tuple[int, int], frozenset[date]] = {}
 
     async def isHoliday(self, value: date) -> bool:
-        cache_key = (value.year, value.month)
+        dates = await self.fetchMonth(value.year, value.month)
+        return value in dates
+
+    async def fetchMonth(self, year: int, month: int) -> frozenset[date]:
+        cache_key = (year, month)
         dates = self._cache.get(cache_key)
         if dates is None:
             async with self._lock:
@@ -38,7 +43,7 @@ class KoreanHolidayAPI:
                 if dates is None:
                     dates = await self._fetch_month(*cache_key)
                     self._cache[cache_key] = dates
-        return value in dates
+        return dates
 
     async def close(self) -> None:
         if self._owns_client and self._client is not None:
@@ -85,3 +90,67 @@ class KoreanHolidayAPI:
                 date(int(raw_value[:4]), int(raw_value[4:6]), int(raw_value[6:]))
             )
         return frozenset(holidays)
+
+
+class KoreanHolidayCache(Protocol):
+    def get_cached_korean_holidays(
+        self,
+        year: int,
+        month: int,
+        *,
+        max_age: timedelta,
+    ) -> frozenset[date] | None: ...
+
+    def replace_korean_holidays(
+        self,
+        year: int,
+        month: int,
+        holidays: frozenset[date],
+    ) -> None: ...
+
+
+class PersistentKoreanHolidayLookup:
+    """Database-backed calendar lookup with a bounded stale fallback."""
+
+    _FRESH_MAX_AGE = timedelta(days=30)
+    _STALE_MAX_AGE = timedelta(days=730)
+
+    def __init__(
+        self,
+        *,
+        cache: KoreanHolidayCache,
+        upstream: KoreanHolidayAPI,
+    ) -> None:
+        self._cache = cache
+        self._upstream = upstream
+
+    async def isHoliday(self, value: date) -> bool:
+        cached = self._cache.get_cached_korean_holidays(
+            value.year,
+            value.month,
+            max_age=self._FRESH_MAX_AGE,
+        )
+        if cached is not None:
+            return value in cached
+        try:
+            holidays = await self._upstream.fetchMonth(value.year, value.month)
+            self._cache.replace_korean_holidays(
+                value.year,
+                value.month,
+                holidays,
+            )
+            return value in holidays
+        except PharmacyApiUnavailableError:
+            stale = self._cache.get_cached_korean_holidays(
+                value.year,
+                value.month,
+                max_age=self._STALE_MAX_AGE,
+            )
+            if stale is not None:
+                logger.warning(
+                    "Using stale Korean holiday cache for %04d-%02d.",
+                    value.year,
+                    value.month,
+                )
+                return value in stale
+            raise

@@ -36,40 +36,49 @@ class _FakeLocationBoundary implements DeviceLocationBoundary {
 CheckNearbyPharmacy _buildControl({
   DeviceLocationFailure? failure,
   VoidCallback? onRequest,
+  List<String?>? requestedModes,
+  Set<String> emptyModes = const {},
 }) {
   return CheckNearbyPharmacy(
     locationBoundary: _FakeLocationBoundary(failure: failure),
-    client: MockClient((_) async {
+    client: MockClient((request) async {
       onRequest?.call();
+      final requestedMode = request.url.queryParameters['search_mode'];
+      requestedModes?.add(requestedMode);
+      final includeClosed = requestedMode == 'all';
+      final isEmpty = emptyModes.contains(requestedMode);
       return http.Response(
         jsonEncode({
           'data': [
-            {
-              'pharmacy_id': 'open',
-              'name': '영업중 메드버디약국',
-              'address': '서울특별시 종로구',
-              'telephone': '02-123-4567',
-              'latitude': 37.5666,
-              'longitude': 126.9781,
-              'distance_km': 0.42,
-              'today_open_time': '09:00',
-              'today_close_time': '24:00',
-              'is_open_now': true,
-              'is_24_hours': false,
-            },
-            {
-              'pharmacy_id': 'closed',
-              'name': '영업종료 메드버디약국',
-              'address': '서울특별시 중구',
-              'telephone': '',
-              'latitude': 37.5667,
-              'longitude': 126.9782,
-              'distance_km': 0.5,
-              'today_open_time': '09:00',
-              'today_close_time': '18:00',
-              'is_open_now': false,
-              'is_24_hours': false,
-            },
+            if (!isEmpty) ...[
+              {
+                'pharmacy_id': 'open',
+                'name': '영업중 메드버디약국',
+                'address': '서울특별시 종로구',
+                'telephone': '02-123-4567',
+                'latitude': 37.5666,
+                'longitude': 126.9781,
+                'distance_km': 0.42,
+                'today_open_time': '09:00',
+                'today_close_time': '24:00',
+                'is_open_now': true,
+                'is_24_hours': false,
+              },
+              if (includeClosed)
+                {
+                  'pharmacy_id': 'closed',
+                  'name': '영업종료 메드버디약국',
+                  'address': '서울특별시 중구',
+                  'telephone': '',
+                  'latitude': 37.5667,
+                  'longitude': 126.9782,
+                  'distance_km': 0.5,
+                  'today_open_time': '09:00',
+                  'today_close_time': '18:00',
+                  'is_open_now': false,
+                  'is_24_hours': false,
+                },
+            ],
           ],
         }),
         200,
@@ -136,7 +145,16 @@ void main() {
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,
   ) async {
-    await tester.pumpWidget(_testApp(_buildControl()));
+    var requestCount = 0;
+    final requestedModes = <String?>[];
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(
+          onRequest: () => requestCount += 1,
+          requestedModes: requestedModes,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('영업중 메드버디약국'), findsOneWidget);
@@ -148,9 +166,21 @@ void main() {
     expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await tester.drag(
+      find.ancestor(
+        of: find.text('전체'),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      const Offset(-600, 0),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('전체'));
     await tester.pumpAndSettle();
 
+    expect(requestCount, 2);
+    expect(requestedModes, ['open_at_time', 'all']);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -420));
+    await tester.pumpAndSettle();
     expect(find.text('영업종료 메드버디약국'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -170,6 +200,40 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('map-status:'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('show all reloads data after an empty filtered search', (
+    tester,
+  ) async {
+    final requestedModes = <String?>[];
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(
+          requestedModes: requestedModes,
+          emptyModes: const {'official_late_night'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.ancestor(
+        of: find.text('공공심야'),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      const Offset(-300, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('공공심야'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('공식 지정 공공심야약국이 없습니다'), findsOneWidget);
+    await tester.tap(find.text('전체 약국 보기'));
+    await tester.pumpAndSettle();
+
+    expect(requestedModes, ['open_at_time', 'official_late_night', 'all']);
+    expect(find.text('영업중 메드버디약국'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -77,6 +77,15 @@ Do not place the public-data key in Flutter compile-time values. The client
 sends only its current coordinates to the authenticated `/api/v1/pharmacy`
 boundary when the user explicitly opens the laboratory feature.
 
+The nearby endpoint accepts `search_mode` (`open_at_time`, `late_hours`,
+`official_late_night`, `weekend_holiday`, or `all`) and an ISO-8601
+`target_datetime`. Filtering happens before the response limit. Legal-holiday
+months and exact-date NEMC holiday pharmacy rosters are cached in PostgreSQL;
+the response reports catalog staleness and any bounded fallback. The versioned
+Seoul public late-night designation overlay records its official source and
+verification date and is refreshed during both bootstrap and periodic catalog
+synchronization.
+
 Set `POSTGRES_PASSWORD` once in `deploy/.env` as the raw PostgreSQL password.
 The backend receives structured host/user/password fields and lets SQLAlchemy
 encode the connection URL, so passwords containing URL-reserved characters

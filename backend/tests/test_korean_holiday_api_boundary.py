@@ -2,7 +2,7 @@
 
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -15,7 +15,10 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from boundaries.korean_holiday_api_boundary import KoreanHolidayAPI  # noqa: E402
+from boundaries.korean_holiday_api_boundary import (  # noqa: E402
+    KoreanHolidayAPI,
+    PersistentKoreanHolidayLookup,
+)
 from boundaries.pharmacy_api_boundary import (  # noqa: E402
     PharmacyApiUnavailableError,
 )
@@ -57,5 +60,43 @@ async def test_holiday_lookup_fails_closed_on_service_error() -> None:
     try:
         with pytest.raises(PharmacyApiUnavailableError):
             await boundary.isHoliday(date(2026, 8, 17))
+    finally:
+        await client.aclose()
+
+
+class _StaleHolidayCache:
+    def get_cached_korean_holidays(
+        self,
+        year: int,
+        month: int,
+        *,
+        max_age: timedelta,
+    ) -> frozenset[date] | None:
+        del year, month
+        if max_age >= timedelta(days=730):
+            return frozenset({date(2026, 8, 17)})
+        return None
+
+    def replace_korean_holidays(
+        self,
+        year: int,
+        month: int,
+        holidays: frozenset[date],
+    ) -> None:
+        del year, month, holidays
+
+
+@pytest.mark.anyio
+async def test_persistent_lookup_uses_bounded_stale_cache_during_outage() -> None:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(503))
+    )
+    upstream = KoreanHolidayAPI(client=client)
+    lookup = PersistentKoreanHolidayLookup(
+        cache=_StaleHolidayCache(),
+        upstream=upstream,
+    )
+    try:
+        assert await lookup.isHoliday(date(2026, 8, 17)) is True
     finally:
         await client.aclose()

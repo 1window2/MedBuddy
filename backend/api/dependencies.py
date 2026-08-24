@@ -16,7 +16,13 @@ from starlette.concurrency import run_in_threadpool
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
 )
-from boundaries.korean_holiday_api_boundary import KoreanHolidayAPI
+from boundaries.korean_holiday_api_boundary import (
+    KoreanHolidayAPI,
+    PersistentKoreanHolidayLookup,
+)
+from boundaries.holiday_emergency_pharmacy_api_boundary import (
+    HolidayEmergencyPharmacyAPI,
+)
 from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
@@ -83,6 +89,7 @@ _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
 _pill_image_api = PillImageAPI(transport=_public_drug_transport)
 _korean_holiday_api = KoreanHolidayAPI()
+_holiday_emergency_pharmacy_api = HolidayEmergencyPharmacyAPI()
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
@@ -423,6 +430,7 @@ async def close_public_drug_boundaries() -> None:
 async def close_pharmacy_boundary() -> None:
     try:
         await _korean_holiday_api.close()
+        await _holiday_emergency_pharmacy_api.close()
     except Exception as exc:
         logger.warning(
             "Pharmacy API boundary shutdown failed: %s",
@@ -510,9 +518,14 @@ def get_check_medication_detail(
 def get_check_nearby_pharmacy(
     db: Session = Depends(get_db),
 ) -> CheckNearbyPharmacy:
+    pharmacy_repository = PharmacyCatalogRepository(db)
     return CheckNearbyPharmacy(
-        pharmacy_repository=PharmacyCatalogRepository(db),
-        holiday_boundary=_korean_holiday_api,
+        pharmacy_repository=pharmacy_repository,
+        holiday_boundary=PersistentKoreanHolidayLookup(
+            cache=pharmacy_repository,
+            upstream=_korean_holiday_api,
+        ),
+        holiday_emergency_boundary=_holiday_emergency_pharmacy_api,
     )
 
 

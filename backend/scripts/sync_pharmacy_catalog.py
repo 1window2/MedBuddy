@@ -3,6 +3,8 @@
 
 import argparse
 import asyncio
+from dataclasses import replace
+import json
 import logging
 import math
 from pathlib import Path
@@ -28,6 +30,71 @@ from repositories.pharmacy_catalog_repository import (  # noqa: E402
 logger = logging.getLogger(__name__)
 _MINIMUM_COMPLETE_ROWS = 10_000
 _MINIMUM_RETENTION_RATIO = 0.80
+_SEOUL_DESIGNATION_PATH = (
+    ROOT_DIR / "data" / "seoul_public_late_night_pharmacies.json"
+)
+
+
+def _load_public_late_night_designations() -> dict[str, dict[str, object]]:
+    raw_data = json.loads(_SEOUL_DESIGNATION_PATH.read_text(encoding="utf-8"))
+    shared_fields = {
+        "source_name": str(raw_data["source_name"]),
+        "source_url": str(raw_data["source_url"]),
+        "verified_at": str(raw_data["verified_at"]),
+        "start_time": str(raw_data["start_time"]),
+        "end_time": str(raw_data["end_time"]),
+    }
+    result: dict[str, dict[str, object]] = {}
+    for raw_entry in raw_data.get("entries", []):
+        if not isinstance(raw_entry, dict):
+            continue
+        normalized_phone = "".join(
+            character for character in str(raw_entry.get("telephone", ""))
+            if character.isdigit()
+        )
+        if not normalized_phone:
+            continue
+        result[normalized_phone] = {
+            **shared_fields,
+            "name": str(raw_entry.get("name", "")),
+            "operating_days": list(raw_entry.get("operating_days", [])),
+        }
+    return result
+
+
+def _apply_designations(
+    entries: list[PharmacyCatalogEntry],
+    designations_by_phone: dict[str, dict[str, object]],
+) -> tuple[list[PharmacyCatalogEntry], int]:
+    matched = 0
+    enriched: list[PharmacyCatalogEntry] = []
+    for entry in entries:
+        normalized_phone = "".join(
+            character for character in entry.telephone if character.isdigit()
+        )
+        designation = designations_by_phone.get(normalized_phone)
+        if designation is not None:
+            expected_name = "".join(
+                character
+                for character in str(designation.get("name", ""))
+                if character.isalnum()
+            ).casefold()
+            actual_name = "".join(
+                character for character in entry.name if character.isalnum()
+            ).casefold()
+            if expected_name != actual_name:
+                designation = None
+        if designation is None:
+            enriched.append(entry)
+            continue
+        matched += 1
+        enriched.append(
+            replace(
+                entry,
+                official_designations={"public_late_night": designation},
+            )
+        )
+    return enriched, matched
 
 
 async def synchronize(
@@ -38,8 +105,16 @@ async def synchronize(
     only_if_empty: bool,
 ) -> int:
     repository = PharmacyCatalogRepository(db)
+    designations_by_phone = _load_public_late_night_designations()
     if only_if_empty and repository.count() > 0:
-        logger.info("Pharmacy catalogue already contains rows; bootstrap skipped.")
+        matched = repository.apply_official_designations_by_phone(
+            designations_by_phone
+        )
+        logger.info(
+            "Pharmacy catalogue already contains rows; full bootstrap skipped and "
+            "%s official designations were refreshed.",
+            matched,
+        )
         return 0
 
     boundary = NationalEmergencyMedicalCenterPharmacyAPI(timeout_seconds=30)
@@ -99,8 +174,17 @@ async def synchronize(
             raise RuntimeError(
                 "Pharmacy refresh volume dropped below the safe retention threshold."
             )
-        repository.replace_all(list(entries_by_id.values()))
+        enriched_entries, designation_count = _apply_designations(
+            list(entries_by_id.values()),
+            designations_by_phone,
+        )
+        repository.replace_all(enriched_entries)
         logger.info("Published %s pharmacy catalogue rows.", refreshed_count)
+        logger.info(
+            "Matched %s/%s official Seoul late-night designations.",
+            designation_count,
+            len(designations_by_phone),
+        )
         return refreshed_count
     finally:
         await boundary.close()

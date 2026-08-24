@@ -10,6 +10,17 @@ class DeviceCoordinate {
   const DeviceCoordinate({required this.latitude, required this.longitude});
 }
 
+enum PharmacySearchMode {
+  all('all'),
+  openAtTime('open_at_time'),
+  lateHours('late_hours'),
+  officialLateNight('official_late_night'),
+  weekendHoliday('weekend_holiday');
+
+  final String apiValue;
+  const PharmacySearchMode(this.apiValue);
+}
+
 // 클래스명: NearbyPharmacy
 // 역할: 근처 약국 화면에서 표시할 영업 상태와 위치 정보를 표현한다.
 class NearbyPharmacy {
@@ -27,6 +38,14 @@ class NearbyPharmacy {
   final bool isOpenLate;
   final bool hasWeekendOrHolidayHours;
   final bool isPublicHoliday;
+  final bool isOfficialLateNight;
+  final String? designationSourceName;
+  final String? designationSourceUrl;
+  final DateTime? designationVerifiedAt;
+  final bool designationIsStale;
+  final DateTime? scheduleDate;
+  final String scheduleSource;
+  final bool scheduleIsDateSpecific;
   final String sourceName;
 
   const NearbyPharmacy({
@@ -44,6 +63,14 @@ class NearbyPharmacy {
     this.isOpenLate = false,
     this.hasWeekendOrHolidayHours = false,
     this.isPublicHoliday = false,
+    this.isOfficialLateNight = false,
+    this.designationSourceName,
+    this.designationSourceUrl,
+    this.designationVerifiedAt,
+    this.designationIsStale = false,
+    this.scheduleDate,
+    this.scheduleSource = 'nemc_weekly_report',
+    this.scheduleIsDateSpecific = false,
     this.sourceName = 'National Emergency Medical Center',
   });
 
@@ -62,14 +89,31 @@ class NearbyPharmacy {
           ? json['is_open_now'] as bool
           : null,
       is24Hours: json['is_24_hours'] is bool && json['is_24_hours'] as bool,
-      isOpenLate:
-          json['is_open_late'] is bool && json['is_open_late'] as bool,
+      isOpenLate: json['is_open_late'] is bool && json['is_open_late'] as bool,
       hasWeekendOrHolidayHours:
           json['has_weekend_or_holiday_hours'] is bool &&
           json['has_weekend_or_holiday_hours'] as bool,
       isPublicHoliday:
           json['is_public_holiday'] is bool &&
           json['is_public_holiday'] as bool,
+      isOfficialLateNight:
+          json['is_official_late_night'] is bool &&
+          json['is_official_late_night'] as bool,
+      designationSourceName: _readNullableString(
+        json['designation_source_name'],
+      ),
+      designationSourceUrl: _readNullableString(json['designation_source_url']),
+      designationVerifiedAt: _readDate(json['designation_verified_at']),
+      designationIsStale:
+          json['designation_is_stale'] is bool &&
+          json['designation_is_stale'] as bool,
+      scheduleDate: _readDate(json['schedule_date']),
+      scheduleSource: _readString(json['schedule_source']).isEmpty
+          ? 'nemc_weekly_report'
+          : _readString(json['schedule_source']),
+      scheduleIsDateSpecific:
+          json['schedule_is_date_specific'] is bool &&
+          json['schedule_is_date_specific'] as bool,
       sourceName: _readString(json['source_name']).isEmpty
           ? 'National Emergency Medical Center'
           : _readString(json['source_name']),
@@ -106,4 +150,27 @@ class NearbyPharmacy {
     }
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
+
+  static DateTime? _readDate(dynamic value) {
+    final normalized = _readString(value);
+    return normalized.isEmpty ? null : DateTime.tryParse(normalized);
+  }
+}
+
+class NearbyPharmacySearchResult {
+  final List<NearbyPharmacy> data;
+  final PharmacySearchMode searchMode;
+  final DateTime targetDateTime;
+  final DateTime? catalogUpdatedAt;
+  final bool catalogIsStale;
+  final String holidayScheduleStatus;
+
+  const NearbyPharmacySearchResult({
+    required this.data,
+    required this.searchMode,
+    required this.targetDateTime,
+    required this.catalogUpdatedAt,
+    required this.catalogIsStale,
+    required this.holidayScheduleStatus,
+  });
 }

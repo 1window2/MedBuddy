@@ -3,7 +3,7 @@
 
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,11 +16,16 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
+from boundaries.pharmacy_api_boundary import PharmacyApiResponseError  # noqa: E402
 from controls.check_nearby_pharmacy_control import (  # noqa: E402
     CheckNearbyPharmacy,
+    PharmacySearchMode,
 )
 from entities.nearby_pharmacy_entity import PharmacyLocationRecord  # noqa: E402
-from entities.pharmacy_catalog_entity import PharmacyCatalogEntry  # noqa: E402
+from entities.pharmacy_catalog_entity import (  # noqa: E402
+    PharmacyCatalogEntry,
+    PharmacyHolidaySchedule,
+)
 
 
 class _FakePharmacyBoundary:
@@ -51,6 +56,25 @@ class _FakePharmacyRepository:
     def search_nearby_candidates(self, **_: object) -> list[PharmacyCatalogEntry]:
         return self.entries
 
+    def latest_updated_at(self) -> datetime:
+        return datetime(2026, 8, 24)
+
+    def get_cached_holiday_schedules(
+        self,
+        value: date,
+        *,
+        max_age: timedelta,
+    ) -> dict[str, PharmacyHolidaySchedule] | None:
+        del value, max_age
+        return None
+
+    def replace_holiday_schedules(
+        self,
+        value: date,
+        schedules: list[PharmacyHolidaySchedule],
+    ) -> None:
+        del value, schedules
+
 
 class _FakeHolidayBoundary:
     def __init__(self, is_holiday: bool) -> None:
@@ -58,6 +82,38 @@ class _FakeHolidayBoundary:
 
     async def isHoliday(self, _: object) -> bool:
         return self.is_holiday
+
+
+class _FakeHolidayEmergencyBoundary:
+    def __init__(self, schedules: list[PharmacyHolidaySchedule]) -> None:
+        self.schedules = schedules
+
+    async def fetchSchedules(self, _: date) -> list[PharmacyHolidaySchedule]:
+        return self.schedules
+
+
+class _MalformedHolidayEmergencyBoundary:
+    async def fetchSchedules(self, _: date) -> list[PharmacyHolidaySchedule]:
+        raise PharmacyApiResponseError("Malformed holiday roster response.")
+
+
+class _StaleHolidayRepository(_FakePharmacyRepository):
+    def get_cached_holiday_schedules(
+        self,
+        value: date,
+        *,
+        max_age: timedelta,
+    ) -> dict[str, PharmacyHolidaySchedule] | None:
+        if max_age < timedelta(days=45):
+            return None
+        return {
+            "holiday-roster": PharmacyHolidaySchedule(
+                pharmacy_id="holiday-roster",
+                schedule_date=value,
+                start_time="1800",
+                end_time="2300",
+            )
+        }
 
 
 def _record(
@@ -302,3 +358,156 @@ async def test_after_midnight_uses_previous_days_overnight_schedule() -> None:
     )
 
     assert [item.pharmacy_id for item in result] == ["previous-day"]
+
+
+@pytest.mark.anyio
+async def test_late_hours_mode_filters_before_result_limit() -> None:
+    entries = [
+        PharmacyCatalogEntry(
+            pharmacy_id=f"day-{index}",
+            name=f"Day {index}",
+            address="Seoul",
+            telephone="",
+            latitude=37.5665,
+            longitude=126.9780,
+            weekly_hours={"1": ("0900", "1800")},
+        )
+        for index in range(35)
+    ]
+    entries.append(
+        PharmacyCatalogEntry(
+            pharmacy_id="late-after-thirty",
+            name="Late after thirty",
+            address="Seoul",
+            telephone="",
+            latitude=37.5666,
+            longitude=126.9781,
+            weekly_hours={"1": ("0900", "2300")},
+        )
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository(entries),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026, 8, 24, 12, 0, tzinfo=ZoneInfo("Asia/Seoul")
+        ),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.LATE_HOURS,
+        limit=30,
+    )
+
+    assert [item.pharmacy_id for item in result.data] == ["late-after-thirty"]
+
+
+@pytest.mark.anyio
+async def test_holiday_roster_overrides_generic_weekly_schedule() -> None:
+    target_date = date(2026, 9, 25)
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="holiday-roster",
+        name="Holiday roster pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"8": ("0900", "1200")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(True),
+        holiday_emergency_boundary=_FakeHolidayEmergencyBoundary(
+            [
+                PharmacyHolidaySchedule(
+                    pharmacy_id="holiday-roster",
+                    schedule_date=target_date,
+                    start_time="1800",
+                    end_time="2300",
+                )
+            ]
+        ),
+        now_provider=lambda: datetime(
+            2026, 9, 25, 20, 0, tzinfo=ZoneInfo("Asia/Seoul")
+        ),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.OPEN_AT_TIME,
+    )
+
+    assert result.data[0].today_open_time == "18:00"
+    assert result.data[0].today_close_time == "23:00"
+    assert result.data[0].schedule_is_date_specific is True
+    assert result.data[0].schedule_source == "nemc_holiday_roster"
+
+
+@pytest.mark.anyio
+async def test_malformed_holiday_roster_uses_bounded_stale_cache() -> None:
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="holiday-roster",
+        name="Holiday roster pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"8": ("0900", "1200")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_StaleHolidayRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(True),
+        holiday_emergency_boundary=_MalformedHolidayEmergencyBoundary(),
+        now_provider=lambda: datetime(
+            2026, 9, 25, 20, 0, tzinfo=ZoneInfo("Asia/Seoul")
+        ),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.OPEN_AT_TIME,
+    )
+
+    assert result.holiday_schedule_status == "stale_fallback"
+    assert result.data[0].today_open_time == "18:00"
+    assert result.data[0].schedule_is_date_specific is True
+
+
+@pytest.mark.anyio
+async def test_official_designation_respects_operating_weekday() -> None:
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="official",
+        name="Official pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"1": ("0900", "2300")},
+        official_designations={
+            "public_late_night": {
+                "operating_days": [1],
+                "source_name": "Seoul Metropolitan Government",
+                "source_url": "https://news.seoul.go.kr/welfare/archives/567003",
+                "verified_at": "2026-08-19",
+            }
+        },
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026, 8, 24, 22, 30, tzinfo=ZoneInfo("Asia/Seoul")
+        ),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.OFFICIAL_LATE_NIGHT,
+    )
+
+    assert result.data[0].is_official_late_night is True
+    assert result.data[0].designation_source_name == "Seoul Metropolitan Government"

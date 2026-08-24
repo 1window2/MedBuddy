@@ -30,7 +30,9 @@ void main() {
       expect(request.url.path, '/api/v1/pharmacy/nearby');
       expect(request.url.queryParameters['latitude'], '37.5665000');
       expect(request.url.queryParameters['longitude'], '126.9780000');
-      expect(request.url.queryParameters['open_only'], 'false');
+      expect(request.url.queryParameters['search_mode'], 'open_at_time');
+      expect(request.url.queryParameters['target_datetime'], isNotEmpty);
+      expect(request.url.queryParameters['max_distance_km'], '20.0');
       return http.Response(
         jsonEncode({
           'data': [
@@ -102,36 +104,33 @@ void main() {
     expect(launchedUris.last.queryParameters['dname'], '메드버디약국');
   });
 
-  test(
-    'directions fall back to coordinate-based web directions',
-    () async {
-      Uri? launchedUri;
-      final control = CheckNearbyPharmacy(
-        locationBoundary: _FakeLocationBoundary(),
-        client: MockClient((_) async => http.Response('{}', 200)),
-        uriLauncher: (uri) async {
-          launchedUri = uri;
-          return uri.scheme == 'https';
-        },
-      );
-      const pharmacy = NearbyPharmacy(
-        pharmacyId: 'C1234',
-        name: '메드버디약국',
-        address: '',
-        telephone: '',
-        latitude: 37.5666,
-        longitude: 126.9781,
-        distanceKm: 0.42,
-        todayOpenTime: null,
-        todayCloseTime: null,
-        isOpenNow: null,
-        is24Hours: false,
-      );
+  test('directions fall back to coordinate-based web directions', () async {
+    Uri? launchedUri;
+    final control = CheckNearbyPharmacy(
+      locationBoundary: _FakeLocationBoundary(),
+      client: MockClient((_) async => http.Response('{}', 200)),
+      uriLauncher: (uri) async {
+        launchedUri = uri;
+        return uri.scheme == 'https';
+      },
+    );
+    const pharmacy = NearbyPharmacy(
+      pharmacyId: 'C1234',
+      name: '메드버디약국',
+      address: '',
+      telephone: '',
+      latitude: 37.5666,
+      longitude: 126.9781,
+      distanceKm: 0.42,
+      todayOpenTime: null,
+      todayCloseTime: null,
+      isOpenNow: null,
+      is24Hours: false,
+    );
 
-      expect(await control.requestDirections(pharmacy), isTrue);
-      expect(launchedUri?.host, 'www.google.com');
-      expect(launchedUri?.path, '/maps/dir/');
-      expect(launchedUri?.queryParameters['destination'], '37.5666,126.9781');
-    },
-  );
+    expect(await control.requestDirections(pharmacy), isTrue);
+    expect(launchedUri?.host, 'www.google.com');
+    expect(launchedUri?.path, '/maps/dir/');
+    expect(launchedUri?.queryParameters['destination'], '37.5666,126.9781');
+  });
 }

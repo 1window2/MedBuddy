@@ -12,7 +12,13 @@ import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
 
-enum _PharmacyFilter { openNow, lateNight, weekendHoliday, all }
+enum _PharmacyFilter {
+  openNow,
+  officialLateNight,
+  lateHours,
+  weekendHoliday,
+  all,
+}
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 
@@ -64,6 +70,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   Timer? _refreshCooldownTimer;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
   String? _selectedPharmacyId;
+  DateTime _targetDateTime = DateTime.now();
+  bool _catalogIsStale = false;
+  String _holidayScheduleStatus = 'not_applicable';
 
   _NearbyPharmacyText get _text =>
       _NearbyPharmacyText(widget.userSetting.language);
@@ -95,13 +104,18 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       _errorMessage = null;
     });
     try {
-      final pharmacies = await _control.requestNearbyPharmacies();
+      final result = await _control.requestNearbyPharmacySearch(
+        searchMode: _searchModeForFilter(_filter),
+        targetDateTime: _targetDateTime,
+      );
       if (!mounted) {
         return;
       }
       setState(() {
-        _pharmacies = pharmacies;
-        final selectedStillExists = pharmacies.any(
+        _pharmacies = result.data;
+        _catalogIsStale = result.catalogIsStale;
+        _holidayScheduleStatus = result.holidayScheduleStatus;
+        final selectedStillExists = result.data.any(
           (pharmacy) => pharmacy.pharmacyId == _selectedPharmacyId,
         );
         if (!selectedStillExists) {
@@ -138,6 +152,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     }
 
     _isRefreshCoolingDown = true;
+    if (_filter == _PharmacyFilter.openNow) {
+      _targetDateTime = DateTime.now();
+    }
     _refreshCooldownTimer?.cancel();
     _refreshCooldownTimer = Timer(_refreshCooldownDuration, () {
       _isRefreshCoolingDown = false;
@@ -146,23 +163,71 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   }
 
   List<NearbyPharmacy> get _visiblePharmacies {
-    return _pharmaciesForFilter(_filter);
+    return _pharmacies;
   }
 
-  List<NearbyPharmacy> _pharmaciesForFilter(_PharmacyFilter filter) {
+  PharmacySearchMode _searchModeForFilter(_PharmacyFilter filter) {
     return switch (filter) {
-      _PharmacyFilter.openNow =>
-        _pharmacies
-            .where((pharmacy) => pharmacy.isOpenNow == true)
-            .toList(growable: false),
-      _PharmacyFilter.lateNight => _pharmacies
-          .where((pharmacy) => pharmacy.isOpenLate || pharmacy.is24Hours)
-          .toList(growable: false),
-      _PharmacyFilter.weekendHoliday => _pharmacies
-          .where((pharmacy) => pharmacy.hasWeekendOrHolidayHours)
-          .toList(growable: false),
-      _PharmacyFilter.all => _pharmacies,
+      _PharmacyFilter.openNow => PharmacySearchMode.openAtTime,
+      _PharmacyFilter.officialLateNight => PharmacySearchMode.officialLateNight,
+      _PharmacyFilter.lateHours => PharmacySearchMode.lateHours,
+      _PharmacyFilter.weekendHoliday => PharmacySearchMode.weekendHoliday,
+      _PharmacyFilter.all => PharmacySearchMode.all,
     };
+  }
+
+  Future<void> _selectFilter(_PharmacyFilter nextFilter) async {
+    setState(() {
+      _filter = nextFilter;
+      _selectedPharmacyId = null;
+      if (nextFilter == _PharmacyFilter.openNow) {
+        _targetDateTime = DateTime.now();
+      }
+    });
+    await _loadPharmacies();
+  }
+
+  Future<void> _pickSearchDate() async {
+    final today = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _targetDateTime,
+      firstDate: today.subtract(const Duration(days: 7)),
+      lastDate: today.add(const Duration(days: 366)),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _targetDateTime = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        _filter == _PharmacyFilter.openNow ? today.hour : 12,
+        _filter == _PharmacyFilter.openNow ? today.minute : 0,
+      );
+    });
+    await _loadPharmacies();
+  }
+
+  Future<void> _pickSearchTime() async {
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_targetDateTime),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _targetDateTime = DateTime(
+        _targetDateTime.year,
+        _targetDateTime.month,
+        _targetDateTime.day,
+        selected.hour,
+        selected.minute,
+      );
+    });
+    await _loadPharmacies();
   }
 
   @override
@@ -273,43 +338,59 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
             20,
             10,
           ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<_PharmacyFilter>(
-              segments: [
-                ButtonSegment(
-                  value: _PharmacyFilter.openNow,
-                  label: Text(text.openNow),
-                ),
-                  ButtonSegment(
-                    value: _PharmacyFilter.lateNight,
-                    label: Text(text.lateNight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _pickSearchDate,
+                    icon: const Icon(Icons.event_outlined),
+                    label: Text(text.searchDate(_targetDateTime)),
                   ),
-                  ButtonSegment(
-                    value: _PharmacyFilter.weekendHoliday,
-                    label: Text(text.weekendHoliday),
-                  ),
-                  ButtonSegment(
-                    value: _PharmacyFilter.all,
-                  label: Text(text.all),
+                  if (_filter == _PharmacyFilter.openNow)
+                    OutlinedButton.icon(
+                      onPressed: _pickSearchTime,
+                      icon: const Icon(Icons.schedule_outlined),
+                      label: Text(text.searchTime(_targetDateTime)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<_PharmacyFilter>(
+                  segments: [
+                    ButtonSegment(
+                      value: _PharmacyFilter.openNow,
+                      label: Text(text.openFilter),
+                    ),
+                    ButtonSegment(
+                      value: _PharmacyFilter.officialLateNight,
+                      label: Text(text.officialLateNight),
+                    ),
+                    ButtonSegment(
+                      value: _PharmacyFilter.lateHours,
+                      label: Text(text.lateHours),
+                    ),
+                    ButtonSegment(
+                      value: _PharmacyFilter.weekendHoliday,
+                      label: Text(text.weekendHoliday),
+                    ),
+                    ButtonSegment(
+                      value: _PharmacyFilter.all,
+                      label: Text(text.all),
+                    ),
+                  ],
+                  selected: {_filter},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      _selectFilter(selection.first),
                 ),
-              ],
-              selected: {_filter},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) {
-                final nextFilter = selection.first;
-                final nextPharmacies = _pharmaciesForFilter(nextFilter);
-                setState(() {
-                  _filter = nextFilter;
-                  final selectionRemainsVisible = nextPharmacies.any(
-                    (pharmacy) => pharmacy.pharmacyId == _selectedPharmacyId,
-                  );
-                  if (!selectionRemainsVisible) {
-                    _selectedPharmacyId = null;
-                  }
-                });
-              },
-            ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -318,7 +399,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   icon: Icons.local_pharmacy_outlined,
                   title: switch (_filter) {
                     _PharmacyFilter.openNow => text.noOpenPharmacy,
-                    _PharmacyFilter.lateNight => text.noLateNightPharmacy,
+                    _PharmacyFilter.officialLateNight =>
+                      text.noOfficialLateNightPharmacy,
+                    _PharmacyFilter.lateHours => text.noLateNightPharmacy,
                     _PharmacyFilter.weekendHoliday =>
                       text.noWeekendHolidayPharmacy,
                     _PharmacyFilter.all => text.noNearbyPharmacy,
@@ -331,7 +414,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                       : text.showAll,
                   onAction: _filter == _PharmacyFilter.all
                       ? _requestRefresh
-                      : () => setState(() => _filter = _PharmacyFilter.all),
+                      : () => _selectFilter(_PharmacyFilter.all),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
@@ -339,7 +422,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     if (index == visiblePharmacies.length) {
-                      return _PharmacySourceNotice(message: text.sourceNotice);
+                      return _PharmacySourceNotice(
+                        message: text.sourceNotice(
+                          catalogIsStale: _catalogIsStale,
+                          holidayScheduleStatus: _holidayScheduleStatus,
+                        ),
+                      );
                     }
                     final pharmacy = visiblePharmacies[index];
                     return _PharmacyCard(
@@ -667,7 +755,8 @@ class _PharmacyCard extends StatelessWidget {
                   icon: Icons.schedule_outlined,
                   text: text.todayHours(pharmacy),
                 ),
-                if (pharmacy.isOpenLate ||
+                if (pharmacy.isOfficialLateNight ||
+                    pharmacy.isOpenLate ||
                     pharmacy.hasWeekendOrHolidayHours) ...[
                   const SizedBox(height: 7),
                   _PharmacyInfoLine(
@@ -791,7 +880,9 @@ class _NearbyPharmacyText {
       isEnglish ? 'Pharmacy information is unavailable' : '약국 정보를 확인할 수 없습니다';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get openNow => isEnglish ? 'Open now' : '영업 중';
-  String get lateNight => isEnglish ? 'Late / 24h' : '심야·24시간';
+  String get openFilter => isEnglish ? 'Open at time' : '선택 시각 영업';
+  String get officialLateNight => isEnglish ? 'Official late-night' : '공공심야';
+  String get lateHours => isEnglish ? 'Reported late hours' : '심야 운영정보';
   String get weekendHoliday => isEnglish ? 'Weekend / holiday' : '주말·공휴일';
   String get all => isEnglish ? 'All' : '전체';
   String get noOpenPharmacy => isEnglish
@@ -800,6 +891,9 @@ class _NearbyPharmacyText {
   String get noLateNightPharmacy => isEnglish
       ? 'No late-night pharmacies were found within 20 km'
       : '20km 안에 심야 운영 약국이 없습니다';
+  String get noOfficialLateNightPharmacy => isEnglish
+      ? 'No officially designated late-night pharmacies were found within 20 km'
+      : '20km 안에 공식 지정 공공심야약국이 없습니다';
   String get noWeekendHolidayPharmacy => isEnglish
       ? 'No pharmacies with weekend or holiday hours were found within 20 km'
       : '20km 안에 주말·공휴일 운영 약국이 없습니다';
@@ -877,6 +971,14 @@ class _NearbyPharmacyText {
 
   String scheduleTags(NearbyPharmacy pharmacy) {
     final labels = <String>[];
+    if (pharmacy.isOfficialLateNight) {
+      labels.add(
+        isEnglish ? 'Official public late-night pharmacy' : '공식 공공심야약국',
+      );
+      if (pharmacy.designationIsStale) {
+        labels.add(isEnglish ? 'Designation needs rechecking' : '지정 현황 재확인 필요');
+      }
+    }
     if (pharmacy.isOpenLate) {
       labels.add(isEnglish ? 'Late-night hours today' : '오늘 심야 운영');
     }
@@ -886,9 +988,49 @@ class _NearbyPharmacyText {
     return labels.join(' · ');
   }
 
+  String searchDate(DateTime value) {
+    final formatted =
+        '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+    return isEnglish ? 'Search date: $formatted' : '조회 날짜: $formatted';
+  }
+
+  String searchTime(DateTime value) {
+    final formatted =
+        '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
+    return isEnglish ? 'Time: $formatted' : '시각: $formatted';
+  }
+
   String get phone => isEnglish ? 'Call' : '전화';
   String get directions => isEnglish ? 'Directions' : '길찾기';
-  String get sourceNotice => isEnglish
-      ? 'Information is based on National Medical Center public data. Call before visiting to confirm actual opening hours.'
-      : '국립중앙의료원 공공데이터를 기준으로 표시합니다. 방문 전 전화로 실제 운영 여부를 확인해주세요.';
+  String sourceNotice({
+    required bool catalogIsStale,
+    required String holidayScheduleStatus,
+  }) {
+    final warning = catalogIsStale
+        ? (isEnglish
+              ? ' The synchronized catalog is older than expected.'
+              : ' 동기화된 약국 목록이 예상보다 오래되었습니다.')
+        : '';
+    final holidayWarning = switch (holidayScheduleStatus) {
+      'stale_fallback' =>
+        isEnglish
+            ? ' A cached holiday roster is being used.'
+            : ' 저장된 명절 비상운영 목록을 사용 중입니다.',
+      'weekly_fallback' =>
+        isEnglish
+            ? ' Exact-date holiday data is unavailable; weekly reported hours are shown.'
+            : ' 날짜별 명절 정보가 없어 주간 신고 영업시간을 표시합니다.',
+      _ => '',
+    };
+    final base = isEnglish
+        ? 'Information is based on National Emergency Medical Center public data. Official late-night designations currently cover verified Seoul records.'
+        : '국립중앙의료원 공공데이터를 기준으로 표시하며, 공식 공공심야 지정은 현재 검증된 서울시 목록을 제공합니다.';
+    final callFirst = isEnglish
+        ? ' Call before visiting to confirm actual opening hours.'
+        : ' 방문 전 전화로 실제 운영 여부를 확인해주세요.';
+    return '$base$warning$holidayWarning$callFirst';
+  }
 }

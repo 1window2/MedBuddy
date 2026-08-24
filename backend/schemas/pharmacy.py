@@ -3,6 +3,8 @@
 
 """근처 약국 API 요청·응답 계약."""
 
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -26,6 +28,14 @@ class NearbyPharmacyItem(BaseModel):
     is_open_late: bool
     has_weekend_or_holiday_hours: bool
     is_public_holiday: bool
+    is_official_late_night: bool
+    designation_source_name: str | None
+    designation_source_url: str | None
+    designation_verified_at: date | None
+    designation_is_stale: bool
+    schedule_date: date | None
+    schedule_source: str
+    schedule_is_date_specific: bool
     source_name: str
 
 
@@ -35,4 +45,9 @@ class NearbyPharmacyItem(BaseModel):
 class NearbyPharmacyResponse(BaseModel):
     data: list[NearbyPharmacyItem]
     open_only: bool
+    search_mode: str
+    target_datetime: datetime
     max_distance_km: float
+    catalog_updated_at: datetime | None
+    catalog_is_stale: bool
+    holiday_schedule_status: str

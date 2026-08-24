@@ -47,8 +47,16 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "user_accounts",
         "pill_identification_references",
         "pharmacy_catalog_records",
+        "pharmacy_holiday_schedules",
+        "pharmacy_holiday_fetches",
+        "korean_holidays",
+        "korean_holiday_month_fetches",
         "chat_messages",
     }.issubset(tables)
+    assert "official_designations" in {
+        column["name"]
+        for column in inspector.get_columns("pharmacy_catalog_records")
+    }
     assert "deduplication_key" in saved_columns
     assert "prescription_batch_id" in saved_columns
     assert {

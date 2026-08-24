@@ -43,15 +43,34 @@ class CheckNearbyPharmacy {
   // - 현재 위치를 확인하고 최대 20km 안의 약국 목록을 서버에서 조회한다.
   // 반환값:
   // - 영업 중 약국이 먼저 정렬된 NearbyPharmacy 목록
-  Future<List<NearbyPharmacy>> requestNearbyPharmacies() async {
+  Future<List<NearbyPharmacy>> requestNearbyPharmacies({
+    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+    DateTime? targetDateTime,
+    double maxDistanceKm = 20,
+  }) async {
+    final result = await requestNearbyPharmacySearch(
+      searchMode: searchMode,
+      targetDateTime: targetDateTime,
+      maxDistanceKm: maxDistanceKm,
+    );
+    return result.data;
+  }
+
+  Future<NearbyPharmacySearchResult> requestNearbyPharmacySearch({
+    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+    DateTime? targetDateTime,
+    double maxDistanceKm = 20,
+  }) async {
     final coordinate = await _locationBoundary.requestCurrentCoordinate();
+    final effectiveTarget = targetDateTime ?? DateTime.now();
     final uri = Uri.parse(ApiConfig.pharmacyUrl('/nearby')).replace(
       queryParameters: {
         'latitude': coordinate.latitude.toStringAsFixed(7),
         'longitude': coordinate.longitude.toStringAsFixed(7),
-        'open_only': 'false',
+        'search_mode': searchMode.apiValue,
+        'target_datetime': effectiveTarget.toIso8601String(),
         'limit': '30',
-        'max_distance_km': '20',
+        'max_distance_km': maxDistanceKm.toStringAsFixed(1),
       },
     );
 
@@ -71,13 +90,26 @@ class CheckNearbyPharmacy {
       if (rawItems is! List) {
         throw StateError('Server response did not include pharmacy data.');
       }
-      return rawItems
+      final pharmacies = rawItems
           .whereType<Map>()
           .map(
             (item) => NearbyPharmacy.fromJson(Map<String, dynamic>.from(item)),
           )
           .where((item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty)
           .toList(growable: false);
+      return NearbyPharmacySearchResult(
+        data: pharmacies,
+        searchMode: searchMode,
+        targetDateTime:
+            DateTime.tryParse(decoded['target_datetime']?.toString() ?? '') ??
+            effectiveTarget,
+        catalogUpdatedAt: DateTime.tryParse(
+          decoded['catalog_updated_at']?.toString() ?? '',
+        ),
+        catalogIsStale: decoded['catalog_is_stale'] == true,
+        holidayScheduleStatus:
+            decoded['holiday_schedule_status']?.toString() ?? 'not_applicable',
+      );
     } on DeviceLocationException {
       rethrow;
     } on StateError {
