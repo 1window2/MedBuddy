@@ -8,25 +8,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
+import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
+import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:provider/provider.dart';
 
 class _RetryChatControl extends ManageLinkedChat {
   final List<String> clientMessageIds = [];
-  final List<int?> medicationIds = [];
+  final List<int?> primaryMedicationIds = [];
+  final List<List<int>> medicationIdGroups = [];
   final List<ChatMessageKind> messageKinds = [];
   final List<String?> slotKeys = [];
   final bool failFirstSend;
   final List<ChatScheduleContext> scheduleContexts;
+  final List<ChatMessage> historyMessages;
   int sendAttempts = 0;
   int detailRequests = 0;
 
   _RetryChatControl({
     this.failFirstSend = true,
     this.scheduleContexts = const [],
+    this.historyMessages = const [],
   }) : super(
          userHash: 'patient-a',
          client: MockClient((request) async => http.Response('{}', 200)),
@@ -37,7 +47,7 @@ class _RetryChatControl extends ManageLinkedChat {
     required int linkId,
     int? beforeMessageId,
     int limit = 50,
-  }) async => const [];
+  }) async => historyMessages;
 
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
@@ -48,6 +58,12 @@ class _RetryChatControl extends ManageLinkedChat {
       medicationName: '테스트정',
       dosagePerTime: '1정',
       scheduleSlotKeys: ['morning'],
+    ),
+    ChatMedicationContext(
+      medicationId: 92,
+      medicationName: '저녁정',
+      dosagePerTime: '0.5정',
+      scheduleSlotKeys: ['evening'],
     ),
   ];
 
@@ -62,13 +78,13 @@ class _RetryChatControl extends ManageLinkedChat {
     required int medicationId,
   }) async {
     detailRequests += 1;
-    return const MedicationDetail(
-      id: 91,
-      itemName: '테스트정',
+    return MedicationDetail(
+      id: medicationId,
+      itemName: medicationId == 92 ? '저녁정' : '테스트정',
       efficacy: '테스트 효능',
       usageMethod: '하루 한 번 복용하세요.',
       warning: '주의사항을 확인하세요.',
-      dosagePerTime: '1정',
+      dosagePerTime: medicationId == 92 ? '0.5정' : '1정',
     );
   }
 
@@ -78,18 +94,29 @@ class _RetryChatControl extends ManageLinkedChat {
     required String clientMessageId,
     required String body,
     int? medicationId,
+    List<int> medicationIds = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
   }) async {
     sendAttempts += 1;
     clientMessageIds.add(clientMessageId);
-    medicationIds.add(medicationId);
+    primaryMedicationIds.add(medicationId);
+    medicationIdGroups.add(List<int>.unmodifiable(medicationIds));
     messageKinds.add(messageKind);
     slotKeys.add(slotKey);
     if (failFirstSend && sendAttempts == 1) {
       throw StateError('temporary failure');
     }
+    final contexts = medicationIds
+        .map(
+          (id) => ChatMedicationContext(
+            medicationId: id,
+            medicationName: id == 92 ? '저녁정' : '테스트정',
+            dosagePerTime: id == 92 ? '0.5정' : '1정',
+          ),
+        )
+        .toList(growable: false);
     return ChatMessage(
       messageId: 1,
       linkId: linkId,
@@ -98,13 +125,8 @@ class _RetryChatControl extends ManageLinkedChat {
       body: body,
       createdAt: DateTime.utc(2026, 8, 23, 9),
       messageKind: messageKind,
-      medicationContext: medicationId == null
-          ? null
-          : const ChatMedicationContext(
-              medicationId: 91,
-              medicationName: '테스트정',
-              dosagePerTime: '1정',
-            ),
+      medicationContext: contexts.isEmpty ? null : contexts.first,
+      medicationContexts: contexts,
     );
   }
 
@@ -113,6 +135,31 @@ class _RetryChatControl extends ManageLinkedChat {
     required int linkId,
     required int throughMessageId,
   }) async {}
+}
+
+// 클래스명: _ChatScheduleControl
+// 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
+class _ChatScheduleControl extends CheckSchedule {
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    return const [
+      MedicationSchedule(
+        medicationID: 'evening-medication',
+        medicationName: '저녁정',
+        dosage: '0.5',
+        intakeTime: '1회',
+        medicationTime: 1,
+        scheduleSlotKeys: ['evening'],
+      ),
+    ];
+  }
+}
+
+// 클래스명: _ChatSetNotification
+// 역할: 채팅에서 일정 화면을 열 때 외부 알림 플러그인 없이 설정을 조회한다.
+class _ChatSetNotification extends SetNotification {
+  @override
+  Future<List<MedicationAlarm>> requestMedicationAlarm() async => const [];
 }
 
 class _FakeRealtimeService extends LinkedChatRealtimeService {
@@ -190,7 +237,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(control.sendAttempts, 1);
-    expect(control.medicationIds, [null]);
+    expect(control.primaryMedicationIds, [null]);
+    expect(control.medicationIdGroups, [isEmpty]);
     expect(find.text('오늘은 몸 상태가 괜찮아요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -233,6 +281,10 @@ void main() {
     expect(find.text('아침'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
     );
     await tester.pumpAndSettle();
     final messageField = tester.widget<TextField>(find.byType(TextField));
@@ -331,7 +383,7 @@ void main() {
     control.dispose();
   });
 
-  testWidgets('환자는 선택한 약에 빠른 답장을 보낸다', (tester) async {
+  testWidgets('환자는 여러 약을 선택해 환자용 빠른 답장을 보낸다', (tester) async {
     final control = _RetryChatControl(failFirstSend: false);
     final realtimeService = _FakeRealtimeService();
 
@@ -354,6 +406,17 @@ void main() {
       find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
     );
     await tester.pumpAndSettle();
+    final secondMedication = find.byKey(
+      const ValueKey('scheduleMedicationSelectionOption_92'),
+    );
+    await tester.drag(find.byType(ListView).last, const Offset(0, -320));
+    await tester.pumpAndSettle();
+    await tester.tap(secondMedication);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('먹었어요'), findsOneWidget);
     expect(find.text('지금은 못 먹어요'), findsOneWidget);
@@ -365,10 +428,138 @@ void main() {
     await tester.tap(takenReply);
     await tester.pumpAndSettle();
 
-    expect(control.medicationIds, [91]);
+    expect(control.primaryMedicationIds, [91]);
+    expect(control.medicationIdGroups, [
+      [91, 92],
+    ]);
     expect(control.messageKinds, [ChatMessageKind.text]);
     expect(control.slotKeys, [null]);
-    expect(find.text('테스트정 먹었어요.'), findsOneWidget);
+    expect(find.text('테스트정, 저녁정 먹었어요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
+  testWidgets('보호자는 환자 문구 대신 보호자용 빠른 답장을 사용한다', (tester) async {
+    final control = _RetryChatControl(failFirstSend: false);
+    final realtimeService = _FakeRealtimeService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          peerName: '환자 TEST',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('복용하셨나요?'), findsOneWidget);
+    expect(find.text('지금 복용 가능하세요?'), findsOneWidget);
+    expect(find.text('남은 약이 충분한가요?'), findsOneWidget);
+    expect(find.text('불편한 점은 없으세요?'), findsOneWidget);
+    expect(find.text('먹었어요'), findsNothing);
+    expect(find.text('지금은 못 먹어요'), findsNothing);
+
+    final caregiverReply = find.widgetWithText(ActionChip, '복용하셨나요?');
+    await tester.ensureVisible(caregiverReply);
+    await tester.tap(caregiverReply);
+    await tester.pumpAndSettle();
+
+    expect(control.primaryMedicationIds, [91]);
+    expect(control.medicationIdGroups, [
+      [91],
+    ]);
+    expect(find.text('환자 TEST님, 테스트정 복용하셨나요?'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
+  testWidgets('환자가 채팅의 시간대 카드를 누르면 해당 복약 일정으로 이동한다', (tester) async {
+    final scheduleContext = const ChatScheduleContext(
+      slotKey: 'evening',
+      alarmTime: '18:00',
+      alarmEnabled: true,
+      completedCount: 0,
+      totalCount: 1,
+      canRequestCheck: false,
+      medications: [
+        ChatMedicationContext(
+          medicationId: 92,
+          medicationName: '저녁정',
+          dosagePerTime: '0.5정',
+        ),
+      ],
+    );
+    final control = _RetryChatControl(
+      failFirstSend: false,
+      historyMessages: [
+        ChatMessage(
+          messageId: 70,
+          linkId: 17,
+          senderHash: 'caregiver-a',
+          clientMessageId: 'schedule_message_001',
+          body: '저녁 복약을 확인해주세요.',
+          createdAt: DateTime.utc(2026, 8, 24, 9),
+          messageKind: ChatMessageKind.slotCheckRequest,
+          scheduleContext: scheduleContext,
+        ),
+      ],
+    );
+    final realtimeService = _FakeRealtimeService();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _ChatScheduleControl(),
+      setNotification: _ChatSetNotification(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtimeService,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('저녁 18:00'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CheckScheduleUI), findsOneWidget);
+    final scheduleScreen = tester.widget<CheckScheduleUI>(
+      find.byType(CheckScheduleUI),
+    );
+    expect(scheduleScreen.initialSlotKey, 'evening');
+    expect(find.text('오늘의 복약 일정'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

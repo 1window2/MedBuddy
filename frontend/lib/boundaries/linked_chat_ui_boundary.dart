@@ -68,7 +68,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   List<ChatMessage> _messages = const [];
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
-  ChatMedicationContext? _selectedMedicationContext;
+  List<ChatMedicationContext> _selectedMedicationContexts = const [];
   LinkedChatConnectionState _connectionState =
       LinkedChatConnectionState.connecting;
   String? _errorMessage;
@@ -77,7 +77,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   bool _isSending = false;
   String? _pendingClientMessageId;
   String? _pendingMessageBody;
-  int? _pendingMedicationId;
+  String? _pendingMedicationIdsSignature;
   ChatMessageKind _pendingMessageKind = ChatMessageKind.text;
   String? _pendingSlotKey;
   String? _pendingPharmacyId;
@@ -86,6 +86,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   bool _showMedicationContextGuide = true;
 
   _LinkedChatText get _text => _LinkedChatText(widget.userSetting.language);
+
+  bool get _isPatient =>
+      widget.patientHash.isNotEmpty &&
+      widget.currentUserHash == widget.patientHash;
 
   String get _peerName {
     if (_text.isEnglish && widget.peerName == '가족') {
@@ -195,11 +199,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       }
       setState(() {
         _medicationContexts = medications;
-        final selectedId = _selectedMedicationContext?.medicationId;
-        _selectedMedicationContext = _findMedicationContext(
-          medications,
-          selectedId,
-        );
+        final selectedIds = _selectedMedicationContexts
+            .map((item) => item.medicationId)
+            .toSet();
+        _selectedMedicationContexts = medications
+            .where((item) => selectedIds.contains(item.medicationId))
+            .toList(growable: false);
       });
     } catch (_) {
       if (!mounted || generation != _requestGeneration) {
@@ -229,21 +234,6 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     } catch (_) {
       // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 조용히 보완 조회한다.
     }
-  }
-
-  ChatMedicationContext? _findMedicationContext(
-    List<ChatMedicationContext> medications,
-    int? medicationId,
-  ) {
-    if (medicationId == null) {
-      return null;
-    }
-    for (final medication in medications) {
-      if (medication.medicationId == medicationId) {
-        return medication;
-      }
-    }
-    return null;
   }
 
   // 함수명: _refreshMessages
@@ -357,7 +347,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     final body = _messageController.text.trim();
     await _submitMessage(
       body: body,
-      medication: _selectedMedicationContext,
+      medications: _selectedMedicationContexts,
       clearComposer: true,
       clearMedicationSelection: true,
     );
@@ -368,7 +358,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 일반 문장과 구조화된 복약·약국 메시지의 전송, 재시도와 화면 갱신을 한곳에서 처리한다.
   Future<ChatMessage?> _submitMessage({
     required String body,
-    ChatMedicationContext? medication,
+    List<ChatMedicationContext> medications = const [],
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
@@ -384,9 +374,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       _isSending = true;
       _sendErrorMessage = null;
     });
+    final medicationIdsSignature = _medicationIdsSignature(medications);
     final canReusePendingRequest =
         _pendingMessageBody == normalizedBody &&
-        _pendingMedicationId == medication?.medicationId &&
+        _pendingMedicationIdsSignature == medicationIdsSignature &&
         _pendingMessageKind == messageKind &&
         _pendingSlotKey == slotKey &&
         _pendingPharmacyId == pharmacyId;
@@ -395,7 +386,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         : _createClientMessageId();
     _pendingClientMessageId = clientMessageId;
     _pendingMessageBody = normalizedBody;
-    _pendingMedicationId = medication?.medicationId;
+    _pendingMedicationIdsSignature = medicationIdsSignature;
     _pendingMessageKind = messageKind;
     _pendingSlotKey = slotKey;
     _pendingPharmacyId = pharmacyId;
@@ -404,7 +395,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         linkId: widget.linkId,
         clientMessageId: clientMessageId,
         body: normalizedBody,
-        medicationId: medication?.medicationId,
+        medicationId: medications.isEmpty
+            ? null
+            : medications.first.medicationId,
+        medicationIds: medications
+            .map((item) => item.medicationId)
+            .toList(growable: false),
         messageKind: messageKind,
         slotKey: slotKey,
         pharmacyId: pharmacyId,
@@ -418,7 +414,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       _clearPendingRequest();
       setState(() {
         if (clearMedicationSelection) {
-          _selectedMedicationContext = null;
+          _selectedMedicationContexts = const [];
         }
         _messages = _mergeMessages(_messages, [message]);
         _errorMessage = null;
@@ -444,36 +440,50 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   void _clearPendingRequest() {
     _pendingClientMessageId = null;
     _pendingMessageBody = null;
-    _pendingMedicationId = null;
+    _pendingMedicationIdsSignature = null;
     _pendingMessageKind = ChatMessageKind.text;
     _pendingSlotKey = null;
     _pendingPharmacyId = null;
   }
 
   Future<void> _sendQuickReply(_ChatQuickReply reply) async {
-    final medication = _selectedMedicationContext;
-    if (medication == null || _isSending) {
+    final medications = _selectedMedicationContexts;
+    if (medications.isEmpty || _isSending) {
       return;
     }
-    final messageKind = switch (reply) {
-      _ChatQuickReply.shortage => ChatMessageKind.medicationShortage,
-      _ChatQuickReply.discomfort => ChatMessageKind.medicationDiscomfort,
-      _ => ChatMessageKind.text,
-    };
-    final body = _text.quickReplyBody(reply, medication.medicationName);
+    final messageKind = _isPatient
+        ? switch (reply) {
+            _ChatQuickReply.shortage => ChatMessageKind.medicationShortage,
+            _ChatQuickReply.discomfort => ChatMessageKind.medicationDiscomfort,
+            _ => ChatMessageKind.text,
+          }
+        : ChatMessageKind.text;
+    final medicationNames = medications
+        .map((item) => item.medicationName)
+        .join(', ');
+    final body = _text.quickReplyBody(
+      reply,
+      medicationNames,
+      isPatient: _isPatient,
+      peerName: _peerName,
+    );
     final sent = await _submitMessage(
       body: body,
-      medication: medication,
+      medications: medications,
       messageKind: messageKind,
-      clearMedicationSelection: reply != _ChatQuickReply.shortage,
+      clearMedicationSelection:
+          !_isPatient || reply != _ChatQuickReply.shortage,
     );
-    if (sent != null && reply == _ChatQuickReply.shortage && mounted) {
-      await _showPharmacySelector(medication: medication);
+    if (sent != null &&
+        _isPatient &&
+        reply == _ChatQuickReply.shortage &&
+        mounted) {
+      await _showPharmacySelector(medications: medications);
     }
   }
 
   Future<void> _showPharmacySelector({
-    ChatMedicationContext? medication,
+    List<ChatMedicationContext> medications = const [],
   }) async {
     if (_isSending) {
       return;
@@ -494,13 +504,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       body: selection.phoneVerified
           ? _text.pharmacyPhoneVerifiedBody(selection.pharmacy.name)
           : _text.pharmacyShareBody(selection.pharmacy.name),
-      medication: medication,
+      medications: medications,
       messageKind: messageKind,
       pharmacyId: selection.pharmacy.pharmacyId,
       clearMedicationSelection: true,
     );
     if (sent != null && mounted) {
-      setState(() => _selectedMedicationContext = null);
+      setState(() => _selectedMedicationContexts = const []);
     }
   }
 
@@ -585,38 +595,58 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           ),
         )
         .toList(growable: false);
-    final selectedSchedule = await Navigator.push<MedicationSchedule>(
+    final selectedSchedules = await Navigator.push<List<MedicationSchedule>>(
       context,
       MaterialPageRoute(
         builder: (context) => CheckScheduleUI.selection(
           schedules: selectionSchedules,
           language: widget.userSetting.language,
+          selectedMedicationIds: _selectedMedicationContexts
+              .map((item) => item.medicationId.toString())
+              .toSet(),
         ),
       ),
     );
-    if (selectedSchedule == null || !mounted) {
+    if (selectedSchedules == null || !mounted) {
       return;
     }
-    final selectedId = int.tryParse(selectedSchedule.medicationID);
-    final selected = medicationsById[selectedId];
-    if (selected == null) {
-      return;
-    }
+    final selected = selectedSchedules
+        .map((item) => medicationsById[int.tryParse(item.medicationID)])
+        .whereType<ChatMedicationContext>()
+        .toList(growable: false);
     setState(() {
-      _selectedMedicationContext = selected;
+      _selectedMedicationContexts = selected;
       _sendErrorMessage = null;
+      _clearPendingRequest();
     });
   }
 
-  String _suggestedMessage(ChatMedicationContext medication) {
-    if (widget.patientHash.isNotEmpty &&
-        widget.currentUserHash == widget.patientHash) {
-      return _text.patientSuggestedMessage(medication.medicationName);
+  String _suggestedMessage(List<ChatMedicationContext> medications) {
+    final medicationNames = medications
+        .map((item) => item.medicationName)
+        .join(', ');
+    if (_isPatient) {
+      return _text.patientSuggestedMessage(medicationNames);
     }
-    return _text.caregiverSuggestedMessage(
-      _peerName,
-      medication.medicationName,
+    return _text.caregiverSuggestedMessage(_peerName, medicationNames);
+  }
+
+  // 함수명: _openPatientSchedule
+  // 역할: 환자가 채팅의 시간대 카드를 누르면 같은 시간대가 보이는 오늘 일정으로 이동한다.
+  Future<void> _openPatientSchedule(ChatScheduleContext schedule) async {
+    if (!_isPatient) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => CheckScheduleUI(initialSlotKey: schedule.slotKey),
+      ),
     );
+  }
+
+  String _medicationIdsSignature(List<ChatMedicationContext> medications) {
+    final ids = medications.map((item) => item.medicationId).toList()..sort();
+    return ids.join(',');
   }
 
   // 함수명: _openMedicationDetail
@@ -821,20 +851,23 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         message: _messages[index],
         isMine: _messages[index].senderHash == widget.currentUserHash,
         text: _text,
-        isMedicationLoading:
-            _loadingMedicationId ==
-            _messages[index].medicationContext?.medicationId,
+        loadingMedicationId: _loadingMedicationId,
         onMedicationPressed: _openMedicationDetail,
+        onSchedulePressed: _isPatient ? _openPatientSchedule : null,
         onPharmacyCallRequested: _callPharmacy,
         onPharmacyDirectionsRequested: _openPharmacyDirections,
         onFindPharmacyRequested: (medication) {
-          unawaited(_showPharmacySelector(medication: medication));
+          unawaited(_showPharmacySelector(medications: [medication]));
         },
       ),
     );
   }
 
   Widget _buildComposer() {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final selectedMedicationCardHeight = (66 + (textScale - 1) * 34)
+        .clamp(66.0, 94.0)
+        .toDouble();
     return Material(
       color: Colors.white,
       elevation: 8,
@@ -843,26 +876,47 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_selectedMedicationContext != null) ...[
-              _SelectedMedicationContext(
-                medication: _selectedMedicationContext!,
-                text: _text,
-                isLoading:
-                    _loadingMedicationId ==
-                    _selectedMedicationContext!.medicationId,
-                onOpenRequested: _loadingMedicationId == null
-                    ? () => _openMedicationDetail(_selectedMedicationContext!)
-                    : null,
-                onRemoveRequested: _isSending
-                    ? null
-                    : () => setState(() {
-                        _selectedMedicationContext = null;
-                        _clearPendingRequest();
-                      }),
+            if (_selectedMedicationContexts.isNotEmpty) ...[
+              SizedBox(
+                height: selectedMedicationCardHeight,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _selectedMedicationContexts.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final medication = _selectedMedicationContexts[index];
+                    return SizedBox(
+                      width: min(MediaQuery.sizeOf(context).width - 40, 340),
+                      child: _SelectedMedicationContext(
+                        medication: medication,
+                        text: _text,
+                        isLoading:
+                            _loadingMedicationId == medication.medicationId,
+                        onOpenRequested: _loadingMedicationId == null
+                            ? () => _openMedicationDetail(medication)
+                            : null,
+                        onRemoveRequested: _isSending
+                            ? null
+                            : () => setState(() {
+                                _selectedMedicationContexts =
+                                    _selectedMedicationContexts
+                                        .where(
+                                          (item) =>
+                                              item.medicationId !=
+                                              medication.medicationId,
+                                        )
+                                        .toList(growable: false);
+                                _clearPendingRequest();
+                              }),
+                      ),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 8),
               _QuickReplyBar(
                 text: _text,
+                isPatient: _isPatient,
                 enabled: !_isSending,
                 onSelected: _sendQuickReply,
               ),
@@ -930,10 +984,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                     textInputAction: TextInputAction.newline,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
-                      hintText: _selectedMedicationContext == null
+                      hintText: _selectedMedicationContexts.isEmpty
                           ? null
                           : _text.exampleMessage(
-                              _suggestedMessage(_selectedMedicationContext!),
+                              _suggestedMessage(_selectedMedicationContexts),
                             ),
                       counterText: '',
                       filled: true,
@@ -993,11 +1047,13 @@ enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 
 class _QuickReplyBar extends StatelessWidget {
   final _LinkedChatText text;
+  final bool isPatient;
   final bool enabled;
   final ValueChanged<_ChatQuickReply> onSelected;
 
   const _QuickReplyBar({
     required this.text,
+    required this.isPatient,
     required this.enabled,
     required this.onSelected,
   });
@@ -1013,9 +1069,9 @@ class _QuickReplyBar extends StatelessWidget {
         itemBuilder: (context, index) {
           final reply = _ChatQuickReply.values[index];
           return ActionChip(
-            tooltip: text.quickReplyLabel(reply),
+            tooltip: text.quickReplyLabel(reply, isPatient: isPatient),
             avatar: Icon(text.quickReplyIcon(reply), size: 17),
-            label: Text(text.quickReplyLabel(reply)),
+            label: Text(text.quickReplyLabel(reply, isPatient: isPatient)),
             onPressed: enabled ? () => onSelected(reply) : null,
             padding: const EdgeInsets.symmetric(horizontal: 4),
             visualDensity: VisualDensity.compact,
@@ -1108,29 +1164,41 @@ class _MessageScheduleContext extends StatelessWidget {
   final ChatScheduleContext schedule;
   final bool isMine;
   final _LinkedChatText text;
+  final VoidCallback? onPressed;
 
   const _MessageScheduleContext({
     required this.schedule,
     required this.isMine,
     required this.text,
+    this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isMine
-            ? Colors.white.withValues(alpha: 0.16)
-            : const Color(0xFFEAFBF4),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(10),
-      ),
-      child: _ScheduleSummaryContent(
-        schedule: schedule,
-        text: text,
-        foreground: foreground,
+        onTap: onPressed,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isMine
+                ? Colors.white.withValues(alpha: 0.16)
+                : const Color(0xFFEAFBF4),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: _ScheduleSummaryContent(
+            schedule: schedule,
+            text: text,
+            foreground: foreground,
+            trailing: onPressed == null
+                ? null
+                : Icon(Icons.chevron_right_rounded, color: foreground),
+          ),
+        ),
       ),
     );
   }
@@ -1651,9 +1719,10 @@ class _MedicationThumbnail extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
-  final bool isMedicationLoading;
+  final int? loadingMedicationId;
   final _LinkedChatText text;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
+  final ValueChanged<ChatScheduleContext>? onSchedulePressed;
   final ValueChanged<ChatPharmacyContext> onPharmacyCallRequested;
   final ValueChanged<ChatPharmacyContext> onPharmacyDirectionsRequested;
   final ValueChanged<ChatMedicationContext> onFindPharmacyRequested;
@@ -1661,9 +1730,10 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.isMine,
-    required this.isMedicationLoading,
+    required this.loadingMedicationId,
     required this.text,
     required this.onMedicationPressed,
+    required this.onSchedulePressed,
     required this.onPharmacyCallRequested,
     required this.onPharmacyDirectionsRequested,
     required this.onFindPharmacyRequested,
@@ -1693,15 +1763,15 @@ class _MessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (message.medicationContext != null) ...[
+            for (final medication in message.attachedMedicationContexts) ...[
               _MessageMedicationContext(
-                medication: message.medicationContext!,
+                medication: medication,
                 isMine: isMine,
-                isLoading: isMedicationLoading,
+                isLoading: medication.medicationId == loadingMedicationId,
                 text: text,
-                onPressed: isMedicationLoading
+                onPressed: loadingMedicationId != null
                     ? null
-                    : () => onMedicationPressed(message.medicationContext!),
+                    : () => onMedicationPressed(medication),
               ),
               const SizedBox(height: 8),
             ],
@@ -1710,6 +1780,9 @@ class _MessageBubble extends StatelessWidget {
                 schedule: message.scheduleContext!,
                 isMine: isMine,
                 text: text,
+                onPressed: onSchedulePressed == null
+                    ? null
+                    : () => onSchedulePressed!(message.scheduleContext!),
               ),
               const SizedBox(height: 8),
             ],
@@ -1729,13 +1802,14 @@ class _MessageBubble extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             if (message.messageKind == ChatMessageKind.medicationShortage &&
-                message.medicationContext != null) ...[
+                message.attachedMedicationContexts.isNotEmpty) ...[
               _MedicationShortageContext(
                 message: message,
                 isMine: isMine,
                 text: text,
-                onFindPharmacyRequested: () =>
-                    onFindPharmacyRequested(message.medicationContext!),
+                onFindPharmacyRequested: () => onFindPharmacyRequested(
+                  message.attachedMedicationContexts.first,
+                ),
               ),
               const SizedBox(height: 8),
             ],
@@ -1822,12 +1896,24 @@ class _LinkedChatText {
   String get disconnected => isEnglish ? 'Disconnected' : '연결 끊김';
   String get clearSelectedMedication =>
       isEnglish ? 'Clear selected medication' : '선택한 약 해제';
-  String quickReplyLabel(_ChatQuickReply reply) {
+  String quickReplyLabel(_ChatQuickReply reply, {required bool isPatient}) {
+    if (isPatient) {
+      return switch (reply) {
+        _ChatQuickReply.taken => isEnglish ? 'Taken' : '먹었어요',
+        _ChatQuickReply.cannotNow => isEnglish ? 'Not right now' : '지금은 못 먹어요',
+        _ChatQuickReply.shortage => isEnglish ? 'Running low' : '약이 부족해요',
+        _ChatQuickReply.discomfort =>
+          isEnglish ? 'I feel unwell' : '먹고 나서 불편해요',
+      };
+    }
     return switch (reply) {
-      _ChatQuickReply.taken => isEnglish ? 'Taken' : '먹었어요',
-      _ChatQuickReply.cannotNow => isEnglish ? 'Not right now' : '지금은 못 먹어요',
-      _ChatQuickReply.shortage => isEnglish ? 'Running low' : '약이 부족해요',
-      _ChatQuickReply.discomfort => isEnglish ? 'I feel unwell' : '먹고 나서 불편해요',
+      _ChatQuickReply.taken => isEnglish ? 'Taken yet?' : '복용하셨나요?',
+      _ChatQuickReply.cannotNow =>
+        isEnglish ? 'Can you take it now?' : '지금 복용 가능하세요?',
+      _ChatQuickReply.shortage =>
+        isEnglish ? 'Enough medication?' : '남은 약이 충분한가요?',
+      _ChatQuickReply.discomfort =>
+        isEnglish ? 'Any discomfort?' : '불편한 점은 없으세요?',
     };
   }
 
@@ -1840,22 +1926,47 @@ class _LinkedChatText {
     };
   }
 
-  String quickReplyBody(_ChatQuickReply reply, String medicationName) {
+  String quickReplyBody(
+    _ChatQuickReply reply,
+    String medicationNames, {
+    required bool isPatient,
+    required String peerName,
+  }) {
+    if (isPatient) {
+      return switch (reply) {
+        _ChatQuickReply.taken =>
+          isEnglish ? 'I took $medicationNames.' : '$medicationNames 먹었어요.',
+        _ChatQuickReply.cannotNow =>
+          isEnglish
+              ? 'I cannot take $medicationNames right now.'
+              : '$medicationNames 지금은 못 먹어요.',
+        _ChatQuickReply.shortage =>
+          isEnglish
+              ? 'I am running low on $medicationNames.'
+              : '$medicationNames 약이 부족해요.',
+        _ChatQuickReply.discomfort =>
+          isEnglish
+              ? 'I feel unwell after taking $medicationNames.'
+              : '$medicationNames 먹고 나서 불편해요.',
+      };
+    }
     return switch (reply) {
       _ChatQuickReply.taken =>
-        isEnglish ? 'I took $medicationName.' : '$medicationName 먹었어요.',
+        isEnglish
+            ? '$peerName, have you taken $medicationNames?'
+            : '$peerName님, $medicationNames 복용하셨나요?',
       _ChatQuickReply.cannotNow =>
         isEnglish
-            ? 'I cannot take $medicationName right now.'
-            : '$medicationName 지금은 못 먹어요.',
+            ? '$peerName, can you take $medicationNames now?'
+            : '$peerName님, $medicationNames 지금 복용 가능하세요?',
       _ChatQuickReply.shortage =>
         isEnglish
-            ? 'I am running low on $medicationName.'
-            : '$medicationName 약이 부족해요.',
+            ? '$peerName, do you have enough $medicationNames left?'
+            : '$peerName님, $medicationNames 남은 약이 충분한가요?',
       _ChatQuickReply.discomfort =>
         isEnglish
-            ? 'I feel unwell after taking $medicationName.'
-            : '$medicationName 먹고 나서 불편해요.',
+            ? '$peerName, do you feel any discomfort after taking $medicationNames?'
+            : '$peerName님, $medicationNames 복용 후 불편한 점은 없으세요?',
     };
   }
 
