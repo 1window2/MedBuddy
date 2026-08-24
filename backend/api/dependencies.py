@@ -33,6 +33,9 @@ from boundaries.public_drug_api_boundary import (
     PublicDrugSmallAPI,
     _PublicDrugTransport,
 )
+from boundaries.pharmacy_api_boundary import (
+    NationalEmergencyMedicalCenterPharmacyAPI,
+)
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
     TokenVerificationError,
@@ -88,6 +91,7 @@ _public_drug_transport = _PublicDrugTransport()
 _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
 _pill_image_api = PillImageAPI(transport=_public_drug_transport)
+_pharmacy_api = NationalEmergencyMedicalCenterPharmacyAPI()
 _korean_holiday_api = KoreanHolidayAPI()
 _holiday_emergency_pharmacy_api = HolidayEmergencyPharmacyAPI()
 _pill_boundary_lock = Lock()
@@ -428,14 +432,19 @@ async def close_public_drug_boundaries() -> None:
 # 역할:
 # - 약국 공공데이터 API가 재사용한 HTTP 연결 풀을 서버 종료 시 정리한다.
 async def close_pharmacy_boundary() -> None:
-    try:
-        await _korean_holiday_api.close()
-        await _holiday_emergency_pharmacy_api.close()
-    except Exception as exc:
-        logger.warning(
-            "Pharmacy API boundary shutdown failed: %s",
-            type(exc).__name__,
-        )
+    for boundary in (
+        _pharmacy_api,
+        _korean_holiday_api,
+        _holiday_emergency_pharmacy_api,
+    ):
+        try:
+            await boundary.close()
+        except Exception as exc:
+            # 한 경계의 종료 실패가 다른 연결 풀 정리를 막지 않게 각각 처리한다.
+            logger.warning(
+                "Pharmacy API boundary shutdown failed: %s",
+                type(exc).__name__,
+            )
 
 
 # 함수이름: get_input_prescription
@@ -520,6 +529,7 @@ def get_check_nearby_pharmacy(
 ) -> CheckNearbyPharmacy:
     pharmacy_repository = PharmacyCatalogRepository(db)
     return CheckNearbyPharmacy(
+        pharmacy_boundary=_pharmacy_api,
         pharmacy_repository=pharmacy_repository,
         holiday_boundary=PersistentKoreanHolidayLookup(
             cache=pharmacy_repository,

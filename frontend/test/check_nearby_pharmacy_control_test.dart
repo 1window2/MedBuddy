@@ -48,6 +48,9 @@ void main() {
               'today_close_time': '24:00',
               'is_open_now': true,
               'is_24_hours': false,
+              'minutes_until_close': 35,
+              'next_open_at': null,
+              'source_updated_at': '2026-08-23T01:00:00+00:00',
             },
           ],
         }),
@@ -66,6 +69,8 @@ void main() {
     expect(result.single.name, '메드버디약국');
     expect(result.single.distanceLabel, '420m');
     expect(result.single.todayHoursLabel, '오늘 09:00 - 24:00');
+    expect(result.single.minutesUntilClose, 35);
+    expect(result.single.sourceUpdatedAt, DateTime.utc(2026, 8, 23, 1));
   });
 
   test('phone and directions use validated external URIs', () async {

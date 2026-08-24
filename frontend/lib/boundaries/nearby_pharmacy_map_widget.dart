@@ -1,5 +1,5 @@
-// File name: nearby_pharmacy_map_widget.dart
-// Role: Shows nearby pharmacy coordinates on an embedded Naver map.
+// 파일명: nearby_pharmacy_map_widget.dart
+// 역할: 근처 약국 좌표를 앱 안의 네이버 지도에 표시한다.
 
 import 'dart:async';
 
@@ -19,6 +19,7 @@ class NearbyPharmacyMap extends StatefulWidget {
   final String selectMarkerHint;
   final String zoomInTooltip;
   final String zoomOutTooltip;
+  final String configurationUnavailableText;
   final String unavailableText;
 
   const NearbyPharmacyMap({
@@ -31,6 +32,7 @@ class NearbyPharmacyMap extends StatefulWidget {
     required this.selectMarkerHint,
     required this.zoomInTooltip,
     required this.zoomOutTooltip,
+    required this.configurationUnavailableText,
     required this.unavailableText,
   });
 
@@ -61,7 +63,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   @override
   Widget build(BuildContext context) {
     final pharmacies = _mappablePharmacies;
-    if (!isNaverMapConfigured || pharmacies.isEmpty) {
+    if (!isNaverMapConfigured) {
+      return _MapUnavailableState(message: widget.configurationUnavailableText);
+    }
+    if (pharmacies.isEmpty) {
       return _MapUnavailableState(message: widget.unavailableText);
     }
 
@@ -242,9 +247,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     await controller.updateCamera(
       NCameraUpdate.fitBounds(
         NLatLngBounds.from(
-          pharmacies.map(
-            (item) => NLatLng(item.latitude, item.longitude),
-          ),
+          pharmacies.map((item) => NLatLng(item.latitude, item.longitude)),
         ),
         padding: const EdgeInsets.fromLTRB(34, 58, 34, 34),
       ),

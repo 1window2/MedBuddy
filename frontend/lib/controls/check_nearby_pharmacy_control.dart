@@ -4,15 +4,15 @@
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../entities/nearby_pharmacy_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/device_location_service.dart';
+import '../services/pharmacy_external_action_service.dart';
 
-typedef ExternalUriLauncher = Future<bool> Function(Uri uri);
+typedef ExternalUriLauncher = PharmacyUriLauncher;
 
 // 클래스명: CheckNearbyPharmacy
 // 역할: 위치 기반 약국 검색 사용 사례를 프론트엔드에서 수행한다.
@@ -23,7 +23,7 @@ typedef ExternalUriLauncher = Future<bool> Function(Uri uri);
 class CheckNearbyPharmacy {
   final DeviceLocationBoundary _locationBoundary;
   final http.Client _client;
-  final ExternalUriLauncher _uriLauncher;
+  final PharmacyExternalActionService _externalActionService;
   final bool _ownsClient;
 
   CheckNearbyPharmacy({
@@ -33,9 +33,9 @@ class CheckNearbyPharmacy {
   }) : _locationBoundary =
            locationBoundary ?? GeolocatorDeviceLocationService(),
        _client = client ?? AuthenticatedApiClient(),
-       _uriLauncher =
-           uriLauncher ??
-           ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication)),
+       _externalActionService = PharmacyExternalActionService(
+         uriLauncher: uriLauncher,
+       ),
        _ownsClient = client == null;
 
   // 함수명: requestNearbyPharmacies
@@ -126,43 +126,23 @@ class CheckNearbyPharmacy {
   }
 
   Future<bool> requestPhoneCall(String telephone) async {
-    final normalized = telephone.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (normalized.isEmpty) {
-      return false;
-    }
-    return _uriLauncher(Uri(scheme: 'tel', path: normalized));
+    return _externalActionService.requestPhoneCall(telephone);
   }
 
   // 함수명: requestDirections
   // 역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
   Future<bool> requestDirections(NearbyPharmacy pharmacy) async {
-    final coordinate = '${pharmacy.latitude},${pharmacy.longitude}';
-    final naverMapsUri = Uri(
-      scheme: 'nmap',
-      host: 'route',
-      path: '/public',
-      queryParameters: {
-        'dlat': pharmacy.latitude.toStringAsFixed(7),
-        'dlng': pharmacy.longitude.toStringAsFixed(7),
-        'dname': pharmacy.name,
-        'appname': 'com.medbuddy.app',
-      },
-    );
-    if (await _uriLauncher(naverMapsUri)) {
-      return true;
-    }
-    return _uriLauncher(
-      Uri.https('www.google.com', '/maps/dir/', {
-        'api': '1',
-        'destination': coordinate,
-      }),
+    return _externalActionService.requestDirections(
+      name: pharmacy.name,
+      latitude: pharmacy.latitude,
+      longitude: pharmacy.longitude,
     );
   }
 
   // 함수명: requestMapAttribution
   // 역할: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
   Future<bool> requestMapAttribution() {
-    return _uriLauncher(Uri.https('map.naver.com', '/'));
+    return _externalActionService.requestMapAttribution();
   }
 
   Future<bool> openApplicationSettings() =>

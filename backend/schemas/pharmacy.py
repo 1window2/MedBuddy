@@ -36,6 +36,9 @@ class NearbyPharmacyItem(BaseModel):
     schedule_date: date | None
     schedule_source: str
     schedule_is_date_specific: bool
+    minutes_until_close: int | None
+    next_open_at: str | None
+    source_updated_at: str | None
     source_name: str
 
 

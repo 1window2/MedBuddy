@@ -1,12 +1,10 @@
-// File name: naver_map_config.dart
-// Role: Owns the compile-time Naver Dynamic Map client identifier and SDK startup.
+// 파일명: naver_map_config.dart
+// 역할: 빌드 시 주입한 네이버 지도 Client ID와 SDK 초기화를 관리한다.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
-const naverMapClientId = String.fromEnvironment(
-  'MEDBUDDY_NAVER_MAP_CLIENT_ID',
-);
+const naverMapClientId = String.fromEnvironment('MEDBUDDY_NAVER_MAP_CLIENT_ID');
 
 bool get isNaverMapConfigured => naverMapClientId.trim().isNotEmpty;
 

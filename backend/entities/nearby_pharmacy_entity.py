@@ -26,6 +26,8 @@ class PharmacyLocationRecord:
     schedule_source: str = "nemc_weekly_report"
     schedule_is_date_specific: bool = False
     official_designations: dict[str, object] = field(default_factory=dict)
+    weekly_hours: dict[str, tuple[str, str]] | None = None
+    source_updated_at: datetime | None = None
 
 
 # 클래스명: NearbyPharmacy
@@ -55,6 +57,9 @@ class NearbyPharmacy:
     schedule_date: date | None = None
     schedule_source: str = "nemc_weekly_report"
     schedule_is_date_specific: bool = False
+    minutes_until_close: int | None = None
+    next_open_at: str | None = None
+    source_updated_at: str | None = None
     source_name: str = "National Emergency Medical Center"
 
 

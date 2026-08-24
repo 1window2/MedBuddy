@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/nearby_pharmacy_map_widget.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
@@ -114,6 +115,7 @@ Widget _buildTestMap({
   required String selectMarkerHint,
   required String zoomInTooltip,
   required String zoomOutTooltip,
+  required String configurationUnavailableText,
   required String unavailableText,
 }) {
   return SizedBox(
@@ -142,6 +144,45 @@ Widget _buildTestMap({
 }
 
 void main() {
+  testWidgets('지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다', (tester) async {
+    const pharmacy = NearbyPharmacy(
+      pharmacyId: 'configured-location',
+      name: '좌표가 있는 약국',
+      address: '서울특별시 마포구',
+      telephone: '02-000-0000',
+      latitude: 37.5515,
+      longitude: 126.9249,
+      distanceKm: 0.2,
+      todayOpenTime: '09:00',
+      todayCloseTime: '18:00',
+      isOpenNow: true,
+      is24Hours: false,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NearbyPharmacyMap(
+            pharmacies: const [pharmacy],
+            selectedPharmacyId: null,
+            onPharmacySelected: (_) {},
+            onAttributionRequested: () {},
+            statusText: null,
+            selectMarkerHint: '약국 선택',
+            zoomInTooltip: '확대',
+            zoomOutTooltip: '축소',
+            configurationUnavailableText: '지도 설정이 없습니다.',
+            unavailableText: '약국 좌표가 없습니다.',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('지도 설정이 없습니다.'), findsOneWidget);
+    expect(find.text('약국 좌표가 없습니다.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,
   ) async {
@@ -176,6 +217,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('전체'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('pharmacy-card-closed')),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
 
     expect(requestCount, 2);
     expect(requestedModes, ['open_at_time', 'all']);

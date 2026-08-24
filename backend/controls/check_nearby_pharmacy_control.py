@@ -3,9 +3,10 @@
 
 """현재 위치를 기준으로 가까운 약국을 조회하는 사용 사례."""
 
+import logging
 import math
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from enum import StrEnum
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -31,6 +32,7 @@ _MAX_SEARCH_DISTANCE_KM = 50.0
 _CATALOG_STALE_AFTER = timedelta(days=14)
 _HOLIDAY_CACHE_MAX_AGE = timedelta(hours=12)
 _HOLIDAY_STALE_FALLBACK_MAX_AGE = timedelta(days=45)
+logger = logging.getLogger(__name__)
 
 
 class PharmacySearchMode(StrEnum):
@@ -155,30 +157,44 @@ class CheckNearbyPharmacy:
         is_public_holiday = False
         was_public_holiday = False
         if self._holiday_boundary is not None:
-            is_public_holiday = await self._holiday_boundary.isHoliday(now.date())
-            was_public_holiday = await self._holiday_boundary.isHoliday(
-                now.date() - timedelta(days=1)
-            )
+            try:
+                is_public_holiday = await self._holiday_boundary.isHoliday(now.date())
+                was_public_holiday = await self._holiday_boundary.isHoliday(
+                    now.date() - timedelta(days=1)
+                )
+            except (PharmacyApiUnavailableError, PharmacyApiResponseError):
+                # 공휴일 조회 실패가 일반 요일표 기반 약국 검색까지 막지 않게 한다.
+                logger.warning(
+                    "Holiday lookup unavailable; using regular weekly schedules."
+                )
 
         repository = self._pharmacy_repository
         catalog_updated_at: datetime | None = None
         catalog_is_stale = False
         holiday_schedule_status = "not_applicable"
+        catalog_entries: list[PharmacyCatalogEntry] = []
         if repository is not None:
-            if repository.count() == 0:
-                raise PharmacyApiUnavailableError(
-                    "The synchronized pharmacy catalogue is empty."
+            try:
+                latest_updated_at = getattr(repository, "latest_updated_at", None)
+                catalog_updated_at = (
+                    latest_updated_at() if callable(latest_updated_at) else None
                 )
-            latest_updated_at = getattr(repository, "latest_updated_at", None)
-            catalog_updated_at = (
-                latest_updated_at() if callable(latest_updated_at) else None
-            )
-            catalog_is_stale = self._is_catalog_stale(catalog_updated_at)
-            catalog_entries = repository.search_nearby_candidates(
-                latitude=latitude,
-                longitude=longitude,
-                max_distance_km=max_distance_km,
-            )
+                catalog_is_stale = self._is_catalog_stale(catalog_updated_at)
+                if repository.count() > 0:
+                    catalog_entries = repository.search_nearby_candidates(
+                        latitude=latitude,
+                        longitude=longitude,
+                        max_distance_km=max_distance_km,
+                    )
+            except Exception:
+                if self._pharmacy_boundary is None:
+                    raise
+                # 로컬 카탈로그 장애 시에도 공공 위치 조회 API로 검색을 이어간다.
+                logger.exception(
+                    "Pharmacy catalogue lookup failed; using the live API fallback."
+                )
+
+        if catalog_entries:
             holiday_schedules, holiday_schedule_status = (
                 await self._resolve_holiday_schedules(
                     now.date(),
@@ -215,8 +231,9 @@ class CheckNearbyPharmacy:
                 for entry in catalog_entries
                 if entry.has_weekend_or_holiday_hours
             }
-        else:
-            assert self._pharmacy_boundary is not None
+        elif self._pharmacy_boundary is not None:
+            # 로컬 카탈로그가 준비되지 않았거나 주변 결과가 없으면
+            # 위치 조회 API로 보완해 데모와 초기 배포 환경의 공백을 막는다.
             fetch_limit = min(_MAX_RESULT_LIMIT, max(limit * 2, limit))
             records = await self._pharmacy_boundary.searchNearby(
                 latitude=latitude,
@@ -224,6 +241,10 @@ class CheckNearbyPharmacy:
                 limit=fetch_limit,
             )
             weekend_or_holiday_ids = set()
+        else:
+            raise PharmacyApiUnavailableError(
+                "No pharmacy data source has usable nearby records."
+            )
 
         pharmacies: list[NearbyPharmacy] = []
         seen_ids: set[str] = set()
@@ -311,6 +332,8 @@ class CheckNearbyPharmacy:
             ),
             schedule_is_date_specific=holiday_schedule is not None,
             official_designations=entry.official_designations,
+            weekly_hours=entry.weekly_hours,
+            source_updated_at=entry.source_updated_at,
         )
 
     @staticmethod
@@ -490,6 +513,20 @@ class CheckNearbyPharmacy:
             designation_verified_at is None
             or designation_verified_at < now.date() - timedelta(days=90)
         )
+        minutes_until_close = cls._minutes_until_close(
+            now=now,
+            is_open_now=is_open_now,
+            start_minutes=start_minutes,
+            end_minutes=end_minutes,
+            previous_start_minutes=previous_start_minutes,
+            previous_end_minutes=previous_end_minutes,
+        )
+        next_open_at = cls._next_open_at(
+            now=now,
+            is_open_now=is_open_now,
+            weekly_hours=record.weekly_hours,
+            is_public_holiday=is_public_holiday,
+        )
         return NearbyPharmacy(
             pharmacy_id=record.pharmacy_id,
             name=record.name,
@@ -521,7 +558,98 @@ class CheckNearbyPharmacy:
             schedule_date=now.date(),
             schedule_source=record.schedule_source,
             schedule_is_date_specific=record.schedule_is_date_specific,
+            minutes_until_close=minutes_until_close,
+            next_open_at=next_open_at,
+            source_updated_at=cls._source_updated_at_iso(
+                record.source_updated_at,
+                target_timezone=now.tzinfo,
+            ),
         )
+
+    @staticmethod
+    def _minutes_until_close(
+        *,
+        now: datetime,
+        is_open_now: bool | None,
+        start_minutes: int | None,
+        end_minutes: int | None,
+        previous_start_minutes: int | None,
+        previous_end_minutes: int | None,
+    ) -> int | None:
+        """현재 영업 중일 때 폐점까지 남은 분을 계산한다."""
+        if is_open_now is not True:
+            return None
+        current_minutes = now.hour * 60 + now.minute
+        if (
+            previous_start_minutes is not None
+            and previous_end_minutes is not None
+            and previous_end_minutes < previous_start_minutes
+            and current_minutes < previous_end_minutes
+        ):
+            return previous_end_minutes - current_minutes
+        if start_minutes is None or end_minutes is None:
+            return None
+        if start_minutes == 0 and end_minutes in {0, 24 * 60}:
+            return None
+        if end_minutes > start_minutes:
+            return max(end_minutes - current_minutes, 0)
+        if end_minutes < start_minutes and current_minutes >= start_minutes:
+            return 24 * 60 - current_minutes + end_minutes
+        return None
+
+    @classmethod
+    def _next_open_at(
+        cls,
+        *,
+        now: datetime,
+        is_open_now: bool | None,
+        weekly_hours: dict[str, tuple[str, str]] | None,
+        is_public_holiday: bool = False,
+    ) -> str | None:
+        """문을 닫은 약국의 다음 정규 영업 시작 시각을 최대 일주일 탐색한다."""
+        if is_open_now is True or not weekly_hours:
+            return None
+        current_minutes = now.hour * 60 + now.minute
+        for day_offset in range(0, 8):
+            target_date = now.date() + timedelta(days=day_offset)
+            schedule_key = (
+                "8"
+                if day_offset == 0 and is_public_holiday
+                else str(target_date.isoweekday())
+            )
+            start_value, _ = weekly_hours.get(
+                schedule_key,
+                ("", ""),
+            )
+            start_minutes = cls._parse_minutes(start_value)
+            if start_minutes is None:
+                continue
+            if day_offset == 0 and start_minutes <= current_minutes:
+                continue
+            next_open = datetime(
+                target_date.year,
+                target_date.month,
+                target_date.day,
+                start_minutes // 60,
+                start_minutes % 60,
+                tzinfo=now.tzinfo,
+            )
+            return next_open.isoformat()
+        return None
+
+    @staticmethod
+    def _source_updated_at_iso(
+        value: datetime | None,
+        *,
+        target_timezone: tzinfo | None,
+    ) -> str | None:
+        """카탈로그 갱신 시각을 현재 화면 시간대로 안전하게 변환한다."""
+        if value is None:
+            return None
+        utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value
+        if target_timezone is None:
+            return utc_value.isoformat()
+        return utc_value.astimezone(target_timezone).isoformat()
 
     @staticmethod
     def _is_late_schedule(

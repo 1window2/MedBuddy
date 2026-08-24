@@ -27,6 +27,17 @@ class PharmacyCatalogRepository:
     def count(self) -> int:
         return self.db.query(PharmacyCatalogRecord).count()
 
+    def find_by_id(self, pharmacy_id: str) -> PharmacyCatalogEntry | None:
+        """공유 메시지에 사용할 약국 한 건을 식별자로 조회한다."""
+        row = self.db.get(PharmacyCatalogRecord, pharmacy_id)
+        return self._to_entry(row) if row is not None else None
+
+    def latest_source_updated_at(self) -> datetime | None:
+        """현재 카탈로그에서 가장 최근의 공공데이터 갱신 시각을 반환한다."""
+        return self.db.query(
+            func.max(PharmacyCatalogRecord.source_updated_at)
+        ).scalar()
+
     def is_fresh(self, *, minimum_rows: int, max_age: timedelta) -> bool:
         if self.count() < minimum_rows:
             return False
@@ -170,6 +181,7 @@ class PharmacyCatalogRepository:
                 if isinstance(row.official_designations, dict)
                 else {}
             ),
+            source_updated_at=row.source_updated_at,
         )
 
     def get_cached_holiday_schedules(

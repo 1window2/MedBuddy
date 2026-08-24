@@ -16,7 +16,10 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from boundaries.pharmacy_api_boundary import PharmacyApiResponseError  # noqa: E402
+from boundaries.pharmacy_api_boundary import (  # noqa: E402
+    PharmacyApiResponseError,
+    PharmacyApiUnavailableError,
+)
 from controls.check_nearby_pharmacy_control import (  # noqa: E402
     CheckNearbyPharmacy,
     PharmacySearchMode,
@@ -114,6 +117,11 @@ class _StaleHolidayRepository(_FakePharmacyRepository):
                 end_time="2300",
             )
         }
+
+
+class _UnavailableHolidayBoundary:
+    async def isHoliday(self, _: object) -> bool:
+        raise PharmacyApiUnavailableError("Holiday service unavailable.")
 
 
 def _record(
@@ -228,6 +236,71 @@ async def test_invalid_coordinate_is_rejected_before_api_call() -> None:
         )
 
     assert boundary.requested_limit == 0
+
+
+@pytest.mark.anyio
+async def test_empty_catalog_falls_back_to_location_api() -> None:
+    """동기화 전의 빈 로컬 DB에서도 공공 위치 API로 약국을 조회한다."""
+    boundary = _FakePharmacyBoundary(
+        [_record("fallback", distance_km=0.2, start_time="0900", end_time="1800")]
+    )
+    control = CheckNearbyPharmacy(
+        boundary,
+        pharmacy_repository=_FakePharmacyRepository([]),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            12,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+        limit=5,
+    )
+
+    assert [item.pharmacy_id for item in result] == ["fallback"]
+    assert boundary.requested_limit == 10
+
+
+@pytest.mark.anyio
+async def test_holiday_lookup_failure_does_not_block_pharmacy_results() -> None:
+    """공휴일 부가 조회가 실패해도 로컬 약국 결과는 반환한다."""
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="available",
+        name="Available pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"6": ("0900", "1800")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_UnavailableHolidayBoundary(),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            12,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+        limit=5,
+    )
+
+    assert [item.pharmacy_id for item in result] == ["available"]
 
 
 @pytest.mark.anyio
@@ -358,6 +431,7 @@ async def test_after_midnight_uses_previous_days_overnight_schedule() -> None:
     )
 
     assert [item.pharmacy_id for item in result] == ["previous-day"]
+    assert result[0].minutes_until_close == 30
 
 
 @pytest.mark.anyio
@@ -511,3 +585,136 @@ async def test_official_designation_respects_operating_weekday() -> None:
 
     assert result.data[0].is_official_late_night is True
     assert result.data[0].designation_source_name == "Seoul Metropolitan Government"
+
+
+@pytest.mark.anyio
+async def test_open_pharmacy_reports_minutes_until_close() -> None:
+    """영업 중 약국이 곧 닫는지 화면에서 판단할 남은 분을 반환한다."""
+    boundary = _FakePharmacyBoundary(
+        [_record("closing-soon", distance_km=0.2, start_time="0900", end_time="1800")]
+    )
+    control = CheckNearbyPharmacy(
+        boundary,
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            17,
+            45,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=True,
+    )
+
+    assert result[0].minutes_until_close == 15
+    assert result[0].next_open_at is None
+
+
+@pytest.mark.anyio
+async def test_closed_pharmacy_reports_next_regular_opening() -> None:
+    """문을 닫은 약국은 다음 정규 영업 시작 시각을 반환한다."""
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="opens-later",
+        name="Opens later",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"6": ("0900", "1800")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            8,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+    )
+
+    assert result[0].is_open_now is False
+    assert result[0].next_open_at == "2026-08-22T09:00:00+09:00"
+
+
+@pytest.mark.anyio
+async def test_holiday_next_opening_uses_holiday_schedule() -> None:
+    """공휴일 당일에는 평일이 아니라 공휴일 운영 시작 시각을 안내한다."""
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="holiday-opens-later",
+        name="Holiday opens later",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"1": ("0900", "1800"), "8": ("1000", "1600")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(True),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            17,
+            8,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+    )
+
+    assert result[0].is_open_now is False
+    assert result[0].next_open_at == "2026-08-17T10:00:00+09:00"
+
+
+@pytest.mark.anyio
+async def test_aware_catalog_timestamp_is_converted_without_relabeling() -> None:
+    """시간대가 있는 갱신 시각은 순간을 바꾸지 않고 서울 시각으로 표시한다."""
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="timestamped",
+        name="Timestamped pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"6": ("0000", "2400")},
+        source_updated_at=datetime(2026, 8, 22, 0, 0, tzinfo=ZoneInfo("UTC")),
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            12,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+    )
+
+    assert result[0].source_updated_at == "2026-08-22T09:00:00+09:00"

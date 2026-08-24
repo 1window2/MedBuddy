@@ -46,6 +46,9 @@ class NearbyPharmacy {
   final DateTime? scheduleDate;
   final String scheduleSource;
   final bool scheduleIsDateSpecific;
+  final int? minutesUntilClose;
+  final DateTime? nextOpenAt;
+  final DateTime? sourceUpdatedAt;
   final String sourceName;
 
   const NearbyPharmacy({
@@ -71,6 +74,9 @@ class NearbyPharmacy {
     this.scheduleDate,
     this.scheduleSource = 'nemc_weekly_report',
     this.scheduleIsDateSpecific = false,
+    this.minutesUntilClose,
+    this.nextOpenAt,
+    this.sourceUpdatedAt,
     this.sourceName = 'National Emergency Medical Center',
   });
 
@@ -114,6 +120,11 @@ class NearbyPharmacy {
       scheduleIsDateSpecific:
           json['schedule_is_date_specific'] is bool &&
           json['schedule_is_date_specific'] as bool,
+      minutesUntilClose: _readNullableInt(json['minutes_until_close']),
+      nextOpenAt: DateTime.tryParse(_readString(json['next_open_at'])),
+      sourceUpdatedAt: DateTime.tryParse(
+        _readString(json['source_updated_at']),
+      ),
       sourceName: _readString(json['source_name']).isEmpty
           ? 'National Emergency Medical Center'
           : _readString(json['source_name']),
@@ -154,6 +165,13 @@ class NearbyPharmacy {
   static DateTime? _readDate(dynamic value) {
     final normalized = _readString(value);
     return normalized.isEmpty ? null : DateTime.tryParse(normalized);
+  }
+
+  static int? _readNullableInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    return int.tryParse(_readString(value));
   }
 }
 

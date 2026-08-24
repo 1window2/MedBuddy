@@ -1,8 +1,8 @@
-# File Name: pharmacy_catalog_entity.py
-# Role: Persistent nationwide pharmacy catalogue and normalized weekly schedules.
+# 파일명: pharmacy_catalog_entity.py
+# 역할: 전국 약국 카탈로그와 정규화된 요일별 운영시간을 저장한다.
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import Column, Date, DateTime, Float, Integer, JSON, String, Text, func
 
@@ -11,7 +11,7 @@ from core.database import Base
 
 @dataclass(frozen=True, slots=True)
 class PharmacyCatalogEntry:
-    """Normalized National Emergency Medical Center pharmacy record."""
+    """국립중앙의료원 약국 데이터를 조회용 불변 값으로 표현한다."""
 
     pharmacy_id: str
     name: str
@@ -21,13 +21,16 @@ class PharmacyCatalogEntry:
     longitude: float
     weekly_hours: dict[str, tuple[str, str]]
     official_designations: dict[str, object] = field(default_factory=dict)
+    source_updated_at: datetime | None = None
 
     def hours_for(self, *, day_of_week: int, is_public_holiday: bool) -> tuple[str, str]:
+        """요일 또는 공휴일에 해당하는 운영시간을 반환한다."""
         schedule_key = "8" if is_public_holiday else str(day_of_week)
         return self.weekly_hours.get(schedule_key, ("", ""))
 
     @property
     def has_weekend_or_holiday_hours(self) -> bool:
+        """주말이나 공휴일 운영시간이 하나라도 등록되었는지 확인한다."""
         return any(
             self.weekly_hours.get(schedule_key, ("", ""))[0]
             for schedule_key in ("6", "7", "8")
@@ -35,7 +38,7 @@ class PharmacyCatalogEntry:
 
 
 class PharmacyCatalogRecord(Base):
-    """Replaceable cached copy of the nationwide public pharmacy catalogue."""
+    """전국 공공 약국 카탈로그의 교체 가능한 로컬 사본을 저장한다."""
 
     __tablename__ = "pharmacy_catalog_records"
 
