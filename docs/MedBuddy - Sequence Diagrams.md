@@ -1098,8 +1098,9 @@ control "CheckNearbyPharmacy (Flutter)" as FE
 boundary "DeviceLocationBoundary" as Location
 boundary "NearbyPharmacyMap" as Map
 control "CheckNearbyPharmacy (FastAPI)" as BE
-boundary "PharmacyLookupBoundary" as PublicAPI
-boundary "OpenStreetMap Tiles" as OSM
+boundary "PharmacyCatalogRepository" as Catalog
+boundary "KoreanHolidayAPI" as HolidayAPI
+boundary "Naver Dynamic Map SDK" as NaverMap
 boundary "OS Phone / Directions" as ExternalApp
 
 User -> UI : 실험실 기능을 켠 뒤 근처 운영 약국 선택
@@ -1107,14 +1108,16 @@ UI -> FE : requestNearbyPharmacies()
 FE -> Location : requestCurrentCoordinate()
 Location --> FE : DeviceCoordinate
 FE -> BE : GET /pharmacy/nearby
-BE -> PublicAPI : searchNearby(latitude, longitude, radius)
-PublicAPI --> BE : PharmacyLocationRecord 목록
-BE -> BE : 거리, 영업 중, 24시간 여부 계산 및 정렬
+BE -> HolidayAPI : isHoliday(today, previous day)
+HolidayAPI --> BE : 법정공휴일 여부
+BE -> Catalog : searchNearbyCandidates(latitude, longitude, radius)
+Catalog --> BE : 주간·공휴일 영업시간 포함 약국 목록
+BE -> BE : 거리, 영업 중, 심야·24시간 여부 계산 및 정렬
 BE --> FE : NearbyPharmacy 목록
 FE --> UI : 목록과 필터 상태
 UI -> Map : 약국 좌표와 공통 선택 상태 전달
-Map -> OSM : 현재 화면 범위 지도 타일 요청
-OSM --> Map : 지도 타일
+Map -> NaverMap : 인증된 SDK로 현재 화면 범위 지도 요청
+NaverMap --> Map : 네이버 지도와 기본 저작권 표시
 UI --> User : 지도·거리·운영시간·연락처 표시
 opt [약국 카드 또는 지도 마커 선택]
   User -> UI : 약국 선택

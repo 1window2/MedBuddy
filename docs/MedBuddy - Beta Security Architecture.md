@@ -35,7 +35,7 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
 | Frontend local boundary | `ManualMedicationImageStore` | Copy optional direct-entry images into patient-scoped app storage and remove unreferenced copies without touching gallery originals. |
 | Frontend external boundary | `DeviceLocationBoundary` | Request foreground coordinates only for the nearby-pharmacy screen and expose permission/service failures as typed states. |
-| Frontend map boundary | `NearbyPharmacyMap` | Render only backend-normalized pharmacy coordinates, synchronize card/marker selection, and retain OpenStreetMap attribution without owning a map API credential. |
+| Frontend map boundary | `NearbyPharmacyMap` | Render only backend-normalized pharmacy coordinates through the Naver Dynamic Map SDK and synchronize card/marker selection. The public client identifier is injected at build time; public-data service keys remain backend-only. |
 | Frontend external boundary | `LinkedChatRealtimeService` | Maintain the authenticated linked-chat WebSocket, heartbeat, bounded reconnect, and event stream independently of chat UI state. |
 | Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
@@ -230,7 +230,7 @@ error messages, analytics, and notification payloads must not contain precise
 location. The UI applies a refresh cooldown and the backend retains an
 independent request quota.
 
-The in-app map requests raster tiles directly from OpenStreetMap for the visible
+The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map
 provider necessarily receives requested tile coordinates and ordinary network
 metadata such as the device IP address. MedBuddy does not persist those tile

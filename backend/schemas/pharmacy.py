@@ -23,6 +23,10 @@ class NearbyPharmacyItem(BaseModel):
     today_close_time: str | None
     is_open_now: bool | None
     is_24_hours: bool
+    is_open_late: bool
+    has_weekend_or_holiday_hours: bool
+    is_public_holiday: bool
+    source_name: str
 
 
 # 클래스명: NearbyPharmacyResponse

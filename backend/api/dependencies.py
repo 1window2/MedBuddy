@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
 )
+from boundaries.korean_holiday_api_boundary import KoreanHolidayAPI
 from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
@@ -25,9 +26,6 @@ from boundaries.public_drug_api_boundary import (
     PublicDrugLargeAPI,
     PublicDrugSmallAPI,
     _PublicDrugTransport,
-)
-from boundaries.pharmacy_api_boundary import (
-    NationalEmergencyMedicalCenterPharmacyAPI,
 )
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
@@ -76,6 +74,7 @@ from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
+from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
@@ -83,7 +82,7 @@ _public_drug_transport = _PublicDrugTransport()
 _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
 _pill_image_api = PillImageAPI(transport=_public_drug_transport)
-_pharmacy_api = NationalEmergencyMedicalCenterPharmacyAPI()
+_korean_holiday_api = KoreanHolidayAPI()
 _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
@@ -423,7 +422,7 @@ async def close_public_drug_boundaries() -> None:
 # - 약국 공공데이터 API가 재사용한 HTTP 연결 풀을 서버 종료 시 정리한다.
 async def close_pharmacy_boundary() -> None:
     try:
-        await _pharmacy_api.close()
+        await _korean_holiday_api.close()
     except Exception as exc:
         logger.warning(
             "Pharmacy API boundary shutdown failed: %s",
@@ -508,8 +507,13 @@ def get_check_medication_detail(
 # 함수명: get_check_nearby_pharmacy
 # 역할:
 # - 공유 약국 API Boundary를 사용하는 위치 기반 약국 조회 Control을 생성한다.
-def get_check_nearby_pharmacy() -> CheckNearbyPharmacy:
-    return CheckNearbyPharmacy(pharmacy_boundary=_pharmacy_api)
+def get_check_nearby_pharmacy(
+    db: Session = Depends(get_db),
+) -> CheckNearbyPharmacy:
+    return CheckNearbyPharmacy(
+        pharmacy_repository=PharmacyCatalogRepository(db),
+        holiday_boundary=_korean_holiday_api,
+    )
 
 
 # 함수이름: get_check_prescription_change

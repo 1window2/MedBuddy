@@ -1,24 +1,15 @@
-// 파일명: nearby_pharmacy_map_widget.dart
-// 역할: 근처 약국 좌표를 앱 내 지도에 표시하고 선택한 약국으로 이동한다.
+// File name: nearby_pharmacy_map_widget.dart
+// Role: Shows nearby pharmacy coordinates on an embedded Naver map.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../entities/nearby_pharmacy_entity.dart';
+import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';
 
-const _defaultMapTileUrl = String.fromEnvironment(
-  'MEDBUDDY_MAP_TILE_URL',
-  defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-);
-
-// 클래스명: NearbyPharmacyMap
-// 역할: 약국 목록을 지도 마커로 표현하고 외부에서 선택된 약국을 중심에 표시한다.
-// 주요 책임:
-// - 유효한 위도·경도만 지도에 표시한다.
-// - 목록 또는 마커에서 선택한 약국으로 지도 카메라를 이동한다.
-// - 지도 제공자 출처와 기본 확대·축소 조작을 제공한다.
 class NearbyPharmacyMap extends StatefulWidget {
   final List<NearbyPharmacy> pharmacies;
   final String? selectedPharmacyId;
@@ -48,8 +39,8 @@ class NearbyPharmacyMap extends StatefulWidget {
 }
 
 class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
-  final MapController _mapController = MapController();
-  bool _isMapReady = false;
+  NaverMapController? _mapController;
+  int _overlayGeneration = 0;
 
   List<NearbyPharmacy> get _mappablePharmacies =>
       widget.pharmacies.where(_hasValidCoordinate).toList(growable: false);
@@ -63,28 +54,18 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         _coordinateSignature(oldWidget.pharmacies) !=
         _coordinateSignature(widget.pharmacies);
     if (selectionChanged || pharmaciesChanged) {
-      _scheduleCameraUpdate();
+      unawaited(_synchronizeMap());
     }
-  }
-
-  @override
-  void dispose() {
-    _mapController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final pharmacies = _mappablePharmacies;
-    if (pharmacies.isEmpty) {
+    if (!isNaverMapConfigured || pharmacies.isEmpty) {
       return _MapUnavailableState(message: widget.unavailableText);
     }
 
-    final initialCenter = LatLng(
-      pharmacies.first.latitude,
-      pharmacies.first.longitude,
-    );
-
+    final first = pharmacies.first;
     return Semantics(
       container: true,
       label: widget.statusText,
@@ -99,39 +80,26 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         ),
         child: Stack(
           children: [
-            FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: initialCenter,
-                initialZoom: 13,
+            NaverMap(
+              forceGesture: true,
+              options: NaverMapViewOptions(
+                initialCameraPosition: NCameraPosition(
+                  target: NLatLng(first.latitude, first.longitude),
+                  zoom: 13,
+                ),
                 minZoom: 5,
                 maxZoom: 19,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                ),
-                onMapReady: () {
-                  _isMapReady = true;
-                  _scheduleCameraUpdate();
-                },
+                rotationGesturesEnable: false,
+                tiltGesturesEnable: false,
+                scaleBarEnable: false,
+                compassEnable: false,
+                logoClickEnable: true,
+                contentPadding: const EdgeInsets.only(bottom: 28),
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: _defaultMapTileUrl,
-                  userAgentPackageName: 'com.medbuddy.app',
-                  maxNativeZoom: 19,
-                ),
-                MarkerLayer(
-                  markers: pharmacies.map(_buildMarker).toList(growable: false),
-                ),
-                SimpleAttributionWidget(
-                  source: const Text(
-                    'OpenStreetMap contributors',
-                    style: TextStyle(fontSize: 10, letterSpacing: 0),
-                  ),
-                  onTap: widget.onAttributionRequested,
-                  backgroundColor: Colors.white.withValues(alpha: 0.86),
-                ),
-              ],
+              onMapReady: (controller) {
+                _mapController = controller;
+                unawaited(_synchronizeMap());
+              },
             ),
             if (widget.statusText case final statusText?)
               Positioned(
@@ -168,6 +136,15 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 ),
               ),
             Positioned(
+              right: 8,
+              bottom: 8,
+              child: _MapControlButton(
+                tooltip: 'Naver Map',
+                icon: Icons.info_outline,
+                onPressed: widget.onAttributionRequested,
+              ),
+            ),
+            Positioned(
               left: 8,
               bottom: 8,
               child: Column(
@@ -192,80 +169,84 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     );
   }
 
-  Marker _buildMarker(NearbyPharmacy pharmacy) {
-    final isSelected = pharmacy.pharmacyId == widget.selectedPharmacyId;
-    final markerSize = isSelected ? 50.0 : 42.0;
-    return Marker(
-      key: ValueKey('pharmacy-map-marker-${pharmacy.pharmacyId}'),
-      point: LatLng(pharmacy.latitude, pharmacy.longitude),
-      width: markerSize,
-      height: markerSize,
-      alignment: Alignment.topCenter,
-      child: Semantics(
-        button: true,
-        selected: isSelected,
-        label: '${pharmacy.name}, ${widget.selectMarkerHint}',
-        child: Tooltip(
-          message: pharmacy.name,
-          child: InkResponse(
-            key: isSelected
-                ? ValueKey(
-                    'selected-pharmacy-map-marker-${pharmacy.pharmacyId}',
-                  )
-                : null,
-            radius: markerSize / 2,
-            onTap: () => widget.onPharmacySelected(pharmacy),
-            child: Icon(
-              Icons.location_on,
-              size: markerSize,
-              color: isSelected
-                  ? MedBuddyColors.primaryDark
-                  : MedBuddyColors.primary,
-              shadows: const [Shadow(color: Colors.white, blurRadius: 3)],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _scheduleCameraUpdate() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _updateCamera();
-      }
-    });
-  }
-
-  void _updateCamera() {
-    if (!_isMapReady) {
+  Future<void> _synchronizeMap() async {
+    final controller = _mapController;
+    if (controller == null) {
       return;
     }
-
+    final generation = ++_overlayGeneration;
     final pharmacies = _mappablePharmacies;
+    final markers = pharmacies.map(_buildMarker).toSet();
+    await controller.clearOverlays(type: NOverlayType.marker);
+    if (!mounted || generation != _overlayGeneration) {
+      return;
+    }
+    if (markers.isNotEmpty) {
+      await controller.addOverlayAll(markers);
+    }
+    if (!mounted || generation != _overlayGeneration) {
+      return;
+    }
+    await _updateCamera(controller, pharmacies);
+  }
+
+  NMarker _buildMarker(NearbyPharmacy pharmacy) {
+    final isSelected = pharmacy.pharmacyId == widget.selectedPharmacyId;
+    final marker = NMarker(
+      id: 'pharmacy-${pharmacy.pharmacyId}',
+      position: NLatLng(pharmacy.latitude, pharmacy.longitude),
+      iconTintColor: isSelected
+          ? MedBuddyColors.primaryDark
+          : MedBuddyColors.primary,
+      size: Size.square(isSelected ? 42 : 34),
+      caption: isSelected
+          ? NOverlayCaption(
+              text: pharmacy.name,
+              textSize: 12,
+              color: MedBuddyColors.textStrong,
+              haloColor: Colors.white,
+            )
+          : null,
+    );
+    marker.setOnTapListener((_) => widget.onPharmacySelected(pharmacy));
+    return marker;
+  }
+
+  Future<void> _updateCamera(
+    NaverMapController controller,
+    List<NearbyPharmacy> pharmacies,
+  ) async {
     if (pharmacies.isEmpty) {
       return;
     }
-
     final selected = _findSelectedPharmacy(pharmacies);
     if (selected != null) {
-      _mapController.move(LatLng(selected.latitude, selected.longitude), 16);
+      await controller.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(selected.latitude, selected.longitude),
+          zoom: 16,
+        ),
+      );
       return;
     }
-
     if (pharmacies.length == 1) {
       final pharmacy = pharmacies.first;
-      _mapController.move(LatLng(pharmacy.latitude, pharmacy.longitude), 15);
+      await controller.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(pharmacy.latitude, pharmacy.longitude),
+          zoom: 15,
+        ),
+      );
       return;
     }
-
-    _mapController.fitCamera(
-      CameraFit.coordinates(
-        coordinates: pharmacies
-            .map((item) => LatLng(item.latitude, item.longitude))
-            .toList(growable: false),
+    await controller.updateCamera(
+      NCameraUpdate.fitBounds(
+        NLatLngBounds.from(
+          pharmacies.map(
+            (item) => NLatLng(item.latitude, item.longitude),
+          ),
+        ),
         padding: const EdgeInsets.fromLTRB(34, 58, 34, 34),
-        maxZoom: 15,
       ),
     );
   }
@@ -280,12 +261,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   }
 
   void _changeZoom(double delta) {
-    if (!_isMapReady) {
-      return;
+    final controller = _mapController;
+    if (controller != null) {
+      unawaited(controller.updateCamera(NCameraUpdate.zoomBy(delta)));
     }
-    final camera = _mapController.camera;
-    final nextZoom = (camera.zoom + delta).clamp(5.0, 19.0);
-    _mapController.move(camera.center, nextZoom);
   }
 
   bool _hasValidCoordinate(NearbyPharmacy pharmacy) {

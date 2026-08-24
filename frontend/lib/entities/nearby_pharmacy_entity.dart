@@ -24,6 +24,10 @@ class NearbyPharmacy {
   final String? todayCloseTime;
   final bool? isOpenNow;
   final bool is24Hours;
+  final bool isOpenLate;
+  final bool hasWeekendOrHolidayHours;
+  final bool isPublicHoliday;
+  final String sourceName;
 
   const NearbyPharmacy({
     required this.pharmacyId,
@@ -37,6 +41,10 @@ class NearbyPharmacy {
     required this.todayCloseTime,
     required this.isOpenNow,
     required this.is24Hours,
+    this.isOpenLate = false,
+    this.hasWeekendOrHolidayHours = false,
+    this.isPublicHoliday = false,
+    this.sourceName = 'National Emergency Medical Center',
   });
 
   factory NearbyPharmacy.fromJson(Map<String, dynamic> json) {
@@ -54,6 +62,17 @@ class NearbyPharmacy {
           ? json['is_open_now'] as bool
           : null,
       is24Hours: json['is_24_hours'] is bool && json['is_24_hours'] as bool,
+      isOpenLate:
+          json['is_open_late'] is bool && json['is_open_late'] as bool,
+      hasWeekendOrHolidayHours:
+          json['has_weekend_or_holiday_hours'] is bool &&
+          json['has_weekend_or_holiday_hours'] as bool,
+      isPublicHoliday:
+          json['is_public_holiday'] is bool &&
+          json['is_public_holiday'] as bool,
+      sourceName: _readString(json['source_name']).isEmpty
+          ? 'National Emergency Medical Center'
+          : _readString(json['source_name']),
     );
   }
 

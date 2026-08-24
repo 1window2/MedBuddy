@@ -43,6 +43,21 @@ _VALID_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 </response>
 """
 
+_VALID_CATALOG_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header><resultCode>00</resultCode></header>
+  <body>
+    <items><item>
+      <hpid>C1234</hpid><dutyName>MedBuddy Pharmacy</dutyName>
+      <dutyAddr>Seoul</dutyAddr><dutyTel1>02-123-4567</dutyTel1>
+      <wgs84Lat>37.5665</wgs84Lat><wgs84Lon>126.9780</wgs84Lon>
+      <dutyTime1s>0900</dutyTime1s><dutyTime1c>1800</dutyTime1c>
+      <dutyTime8s>2200</dutyTime8s><dutyTime8c>0100</dutyTime8c>
+    </item></items><totalCount>1</totalCount>
+  </body>
+</response>
+"""
+
 
 def test_parse_records_extracts_only_required_pharmacy_fields() -> None:
     records = NationalEmergencyMedicalCenterPharmacyAPI._parse_records(
@@ -95,3 +110,15 @@ async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     assert captured_request.url.params["WGS84_LAT"] == "37.5665000"
     assert captured_request.url.params["WGS84_LON"] == "126.9780000"
     assert captured_request.url.params["numOfRows"] == "10"
+
+
+def test_parse_catalog_page_preserves_weekly_and_holiday_hours() -> None:
+    records, total_count = (
+        NationalEmergencyMedicalCenterPharmacyAPI._parse_catalog_page(
+            _VALID_CATALOG_XML
+        )
+    )
+
+    assert total_count == 1
+    assert records[0].weekly_hours["1"] == ("0900", "1800")
+    assert records[0].weekly_hours["8"] == ("2200", "0100")

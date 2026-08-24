@@ -12,11 +12,13 @@ import httpx
 
 from core.config import settings
 from entities.nearby_pharmacy_entity import PharmacyLocationRecord
+from entities.pharmacy_catalog_entity import PharmacyCatalogEntry
 
 logger = logging.getLogger(__name__)
 
 _LOCATION_SEARCH_PATH = "/getParmacyLcinfoInqire"
-_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_FULL_CATALOG_PATH = "/getParmacyFullDown"
+_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
 class PharmacyApiUnavailableError(RuntimeError):
@@ -123,6 +125,50 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
 
         return self._parse_records(response.content)
 
+    async def fetchCatalogPage(
+        self,
+        *,
+        page_no: int,
+        page_size: int,
+    ) -> tuple[list[PharmacyCatalogEntry], int]:
+        """Fetches one page of nationwide weekly pharmacy schedules."""
+
+        if not settings.PUBLIC_DATA_API_KEY.strip():
+            raise PharmacyApiUnavailableError(
+                "Public pharmacy data credentials are unavailable."
+            )
+        if page_no < 1 or not 1 <= page_size <= 1_000:
+            raise ValueError("Pharmacy catalogue pagination is invalid.")
+
+        endpoint = settings.PHARMACY_API_BASE_URL.rstrip("/") + _FULL_CATALOG_PATH
+        params = {
+            "serviceKey": settings.PUBLIC_DATA_API_KEY,
+            "pageNo": page_no,
+            "numOfRows": page_size,
+        }
+        try:
+            async with self._semaphore:
+                client = await self._get_client()
+                response = await client.get(endpoint, params=params)
+        except (httpx.HTTPError, OSError, TimeoutError) as exc:
+            logger.warning(
+                "Pharmacy catalogue request failed: %s",
+                type(exc).__name__,
+            )
+            raise PharmacyApiUnavailableError(
+                "The pharmacy data service is temporarily unavailable."
+            ) from exc
+
+        if response.status_code != 200:
+            raise PharmacyApiUnavailableError(
+                "The pharmacy data service did not respond successfully."
+            )
+        if len(response.content) > _MAX_RESPONSE_BYTES:
+            raise PharmacyApiResponseError(
+                "The pharmacy catalogue response exceeded the allowed size."
+            )
+        return self._parse_catalog_page(response.content)
+
     async def close(self) -> None:
         async with self._client_lock:
             client = self._client
@@ -186,6 +232,51 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             )
         return records
 
+    @classmethod
+    def _parse_catalog_page(
+        cls,
+        payload: bytes,
+    ) -> tuple[list[PharmacyCatalogEntry], int]:
+        try:
+            root = ElementTree.fromstring(payload)
+        except ElementTree.ParseError as exc:
+            raise PharmacyApiResponseError(
+                "The pharmacy catalogue service returned invalid XML."
+            ) from exc
+
+        result_code = cls._read_text(root.find(".//resultCode"))
+        if result_code not in {"", "00", "0000"}:
+            raise PharmacyApiUnavailableError(
+                "The pharmacy catalogue service rejected the request."
+            )
+        total_count = cls._read_int(root.find(".//totalCount"))
+        records: list[PharmacyCatalogEntry] = []
+        for item in root.findall(".//item"):
+            pharmacy_id = cls._read_child_text(item, "hpid")
+            name = cls._read_child_text(item, "dutyName")
+            latitude = cls._read_float(item, "wgs84Lat")
+            longitude = cls._read_float(item, "wgs84Lon")
+            if not pharmacy_id or not name or latitude is None or longitude is None:
+                continue
+            weekly_hours: dict[str, tuple[str, str]] = {}
+            for day_index in range(1, 9):
+                start_time = cls._read_child_text(item, f"dutyTime{day_index}s")
+                close_time = cls._read_child_text(item, f"dutyTime{day_index}c")
+                if start_time or close_time:
+                    weekly_hours[str(day_index)] = (start_time, close_time)
+            records.append(
+                PharmacyCatalogEntry(
+                    pharmacy_id=pharmacy_id,
+                    name=name,
+                    address=cls._read_child_text(item, "dutyAddr"),
+                    telephone=cls._read_child_text(item, "dutyTel1"),
+                    latitude=latitude,
+                    longitude=longitude,
+                    weekly_hours=weekly_hours,
+                )
+            )
+        return records, total_count
+
     @staticmethod
     def _read_text(element: ElementTree.Element | None) -> str:
         return "" if element is None or element.text is None else element.text.strip()
@@ -209,3 +300,10 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @classmethod
+    def _read_int(cls, element: ElementTree.Element | None) -> int:
+        try:
+            return int(cls._read_text(element))
+        except (TypeError, ValueError):
+            return 0

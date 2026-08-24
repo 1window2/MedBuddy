@@ -94,13 +94,16 @@ void main() {
     expect(await control.requestDirections(pharmacy), isTrue);
 
     expect(launchedUris.first.toString(), 'tel:021234567');
-    expect(launchedUris.last.host, 'www.google.com');
-    expect(launchedUris.last.path, '/maps/dir/');
-    expect(launchedUris.last.queryParameters['destination'], '메드버디약국, 서울특별시');
+    expect(launchedUris.last.scheme, 'nmap');
+    expect(launchedUris.last.host, 'route');
+    expect(launchedUris.last.path, '/public');
+    expect(launchedUris.last.queryParameters['dlat'], '37.5666000');
+    expect(launchedUris.last.queryParameters['dlng'], '126.9781000');
+    expect(launchedUris.last.queryParameters['dname'], '메드버디약국');
   });
 
   test(
-    'directions fall back to coordinates when address is unavailable',
+    'directions fall back to coordinate-based web directions',
     () async {
       Uri? launchedUri;
       final control = CheckNearbyPharmacy(
@@ -108,7 +111,7 @@ void main() {
         client: MockClient((_) async => http.Response('{}', 200)),
         uriLauncher: (uri) async {
           launchedUri = uri;
-          return true;
+          return uri.scheme == 'https';
         },
       );
       const pharmacy = NearbyPharmacy(
@@ -126,6 +129,7 @@ void main() {
       );
 
       expect(await control.requestDirections(pharmacy), isTrue);
+      expect(launchedUri?.host, 'www.google.com');
       expect(launchedUri?.path, '/maps/dir/');
       expect(launchedUri?.queryParameters['destination'], '37.5666,126.9781');
     },

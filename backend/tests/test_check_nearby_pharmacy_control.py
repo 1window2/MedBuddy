@@ -20,6 +20,7 @@ from controls.check_nearby_pharmacy_control import (  # noqa: E402
     CheckNearbyPharmacy,
 )
 from entities.nearby_pharmacy_entity import PharmacyLocationRecord  # noqa: E402
+from entities.pharmacy_catalog_entity import PharmacyCatalogEntry  # noqa: E402
 
 
 class _FakePharmacyBoundary:
@@ -38,6 +39,25 @@ class _FakePharmacyBoundary:
         assert longitude == 126.9780
         self.requested_limit = limit
         return self.records
+
+
+class _FakePharmacyRepository:
+    def __init__(self, entries: list[PharmacyCatalogEntry]) -> None:
+        self.entries = entries
+
+    def count(self) -> int:
+        return len(self.entries)
+
+    def search_nearby_candidates(self, **_: object) -> list[PharmacyCatalogEntry]:
+        return self.entries
+
+
+class _FakeHolidayBoundary:
+    def __init__(self, is_holiday: bool) -> None:
+        self.is_holiday = is_holiday
+
+    async def isHoliday(self, _: object) -> bool:
+        return self.is_holiday
 
 
 def _record(
@@ -152,3 +172,133 @@ async def test_invalid_coordinate_is_rejected_before_api_call() -> None:
         )
 
     assert boundary.requested_limit == 0
+
+
+@pytest.mark.anyio
+async def test_catalog_search_filters_after_all_nearby_candidates() -> None:
+    entries = [
+        PharmacyCatalogEntry(
+            pharmacy_id=f"closed-{index}",
+            name=f"Closed {index}",
+            address="Seoul",
+            telephone="",
+            latitude=37.5665,
+            longitude=126.9780,
+            weekly_hours={"6": ("0900", "1000")},
+        )
+        for index in range(31)
+    ]
+    entries.append(
+        PharmacyCatalogEntry(
+            pharmacy_id="open-after-thirty",
+            name="Open after thirty",
+            address="Seoul",
+            telephone="02-123-4567",
+            latitude=37.5666,
+            longitude=126.9781,
+            weekly_hours={"6": ("0000", "2400"), "8": ("2200", "0100")},
+        )
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository(entries),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            12,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=True,
+        limit=30,
+    )
+
+    assert [item.pharmacy_id for item in result] == ["open-after-thirty"]
+    assert result[0].has_weekend_or_holiday_hours is True
+    assert result[0].is_24_hours is True
+
+
+@pytest.mark.anyio
+async def test_public_holiday_uses_eighth_schedule() -> None:
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="holiday",
+        name="Holiday Pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"1": ("0900", "1800"), "8": ("2200", "0100")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(True),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            17,
+            23,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=True,
+    )
+
+    assert result[0].is_public_holiday is True
+    assert result[0].is_open_late is True
+    assert result[0].today_open_time == "22:00"
+    assert result[0].today_close_time == "01:00"
+
+
+@pytest.mark.anyio
+async def test_after_midnight_uses_previous_days_overnight_schedule() -> None:
+    entries = [
+        PharmacyCatalogEntry(
+            pharmacy_id="previous-day",
+            name="Previous-day overnight pharmacy",
+            address="Seoul",
+            telephone="",
+            latitude=37.5665,
+            longitude=126.9780,
+            weekly_hours={"1": ("2200", "0100")},
+        ),
+        PharmacyCatalogEntry(
+            pharmacy_id="later-today",
+            name="Later today pharmacy",
+            address="Seoul",
+            telephone="",
+            latitude=37.5665,
+            longitude=126.9780,
+            weekly_hours={"2": ("2200", "0100")},
+        ),
+    ]
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository(entries),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            18,
+            0,
+            30,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=True,
+    )
+
+    assert [item.pharmacy_id for item in result] == ["previous-day"]

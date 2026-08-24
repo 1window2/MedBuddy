@@ -142,7 +142,7 @@ package "Flutter / External and Shared Services" as FE_Service {
   class LinkedChatNotificationMonitorFactory <<composition root>>
   interface DeviceLocationBoundary <<device boundary>>
   class GeolocatorDeviceLocationService <<device boundary>>
-  cloud "OpenStreetMap tile endpoint" as OpenStreetMapTileEndpoint
+  cloud "Naver Dynamic Map SDK" as NaverDynamicMapSDK
   class PrescriptionGuideLayout <<layout service>>
   class PrescriptionImageCropService <<image service>>
   class ManualMedicationImageStore <<local storage boundary>>
@@ -206,6 +206,7 @@ package "FastAPI / Entity" as BE_Entity {
   class "PillIdentificationResult" as BE_PillResult <<entity>>
   class PillIdentificationReference <<reference mapping>>
   class PharmacyLocationRecord <<entity>>
+  class PharmacyCatalogEntry <<entity>>
   class "NearbyPharmacy" as BE_NearbyPharmacy <<entity>>
   class "ChatMessage" as BE_ChatMessage <<entity>>
 }
@@ -234,12 +235,14 @@ package "FastAPI / External Boundary" as BE_Boundary {
   class MFDSPillCatalogBoundary <<external boundary>>
   interface PharmacyLookupBoundary <<protocol boundary>>
   class NationalEmergencyMedicalCenterPharmacyAPI <<external boundary>>
+  class KoreanHolidayAPI <<external boundary>>
 }
 
 package "FastAPI / Policy and Repository" as BE_Support {
   class MedicationCoursePolicy <<policy>>
   class SavedMedicationRetentionPolicy <<policy>>
   class PillIdentificationCatalogRepository <<repository>>
+  class PharmacyCatalogRepository <<repository>>
   class ChatMessageRepository <<repository>>
   class ChatConnectionManager <<runtime service>>
 }
@@ -332,7 +335,7 @@ FE_CheckNearbyPharmacy --> DeviceLocationBoundary
 GeolocatorDeviceLocationService ..|> DeviceLocationBoundary
 FE_CheckNearbyPharmacy --> FE_NearbyPharmacy
 NearbyPharmacyMap ..> FE_NearbyPharmacy : marker data
-NearbyPharmacyMap --> OpenStreetMapTileEndpoint : attributed tile request
+NearbyPharmacyMap --> NaverDynamicMapSDK : authenticated map rendering
 FE_ManageLinkedChat --> FE_ChatMessage
 FE_ManageLinkedChat --> FE_ChatMedicationContext
 FE_ChatMessage o-- "0..1" FE_ChatMedicationContext
@@ -458,9 +461,11 @@ BE_PillCandidate --> PillCatalogEntry
 
 ' v0.2.0 direct-entry, nearby-pharmacy, and medication-context chat extensions
 FE_ManualMedicationEntry --> FE_MedicationSchedule
-BE_CheckNearbyPharmacy --> PharmacyLookupBoundary
+BE_CheckNearbyPharmacy --> PharmacyCatalogRepository
+BE_CheckNearbyPharmacy --> KoreanHolidayAPI
 NationalEmergencyMedicalCenterPharmacyAPI ..|> PharmacyLookupBoundary
-BE_CheckNearbyPharmacy --> PharmacyLocationRecord
+NationalEmergencyMedicalCenterPharmacyAPI --> PharmacyCatalogEntry
+PharmacyCatalogRepository --> PharmacyCatalogEntry
 BE_CheckNearbyPharmacy --> BE_NearbyPharmacy
 BE_ManageLinkedChat --> ChatMessageRepository
 BE_ManageLinkedChat --> BE_PatientCaregiverLink

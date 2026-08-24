@@ -53,6 +53,7 @@ from entities import chat_message_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
+from entities import pharmacy_catalog_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401
@@ -139,6 +140,7 @@ def _verify_catalog_seed(connection: object) -> None:
         "drug_basic_infos",
         "drug_approval_infos",
         "pill_identification_references",
+        "pharmacy_catalog_records",
     )
     for table_name in required_tables:
         has_rows = connection.execute(

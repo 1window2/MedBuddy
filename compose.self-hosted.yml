@@ -58,6 +58,7 @@ services:
       - |
         python -m alembic upgrade head
         python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5 --only-if-empty
+        python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5 --only-if-empty
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,7 +88,12 @@ services:
         sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
         while true; do
           if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5; then
-            sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+            if python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5; then
+              sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+            else
+              echo "Pharmacy catalog refresh failed; retrying after the configured backoff." >&2
+              sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
+            fi
           else
             echo "Catalog refresh failed; retrying after the configured backoff." >&2
             sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"

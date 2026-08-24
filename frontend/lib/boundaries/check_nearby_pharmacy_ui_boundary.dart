@@ -12,7 +12,7 @@ import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
 
-enum _PharmacyFilter { openNow, all }
+enum _PharmacyFilter { openNow, lateNight, weekendHoliday, all }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 
@@ -155,6 +155,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         _pharmacies
             .where((pharmacy) => pharmacy.isOpenNow == true)
             .toList(growable: false),
+      _PharmacyFilter.lateNight => _pharmacies
+          .where((pharmacy) => pharmacy.isOpenLate || pharmacy.is24Hours)
+          .toList(growable: false),
+      _PharmacyFilter.weekendHoliday => _pharmacies
+          .where((pharmacy) => pharmacy.hasWeekendOrHolidayHours)
+          .toList(growable: false),
       _PharmacyFilter.all => _pharmacies,
     };
   }
@@ -267,16 +273,24 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
             20,
             10,
           ),
-          child: SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<_PharmacyFilter>(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<_PharmacyFilter>(
               segments: [
                 ButtonSegment(
                   value: _PharmacyFilter.openNow,
                   label: Text(text.openNow),
                 ),
-                ButtonSegment(
-                  value: _PharmacyFilter.all,
+                  ButtonSegment(
+                    value: _PharmacyFilter.lateNight,
+                    label: Text(text.lateNight),
+                  ),
+                  ButtonSegment(
+                    value: _PharmacyFilter.weekendHoliday,
+                    label: Text(text.weekendHoliday),
+                  ),
+                  ButtonSegment(
+                    value: _PharmacyFilter.all,
                   label: Text(text.all),
                 ),
               ],
@@ -304,6 +318,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                   icon: Icons.local_pharmacy_outlined,
                   title: switch (_filter) {
                     _PharmacyFilter.openNow => text.noOpenPharmacy,
+                    _PharmacyFilter.lateNight => text.noLateNightPharmacy,
+                    _PharmacyFilter.weekendHoliday =>
+                      text.noWeekendHolidayPharmacy,
                     _PharmacyFilter.all => text.noNearbyPharmacy,
                   },
                   message: _filter == _PharmacyFilter.all
@@ -650,6 +667,14 @@ class _PharmacyCard extends StatelessWidget {
                   icon: Icons.schedule_outlined,
                   text: text.todayHours(pharmacy),
                 ),
+                if (pharmacy.isOpenLate ||
+                    pharmacy.hasWeekendOrHolidayHours) ...[
+                  const SizedBox(height: 7),
+                  _PharmacyInfoLine(
+                    icon: Icons.nightlight_outlined,
+                    text: text.scheduleTags(pharmacy),
+                  ),
+                ],
                 if (pharmacy.address.isNotEmpty) ...[
                   const SizedBox(height: 7),
                   _PharmacyInfoLine(
@@ -766,10 +791,18 @@ class _NearbyPharmacyText {
       isEnglish ? 'Pharmacy information is unavailable' : '약국 정보를 확인할 수 없습니다';
   String get retry => isEnglish ? 'Try again' : '다시 시도';
   String get openNow => isEnglish ? 'Open now' : '영업 중';
+  String get lateNight => isEnglish ? 'Late / 24h' : '심야·24시간';
+  String get weekendHoliday => isEnglish ? 'Weekend / holiday' : '주말·공휴일';
   String get all => isEnglish ? 'All' : '전체';
   String get noOpenPharmacy => isEnglish
       ? 'No open pharmacies were found within 20 km'
       : '20km 안에 영업 중인 약국이 없습니다';
+  String get noLateNightPharmacy => isEnglish
+      ? 'No late-night pharmacies were found within 20 km'
+      : '20km 안에 심야 운영 약국이 없습니다';
+  String get noWeekendHolidayPharmacy => isEnglish
+      ? 'No pharmacies with weekend or holiday hours were found within 20 km'
+      : '20km 안에 주말·공휴일 운영 약국이 없습니다';
   String get noNearbyPharmacy =>
       isEnglish ? 'No nearby pharmacies were found' : '주변 약국을 찾지 못했습니다';
   String get checkLocation => isEnglish
@@ -840,6 +873,17 @@ class _NearbyPharmacyText {
     return isEnglish
         ? 'Today ${pharmacy.todayOpenTime} - ${pharmacy.todayCloseTime}'
         : '오늘 ${pharmacy.todayOpenTime} - ${pharmacy.todayCloseTime}';
+  }
+
+  String scheduleTags(NearbyPharmacy pharmacy) {
+    final labels = <String>[];
+    if (pharmacy.isOpenLate) {
+      labels.add(isEnglish ? 'Late-night hours today' : '오늘 심야 운영');
+    }
+    if (pharmacy.hasWeekendOrHolidayHours) {
+      labels.add(isEnglish ? 'Weekend/holiday hours available' : '주말·공휴일 운영');
+    }
+    return labels.join(' · ');
   }
 
   String get phone => isEnglish ? 'Call' : '전화';

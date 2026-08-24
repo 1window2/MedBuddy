@@ -694,6 +694,12 @@ package "FastAPI Backend" {
             + requestNearbyPharmacies(latitude, longitude, radius_km, current_time): list<NearbyPharmacy>
         }
 
+        class "PharmacyCatalogRepository" as PharmacyCatalogRepository <<Repository: 전국 약국 일정 검색>> {
+            + count(): int
+            + search_nearby_candidates(latitude, longitude, max_distance_km): list<PharmacyCatalogEntry>
+            + replace_all(entries): void
+        }
+
         class "ManageLinkedChat" as BManageLinkedChat <<Control: 연결 채팅 권한·메시지 관리>> {
             - db: Session
             + request_history(user_hash, link_id, before_id): list<ChatMessage>
@@ -980,6 +986,12 @@ package "FastAPI Backend" {
         class "NationalEmergencyMedicalCenterPharmacyAPI" as NEMCPharmacyAPI <<Wrapper: 응급의료기관 약국 API>> {
             + base_url: str
             + searchNearby(latitude, longitude, radius_km): list<PharmacyLocationRecord>
+            + fetchCatalogPage(page_no, page_size): tuple<list<PharmacyCatalogEntry>, int>
+            + close(): void
+        }
+
+        class "KoreanHolidayAPI" as KoreanHolidayAPI <<Wrapper: 법정공휴일 API>> {
+            + isHoliday(date): bool
             + close(): void
         }
 
@@ -1064,6 +1076,16 @@ package "FastAPI Backend" {
             + distance_km: float
             + is_open_now: bool?
             + is_24_hours: bool
+            + is_open_late: bool
+            + has_weekend_or_holiday_hours: bool
+            + is_public_holiday: bool
+        }
+
+        class "PharmacyCatalogEntry" as BPharmacyCatalogEntry <<Entity: 전국 약국 주간·공휴일 일정>> {
+            + pharmacy_id: str
+            + latitude: float
+            + longitude: float
+            + weekly_hours: dict
         }
 
         class "ChatMessage" as BChatMessage <<Entity: 연결 채팅 DTO>> {
@@ -1431,10 +1453,13 @@ MFDSPillCatalogBoundary ..> PillCatalogRepository
 MFDSPillCatalogBoundary ..> BPillCatalogEntry
 PillCatalogRepository --> DBPillIdentificationReference
 
-BCheckNearbyPharmacy o-- PharmacyLookupBoundary
+BCheckNearbyPharmacy o-- PharmacyCatalogRepository
+BCheckNearbyPharmacy o-- KoreanHolidayAPI
 BCheckNearbyPharmacy ..> BPharmacyLocationRecord
 BCheckNearbyPharmacy ..> BNearbyPharmacy
 NEMCPharmacyAPI ..|> PharmacyLookupBoundary
+NEMCPharmacyAPI ..> BPharmacyCatalogEntry
+PharmacyCatalogRepository ..> BPharmacyCatalogEntry
 
 BManageLinkedChat *-- ChatMessageRepository
 BManageLinkedChat *-- MedicationCoursePolicy

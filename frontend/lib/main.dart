@@ -23,6 +23,7 @@ import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
 import 'services/linked_chat_notification_monitor_service.dart';
 import 'services/medication_reminder_background_service.dart';
+import 'services/naver_map_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
 import 'theme/medbuddy_text_scale.dart';
@@ -40,6 +41,18 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await initializeNaverMap();
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'MedBuddy bootstrap',
+        context: ErrorDescription('initializing Naver Map'),
+      ),
+    );
+  }
   try {
     await CaregiverNotificationBackgroundScheduler.initialize();
   } catch (error, stackTrace) {

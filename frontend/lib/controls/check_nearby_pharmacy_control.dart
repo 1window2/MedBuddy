@@ -103,24 +103,34 @@ class CheckNearbyPharmacy {
 
   // 함수명: requestDirections
   // 역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
-  Future<bool> requestDirections(NearbyPharmacy pharmacy) {
-    final normalizedAddress = pharmacy.address.trim();
-    final destination = normalizedAddress.isNotEmpty
-        ? '${pharmacy.name}, $normalizedAddress'
-        : '${pharmacy.latitude},${pharmacy.longitude}';
-
+  Future<bool> requestDirections(NearbyPharmacy pharmacy) async {
+    final coordinate = '${pharmacy.latitude},${pharmacy.longitude}';
+    final naverMapsUri = Uri(
+      scheme: 'nmap',
+      host: 'route',
+      path: '/public',
+      queryParameters: {
+        'dlat': pharmacy.latitude.toStringAsFixed(7),
+        'dlng': pharmacy.longitude.toStringAsFixed(7),
+        'dname': pharmacy.name,
+        'appname': 'com.medbuddy.app',
+      },
+    );
+    if (await _uriLauncher(naverMapsUri)) {
+      return true;
+    }
     return _uriLauncher(
       Uri.https('www.google.com', '/maps/dir/', {
         'api': '1',
-        'destination': destination,
+        'destination': coordinate,
       }),
     );
   }
 
   // 함수명: requestMapAttribution
-  // 역할: 앱 내 지도에 표시된 OpenStreetMap 저작권 정보를 연다.
+  // 역할: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
   Future<bool> requestMapAttribution() {
-    return _uriLauncher(Uri.https('www.openstreetmap.org', '/copyright'));
+    return _uriLauncher(Uri.https('map.naver.com', '/'));
   }
 
   Future<bool> openApplicationSettings() =>

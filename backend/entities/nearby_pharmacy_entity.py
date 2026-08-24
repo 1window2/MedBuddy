@@ -20,6 +20,8 @@ class PharmacyLocationRecord:
     distance_km: float | None
     start_time: str
     end_time: str
+    previous_start_time: str = ""
+    previous_end_time: str = ""
 
 
 # 클래스명: NearbyPharmacy
@@ -38,3 +40,7 @@ class NearbyPharmacy:
     today_close_time: str | None
     is_open_now: bool | None
     is_24_hours: bool
+    is_open_late: bool = False
+    has_weekend_or_holiday_hours: bool = False
+    is_public_holiday: bool = False
+    source_name: str = "National Emergency Medical Center"

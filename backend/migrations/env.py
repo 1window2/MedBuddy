@@ -17,6 +17,7 @@ from entities import medication_completion_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
+from entities import pharmacy_catalog_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401

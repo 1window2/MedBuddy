@@ -102,15 +102,17 @@ The five long-running production services must remain running or healthy:
 - `cloudflared`
 
 Before those services start, the one-shot `catalog-bootstrap` service applies
-the Alembic migrations and seeds any empty shared medication catalog. A
+the Alembic migrations and seeds any empty shared medication and nationwide
+pharmacy schedule catalogs. A
 successful deployment therefore shows `catalog-bootstrap` as exited with code
 0; it is not expected to remain running.
 
 The separate `catalog-refresh` service performs a full atomic synchronization
 every seven days by default. Each successful complete refresh removes basic,
-approval, and pill records no longer returned by MFDS while preserving local AI
-summaries for retained product identifiers. A failed full refresh keeps the
-last committed catalog, and a deliberately page-limited maintenance job
+approval, pill, and pharmacy records no longer returned by their government
+sources while preserving local AI summaries for retained product identifiers.
+Each catalog replacement is atomic. A failed full refresh keeps the last
+committed catalog, and a deliberately page-limited maintenance job
 never prunes unvisited rows. Production retries a failed full refresh after one
 hour. Configure the two intervals in `deploy/.env`; do not add
 `--only-if-empty` to this periodic service.
@@ -144,16 +146,18 @@ enabled for users. Cloudflare Tunnel must also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.
 
-Verify that the pill-identification catalog was populated:
+Verify that the pill-identification and pharmacy catalogs were populated:
 
 ```bash
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T postgres psql -U medbuddy -d medbuddy -tAc \
-  "SELECT COUNT(*) FROM pill_identification_references;"
+  "SELECT 'pill_identification_references', COUNT(*) FROM pill_identification_references
+   UNION ALL
+   SELECT 'pharmacy_catalog_records', COUNT(*) FROM pharmacy_catalog_records;"
 ```
 
-The result must be greater than zero before physical-device pill
-identification is considered ready.
+Both results must be greater than zero before physical-device pill
+identification and nearby-pharmacy testing are considered ready.
 
 Verify that periodic refresh is running and inspect its last synchronization:
 
@@ -170,6 +174,9 @@ To request an immediate, atomic refresh without waiting for the next interval:
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   run --rm catalog-bootstrap \
   python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  run --rm catalog-bootstrap \
+  python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5
 ```
 
 ## Android API Endpoint

@@ -83,8 +83,8 @@ release.
 - This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
-- Results can be filtered by currently open or all pharmacies and are ordered by operating status and distance. An OpenStreetMap view appears above the filters; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. When public data identifies continuous operation, the pharmacy card still shows that it is open 24 hours.
-- Map tiles are loaded without an app-owned map API key and retain an OpenStreetMap attribution link. Calling and external turn-by-turn directions remain available from each pharmacy card.
+- Results can be filtered by currently open, late-night, weekend/holiday, or all pharmacies and are ordered by operating status and distance. A Naver Map view appears above the filters; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. Weekly National Emergency Medical Center schedules and Korean legal-holiday data are synchronized server-side.
+- Naver Dynamic Map is initialized with a compile-time client identifier. Calling and exact-coordinate Naver turn-by-turn directions, with a web-map fallback, remain available from each pharmacy card.
 - Manual refresh uses a cooldown to prevent accidental repeated public-data requests.
 - Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting.
 
@@ -263,14 +263,15 @@ endpoint.
 Production runs on the dedicated Ubuntu host behind Cloudflare Tunnel. See
 [MedBuddy Production Deployment](docs/Production%20Deployment.md).
 
-### Optional Local Drug Catalog
+### Optional Local Public-Data Catalogs
 
-Local development stores medication and pill-reference catalog rows in `backend/medbuddy.db`; the backend uses those records before Redis and public API fallback. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
+Local development stores medication, pill-reference, and weekly pharmacy schedule rows in `backend/medbuddy.db`. Production uses the same ORM mappings in Alembic-managed PostgreSQL, and the catalog synchronization job is the sole production writer. Generated `.db` files are intentionally ignored by Git.
 
 Build or refresh the optional local medication catalog from the public drug APIs:
 
 ```powershell
 python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
+python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5
 ```
 
 Resume an interrupted long-running sync from a known API page:
@@ -318,6 +319,7 @@ flutter run -d "[your-device-id]" `
   --dart-define=MEDBUDDY_FIREBASE_APP_ID=your_android_app_id `
   --dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=your_sender_id `
   --dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=medbuddy-26 `
+  --dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=your_naver_dynamic_map_client_id `
   --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
 ```
 

@@ -49,7 +49,7 @@ The following implemented flows are in v0.2.0 verification:
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held
     public-data credentials, open/all filters, an attributed in-app
-    OpenStreetMap view with synchronized card/marker selection, 24-hour
+    Naver Map view with synchronized card/marker selection, 24-hour
     operating-status metadata, refresh cooldown, phone launch, and external
     directions.
 11. Laboratory linked medication chat for active patient-caregiver links and

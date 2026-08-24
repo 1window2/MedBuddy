@@ -45,6 +45,17 @@ jobs:
       - name: Package Get
         run: flutter pub get
 
+      - name: Validate Naver Map client
+        shell: bash
+        env:
+          NAVER_MAP_CLIENT_ID: ${{ vars.NAVER_MAP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${NAVER_MAP_CLIENT_ID}" =~ ^[A-Za-z0-9_-]{5,100}$ ]]; then
+            echo "NAVER_MAP_CLIENT_ID is missing or malformed." >&2
+            exit 1
+          fi
+
       - name: Validate standalone backend endpoint
         shell: bash
         env:
@@ -238,6 +249,7 @@ jobs:
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          NAVER_MAP_CLIENT_ID: ${{ vars.NAVER_MAP_CLIENT_ID }}
         run: |
           set -euo pipefail
           EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
@@ -259,6 +271,7 @@ jobs:
             "--dart-define=MEDBUDDY_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
+            "--dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=${NAVER_MAP_CLIENT_ID}"
           )
           flutter build apk --release --no-pub "${DEFINES[@]}"
           flutter build appbundle --release --no-pub "${DEFINES[@]}"
