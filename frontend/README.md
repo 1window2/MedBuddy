@@ -110,11 +110,16 @@ Medication detail and today's schedule share one full-screen image viewer. A
 validated public medication image can be tapped to inspect it with pan and zoom
 without duplicating image-loading policy in each screen.
 
-Settings starts from an account-aware hub that separates Display & Voice,
-Labs, and Account actions. The account summary masks email or phone details,
-and moving between sections preserves unsaved choices. Font-size and language
-choices preview immediately while Settings remains open. Saving persists all
-display, reading-speed, language, and laboratory toggles without closing the
+Settings starts from an account-aware hub that separates Medication &
+Notifications, Display & Voice, Labs, and Account actions. The account summary
+masks email or phone details, and moving between sections preserves unsaved
+choices. Users can independently control medication, caregiver, and chat
+notifications, open Android notification settings, set defaults for newly
+created morning/lunch/evening/bedtime schedules, and limit lock-screen content
+to the notification type. Existing schedules retain their confirmed times.
+Font-size and device/Korean/English language choices preview immediately while
+Settings remains open, and the time display can use either 12-hour or 24-hour
+formatting. Saving persists the complete settings contract without closing the
 screen. A fixed back button remains in the same position while each settings
 section scrolls. Stopping a TTS preview intentionally is handled as a normal
 action rather than a playback error.

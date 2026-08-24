@@ -910,6 +910,8 @@ end
 - 사용자 설정이 없으면 기본 설정을 생성해야 하므로 `alt [setting exists] / [setting not found]`로 초기 조회 결과를 분리했다.
 - 글자 크기와 언어 선택은 저장 전에도 현재 설정 화면에 즉시 반영되므로 `loop` 안에서 미리보기 상태만 갱신한다.
 - 읽기 속도는 TTS 미리듣기로 확인하며 사용자가 직접 중지한 경우 오류로 처리하지 않는다.
+- 복약·보호자·채팅 알림 허용, 잠금 화면 공개 범위, 시간 표시 방식과 신규 일정 기본 시각을 하나의 사용자 설정 계약으로 저장한다.
+- 신규 일정 기본 시각은 이후 생성되는 일정에만 적용하고 이미 확인한 복약 일정은 변경하지 않는다.
 - 명시적인 저장을 선택할 때만 서버 설정을 변경하고, 저장 후에도 설정 화면에 남는다.
 
 ```plantuml
@@ -921,6 +923,7 @@ boundary "ManageUserSettingUI_boundary" as SettingUI
 control "ManageUserSetting_control" as C
 control "AppLanguageControl" as LanguageControl
 boundary "TTSService_boundary" as TTS
+boundary "Android Notification Settings" as AndroidSettings
 entity "UserSetting_entity" as Setting
 database "UserSettingStorage" as Storage
 
@@ -977,11 +980,20 @@ loop [설정 화면에서 값을 미리 보는 동안]
     SettingUI -> LanguageControl : setLanguage(language)
     LanguageControl --> SettingUI : 전역 언어 즉시 갱신
     SettingUI --> User : displayUpdatedLanguage()
+  else [알림·기본 시각·공개 범위·시간 표시 변경]
+    User -> SettingUI : updateNotificationAndTimePreferences()
+    SettingUI -> SettingUI : updateDraftSetting()
+    SettingUI --> User : 변경값 미리 표시
   end
 end
 
+opt [휴대폰 알림 설정 열기]
+  User -> SettingUI : openDeviceNotificationSettings()
+  SettingUI -> AndroidSettings : openApplicationNotificationSettings()
+end
+
 User -> SettingUI : saveUserSetting()
-SettingUI -> C : saveUserSetting(fontSize, readingSpeed, language, labFlags)
+SettingUI -> C : saveUserSetting(notificationPolicy, defaultTimes,\nprivacy, display, language, timeFormat, labFlags)
 activate C
 critical [사용자 설정 저장]
   C -> Setting : applyConfirmedValues()
@@ -1089,7 +1101,7 @@ Review --> UI : normalized schedules
 - 약국 카드와 지도 마커는 하나의 선택 상태를 공유하며 지도 이동만으로 공공 API를 다시 호출하지 않는다.
 - 반복 새로고침은 화면에서 제한하여 불필요한 외부 API 호출을 줄인다.
 - 즐겨찾기는 사용자별 기기 저장소에만 보관하며 서버 거리 정렬 결과를 변경하지 않는다.
-- 전화·길찾기·출처·채팅 공유는 검증된 공통 외부 동작 서비스와 서버 약국 스냅샷을 사용한다.
+- 전화·길찾기·주소 복사·출처·채팅 공유는 검증된 공통 외부 동작 서비스와 서버 약국 스냅샷을 사용한다.
 
 ```plantuml
 @startuml SD09_Nearby_Pharmacy
@@ -1138,8 +1150,20 @@ opt [약국 카드 또는 지도 마커 선택]
 end
 opt [전화 또는 길찾기]
   User -> UI : 약국 동작 선택
-  UI -> ExternalAction : 검증된 전화번호 또는 약국명·좌표 전달
-  ExternalAction -> ExternalApp : 운영체제 앱 열기
+  alt [전화]
+    UI -> ExternalAction : 검증된 전화번호 전달
+    ExternalAction -> ExternalApp : 전화 앱 열기
+  else [길찾기]
+    UI --> User : 설치된 지도 앱, Google 지도, 주소 복사 선택지
+    User -> UI : 길찾기 방식 선택
+    UI -> ExternalAction : 검증된 약국명·좌표·주소 전달
+    ExternalAction -> ExternalApp : 선택한 지도 앱 또는 브라우저 열기
+    opt [외부 앱을 열 수 없음]
+      ExternalAction --> UI : 실행 실패
+      UI -> ExternalAction : 검증된 주소 복사
+      UI --> User : 주소 복사 완료 안내
+    end
+  end
 end
 opt [연동 채팅으로 약국 공유]
   User -> UI : 약국 공유 또는 전화 확인 후 공유

@@ -35,9 +35,12 @@ The following implemented flows are in v0.2.0 verification:
    reminder setup or cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
-5. User display, Korean/English language, reading-speed, and laboratory feature
-   settings, including immediate font/language preview, in-place saving, and a
-   fixed back control that remains available while settings content scrolls.
+5. User notification, display, language, reading-speed, and laboratory feature
+   settings, including independent medication/caregiver/chat notification
+   switches, Android notification settings access, defaults for newly created
+   schedule slots, lock-screen detail policy, device/Korean/English language,
+   12/24-hour time display, immediate preview, in-place saving, and a fixed back
+   control that remains available while settings content scrolls.
 6. Patient-caregiver code linking, linked-patient per-slot schedule views,
    unlinking, per-slot caregiver notification preferences, Firebase
    dose-completion delivery, and background missed-deadline checks.
@@ -51,8 +54,9 @@ The following implemented flows are in v0.2.0 verification:
     public-data credentials, one explained filter selector, an attributed in-app
     Naver Map view with synchronized card/marker selection, device-scoped
     favorites, closing-soon and next-opening status, source-freshness metadata,
-    refresh cooldown, validated phone launch, external directions, and
-    authorized pharmacy sharing into linked chat.
+    refresh cooldown, validated phone launch, user-selected installed-map or
+    Google directions, address-copy fallback, and authorized pharmacy sharing
+    into linked chat.
 11. Laboratory linked medication chat for active patient-caregiver links and
     active patient medications, with multi-selection through a schedule-style
     medication picker, individually removable medication contexts,
