@@ -8,12 +8,14 @@ import 'package:flutter/material.dart';
 
 import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
+import 'check_nearby_pharmacy_ui_boundary.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_realtime_service.dart';
+import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 class LinkedChatUI extends StatefulWidget {
@@ -49,6 +51,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final Random _random = Random.secure();
+  final PharmacyExternalActionService _pharmacyActionService =
+      PharmacyExternalActionService();
 
   late final AuthenticatedApiClient _apiClient;
   late final ManageLinkedChat _control;
@@ -63,6 +67,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   Timer? _medicationContextGuideTimer;
   List<ChatMessage> _messages = const [];
   List<ChatMedicationContext> _medicationContexts = const [];
+  List<ChatScheduleContext> _scheduleContexts = const [];
   ChatMedicationContext? _selectedMedicationContext;
   LinkedChatConnectionState _connectionState =
       LinkedChatConnectionState.connecting;
@@ -73,6 +78,9 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   String? _pendingClientMessageId;
   String? _pendingMessageBody;
   int? _pendingMedicationId;
+  ChatMessageKind _pendingMessageKind = ChatMessageKind.text;
+  String? _pendingSlotKey;
+  String? _pendingPharmacyId;
   int? _loadingMedicationId;
   int _requestGeneration = 0;
   bool _showMedicationContextGuide = true;
@@ -162,6 +170,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     await Future.wait([
       _refreshMessages(showLoading: true),
       _refreshMedicationContexts(),
+      _refreshScheduleContexts(),
       _realtimeService.start(),
     ]);
     if (!mounted) {
@@ -201,6 +210,24 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           _sendErrorMessage = _text.medicationLoadFailed;
         }
       });
+    }
+  }
+
+  // 함수명: _refreshScheduleContexts
+  // 역할:
+  // - 채팅에서 공유하거나 확인 요청할 오늘 복약 시간대 상태를 갱신한다.
+  Future<void> _refreshScheduleContexts() async {
+    final generation = _requestGeneration;
+    try {
+      final contexts = await _control.requestScheduleContexts(
+        linkId: widget.linkId,
+      );
+      if (!mounted || generation != _requestGeneration) {
+        return;
+      }
+      setState(() => _scheduleContexts = contexts);
+    } catch (_) {
+      // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 조용히 보완 조회한다.
     }
   }
 
@@ -274,6 +301,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           _errorMessage = null;
         });
         _scrollToLatest();
+        if (message.messageKind == ChatMessageKind.slotCheckRequest ||
+            message.messageKind == ChatMessageKind.slotCompletion) {
+          unawaited(_refreshScheduleContexts());
+        }
         if (message.senderHash != widget.currentUserHash) {
           unawaited(_markLatestIncomingRead());
         }
@@ -323,13 +354,30 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   Future<void> _sendMessage() async {
-    if (_isSending) {
-      return;
-    }
     final body = _messageController.text.trim();
-    final medication = _selectedMedicationContext;
-    if (body.isEmpty) {
-      return;
+    await _submitMessage(
+      body: body,
+      medication: _selectedMedicationContext,
+      clearComposer: true,
+      clearMedicationSelection: true,
+    );
+  }
+
+  // 함수명: _submitMessage
+  // 역할:
+  // - 일반 문장과 구조화된 복약·약국 메시지의 전송, 재시도와 화면 갱신을 한곳에서 처리한다.
+  Future<ChatMessage?> _submitMessage({
+    required String body,
+    ChatMedicationContext? medication,
+    ChatMessageKind messageKind = ChatMessageKind.text,
+    String? slotKey,
+    String? pharmacyId,
+    bool clearComposer = false,
+    bool clearMedicationSelection = false,
+  }) async {
+    final normalizedBody = body.trim();
+    if (_isSending || normalizedBody.isEmpty) {
+      return null;
     }
     FocusScope.of(context).unfocus();
     setState(() {
@@ -337,46 +385,181 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       _sendErrorMessage = null;
     });
     final canReusePendingRequest =
-        _pendingMessageBody == body &&
-        _pendingMedicationId == medication?.medicationId;
+        _pendingMessageBody == normalizedBody &&
+        _pendingMedicationId == medication?.medicationId &&
+        _pendingMessageKind == messageKind &&
+        _pendingSlotKey == slotKey &&
+        _pendingPharmacyId == pharmacyId;
     final clientMessageId = canReusePendingRequest
         ? _pendingClientMessageId ?? _createClientMessageId()
         : _createClientMessageId();
     _pendingClientMessageId = clientMessageId;
-    _pendingMessageBody = body;
+    _pendingMessageBody = normalizedBody;
     _pendingMedicationId = medication?.medicationId;
+    _pendingMessageKind = messageKind;
+    _pendingSlotKey = slotKey;
+    _pendingPharmacyId = pharmacyId;
     try {
       final message = await _control.sendMessage(
         linkId: widget.linkId,
         clientMessageId: clientMessageId,
-        body: body,
+        body: normalizedBody,
         medicationId: medication?.medicationId,
+        messageKind: messageKind,
+        slotKey: slotKey,
+        pharmacyId: pharmacyId,
       );
       if (!mounted) {
-        return;
+        return message;
       }
-      _messageController.clear();
-      _pendingClientMessageId = null;
-      _pendingMessageBody = null;
-      _pendingMedicationId = null;
+      if (clearComposer) {
+        _messageController.clear();
+      }
+      _clearPendingRequest();
       setState(() {
-        _selectedMedicationContext = null;
+        if (clearMedicationSelection) {
+          _selectedMedicationContext = null;
+        }
         _messages = _mergeMessages(_messages, [message]);
         _errorMessage = null;
         _sendErrorMessage = null;
       });
       _scrollToLatest();
+      return message;
     } catch (_) {
       if (!mounted) {
-        return;
+        return null;
       }
       setState(() {
         _sendErrorMessage = _text.sendFailed;
       });
+      return null;
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
       }
+    }
+  }
+
+  void _clearPendingRequest() {
+    _pendingClientMessageId = null;
+    _pendingMessageBody = null;
+    _pendingMedicationId = null;
+    _pendingMessageKind = ChatMessageKind.text;
+    _pendingSlotKey = null;
+    _pendingPharmacyId = null;
+  }
+
+  Future<void> _sendQuickReply(_ChatQuickReply reply) async {
+    final medication = _selectedMedicationContext;
+    if (medication == null || _isSending) {
+      return;
+    }
+    final messageKind = switch (reply) {
+      _ChatQuickReply.shortage => ChatMessageKind.medicationShortage,
+      _ChatQuickReply.discomfort => ChatMessageKind.medicationDiscomfort,
+      _ => ChatMessageKind.text,
+    };
+    final body = _text.quickReplyBody(reply, medication.medicationName);
+    final sent = await _submitMessage(
+      body: body,
+      medication: medication,
+      messageKind: messageKind,
+      clearMedicationSelection: reply != _ChatQuickReply.shortage,
+    );
+    if (sent != null && reply == _ChatQuickReply.shortage && mounted) {
+      await _showPharmacySelector(medication: medication);
+    }
+  }
+
+  Future<void> _showPharmacySelector({
+    ChatMedicationContext? medication,
+  }) async {
+    if (_isSending) {
+      return;
+    }
+    final selection = await Navigator.of(context).push<NearbyPharmacySelection>(
+      MaterialPageRoute(
+        builder: (_) =>
+            CheckNearbyPharmacyUI.selection(userSetting: widget.userSetting),
+      ),
+    );
+    if (selection == null || !mounted) {
+      return;
+    }
+    final messageKind = selection.phoneVerified
+        ? ChatMessageKind.pharmacyPhoneVerified
+        : ChatMessageKind.pharmacyShare;
+    final sent = await _submitMessage(
+      body: selection.phoneVerified
+          ? _text.pharmacyPhoneVerifiedBody(selection.pharmacy.name)
+          : _text.pharmacyShareBody(selection.pharmacy.name),
+      medication: medication,
+      messageKind: messageKind,
+      pharmacyId: selection.pharmacy.pharmacyId,
+      clearMedicationSelection: true,
+    );
+    if (sent != null && mounted) {
+      setState(() => _selectedMedicationContext = null);
+    }
+  }
+
+  Future<void> _showScheduleSelector() async {
+    if (_scheduleContexts.isEmpty || _isSending) {
+      if (_scheduleContexts.isEmpty && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_text.noScheduleContext)));
+      }
+      return;
+    }
+    final selected = await showModalBottomSheet<ChatScheduleContext>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) =>
+          _ScheduleContextSelector(contexts: _scheduleContexts, text: _text),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    if (!selected.canRequestCheck) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text.onlyCaregiverCanRequest)));
+      return;
+    }
+    final sent = await _submitMessage(
+      body: _text.slotCheckRequestBody(selected.slotKey),
+      messageKind: ChatMessageKind.slotCheckRequest,
+      slotKey: selected.slotKey,
+    );
+    if (sent != null) {
+      await _refreshScheduleContexts();
+    }
+  }
+
+  Future<void> _callPharmacy(ChatPharmacyContext pharmacy) async {
+    final succeeded = await _pharmacyActionService.requestPhoneCall(
+      pharmacy.telephone,
+    );
+    if (!succeeded && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text.phoneUnavailable)));
+    }
+  }
+
+  Future<void> _openPharmacyDirections(ChatPharmacyContext pharmacy) async {
+    final succeeded = await _pharmacyActionService.requestDirections(
+      name: pharmacy.name,
+      latitude: pharmacy.latitude,
+      longitude: pharmacy.longitude,
+    );
+    if (!succeeded && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text.directionsUnavailable)));
     }
   }
 
@@ -642,6 +825,11 @@ class _LinkedChatUIState extends State<LinkedChatUI>
             _loadingMedicationId ==
             _messages[index].medicationContext?.medicationId,
         onMedicationPressed: _openMedicationDetail,
+        onPharmacyCallRequested: _callPharmacy,
+        onPharmacyDirectionsRequested: _openPharmacyDirections,
+        onFindPharmacyRequested: (medication) {
+          unawaited(_showPharmacySelector(medication: medication));
+        },
       ),
     );
   }
@@ -669,10 +857,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                     ? null
                     : () => setState(() {
                         _selectedMedicationContext = null;
-                        _pendingClientMessageId = null;
-                        _pendingMessageBody = null;
-                        _pendingMedicationId = null;
+                        _clearPendingRequest();
                       }),
+              ),
+              const SizedBox(height: 8),
+              _QuickReplyBar(
+                text: _text,
+                enabled: !_isSending,
+                onSelected: _sendQuickReply,
               ),
               const SizedBox(height: 8),
             ],
@@ -713,6 +905,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                     height: 48,
                   ),
                   icon: const Icon(Icons.medication_outlined),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
+                  key: const ValueKey('chatScheduleSelector'),
+                  tooltip: _text.selectScheduleSlot,
+                  onPressed: _scheduleContexts.isEmpty || _isSending
+                      ? null
+                      : _showScheduleSelector,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
+                  ),
+                  icon: const Icon(Icons.schedule_rounded),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -781,6 +986,445 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       LinkedChatConnectionState.reconnecting => _text.reconnecting,
       LinkedChatConnectionState.disconnected => _text.disconnected,
     };
+  }
+}
+
+enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
+
+class _QuickReplyBar extends StatelessWidget {
+  final _LinkedChatText text;
+  final bool enabled;
+  final ValueChanged<_ChatQuickReply> onSelected;
+
+  const _QuickReplyBar({
+    required this.text,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _ChatQuickReply.values.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          final reply = _ChatQuickReply.values[index];
+          return ActionChip(
+            tooltip: text.quickReplyLabel(reply),
+            avatar: Icon(text.quickReplyIcon(reply), size: 17),
+            label: Text(text.quickReplyLabel(reply)),
+            onPressed: enabled ? () => onSelected(reply) : null,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            visualDensity: VisualDensity.compact,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ScheduleContextSelector extends StatelessWidget {
+  final List<ChatScheduleContext> contexts;
+  final _LinkedChatText text;
+
+  const _ScheduleContextSelector({required this.contexts, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text.scheduleSelectorTitle,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                contexts.any((item) => item.canRequestCheck)
+                    ? text.scheduleSelectorCaregiverDescription
+                    : text.scheduleSelectorPatientDescription,
+                style: const TextStyle(
+                  color: MedBuddyColors.textMuted,
+                  fontSize: 14,
+                  height: 1.4,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: contexts.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final schedule = contexts[index];
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => Navigator.pop(context, schedule),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: MedBuddyColors.surfaceSubtle,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: MedBuddyColors.outline),
+                        ),
+                        child: _ScheduleSummaryContent(
+                          schedule: schedule,
+                          text: text,
+                          foreground: MedBuddyColors.textStrong,
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageScheduleContext extends StatelessWidget {
+  final ChatScheduleContext schedule;
+  final bool isMine;
+  final _LinkedChatText text;
+
+  const _MessageScheduleContext({
+    required this.schedule,
+    required this.isMine,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isMine
+            ? Colors.white.withValues(alpha: 0.16)
+            : const Color(0xFFEAFBF4),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: _ScheduleSummaryContent(
+        schedule: schedule,
+        text: text,
+        foreground: foreground,
+      ),
+    );
+  }
+}
+
+class _ScheduleSummaryContent extends StatelessWidget {
+  final ChatScheduleContext schedule;
+  final _LinkedChatText text;
+  final Color foreground;
+  final Widget? trailing;
+
+  const _ScheduleSummaryContent({
+    required this.schedule,
+    required this.text,
+    required this.foreground,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = schedule.totalCount;
+    final progress = total <= 0
+        ? 0.0
+        : (schedule.completedCount / total).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(text.slotIcon(schedule.slotKey), color: foreground, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${text.slotLabel(schedule.slotKey)} ${schedule.alarmTime}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+            Text(
+              '${schedule.completedCount}/$total',
+              style: TextStyle(
+                color: foreground,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 4), trailing!],
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 7,
+            color: foreground,
+            backgroundColor: foreground.withValues(alpha: 0.2),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          schedule.medications
+              .map((item) => item.medicationName)
+              .take(3)
+              .join(', '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: foreground.withValues(alpha: 0.86),
+            fontSize: 12,
+            height: 1.35,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MedicationShortageContext extends StatelessWidget {
+  final ChatMessage message;
+  final bool isMine;
+  final _LinkedChatText text;
+  final VoidCallback onFindPharmacyRequested;
+
+  const _MedicationShortageContext({
+    required this.message,
+    required this.isMine,
+    required this.text,
+    required this.onFindPharmacyRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          text.remainingCourse(message.remainingDays, message.courseEndDate),
+          style: TextStyle(
+            color: foreground,
+            fontSize: 12,
+            height: 1.35,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+        const SizedBox(height: 7),
+        OutlinedButton.icon(
+          onPressed: onFindPharmacyRequested,
+          icon: const Icon(Icons.local_pharmacy_outlined, size: 18),
+          label: Text(text.findNearbyPharmacy),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: foreground,
+            side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MedicationSafetyGuidance extends StatelessWidget {
+  final bool isMine;
+  final _LinkedChatText text;
+
+  const _MedicationSafetyGuidance({required this.isMine, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : const Color(0xFF8A3B12);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isMine
+            ? Colors.white.withValues(alpha: 0.15)
+            : const Color(0xFFFFF4E8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.health_and_safety_outlined, color: foreground, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text.discomfortSafetyGuidance,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessagePharmacyContext extends StatelessWidget {
+  final ChatPharmacyContext pharmacy;
+  final bool isMine;
+  final bool phoneVerified;
+  final _LinkedChatText text;
+  final VoidCallback onCallRequested;
+  final VoidCallback onDirectionsRequested;
+
+  const _MessagePharmacyContext({
+    required this.pharmacy,
+    required this.isMine,
+    required this.phoneVerified,
+    required this.text,
+    required this.onCallRequested,
+    required this.onDirectionsRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isMine
+            ? Colors.white.withValues(alpha: 0.16)
+            : const Color(0xFFEAFBF4),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.local_pharmacy_outlined, color: foreground, size: 22),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  pharmacy.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (pharmacy.todayHours.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              pharmacy.todayHours,
+              style: TextStyle(
+                color: foreground.withValues(alpha: 0.84),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+          if (pharmacy.address.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              pharmacy.address,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: foreground.withValues(alpha: 0.78),
+                fontSize: 11,
+                height: 1.35,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+          if (phoneVerified) ...[
+            const SizedBox(height: 6),
+            Text(
+              text.phoneVerified,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: pharmacy.telephone.isEmpty
+                      ? null
+                      : onCallRequested,
+                  icon: const Icon(Icons.call_outlined, size: 17),
+                  label: Text(text.call),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onDirectionsRequested,
+                  icon: const Icon(Icons.directions_outlined, size: 17),
+                  label: Text(text.directions),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1010,6 +1654,9 @@ class _MessageBubble extends StatelessWidget {
   final bool isMedicationLoading;
   final _LinkedChatText text;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
+  final ValueChanged<ChatPharmacyContext> onPharmacyCallRequested;
+  final ValueChanged<ChatPharmacyContext> onPharmacyDirectionsRequested;
+  final ValueChanged<ChatMedicationContext> onFindPharmacyRequested;
 
   const _MessageBubble({
     required this.message,
@@ -1017,6 +1664,9 @@ class _MessageBubble extends StatelessWidget {
     required this.isMedicationLoading,
     required this.text,
     required this.onMedicationPressed,
+    required this.onPharmacyCallRequested,
+    required this.onPharmacyDirectionsRequested,
+    required this.onFindPharmacyRequested,
   });
 
   @override
@@ -1055,6 +1705,40 @@ class _MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
+            if (message.scheduleContext != null) ...[
+              _MessageScheduleContext(
+                schedule: message.scheduleContext!,
+                isMine: isMine,
+                text: text,
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (message.pharmacyContext != null) ...[
+              _MessagePharmacyContext(
+                pharmacy: message.pharmacyContext!,
+                isMine: isMine,
+                phoneVerified:
+                    message.messageKind ==
+                    ChatMessageKind.pharmacyPhoneVerified,
+                text: text,
+                onCallRequested: () =>
+                    onPharmacyCallRequested(message.pharmacyContext!),
+                onDirectionsRequested: () =>
+                    onPharmacyDirectionsRequested(message.pharmacyContext!),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (message.messageKind == ChatMessageKind.medicationShortage &&
+                message.medicationContext != null) ...[
+              _MedicationShortageContext(
+                message: message,
+                isMine: isMine,
+                text: text,
+                onFindPharmacyRequested: () =>
+                    onFindPharmacyRequested(message.medicationContext!),
+              ),
+              const SizedBox(height: 8),
+            ],
             Text(
               message.body,
               style: TextStyle(
@@ -1065,6 +1749,10 @@ class _MessageBubble extends StatelessWidget {
                 letterSpacing: 0,
               ),
             ),
+            if (message.showSafetyGuidance) ...[
+              const SizedBox(height: 8),
+              _MedicationSafetyGuidance(isMine: isMine, text: text),
+            ],
             const SizedBox(height: 4),
             Text(
               isMine && message.readAt != null
@@ -1134,6 +1822,114 @@ class _LinkedChatText {
   String get disconnected => isEnglish ? 'Disconnected' : '연결 끊김';
   String get clearSelectedMedication =>
       isEnglish ? 'Clear selected medication' : '선택한 약 해제';
+  String quickReplyLabel(_ChatQuickReply reply) {
+    return switch (reply) {
+      _ChatQuickReply.taken => isEnglish ? 'Taken' : '먹었어요',
+      _ChatQuickReply.cannotNow => isEnglish ? 'Not right now' : '지금은 못 먹어요',
+      _ChatQuickReply.shortage => isEnglish ? 'Running low' : '약이 부족해요',
+      _ChatQuickReply.discomfort => isEnglish ? 'I feel unwell' : '먹고 나서 불편해요',
+    };
+  }
+
+  IconData quickReplyIcon(_ChatQuickReply reply) {
+    return switch (reply) {
+      _ChatQuickReply.taken => Icons.check_circle_outline_rounded,
+      _ChatQuickReply.cannotNow => Icons.schedule_rounded,
+      _ChatQuickReply.shortage => Icons.medication_liquid_outlined,
+      _ChatQuickReply.discomfort => Icons.health_and_safety_outlined,
+    };
+  }
+
+  String quickReplyBody(_ChatQuickReply reply, String medicationName) {
+    return switch (reply) {
+      _ChatQuickReply.taken =>
+        isEnglish ? 'I took $medicationName.' : '$medicationName 먹었어요.',
+      _ChatQuickReply.cannotNow =>
+        isEnglish
+            ? 'I cannot take $medicationName right now.'
+            : '$medicationName 지금은 못 먹어요.',
+      _ChatQuickReply.shortage =>
+        isEnglish
+            ? 'I am running low on $medicationName.'
+            : '$medicationName 약이 부족해요.',
+      _ChatQuickReply.discomfort =>
+        isEnglish
+            ? 'I feel unwell after taking $medicationName.'
+            : '$medicationName 먹고 나서 불편해요.',
+    };
+  }
+
+  String get selectScheduleSlot =>
+      isEnglish ? 'Share a medication time' : '복약 시간대 공유';
+  String get noScheduleContext => isEnglish
+      ? 'There is no active medication schedule today.'
+      : '오늘 확인할 복약 일정이 없습니다.';
+  String get onlyCaregiverCanRequest => isEnglish
+      ? 'Only the linked caregiver can send a check request.'
+      : '복약 확인 요청은 연결된 보호자만 보낼 수 있습니다.';
+  String get scheduleSelectorTitle =>
+      isEnglish ? 'Today\'s medication times' : '오늘의 복약 시간대';
+  String get scheduleSelectorCaregiverDescription => isEnglish
+      ? 'Choose a time to ask the patient to check their medication.'
+      : '확인이 필요한 시간대를 선택해 환자에게 알려주세요.';
+  String get scheduleSelectorPatientDescription => isEnglish
+      ? 'Review progress for each medication time.'
+      : '시간대별 약과 복용 진행률을 확인할 수 있습니다.';
+  String slotLabel(String slotKey) {
+    return switch (slotKey) {
+      'morning' => isEnglish ? 'Morning' : '아침',
+      'lunch' => isEnglish ? 'Lunch' : '점심',
+      'evening' => isEnglish ? 'Evening' : '저녁',
+      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
+      _ => isEnglish ? 'Medication' : '복약',
+    };
+  }
+
+  IconData slotIcon(String slotKey) {
+    return switch (slotKey) {
+      'morning' => Icons.wb_sunny_outlined,
+      'lunch' => Icons.local_cafe_outlined,
+      'evening' => Icons.wb_twilight_outlined,
+      'bedtime' => Icons.nightlight_round,
+      _ => Icons.schedule_rounded,
+    };
+  }
+
+  String slotCheckRequestBody(String slotKey) => isEnglish
+      ? 'Please check your ${slotLabel(slotKey).toLowerCase()} medication.'
+      : '${slotLabel(slotKey)} 복약을 확인해주세요.';
+  String remainingCourse(int? days, DateTime? endDate) {
+    if (days == null || endDate == null) {
+      return isEnglish
+          ? 'The remaining course could not be calculated.'
+          : '남은 복용 기간을 계산하지 못했습니다.';
+    }
+    final dateLabel =
+        '${endDate.year}.${endDate.month.toString().padLeft(2, '0')}.${endDate.day.toString().padLeft(2, '0')}';
+    return isEnglish
+        ? '$days day(s) remaining · through $dateLabel'
+        : '남은 복용 기간 $days일 · $dateLabel까지';
+  }
+
+  String get findNearbyPharmacy =>
+      isEnglish ? 'Find nearby pharmacies' : '근처 운영 약국 찾기';
+  String pharmacyShareBody(String pharmacyName) =>
+      isEnglish ? 'I am sharing $pharmacyName.' : '$pharmacyName 정보를 공유했어요.';
+  String pharmacyPhoneVerifiedBody(String pharmacyName) => isEnglish
+      ? 'I called $pharmacyName and confirmed availability.'
+      : '$pharmacyName에 전화해 운영 여부를 확인했어요.';
+  String get phoneVerified =>
+      isEnglish ? 'Availability confirmed by phone' : '전화 확인 완료';
+  String get call => isEnglish ? 'Call' : '전화';
+  String get directions => isEnglish ? 'Directions' : '길찾기';
+  String get phoneUnavailable => isEnglish
+      ? 'This pharmacy does not have a callable number.'
+      : '연결할 수 있는 약국 전화번호가 없습니다.';
+  String get directionsUnavailable =>
+      isEnglish ? 'Could not open directions.' : '길찾기를 열지 못했습니다.';
+  String get discomfortSafetyGuidance => isEnglish
+      ? 'This chat cannot diagnose symptoms. If symptoms are severe, breathing is difficult, or consciousness changes, call emergency services. Otherwise, contact a medical professional or pharmacist before changing how you take the medicine.'
+      : '채팅만으로 증상을 판단할 수 없습니다. 증상이 심하거나 호흡 곤란·의식 변화가 있으면 즉시 119에 연락하고, 임의로 복용법을 바꾸기 전에 의료진이나 약사에게 상담하세요.';
   String readAt(String timeLabel) =>
       isEnglish ? '$timeLabel · Read' : '$timeLabel · 읽음';
 }

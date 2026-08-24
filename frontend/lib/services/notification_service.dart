@@ -21,11 +21,13 @@ class MedicationNotificationSelection {
   final MedicationNotificationDestination destination;
   final String? patientHash;
   final int? linkId;
+  final String? slotKey;
 
   const MedicationNotificationSelection({
     required this.destination,
     this.patientHash,
     this.linkId,
+    this.slotKey,
   });
 }
 
@@ -89,8 +91,9 @@ class NotificationService {
       if (notificationID == null || notificationID < 0) {
         return null;
       }
-      return const MedicationNotificationSelection(
+      return MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
+        slotKey: segments[1].trim(),
       );
     }
     if (segments.length == 2 &&
@@ -529,6 +532,8 @@ class NotificationService {
     required int linkId,
     String language = 'ko',
     String? messagePreview,
+    String? messageKind,
+    String? slotKey,
   }) async {
     await initialize();
     final isEnglish = _isEnglish(language);
@@ -553,8 +558,21 @@ class NotificationService {
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      payload: 'chat:$linkId',
+      payload:
+          messageKind == 'slot_check_request' &&
+              _isSupportedScheduleSlot(slotKey)
+          ? 'schedule:${slotKey!.trim()}:$id'
+          : 'chat:$linkId',
     );
+  }
+
+  static bool _isSupportedScheduleSlot(String? value) {
+    return const {
+      'morning',
+      'lunch',
+      'evening',
+      'bedtime',
+    }.contains(value?.trim().toLowerCase());
   }
 
   // 함수명: _linkedChatMessagePreview

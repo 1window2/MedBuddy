@@ -117,6 +117,8 @@ class DispatchChatMessageAlertTest(unittest.TestCase):
                 "type": "linked_chat_message",
                 "link_id": "17",
                 "message_preview": "저녁 약을 복용했어요. 확인해주세요.",
+                "message_kind": "text",
+                "slot_key": "",
             },
         )
         invalid_row = (

@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -20,6 +21,24 @@ from core.database import Base
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink  # noqa: F401
 from entities.user_account_entity import _UserAccount  # noqa: F401
+
+
+CHAT_MESSAGE_KIND_TEXT = "text"
+CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST = "slot_check_request"
+CHAT_MESSAGE_KIND_SLOT_COMPLETION = "slot_completion"
+CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE = "medication_shortage"
+CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT = "medication_discomfort"
+CHAT_MESSAGE_KIND_PHARMACY_SHARE = "pharmacy_share"
+CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED = "pharmacy_phone_verified"
+CHAT_MESSAGE_KINDS = (
+    CHAT_MESSAGE_KIND_TEXT,
+    CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
+    CHAT_MESSAGE_KIND_SLOT_COMPLETION,
+    CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
+    CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
+    CHAT_MESSAGE_KIND_PHARMACY_SHARE,
+    CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
+)
 
 
 # 함수이름: utc_now
@@ -62,6 +81,13 @@ class _ChatMessage(Base):
     )
     client_message_id = Column(String(length=64), nullable=False)
     body = Column(Text, nullable=False)
+    message_kind = Column(
+        String(length=40),
+        nullable=False,
+        default=CHAT_MESSAGE_KIND_TEXT,
+        server_default=CHAT_MESSAGE_KIND_TEXT,
+    )
+    context_payload = Column(JSON, nullable=True)
     medication_id = Column(Integer, nullable=True)
     medication_name = Column(String(length=300), nullable=True)
     medication_image_url = Column(Text, nullable=True)
@@ -84,6 +110,8 @@ class ChatMessage(BaseModel):
     client_message_id: str
     body: str
     created_at: datetime
+    message_kind: str = CHAT_MESSAGE_KIND_TEXT
+    context_payload: dict[str, object] | None = None
     medication_id: int | None = None
     medication_name: str | None = None
     medication_image_url: str | None = None
@@ -104,6 +132,12 @@ class ChatMessage(BaseModel):
             client_message_id=str(row.client_message_id),
             body=str(row.body),
             created_at=row.created_at,
+            message_kind=str(row.message_kind or CHAT_MESSAGE_KIND_TEXT),
+            context_payload=(
+                dict(row.context_payload)
+                if isinstance(row.context_payload, dict)
+                else None
+            ),
             medication_id=(
                 int(row.medication_id) if row.medication_id is not None else None
             ),
@@ -126,6 +160,8 @@ class ChatMessage(BaseModel):
             "sender_hash": self.sender_hash,
             "client_message_id": self.client_message_id,
             "body": self.body,
+            "message_kind": self.message_kind,
+            "context": self.context_payload,
             "created_at": _as_utc_isoformat(self.created_at),
             "medication_context": medication_context,
             "read_at": (

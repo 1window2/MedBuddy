@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
+import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 
 http.Response _jsonResponse(Object body, int statusCode) {
   return http.Response.bytes(
@@ -173,6 +174,107 @@ void main() {
     expect(medications.single.medicationId, 91);
     expect(medications.single.medicationName, '테스트정');
     expect(medications.single.dosagePerTime, '1정');
+    control.dispose();
+  });
+
+  test('오늘 복약 상태를 시간대별 진행 카드로 변환한다', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/v1/chat/links/17/schedule-contexts');
+      expect(request.url.queryParameters['user_hash'], 'caregiver-a');
+      return _jsonResponse({
+        'success': true,
+        'data': [
+          {
+            'slot_key': 'morning',
+            'alarm_time': '08:00',
+            'alarm_enabled': true,
+            'completed_count': 1,
+            'total_count': 2,
+            'can_request_check': true,
+            'medications': [
+              {
+                'medication_id': 91,
+                'medication_name': '테스트정',
+                'dosage_per_time': '1정',
+              },
+            ],
+          },
+        ],
+      }, 200);
+    });
+    final control = ManageLinkedChat(
+      userHash: 'caregiver-a',
+      client: client,
+      chatUrlBuilder: (path) => '$baseUrl$path',
+    );
+
+    final contexts = await control.requestScheduleContexts(linkId: 17);
+
+    expect(contexts, hasLength(1));
+    expect(contexts.single.slotKey, 'morning');
+    expect(contexts.single.completedCount, 1);
+    expect(contexts.single.totalCount, 2);
+    expect(contexts.single.canRequestCheck, isTrue);
+    expect(contexts.single.medications.single.medicationName, '테스트정');
+    control.dispose();
+  });
+
+  test('복약 확인 요청은 시간대와 서버가 만든 일정 스냅샷을 유지한다', () async {
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['message_kind'], 'slot_check_request');
+      expect(body['slot_key'], 'morning');
+      expect(body.containsKey('pharmacy_id'), isFalse);
+      return _jsonResponse({
+        'success': true,
+        'created': true,
+        'data': {
+          'message_id': 54,
+          'link_id': 17,
+          'sender_hash': 'caregiver-a',
+          'client_message_id': 'slot_request_001',
+          'body': '아침 복약을 확인해주세요.',
+          'message_kind': 'slot_check_request',
+          'context': {
+            'schedule_context': {
+              'slot_key': 'morning',
+              'alarm_time': '08:00',
+              'alarm_enabled': true,
+              'completed_count': 0,
+              'total_count': 1,
+              'medications': [
+                {
+                  'medication_id': 91,
+                  'medication_name': '테스트정',
+                  'dosage_per_time': '1정',
+                },
+              ],
+            },
+          },
+          'created_at': '2026-08-23T03:02:00+00:00',
+          'medication_context': null,
+          'read_at': null,
+        },
+      }, 200);
+    });
+    final control = ManageLinkedChat(
+      userHash: 'caregiver-a',
+      client: client,
+      chatUrlBuilder: (path) => '$baseUrl$path',
+    );
+
+    final message = await control.sendMessage(
+      linkId: 17,
+      clientMessageId: 'slot_request_001',
+      body: '아침 복약을 확인해주세요.',
+      messageKind: ChatMessageKind.slotCheckRequest,
+      slotKey: 'morning',
+    );
+
+    expect(message.messageKind, ChatMessageKind.slotCheckRequest);
+    expect(message.scheduleContext?.slotKey, 'morning');
+    expect(message.scheduleContext?.medications.single.medicationId, 91);
     control.dispose();
   });
 

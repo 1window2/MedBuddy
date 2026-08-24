@@ -92,6 +92,26 @@ def get_chat_medications(
     )
 
 
+# 함수이름: get_chat_schedule_contexts
+# 함수역할: 연동 환자의 오늘 복약 상태를 시간대별 채팅 카드 형식으로 반환한다.
+# 매개변수: link_id, user_hash와 인증·인가 의존성
+# 반환값: 시간대별 복약 상태 목록
+@router.get("/links/{link_id}/schedule-contexts")
+def get_chat_schedule_contexts(
+    link_id: int,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    chat: ManageLinkedChat = Depends(get_manage_linked_chat),
+) -> dict[str, object]:
+    """현재 연동의 시간대별 약 목록과 완료 진행률을 반환한다."""
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    return chat.request_schedule_contexts(
+        link_id=link_id,
+        user_hash=authorized_user_hash,
+    )
+
+
 # 함수이름: get_chat_medication_detail
 # 함수역할: 채팅 참여자에게 메시지에 연결된 약의 상세정보를 반환한다.
 # 매개변수: link_id, medication_id, user_hash와 인증·인가 의존성
@@ -137,6 +157,9 @@ async def post_chat_message(
         client_message_id=payload.client_message_id,
         body=payload.body,
         medication_id=payload.medication_id,
+        message_kind=payload.message_kind,
+        slot_key=payload.slot_key,
+        pharmacy_id=payload.pharmacy_id,
     )
     response_message = result.message.to_response_dict()
     if result.created:
@@ -155,6 +178,8 @@ async def post_chat_message(
                 recipient_hash=result.recipient_hash,
                 link_id=link_id,
                 message_body=result.message.body,
+                message_kind=result.message.message_kind,
+                context_payload=result.message.context_payload,
             )
     return {
         "success": True,
@@ -326,6 +351,8 @@ def _dispatch_chat_notification(
     recipient_hash: str,
     link_id: int,
     message_body: str,
+    message_kind: str,
+    context_payload: dict[str, object] | None,
 ) -> None:
     """응답 이후 별도 DB 세션으로 오프라인 상대의 푸시를 전송한다."""
     db = SessionLocal()
@@ -337,6 +364,21 @@ def _dispatch_chat_notification(
             recipient_hash=recipient_hash,
             link_id=link_id,
             message_body=message_body,
+            message_kind=message_kind,
+            slot_key=_notification_slot_key(context_payload),
         )
     finally:
         db.close()
+
+
+def _notification_slot_key(
+    context_payload: dict[str, object] | None,
+) -> str | None:
+    """구조화 메시지에서 알림 이동에 사용할 시간대 식별자를 꺼낸다."""
+    if not isinstance(context_payload, dict):
+        return None
+    schedule_context = context_payload.get("schedule_context")
+    if not isinstance(schedule_context, dict):
+        return None
+    slot_key = schedule_context.get("slot_key")
+    return str(slot_key) if slot_key else None

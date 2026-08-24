@@ -5,6 +5,9 @@
 
 from pydantic import BaseModel, Field, field_validator
 
+from entities.chat_message_entity import CHAT_MESSAGE_KINDS, CHAT_MESSAGE_KIND_TEXT
+from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
+
 
 # 클래스명: ChatMessageCreate
 # 역할: 새 채팅 메시지 전송 요청을 검증한다.
@@ -18,7 +21,10 @@ class ChatMessageCreate(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     body: str = Field(min_length=1, max_length=500)
+    message_kind: str = Field(default=CHAT_MESSAGE_KIND_TEXT, max_length=40)
     medication_id: int | None = Field(default=None, ge=1)
+    slot_key: str | None = Field(default=None, max_length=20)
+    pharmacy_id: str | None = Field(default=None, max_length=32)
 
     # 함수이름: normalize_body
     # 함수역할: 메시지 앞뒤 공백을 제거하고 빈 메시지를 거부한다.
@@ -32,6 +38,35 @@ class ChatMessageCreate(BaseModel):
         if not normalized:
             raise ValueError("Chat message must not be blank.")
         return normalized
+
+    @field_validator("message_kind")
+    @classmethod
+    def validate_message_kind(cls, value: str) -> str:
+        """서버가 지원하는 구조화 메시지 유형만 허용한다."""
+        normalized = value.strip().lower()
+        if normalized not in CHAT_MESSAGE_KINDS:
+            raise ValueError("Unsupported chat message kind.")
+        return normalized
+
+    @field_validator("slot_key")
+    @classmethod
+    def validate_slot_key(cls, value: str | None) -> str | None:
+        """전달된 복약 시간대가 지원 목록에 포함되는지 확인한다."""
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in MEDICATION_SCHEDULE_SLOT_KEYS:
+            raise ValueError("Unsupported medication schedule slot.")
+        return normalized
+
+    @field_validator("pharmacy_id")
+    @classmethod
+    def normalize_pharmacy_id(cls, value: str | None) -> str | None:
+        """약국 식별자 앞뒤 공백을 제거하고 빈 값은 사용하지 않는다."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 # 클래스명: ChatReadUpdate

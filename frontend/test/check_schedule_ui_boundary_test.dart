@@ -189,7 +189,9 @@ class _SuccessfulNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messageKind,
     String? messagePreview,
+    String? slotKey,
   }) async {}
 
   @override
@@ -233,7 +235,9 @@ class _FailingNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messageKind,
     String? messagePreview,
+    String? slotKey,
   }) async {}
 
   @override

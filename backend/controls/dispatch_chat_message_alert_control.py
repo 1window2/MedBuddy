@@ -35,6 +35,8 @@ class DispatchChatMessageAlert:
         recipient_hash: str,
         link_id: int,
         message_body: str,
+        message_kind: str = "text",
+        slot_key: str | None = None,
     ) -> PushDeliveryResult:
         """상대 기기에 길이를 제한한 실제 채팅 내용을 미리 보여준다."""
         token_rows = (
@@ -63,6 +65,8 @@ class DispatchChatMessageAlert:
                 "type": "linked_chat_message",
                 "link_id": str(link_id),
                 "message_preview": message_preview,
+                "message_kind": message_kind,
+                "slot_key": slot_key or "",
             },
         )
         if result.invalid_tokens:

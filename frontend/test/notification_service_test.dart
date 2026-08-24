@@ -69,7 +69,9 @@ class _NoopNotificationService implements NotificationService {
     required int id,
     required int linkId,
     String language = 'ko',
+    String? messageKind,
     String? messagePreview,
+    String? slotKey,
   }) async {}
 }
 
@@ -105,6 +107,7 @@ void main() {
       selections.single.destination,
       MedicationNotificationDestination.schedule,
     );
+    expect(selections.single.slotKey, 'evening');
     expect(selections.single.patientHash, isNull);
   });
 
@@ -118,6 +121,7 @@ void main() {
       selections.single.destination,
       MedicationNotificationDestination.schedule,
     );
+    expect(selections.single.slotKey, 'morning');
   });
 
   test('caregiver payload keeps the selected patient hash', () {

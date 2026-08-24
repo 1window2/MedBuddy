@@ -20,6 +20,8 @@ typedef LinkedChatAlertSender =
       required int linkId,
       required int messageId,
       required String messageBody,
+      required ChatMessageKind messageKind,
+      required String? slotKey,
     });
 typedef LinkedChatPermissionRequester = Future<bool> Function();
 typedef LinkedChatFeatureEnabledLoader = Future<bool> Function();
@@ -238,6 +240,8 @@ class LinkedChatNotificationMonitorService {
           linkId: watchedLinkId,
           messageId: message.messageId,
           messageBody: message.body,
+          messageKind: message.messageKind,
+          slotKey: message.scheduleContext?.slotKey,
         );
       } catch (error, stackTrace) {
         _notifiedMessageKeys.remove(messageKey);

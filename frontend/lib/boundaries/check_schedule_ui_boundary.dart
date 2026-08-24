@@ -28,8 +28,9 @@ import 'medication_image_viewer_boundary.dart';
 class CheckScheduleUI extends StatefulWidget {
   final List<MedicationSchedule>? selectionSchedules;
   final String selectionLanguage;
+  final String? initialSlotKey;
 
-  const CheckScheduleUI({super.key})
+  const CheckScheduleUI({super.key, this.initialSlotKey})
     : selectionSchedules = null,
       selectionLanguage = 'ko';
 
@@ -40,7 +41,8 @@ class CheckScheduleUI extends StatefulWidget {
     required List<MedicationSchedule> schedules,
     required String language,
   }) : selectionSchedules = schedules,
-       selectionLanguage = language;
+       selectionLanguage = language,
+       initialSlotKey = null;
 
   bool get isSelectionMode => selectionSchedules != null;
 
@@ -82,6 +84,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   ];
 
   int _completionSnackBarGeneration = 0;
+  final Map<String, GlobalKey> _slotKeys = {
+    for (final definition in _slotDefinitions) definition.key: GlobalKey(),
+  };
+  bool _didRevealInitialSlot = false;
 
   @override
   void initState() {
@@ -92,7 +98,36 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
       await viewModel.refreshMedicationSchedule();
+      if (!mounted) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _revealInitialSlot();
+        }
+      });
     });
+  }
+
+  // 함수명: _revealInitialSlot
+  // 역할:
+  // - 알림에서 전달된 시간대 카드가 화면에 보이도록 최초 한 번만 이동한다.
+  void _revealInitialSlot() {
+    if (_didRevealInitialSlot) {
+      return;
+    }
+    final slotKey = widget.initialSlotKey?.trim().toLowerCase();
+    final targetContext = _slotKeys[slotKey]?.currentContext;
+    if (targetContext == null) {
+      return;
+    }
+    _didRevealInitialSlot = true;
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   @override
@@ -206,29 +241,32 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       padding: const EdgeInsets.fromLTRB(34, 14, 34, 12),
       children: [
         for (final slot in slots) ...[
-          _TimeSlotCard(
-            text: text,
-            slot: slot,
-            reminderSetting:
-                viewModel.medicationReminderSettings[slot.key] ??
-                MedicationAlarm.defaults(slot.key),
-            isCompletedProvider: (schedule) {
-              return viewModel.isMedicationDoseCompleted(slot.key, schedule);
-            },
-            onReminderRequested: () {
-              _handleReminderToggle(viewModel, slot, text);
-            },
-            onGuideRequested: (schedule) {
-              _showMedicationDetail(viewModel, schedule);
-            },
-            onStatusChanged: (schedule, medicationStatus) =>
-                _handleMedicationStatusChange(
-                  viewModel: viewModel,
-                  slot: slot,
-                  schedule: schedule,
-                  medicationStatus: medicationStatus,
-                  text: text,
-                ),
+          KeyedSubtree(
+            key: _slotKeys[slot.key],
+            child: _TimeSlotCard(
+              text: text,
+              slot: slot,
+              reminderSetting:
+                  viewModel.medicationReminderSettings[slot.key] ??
+                  MedicationAlarm.defaults(slot.key),
+              isCompletedProvider: (schedule) {
+                return viewModel.isMedicationDoseCompleted(slot.key, schedule);
+              },
+              onReminderRequested: () {
+                _handleReminderToggle(viewModel, slot, text);
+              },
+              onGuideRequested: (schedule) {
+                _showMedicationDetail(viewModel, schedule);
+              },
+              onStatusChanged: (schedule, medicationStatus) =>
+                  _handleMedicationStatusChange(
+                    viewModel: viewModel,
+                    slot: slot,
+                    schedule: schedule,
+                    medicationStatus: medicationStatus,
+                    text: text,
+                  ),
+            ),
           ),
           const SizedBox(height: 16),
         ],

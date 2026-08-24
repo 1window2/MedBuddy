@@ -20,7 +20,13 @@ void main() {
         return sources.putIfAbsent(linkId, _FakeLinkedChatEventSource.new);
       },
       sendAlert:
-          ({required linkId, required messageId, required messageBody}) async {
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+          }) async {
             alerts.add('$linkId:$messageId:$messageBody');
           },
       permissionRequester: () async {
@@ -55,7 +61,13 @@ void main() {
       loadLinks: () async => [_activeLink(9)],
       eventSourceFactory: (_) => source,
       sendAlert:
-          ({required linkId, required messageId, required messageBody}) async {
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+          }) async {
             alertCount += 1;
           },
       permissionRequester: () async => true,
@@ -88,6 +100,8 @@ void main() {
             required linkId,
             required messageId,
             required messageBody,
+            required messageKind,
+            required slotKey,
           }) async {},
       permissionRequester: () async => true,
       linkRefreshInterval: const Duration(hours: 1),
@@ -110,7 +124,13 @@ void main() {
       loadLinks: () async => [_activeLink(13)],
       eventSourceFactory: (_) => source,
       sendAlert:
-          ({required linkId, required messageId, required messageBody}) async {
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+          }) async {
             alertCount += 1;
           },
       permissionRequester: () async => false,
@@ -140,7 +160,13 @@ void main() {
       loadLinks: () async => [_activeLink(15)],
       eventSourceFactory: (_) => source,
       sendAlert:
-          ({required linkId, required messageId, required messageBody}) async {
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+          }) async {
             alertCount += 1;
           },
       permissionRequester: () async => true,

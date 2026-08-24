@@ -371,24 +371,6 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
   }
 
-  void _navigateToScheduleWhenReady() {
-    final navigator = _navigatorKey.currentState;
-    if (navigator != null) {
-      _openSchedule(navigator);
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final mountedNavigator = _navigatorKey.currentState;
-      if (mountedNavigator == null) {
-        return;
-      }
-      _openSchedule(mountedNavigator);
-    });
-  }
-
   // 함수이름: _navigateForNotificationWhenReady
   // 함수역할:
   // - 일반 복약 알림은 본인 일정으로, 보호자 알림은 선택 환자 일정으로 이동시킨다.
@@ -400,7 +382,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     MedicationNotificationSelection selection,
   ) {
     if (selection.destination == MedicationNotificationDestination.schedule) {
-      _navigateToScheduleWhenReady();
+      final navigator = _navigatorKey.currentState;
+      if (navigator != null) {
+        _openSchedule(navigator, initialSlotKey: selection.slotKey);
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _navigatorKey.currentState != null) {
+            _openSchedule(
+              _navigatorKey.currentState!,
+              initialSlotKey: selection.slotKey,
+            );
+          }
+        });
+      }
       return;
     }
     if (selection.destination == MedicationNotificationDestination.linkedChat) {
@@ -440,7 +434,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     });
   }
 
-  void _openSchedule(NavigatorState navigator) {
+  void _openSchedule(NavigatorState navigator, {String? initialSlotKey}) {
     if (_isScheduleRouteOpen) {
       navigator.popUntil(
         (route) => route.settings.name == _scheduleRouteName || route.isFirst,
@@ -452,7 +446,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         .push(
           MaterialPageRoute<void>(
             settings: const RouteSettings(name: _scheduleRouteName),
-            builder: (context) => const CheckScheduleUI(),
+            builder: (context) =>
+                CheckScheduleUI(initialSlotKey: initialSlotKey),
           ),
         )
         .whenComplete(() => _isScheduleRouteOpen = false);

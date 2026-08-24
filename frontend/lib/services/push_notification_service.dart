@@ -257,6 +257,8 @@ class PushNotificationService {
         messagePreview: notificationBody.isNotEmpty
             ? notificationBody
             : dataPreview,
+        messageKind: message.data['message_kind'],
+        slotKey: message.data['slot_key'],
       );
       return;
     }
@@ -295,7 +297,15 @@ class PushNotificationService {
     if (message.data['type'] == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
       if (linkId != null && linkId > 0) {
-        NotificationService.handleNotificationPayload('chat:$linkId');
+        final slotKey = message.data['slot_key']?.trim() ?? '';
+        final isSlotRequest =
+            message.data['message_kind'] == 'slot_check_request' &&
+            const {'morning', 'lunch', 'evening', 'bedtime'}.contains(slotKey);
+        NotificationService.handleNotificationPayload(
+          isSlotRequest
+              ? 'schedule:$slotKey:${linkId.hashCode & 0x7fffffff}'
+              : 'chat:$linkId',
+        );
       }
       return;
     }

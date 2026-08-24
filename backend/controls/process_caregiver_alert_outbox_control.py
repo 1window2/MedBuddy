@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
+from controls.manage_linked_chat_control import ManageLinkedChat
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
@@ -142,6 +143,11 @@ class ProcessCaregiverAlertOutbox:
         if row is None:
             return "skipped"
         try:
+            # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
+            ManageLinkedChat(self.db).publish_slot_completion(
+                patient_hash=str(row.patient_hash),
+                slot_key=str(row.slot_key),
+            )
             delivery_result = DispatchCaregiverAlert(
                 db=self.db,
                 push_boundary=self.push_boundary,

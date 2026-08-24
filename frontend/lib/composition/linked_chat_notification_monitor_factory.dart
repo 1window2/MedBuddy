@@ -41,13 +41,21 @@ class LinkedChatNotificationMonitorFactory {
         );
       },
       sendAlert:
-          ({required linkId, required messageId, required messageBody}) async {
+          ({
+            required linkId,
+            required messageId,
+            required messageBody,
+            required messageKind,
+            required slotKey,
+          }) async {
             final setting = await settingControl.requestUserSetting();
             return NotificationService.instance.showLinkedChatAlert(
               id: _notificationId(linkId, messageId),
               linkId: linkId,
               language: setting.language,
               messagePreview: messageBody,
+              messageKind: messageKind.wireName,
+              slotKey: slotKey,
             );
           },
       permissionRequester: NotificationService.instance.requestPermission,

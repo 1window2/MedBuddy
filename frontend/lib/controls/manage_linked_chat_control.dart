@@ -87,6 +87,32 @@ class ManageLinkedChat {
         .toList(growable: false);
   }
 
+  // 함수명: requestScheduleContexts
+  // 역할:
+  // - 현재 연동 환자의 오늘 복약 상태를 시간대별 카드 정보로 불러온다.
+  Future<List<ChatScheduleContext>> requestScheduleContexts({
+    required int linkId,
+  }) async {
+    final response = await _client
+        .get(_buildUri('/links/$linkId/schedule-contexts'))
+        .timeout(_requestTimeout);
+    final decoded = _decodeSuccessfulResponse(
+      response,
+      '시간대별 복약 상태를 불러오지 못했습니다.',
+    );
+    final rawContexts = decoded['data'];
+    if (rawContexts is! List) {
+      throw StateError('시간대별 복약 상태 응답 형식이 올바르지 않습니다.');
+    }
+    return rawContexts
+        .whereType<Map>()
+        .map(
+          (item) =>
+              ChatScheduleContext.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+  }
+
   // 함수명: requestMedicationDetail
   // 역할:
   // - 채팅에 연결된 약의 상세정보를 연동 참여자 권한 범위에서 조회한다.
@@ -113,6 +139,9 @@ class ManageLinkedChat {
     required String clientMessageId,
     required String body,
     int? medicationId,
+    ChatMessageKind messageKind = ChatMessageKind.text,
+    String? slotKey,
+    String? pharmacyId,
   }) async {
     final response = await _client
         .post(
@@ -121,7 +150,10 @@ class ManageLinkedChat {
           body: jsonEncode({
             'client_message_id': clientMessageId,
             'body': body,
+            'message_kind': messageKind.wireName,
             'medication_id': ?medicationId,
+            'slot_key': ?slotKey,
+            'pharmacy_id': ?pharmacyId,
           }),
         )
         .timeout(_requestTimeout);
