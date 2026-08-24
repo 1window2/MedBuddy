@@ -83,11 +83,12 @@ release.
 - This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
-- Results are filtered on the server before the 30-result limit is applied. Users can search a selected date/time for open pharmacies, reported late hours, exact-date weekend/holiday operation, all nearby pharmacies, or officially designated Seoul public late-night pharmacies. A Naver Map view appears above the filters; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy.
+- Results are filtered on the server before the 30-result limit is applied. Users can search a selected date/time for open pharmacies, reported late hours, exact-date weekend/holiday operation, all nearby pharmacies, or officially designated Seoul public late-night pharmacies. A Naver Map view appears above the filters; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. User-scoped favorites are stored on the device and sorted ahead of the remaining distance-ordered results.
 - Weekly National Emergency Medical Center schedules, Korean legal holidays, and exact-date NEMC holiday emergency rosters are cached in PostgreSQL. Responses expose catalog freshness and whether an exact roster, a bounded stale cache, or a weekly fallback supplied the schedule. Official designation records retain their authority URL and verification date and are not inferred from closing time alone.
 - Naver Dynamic Map is initialized with a compile-time client identifier. Calling and exact-coordinate Naver turn-by-turn directions, with a web-map fallback, remain available from each pharmacy card.
-- Manual refresh uses a cooldown to prevent accidental repeated public-data requests.
-- Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting.
+- The screen distinguishes pharmacies that are closing soon from closed pharmacies with a known next regular opening, and shows the public-catalog refresh time when available. If optional map configuration is unavailable, the list, phone, and directions actions remain usable with a clear configuration message instead of a misleading coordinate error.
+- Manual refresh uses a cooldown to prevent accidental repeated public-data requests. Telephone and directions launches are centralized in one validated external-action service.
+- Operating hours are informational public data and may change on holidays or at short notice, so the screen asks users to confirm by phone before visiting. A selected pharmacy can be shared into an authorized medication conversation, with phone-confirmed sharing represented separately from an ordinary location share.
 
 ### User Settings and Voice Playback
 
@@ -124,6 +125,8 @@ release.
   completion and missed-deadline changes and displays local notifications.
 - The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
 - Patients and caregivers select an active medication through the same slot-grouped layout used by today's schedule. A selected or previously sent medication card opens the authorized medication-detail screen.
+- The conversation can carry server-verified schedule-slot cards, caregiver check requests, automatic slot-completion events, medication-shortage or discomfort context, and pharmacy snapshots. The server rebuilds every structured snapshot from the authorized link, active medication course, current schedule, or pharmacy catalog instead of trusting display fields supplied by the client.
+- When all medications in a slot are completed, one idempotent completion event is persisted per link, date, and slot. Schedule-context notifications can reopen today's schedule at the relevant morning, lunch, evening, or bedtime card.
 - REST history and WebSocket events share the same server authorization check, client message identifiers make retries idempotent, and unread state is tracked per participant.
 - Chat notifications route the recipient back to the authorized linked conversation and show a whitespace-normalized message preview limited to 120 characters. Message previews are sensitive notification content and remain subject to the device's lock-screen privacy settings.
 
@@ -150,7 +153,7 @@ release.
 MedBuddy is implemented around the project UML diagrams and follows a Boundary-Control-Entity style structure:
 
 - **Boundary/UI** classes render screens and collect user input.
-- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, embedded pharmacy-map rendering, local notifications, TTS, and linked-chat WebSocket events.
+- **Frontend boundary/service** classes wrap on-device prescription OCR, text-region mapping, privacy filtering, camera-guide cropping, local manual-entry images, foreground location, embedded pharmacy-map rendering, pharmacy favorites and validated external actions, local notifications, TTS, and linked-chat WebSocket events.
 - **Backend boundaries** receive de-identified prescription text and isolate public drug and pharmacy APIs, Gemini text recovery, loose-pill vision extraction, and FCM delivery from the use-case controls.
 - **Control** classes coordinate use cases, API calls, scope resolution, persistence, OCR correction policy, bounded multi-pill work, nearby-pharmacy queries, and linked chat without placing domain logic in screens or routers.
 - **Entity/Model** classes preserve application data contracts such as prescription analysis results, medication schedules, saved medication snapshots, manual entries, nearby pharmacies, chat messages and medication context, user settings, notification preferences, and patient-caregiver links.
@@ -305,9 +308,11 @@ not require a backend process on the development laptop or a device on the same
 LAN. The Android client reaches the production API over ordinary HTTPS.
 
 `MEDBUDDY_API_BASE_URL` remains a compile-time `String.fromEnvironment` value.
-If it is overridden, the value must still be a public HTTPS endpoint whose path
-is `/api/v1/medication`. Localhost, private-network addresses, and clear-text
-HTTP endpoints are rejected in debug, profile, and release builds.
+Profile and release builds accept only a public HTTPS endpoint whose path is
+`/api/v1/medication`. Debug builds additionally accept only the local demo
+hosts `10.0.2.2`, `127.0.0.1`, `localhost`, or `::1` over port `8000` when
+`MEDBUDDY_ALLOW_LOCAL_HTTP=true` is supplied. Other private-network and
+clear-text endpoints remain rejected.
 
 For authenticated beta testing, keep the real `google-services.json` in
 `frontend/android/app` and out of Git. Provide the Firebase configuration that

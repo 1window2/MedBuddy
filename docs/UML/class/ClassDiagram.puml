@@ -376,6 +376,17 @@ package "Flutter Frontend" {
             + openDeviceLocationSettings(): Future<bool>
         }
 
+        class "PharmacyFavoriteService" as PharmacyFavoriteService <<Service: 사용자별 약국 즐겨찾기>> {
+            + loadFavoriteIds(userHash): Future<Set<String>>
+            + saveFavoriteIds(userHash, pharmacyIds): Future<bool>
+        }
+
+        class "PharmacyExternalActionService" as PharmacyExternalActionService <<Service: 약국 외부 동작 검증>> {
+            + requestPhoneCall(telephone): Future<bool>
+            + requestDirections(name, latitude, longitude): Future<bool>
+            + requestMapAttribution(): Future<bool>
+        }
+
         class "ManualMedicationImageStore" as ManualMedicationImageStore <<Service: 직접 입력 이미지 저장>> {
             + saveImage(patientHash, sourcePath): Future<String>
             + findImagePath(patientHash, medicationId): Future<String>
@@ -589,6 +600,9 @@ package "Flutter Frontend" {
             + distanceKm: double
             + isOpenNow: bool?
             + is24Hours: bool
+            + minutesUntilClose: int?
+            + nextOpenAt: DateTime?
+            + sourceUpdatedAt: DateTime?
         }
 
         class "ChatMedicationContext" as FChatMedicationContext <<Entity: 채팅 약 문맥>> {
@@ -598,6 +612,23 @@ package "Flutter Frontend" {
             + dosagePerTime: String
         }
 
+        class "ChatScheduleContext" as FChatScheduleContext <<Entity: 채팅 복용 시간대 문맥>> {
+            + slotKey: String
+            + slotLabel: String
+            + scheduledTime: String
+            + medicationCount: int
+            + completedCount: int
+        }
+
+        class "ChatPharmacyContext" as FChatPharmacyContext <<Entity: 채팅 약국 문맥>> {
+            + pharmacyId: String
+            + name: String
+            + address: String
+            + telephone: String
+            + latitude: double
+            + longitude: double
+        }
+
         class "ChatMessage" as FChatMessage <<Entity: 연결 채팅 메시지>> {
             + messageId: int
             + linkId: int
@@ -605,7 +636,13 @@ package "Flutter Frontend" {
             + clientMessageId: String
             + body: String
             + createdAt: DateTime
+            + messageKind: String
             + medicationContext: ChatMedicationContext?
+            + scheduleContext: ChatScheduleContext?
+            + pharmacyContext: ChatPharmacyContext?
+            + remainingDays: int?
+            + courseEndDate: DateTime?
+            + showSafetyGuidance: bool
             + readAt: DateTime?
         }
 
@@ -704,8 +741,10 @@ package "FastAPI Backend" {
             - db: Session
             + request_history(user_hash, link_id, before_id): list<ChatMessage>
             + request_medication_contexts(user_hash, link_id): list<dict>
+            + request_schedule_contexts(user_hash, link_id): list<dict>
             + request_medication_detail(user_hash, link_id, medication_id): dict
-            + send_message(user_hash, link_id, body, client_message_id, medication_id?): ChatSendResult
+            + send_message(user_hash, link_id, body, client_message_id, message_kind, context_id?): ChatSendResult
+            + publish_slot_completion(patient_hash, slot_key, completed_date): ChatSendResult?
             + mark_read(user_hash, link_id, through_message_id): int
             + request_unread_count(user_hash, link_id): int
             + require_active_link(user_hash, link_id): _PatientCaregiverLink
@@ -1079,6 +1118,9 @@ package "FastAPI Backend" {
             + is_open_late: bool
             + has_weekend_or_holiday_hours: bool
             + is_public_holiday: bool
+            + minutes_until_close: int?
+            + next_open_at: datetime?
+            + source_updated_at: datetime?
         }
 
         class "PharmacyCatalogEntry" as BPharmacyCatalogEntry <<Entity: 전국 약국 주간·공휴일 일정>> {
@@ -1094,8 +1136,10 @@ package "FastAPI Backend" {
             + sender_hash: str
             + client_message_id: str
             + body: str
+            + message_kind: str
             + medication_id: int?
             + medication_name: str?
+            + context_payload: dict?
             + created_at: datetime
             + read_at: datetime?
         }
@@ -1284,12 +1328,15 @@ ManualMedicationEntryUI ..> ManualMedicationImageStore
 ManualMedicationEntryUI ..> FCheckSavedMedication
 PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
 CheckNearbyPharmacyUI o-- FCheckNearbyPharmacy
+CheckNearbyPharmacyUI o-- PharmacyFavoriteService
+CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
 CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
 CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 CheckCaregiverMedicationUI ..> LinkedChatUI
 LinkedChatUI o-- FManageLinkedChat
 LinkedChatUI o-- LinkedChatRealtimeService
+LinkedChatUI o-- PharmacyExternalActionService
 LinkedChatUI ..> CheckScheduleUI : 일정형 약 선택 화면 재사용
 LinkedChatUI ..> CheckMedicationDetailUI : 권한 검증 후 상세 열기
 ManageUserSettingUI --> FAuthenticationControl
@@ -1390,7 +1437,11 @@ FIdentifyPillBatch ..> FPillIdentificationResult
 FCheckNearbyPharmacy ..> FNearbyPharmacy
 FManageLinkedChat ..> FChatMessage
 FManageLinkedChat ..> FChatMedicationContext
+FManageLinkedChat ..> FChatScheduleContext
+FManageLinkedChat ..> FChatPharmacyContext
 FChatMessage o-- "0..1" FChatMedicationContext
+FChatMessage o-- "0..1" FChatScheduleContext
+FChatMessage o-- "0..1" FChatPharmacyContext
 FLinkPatientCaregiver ..> FPatientCaregiverLink
 FLinkPatientCaregiver ..> FPatientLinkCode
 FSetNotification ..> FMedicationAlarm
@@ -1464,6 +1515,7 @@ PharmacyCatalogRepository ..> BPharmacyCatalogEntry
 BManageLinkedChat *-- ChatMessageRepository
 BManageLinkedChat *-- MedicationCoursePolicy
 BManageLinkedChat o-- PatientCaregiverLinkRepository
+BManageLinkedChat o-- PharmacyCatalogRepository
 BManageLinkedChat --> DBSavedMedication
 BManageLinkedChat --> DBChatMessage
 BManageLinkedChat ..> BChatMessage

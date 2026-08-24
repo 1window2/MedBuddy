@@ -2,7 +2,7 @@
 
 ## Status
 
-- Scope review: 2026-08-23
+- Scope review: 2026-08-24
 - Stable functional baseline: `v0.1.0`
 - Active development branch: `beta/v0.2.0`
 - Target release line: `v0.2.0-beta.*`
@@ -49,14 +49,17 @@ The following implemented flows are in v0.2.0 verification:
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held
     public-data credentials, open/all filters, an attributed in-app
-    Naver Map view with synchronized card/marker selection, 24-hour
-    operating-status metadata, refresh cooldown, phone launch, and external
-    directions.
+    Naver Map view with synchronized card/marker selection, device-scoped
+    favorites, closing-soon and next-opening status, source-freshness metadata,
+    refresh cooldown, validated phone launch, external directions, and
+    authorized pharmacy sharing into linked chat.
 11. Laboratory linked medication chat for active patient-caregiver links and
     active patient medications, with a schedule-style medication picker,
     authorized medication-detail navigation, authenticated REST history,
-    WebSocket updates, idempotent retries, read state, and bounded recipient
-    notification previews.
+    WebSocket updates, idempotent retries, read state, bounded recipient
+    notification previews, server-verified schedule-slot cards, caregiver check
+    requests, automatic slot-completion events, medication shortage/discomfort
+    context, and pharmacy snapshots.
 
 ## Required Beta Hardening
 
@@ -68,7 +71,8 @@ token management, dose-completion push delivery, persisted per-slot caregiver
 settings, and tested recovery and feedback paths for the medication workflow.
 The v0.2.0 source also includes direct medication entry, bounded multi-pill
 identification, schedule review, guided-camera cropping, backend-mediated
-nearby-pharmacy lookup, and authorized medication-context chat. The two new
+nearby-pharmacy lookup, structured medication-context chat, and idempotent
+adoption of compatible pre-existing pharmacy tables. The two new
 network features remain disabled by default through laboratory settings.
 The self-hosted FastAPI/PostgreSQL/Redis stack, public HTTPS ingress, protected
 host secrets, scheduled server-side missed-deadline delivery, signed
@@ -106,9 +110,13 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   validate dose-completion FCM delivery on two physical devices. Local Android
   background checks remain a beta fallback, not proof of remote delivery.
 - Verify chat history retention, unread/read transitions, WebSocket reconnect,
-  idempotent send retries, revoked-link denial, and generic notification content.
+  idempotent send retries, revoked-link denial, structured-context server
+  reconstruction, one completion event per link/date/slot, and notification
+  routing to the requested schedule slot.
 - Verify that pharmacy coordinates are not persisted or logged and that public
   data refresh limits are enforced at both frontend and backend boundaries.
+  Confirm that favorites remain device scoped and that external actions reject
+  malformed telephone, coordinate, and attribution values.
 
 ### P1: Release Verification
 
@@ -119,8 +127,9 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   dose-completion undo, and reminder result feedback.
 - Automated frontend coverage must also include manual-entry validation,
   schedule review, multi-pill partial failure, camera-guide layout/cropping,
-  pharmacy permission and cooldown states, linked-chat lifecycle, laboratory
-  feature visibility, and health-recommendation bottom reachability.
+  pharmacy permission, cooldown, favorite, freshness, and external-action
+  states; linked-chat structured context and lifecycle; laboratory feature
+  visibility; and health-recommendation bottom reachability.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.
@@ -134,8 +143,9 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Validate prescription and loose-pill latency, timeout, offline, malformed
   response, partial-failure, and external-service failure paths.
 - Validate nearby-pharmacy permission denial, disabled location service, empty
-  result, map tile failure, card/marker selection synchronization, attribution,
-  holiday-hours disclaimer, repeated refresh, call, and directions paths.
+  result, missing map configuration, map tile failure, card/marker selection
+  synchronization, favorites, freshness, attribution, holiday-hours disclaimer,
+  repeated refresh, call, directions, and chat-sharing paths.
 
 ## Explicitly Out of Scope
 

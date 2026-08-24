@@ -649,14 +649,29 @@ FrontService --> FrontControl : DeviceCoordinate
 FrontControl -> ApiClient : GET /pharmacy/nearby?latitude&longitude
 ApiClient -> Router : 인증된 근처 약국 요청
 Router -> BackControl : CheckNearbyPharmacy.requestNearbyPharmacies()
-BackControl -> BackService : PharmacyLookupBoundary.searchNearby()
-BackService -> PharmacyAPI : 공공데이터 인증키로 위치 기반 조회
-PharmacyAPI --> BackService : 약국 위치와 요일별 운영시간
-BackService --> BackControl : PharmacyLocationRecord 목록
-BackControl -> BackControl : 거리, 현재 영업 여부와 24시간 여부 계산
-BackControl --> UI : 거리순 NearbyPharmacy 목록
+BackControl -> Database : 지역 PharmacyCatalog 후보 조회
+alt Catalog 후보가 없음 또는 조회 실패
+    BackControl -> BackService : PharmacyLookupBoundary.searchNearby()
+    BackService -> PharmacyAPI : 공공데이터 인증키로 위치 기반 보완 조회
+    PharmacyAPI --> BackService : 약국 위치와 요일별 운영시간
+    BackService --> BackControl : PharmacyLocationRecord 목록
+else Catalog 후보 조회 성공
+    Database --> BackControl : 주간·공휴일 일정과 출처 갱신 시각
+end
+BackControl -> BackControl : 거리, 영업 여부, 마감 임박과 다음 영업시각 계산
+BackControl --> FrontControl : 거리순 NearbyPharmacy 목록
+FrontControl -> FrontService : 사용자별 기기 즐겨찾기 조회
+FrontService --> FrontControl : favoriteIds
+FrontControl --> UI : 즐겨찾기 우선 목록과 갱신 상태
 User -> UI : 전화 또는 길찾기 선택
-UI -> ExternalApp : 전화번호 또는 약국명·좌표로 운영체제 앱 열기
+UI -> FrontService : 검증된 전화번호 또는 약국명·좌표 전달
+FrontService -> ExternalApp : 운영체제 앱 열기
+opt 사용자가 연동 채팅에 약국 공유
+    UI -> ApiClient : pharmacyId와 공유 유형 전송
+    ApiClient -> Router : 구조화 채팅 전송
+    Router -> Database : 활성 연결과 PharmacyCatalog 재검증
+    Database --> Router : 신뢰 가능한 약국 Snapshot
+end
 opt 사용자가 제한 시간 안에 새로고침 반복
     UI --> User : 추가 호출 없이 남은 대기시간 안내
 end
@@ -684,6 +699,14 @@ opt 메시지에 약 문맥 첨부
     UI -> FrontControl : selectMedicationContext(medicationId)
     FrontControl --> UI : 선택 약 표시용 Snapshot
 end
+opt 시간대 확인 요청, 약 부족·불편 또는 약국 공유
+    User -> UI : 구조화 동작 선택
+    UI -> FrontControl : messageKind와 slotKey/medicationId/pharmacyId
+    FrontControl -> ApiClient : POST structured message
+    ApiClient -> Router : 연결 범위와 유형별 입력
+    Router -> BackControl : 역할·일정·활성 약·약국 Catalog 검증
+    BackControl -> Database : 서버 표시 Snapshot 생성 후 저장
+end
 opt 선택 약 또는 이전 메시지의 약 카드 상세보기
     User -> UI : 약 카드 선택
     UI -> FrontControl : requestMedicationDetail(linkId, medicationId)
@@ -704,8 +727,12 @@ Database --> BackControl : 저장 ChatMessage 또는 기존 중복 응답
 BackControl -> BackService : ChatConnectionManager.broadcast()
 BackService --> UI : 상대 WebSocket에 새 메시지 Event
 alt 상대 사용자가 실시간 연결 중이 아님
-    BackControl -> FCM : 공백 정리·최대 120자 메시지 미리보기
-    FCM --> User : 사용자 작성 본문 미리보기와 채팅 이동 정보
+    BackControl -> FCM : 최대 120자 미리보기와 messageKind/slotKey
+    FCM --> User : 채팅 또는 해당 복약 시간대로 이동할 알림
+end
+opt 환자가 시간대의 모든 약을 완료
+    BackControl -> Database : link/date/slot 멱등 ID로 완료 메시지 저장
+    BackControl -> BackService : 활성 연결에 완료 Event broadcast
 end
 UI -> FrontControl : markRead(throughMessageId)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/read

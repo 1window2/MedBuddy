@@ -73,12 +73,17 @@ selected-time, officially designated late-night, reported late-hours,
 weekend/holiday, and all-result filters. Filters are applied by the backend
 before its result limit, and the user can select the target date/time. A Naver
 Map view is rendered above the filters. Selecting a pharmacy card or map marker
-updates one shared selection and centers the map. A pharmacy's
+updates one shared selection and centers the map. Device-scoped favorites are
+shown first without changing the server result, and each card distinguishes
+closing-soon, next-opening, and catalog-refresh information. A pharmacy's
 24-hour operating status remains available as card information. Public-data
 credentials remain on the backend; the client only receives the pharmacy
 fields needed for display, calling, mapping, and external directions. Manual
 refresh is throttled in the UI to avoid accidental repeat traffic, and the map
-keeps Naver attribution visible and opens exact-coordinate Naver directions.
+keeps Naver attribution visible. Phone, exact-coordinate directions, map
+attribution, and pharmacy sharing use one validated external-action boundary.
+If the Naver client identifier is absent, the screen explains the map setup
+state while retaining the pharmacy list and actions.
 The source notice distinguishes exact-date holiday schedules from stale or
 weekly fallback data and tells users to call before visiting.
 
@@ -89,7 +94,12 @@ participant select medication context through the same time-slot layout as
 today's schedule, and opens the authorized medication-detail screen when a
 medication card is pressed. Client message identifiers provide retry-safe
 sends, reads are tracked per participant, and local or push notifications show
-a whitespace-normalized message preview capped at 120 characters.
+a whitespace-normalized message preview capped at 120 characters. The server
+also provides verified time-slot schedule cards and stores structured check
+requests, slot-completion events, medication-shortage or discomfort reports,
+and pharmacy shares as typed snapshots. Caregiver check-request notifications
+open the corresponding schedule slot, and repeated completion processing does
+not create duplicate completion messages.
 
 Medication detail and today's schedule share one full-screen image viewer. A
 validated public medication image can be tapped to inspect it with pan and zoom
@@ -142,10 +152,12 @@ ADB debugging, Flutter hot reload, breakpoints, and physical-device testing do
 not require the backend to run on the development computer or on the same LAN.
 The Android client reaches the production backend over ordinary HTTPS.
 
-`MEDBUDDY_API_BASE_URL` remains a compile-time value. If explicitly overridden,
-it must still be a public HTTPS endpoint ending in `/api/v1/medication`.
-Localhost, private-network addresses, and clear-text HTTP endpoints are rejected
-in debug, profile, and release builds.
+`MEDBUDDY_API_BASE_URL` remains a compile-time value. Profile and release
+builds require a public HTTPS endpoint ending in `/api/v1/medication`. Debug
+builds may use the local demo backend only when
+`MEDBUDDY_ALLOW_LOCAL_HTTP=true`; accepted hosts are `10.0.2.2`, `127.0.0.1`,
+`localhost`, and `::1`, all on port `8000`. Other private-network and
+clear-text endpoints are rejected.
 
 See the repository-level [`README.md`](../README.md) for complete backend and
 device setup, and [`CONTRIBUTING.md`](../CONTRIBUTING.md) for release

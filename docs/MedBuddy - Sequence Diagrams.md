@@ -1088,6 +1088,8 @@ Review --> UI : normalized schedules
 - 위치 권한, 공공 API 조회, 거리·영업상태 계산, 앱 내 지도, 전화·길찾기 실행을 분리한다.
 - 약국 카드와 지도 마커는 하나의 선택 상태를 공유하며 지도 이동만으로 공공 API를 다시 호출하지 않는다.
 - 반복 새로고침은 화면에서 제한하여 불필요한 외부 API 호출을 줄인다.
+- 즐겨찾기는 사용자별 기기 저장소에만 보관하며 서버 거리 정렬 결과를 변경하지 않는다.
+- 전화·길찾기·출처·채팅 공유는 검증된 공통 외부 동작 서비스와 서버 약국 스냅샷을 사용한다.
 
 ```plantuml
 @startuml SD09_Nearby_Pharmacy
@@ -1097,8 +1099,11 @@ boundary "CheckNearbyPharmacyUI" as UI
 control "CheckNearbyPharmacy (Flutter)" as FE
 boundary "DeviceLocationBoundary" as Location
 boundary "NearbyPharmacyMap" as Map
+boundary "PharmacyFavoriteService" as Favorite
+boundary "PharmacyExternalActionService" as ExternalAction
 control "CheckNearbyPharmacy (FastAPI)" as BE
 boundary "PharmacyCatalogRepository" as Catalog
+boundary "NEMC Pharmacy API" as PharmacyAPI
 boundary "KoreanHolidayAPI" as HolidayAPI
 boundary "Naver Dynamic Map SDK" as NaverMap
 boundary "OS Phone / Directions" as ExternalApp
@@ -1111,10 +1116,17 @@ FE -> BE : GET /pharmacy/nearby
 BE -> HolidayAPI : isHoliday(today, previous day)
 HolidayAPI --> BE : 법정공휴일 여부
 BE -> Catalog : searchNearbyCandidates(latitude, longitude, radius)
-Catalog --> BE : 주간·공휴일 영업시간 포함 약국 목록
-BE -> BE : 거리, 영업 중, 심야·24시간 여부 계산 및 정렬
+alt [지역 Catalog 조회 가능]
+  Catalog --> BE : 주간·공휴일 영업시간 포함 약국 목록
+else [Catalog가 비었거나 조회 실패]
+  BE -> PharmacyAPI : 현재 위치 기준 실시간 보완 조회
+  PharmacyAPI --> BE : 약국 위치와 운영시간
+end
+BE -> BE : 거리, 영업 중, 마감 임박, 다음 영업시각 계산 및 정렬
 BE --> FE : NearbyPharmacy 목록
-FE --> UI : 목록과 필터 상태
+FE -> Favorite : 사용자별 즐겨찾기 ID 조회
+Favorite --> FE : favoriteIds
+FE --> UI : 즐겨찾기 우선 목록과 필터·갱신 상태
 UI -> Map : 약국 좌표와 공통 선택 상태 전달
 Map -> NaverMap : 인증된 SDK로 현재 화면 범위 지도 요청
 NaverMap --> Map : 네이버 지도와 기본 저작권 표시
@@ -1126,7 +1138,14 @@ opt [약국 카드 또는 지도 마커 선택]
 end
 opt [전화 또는 길찾기]
   User -> UI : 약국 동작 선택
-  UI -> ExternalApp : 전화번호 또는 약국명·좌표 열기
+  UI -> ExternalAction : 검증된 전화번호 또는 약국명·좌표 전달
+  ExternalAction -> ExternalApp : 운영체제 앱 열기
+end
+opt [연동 채팅으로 약국 공유]
+  User -> UI : 약국 공유 또는 전화 확인 후 공유
+  UI -> BE : pharmacyId와 메시지 유형 전송
+  BE -> Catalog : 약국 존재와 최신 표시값 재조회
+  Catalog --> BE : 신뢰 가능한 약국 Snapshot
 end
 opt [짧은 시간 안에 새로고침 반복]
   UI --> User : API 재호출 없이 남은 대기시간 안내
@@ -1143,6 +1162,8 @@ end
 - `clientMessageId`로 재전송 중복을 막고, 사용자가 약을 선택한 메시지는 전송 시점의 표시용 스냅샷을 선택적으로 보존한다.
 - 일반 메시지는 약 선택 없이 전송할 수 있다. 약을 첨부할 때는 오늘 일정의 시간대별 화면을 재사용하고, 선택 약과 이전 메시지의 약 카드는 권한 확인 후 공통 상세 화면으로 이동한다.
 - 상대가 채팅 화면에 없으면 공백을 정리하고 120자로 제한한 메시지 미리보기를 알림에 표시한다.
+- 시간대 확인 요청, 자동 복용 완료, 약 부족·불편, 약국 공유는 `messageKind`로 구분하고 서버가 현재 일정·복용 기간·약국 Catalog에서 표시 스냅샷을 다시 만든다.
+- 같은 날짜와 시간대의 자동 완료 메시지는 멱등 ID를 사용해 한 번만 저장한다.
 
 ```plantuml
 @startuml SD10_Linked_Medication_Chat
@@ -1173,6 +1194,20 @@ opt [메시지에 약 문맥 첨부]
   UI -> FE : selectMedicationContext(medicationId)
   FE --> UI : 선택 약 표시용 Snapshot
 end
+opt [시간대별 확인 요청]
+  User -> UI : 보호자가 시간대 확인 요청
+  UI -> FE : sendMessage(messageKind=slot_check_request, slotKey)
+  FE -> BE : POST structured message
+  BE -> DB : 활성 연결·보호자 역할·현재 시간대 일정 검증
+  DB --> BE : 서버가 재구성한 일정 Snapshot
+end
+opt [약 부족·불편 또는 약국 공유]
+  User -> UI : 구조화 동작 선택
+  UI -> FE : messageKind와 medicationId 또는 pharmacyId 전달
+  FE -> BE : POST structured message
+  BE -> DB : 활성 복용 약 또는 약국 Catalog 재검증
+  DB --> BE : 복용 기간 또는 약국 Snapshot
+end
 opt [선택 약 또는 이전 메시지의 약 카드 상세보기]
   User -> UI : 약 카드 선택
   UI -> FE : requestMedicationDetail(linkId, medicationId)
@@ -1189,8 +1224,12 @@ DB --> BE : 저장 메시지 또는 기존 중복 응답
 BE -> Connections : broadcast(linkId, messageEvent)
 Connections --> Peer : 실시간 메시지
 opt [상대가 실시간 연결 중이 아님]
-  BE -> Push : 공백 정리·최대 120자 메시지 미리보기
-  Push --> Peer : 사용자 작성 본문 미리보기와 채팅 이동 정보
+  BE -> Push : 공백 정리·최대 120자 미리보기와 유형·시간대
+  Push --> Peer : 채팅 또는 해당 복약 시간대로 이동할 알림
+end
+opt [환자가 한 시간대의 약을 모두 완료]
+  BE -> DB : link/date/slot 멱등 ID로 완료 메시지 저장
+  BE -> Connections : 활성 연결에 완료 사건 Broadcast
 end
 Peer -> UI : 채팅 열기
 UI -> FE : markRead(throughMessageId)

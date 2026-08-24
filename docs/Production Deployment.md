@@ -142,16 +142,18 @@ curl -i https://api.medbuddy.pp.ua/ready
 
 Both must return HTTP 200 with the expected API contract.
 
-Verify that the database reached the latest migration, including linked chat
-messages and medication context:
+Verify that the database reached the latest migration, including pharmacy
+schedule provenance and structured linked-chat contexts:
 
 ```bash
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must include the v0.2.0 chat migration chain before chat is
-enabled for users. Cloudflare Tunnel must also permit WebSocket upgrades for
+The reported head must be `b4e7c2d9a160`. The v0.2.0 tail adds the shared
+pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
+cache (`b6d14f8c2a70`), and structured chat message/context columns
+(`b4e7c2d9a160`). Cloudflare Tunnel must also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.
 

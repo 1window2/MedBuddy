@@ -118,6 +118,8 @@ package "Flutter / Entity" as FE_Entity {
   class "ManualMedicationEntry" as FE_ManualMedicationEntry <<entity>>
   class "NearbyPharmacy" as FE_NearbyPharmacy <<entity>>
   class "ChatMedicationContext" as FE_ChatMedicationContext <<entity>>
+  class "ChatScheduleContext" as FE_ChatScheduleContext <<entity>>
+  class "ChatPharmacyContext" as FE_ChatPharmacyContext <<entity>>
   class "ChatMessage" as FE_ChatMessage <<entity>>
 }
 
@@ -142,6 +144,8 @@ package "Flutter / External and Shared Services" as FE_Service {
   class LinkedChatNotificationMonitorFactory <<composition root>>
   interface DeviceLocationBoundary <<device boundary>>
   class GeolocatorDeviceLocationService <<device boundary>>
+  class PharmacyFavoriteService <<local preference service>>
+  class PharmacyExternalActionService <<validated external action service>>
   cloud "Naver Dynamic Map SDK" as NaverDynamicMapSDK
   class PrescriptionGuideLayout <<layout service>>
   class PrescriptionImageCropService <<image service>>
@@ -311,9 +315,12 @@ ManualMedicationEntryUI --> FE_CheckSavedMedication
 ManualMedicationEntryUI --> ManualMedicationImageStore
 CheckNearbyPharmacyUI --> FE_CheckNearbyPharmacy
 CheckNearbyPharmacyUI --> NearbyPharmacyMap
+CheckNearbyPharmacyUI --> PharmacyFavoriteService
+CheckNearbyPharmacyUI --> PharmacyExternalActionService
 CheckCaregiverMedicationUI ..> LinkedChatUI
 LinkedChatUI --> FE_ManageLinkedChat
 LinkedChatUI --> LinkedChatRealtimeService
+LinkedChatUI --> PharmacyExternalActionService
 LinkedChatUI ..> CheckScheduleUI : reuses medication selection
 LinkedChatUI ..> CheckMedicationDetailUI : opens authorized detail
 
@@ -338,7 +345,11 @@ NearbyPharmacyMap ..> FE_NearbyPharmacy : marker data
 NearbyPharmacyMap --> NaverDynamicMapSDK : authenticated map rendering
 FE_ManageLinkedChat --> FE_ChatMessage
 FE_ManageLinkedChat --> FE_ChatMedicationContext
+FE_ManageLinkedChat --> FE_ChatScheduleContext
+FE_ManageLinkedChat --> FE_ChatPharmacyContext
 FE_ChatMessage o-- "0..1" FE_ChatMedicationContext
+FE_ChatMessage o-- "0..1" FE_ChatScheduleContext
+FE_ChatMessage o-- "0..1" FE_ChatPharmacyContext
 LinkedChatRealtimeService ..|> LinkedChatEventSource
 FE_PillResult *-- "0..*" FE_PillCandidate
 FE_PillResult *-- FE_PillVisualFeatures
@@ -468,6 +479,7 @@ NationalEmergencyMedicalCenterPharmacyAPI --> PharmacyCatalogEntry
 PharmacyCatalogRepository --> PharmacyCatalogEntry
 BE_CheckNearbyPharmacy --> BE_NearbyPharmacy
 BE_ManageLinkedChat --> ChatMessageRepository
+BE_ManageLinkedChat --> PharmacyCatalogRepository
 BE_ManageLinkedChat --> BE_PatientCaregiverLink
 BE_ManageLinkedChat --> BE_MedicationSchedule
 BE_ManageLinkedChat --> BE_ChatMessage
@@ -590,8 +602,8 @@ nodes:
 | Guided capture and schedule confirmation | `PrescriptionGuideLayout`, `PrescriptionImageCropService`, `MedicationScheduleReviewBoundary` | Captured content is cropped to the visible guide and recognized schedules remain user-correctable before analysis or save. |
 | Direct medication entry | `ManualMedicationEntryUI`, `ManualMedicationImageStore`, shared saved-medication control | Manual input reuses the established medication persistence and schedule model instead of creating a parallel domain. |
 | Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency and per-item outcomes extend the single-pill control without duplicating the identification pipeline. |
-| Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `NearbyPharmacyMap`, `PharmacyLookupBoundary` | Device location, server API-key ownership, normalization, attributed map rendering, and synchronized card/marker presentation remain separate cohesive boundaries. |
-| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, optional schedule-style medication attachment, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
+| Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `NearbyPharmacyMap`, `PharmacyFavoriteService`, `PharmacyExternalActionService`, `PharmacyLookupBoundary` | Device location, user-scoped local favorites, freshness/opening-state calculation, server API-key ownership, normalized fallback lookup, map rendering, and validated call/directions actions remain separate cohesive boundaries. |
+| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, server-rebuilt medication/schedule/pharmacy snapshots, idempotent slot-completion messages, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
 | Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps

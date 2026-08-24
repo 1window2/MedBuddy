@@ -240,14 +240,25 @@ action remains available in the map. Opening call or turn-by-turn directions
 delegates to the operating system; MedBuddy does not claim real-time stock or
 guaranteed opening hours and asks the user to confirm by phone.
 
+Favorites are scoped by the current local user hash and remain on that device;
+they are a presentation preference, not an authorization signal. Telephone,
+directions, and attribution actions pass through one validation service so a
+malformed public-data value cannot become an arbitrary external URI.
+
 ## Linked Medication Chat Boundary
 
 The chat laboratory feature requires an active patient-caregiver link and at
-least one active medication belonging to the linked patient. A message may be
-sent without medication context. When context is attached, the client may use
-only a server-returned medication context, and `ManageLinkedChat` rechecks the
-saved medication, course activity, and link ownership rather than trusting the
-client snapshot.
+least one active medication belonging to the linked patient. A plain text
+message may be sent without context. Medication, schedule-slot, and pharmacy
+messages carry only a context identifier from the client. `ManageLinkedChat`
+rechecks link ownership and reconstructs the persisted snapshot from the saved
+medication, today's schedule, or pharmacy catalog instead of trusting client
+names, dosage, coordinates, or completion state.
+
+Slot-completion messages are generated only after the server-observed schedule
+transition and are idempotent per link, date, and slot. A slot-check request
+opens the matching schedule section after notification navigation; it does not
+grant the caregiver permission to alter the patient's completion record.
 
 REST history and WebSocket events share the same principal-to-link
 authorization. Client-generated message identifiers are normalized and unique
@@ -312,11 +323,13 @@ Cloudflare Tunnel.
 ## Client Egress and Resource-Safety Policy
 
 - `ApiConfig` defaults to the production HTTPS endpoint
-  `https://api.medbuddy.pp.ua/api/v1/medication` and requires a public HTTPS
-  backend in debug, profile, and release modes.
-- The Android debug manifest retains Internet access for ADB, breakpoints, and
-  Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
-  access.
+  `https://api.medbuddy.pp.ua/api/v1/medication`. Profile and release builds
+  require public HTTPS. Debug builds may opt into clear-text HTTP only for
+  `10.0.2.2`, loopback hostnames, or loopback addresses on port `8000` through
+  `MEDBUDDY_ALLOW_LOCAL_HTTP=true`.
+- The Android debug manifest permits clear-text traffic only so the emulator
+  can reach the local FastAPI demo. The main/release manifest keeps clear-text
+  disabled, and `ApiConfig` rejects arbitrary LAN or public HTTP endpoints.
 - Medication images are external content. The backend accepts, persists, and
   returns them only from the documented `https://nedrug.mfds.go.kr`
   public-data host. Flutter independently revalidates the value immediately
@@ -348,8 +361,8 @@ Cloudflare Tunnel.
   and AAB verification uses strict jarsigner semantics before certificate
   comparison.
 - The release manifest/network security configuration permits HTTPS only.
-- Debug builds retain Internet permission for Flutter tooling, but clear-text
-  HTTP access is not enabled in the Android manifest.
+- Debug builds retain Internet permission and a local-demo clear-text override;
+  profile and release builds keep the HTTPS-only manifest and URL policy.
 
 ## Delivery Order to July 31
 

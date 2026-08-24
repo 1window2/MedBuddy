@@ -181,8 +181,13 @@ validated categories and coordinates, never model-returned region text.
 Caregiver lock-screen notification content remains generic while the private
 payload retains the patient scope needed for authenticated in-app navigation.
 Chat REST and WebSocket routes apply the same principal and active-link checks;
-WebSocket authentication does not create a weaker alternate path. Nearby
-pharmacy and chat laboratory toggles never grant data access by themselves.
+WebSocket authentication does not create a weaker alternate path. Medication,
+schedule-slot, and pharmacy context identifiers are revalidated and rebuilt as
+server snapshots instead of accepting client-supplied medical or location
+details. Slot-completion events are idempotent and cannot be used by a caregiver
+to modify the patient's completion record. Nearby-pharmacy favorites remain a
+device-local preference and never grant access. Laboratory toggles never grant
+data access by themselves.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
@@ -195,10 +200,11 @@ keystores ignored, and provides a protected GitHub Environment workflow that
 requires release signing credentials. Ordinary pull requests can compile an
 unsigned release artifact but never receive signing material.
 
-The Android manifests do not enable clear-text API traffic. Debug builds retain
-Internet permission for ADB, breakpoints, and Flutter hot reload, while
-`ApiConfig` requires the same public HTTPS backend contract in debug, profile,
-and release builds. The beta backend runs FastAPI, PostgreSQL, Redis, and
+The profile and release Android manifests do not enable clear-text API traffic.
+Debug builds retain a local-demo exception, and `ApiConfig` limits it to
+`10.0.2.2` or loopback hosts on port 8000 when
+`MEDBUDDY_ALLOW_LOCAL_HTTP=true`. Profile and release builds require the public
+HTTPS backend contract. The beta backend runs FastAPI, PostgreSQL, Redis, and
 `cloudflared` on a dedicated team-controlled Ubuntu host. PostgreSQL and Redis
 remain on the private Docker network, FastAPI port 8000 is bound only to host
 loopback, and Cloudflare Tunnel is the only public ingress path. Router port
