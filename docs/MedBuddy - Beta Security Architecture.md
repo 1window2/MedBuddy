@@ -250,8 +250,11 @@ malformed public-data value cannot become an arbitrary external URI.
 The chat laboratory feature requires an active patient-caregiver link and at
 least one active medication belonging to the linked patient. A plain text
 message may be sent without context. Medication, schedule-slot, and pharmacy
-messages carry only a context identifier from the client. `ManageLinkedChat`
-rechecks link ownership and reconstructs the persisted snapshot from the saved
+messages carry only bounded context identifiers from the client. A medication
+message may include a deduplicated list of up to ten identifiers; the first
+identifier is retained in the legacy singular field for older clients.
+`ManageLinkedChat` rechecks link ownership and current activity for every
+selected medication, then reconstructs each persisted snapshot from the saved
 medication, today's schedule, or pharmacy catalog instead of trusting client
 names, dosage, coordinates, or completion state.
 
@@ -267,7 +270,7 @@ Message length and page size are bounded, read state is participant-specific,
 and unlinking immediately blocks subsequent history, send, read, unread, and
 stream operations.
 
-Chat message bodies and medication context are stored medical-adjacent data and
+Chat message bodies and medication contexts are stored medical-adjacent data and
 must not appear in logs. FCM and local chat alerts may show only the
 whitespace-normalized user-authored message preview capped at 120 characters;
 the operating system may display that preview on the lock screen. The private

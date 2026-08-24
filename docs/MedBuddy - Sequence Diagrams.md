@@ -1190,9 +1190,9 @@ BE -> DB : 활성 연결 재검증
 BE --> Realtime : connection accepted
 
 opt [메시지에 약 문맥 첨부]
-  User -> UI : 오늘 일정형 화면에서 활성 복용 약 선택
-  UI -> FE : selectMedicationContext(medicationId)
-  FE --> UI : 선택 약 표시용 Snapshot
+  User -> UI : 오늘 일정형 화면에서 활성 복용 약 여러 개 선택
+  UI -> FE : selectMedicationContexts(medicationIds)
+  FE --> UI : 선택 약 목록과 개별 해제 상태
 end
 opt [시간대별 확인 요청]
   User -> UI : 보호자가 시간대 확인 요청
@@ -1216,10 +1216,20 @@ opt [선택 약 또는 이전 메시지의 약 카드 상세보기]
   DB --> BE : 저장 복약 상세정보
   BE --> UI : 공통 약 상세 화면용 정보
 end
-User -> UI : 일반 메시지 또는 선택 약을 포함한 메시지 전송
-UI -> FE : sendMessage(clientMessageId, medicationId?, body)
+opt [환자가 시간대 일정 카드 선택]
+  User -> UI : 시간대 카드 선택
+  UI -> UI : 오늘의 복약 일정에서 해당 시간대로 이동
+else [보호자가 시간대 일정 카드 확인]
+  UI --> User : 읽기 전용 진행 상태 유지
+end
+opt [역할별 추천 문구 사용]
+  User -> UI : 환자 또는 보호자용 추천 문구 선택
+  UI --> User : 수정 가능한 입력 문구 제공
+end
+User -> UI : 일반 메시지 또는 선택 약들을 포함한 메시지 전송
+UI -> FE : sendMessage(clientMessageId, medicationIds?, body)
 FE -> BE : POST message
-BE -> DB : 연결 검증 및 선택 약이 있으면 소유권·복용기간 검증 후 멱등 저장
+BE -> DB : 연결 검증 및 모든 선택 약의 소유권·복용기간 검증 후 멱등 저장
 DB --> BE : 저장 메시지 또는 기존 중복 응답
 BE -> Connections : broadcast(linkId, messageEvent)
 Connections --> Peer : 실시간 메시지

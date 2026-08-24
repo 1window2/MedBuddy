@@ -70,9 +70,10 @@ model.
 The nearby-pharmacy laboratory flow requests foreground location only when
 opened, calls the authenticated MedBuddy pharmacy endpoint, and supports
 selected-time, officially designated late-night, reported late-hours,
-weekend/holiday, and all-result filters. Filters are applied by the backend
-before its result limit, and the user can select the target date/time. A Naver
-Map view is rendered above the filters. Selecting a pharmacy card or map marker
+weekend/holiday, and all-result filters. One filter button opens an explained
+option sheet, while filters are applied by the backend before its result limit
+and the user can select the target date/time. A Naver Map view is rendered above
+the filter. Selecting a pharmacy card or map marker
 updates one shared selection and centers the map. Device-scoped favorites are
 shown first without changing the server result, and each card distinguishes
 closing-soon, next-opening, and catalog-refresh information. A pharmacy's
@@ -90,9 +91,12 @@ weekly fallback data and tells users to call before visiting.
 The linked medication chat laboratory flow is available only for an active
 patient-caregiver link with active patient medication. The screen combines
 authenticated REST history with a reconnecting WebSocket event source, lets a
-participant select medication context through the same time-slot layout as
-today's schedule, and opens the authorized medication-detail screen when a
-medication card is pressed. Client message identifiers provide retry-safe
+participant select and remove multiple medication contexts through the same
+time-slot layout as today's schedule, and opens the authorized medication-detail
+screen when an attached medication card is pressed. Quick replies use separate
+patient and caregiver wording. A patient can press a schedule context to open
+today's schedule at that slot, while caregiver schedule cards remain read-only.
+Client message identifiers provide retry-safe
 sends, reads are tracked per participant, and local or push notifications show
 a whitespace-normalized message preview capped at 120 characters. The server
 also provides verified time-slot schedule cards and stores structured check

@@ -48,18 +48,20 @@ The following implemented flows are in v0.2.0 verification:
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held
-    public-data credentials, open/all filters, an attributed in-app
+    public-data credentials, one explained filter selector, an attributed in-app
     Naver Map view with synchronized card/marker selection, device-scoped
     favorites, closing-soon and next-opening status, source-freshness metadata,
     refresh cooldown, validated phone launch, external directions, and
     authorized pharmacy sharing into linked chat.
 11. Laboratory linked medication chat for active patient-caregiver links and
-    active patient medications, with a schedule-style medication picker,
+    active patient medications, with multi-selection through a schedule-style
+    medication picker, individually removable medication contexts,
     authorized medication-detail navigation, authenticated REST history,
     WebSocket updates, idempotent retries, read state, bounded recipient
     notification previews, server-verified schedule-slot cards, caregiver check
     requests, automatic slot-completion events, medication shortage/discomfort
-    context, and pharmacy snapshots.
+    context, pharmacy snapshots, participant-specific quick replies, and patient
+    navigation from a schedule card to the matching slot in today's schedule.
 
 ## Required Beta Hardening
 
@@ -111,8 +113,9 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   background checks remain a beta fallback, not proof of remote delivery.
 - Verify chat history retention, unread/read transitions, WebSocket reconnect,
   idempotent send retries, revoked-link denial, structured-context server
-  reconstruction, one completion event per link/date/slot, and notification
-  routing to the requested schedule slot.
+  reconstruction for every selected medication, one completion event per
+  link/date/slot, participant-specific quick replies, patient-only schedule-card
+  navigation, and notification routing to the requested schedule slot.
 - Verify that pharmacy coordinates are not persisted or logged and that public
   data refresh limits are enforced at both frontend and backend boundaries.
   Confirm that favorites remain device scoped and that external actions reject
@@ -128,8 +131,9 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Automated frontend coverage must also include manual-entry validation,
   schedule review, multi-pill partial failure, camera-guide layout/cropping,
   pharmacy permission, cooldown, favorite, freshness, and external-action
-  states; linked-chat structured context and lifecycle; laboratory feature
-  visibility; and health-recommendation bottom reachability.
+  states; the explained pharmacy filter selector; linked-chat multi-medication
+  context, role-specific replies, schedule navigation, and lifecycle; laboratory
+  feature visibility; and health-recommendation bottom reachability.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.

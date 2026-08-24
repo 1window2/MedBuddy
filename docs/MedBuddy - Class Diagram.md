@@ -347,7 +347,7 @@ FE_ManageLinkedChat --> FE_ChatMessage
 FE_ManageLinkedChat --> FE_ChatMedicationContext
 FE_ManageLinkedChat --> FE_ChatScheduleContext
 FE_ManageLinkedChat --> FE_ChatPharmacyContext
-FE_ChatMessage o-- "0..1" FE_ChatMedicationContext
+FE_ChatMessage o-- "0..*" FE_ChatMedicationContext
 FE_ChatMessage o-- "0..1" FE_ChatScheduleContext
 FE_ChatMessage o-- "0..1" FE_ChatPharmacyContext
 LinkedChatRealtimeService ..|> LinkedChatEventSource
@@ -603,7 +603,7 @@ nodes:
 | Direct medication entry | `ManualMedicationEntryUI`, `ManualMedicationImageStore`, shared saved-medication control | Manual input reuses the established medication persistence and schedule model instead of creating a parallel domain. |
 | Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency and per-item outcomes extend the single-pill control without duplicating the identification pipeline. |
 | Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `NearbyPharmacyMap`, `PharmacyFavoriteService`, `PharmacyExternalActionService`, `PharmacyLookupBoundary` | Device location, user-scoped local favorites, freshness/opening-state calculation, server API-key ownership, normalized fallback lookup, map rendering, and validated call/directions actions remain separate cohesive boundaries. |
-| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, server-rebuilt medication/schedule/pharmacy snapshots, idempotent slot-completion messages, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
+| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, bounded multi-medication selection with server-rebuilt snapshots, role-specific quick replies, patient schedule-card navigation, idempotent slot-completion messages, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
 | Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps

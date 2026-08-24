@@ -113,10 +113,11 @@ as untrusted input:
 Medication-context chat is an experimental linked-care feature, not a general
 messenger. Every history, send, read, unread-count, and WebSocket operation must
 verify the authenticated principal, the active patient-caregiver link, and the
-requested link identifier on the server. A selected medication must belong to
-the linked patient and be active on the current date.
+requested link identifier on the server. Every selected medication identifier
+must belong to the linked patient and be active on the current date. The server
+must deduplicate and bound the selection before rebuilding display snapshots.
 
-Chat text and medication context are stored medical-adjacent communication
+Chat text and medication contexts are stored medical-adjacent communication
 data. Apply bounded message length, normalize client-generated message IDs,
 enforce idempotent retries, and never log message bodies. Revoking a link must
 immediately deny REST and WebSocket access. The laboratory setting controls UI

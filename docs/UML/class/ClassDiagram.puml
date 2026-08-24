@@ -256,7 +256,7 @@ package "Flutter Frontend" {
             + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
             + requestMedicationContexts(linkId): Future<List<ChatMedicationContext>>
             + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
-            + sendMessage(linkId, body, clientMessageId, medicationId?): Future<ChatMessage>
+            + sendMessage(linkId, body, clientMessageId, medicationIds?): Future<ChatMessage>
             + markRead(linkId, throughMessageId): Future<void>
         }
 
@@ -638,6 +638,7 @@ package "Flutter Frontend" {
             + createdAt: DateTime
             + messageKind: String
             + medicationContext: ChatMedicationContext?
+            + medicationContexts: List<ChatMedicationContext>
             + scheduleContext: ChatScheduleContext?
             + pharmacyContext: ChatPharmacyContext?
             + remainingDays: int?
@@ -743,7 +744,7 @@ package "FastAPI Backend" {
             + request_medication_contexts(user_hash, link_id): list<dict>
             + request_schedule_contexts(user_hash, link_id): list<dict>
             + request_medication_detail(user_hash, link_id, medication_id): dict
-            + send_message(user_hash, link_id, body, client_message_id, message_kind, context_id?): ChatSendResult
+            + send_message(user_hash, link_id, body, client_message_id, message_kind, medication_ids?, context_id?): ChatSendResult
             + publish_slot_completion(patient_hash, slot_key, completed_date): ChatSendResult?
             + mark_read(user_hash, link_id, through_message_id): int
             + request_unread_count(user_hash, link_id): int
@@ -1140,6 +1141,7 @@ package "FastAPI Backend" {
             + medication_id: int?
             + medication_name: str?
             + context_payload: dict?
+            + medication_contexts: list<dict>
             + created_at: datetime
             + read_at: datetime?
         }
@@ -1439,7 +1441,7 @@ FManageLinkedChat ..> FChatMessage
 FManageLinkedChat ..> FChatMedicationContext
 FManageLinkedChat ..> FChatScheduleContext
 FManageLinkedChat ..> FChatPharmacyContext
-FChatMessage o-- "0..1" FChatMedicationContext
+FChatMessage o-- "0..*" FChatMedicationContext
 FChatMessage o-- "0..1" FChatScheduleContext
 FChatMessage o-- "0..1" FChatPharmacyContext
 FLinkPatientCaregiver ..> FPatientCaregiverLink
