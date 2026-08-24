@@ -209,6 +209,37 @@ async def test_all_results_put_open_pharmacies_before_nearer_closed_ones() -> No
 
 
 @pytest.mark.anyio
+async def test_open_results_put_late_hours_before_regular_hours() -> None:
+    """현재 영업 중인 결과에서는 늦게까지 운영하는 약국을 먼저 반환한다."""
+    boundary = _FakePharmacyBoundary(
+        [
+            _record("regular", distance_km=0.1, start_time="0900", end_time="1800"),
+            _record("late", distance_km=0.8, start_time="0900", end_time="2300"),
+        ]
+    )
+    control = CheckNearbyPharmacy(
+        boundary,
+        now_provider=lambda: datetime(
+            2026,
+            8,
+            22,
+            12,
+            0,
+            tzinfo=ZoneInfo("Asia/Seoul"),
+        ),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=True,
+        limit=10,
+    )
+
+    assert [item.pharmacy_id for item in result] == ["late", "regular"]
+
+
+@pytest.mark.anyio
 async def test_missing_api_distance_uses_coordinate_distance() -> None:
     boundary = _FakePharmacyBoundary(
         [_record("same", distance_km=None, start_time="0000", end_time="2400")]
@@ -475,6 +506,43 @@ async def test_late_hours_mode_filters_before_result_limit() -> None:
     )
 
     assert [item.pharmacy_id for item in result.data] == ["late-after-thirty"]
+
+
+@pytest.mark.anyio
+async def test_late_hours_mode_includes_official_public_late_night_pharmacy() -> None:
+    """행정 지정 심야약국도 사용자용 늦은 영업 조건에 함께 포함한다."""
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="official-late-night",
+        name="Official late-night pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"1": ("0900", "1800")},
+        official_designations={
+            "public_late_night": {
+                "operating_days": [1],
+                "source_name": "Seoul Metropolitan Government",
+                "verified_at": "2026-08-19",
+            }
+        },
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(
+            2026, 8, 24, 12, 0, tzinfo=ZoneInfo("Asia/Seoul")
+        ),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.LATE_HOURS,
+    )
+
+    assert [item.pharmacy_id for item in result.data] == ["official-late-night"]
+    assert result.data[0].is_official_late_night is True
 
 
 @pytest.mark.anyio
