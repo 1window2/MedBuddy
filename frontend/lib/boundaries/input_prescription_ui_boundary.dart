@@ -79,6 +79,9 @@ class InputPrescriptionUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
+    final encouragement = _HomeEncouragement.forToday(
+      isEnglish: text.isEnglish,
+    );
 
     if (isAnalyzing) {
       return _buildAnalyzingScreen(text);
@@ -93,63 +96,116 @@ class InputPrescriptionUI extends StatelessWidget {
             _HomeHeader(text: text, onSettingPressed: onUserSettingRequested),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(42, 10, 42, 24),
-                child: Column(
-                  children: [
-                    CheckTodayMedicationInfoUI(
-                      title: text.todaySchedule,
-                      noMedicationLabel: text.noMedication,
-                      userSetting: userSetting,
-                      schedules: todayMedicationScheduleList,
-                      reminderSettings: medicationReminderSettings,
-                      completedCount: todayMedicationCompletedCount,
-                      totalCount: todayMedicationTotalCount,
-                      isLoading: isTodayScheduleLoading,
-                      onTap: onTodayScheduleRequested,
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: MedBuddySpacing.contentMaxWidth,
                     ),
-                    const SizedBox(height: 20),
-                    _HomeActionCard(
-                      cardKey: const ValueKey('homeCaptureCard'),
-                      icon: Icons.photo_camera_outlined,
-                      title: text.scanPrescription,
-                      subtitle: text.scanPrescriptionSubtitle,
-                      filled: true,
-                      userSetting: userSetting,
-                      onTap: () => _showAnalysisTaskOptions(context),
+                    child: Column(
+                      children: [
+                        _HomeEncouragementPanel(encouragement: encouragement),
+                        const SizedBox(height: 14),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final textScale =
+                                MediaQuery.textScalerOf(context).scale(16) / 16;
+                            final useGrid =
+                                MediaQuery.sizeOf(context).width >= 350 &&
+                                textScale <= 1.1;
+                            final homeActions = <Widget>[
+                              CheckTodayMedicationInfoUI(
+                                title: text.todaySchedule,
+                                noMedicationLabel: text.noMedication,
+                                userSetting: userSetting,
+                                schedules: todayMedicationScheduleList,
+                                reminderSettings: medicationReminderSettings,
+                                completedCount: todayMedicationCompletedCount,
+                                totalCount: todayMedicationTotalCount,
+                                isLoading: isTodayScheduleLoading,
+                                onTap: onTodayScheduleRequested,
+                                compact: useGrid,
+                              ),
+                              _HomeActionCard(
+                                cardKey: const ValueKey('homeCaptureCard'),
+                                icon: Icons.photo_camera_outlined,
+                                title: text.scanPrescription,
+                                subtitle: text.scanPrescriptionSubtitle,
+                                filled: true,
+                                compact: useGrid,
+                                userSetting: userSetting,
+                                onTap: () => _showAnalysisTaskOptions(context),
+                              ),
+                              _HomeActionCard(
+                                cardKey: const ValueKey(
+                                  'homeSavedMedicationCard',
+                                ),
+                                icon: Icons.medication_outlined,
+                                title: text.savedMedication,
+                                subtitle: text.savedMedicationSubtitle,
+                                filled: false,
+                                compact: useGrid,
+                                userSetting: userSetting,
+                                onTap: onSavedMedicationRequested,
+                              ),
+                              _HomeActionCard(
+                                cardKey: const ValueKey(
+                                  'homePatientCaregiverLinkCard',
+                                ),
+                                icon: Icons.people_alt_outlined,
+                                title: text.patientCaregiverLink,
+                                subtitle: text.patientCaregiverLinkSubtitle,
+                                filled: false,
+                                compact: useGrid,
+                                userSetting: userSetting,
+                                onTap: onPatientCaregiverLinkRequested,
+                              ),
+                            ];
+
+                            if (!useGrid) {
+                              return Column(
+                                children: [
+                                  for (
+                                    int index = 0;
+                                    index < homeActions.length;
+                                    index++
+                                  ) ...[
+                                    homeActions[index],
+                                    if (index != homeActions.length - 1)
+                                      const SizedBox(height: 14),
+                                  ],
+                                ],
+                              );
+                            }
+
+                            return GridView.count(
+                              crossAxisCount: 2,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                              childAspectRatio: 0.84,
+                              children: homeActions,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        _HomeMedicationTipCard(isEnglish: text.isEnglish),
+                        if (onNearbyPharmacyRequested != null) ...[
+                          const SizedBox(height: 14),
+                          _HomeActionCard(
+                            cardKey: const ValueKey('homeNearbyPharmacyCard'),
+                            icon: Icons.local_pharmacy_outlined,
+                            title: text.nearbyPharmacy,
+                            subtitle: text.nearbyPharmacySubtitle,
+                            filled: false,
+                            userSetting: userSetting,
+                            onTap: onNearbyPharmacyRequested,
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 22),
-                    _HomeActionCard(
-                      cardKey: const ValueKey('homeSavedMedicationCard'),
-                      icon: Icons.medication_outlined,
-                      title: text.savedMedication,
-                      subtitle: text.savedMedicationSubtitle,
-                      filled: false,
-                      userSetting: userSetting,
-                      onTap: onSavedMedicationRequested,
-                    ),
-                    const SizedBox(height: 22),
-                    _HomeActionCard(
-                      cardKey: const ValueKey('homePatientCaregiverLinkCard'),
-                      icon: Icons.people_alt_outlined,
-                      title: text.patientCaregiverLink,
-                      subtitle: text.patientCaregiverLinkSubtitle,
-                      filled: false,
-                      userSetting: userSetting,
-                      onTap: onPatientCaregiverLinkRequested,
-                    ),
-                    if (onNearbyPharmacyRequested != null) ...[
-                      const SizedBox(height: 22),
-                      _HomeActionCard(
-                        cardKey: const ValueKey('homeNearbyPharmacyCard'),
-                        icon: Icons.local_pharmacy_outlined,
-                        title: text.nearbyPharmacy,
-                        subtitle: text.nearbyPharmacySubtitle,
-                        filled: false,
-                        userSetting: userSetting,
-                        onTap: onNearbyPharmacyRequested,
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -292,71 +348,80 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 132,
       width: double.infinity,
-      color: MedBuddyColors.primary,
-      padding: const EdgeInsets.fromLTRB(48, 44, 34, 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'MedBuddy',
-                    maxLines: 1,
-                    textScaler: TextScaler.noScaling,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+      decoration: const BoxDecoration(
+        color: MedBuddyColors.surface,
+        border: Border(bottom: BorderSide(color: MedBuddyColors.divider)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        28,
+        MediaQuery.of(context).padding.top + 16,
+        28,
+        16,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: MedBuddySpacing.contentMaxWidth,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'MedBuddy',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 26,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      text.brandSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textScaler: TextScaler.noScaling,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textSubtle,
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Material(
+                color: MedBuddyColors.mint,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onSettingPressed,
+                  child: const SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Icon(
+                      Icons.settings_outlined,
+                      color: MedBuddyColors.primaryDark,
+                      size: 22,
                     ),
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  text.brandSubtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textScaler: TextScaler.noScaling,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    height: 1.2,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 18),
-          Material(
-            color: MedBuddyColors.primaryDark,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onSettingPressed,
-              child: const SizedBox(
-                width: 55,
-                height: 55,
-                child: Icon(
-                  Icons.settings_outlined,
-                  color: Colors.white,
-                  size: 29,
-                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -368,6 +433,7 @@ class _HomeActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool filled;
+  final bool compact;
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
@@ -377,68 +443,141 @@ class _HomeActionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.filled,
+    this.compact = false,
     required this.userSetting,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final background = filled ? MedBuddyColors.primary : Colors.white;
-    final foreground = filled ? Colors.white : MedBuddyColors.primaryDark;
-    final secondary = filled ? MedBuddyColors.mint : MedBuddyColors.primary;
+    final background = filled
+        ? MedBuddyColors.primary
+        : icon == Icons.medication_outlined
+        ? MedBuddyColors.lavenderSurface
+        : MedBuddyColors.mint;
+    final foreground = filled ? Colors.white : MedBuddyColors.textStrong;
+    final secondary = filled
+        ? const Color(0xFFFFE8E6)
+        : MedBuddyColors.textMuted;
     final scale = userSetting.contentTextScale;
 
     return Material(
       color: background,
-      borderRadius: MedBuddyRadii.card,
-      elevation: 7,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
+      borderRadius: MedBuddyRadii.largeCard,
+      elevation: 0,
       child: InkWell(
-        borderRadius: MedBuddyRadii.card,
+        borderRadius: MedBuddyRadii.largeCard,
         onTap: onTap,
         child: Container(
           key: cardKey,
           width: double.infinity,
-          constraints: BoxConstraints(minHeight: filled ? 176 : 182),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          constraints: compact ? null : const BoxConstraints(minHeight: 94),
+          padding: compact
+              ? const EdgeInsets.all(14)
+              : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: filled
-                ? null
-                : Border.all(color: MedBuddyColors.mint, width: 2.7),
+            borderRadius: MedBuddyRadii.largeCard,
+            boxShadow: MedBuddyShadows.soft,
+            border: Border.all(
+              color: filled
+                  ? MedBuddyColors.primary
+                  : MedBuddyColors.cardBorder,
+            ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: foreground, size: 43),
-              const SizedBox(height: 15),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 23 * scale,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? Colors.white.withValues(alpha: 0.16)
+                            : Colors.white.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(icon, color: foreground, size: 27),
+                    ),
+                    const SizedBox(height: 13),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 15 * scale,
+                        height: 1.18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: secondary,
+                        fontSize: 11 * scale,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? Colors.white.withValues(alpha: 0.16)
+                            : Colors.white.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Icon(icon, color: foreground, size: 25),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: 17 * scale,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: secondary,
+                              fontSize: 12 * scale,
+                              height: 1.3,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: filled ? Colors.white : MedBuddyColors.textMuted,
+                      size: 17,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 9),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: secondary,
-                  fontSize: 14 * scale,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -463,10 +602,10 @@ class _HomeText {
       isEnglish ? 'Analyze with Camera' : '약 정보 촬영하기';
   String get scanPrescriptionSubtitle => isEnglish
       ? 'Choose a prescription or a loose pill'
-      : '처방전 또는 낱알약을 촬영해주세요';
+      : '처방전 또는 낱알약을 촬영해 분석하세요';
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get savedMedicationSubtitle =>
-      isEnglish ? 'Check saved medication info' : '저장된 복약 정보 확인';
+      isEnglish ? 'Check saved medication info' : '저장해 둔 약 정보를 확인하세요';
   String get patientCaregiverLink =>
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
   String get patientCaregiverLinkSubtitle => isEnglish
@@ -478,4 +617,174 @@ class _HomeText {
       : '현재 위치에서 가까운 약국 찾기';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
+}
+
+// 홈 화면에서만 사용하는 가벼운 안내 문구다. 계정이나 서버 상태와 무관하게
+// 하루 동안 같은 문구를 유지해 화면이 다시 그려져도 내용이 흔들리지 않는다.
+class _HomeEncouragement {
+  final String eyebrow;
+  final String message;
+
+  const _HomeEncouragement({required this.eyebrow, required this.message});
+
+  factory _HomeEncouragement.forToday({required bool isEnglish}) {
+    const koreanMessages = [
+      '작은 한 알이 건강한 하루를 만듭니다.',
+      '물 한 잔과 함께 오늘의 복약을 시작해요.',
+      '약속한 시간에 챙기는 습관이 건강을 지켜줘요.',
+      '천천히, 꾸준히. 건강한 변화는 매일 쌓여요.',
+      '오늘도 나를 위한 복약을 잊지 마세요.',
+    ];
+    const englishMessages = [
+      'Small steps build a healthier day.',
+      'Start today\'s dose with a glass of water.',
+      'A timely habit helps care for your health.',
+      'Slow and steady, healthy changes add up.',
+      'Remember to take a moment for your health today.',
+    ];
+    final messages = isEnglish ? englishMessages : koreanMessages;
+    final index =
+        DateTime.now().difference(DateTime(2024)).inDays.abs() %
+        messages.length;
+    return _HomeEncouragement(
+      eyebrow: isEnglish ? 'A note from MedBuddy' : 'MedBuddy의 작은 응원',
+      message: messages[index],
+    );
+  }
+}
+
+// 대시보드 첫 줄을 가로지르는 안내 영역이며, 동작을 수행하지 않는 정보 전용 섹션이다.
+class _HomeEncouragementPanel extends StatelessWidget {
+  final _HomeEncouragement encouragement;
+
+  const _HomeEncouragementPanel({required this.encouragement});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF18A66A), MedBuddyColors.primaryDark],
+        ),
+        borderRadius: MedBuddyRadii.largeCard,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(17),
+            ),
+            child: const Icon(
+              Icons.favorite_rounded,
+              color: Colors.white,
+              size: 25,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  encouragement.eyebrow,
+                  style: const TextStyle(
+                    color: Color(0xFFD6F2E3),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  encouragement.message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    height: 1.35,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeMedicationTipCard extends StatelessWidget {
+  final bool isEnglish;
+
+  const _HomeMedicationTipCard({required this.isEnglish});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = isEnglish ? 'Medication tip' : '복약 관리 팁';
+    final message = isEnglish
+        ? 'A prescription or pill photo can make medication details easier to review.'
+        : '처방전이나 낱알약 사진을 촬영하면 약 정보를 더 쉽게 확인할 수 있어요.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        color: MedBuddyColors.surfaceSubtle,
+        borderRadius: MedBuddyRadii.largeCard,
+        border: Border.all(color: MedBuddyColors.cardBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: MedBuddyColors.mint,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.lightbulb_outline_rounded,
+              color: MedBuddyColors.primaryDark,
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 13,
+                    height: 1.42,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

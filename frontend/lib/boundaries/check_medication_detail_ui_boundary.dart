@@ -52,81 +52,94 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
     final text = _MedicationDetailText(widget.userSetting.language);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
         child: Stack(
           children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(42, 32, 42, 140),
-              children: [
-                _DetailHeader(
-                  title: text.title,
-                  backTooltip: text.back,
-                  onBackRequested: () => Navigator.pop(context),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: MedBuddySpacing.contentMaxWidth,
                 ),
-                const SizedBox(height: 28),
-                _MedicationHeroCard(
-                  medicationDetail: widget.medicationDetail,
-                  displayName: widget.medicationDetail.displayNameForLanguage(
-                    widget.userSetting.language,
-                  ),
-                  language: widget.userSetting.language,
-                  scale: scale,
-                ),
-                const SizedBox(height: 24),
-                _DetailQuestionSection(
-                  title: text.efficacyQuestion,
-                  values: _summaryValues(
-                    widget.medicationDetail.efficacy,
-                    text.noInformation,
-                  ),
-                  noInformation: text.noInformation,
-                  scale: scale,
-                ),
-                const SizedBox(height: 24),
-                _DetailQuestionSection(
-                  title: text.dosageQuestion,
-                  values: widget.medicationDetail
-                      .compactDosageGuideLinesForLanguage(
-                        widget.userSetting.language,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                  children: [
+                    _DetailHeader(
+                      title: text.title,
+                      backTooltip: text.back,
+                      onBackRequested: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(height: 28),
+                    _MedicationHeroCard(
+                      medicationDetail: widget.medicationDetail,
+                      displayName: widget.medicationDetail
+                          .displayNameForLanguage(widget.userSetting.language),
+                      language: widget.userSetting.language,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _DetailQuestionSection(
+                      title: text.efficacyQuestion,
+                      values: _summaryValues(
+                        widget.medicationDetail.efficacy,
+                        text.noInformation,
                       ),
-                  noInformation: text.noInformation,
-                  scale: scale,
+                      noInformation: text.noInformation,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _DetailQuestionSection(
+                      title: text.dosageQuestion,
+                      values: widget.medicationDetail
+                          .compactDosageGuideLinesForLanguage(
+                            widget.userSetting.language,
+                          ),
+                      noInformation: text.noInformation,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _RecommendedDosageCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                      text: text,
+                    ),
+                    const SizedBox(height: 22),
+                    _DetailedDosageGuideCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                      text: text,
+                    ),
+                    const SizedBox(height: 18),
+                    _MedicationRiskCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                      text: text,
+                    ),
+                    const SizedBox(height: 18),
+                    _MedicationChecklistCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                      text: text,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                _RecommendedDosageCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                  text: text,
-                ),
-                const SizedBox(height: 22),
-                _DetailedDosageGuideCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                  text: text,
-                ),
-                const SizedBox(height: 18),
-                _MedicationRiskCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                  text: text,
-                ),
-                const SizedBox(height: 18),
-                _MedicationChecklistCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                  text: text,
-                ),
-              ],
+              ),
             ),
             Positioned(
-              left: 42,
-              right: 42,
-              bottom: 22,
-              child: _TtsButton(
-                isSpeaking: _isSpeaking,
-                onPressed: _handleTtsButtonPressed,
-                text: text,
+              left: 20,
+              right: 20,
+              bottom: 16,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: MedBuddySpacing.contentMaxWidth,
+                  ),
+                  child: _TtsButton(
+                    isSpeaking: _isSpeaking,
+                    onPressed: _handleTtsButtonPressed,
+                    text: text,
+                  ),
+                ),
               ),
             ),
           ],

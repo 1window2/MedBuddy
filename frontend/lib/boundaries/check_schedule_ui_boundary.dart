@@ -237,7 +237,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: MedBuddyColors.surface,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: Column(
         children: [
           _ScheduleHeader(
@@ -281,41 +281,51 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return _ScheduleEmptyState(text: text);
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(34, 14, 34, 12),
-      children: [
-        for (final slot in slots) ...[
-          KeyedSubtree(
-            key: _slotKeys[slot.key],
-            child: _TimeSlotCard(
-              text: text,
-              slot: slot,
-              userSetting: viewModel.userSetting,
-              reminderSetting:
-                  viewModel.medicationReminderSettings[slot.key] ??
-                  MedicationAlarm.defaults(slot.key),
-              isCompletedProvider: (schedule) {
-                return viewModel.isMedicationDoseCompleted(slot.key, schedule);
-              },
-              onReminderRequested: () {
-                _handleReminderToggle(viewModel, slot, text);
-              },
-              onGuideRequested: (schedule) {
-                _showMedicationDetail(viewModel, schedule);
-              },
-              onStatusChanged: (schedule, medicationStatus) =>
-                  _handleMedicationStatusChange(
-                    viewModel: viewModel,
-                    slot: slot,
-                    schedule: schedule,
-                    medicationStatus: medicationStatus,
-                    text: text,
-                  ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: MedBuddySpacing.contentMaxWidth,
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          children: [
+            for (final slot in slots) ...[
+              KeyedSubtree(
+                key: _slotKeys[slot.key],
+                child: _TimeSlotCard(
+                  text: text,
+                  slot: slot,
+                  userSetting: viewModel.userSetting,
+                  reminderSetting:
+                      viewModel.medicationReminderSettings[slot.key] ??
+                      MedicationAlarm.defaults(slot.key),
+                  isCompletedProvider: (schedule) {
+                    return viewModel.isMedicationDoseCompleted(
+                      slot.key,
+                      schedule,
+                    );
+                  },
+                  onReminderRequested: () {
+                    _handleReminderToggle(viewModel, slot, text);
+                  },
+                  onGuideRequested: (schedule) {
+                    _showMedicationDetail(viewModel, schedule);
+                  },
+                  onStatusChanged: (schedule, medicationStatus) =>
+                      _handleMedicationStatusChange(
+                        viewModel: viewModel,
+                        slot: slot,
+                        schedule: schedule,
+                        medicationStatus: medicationStatus,
+                        text: text,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -619,11 +629,18 @@ class _ScheduleHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: MedBuddyColors.topBar,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF249B62), MedBuddyColors.topBar],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
       padding: EdgeInsets.fromLTRB(
-        18,
+        20,
         MediaQuery.of(context).padding.top + 12,
-        28,
+        20,
         18,
       ),
       child: Column(
@@ -637,7 +654,7 @@ class _ScheduleHeader extends StatelessWidget {
                 icon: const Icon(
                   Icons.arrow_back,
                   color: Colors.white,
-                  size: 30,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 8),
@@ -648,7 +665,7 @@ class _ScheduleHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: 21,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -657,11 +674,12 @@ class _ScheduleHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Container(
-            margin: const EdgeInsets.only(left: 26),
-            padding: const EdgeInsets.fromLTRB(15, 12, 15, 15),
+            margin: const EdgeInsets.only(left: 12, right: 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             decoration: BoxDecoration(
-              color: MedBuddyColors.primaryDark,
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withValues(alpha: 0.12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
               children: [
@@ -671,7 +689,7 @@ class _ScheduleHeader extends StatelessWidget {
                       child: Text(
                         text.progress,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFFD6F2E3),
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
@@ -681,7 +699,7 @@ class _ScheduleHeader extends StatelessWidget {
                       '$completedCount/$totalCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -692,9 +710,9 @@ class _ScheduleHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: progress,
-                    minHeight: 10,
-                    color: Colors.white,
-                    backgroundColor: MedBuddyColors.progressTrack,
+                    minHeight: 7,
+                    color: Color(0xFFE7FFF1),
+                    backgroundColor: Colors.white.withValues(alpha: 0.18),
                   ),
                 ),
               ],
@@ -873,27 +891,29 @@ class _TimeSlotCard extends StatelessWidget {
     final slotTitle = text.slotTitle(slot.key);
 
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      elevation: 5,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.12),
+      color: MedBuddyColors.lavenderSurface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.cardBorder),
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.card,
         child: Column(
           children: [
             Container(
               color: slot.color,
-              padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
+              padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
               child: Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(slot.icon, color: Colors.white, size: 26),
+                    child: Icon(slot.icon, color: Colors.white, size: 23),
                   ),
                   const SizedBox(width: 11),
                   Expanded(
@@ -904,7 +924,7 @@ class _TimeSlotCard extends StatelessWidget {
                           slotTitle,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -998,7 +1018,7 @@ class _MedicationScheduleRow extends StatelessWidget {
               'scheduleMedicationSelectionOption_${schedule.medicationID}',
             )
           : null,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
       decoration: BoxDecoration(
         color: isSelectionMode && isSelected
             ? const Color(0xFFEAFBF4)
@@ -1031,7 +1051,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       : isCompleted
                       ? MedBuddyColors.primary
                       : MedBuddyColors.outline,
-                  size: 28,
+                  size: 25,
                 ),
               ),
             ),
@@ -1057,7 +1077,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                         decoration: isCompleted
                             ? TextDecoration.lineThrough
                             : null,
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1068,7 +1088,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF667085),
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
