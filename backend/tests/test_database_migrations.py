@@ -8,6 +8,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from entities.chat_message_entity import _ChatMessage
+from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
 
 
 def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
@@ -94,6 +95,35 @@ def test_chat_migration_adopts_auto_created_local_table(tmp_path: Path) -> None:
         "ix_chat_messages_link_id",
         "ix_chat_messages_sender_hash",
         "ix_chat_messages_created_at",
+    }.issubset(index_names)
+
+
+def test_pharmacy_migration_adopts_auto_created_local_table(
+    tmp_path: Path,
+) -> None:
+    """로컬 자동 생성 약국 테이블이 있어도 최신 마이그레이션을 완료한다."""
+    database_path = tmp_path / "auto-created-pharmacy.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = database_url
+
+    command.upgrade(config, "6e1b4a9c2d80")
+    engine = create_engine(database_url)
+    try:
+        PharmacyCatalogRecord.__table__.create(bind=engine)
+        command.upgrade(config, "head")
+        inspector = inspect(engine)
+        index_names = {
+            str(index["name"])
+            for index in inspector.get_indexes("pharmacy_catalog_records")
+        }
+    finally:
+        engine.dispose()
+
+    assert {
+        "ix_pharmacy_catalog_records_name",
+        "ix_pharmacy_catalog_records_latitude",
+        "ix_pharmacy_catalog_records_longitude",
     }.issubset(index_names)
 
 
