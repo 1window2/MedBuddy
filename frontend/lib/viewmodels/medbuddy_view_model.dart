@@ -144,7 +144,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
   bool _lastTodayScheduleLoadSucceeded = false;
   int _todayScheduleEpoch = 0;
-  int _todayScheduleLoadCount = 0;
+  // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
+  int? _activeTodayScheduleLoadEpoch;
 
   bool _isHealthRecommendationLoading = false;
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
