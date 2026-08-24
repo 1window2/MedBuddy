@@ -40,6 +40,8 @@ CheckNearbyPharmacy _buildControl({
   List<String?>? requestedModes,
   Set<String> emptyModes = const {},
   List<Map<String, Object?>>? customPharmacies,
+  Future<bool> Function(Uri uri)? uriLauncher,
+  Future<void> Function(String text)? clipboardWriter,
 }) {
   return CheckNearbyPharmacy(
     locationBoundary: _FakeLocationBoundary(failure: failure),
@@ -87,7 +89,8 @@ CheckNearbyPharmacy _buildControl({
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }),
-    uriLauncher: (_) async => true,
+    uriLauncher: uriLauncher ?? (_) async => true,
+    clipboardWriter: clipboardWriter,
   );
 }
 
@@ -296,6 +299,50 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('map-status:'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('길찾기는 실행 방법을 묻고 주소 복사를 지원한다', (tester) async {
+    String? copiedAddress;
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(
+          clipboardWriter: (value) async {
+            copiedAddress = value;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final directionsButton = find.byKey(
+      const ValueKey('pharmacy-directions-open'),
+    );
+    await tester.ensureVisible(directionsButton);
+    await tester.tap(directionsButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('어떤 앱으로 여시겠습니까?'), findsOneWidget);
+    expect(
+      find.byKey(const Key('directions-choice-installed-app')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('directions-choice-google-maps')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('directions-choice-copy-address')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('directions-choice-copy-address')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    expect(find.text('약국 주소를 복사했습니다.'), findsOneWidget);
+    expect(copiedAddress, '서울특별시 종로구');
     expect(tester.takeException(), isNull);
   });
 

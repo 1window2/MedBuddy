@@ -101,12 +101,12 @@ void main() {
     expect(await control.requestDirections(pharmacy), isTrue);
 
     expect(launchedUris.first.toString(), 'tel:021234567');
-    expect(launchedUris.last.scheme, 'nmap');
-    expect(launchedUris.last.host, 'route');
-    expect(launchedUris.last.path, '/public');
-    expect(launchedUris.last.queryParameters['dlat'], '37.5666000');
-    expect(launchedUris.last.queryParameters['dlng'], '126.9781000');
-    expect(launchedUris.last.queryParameters['dname'], '메드버디약국');
+    expect(launchedUris.last.scheme, 'geo');
+    expect(launchedUris.last.path, '37.5666000,126.9781000');
+    expect(
+      launchedUris.last.queryParameters['q'],
+      '37.5666000,126.9781000(메드버디약국)',
+    );
   });
 
   test('directions fall back to coordinate-based web directions', () async {
@@ -137,5 +137,28 @@ void main() {
     expect(launchedUri?.host, 'www.google.com');
     expect(launchedUri?.path, '/maps/dir/');
     expect(launchedUri?.queryParameters['destination'], '37.5666,126.9781');
+  });
+
+  test('external launcher errors are converted to a safe failure', () async {
+    final control = CheckNearbyPharmacy(
+      locationBoundary: _FakeLocationBoundary(),
+      client: MockClient((_) async => http.Response('{}', 200)),
+      uriLauncher: (_) => throw StateError('No external application'),
+    );
+    const pharmacy = NearbyPharmacy(
+      pharmacyId: 'C1234',
+      name: '메드버디약국',
+      address: '서울특별시',
+      telephone: '02-123-4567',
+      latitude: 37.5666,
+      longitude: 126.9781,
+      distanceKm: 0.42,
+      todayOpenTime: null,
+      todayCloseTime: null,
+      isOpenNow: null,
+      is24Hours: false,
+    );
+
+    expect(await control.requestDirections(pharmacy), isFalse);
   });
 }

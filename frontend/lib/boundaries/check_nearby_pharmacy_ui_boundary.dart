@@ -15,6 +15,8 @@ import 'nearby_pharmacy_map_widget.dart';
 
 enum _PharmacyFilter { openNow, lateHours, weekendHoliday, all }
 
+enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
+
 const _refreshCooldownDuration = Duration(seconds: 10);
 
 // 클래스명: NearbyPharmacySelection
@@ -875,9 +877,65 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   }
 
   Future<void> _requestDirections(NearbyPharmacy pharmacy) async {
-    if (!await _control.requestDirections(pharmacy) && mounted) {
-      _showActionFailure(_text.mapAppFailed);
+    final choice = await showModalBottomSheet<_PharmacyDirectionsChoice>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => _PharmacyDirectionsSheet(
+        pharmacy: pharmacy,
+        text: _text,
+        onSelected: (selected) => Navigator.of(sheetContext).pop(selected),
+      ),
+    );
+    if (!mounted || choice == null) {
+      return;
     }
+
+    if (choice == _PharmacyDirectionsChoice.copyAddress) {
+      await _copyPharmacyAddress(pharmacy, copiedAsFallback: false);
+      return;
+    }
+
+    var opened = false;
+    if (choice == _PharmacyDirectionsChoice.installedMapApp) {
+      opened = await _control.requestInstalledMapDirections(pharmacy);
+      if (!opened) {
+        opened = await _control.requestGoogleMapDirections(pharmacy);
+      }
+    } else {
+      opened = await _control.requestGoogleMapDirections(pharmacy);
+    }
+    if (!opened && mounted) {
+      await _copyPharmacyAddress(pharmacy, copiedAsFallback: true);
+    }
+  }
+
+  // 함수명: _copyPharmacyAddress
+  // 역할: 지도와 브라우저를 열 수 없을 때 목적지 주소를 잃지 않도록 복사한다.
+  Future<void> _copyPharmacyAddress(
+    NearbyPharmacy pharmacy, {
+    required bool copiedAsFallback,
+  }) async {
+    final address = pharmacy.address.trim();
+    final value = address.isNotEmpty
+        ? address
+        : '${pharmacy.name} '
+              '(${pharmacy.latitude.toStringAsFixed(7)}, '
+              '${pharmacy.longitude.toStringAsFixed(7)})';
+    final copied = await _control.copyPharmacyAddress(value);
+    if (!mounted) {
+      return;
+    }
+    if (!copied) {
+      _showActionFailure(_text.mapAppFailed);
+      return;
+    }
+    _showActionMessage(
+      copiedAsFallback
+          ? _text.mapUnavailableAddressCopied
+          : _text.addressCopied,
+    );
   }
 
   Future<void> _requestMapAttribution() async {
@@ -887,9 +945,137 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   }
 
   void _showActionFailure(String message) {
+    _showActionMessage(message);
+  }
+
+  void _showActionMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _PharmacyDirectionsSheet extends StatelessWidget {
+  final NearbyPharmacy pharmacy;
+  final _NearbyPharmacyText text;
+  final ValueChanged<_PharmacyDirectionsChoice> onSelected;
+
+  const _PharmacyDirectionsSheet({
+    required this.pharmacy,
+    required this.text,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text.directionsSheetTitle,
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            text.directionsSheetDescription,
+            style: const TextStyle(
+              color: MedBuddyColors.textBody,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            pharmacy.address.isEmpty ? pharmacy.name : pharmacy.address,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _DirectionsChoiceTile(
+            key: const Key('directions-choice-installed-app'),
+            icon: Icons.map_outlined,
+            title: text.installedMapAppTitle,
+            description: text.installedMapAppDescription,
+            onTap: () => onSelected(_PharmacyDirectionsChoice.installedMapApp),
+          ),
+          _DirectionsChoiceTile(
+            key: const Key('directions-choice-google-maps'),
+            icon: Icons.public_outlined,
+            title: text.googleMapsTitle,
+            description: text.googleMapsDescription,
+            onTap: () => onSelected(_PharmacyDirectionsChoice.googleMaps),
+          ),
+          _DirectionsChoiceTile(
+            key: const Key('directions-choice-copy-address'),
+            icon: Icons.content_copy_outlined,
+            title: text.copyAddressTitle,
+            description: text.copyAddressDescription,
+            onTap: () => onSelected(_PharmacyDirectionsChoice.copyAddress),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionsChoiceTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  const _DirectionsChoiceTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: MedBuddyColors.primaryDark),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: MedBuddyColors.textStrong,
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
+      subtitle: Text(
+        description,
+        style: const TextStyle(
+          color: MedBuddyColors.textBody,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        color: MedBuddyColors.textMuted,
+      ),
+      onTap: onTap,
+    );
   }
 }
 
@@ -1145,6 +1331,9 @@ class _PharmacyCard extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton.icon(
+                        key: ValueKey(
+                          'pharmacy-directions-${pharmacy.pharmacyId}',
+                        ),
                         onPressed: onDirectionsRequested,
                         icon: const Icon(Icons.directions_outlined),
                         label: Text(text.directions),
@@ -1383,6 +1572,29 @@ class _NearbyPharmacyText {
 
   String get phone => isEnglish ? 'Call' : '전화';
   String get directions => isEnglish ? 'Directions' : '길찾기';
+  String get directionsSheetTitle =>
+      isEnglish ? 'How would you like to open directions?' : '어떤 앱으로 여시겠습니까?';
+  String get directionsSheetDescription => isEnglish
+      ? 'Choose a map app, open Google Maps, or copy the address.'
+      : '지도 앱을 선택하거나 주소를 복사할 수 있습니다.';
+  String get installedMapAppTitle =>
+      isEnglish ? 'Choose an installed map app' : '설치된 지도 앱 선택';
+  String get installedMapAppDescription => isEnglish
+      ? 'Choose from map apps installed on this phone.'
+      : '휴대폰에 설치된 지도 앱 중에서 선택합니다.';
+  String get googleMapsTitle => isEnglish ? 'Google Maps' : 'Google 지도';
+  String get googleMapsDescription => isEnglish
+      ? 'Open directions in the Google Maps app or browser.'
+      : 'Google 지도 앱 또는 웹 브라우저로 엽니다.';
+  String get copyAddressTitle => isEnglish ? 'Copy address' : '주소 복사';
+  String get copyAddressDescription => isEnglish
+      ? 'Paste the address into a map or notes app.'
+      : '지도나 메모 앱에 붙여넣을 수 있습니다.';
+  String get addressCopied =>
+      isEnglish ? 'The pharmacy address was copied.' : '약국 주소를 복사했습니다.';
+  String get mapUnavailableAddressCopied => isEnglish
+      ? 'No map app could be opened, so the address was copied.'
+      : '열 수 있는 지도 앱이 없어 약국 주소를 복사했습니다.';
   String get addFavorite => isEnglish ? 'Add to favorites' : '즐겨찾기 추가';
   String get removeFavorite => isEnglish ? 'Remove favorite' : '즐겨찾기 해제';
   String get favoriteSaveFailed => isEnglish

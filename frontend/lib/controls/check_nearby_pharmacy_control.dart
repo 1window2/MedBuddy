@@ -30,11 +30,13 @@ class CheckNearbyPharmacy {
     DeviceLocationBoundary? locationBoundary,
     http.Client? client,
     ExternalUriLauncher? uriLauncher,
+    PharmacyClipboardWriter? clipboardWriter,
   }) : _locationBoundary =
            locationBoundary ?? GeolocatorDeviceLocationService(),
        _client = client ?? AuthenticatedApiClient(),
        _externalActionService = PharmacyExternalActionService(
          uriLauncher: uriLauncher,
+         clipboardWriter: clipboardWriter,
        ),
        _ownsClient = client == null;
 
@@ -137,6 +139,31 @@ class CheckNearbyPharmacy {
       latitude: pharmacy.latitude,
       longitude: pharmacy.longitude,
     );
+  }
+
+  // 함수명: requestInstalledMapDirections
+  // 역할: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
+  Future<bool> requestInstalledMapDirections(NearbyPharmacy pharmacy) {
+    return _externalActionService.requestInstalledMapDirections(
+      name: pharmacy.name,
+      latitude: pharmacy.latitude,
+      longitude: pharmacy.longitude,
+    );
+  }
+
+  // 함수명: requestGoogleMapDirections
+  // 역할: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
+  Future<bool> requestGoogleMapDirections(NearbyPharmacy pharmacy) {
+    return _externalActionService.requestGoogleMapDirections(
+      latitude: pharmacy.latitude,
+      longitude: pharmacy.longitude,
+    );
+  }
+
+  // 함수명: copyPharmacyAddress
+  // 역할: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
+  Future<bool> copyPharmacyAddress(String address) {
+    return _externalActionService.copyAddress(address);
   }
 
   // 함수명: requestMapAttribution
