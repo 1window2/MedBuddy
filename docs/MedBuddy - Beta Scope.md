@@ -21,10 +21,12 @@ The following implemented flows are in v0.2.0 verification:
 1. Prescription and pill-envelope image input, on-device Korean OCR,
    best-effort privacy filtering, bounded medication-name correction, OCR
    result editing, adaptive portrait/landscape camera guidance, app-owned image
-   cropping, prescription-date and schedule-slot confirmation,
-   medication detail lookup, actionable failure recovery back to OCR review,
-   schedule review for start date, duration, frequency, dose and slots, and
-   saved-medication creation with post-save navigation.
+   cropping, OCR-row editing and manual recovery of omitted medications,
+   prescription-date and schedule-slot confirmation, row-preserving
+   medication detail lookup, partial-failure review and unresolved-row retry,
+   actionable technical-failure recovery, schedule review for start date,
+   duration, frequency, dose and slots, and saved-medication creation with
+   post-save navigation.
 2. Saved-medication listing, detail guidance, image enrichment, shared
    full-screen image inspection, deletion, and medication-course retention,
    with active/completed filtering and registration- or medication-date
@@ -47,7 +49,8 @@ The following implemented flows are in v0.2.0 verification:
 7. Patient-scoped health recommendations.
 8. Experimental loose-pill candidate identification with explicit user
    confirmation, up to ten separately photographed pills, bounded two-request
-   concurrency, per-pill partial failure, and schedule review before save.
+   concurrency, bounded request-limit retry that preserves completed results,
+   per-pill partial failure, and schedule review before save.
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held

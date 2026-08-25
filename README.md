@@ -45,8 +45,9 @@ release.
 - Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
 - Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
-- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
-- When parsing or medication lookup fails, the UI replaces technical exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to the OCR review, retake the photo, or select another image as appropriate.
+- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names, manually add an OCR-missed medication row, and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
+- Medication-detail responses remain tied to their original OCR rows, so a failed lookup cannot silently remove or reorder another medication. When only some rows fail, verified rows are locked and struck through while unresolved rows remain editable and can be retried independently.
+- When parsing or every medication lookup fails for a technical reason, the UI replaces exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to OCR review, retake the photo, or select another image as appropriate. Continuing with verified medications while unresolved rows remain requires an explicit confirmation.
 - The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
 - After saving all analyzed medications, users can continue directly to today's schedule or the saved-medication list.
 
@@ -66,6 +67,7 @@ release.
 
 - Users can add up to ten loose pills as separate photo sets. Each set requires a front photo and can include an optional reverse-side photo.
 - The Flutter batch control identifies at most two photo sets concurrently, preserves input order, and reports per-pill failures without discarding successful candidates.
+- Server request limits allow one complete ten-pill review under normal use. If a request is rate-limited, the client honors the bounded Retry-After value, keeps completed results, and automatically retries only the affected item while showing retry progress.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
 - The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.

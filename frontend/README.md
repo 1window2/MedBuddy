@@ -29,8 +29,11 @@ while limiting the change scope of each feature.
 Prescription input uses on-device Google ML Kit Korean OCR. Before the
 prescription-text request leaves the device, the privacy filter removes
 sensitive lines and masks inline identifiers. The preview shows recognized and
-masked regions, and users can correct medication names and confirm the
-prescription date and morning, lunch, evening, or bedtime slots.
+masked regions, and users can correct medication names, manually add an
+OCR-missed medication row, and confirm the prescription date and morning,
+lunch, evening, or bedtime slots. Medication-detail responses preserve their
+original OCR-row identity. If only some rows fail, verified rows are locked and
+struck through while unresolved rows remain editable and are retried alone.
 The guided camera adapts its document frame to portrait or landscape use and
 crops app-owned captures to the confirmed guide region before OCR. After
 prescription analysis, users review and can correct the start date, course
@@ -38,7 +41,8 @@ duration, daily frequency, dose, and schedule slots before continuing.
 Analysis and medication-lookup failures are converted into actionable messages
 for connection, timeout, response-data, and OCR review cases. Depending on the
 failed step, users can retry the analysis, return to OCR review, retake the
-photo, or choose another image without restarting the entire flow.
+photo, choose another image, or explicitly confirm continuing with verified
+medications without restarting the entire flow.
 
 The frontend also supports saved medication management, patient- and
 caregiver-scoped per-slot schedule views, patient health recommendations,
@@ -57,9 +61,11 @@ caregiver notifications instead of remote push delivery.
 The experimental loose-pill flow introduced in v0.0.9 presents identification
 candidates with mandatory user confirmation. The v0.2.0 frontend can collect
 up to ten separate pill photo sets and processes at most two sets concurrently,
-preserving successful candidates when another set fails. It follows a separate
-image-analysis path, does not save a candidate automatically, and requires a
-schedule review before a confirmed candidate is stored.
+preserving successful candidates when another set fails. Rate-limited items
+honor the server's bounded retry delay and retry independently while the UI
+reports completed and waiting counts. It follows a separate image-analysis
+path, does not save a candidate automatically, and requires a schedule review
+before a confirmed candidate is stored.
 
 Direct medication entry supports an optional locally owned medication image,
 name, dose and unit, start and end dates, and schedule slots. It produces the
