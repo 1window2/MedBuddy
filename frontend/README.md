@@ -56,7 +56,11 @@ its result at the bottom of the schedule screen. In Firebase mode the frontend
 uses authenticated APIs, manages the Android FCM token lifecycle, and displays
 completed-dose pushes. The authenticated background monitor checks missed-dose
 deadlines. Local demo mode uses hash-scoped data and polling-based local
-caregiver notifications instead of remote push delivery.
+caregiver notifications instead of remote push delivery. Each polling cycle
+prefers one aggregate caregiver snapshot for all linked patients and falls back
+to bounded per-patient requests when connected to an older backend. Patient
+aliases are synchronized on the caregiver-owned server link and cached locally
+for offline display.
 
 The experimental loose-pill flow introduced in v0.0.9 presents identification
 candidates with mandatory user confirmation. The v0.2.0 frontend can collect

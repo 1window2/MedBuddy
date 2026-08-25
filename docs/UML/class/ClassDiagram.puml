@@ -273,12 +273,14 @@ package "Flutter Frontend" {
             + generatePatientHash(): Future<PatientLinkCode>
             + requestPatientCaregiverLink(code): Future<PatientCaregiverLink>
             + requestUnlink(linkId): Future<PatientCaregiverLink>
+            + savePatientAlias(linkId, patientAlias): Future<PatientCaregiverLink>
         }
 
         class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Controller: 연결 환자 조회>> {
             + baseUrl: String
             + caregiverHash: String
             + requestPatientMedicationInfo(patientHash): Future<CaregiverMedicationInfo>
+            + requestMonitoringSnapshot(): Future<List<CaregiverMonitoringSnapshot>>
         }
 
         class "SetNotification" as FSetNotification <<Controller: 환자 알림 관리>> {
@@ -538,8 +540,18 @@ package "Flutter Frontend" {
             + linkId: int
             + patientHash: String
             + caregiverHash: String
+            + patientAlias: String?
             + linkStatus: bool
             + fromJson(json): PatientCaregiverLink
+        }
+
+        class "CaregiverMonitoringSnapshot" as FCaregiverMonitoringSnapshot <<Entity: 보호자 통합 감시 자료>> {
+            + link: PatientCaregiverLink
+            + notificationSettings: Map<String, CaregiverNotification>
+            + schedules: List<MedicationSchedule>
+            + patientHash: String
+            + patientAlias: String?
+            + fromJson(json): CaregiverMonitoringSnapshot
         }
 
         class "PatientLinkCode" as FPatientLinkCode <<Entity: 연결 코드>> {
@@ -770,10 +782,15 @@ package "FastAPI Backend" {
             + requestPatientCaregiverLink(caregiver_hash, code): dict
             + requestUnlink(user_hash, link_id): dict
             + getLinkedPatientHash(caregiver_hash, patient_hash): str
+            + updatePatientAlias(link_id, caregiver_hash, patient_alias): dict
         }
 
         class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control: 보호자 읽기 전용 조회>> {
             + requestPatientMedicationInfo(caregiver_hash, patient_hash): dict
+        }
+
+        class "CheckCaregiverMonitoring" as BCheckCaregiverMonitoring <<Control: 보호자 통합 감시 조회>> {
+            + requestMonitoringSnapshot(caregiver_hash): dict
         }
 
         class "SetNotification" as BSetNotification <<Control: 환자 알림 저장>> {
@@ -929,7 +946,9 @@ package "FastAPI Backend" {
             - db: Session
             + list_active_for_user(user_hash): list
             + list_active_for_patient(patient_hash): list
+            + list_active_for_caregiver(caregiver_hash): list
             + find_active_for_user_by_id(link_id, user_hash): _PatientCaregiverLink?
+            + find_active_for_caregiver_by_id(link_id, caregiver_hash): _PatientCaregiverLink?
             + has_active_pair(caregiver_hash, patient_hash): bool
         }
 
@@ -1196,6 +1215,7 @@ package "FastAPI Backend" {
             + id: Integer
             + patient_hash: String
             + caregiver_hash: String
+            + patient_alias: String?
             + linked: Boolean
             + created_at: DateTime
         }
@@ -1453,6 +1473,10 @@ FChatMessage o-- "0..1" FChatScheduleContext
 FChatMessage o-- "0..1" FChatPharmacyContext
 FLinkPatientCaregiver ..> FPatientCaregiverLink
 FLinkPatientCaregiver ..> FPatientLinkCode
+FCheckCaregiverMedication ..> FCaregiverMonitoringSnapshot
+FCaregiverMonitoringSnapshot *-- FPatientCaregiverLink
+FCaregiverMonitoringSnapshot o-- FCaregiverNotification
+FCaregiverMonitoringSnapshot o-- FMedicationSchedule
 FSetNotification ..> FMedicationAlarm
 FSetCaregiverNotification ..> FCaregiverNotification
 FManageUserSetting ..> FUserSetting
@@ -1539,6 +1563,9 @@ BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBPatientLinkCode
 BLinkPatientCaregiver --> DBCaregiverNotification
 BLinkPatientCaregiver o-- PatientCaregiverLinkRepository
+BCheckCaregiverMonitoring o-- PatientCaregiverLinkRepository
+BCheckCaregiverMonitoring *-- BCheckTodayMedicationInfo
+BCheckCaregiverMonitoring *-- BSetCaregiverNotification
 
 BCheckCaregiverMedication *-- BCheckSavedMedication
 BCheckCaregiverMedication *-- BCheckTodayMedicationInfo

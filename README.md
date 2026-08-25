@@ -129,7 +129,8 @@ release.
   FCM push alerts when a dose is newly completed. Missed-deadline checks remain
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
-- Local demo caregiver alerts use the patient alias saved on the caregiver device when available. Otherwise they use a generic linked-patient label and never expose the internal patient hash in notification text.
+- Caregiver monitoring requests one aggregate snapshot containing every active link, per-slot alert settings, and the schedules needed for notification checks. Older servers remain usable through a bounded per-patient fallback.
+- Patient aliases are stored on the caregiver-owned server link and cached on the device for offline display. A newly upgraded server preserves an existing local alias until the caregiver explicitly saves or clears it, and notification text never exposes the internal patient hash.
 - The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
 - Patients and caregivers can select and remove multiple active medications through the same slot-grouped layout used by today's schedule. Every attached medication is rendered in the message, and a selected or previously sent medication card opens the authorized medication-detail screen.
 - The conversation can carry server-verified schedule-slot cards, caregiver check requests, automatic slot-completion events, medication-shortage or discomfort context, and pharmacy snapshots. The server rebuilds every structured snapshot from the authorized link, active medication course, current schedule, or pharmacy catalog instead of trusting display fields supplied by the client.

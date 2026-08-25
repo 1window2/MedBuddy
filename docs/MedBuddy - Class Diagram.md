@@ -111,6 +111,7 @@ package "Flutter / Entity" as FE_Entity {
   class "PatientHash" as FE_PatientHash <<entity>>
   class "PatientLinkCode" as FE_PatientLinkCode <<entity>>
   class "PatientCaregiverLink" as FE_PatientCaregiverLink <<entity>>
+  class CaregiverMonitoringSnapshot <<entity>>
   class "UserSetting" as FE_UserSetting <<entity>>
   class "PillVisualFeatures" as FE_PillVisualFeatures <<entity>>
   class "PillIdentificationCandidate" as FE_PillCandidate <<entity>>
@@ -179,6 +180,7 @@ package "FastAPI / Control" as BE_Control {
   class "RequestVoiceGuide" as BE_RequestVoiceGuide <<control>>
   class "LinkPatientCaregiver" as BE_LinkPatientCaregiver <<control>>
   class "CheckCaregiverMedication" as BE_CheckCaregiverMedication <<control>>
+  class CheckCaregiverMonitoring <<control>>
   class "SetCaregiverNotification" as BE_SetCaregiverNotification <<control>>
   class "SetNotification" as BE_SetNotification <<control>>
   class "ManageUserSetting" as BE_ManageUserSetting <<control>>
@@ -247,6 +249,7 @@ package "FastAPI / Policy and Repository" as BE_Support {
   class SavedMedicationRetentionPolicy <<policy>>
   class PillIdentificationCatalogRepository <<repository>>
   class PharmacyCatalogRepository <<repository>>
+  class PatientCaregiverLinkRepository <<repository>>
   class ChatMessageRepository <<repository>>
   class ChatConnectionManager <<runtime service>>
 }
@@ -334,6 +337,10 @@ FE_CheckSchedule --> FE_MedicationAlarm
 FE_CheckHealthRecommendation --> FE_HealthRecommendation
 FE_LinkPatientCaregiver --> FE_PatientLinkCode
 FE_LinkPatientCaregiver --> FE_PatientCaregiverLink
+FE_CheckCaregiverMedication --> CaregiverMonitoringSnapshot
+CaregiverMonitoringSnapshot *-- FE_PatientCaregiverLink
+CaregiverMonitoringSnapshot o-- "0..*" FE_CaregiverNotification
+CaregiverMonitoringSnapshot o-- "0..*" FE_MedicationSchedule
 FE_SetCaregiverNotification --> FE_CaregiverNotification
 FE_ManageUserSetting --> FE_UserSetting
 FE_IdentifyPill --> FE_PillResult
@@ -364,7 +371,7 @@ PillIdentificationUI ..> MedicationImageUrlPolicy : revalidate before fetch
 FE_SetNotification ..> NotificationService
 FE_RequestVoiceGuide ..> TTSService
 PushNotificationService --> AuthenticatedApiClient : token lifecycle
-CaregiverNotificationMonitorService --> AuthenticatedApiClient : adherence polling
+CaregiverNotificationMonitorService --> FE_CheckCaregiverMedication : aggregate adherence snapshot
 CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorService
 LinkedChatNotificationMonitorService --> LinkedChatRealtimeService : active-link events
 LinkedChatNotificationMonitorService --> NotificationService : bounded preview alert
@@ -410,6 +417,7 @@ APIDependencies o-- BE_CheckHealthRecommendation
 APIDependencies o-- BE_RequestVoiceGuide
 APIDependencies o-- BE_LinkPatientCaregiver
 APIDependencies o-- BE_CheckCaregiverMedication
+APIDependencies o-- CheckCaregiverMonitoring
 APIDependencies o-- BE_SetCaregiverNotification
 APIDependencies o-- BE_SetNotification
 APIDependencies o-- BE_ManageUserSetting
@@ -447,6 +455,11 @@ DispatchCaregiverAlert --> BE_CaregiverNotification
 BE_SetCaregiverNotification --> BE_CaregiverNotification
 BE_LinkPatientCaregiver --> BE_PatientLinkCode
 BE_LinkPatientCaregiver --> BE_PatientCaregiverLink
+BE_LinkPatientCaregiver --> PatientCaregiverLinkRepository
+CheckCaregiverMonitoring --> PatientCaregiverLinkRepository
+CheckCaregiverMonitoring --> BE_SetCaregiverNotification
+CheckCaregiverMonitoring --> BE_CheckTodayMedicationInfo
+PatientCaregiverLinkRepository --> BE_PatientCaregiverLink
 BE_CheckHealthRecommendation --> LLMService
 BE_CheckHealthRecommendation --> BE_HealthRecommendation
 BE_ManageUserSetting --> BE_UserSetting
@@ -605,6 +618,7 @@ nodes:
 | Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency, row-ordered outcomes, Retry-After-aware per-item retry, and preserved successes extend the single-pill control without duplicating the identification pipeline. |
 | Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `NearbyPharmacyMap`, `PharmacyFavoriteService`, `PharmacyExternalActionService`, `PharmacyLookupBoundary` | Device location, user-scoped local favorites, freshness/opening-state calculation, server API-key ownership, normalized fallback lookup, map rendering, and validated call/directions actions remain separate cohesive boundaries. |
 | Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, bounded multi-medication selection with server-rebuilt snapshots, role-specific quick replies, patient schedule-card navigation, idempotent slot-completion messages, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
+| Multi-patient caregiver monitoring | frontend `CaregiverNotificationMonitorService`, `CaregiverMonitoringSnapshot`; backend `CheckCaregiverMonitoring`, `PatientCaregiverLinkRepository` | One caregiver-scoped snapshot combines active links, server-synchronized aliases, slot settings, and required schedules. A bounded legacy fallback keeps older local servers usable. |
 | Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps
