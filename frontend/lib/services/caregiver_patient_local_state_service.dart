@@ -42,6 +42,27 @@ class CaregiverPatientLocalStateService {
     return fallbackLabel(patientHash);
   }
 
+  // 함수이름: resolveSavedLabel
+  // 함수역할:
+  // - 보호자가 직접 저장한 환자 별칭만 반환한다.
+  // - 별칭이 없을 때 환자 hash 일부를 알림 문구에 노출하지 않도록 null을 반환한다.
+  // 매개변수:
+  // - preferences: 보호자 기기의 로컬 저장소
+  // - caregiverHash: 현재 보호자 식별 hash
+  // - patientHash: 별칭을 조회할 환자 식별 hash
+  // 반환값:
+  // - 저장된 별칭 또는 null
+  static String? resolveSavedLabel(
+    SharedPreferences preferences, {
+    required String caregiverHash,
+    required String patientHash,
+  }) {
+    final savedLabel = preferences
+        .getString(_labelKey(caregiverHash, patientHash))
+        ?.trim();
+    return savedLabel == null || savedLabel.isEmpty ? null : savedLabel;
+  }
+
   // 함수이름: fallbackLabel
   // 함수역할:
   // - 환자 hash 전체를 노출하지 않고 마지막 네 글자로 기본 식별명을 만든다.

@@ -247,6 +247,11 @@ class CaregiverNotificationMonitorService {
     SharedPreferences preferences,
     String patientHash,
   ) async {
+    final patientLabel = CaregiverPatientLocalStateService.resolveSavedLabel(
+      preferences,
+      caregiverHash: caregiverHash,
+      patientHash: patientHash,
+    );
     final settings = await _loadSettings(patientHash);
     final hasActiveSetting = settings.values.any(
       (setting) => setting.mode != CaregiverNotificationMode.disabled,
@@ -265,6 +270,7 @@ class CaregiverNotificationMonitorService {
       await _checkSlot(
         preferences: preferences,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         setting: setting,
         schedules: schedules,
@@ -278,6 +284,7 @@ class CaregiverNotificationMonitorService {
   Future<void> _checkSlot({
     required SharedPreferences preferences,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required CaregiverNotification setting,
     required List<MedicationSchedule> schedules,
@@ -310,6 +317,7 @@ class CaregiverNotificationMonitorService {
         preferences: preferences,
         scope: scope,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         previousSnapshot: previousSnapshot,
         currentSnapshot: currentSnapshot,
@@ -321,6 +329,7 @@ class CaregiverNotificationMonitorService {
         preferences: preferences,
         scope: scope,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         setting: setting,
         schedules: schedules,
@@ -345,6 +354,7 @@ class CaregiverNotificationMonitorService {
     required SharedPreferences preferences,
     required String scope,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required Map<String, bool> previousSnapshot,
     required Map<String, bool> currentSnapshot,
@@ -372,7 +382,7 @@ class CaregiverNotificationMonitorService {
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
       title: text.completedTitle,
-      body: text.completedBody(slotName),
+      body: text.completedBody(slotName, patientLabel: patientLabel),
       patientHash: patientHash,
     );
     await preferences.setString('$scope.completion_notice', noticeSignature);
@@ -382,6 +392,7 @@ class CaregiverNotificationMonitorService {
     required SharedPreferences preferences,
     required String scope,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required CaregiverNotification setting,
     required List<MedicationSchedule> schedules,
@@ -438,6 +449,7 @@ class CaregiverNotificationMonitorService {
         slotName: slotName,
         deadlineLabel: deadlineLabel,
         remainingCount: remainingCount,
+        patientLabel: patientLabel,
       ),
       patientHash: patientHash,
     );
@@ -549,7 +561,13 @@ class _CaregiverNotificationText {
   String get completedTitle =>
       isEnglish ? 'Patient medication completed' : '환자 복약 완료';
 
-  String completedBody(String slotName) {
+  String completedBody(String slotName, {String? patientLabel}) {
+    final normalizedLabel = patientLabel?.trim();
+    if (normalizedLabel != null && normalizedLabel.isNotEmpty) {
+      return isEnglish
+          ? '$normalizedLabel completed all $slotName medications.'
+          : '$normalizedLabel의 $slotName 복약이 모두 완료되었습니다.';
+    }
     return isEnglish
         ? 'The linked patient completed all $slotName medications.'
         : '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
@@ -561,13 +579,21 @@ class _CaregiverNotificationText {
     required String slotName,
     required String deadlineLabel,
     required int remainingCount,
+    String? patientLabel,
   }) {
+    final normalizedLabel = patientLabel?.trim();
     if (isEnglish) {
       final itemLabel = remainingCount == 1 ? 'item remains' : 'items remain';
-      return '$remainingCount $slotName medication $itemLabel unchecked '
+      final subject = normalizedLabel == null || normalizedLabel.isEmpty
+          ? 'The linked patient'
+          : normalizedLabel;
+      return '$subject has $remainingCount $slotName medication $itemLabel unchecked '
           'as of $deadlineLabel.';
     }
-    return '연동된 환자의 $slotName 복약 중 $deadlineLabel 기준으로 '
+    final subject = normalizedLabel == null || normalizedLabel.isEmpty
+        ? '연동된 환자'
+        : normalizedLabel;
+    return '$subject의 $slotName 복약 중 $deadlineLabel 기준으로 '
         '아직 체크되지 않은 일정이 $remainingCount건 있습니다.';
   }
 
