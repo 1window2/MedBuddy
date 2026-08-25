@@ -220,6 +220,19 @@ class MedicationSchedule {
     return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
   }
 
+  // 함수명: displayNameForLanguage
+  // 함수역할:
+  // - 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다.
+  // - 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
+  String displayNameForLanguage(String language) {
+    if (medicationName.trim().isNotEmpty) {
+      return medicationName.trim();
+    }
+    return _isEnglishLanguage(language)
+        ? 'Medication name unavailable'
+        : '약품명 확인 필요';
+  }
+
   bool get hasNameCorrection {
     final rawName = rawMedicationName.trim();
     if (rawName.isEmpty || rawName == medicationName.trim()) {
@@ -261,6 +274,77 @@ class MedicationSchedule {
 
   String get dosageLabel {
     return dosage.trim().isEmpty ? '용량 정보 없음' : dosage.trim();
+  }
+
+  // 함수명: dosageLabelForLanguage
+  // 함수역할:
+  // - OCR에서 받은 투약량의 구조화 단위를 현재 언어에 맞게 표시한다.
+  // - 해석할 수 없는 원문이나 mg, mL 같은 국제 단위는 그대로 유지한다.
+  String dosageLabelForLanguage(String language) {
+    final value = dosage.trim();
+    final isEnglish = _isEnglishLanguage(language);
+    if (value.isEmpty) {
+      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
+    }
+
+    final match = RegExp(
+      r'^(\d+(?:[.,]\d+)?|\d+/\d+)\s*(정|캡슐|포|방울)?$',
+    ).firstMatch(value);
+    if (match == null) {
+      return value;
+    }
+
+    final amount = match.group(1) ?? value;
+    final detectedUnit = match.group(2) ?? _koreanDosageUnit(medicationName);
+    if (!isEnglish) {
+      return '$amount$detectedUnit';
+    }
+    final unit = switch (detectedUnit) {
+      '캡슐' => 'capsule',
+      '포' => 'sachet',
+      '방울' => 'drop',
+      _ => 'tablet',
+    };
+    return '$amount $unit';
+  }
+
+  // 함수명: dailyFrequencyLabelForLanguage
+  // 함수역할: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
+  String dailyFrequencyLabelForLanguage(String language) {
+    final value = intakeTime.trim();
+    if (value.isEmpty) {
+      return _isEnglishLanguage(language)
+          ? 'Frequency not available'
+          : '복용 횟수 정보 없음';
+    }
+    if (!_isEnglishLanguage(language)) {
+      return value;
+    }
+    final koreanFrequency = RegExp(r'^1일\s*(\d+)회$').firstMatch(value);
+    final numericFrequency = RegExp(r'^\d+$').hasMatch(value)
+        ? int.tryParse(value)
+        : null;
+    final count = koreanFrequency == null
+        ? numericFrequency
+        : int.tryParse(koreanFrequency.group(1) ?? '');
+    if (count == null || count <= 0) {
+      return value;
+    }
+    return count == 1 ? 'once daily' : '$count times daily';
+  }
+
+  // 함수명: durationLabelForLanguage
+  // 함수역할: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
+  String durationLabelForLanguage(String language) {
+    if (medicationTime <= 0) {
+      return _isEnglishLanguage(language)
+          ? 'Duration not available'
+          : '복용 기간 정보 없음';
+    }
+    if (!_isEnglishLanguage(language)) {
+      return '$medicationTime일';
+    }
+    return medicationTime == 1 ? '1 day' : '$medicationTime days';
   }
 
   // 함수명: toJson
@@ -364,6 +448,23 @@ class MedicationSchedule {
 
   static int _readInt(dynamic value) {
     return medicationScheduleCountFromText(value);
+  }
+
+  static bool _isEnglishLanguage(String language) {
+    return language.trim().toLowerCase().startsWith('en');
+  }
+
+  static String _koreanDosageUnit(String medicationName) {
+    final normalizedName = medicationName.replaceAll(' ', '');
+    if (normalizedName.contains('캡슐')) {
+      return '캡슐';
+    }
+    if (normalizedName.contains('시럽') ||
+        normalizedName.contains('과립') ||
+        normalizedName.endsWith('산')) {
+      return '포';
+    }
+    return '정';
   }
 
   static double _readDouble(dynamic value) {

@@ -258,12 +258,23 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final medicationNameCell = find.byKey(const Key('ocr-table-cell-0-name'));
+      expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
+      await tester.ensureVisible(medicationNameCell);
+      await tester.pumpAndSettle();
+      expect(medicationNameCell.hitTestable(), findsOneWidget);
+
+      await tester.tap(medicationNameCell);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ocr-edit-name')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('ocr-edit-cancel')));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(
         find.byKey(const Key('prescription-analyze-button')),
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('ocr-edit-0')), findsOneWidget);
       expect(
         find.byKey(const Key('prescription-analyze-button')).hitTestable(),
         findsOneWidget,

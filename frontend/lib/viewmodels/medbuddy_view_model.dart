@@ -147,7 +147,9 @@ class MedBuddyViewModel extends ChangeNotifier {
   String _analysisErrorMessage = '';
   String get analysisErrorMessage => _analysisErrorMessage;
   bool get canRetryPrescriptionAnalysis =>
-      _prescriptionFlowState == PrescriptionFlowState.analysisFailed &&
+      (_prescriptionFlowState == PrescriptionFlowState.analysisFailed ||
+          _prescriptionFlowState ==
+              PrescriptionFlowState.medicationReviewRequired) &&
       _analysisProgressStep != AnalysisProgressStep.prescriptionRecognition &&
       _recognizedMedicationScheduleList.isNotEmpty;
 
@@ -215,6 +217,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<AnalyzedMedication> _analyzedMedicationList = [];
   List<AnalyzedMedication> get analyzedMedicationList =>
       List.unmodifiable(_analyzedMedicationList);
+
+  // 상세조회가 끝난 약은 원래 OCR 행 인덱스와 함께 보존해 재조회 시 중복 호출을 막는다.
+  final Map<int, AnalyzedMedication> _analyzedMedicationByScheduleIndex = {};
+  final Set<int> _unverifiedMedicationScheduleIndexes = {};
+  Set<int> get verifiedMedicationScheduleIndexes =>
+      Set.unmodifiable(_analyzedMedicationByScheduleIndex.keys.toSet());
+  Set<int> get unverifiedMedicationScheduleIndexes =>
+      Set.unmodifiable(_unverifiedMedicationScheduleIndexes);
 
   PrescriptionChangeRadar? _prescriptionChangeRadar;
   PrescriptionChangeRadar? get prescriptionChangeRadar =>
