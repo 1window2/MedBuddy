@@ -166,7 +166,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Your medication guide'), findsOneWidget);
+    expect(find.text('Your medication guide'), findsNWidgets(2));
     expect(find.text('오늘의 복약 일정'), findsNothing);
     expect(find.text("Today's Medication"), findsOneWidget);
   });
