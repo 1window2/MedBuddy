@@ -482,6 +482,7 @@ nodes:
 | `UserSettingUI` | `ManageUserSettingUI` | Matches the implemented UC-14 control/UI pair. |
 | `PrescriptionAnalysisControl` | frontend/backend `InputPrescription` | v5 responsibility preserved across the HTTP boundary. |
 | Prescription comparison extension | frontend/backend `CheckPrescriptionChange`, `PrescriptionChangeRadarUI` | Compares a confirmed prescription with related saved history without expanding `InputPrescription` beyond analysis. |
+| Prescription partial-recovery review | `PrescriptionAnalysisPreviewUI`, `MedBuddyViewModel`, `MedicationSchedule` review state | Keeps detail responses aligned with original OCR rows, lets users add omitted rows, and isolates unresolved-row editing and retry from verified results. |
 | `MedicationSaveControl` | `CheckMedicationDetail` plus `CheckSavedMedication` | Detail enrichment and persistence remain separate cohesive controls. |
 | `SavedMedicationControl` | `CheckSavedMedication` | Direct implementation mapping. |
 | `TodayMedicationControl` | `CheckTodayMedicationInfo`, `CheckSchedule`, `SetNotification`, `CheckHealthRecommendation`, `RequestVoiceGuide` | Split by the original UC-3/8/10/11/12 responsibilities. |

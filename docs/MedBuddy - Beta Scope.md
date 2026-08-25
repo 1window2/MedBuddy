@@ -20,9 +20,11 @@ The following implemented flows are frozen for beta hardening:
 
 1. Prescription and pill-envelope image input, on-device Korean OCR,
    best-effort privacy filtering, bounded medication-name correction, OCR
-   result editing, prescription-date and schedule-slot confirmation,
-   medication detail lookup, actionable failure recovery back to OCR review,
-   and saved-medication creation with post-save navigation.
+   result editing and manual recovery of omitted medication rows,
+   prescription-date and schedule-slot confirmation, row-preserving
+   medication detail lookup, partial-failure review and unresolved-row retry,
+   actionable technical-failure recovery, and saved-medication creation with
+   post-save navigation.
 2. Saved-medication listing, detail guidance, image enrichment, deletion, and
    medication-course retention, with active/completed filtering and
    registration- or medication-date sorting in either direction.
@@ -87,7 +89,8 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Run backend and Flutter unit/widget suites on every pull request. Automated
   frontend coverage includes compact viewports, large system text, semantic
   labels, app pause/resume, scroll reachability, network recovery, OCR-review
-  recovery, post-save navigation, saved-list filtering and sorting,
+  manual row recovery, partial medication-lookup recovery, post-save
+  navigation, saved-list filtering and sorting,
   dose-completion undo, and reminder result feedback.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver

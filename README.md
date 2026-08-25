@@ -35,8 +35,9 @@ release.
 - Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
 - Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
-- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
-- When parsing or medication lookup fails, the UI replaces technical exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to the OCR review, retake the photo, or select another image as appropriate.
+- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names, manually add an OCR-missed medication row, and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
+- Medication-detail responses remain tied to their original OCR rows, so a failed lookup cannot silently remove or reorder another medication. When only some rows fail, verified rows are locked and struck through while unresolved rows remain editable and can be retried independently.
+- When parsing or every medication lookup fails for a technical reason, the UI replaces exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to OCR review, retake the photo, or select another image as appropriate. Continuing with verified medications while unresolved rows remain requires an explicit confirmation.
 - The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
 - After saving all analyzed medications, users can continue directly to today's schedule or the saved-medication list.
 

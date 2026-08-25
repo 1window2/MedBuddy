@@ -42,102 +42,79 @@
 
 ### 수정 논거
 
-- 촬영 취소는 이후 OCR/AI 분석으로 진행될 수 없으므로 `break [pickedFile == null]`로 중단 조건을 명확히 했다.
-- OCR/Gemini 응답 이후 후보 약물이 없는 경우와 후보가 있는 경우는 상호 배타적이므로 `alt`로 분리했다.
-- 약물 후보 카드는 후보 수만큼 반복 생성되므로 `loop [for each extracted medication candidate]`로 표현했다.
-- 분석 결과 객체 구성은 성공 경로에서만 발생하므로 실패/빈 결과 경로 밖으로 새지 않도록 했다.
+- 처방전 OCR은 기기 내 Google ML Kit에서 수행하고 개인정보 필터를 통과한 비식별 텍스트만 서버에 전송한다.
+- OCR 누락 행은 사용자가 표에서 직접 추가할 수 있으며, 수정한 행 식별자와 순서는 상세 조회까지 유지한다.
+- 일부 상세 조회만 실패하면 확인된 행은 잠그고 미확인 행만 수정·재시도한다. 미확인 행을 제외하고 계속 진행하려면 별도 확인을 거친다.
+- 모든 조회가 연결·시간초과 같은 기술 오류로 실패한 경우에만 전체 실패 화면으로 분기한다.
 
 ```plantuml
 @startuml SD01_Prescription_Analysis
 autonumber
 actor "환자" as Patient
-boundary "PrescriptionInputUI_boundary" as UI
-control "PrescriptionAnalysis_control" as C
-boundary "OCRService_boundary" as OCR
-boundary "ImageProcessing_boundary" as Img
-boundary "GeminiVisionAPI_boundary" as Gemini
-entity "PrescriptionText_entity" as Text
-entity "MedicationCandidateList_entity" as Candidates
-entity "PrescriptionAnalysisResult_entity" as Result
+boundary "PrescriptionAnalysisPreviewUI" as UI
+control "MedBuddyViewModel" as VM
+boundary "PrescriptionLocalOcrService" as OCR
+boundary "PrescriptionPrivacyFilter" as Privacy
+boundary "FastAPI prescription-text endpoint" as API
+control "InputPrescription" as Parse
+boundary "MedicationDetail endpoint" as Detail
+entity "MedicationSchedule review rows" as Rows
+entity "PrescriptionAnalysisResult" as Result
 
-Patient -> UI : clickPrescriptionScan()
-activate UI
-UI -> C : startPrescriptionInput()
-activate C
-C --> UI : showCaptureScreen()
-deactivate C
+Patient -> UI : openPrescriptionCapture()
 UI --> Patient : displayCaptureScreen()
-deactivate UI
 
 break [pickedFile == null]
   Patient -> UI : cancelCapture()
-  activate UI
-  UI -> C : cancelPrescriptionInput()
-  activate C
-  C --> UI : showCaptureCanceled()
-  deactivate C
-  UI --> Patient : displayCaptureCanceledMessage()
-  deactivate UI
+  UI --> Patient : keepPreviousScreen()
 end
 
 Patient -> UI : submitPrescriptionImage(image)
-activate UI
-UI -> C : analyzePrescriptionImage(image)
-activate C
-C --> UI : showAnalyzing()
-UI --> Patient : displayAnalyzingScreen()
-
-C -> OCR : extractText(image)
+UI -> OCR : recognize(image)
 activate OCR
-OCR -> Img : preprocessPrescriptionImage(image)
-activate Img
-Img --> OCR : processedImage
-deactivate Img
-OCR -> Gemini : requestStructuredExtraction(processedImage)
-activate Gemini
-Gemini --> OCR : structuredJsonText
-deactivate Gemini
-OCR --> C : extractionResult
+OCR -> Privacy : removeSensitiveText(recognizedBlocks)
+Privacy --> OCR : deidentifiedText, displayRegions
+OCR --> UI : localOcrResult
 deactivate OCR
 
-alt [extractionResult is invalid]
-  C --> UI : showAnalysisFailed(errorMessage)
-  UI --> Patient : displayAnalysisFailure()
-else [extractionResult is valid]
-  create Text
-  C -> Text : <<create>> PrescriptionText(extractionResult.rawText)
-  activate Text
-  Text -> Text : removeSensitiveInfoByRegex()
-  Text --> C : medicationOnlyText
-  deactivate Text
+UI -> API : parsePrescriptionText(deidentifiedText)
+API -> Parse : parseAndNormalize(deidentifiedText)
+Parse --> API : medication schedules
+API --> UI : parsed rows
+UI -> Rows : <<create>> preserve source row indexes
+UI --> Patient : displayEditableReviewTable()
 
-  create Candidates
-  C -> Candidates : <<create>> parseMedicationCandidates(medicationOnlyText)
-  activate Candidates
-  Candidates --> C : medicationCandidateList
-  deactivate Candidates
-
-  alt [medicationCandidateList is empty]
-    C --> UI : showNoMedicationDetected()
-    UI --> Patient : displayNoMedicationDetected()
-  else [medicationCandidateList is not empty]
-    create Result
-    C -> Result : <<create>> PrescriptionAnalysisResult()
-    activate Result
-    loop [for each extracted medication candidate]
-      C -> Result : addMedicationCandidate(candidate)
-    end
-    Result --> C : completedAnalysisResult
-    deactivate Result
-
-    C --> UI : showAnalysisResult(completedAnalysisResult)
-    UI -> UI : renderMedicationCards(completedAnalysisResult)
-    UI --> Patient : displayMedicationCards()
-  end
+opt [OCR missed a medication]
+  Patient -> UI : addMedicationRow(values)
+  UI -> Rows : append row with stable index
 end
 
-deactivate C
-deactivate UI
+Patient -> UI : confirmAndAnalyze()
+UI -> VM : identifyMedicationDetails(rows)
+loop [for each unresolved review row]
+  VM -> Detail : lookupMedication(row.name)
+  Detail --> VM : verified detail or unresolved/error
+end
+
+alt [all requests failed technically]
+  VM --> UI : technicalFailure
+  UI --> Patient : displayActionableFailure()
+else [one or more rows unresolved]
+  VM --> UI : verified details + unresolved row indexes
+  UI -> Rows : lock verified rows and keep unresolved editable
+  UI --> Patient : displayPartialRecoveryTable()
+  alt [patient corrects and retries]
+    Patient -> UI : editUnresolvedRowsAndRetry()
+    UI -> VM : identifyMedicationDetails(unresolved rows only)
+  else [patient continues with verified rows]
+    UI --> Patient : requestExplicitConfirmation()
+    Patient -> UI : confirmVerifiedOnly()
+  end
+else [all rows verified]
+  VM -> Result : <<create>> preserve row-aligned details
+  VM --> UI : completedAnalysisResult
+  UI --> Patient : displayAnalysisResult()
+end
 @enduml
 ```
 
