@@ -255,8 +255,9 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
         12,
         60,
     ),
+    # 프론트 최대 10개 일괄 작업과 제한 응답 재시도 여유를 정상 사용 범위로 허용한다.
     ("POST", "/api/v1/medication/pill-identification/candidates"): RateLimitRule(
-        6,
+        12,
         60,
     ),
     ("POST", "/api/v1/medication/identify"): RateLimitRule(30, 60),

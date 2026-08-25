@@ -15,6 +15,7 @@ from controls.manage_account_control import (
 )
 from core.database import Base
 from core.request_rate_limits import (
+    DEFAULT_RATE_LIMIT_RULES,
     RateLimitRule,
     RequestRateLimitMiddleware,
     RequestRateLimitStore,
@@ -345,6 +346,16 @@ def test_rate_limiter_uses_ip_identity_and_route_specific_scope() -> None:
         )
         == "POST:/limited"
     )
+
+
+# 함수명: test_pill_identification_limit_accepts_a_full_client_batch
+# 역할: 프론트 최대 일괄 등록 수가 정상 요청만으로 서버 제한에 막히지 않는지 검증한다.
+def test_pill_identification_limit_accepts_a_full_client_batch() -> None:
+    rule = DEFAULT_RATE_LIMIT_RULES[
+        ("POST", "/api/v1/medication/pill-identification/candidates")
+    ]
+
+    assert rule.max_requests >= 10
 
 
 @pytest.mark.anyio

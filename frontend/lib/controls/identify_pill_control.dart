@@ -19,6 +19,7 @@ enum PillIdentificationFailure {
   oversizedImage,
   timedOut,
   invalidPhoto,
+  rateLimited,
   serviceUnavailable,
   invalidResponse,
   fileUnreadable,
@@ -26,8 +27,9 @@ enum PillIdentificationFailure {
 
 class PillIdentificationException implements Exception {
   final PillIdentificationFailure failure;
+  final Duration? retryAfter;
 
-  const PillIdentificationException(this.failure);
+  const PillIdentificationException(this.failure, {this.retryAfter});
 }
 
 class IdentifyPill {
@@ -173,9 +175,7 @@ class IdentifyPill {
         _abortTriggers.remove(abortTrigger);
       }
       if (response.statusCode != 200) {
-        throw PillIdentificationException(
-          _failureForStatus(response.statusCode),
-        );
+        throw _exceptionForResponse(response);
       }
       final responseBody = ApiResponseParser.decodeBody(response);
       return PillIdentificationResult.fromJson(
@@ -240,20 +240,63 @@ class IdentifyPill {
     }
   }
 
-  static PillIdentificationFailure _failureForStatus(int statusCode) {
+  // 함수명: _exceptionForResponse
+  // 역할: HTTP 오류와 서버가 안내한 재시도 대기시간을 손실 없이 변환한다.
+  static PillIdentificationException _exceptionForResponse(
+    http.Response response,
+  ) {
+    final statusCode = response.statusCode;
     if (statusCode == 413) {
-      return PillIdentificationFailure.oversizedImage;
+      return const PillIdentificationException(
+        PillIdentificationFailure.oversizedImage,
+      );
     }
     if (statusCode == 422) {
-      return PillIdentificationFailure.invalidPhoto;
+      return const PillIdentificationException(
+        PillIdentificationFailure.invalidPhoto,
+      );
     }
     if (statusCode == 408 || statusCode == 504) {
-      return PillIdentificationFailure.timedOut;
+      return const PillIdentificationException(
+        PillIdentificationFailure.timedOut,
+      );
+    }
+    if (statusCode == 429) {
+      return PillIdentificationException(
+        PillIdentificationFailure.rateLimited,
+        retryAfter: _parseRetryAfter(response.headers['retry-after']),
+      );
     }
     if (statusCode >= 500 && statusCode < 600) {
-      return PillIdentificationFailure.serviceUnavailable;
+      return const PillIdentificationException(
+        PillIdentificationFailure.serviceUnavailable,
+      );
     }
-    return PillIdentificationFailure.invalidResponse;
+    return const PillIdentificationException(
+      PillIdentificationFailure.invalidResponse,
+    );
+  }
+
+  // 함수명: _parseRetryAfter
+  // 역할: 초 단위 또는 HTTP 날짜 형식의 Retry-After 값을 안전한 대기시간으로 변환한다.
+  static Duration? _parseRetryAfter(String? rawValue) {
+    final value = rawValue?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final seconds = int.tryParse(value);
+    if (seconds != null) {
+      return Duration(seconds: seconds < 1 ? 1 : seconds);
+    }
+    try {
+      final retryAt = HttpDate.parse(value).toUtc();
+      final difference = retryAt.difference(DateTime.now().toUtc());
+      return difference > Duration.zero
+          ? difference
+          : const Duration(seconds: 1);
+    } on FormatException {
+      return null;
+    }
   }
 
   void dispose() {

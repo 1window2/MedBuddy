@@ -80,6 +80,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   bool _isSelectingImage = false;
   bool _isSaving = false;
   bool _isBatchSaved = false;
+  int _analysisCompletedCount = 0;
+  int _analysisTotalCount = 0;
+  int _retryingRequestCount = 0;
+  Duration? _retryAfter;
   int? _selectingDraftIndex;
   bool? _selectingFront;
   String _errorMessage = '';
@@ -223,7 +227,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       : const Icon(Icons.search),
                   label: Text(
                     _isAnalyzing
-                        ? text.analyzingPills(pendingCount)
+                        ? text.analysisProgress(
+                            completedCount: _analysisCompletedCount,
+                            totalCount: _analysisTotalCount,
+                            isWaitingForRetry: _retryingRequestCount > 0,
+                          )
                         : text.identifyPills(pendingCount),
                     maxLines: 2,
                     textAlign: TextAlign.center,
@@ -236,6 +244,22 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                   ),
                 ),
               ),
+              if (_isAnalyzing && _retryingRequestCount > 0) ...[
+                const SizedBox(height: 10),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    text.retryWaitNotice(_retryAfter),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: const Color(0xFF8A6200),
+                      fontSize: 12 * textScale,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
               if (hasVisibleResults) ...[
                 const SizedBox(height: 30),
                 _buildAllResults(text, textScale),
@@ -760,19 +784,36 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       _isAnalyzing = true;
       _isBatchSaved = false;
       _errorMessage = '';
+      _analysisCompletedCount = 0;
+      _analysisTotalCount = pendingIndexes.length;
+      _retryingRequestCount = 0;
+      _retryAfter = null;
       for (final index in pendingIndexes) {
         _drafts[index].errorMessage = '';
       }
     });
 
     try {
-      final outcomes = await _batchControl.requestBatchIdentification([
-        for (final index in pendingIndexes)
-          PillImagePair(
-            frontImage: _drafts[index].frontImage!,
-            backImage: _drafts[index].backImage,
-          ),
-      ]);
+      final outcomes = await _batchControl.requestBatchIdentification(
+        [
+          for (final index in pendingIndexes)
+            PillImagePair(
+              frontImage: _drafts[index].frontImage!,
+              backImage: _drafts[index].backImage,
+            ),
+        ],
+        onProgress: (progress) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _analysisCompletedCount = progress.completedCount;
+            _analysisTotalCount = progress.totalCount;
+            _retryingRequestCount = progress.retryingRequestCount;
+            _retryAfter = progress.retryAfter ?? _retryAfter;
+          });
+        },
+      );
       if (!mounted) {
         return;
       }
@@ -805,6 +846,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       if (mounted) {
         setState(() {
           _isAnalyzing = false;
+          _retryingRequestCount = 0;
+          _retryAfter = null;
         });
       }
     }
@@ -1029,6 +1072,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       PillIdentificationFailure.oversizedImage => text.oversizedImage,
       PillIdentificationFailure.timedOut => text.timedOut,
       PillIdentificationFailure.invalidPhoto => text.invalidPhoto,
+      PillIdentificationFailure.rateLimited => text.rateLimited,
       PillIdentificationFailure.serviceUnavailable => text.serviceUnavailable,
       PillIdentificationFailure.invalidResponse => text.invalidResponse,
       PillIdentificationFailure.fileUnreadable => text.imageSelectionFailed,
@@ -1547,6 +1591,34 @@ class _PillIdentificationText {
         : '알약 $normalizedCount개 비교 중...';
   }
 
+  String analysisProgress({
+    required int completedCount,
+    required int totalCount,
+    required bool isWaitingForRetry,
+  }) {
+    final safeTotal = totalCount < 1 ? 1 : totalCount;
+    if (isWaitingForRetry) {
+      return isEnglish
+          ? 'Waiting to retry · $completedCount/$safeTotal completed'
+          : '자동 재시도 대기 중 · $completedCount/$safeTotal 완료';
+    }
+    return isEnglish
+        ? 'Comparing pills · $completedCount/$safeTotal completed'
+        : '알약 비교 중 · $completedCount/$safeTotal 완료';
+  }
+
+  String retryWaitNotice(Duration? retryAfter) {
+    final seconds = retryAfter?.inSeconds;
+    if (seconds == null || seconds < 1) {
+      return isEnglish
+          ? 'Request traffic is high. Failed items will retry automatically.'
+          : '요청이 많아 잠시 기다린 뒤 실패 항목만 자동으로 다시 시도합니다.';
+    }
+    return isEnglish
+        ? 'Retrying failed items automatically in up to $seconds seconds.'
+        : '최대 $seconds초 뒤 실패 항목만 자동으로 다시 시도합니다.';
+  }
+
   String candidateTitle(int count) =>
       isEnglish ? '$count possible matches' : '가능성이 있는 후보 $count개';
   String candidateTitleForPill(int pillNumber, int count) => isEnglish
@@ -1617,6 +1689,9 @@ class _PillIdentificationText {
   String get invalidPhoto => isEnglish
       ? 'The pill could not be distinguished. Avoid fingers, strong glare, and occlusion, then retake the photo in focus.'
       : '알약을 구분할 수 없습니다. 손가락, 강한 반사, 가림을 피하고 초점을 맞춰 다시 촬영해주세요.';
+  String get rateLimited => isEnglish
+      ? 'There were too many requests. Please retry the failed pill shortly.'
+      : '요청이 많아 식별하지 못했습니다. 실패한 알약만 잠시 후 다시 시도해주세요.';
   String get serviceUnavailable => isEnglish
       ? 'The pill identification service is temporarily unavailable.'
       : '알약 식별 서비스에 일시적으로 연결할 수 없습니다.';

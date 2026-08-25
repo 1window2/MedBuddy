@@ -124,7 +124,15 @@ class _DelayedReplacementIdentifyPill extends _FakeIdentifyPill {
 // 클래스명: _MultipleIdentifyPill
 // 역할: 알약별로 다른 후보를 반환해 다중 식별 화면을 검증한다.
 class _MultipleIdentifyPill extends _FakeIdentifyPill {
+  int _selectionCount = 0;
   int _requestCount = 0;
+
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    _selectionCount += 1;
+    // 테스트에서 서로 다른 사진을 선택한 상황을 실제 바이트 차이로 표현한다.
+    return Uint8List.fromList([..._FakeIdentifyPill._png, _selectionCount]);
+  }
 
   @override
   Future<PillIdentificationResult> requestPillIdentification({

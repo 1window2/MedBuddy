@@ -152,6 +152,37 @@ void main() {
   );
 
   test(
+    'requestPillIdentification preserves retry delay for rate limits',
+    () async {
+      final control = IdentifyPill(
+        baseUrl: 'http://localhost',
+        client: MockClient(
+          (_) async => http.Response('{}', 429, headers: {'retry-after': '7'}),
+        ),
+      );
+
+      await expectLater(
+        control.requestPillIdentification(
+          frontImage: Uint8List.fromList([1, 2, 3]),
+        ),
+        throwsA(
+          isA<PillIdentificationException>()
+              .having(
+                (error) => error.failure,
+                'failure',
+                PillIdentificationFailure.rateLimited,
+              )
+              .having(
+                (error) => error.retryAfter,
+                'retryAfter',
+                const Duration(seconds: 7),
+              ),
+        ),
+      );
+    },
+  );
+
+  test(
     'requestPillIdentification rejects malformed success payloads',
     () async {
       final validFeatures = <String, dynamic>{
