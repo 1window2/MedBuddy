@@ -728,7 +728,7 @@ class _HomeMedicationTipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = isEnglish ? 'Medication tip' : '복약 관리 팁';
+    final title = isEnglish ? 'Your medication guide' : '복약 관리 팁';
     final message = isEnglish
         ? 'A prescription or pill photo can make medication details easier to review.'
         : '처방전이나 낱알약 사진을 촬영하면 약 정보를 더 쉽게 확인할 수 있어요.';
