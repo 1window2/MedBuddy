@@ -68,9 +68,11 @@ release.
 - Users can add up to ten loose pills as separate photo sets. Each set requires a front photo and can include an optional reverse-side photo.
 - The Flutter batch control identifies at most two photo sets concurrently, preserves input order, and reports per-pill failures without discarding successful candidates.
 - Server request limits allow one complete ten-pill review under normal use. If a request is rate-limited, the client honors the bounded Retry-After value, keeps completed results, and automatically retries only the affected item while showing retry progress.
+- Before the vision request, local image preprocessing checks for multiple distinct pill contours. The vision response must also report exactly one detected pill and agree with a confident local count; otherwise the item is rejected with a retake prompt before catalog matching.
 - A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
 - The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
 - Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
+- When multiple photos resolve to the same product, the review shows the duplicate count and lets the user keep them separate or merge them. Merging removes only entries whose product and user-confirmed schedule are identical; different doses, dates, durations, or slots remain separate.
 - Before identified candidates are saved, users review and can correct the medication start date, course duration, daily frequency, dose, and morning, lunch, evening, or bedtime slots. When dosage directions are unknown, the review screen applies explicit pill-flow defaults instead of presenting them as OCR facts.
 - This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
 
@@ -127,6 +129,7 @@ release.
   FCM push alerts when a dose is newly completed. Missed-deadline checks remain
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
+- Local demo caregiver alerts use the patient alias saved on the caregiver device when available. Otherwise they use a generic linked-patient label and never expose the internal patient hash in notification text.
 - The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
 - Patients and caregivers can select and remove multiple active medications through the same slot-grouped layout used by today's schedule. Every attached medication is rendered in the message, and a selected or previously sent medication card opens the authorized medication-detail screen.
 - The conversation can carry server-verified schedule-slot cards, caregiver check requests, automatic slot-completion events, medication-shortage or discomfort context, and pharmacy snapshots. The server rebuilds every structured snapshot from the authorized link, active medication course, current schedule, or pharmacy catalog instead of trusting display fields supplied by the client.

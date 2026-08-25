@@ -243,6 +243,12 @@ package "Flutter Frontend" {
             + requestBatchIdentification(inputs): Future<List<PillIdentificationBatchOutcome>>
         }
 
+        class "ResolveDuplicatePillSelection" as FResolveDuplicatePillSelection <<Controller: 중복 낱알 일정 검토>> {
+            + countEquivalentCandidates(candidates, target): int
+            + findDuplicateGroups(candidates): List<DuplicatePillSelectionGroup>
+            + mergeEquivalentRequests(requests): List<IdentifiedPillSaveRequest>
+        }
+
         class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
             + requestNearbyPharmacies(): Future<List<NearbyPharmacy>>
             + requestPhoneCall(telephone): Future<bool>
@@ -1324,6 +1330,7 @@ HealthRecommendationUI ..> MedBuddyViewModel
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
 PillIdentificationUI o-- FIdentifyPillBatch
+PillIdentificationUI o-- FResolveDuplicatePillSelection
 PillIdentificationUI ..> MedicationScheduleReviewBoundary
 ManualMedicationEntryUI ..> FManualMedicationEntry
 ManualMedicationEntryUI ..> ManualMedicationImageStore

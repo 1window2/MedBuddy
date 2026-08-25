@@ -360,8 +360,15 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
         ApiClient -> Router : 낱알 이미지 분석 요청
         Router -> BackControl : IdentifyPill.requestPillIdentification()
         BackControl -> BackService : PillVisionBoundary.extractVisualFeatures()
+        BackService -> BackService : 이미지 전처리 및 독립 알약 윤곽 수 검증
+        break 서로 분리된 알약 영역이 2개 이상
+            BackService --> BackControl : 한 알씩 재촬영 오류
+        end
         BackService -> Gemini : GeminiPillVisionAPI 요청
-        Gemini --> BackService : 모양, 색상, 각인, 분할선 특징
+        Gemini --> BackService : 모양, 색상, 각인, 분할선과 감지 개수
+        break AI 감지 개수가 1이 아니거나 신뢰 가능한 전처리 결과와 불일치
+            BackService --> BackControl : 한 알씩 재촬영 오류
+        end
         BackService --> BackControl : PillVisualFeatures
 
         BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog()
@@ -391,6 +398,12 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
     User -> UI : 실제 약과 일치하는 후보 확인
     UI --> User : MedicationScheduleReviewBoundary 출력
     User -> UI : 복용 시작일, 기간, 횟수, 용량과 시간대 확인 또는 수정
+    UI -> FrontControl : ResolveDuplicatePillSelectionControl로 동일 품목 확인
+    FrontControl --> UI : 중복 품목과 사진 수
+    opt 동일 품목 사진이 2개 이상인 경우
+        User -> UI : 각각 유지 또는 같은 일정끼리 묶기 선택
+        UI -> FrontControl : 품목과 확인 일정이 모두 같은 요청만 병합
+    end
     UI -> FrontControl : 확인된 후보와 일정만 공통 저장 흐름으로 전달
 end
 
