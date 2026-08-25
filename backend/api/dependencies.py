@@ -285,6 +285,11 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
 
     _lock_account_operation(db, user_hash)
     ManageAccount(db).ensureAccount(user_hash)
+    # 로컬 SQLite는 데이터베이스 전체에 쓰기 잠금을 잡으므로 사용자 확인 직후
+    # 해제한다. 실제 요청 처리까지 잠금을 유지하면 앱 초기 병렬 조회가 503으로
+    # 실패한다. 운영 PostgreSQL의 사용자 단위 잠금은 기존대로 요청 끝까지 유지한다.
+    if db.get_bind().dialect.name == "sqlite":
+        db.commit()
 
 # 함수명: get_registered_principal
 # 역할:
