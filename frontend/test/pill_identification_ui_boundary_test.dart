@@ -157,6 +157,38 @@ class _MultipleIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// 클래스명: _DuplicateIdentifyPill
+// 역할: 서로 다른 사진이 같은 품목으로 판정된 중복 검토 흐름을 재현한다.
+class _DuplicateIdentifyPill extends _FakeIdentifyPill {
+  int _selectionCount = 0;
+
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    _selectionCount += 1;
+    return Uint8List.fromList([..._FakeIdentifyPill._png, _selectionCount]);
+  }
+
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) async {
+    return const PillIdentificationResult(
+      isConfident: true,
+      requiresConfirmation: true,
+      observedFeatures: PillVisualFeatures(shape: 'round'),
+      candidates: [
+        PillIdentificationCandidate(
+          itemSeq: 'duplicate-pill',
+          itemName: '중복 알약',
+          manufacturer: '제조사',
+          matchScore: 0.9,
+        ),
+      ],
+    );
+  }
+}
+
 // 함수명: _tapVisible
 // 함수역할:
 // - 큰 글씨로 화면 아래에 배치된 검사 대상을 먼저 스크롤한 뒤 누른다.
@@ -339,6 +371,72 @@ void main() {
       ['multi-pill-1', 'multi-pill-2'],
     );
     expect(find.text('저장 2개, 기존 정보 0개, 실패 0개입니다.'), findsOneWidget);
+  });
+
+  testWidgets('같은 품목 사진은 알리고 같은 일정만 선택적으로 묶는다', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    List<IdentifiedPillSaveRequest>? savedRequests;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _DuplicateIdentifyPill(),
+          onBatchSaveRequested: (requests) async {
+            savedRequests = requests;
+            return [
+              for (var index = 0; index < requests.length; index += 1)
+                const MedicationSaveResult(
+                  status: MedicationSaveStatus.saved,
+                  message: 'saved',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('add-pill-photo-set-button')),
+    );
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+
+    final duplicateNames = find.text('중복 알약');
+    expect(duplicateNames, findsNWidgets(2));
+    await _tapVisible(tester, duplicateNames.at(0));
+    await _tapVisible(tester, duplicateNames.at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('동일 약품 사진 2장'), findsNWidgets(2));
+
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('confirm-pill-candidate-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('동일 약품 사진 확인'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('duplicate-pill-merge-matching')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('복약 정보 확인'), findsOneWidget);
+    await _tapVisible(tester, find.byKey(const Key('schedule-review-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(savedRequests, hasLength(1));
+    expect(find.textContaining('동일한 복약 일정 1개'), findsOneWidget);
   });
 
   testWidgets('pill photo selection surfaces oversized image failures', (

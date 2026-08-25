@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/identify_pill_batch_control.dart';
 import '../controls/identify_pill_control.dart';
+import '../controls/resolve_duplicate_pill_selection_control.dart';
 import '../entities/identified_pill_save_request_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -71,10 +72,16 @@ class _PillPhotoDraft {
   }
 }
 
+// 열거형명: _DuplicatePillResolution
+// 역할: 같은 약품으로 판정된 사진의 복약 일정을 묶을지 각각 유지할지 표현한다.
+enum _DuplicatePillResolution { mergeMatchingSchedules, keepSeparate }
+
 class _PillIdentificationUIState extends State<PillIdentificationUI> {
   late final IdentifyPill _control;
   late final IdentifyPillBatch _batchControl;
   late final bool _ownsControl;
+  final ResolveDuplicatePillSelectionControl _duplicateSelectionControl =
+      const ResolveDuplicatePillSelectionControl();
   final List<_PillPhotoDraft> _drafts = [_PillPhotoDraft()];
   bool _isAnalyzing = false;
   bool _isSelectingImage = false;
@@ -593,6 +600,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             _PillCandidateCard(
               candidate: candidate,
               selected: candidate.itemSeq == draft.selectedItemSeq,
+              duplicateCount: candidate.itemSeq == draft.selectedItemSeq
+                  ? _selectedCandidateCount(candidate)
+                  : 1,
               text: text,
               textScale: textScale,
               onTap: actionsEnabled
@@ -887,20 +897,44 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     return null;
   }
 
+  // 함수명: _selectedCandidateCount
+  // 역할: 현재 선택된 후보 중 같은 품목으로 판정된 사진 수를 계산한다.
+  int _selectedCandidateCount(PillIdentificationCandidate target) {
+    final selectedCandidates = _drafts
+        .map(_selectedCandidate)
+        .whereType<PillIdentificationCandidate>();
+    return _duplicateSelectionControl.countEquivalentCandidates(
+      selectedCandidates,
+      target,
+    );
+  }
+
   Future<void> _confirmCandidates(_PillIdentificationText text) async {
     final candidates = <PillIdentificationCandidate>[];
-    final seenItemSeqs = <String>{};
     for (final draft in _drafts) {
       final candidate = _selectedCandidate(draft);
       if (candidate == null) {
         return;
       }
-      if (seenItemSeqs.add(candidate.itemSeq)) {
-        candidates.add(candidate);
-      }
+      candidates.add(candidate);
     }
     if (candidates.isEmpty) {
       return;
+    }
+
+    final duplicateGroups = _duplicateSelectionControl.findDuplicateGroups(
+      candidates,
+    );
+    var duplicateResolution = _DuplicatePillResolution.keepSeparate;
+    if (duplicateGroups.isNotEmpty) {
+      final selectedResolution = await _chooseDuplicateResolution(
+        text: text,
+        duplicateGroups: duplicateGroups,
+      );
+      if (!mounted || selectedResolution == null) {
+        return;
+      }
+      duplicateResolution = selectedResolution;
     }
 
     final onSaveRequested = widget.onSaveRequested;
@@ -910,27 +944,76 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         candidates: candidates,
         onSaveRequested: onSaveRequested,
         onBatchSaveRequested: onBatchSaveRequested,
+        duplicateResolution: duplicateResolution,
         text: text,
       );
       return;
     }
 
-    // 저장 콜백이 없는 독립 실행 화면은 후보 확인 결과만 안내한다.
+    final confirmedCandidates =
+        duplicateResolution == _DuplicatePillResolution.mergeMatchingSchedules
+        ? _duplicateSelectionControl.uniqueCandidates(candidates)
+        : candidates;
+
+    // 저장 콜백이 없는 독립 실행 화면도 사용자가 선택한 중복 처리 방식을 반영한다.
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(text.confirmedTitle),
         content: Text(
-          candidates.length == 1
-              ? text.confirmedMessage(candidates.first.itemName)
+          confirmedCandidates.length == 1
+              ? text.confirmedMessage(confirmedCandidates.first.itemName)
               : text.confirmedBatchMessage(
-                  candidates.map((candidate) => candidate.itemName).toList(),
+                  confirmedCandidates
+                      .map((candidate) => candidate.itemName)
+                      .toList(),
                 ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(text.close),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 함수명: _chooseDuplicateResolution
+  // 역할: 같은 약품 사진을 각각 유지하거나 동일 일정만 묶도록 사용자에게 확인받는다.
+  Future<_DuplicatePillResolution?> _chooseDuplicateResolution({
+    required _PillIdentificationText text,
+    required List<DuplicatePillSelectionGroup> duplicateGroups,
+  }) {
+    final duplicatePhotoCount = duplicateGroups.fold<int>(
+      0,
+      (total, group) => total + group.count,
+    );
+    return showDialog<_DuplicatePillResolution>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(text.duplicateSelectionTitle),
+        content: Text(text.duplicateSelectionMessage(duplicatePhotoCount)),
+        actionsOverflowAlignment: OverflowBarAlignment.end,
+        actions: [
+          TextButton(
+            key: const Key('duplicate-pill-cancel'),
+            onPressed: () => Navigator.pop(context),
+            child: Text(text.cancel),
+          ),
+          OutlinedButton(
+            key: const Key('duplicate-pill-keep-separate'),
+            onPressed: () =>
+                Navigator.pop(context, _DuplicatePillResolution.keepSeparate),
+            child: Text(text.keepDuplicateSchedulesSeparate),
+          ),
+          FilledButton(
+            key: const Key('duplicate-pill-merge-matching'),
+            onPressed: () => Navigator.pop(
+              context,
+              _DuplicatePillResolution.mergeMatchingSchedules,
+            ),
+            child: Text(text.mergeMatchingDuplicateSchedules),
           ),
         ],
       ),
@@ -945,6 +1028,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     required List<PillIdentificationCandidate> candidates,
     required IdentifiedPillSaveCallback? onSaveRequested,
     required IdentifiedPillBatchSaveCallback? onBatchSaveRequested,
+    required _DuplicatePillResolution duplicateResolution,
     required _PillIdentificationText text,
   }) async {
     final reviewedSchedules = await showMedicationScheduleReview(
@@ -974,13 +1058,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       return;
     }
 
-    final requests = [
+    final reviewedRequests = [
       for (var index = 0; index < candidates.length; index += 1)
         IdentifiedPillSaveRequest(
           candidate: candidates[index],
           medicationSchedule: reviewedSchedules[index],
         ),
     ];
+    final requests =
+        duplicateResolution == _DuplicatePillResolution.mergeMatchingSchedules
+        ? _duplicateSelectionControl.mergeEquivalentRequests(reviewedRequests)
+        : reviewedRequests;
+    final mergedCount = reviewedRequests.length - requests.length;
 
     setState(() => _isSaving = true);
     List<MedicationSaveResult> results;
@@ -1039,7 +1128,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       _isBatchSaved = failedCount == 0;
     });
 
-    final message = normalizedResults.length == 1
+    final resultMessage = normalizedResults.length == 1
         ? switch (normalizedResults.first.status) {
             MedicationSaveStatus.saved => text.medicationSaved,
             MedicationSaveStatus.duplicate => text.medicationAlreadySaved,
@@ -1053,7 +1142,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             duplicateCount: duplicateCount,
             failedCount: failedCount,
           );
-    _showSnackBar(message);
+    _showSnackBar(text.withMergedDuplicateSummary(resultMessage, mergedCount));
   }
 
   void _showSnackBar(String message) {
@@ -1258,6 +1347,7 @@ class _PillImageSlot extends StatelessWidget {
 class _PillCandidateCard extends StatelessWidget {
   final PillIdentificationCandidate candidate;
   final bool selected;
+  final int duplicateCount;
   final _PillIdentificationText text;
   final double textScale;
   final VoidCallback? onTap;
@@ -1265,6 +1355,7 @@ class _PillCandidateCard extends StatelessWidget {
   const _PillCandidateCard({
     required this.candidate,
     required this.selected,
+    required this.duplicateCount,
     required this.text,
     required this.textScale,
     required this.onTap,
@@ -1316,6 +1407,28 @@ class _PillCandidateCard extends StatelessWidget {
                           letterSpacing: 0,
                         ),
                       ),
+                      if (duplicateCount > 1) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          key: Key('duplicate-pill-badge-${candidate.itemSeq}'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3D6),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            text.sameMedicinePhotoCount(duplicateCount),
+                            style: TextStyle(
+                              color: const Color(0xFF8A5A00),
+                              fontSize: 11 * textScale,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (candidate.manufacturer.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -1638,6 +1751,18 @@ class _PillIdentificationText {
   String get similarity => isEnglish ? 'Attribute match' : '속성 일치도';
   String get selected => isEnglish ? 'Selected' : '선택됨';
   String get notSelected => isEnglish ? 'Not selected' : '선택 안 됨';
+  String sameMedicinePhotoCount(int count) =>
+      isEnglish ? 'Same medicine ×$count' : '동일 약품 사진 $count장';
+  String get duplicateSelectionTitle =>
+      isEnglish ? 'Review matching medicines' : '동일 약품 사진 확인';
+  String duplicateSelectionMessage(int photoCount) => isEnglish
+      ? '$photoCount photos were matched to the same medicine. Review every schedule, then choose whether completely identical schedules should be merged. Different doses, dates, or durations will always stay separate.'
+      : '같은 약품으로 확인된 사진이 $photoCount장 있습니다. 각 복약 정보를 검토한 뒤, 내용이 완전히 같은 일정만 하나로 묶을지 선택해주세요. 복용량, 날짜 또는 기간이 다르면 항상 별도로 유지됩니다.';
+  String get cancel => isEnglish ? 'Cancel' : '취소';
+  String get keepDuplicateSchedulesSeparate =>
+      isEnglish ? 'Keep separately' : '각각 유지';
+  String get mergeMatchingDuplicateSchedules =>
+      isEnglish ? 'Merge identical schedules' : '같은 일정만 묶기';
   String confirmSelections(int count) => isEnglish
       ? count == 1
             ? 'Confirm selected candidate'
@@ -1667,6 +1792,15 @@ class _PillIdentificationText {
   }) => isEnglish
       ? 'Saved $savedCount, already saved $duplicateCount, failed $failedCount.'
       : '저장 $savedCount개, 기존 정보 $duplicateCount개, 실패 $failedCount개입니다.';
+  String withMergedDuplicateSummary(String resultMessage, int mergedCount) {
+    if (mergedCount < 1) {
+      return resultMessage;
+    }
+    return isEnglish
+        ? 'Merged $mergedCount identical schedule${mergedCount == 1 ? '' : 's'}. $resultMessage'
+        : '동일한 복약 일정 $mergedCount개를 하나로 묶었습니다. $resultMessage';
+  }
+
   String get close => isEnglish ? 'Close' : '닫기';
   String get noCandidates => isEnglish
       ? 'No reliable candidates were found. Retake both sides more clearly.'
