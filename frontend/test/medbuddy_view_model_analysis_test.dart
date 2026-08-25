@@ -143,6 +143,31 @@ class _RetryableCheckMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// 클래스명: _SelectiveCheckMedicationDetail
+// 역할: 약명별 상세조회 성공 여부와 재조회 대상을 기록한다.
+class _SelectiveCheckMedicationDetail extends CheckMedicationDetail {
+  final Set<String> matchedMedicationNames;
+  final List<String> requestedMedicationNames = [];
+
+  _SelectiveCheckMedicationDetail(this.matchedMedicationNames);
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule medicationSchedule,
+  ) async {
+    requestedMedicationNames.add(medicationSchedule.medicationName);
+    if (!matchedMedicationNames.contains(medicationSchedule.medicationName)) {
+      return null;
+    }
+    return MedicationDetail(
+      itemName: medicationSchedule.medicationName,
+      efficacy: 'effect',
+      usageMethod: 'usage',
+      warning: 'warning',
+    );
+  }
+}
+
 // 클래스명: _ConcurrencyTrackingCheckMedicationDetail
 // 역할: 약품 상세조회가 동시에 시작되는 최대 개수와 배치 전환 시점을 기록한다.
 class _ConcurrencyTrackingCheckMedicationDetail extends CheckMedicationDetail {
@@ -224,38 +249,42 @@ void main() {
     },
   );
 
-  test(
-    'requestPrescriptionAnalysis surfaces partial lookup failures',
-    () async {
-      final changeControl = _FakeCheckPrescriptionChange();
-      final viewModel = MedBuddyViewModel(
-        inputPrescription: _FakeInputPrescription(const [
-          MedicationSchedule(medicationName: 'found-tablet'),
-          MedicationSchedule(medicationName: 'missing-tablet'),
-        ]),
-        checkMedicationDetail: _FakeCheckMedicationDetail(),
-        checkPrescriptionChange: changeControl,
-      );
-      addTearDown(viewModel.dispose);
+  test('상세조회에 실패한 약을 버리지 않고 재검토 상태로 보존한다', () async {
+    final changeControl = _FakeCheckPrescriptionChange();
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'found-tablet'),
+        MedicationSchedule(medicationName: 'missing-tablet'),
+      ]),
+      checkMedicationDetail: _FakeCheckMedicationDetail(),
+      checkPrescriptionChange: changeControl,
+    );
+    addTearDown(viewModel.dispose);
 
-      await viewModel.requestPrescriptionImageFromGallery();
-      await viewModel.requestPrescriptionAnalysis();
+    await viewModel.requestPrescriptionImageFromGallery();
+    await viewModel.requestPrescriptionAnalysis();
 
-      expect(
-        viewModel.prescriptionFlowState,
-        PrescriptionFlowState.analysisSucceeded,
-      );
-      expect(viewModel.analyzedMedicationList, hasLength(1));
-      expect(viewModel.statusMessage, contains('1개 약 정보'));
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.medicationReviewRequired,
+    );
+    expect(viewModel.analyzedMedicationList, hasLength(1));
+    expect(viewModel.verifiedMedicationScheduleIndexes, {0});
+    expect(viewModel.unverifiedMedicationScheduleIndexes, {1});
+    expect(viewModel.statusMessage, contains('1개 약 정보'));
+    expect(viewModel.canRetryPrescriptionAnalysis, isTrue);
 
-      viewModel.showMedicationAnalysisResult();
-      await Future<void>.delayed(Duration.zero);
+    final continued = viewModel.continueWithVerifiedMedicationAnalysis();
 
-      expect(changeControl.requestCount, 0);
-      expect(viewModel.prescriptionChangeRadar, isNull);
-      expect(viewModel.isPrescriptionChangeLoading, isFalse);
-    },
-  );
+    expect(continued, isTrue);
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+    expect(changeControl.requestCount, 0);
+    expect(viewModel.prescriptionChangeRadar, isNull);
+    expect(viewModel.isPrescriptionChangeLoading, isFalse);
+  });
 
   test('처방 약 상세정보를 최대 여섯 건씩 병렬 조회한다', () async {
     final detailControl = _ConcurrencyTrackingCheckMedicationDetail();
@@ -370,7 +399,7 @@ void main() {
 
       expect(
         viewModel.prescriptionFlowState,
-        PrescriptionFlowState.analysisFailed,
+        PrescriptionFlowState.medicationReviewRequired,
       );
       expect(viewModel.canRetryPrescriptionAnalysis, isTrue);
       expect(viewModel.recognizedMedicationScheduleList, hasLength(1));
@@ -386,6 +415,92 @@ void main() {
       expect(detailControl.requestCount, 2);
     },
   );
+
+  test('확인된 약은 유지하고 수정한 미확인 약만 다시 조회한다', () async {
+    final detailControl = _SelectiveCheckMedicationDetail({'found-tablet'});
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'found-tablet'),
+        MedicationSchedule(medicationName: 'wrong-tablet'),
+      ]),
+      checkMedicationDetail: detailControl,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    await viewModel.requestPrescriptionAnalysis();
+    expect(detailControl.requestedMedicationNames, [
+      'found-tablet',
+      'wrong-tablet',
+    ]);
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.medicationReviewRequired,
+    );
+
+    detailControl.matchedMedicationNames.add('corrected-tablet');
+    viewModel.updateRecognizedMedicationSchedule(
+      1,
+      const MedicationSchedule(medicationName: 'corrected-tablet'),
+    );
+    await viewModel.requestPrescriptionAnalysis();
+
+    expect(detailControl.requestedMedicationNames, [
+      'found-tablet',
+      'wrong-tablet',
+      'corrected-tablet',
+    ]);
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+    expect(viewModel.analyzedMedicationList.map((item) => item.displayName), [
+      'found-tablet',
+      'corrected-tablet',
+    ]);
+  });
+
+  test('OCR 누락 약을 직접 추가해 분석 대상에 포함한다', () async {
+    final detailControl = _SelectiveCheckMedicationDetail({
+      'recognized-tablet',
+      'manual-tablet',
+    });
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'recognized-tablet'),
+      ]),
+      checkMedicationDetail: detailControl,
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    viewModel.addRecognizedMedicationSchedule(
+      const MedicationSchedule(
+        medicationName: 'manual-tablet',
+        dosage: '1정',
+        intakeTime: '2회',
+        medicationTime: 3,
+        scheduleSlotKeys: ['morning', 'evening'],
+      ),
+    );
+
+    expect(viewModel.recognizedMedicationScheduleList, hasLength(2));
+    expect(
+      viewModel.recognizedMedicationScheduleList.last.nameCorrectionSource,
+      'manual_add',
+    );
+    await viewModel.requestPrescriptionAnalysis();
+
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+    expect(viewModel.analyzedMedicationList, hasLength(2));
+    expect(detailControl.requestedMedicationNames, [
+      'recognized-tablet',
+      'manual-tablet',
+    ]);
+  });
 
   test(
     'prescription recognition failure does not expose analysis retry',

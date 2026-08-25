@@ -400,6 +400,116 @@ void main() {
     expect(updatedSchedule, isNull);
     expect(find.text('2000-01-01부터 오늘 기준 1년 이내 날짜를 입력해주세요.'), findsOneWidget);
   });
+
+  testWidgets('OCR에서 누락된 약을 표에 직접 추가한다', (tester) async {
+    await _setViewport(tester, const Size(376, 856));
+    MedicationSchedule? addedSchedule;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: [
+            MedicationSchedule(
+              medicationName: '기존약',
+              prescriptionDate: DateTime(2026, 8, 25),
+              dosage: '1정',
+              intakeTime: '2회',
+              medicationTime: 4,
+              scheduleSlotKeys: const ['morning', 'evening'],
+            ),
+          ],
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () {},
+          onMedicationScheduleChanged: (_, _) {},
+          onMedicationScheduleAdded: (schedule) => addedSchedule = schedule,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    final addButton = find.byKey(const Key('ocr-add-medication-button'));
+    await tester.ensureVisible(addButton);
+    await tester.tap(addButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('누락된 약 추가'), findsWidgets);
+    await tester.enterText(find.byKey(const Key('ocr-edit-name')), '수동추가약');
+    await tester.enterText(find.byKey(const Key('ocr-edit-dosage')), '0.5정');
+    await tester.enterText(find.byKey(const Key('ocr-edit-frequency')), '3회');
+    final saveButton = find.byKey(const Key('ocr-edit-save'));
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(addedSchedule?.medicationName, '수동추가약');
+    expect(addedSchedule?.dosage, '0.5정');
+    expect(addedSchedule?.intakeTime, '3회');
+    expect(addedSchedule?.medicationTime, 4);
+    expect(addedSchedule?.prescriptionDate, DateTime(2026, 8, 25));
+    expect(addedSchedule?.nameCorrectionSource, 'manual_add');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('조회 완료 약은 잠그고 미확인 약만 수정해 다시 조회한다', (tester) async {
+    await _setViewport(tester, const Size(376, 856));
+    var retryRequested = false;
+    var continueRequested = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: const [
+            MedicationSchedule(medicationName: '확인된약'),
+            MedicationSchedule(medicationName: '미확인약'),
+          ],
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () => retryRequested = true,
+          onMedicationScheduleChanged: (_, _) {},
+          verifiedScheduleIndexes: const {0},
+          isMedicationLookupReview: true,
+          onVerifiedOnlyContinueRequested: () => continueRequested = true,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('공공데이터에서 확인하지 못했습니다'), findsOneWidget);
+    expect(find.text('확인됨'), findsOneWidget);
+    final verifiedName = tester.widget<Text>(find.text('확인된약'));
+    expect(verifiedName.style?.decoration, TextDecoration.lineThrough);
+
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-name')));
+    await tester.pumpAndSettle();
+    expect(find.text('OCR 인식 결과 수정'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('ocr-table-cell-1-name')));
+    await tester.pumpAndSettle();
+    expect(find.text('OCR 인식 결과 수정'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('ocr-edit-cancel')));
+    await tester.pumpAndSettle();
+
+    final retryButton = find.byKey(const Key('prescription-analyze-button'));
+    await tester.ensureVisible(retryButton);
+    await tester.tap(retryButton);
+    await tester.pump();
+    expect(retryRequested, isTrue);
+
+    final continueButton = find.byKey(
+      const Key('continue-with-verified-medications'),
+    );
+    await tester.ensureVisible(continueButton);
+    await tester.tap(continueButton);
+    await tester.pumpAndSettle();
+    expect(find.text('미확인 약을 제외할까요?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirm-verified-only-continue')));
+    await tester.pumpAndSettle();
+    expect(continueRequested, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {

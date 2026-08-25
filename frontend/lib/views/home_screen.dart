@@ -73,7 +73,24 @@ class HomeScreen extends StatelessWidget {
         onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
         onMedicationScheduleChanged:
             viewModel.updateRecognizedMedicationSchedule,
+        onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
       ),
+      PrescriptionFlowState.medicationReviewRequired =>
+        PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+          recognizedTextRegions: viewModel.recognizedTextRegionList,
+          previewImagePath: viewModel.prescriptionPreviewImagePath,
+          userSetting: viewModel.userSetting,
+          onBackRequested: viewModel.returnToPrescriptionPreview,
+          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
+          onMedicationScheduleChanged:
+              viewModel.updateRecognizedMedicationSchedule,
+          onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
+          verifiedScheduleIndexes: viewModel.verifiedMedicationScheduleIndexes,
+          isMedicationLookupReview: true,
+          onVerifiedOnlyContinueRequested:
+              viewModel.continueWithVerifiedMedicationAnalysis,
+        ),
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,

@@ -37,6 +37,7 @@ class _PreviewMedicationTable extends StatelessWidget {
   final UserSetting userSetting;
   final ScrollController scrollController;
   final _MedicationTableEditCallback onEditRequested;
+  final Set<int> verifiedScheduleIndexes;
 
   const _PreviewMedicationTable({
     required this.medicationScheduleList,
@@ -44,6 +45,7 @@ class _PreviewMedicationTable extends StatelessWidget {
     required this.userSetting,
     required this.scrollController,
     required this.onEditRequested,
+    this.verifiedScheduleIndexes = const {},
   });
 
   @override
@@ -154,7 +156,11 @@ class _PreviewMedicationTable extends StatelessWidget {
     MedicationSchedule schedule,
     double scale,
   ) {
+    final isVerified = verifiedScheduleIndexes.contains(scheduleIndex);
     return TableRow(
+      decoration: isVerified
+          ? const BoxDecoration(color: Color(0xFFF3F5F4))
+          : null,
       children: [
         _EditableMedicationCell(
           cellKey: Key('ocr-table-cell-$scheduleIndex-name'),
@@ -162,15 +168,18 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.medicationName,
             schedule.displayNameForLanguage(previewText.language),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.medicationName,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.medicationName,
+                ),
           child: _MedicationNameTableValue(
             schedule: schedule,
             previewText: previewText,
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
         _EditableMedicationCell(
@@ -179,14 +188,17 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.dosage,
             schedule.dosageLabelForLanguage(previewText.language),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.dosage,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.dosage,
+                ),
           child: _TableValueText(
             value: schedule.dosageLabelForLanguage(previewText.language),
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
         _EditableMedicationCell(
@@ -195,16 +207,19 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.dailyFrequency,
             schedule.dailyFrequencyLabelForLanguage(previewText.language),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.dailyFrequency,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.dailyFrequency,
+                ),
           child: _TableValueText(
             value: schedule.dailyFrequencyLabelForLanguage(
               previewText.language,
             ),
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
         _EditableMedicationCell(
@@ -213,14 +228,17 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.totalDays,
             schedule.durationLabelForLanguage(previewText.language),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.totalDays,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.totalDays,
+                ),
           child: _TableValueText(
             value: schedule.durationLabelForLanguage(previewText.language),
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
         _EditableMedicationCell(
@@ -229,14 +247,17 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.medicationStartDate,
             previewText.dateValue(schedule.prescriptionDate),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.prescriptionDate,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.prescriptionDate,
+                ),
           child: _TableValueText(
             value: previewText.dateValue(schedule.prescriptionDate),
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
         _EditableMedicationCell(
@@ -245,14 +266,17 @@ class _PreviewMedicationTable extends StatelessWidget {
             previewText.scheduleSlots,
             previewText.slotSummary(schedule.slotKeys),
           ),
-          onTap: () => onEditRequested(
-            scheduleIndex,
-            schedule,
-            _MedicationScheduleEditField.scheduleSlots,
-          ),
+          onTap: isVerified
+              ? null
+              : () => onEditRequested(
+                  scheduleIndex,
+                  schedule,
+                  _MedicationScheduleEditField.scheduleSlots,
+                ),
           child: _TableValueText(
             value: previewText.slotSummary(schedule.slotKeys),
             scale: scale,
+            isVerified: isVerified,
           ),
         ),
       ],
@@ -293,7 +317,7 @@ class _TableHeaderCell extends StatelessWidget {
 class _EditableMedicationCell extends StatelessWidget {
   final Key cellKey;
   final String semanticsLabel;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Widget child;
 
   const _EditableMedicationCell({
@@ -306,7 +330,8 @@ class _EditableMedicationCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      button: true,
+      button: onTap != null,
+      enabled: onTap != null,
       label: semanticsLabel,
       child: InkWell(
         key: cellKey,
@@ -327,8 +352,13 @@ class _EditableMedicationCell extends StatelessWidget {
 class _TableValueText extends StatelessWidget {
   final String value;
   final double scale;
+  final bool isVerified;
 
-  const _TableValueText({required this.value, required this.scale});
+  const _TableValueText({
+    required this.value,
+    required this.scale,
+    this.isVerified = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -337,10 +367,13 @@ class _TableValueText extends StatelessWidget {
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: MedBuddyColors.textStrong,
+        color: isVerified
+            ? MedBuddyColors.textLight
+            : MedBuddyColors.textStrong,
         fontSize: 14 * scale,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
+        decoration: isVerified ? TextDecoration.lineThrough : null,
       ),
     );
   }
@@ -352,16 +385,20 @@ class _MedicationNameTableValue extends StatelessWidget {
   final MedicationSchedule schedule;
   final _PreviewText previewText;
   final double scale;
+  final bool isVerified;
 
   const _MedicationNameTableValue({
     required this.schedule,
     required this.previewText,
     required this.scale,
+    this.isVerified = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final correctionBadge = schedule.isNameConfirmed
+    final correctionBadge = isVerified
+        ? _CorrectionBadge(label: previewText.verified, scale: scale)
+        : schedule.isNameConfirmed
         ? _CorrectionBadge(label: previewText.confirmed, scale: scale)
         : schedule.hasNameCorrection
         ? _CorrectionBadge(label: previewText.corrected, scale: scale)
@@ -386,10 +423,13 @@ class _MedicationNameTableValue extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: MedBuddyColors.textStrong,
+                  color: isVerified
+                      ? MedBuddyColors.textLight
+                      : MedBuddyColors.textStrong,
                   fontSize: 14 * scale,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
+                  decoration: isVerified ? TextDecoration.lineThrough : null,
                 ),
               ),
             ),
@@ -463,12 +503,14 @@ class _MedicationScheduleEditDialog extends StatefulWidget {
   final _PreviewText previewText;
   final UserSetting userSetting;
   final _MedicationScheduleEditField initialField;
+  final bool isNewSchedule;
 
   const _MedicationScheduleEditDialog({
     required this.medicationSchedule,
     required this.previewText,
     required this.userSetting,
     required this.initialField,
+    this.isNewSchedule = false,
   });
 
   @override
@@ -536,7 +578,7 @@ class _MedicationScheduleEditDialogState
     return AlertDialog(
       scrollable: true,
       title: Text(
-        text.editTitle,
+        widget.isNewSchedule ? text.addTitle : text.editTitle,
         style: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 21 * scale,
@@ -804,11 +846,17 @@ class _MedicationScheduleEditDialogState
         scheduleSlotKeys: medicationScheduleSlotKeys
             .where(_selectedSlotKeys.contains)
             .toList(growable: false),
-        rawMedicationName: restoresOriginalName
+        rawMedicationName: widget.isNewSchedule || restoresOriginalName
             ? ''
             : widget.medicationSchedule.rawMedicationName,
-        nameConfidence: restoresOriginalName ? 0 : 1,
-        nameCorrectionSource: restoresOriginalName
+        nameConfidence: widget.isNewSchedule
+            ? 1
+            : restoresOriginalName
+            ? 0
+            : 1,
+        nameCorrectionSource: widget.isNewSchedule
+            ? 'manual_add'
+            : restoresOriginalName
             ? 'ocr_reset'
             : 'user_review',
       ),
@@ -875,8 +923,22 @@ class _PreviewText {
   String get corrected => isEnglish ? 'Corrected' : '보정';
   String get confirmed => isEnglish ? 'Confirmed' : '확인 완료';
   String get reviewNeeded => isEnglish ? 'Review' : '검토 필요';
+  String get verified => isEnglish ? 'Verified' : '확인됨';
   String get edit => isEnglish ? 'Edit OCR result' : 'OCR 인식 결과 수정';
   String get editTitle => isEnglish ? 'Edit OCR result' : 'OCR 인식 결과 수정';
+  String get addTitle => isEnglish ? 'Add missing medication' : '누락된 약 추가';
+  String get addMissingMedication =>
+      isEnglish ? 'Add missing medication' : '누락된 약 추가';
+  String get retryUnverifiedMedications =>
+      isEnglish ? 'Retry unverified medications' : '미확인 약 다시 조회';
+  String get continueWithVerifiedOnly =>
+      isEnglish ? 'Continue with verified medications only' : '확인된 약만으로 계속';
+  String get continueWithVerifiedTitle =>
+      isEnglish ? 'Exclude unverified medications?' : '미확인 약을 제외할까요?';
+  String continueWithVerifiedWarning(int count) => isEnglish
+      ? '$count unverified medication item(s) will not appear in the result or schedule. You can cancel and correct them instead.'
+      : '미확인 약 $count개는 분석 결과와 복약 일정에 포함되지 않습니다. 취소한 뒤 약명을 수정해 다시 조회할 수 있습니다.';
+  String get continueLabel => isEnglish ? 'Continue' : '계속';
   String get medicationName => isEnglish ? 'Medication name' : '약 이름';
   String get dosage => isEnglish ? 'Dose per intake' : '1회 투약량';
   String get dailyFrequency => isEnglish ? 'Daily frequency' : '1일 횟수';
@@ -909,6 +971,10 @@ class _PreviewText {
   String get tableScrollHint => isEnglish
       ? 'Swipe sideways to review all medication details.'
       : '표를 옆으로 밀어 모든 복약 정보를 확인해보세요.';
+
+  String lookupReviewGuide(int count) => isEnglish
+      ? '$count medication item(s) could not be matched. Verified rows are crossed out and locked. Correct the remaining rows, then retry.'
+      : '약 $count개를 공공데이터에서 확인하지 못했습니다. 확인된 행은 취소선으로 잠겨 있습니다. 나머지 약명을 수정한 뒤 다시 조회해주세요.';
 
   String slotLabel(String slotKey) {
     if (isEnglish) {

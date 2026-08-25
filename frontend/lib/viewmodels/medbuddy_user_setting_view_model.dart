@@ -46,6 +46,8 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _recognizedTextRegionList = [];
     _prescriptionPreviewImagePath = '';
     _analyzedMedicationList = [];
+    _analyzedMedicationByScheduleIndex.clear();
+    _unverifiedMedicationScheduleIndexes.clear();
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
     _completedMedicationSaveIndexes.clear();
