@@ -14,7 +14,10 @@ SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 # - 로컬 SQLite와 운영 PostgreSQL에서 공통으로 사용할 연결 엔진
 _engine_options: dict[str, object] = {"pool_pre_ping": True}
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-    _engine_options["connect_args"] = {"check_same_thread": False}
+    _engine_options["connect_args"] = {
+        "check_same_thread": False,
+        "timeout": 15,
+    }
 else:
     _engine_options.update(
         pool_size=settings.DATABASE_POOL_SIZE,
@@ -26,17 +29,19 @@ else:
 engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_options)
 
 
-# 함수명: _enable_sqlite_foreign_keys
+# 함수명: _configure_sqlite_connection
 # 역할:
 # - 로컬 SQLite 연결에서도 운영 PostgreSQL과 동일하게 FK와 cascade를 적용한다.
-# - SQLite가 기본적으로 비활성화하는 외래키 검사를 연결마다 활성화한다.
+# - 앱 시작 시 겹치는 읽기 요청이 잠깐의 쓰기 작업 때문에 실패하지 않도록 한다.
 @event.listens_for(engine, "connect")
-def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> None:
+def _configure_sqlite_connection(dbapi_connection: object, _record: object) -> None:
     if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         return
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=15000")
     finally:
         cursor.close()
 

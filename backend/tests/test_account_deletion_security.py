@@ -22,6 +22,7 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from api.dependencies import (
     _lock_account_operation,
+    _register_account_scope,
     get_recently_authenticated_principal,
 )
 from controls.manage_account_control import ManageAccount
@@ -30,6 +31,7 @@ from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.health_recommendation_cache_entity import (
     _HealthRecommendationCache,
 )
+from entities.user_account_entity import _UserAccount
 
 
 class _RecordingIdentityDeletionBoundary:
@@ -40,6 +42,39 @@ class _RecordingIdentityDeletionBoundary:
 
     def deleteIdentity(self, subject: str) -> None:
         self.subjects.append(subject)
+
+
+def test_sqlite_account_registration_releases_write_lock() -> None:
+    """사용자 확인 뒤 다른 초기 조회가 SQLite 잠금에 막히지 않는다."""
+
+    database_fd, database_path_value = tempfile.mkstemp(
+        prefix="medbuddy-account-registration-",
+        suffix=".db",
+    )
+    os.close(database_fd)
+    database_path = Path(database_path_value)
+    engine = create_engine(
+        f"sqlite:///{database_path.as_posix()}",
+        connect_args={"check_same_thread": False, "timeout": 1},
+    )
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine)
+    first_session: Session = session_factory()
+    second_session: Session = session_factory()
+
+    try:
+        _register_account_scope(first_session, "usr_parallel_startup")
+
+        second_session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        second_session.rollback()
+        assert (
+            second_session.get(_UserAccount, "usr_parallel_startup") is not None
+        )
+    finally:
+        first_session.close()
+        second_session.close()
+        engine.dispose()
+        database_path.unlink(missing_ok=True)
 
 
 # Function Name: _principal
