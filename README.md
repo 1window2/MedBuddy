@@ -91,6 +91,7 @@ release.
   FCM push alerts when a dose is newly completed. Missed-deadline checks remain
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
+- Local demo caregiver alerts use the patient alias saved on the caregiver device when available. Otherwise they use a generic linked-patient label and never expose the internal patient hash in notification text.
 
 ### Health Recommendations and Reminders
 
