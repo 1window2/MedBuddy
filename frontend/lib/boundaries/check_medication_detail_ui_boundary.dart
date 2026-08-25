@@ -45,13 +45,18 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
     final scale = widget.userSetting.contentTextScale;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
         child: Stack(
           children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(42, 32, 42, 140),
-              children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: MedBuddySpacing.contentMaxWidth,
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                  children: [
                 _DetailHeader(
                   title: '약 상세정보',
                   onBackRequested: () => Navigator.pop(context),
@@ -93,15 +98,24 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                   medicationDetail: widget.medicationDetail,
                   scale: scale,
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
             Positioned(
-              left: 42,
-              right: 42,
-              bottom: 22,
-              child: _TtsButton(
-                isSpeaking: _isSpeaking,
-                onPressed: _handleTtsButtonPressed,
+              left: 20,
+              right: 20,
+              bottom: 16,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: MedBuddySpacing.contentMaxWidth,
+                  ),
+                  child: _TtsButton(
+                    isSpeaking: _isSpeaking,
+                    onPressed: _handleTtsButtonPressed,
+                  ),
+                ),
               ),
             ),
           ],

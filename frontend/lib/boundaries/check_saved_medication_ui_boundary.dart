@@ -84,18 +84,23 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         MediaQuery.textScalerOf(context).scale(16) > 19;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            42,
-            compactLayout ? 14 : 24,
-            42,
-            compactLayout ? 16 : 28,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: MedBuddySpacing.contentMaxWidth,
+            ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                MedBuddySpacing.pageHorizontal,
+                compactLayout ? 14 : 24,
+                MedBuddySpacing.pageHorizontal,
+                compactLayout ? 16 : 28,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -211,7 +216,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
               Expanded(
                 child: _buildContent(viewModel, savedMedicationInfoList, text),
               ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

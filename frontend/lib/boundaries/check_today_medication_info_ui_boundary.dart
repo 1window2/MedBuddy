@@ -30,6 +30,7 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
   final int completedCount;
   final int totalCount;
   final bool isLoading;
+  final bool compact;
   final VoidCallback? onTap;
   final DateTime Function()? nowProvider;
 
@@ -45,6 +46,7 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     required this.isLoading,
     required this.onTap,
     this.nowProvider,
+    this.compact = false,
   });
 
   @override
@@ -52,55 +54,134 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     final scale = userSetting.contentTextScale;
     final summary = _buildScheduleSummary();
 
-    return Material(
-      color: Colors.white,
-      borderRadius: MedBuddyRadii.card,
-      elevation: 7,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.16),
-      child: InkWell(
+    if (compact) {
+      return Material(
+        color: MedBuddyColors.surface,
         borderRadius: MedBuddyRadii.card,
+        child: InkWell(
+          borderRadius: MedBuddyRadii.card,
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: MedBuddyRadii.card,
+              border: Border.all(color: MedBuddyColors.successBorder),
+              boxShadow: MedBuddyShadows.soft,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: MedBuddyColors.mint,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.schedule_rounded,
+                    color: MedBuddyColors.primaryDark,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 15 * scale,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  summary.primaryText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: summary.isActionable
+                        ? MedBuddyColors.primaryDark
+                        : MedBuddyColors.textSubtle,
+                    fontSize: 11 * scale,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: MedBuddyColors.surface,
+      borderRadius: MedBuddyRadii.largeCard,
+      elevation: 0,
+      child: InkWell(
+        borderRadius: MedBuddyRadii.largeCard,
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 190),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+          constraints: const BoxConstraints(minHeight: 164),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 2.7),
+            borderRadius: MedBuddyRadii.largeCard,
+            border: Border.all(color: MedBuddyColors.successBorder),
+            boxShadow: MedBuddyShadows.soft,
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.schedule_rounded,
-                color: MedBuddyColors.primary,
-                size: 48,
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: MedBuddyColors.mint,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.schedule_rounded,
+                      color: MedBuddyColors.primaryDark,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 18 * scale,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: MedBuddyColors.textLight,
+                    size: 16,
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: const Color(0xFF0A0A0A),
-                  fontSize: 22 * scale,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               Text(
                 summary.primaryText,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: summary.isActionable
                       ? MedBuddyColors.primaryDark
                       : MedBuddyColors.textLight,
                   fontSize: 15 * scale,
-                  height: 1.25,
+                  height: 1.35,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
                 ),
               ),
               if (summary.secondaryText.isNotEmpty) ...[
@@ -109,41 +190,25 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
                   summary.secondaryText,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: MedBuddyColors.textLight,
                     fontSize: 13 * scale,
                     height: 1.25,
                     fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
                   ),
                 ),
               ],
               if (!isLoading && schedules.isNotEmpty) ...[
                 const SizedBox(height: 9),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        _isEnglish ? 'View schedule' : '복약 일정 보기',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: MedBuddyColors.primaryDark,
-                          fontSize: 12 * scale,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 3),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: MedBuddyColors.primaryDark,
-                      size: 12 * scale,
-                    ),
-                  ],
+                Text(
+                  _isEnglish ? 'View today\'s schedule' : '오늘 복약 일정 확인하기',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: MedBuddyColors.primaryDark,
+                    fontSize: 12 * scale,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ],
