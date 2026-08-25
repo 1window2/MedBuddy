@@ -271,6 +271,8 @@ class HomeScreen extends StatelessWidget {
                   viewModel.requestNearbyPharmacyLabSettingSave,
               onLinkedMedicationChatLabSettingSaveRequested:
                   viewModel.requestLinkedMedicationChatLabSettingSave,
+              onMultiPillIdentificationLabSettingSaveRequested:
+                  viewModel.requestMultiPillIdentificationLabSettingSave,
               onMedicationScheduleRequested: () {
                 Navigator.push(
                   context,

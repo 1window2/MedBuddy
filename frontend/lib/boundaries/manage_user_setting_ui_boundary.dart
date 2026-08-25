@@ -39,6 +39,8 @@ class ManageUserSettingUI extends StatefulWidget {
   onNearbyPharmacyLabSettingSaveRequested;
   final Future<void> Function(bool enabled)?
   onLinkedMedicationChatLabSettingSaveRequested;
+  final Future<void> Function(bool enabled)?
+  onMultiPillIdentificationLabSettingSaveRequested;
   final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
@@ -60,6 +62,7 @@ class ManageUserSettingUI extends StatefulWidget {
     this.previewStopper,
     this.onNearbyPharmacyLabSettingSaveRequested,
     this.onLinkedMedicationChatLabSettingSaveRequested,
+    this.onMultiPillIdentificationLabSettingSaveRequested,
     this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
@@ -93,6 +96,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _defaultBedtime;
   late bool _nearbyPharmacyLabEnabled;
   late bool _linkedMedicationChatLabEnabled;
+  late bool _multiPillIdentificationLabEnabled;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
   int _voicePreviewRequestId = 0;
@@ -120,6 +124,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _nearbyPharmacyLabEnabled = widget.initialSetting.nearbyPharmacyLabEnabled;
     _linkedMedicationChatLabEnabled =
         widget.initialSetting.linkedMedicationChatLabEnabled;
+    _multiPillIdentificationLabEnabled =
+        widget.initialSetting.multiPillIdentificationLabEnabled;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -153,6 +159,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       defaultBedtime: _defaultBedtime,
       nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
       linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
+      multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
     );
     final platformMediaQuery = MediaQueryData.fromView(View.of(context));
     final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
@@ -245,6 +252,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         laboratorySummary: text.laboratorySummary(
           nearbyPharmacyEnabled: _nearbyPharmacyLabEnabled,
           medicationChatEnabled: _linkedMedicationChatLabEnabled,
+          multiPillIdentificationEnabled: _multiPillIdentificationLabEnabled,
         ),
         onSectionSelected: (section) {
           setState(() => _selectedSection = section);
@@ -465,6 +473,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           onChanged: (enabled) =>
               setState(() => _linkedMedicationChatLabEnabled = enabled),
         ),
+        const SizedBox(height: 14),
+        _ExperimentalFeatureToggle(
+          switchKey: const ValueKey('multiPillIdentificationLabSwitch'),
+          title: text.multiPillIdentificationLabTitle,
+          description: text.multiPillIdentificationLabDescription,
+          enabled: _multiPillIdentificationLabEnabled,
+          onChanged: (enabled) =>
+              setState(() => _multiPillIdentificationLabEnabled = enabled),
+        ),
       ],
     );
   }
@@ -612,6 +629,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     defaultBedtime: _defaultBedtime,
     nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
     linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
+    multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
   );
 
   // 함수명: _selectLanguageMode
@@ -797,6 +815,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       );
       await widget.onLinkedMedicationChatLabSettingSaveRequested?.call(
         _linkedMedicationChatLabEnabled,
+      );
+      await widget.onMultiPillIdentificationLabSettingSaveRequested?.call(
+        _multiPillIdentificationLabEnabled,
       );
       if (!mounted) {
         return;
@@ -1970,6 +1991,11 @@ class _SettingText {
   String get linkedMedicationChatLabDescription => isEnglish
       ? 'Let linked patients and caregivers discuss an active medication.'
       : '복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다.';
+  String get multiPillIdentificationLabTitle =>
+      isEnglish ? 'Multi-pill batch identification' : '다중 알약 일괄 식별';
+  String get multiPillIdentificationLabDescription => isEnglish
+      ? 'Add one photo per pill and review several identification results together.'
+      : '알약마다 사진을 한 장씩 추가해 여러 식별 결과를 한 번에 검토합니다.';
   String get medicationNotificationsTitle =>
       isEnglish ? 'My medication reminders' : '내 복약 알림';
   String get medicationNotificationsDescription => isEnglish
@@ -2073,10 +2099,12 @@ class _SettingText {
   String laboratorySummary({
     required bool nearbyPharmacyEnabled,
     required bool medicationChatEnabled,
+    required bool multiPillIdentificationEnabled,
   }) {
     final enabledFeatures = <String>[
       if (nearbyPharmacyEnabled) nearbyPharmacyLabTitle,
       if (medicationChatEnabled) linkedMedicationChatLabTitle,
+      if (multiPillIdentificationEnabled) multiPillIdentificationLabTitle,
     ];
     if (enabledFeatures.isEmpty) {
       return isEnglish ? 'No experimental features enabled' : '사용 중인 실험 기능 없음';

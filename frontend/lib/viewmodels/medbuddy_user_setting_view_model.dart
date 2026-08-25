@@ -148,6 +148,22 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
   }
 
+  // 함수명: requestMultiPillIdentificationLabSettingSave
+  // 함수역할:
+  // - 다중 알약 일괄 식별 실험 기능의 노출 설정을 기기에 저장하고 입력 화면에 반영한다.
+  // 반환값:
+  // - 없음
+  Future<void> requestMultiPillIdentificationLabSettingSave(
+    bool enabled,
+  ) async {
+    _userSetting = await manageUserSetting
+        .saveMultiPillIdentificationLabSetting(
+          currentSetting: _userSetting,
+          enabled: enabled,
+        );
+    _notifyViewModelListeners(MedBuddyFeature.userSetting);
+  }
+
   // 함수명: requestAccountDataDeletion
   // 역할:
   // - 현재 사용자에게 연결된 서버 데이터와 기기 캐시의 전체 삭제를 요청한다.

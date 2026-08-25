@@ -24,6 +24,7 @@ class UserSetting {
   final String defaultBedtime;
   final bool nearbyPharmacyLabEnabled;
   final bool linkedMedicationChatLabEnabled;
+  final bool multiPillIdentificationLabEnabled;
 
   const UserSetting({
     this.userHash = '',
@@ -42,6 +43,7 @@ class UserSetting {
     this.defaultBedtime = '22:00',
     this.nearbyPharmacyLabEnabled = false,
     this.linkedMedicationChatLabEnabled = false,
+    this.multiPillIdentificationLabEnabled = false,
   });
 
   factory UserSetting.fromJson(Map<String, dynamic> json) {
@@ -100,6 +102,9 @@ class UserSetting {
       linkedMedicationChatLabEnabled:
           json['linked_medication_chat_lab_enabled'] == true ||
           json['linkedMedicationChatLabEnabled'] == true,
+      multiPillIdentificationLabEnabled:
+          json['multi_pill_identification_lab_enabled'] == true ||
+          json['multiPillIdentificationLabEnabled'] == true,
     );
   }
 
@@ -233,6 +238,7 @@ class UserSetting {
     String? defaultBedtime,
     bool? nearbyPharmacyLabEnabled,
     bool? linkedMedicationChatLabEnabled,
+    bool? multiPillIdentificationLabEnabled,
   }) {
     return UserSetting(
       userHash: userHash ?? this.userHash,
@@ -257,6 +263,9 @@ class UserSetting {
           nearbyPharmacyLabEnabled ?? this.nearbyPharmacyLabEnabled,
       linkedMedicationChatLabEnabled:
           linkedMedicationChatLabEnabled ?? this.linkedMedicationChatLabEnabled,
+      multiPillIdentificationLabEnabled:
+          multiPillIdentificationLabEnabled ??
+          this.multiPillIdentificationLabEnabled,
     );
   }
 

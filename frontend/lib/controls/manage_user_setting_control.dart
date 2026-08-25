@@ -77,6 +77,8 @@ class ManageUserSetting {
         nearbyPharmacyLabEnabled: cachedSetting.nearbyPharmacyLabEnabled,
         linkedMedicationChatLabEnabled:
             cachedSetting.linkedMedicationChatLabEnabled,
+        multiPillIdentificationLabEnabled:
+            cachedSetting.multiPillIdentificationLabEnabled,
       );
       await _cacheUserSetting(setting);
       return setting;
@@ -168,6 +170,8 @@ class ManageUserSetting {
         nearbyPharmacyLabEnabled: nextSetting.nearbyPharmacyLabEnabled,
         linkedMedicationChatLabEnabled:
             nextSetting.linkedMedicationChatLabEnabled,
+        multiPillIdentificationLabEnabled:
+            nextSetting.multiPillIdentificationLabEnabled,
       );
       await _cacheUserSetting(savedSetting);
       return UserSettingSaveResult(
@@ -219,6 +223,24 @@ class ManageUserSetting {
     final nextSetting = currentSetting.copyWith(
       userHash: _normalizedUserHash,
       linkedMedicationChatLabEnabled: enabled,
+    );
+    await _cacheUserSetting(nextSetting);
+    return nextSetting;
+  }
+
+  // 함수명: saveMultiPillIdentificationLabSetting
+  // 함수역할:
+  // - 여러 알약 사진을 한 번에 식별하는 실험 기능의 노출 여부를 기기에 저장한다.
+  // - 검증 중인 기능이 서버의 정식 사용자 설정 스키마에 포함되지 않게 한다.
+  // 반환값:
+  // - 다중 알약 식별 설정이 반영된 사용자 설정
+  Future<UserSetting> saveMultiPillIdentificationLabSetting({
+    required UserSetting currentSetting,
+    required bool enabled,
+  }) async {
+    final nextSetting = currentSetting.copyWith(
+      userHash: _normalizedUserHash,
+      multiPillIdentificationLabEnabled: enabled,
     );
     await _cacheUserSetting(nextSetting);
     return nextSetting;
@@ -276,6 +298,8 @@ class ManageUserSetting {
           preferences.getBool(_nearbyPharmacyLabEnabledKey) ?? false,
       linkedMedicationChatLabEnabled:
           preferences.getBool(_linkedMedicationChatLabEnabledKey) ?? false,
+      multiPillIdentificationLabEnabled:
+          preferences.getBool(_multiPillIdentificationLabEnabledKey) ?? false,
     );
   }
 
@@ -319,6 +343,10 @@ class ManageUserSetting {
     await preferences.setBool(
       _linkedMedicationChatLabEnabledKey,
       setting.linkedMedicationChatLabEnabled,
+    );
+    await preferences.setBool(
+      _multiPillIdentificationLabEnabledKey,
+      setting.multiPillIdentificationLabEnabled,
     );
   }
 
@@ -381,6 +409,9 @@ class ManageUserSetting {
 
   String get _linkedMedicationChatLabEnabledKey =>
       'user_setting_${_normalizedUserHash}_linked_medication_chat_lab_enabled';
+
+  String get _multiPillIdentificationLabEnabledKey =>
+      'user_setting_${_normalizedUserHash}_multi_pill_identification_lab_enabled';
 
   void dispose() {
     if (_ownsClient) {

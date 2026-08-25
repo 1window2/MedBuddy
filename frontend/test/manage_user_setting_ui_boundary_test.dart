@@ -545,6 +545,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('실험실에서 다중 알약 일괄 식별 노출 여부를 저장한다', (tester) async {
+    bool? savedLabSetting;
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          onMultiPillIdentificationLabSettingSaveRequested: (enabled) async {
+            savedLabSetting = enabled;
+          },
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    await _openLaboratory(tester);
+    await tester.ensureVisible(find.text('다중 알약 일괄 식별'));
+    await tester.tap(
+      find.byKey(const ValueKey('multiPillIdentificationLabSwitch')),
+    );
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '저장하기'));
+    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
+    await tester.pumpAndSettle();
+
+    expect(savedLabSetting, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('계정 삭제 성공 후 빈 화면이 아니라 루트 화면으로 돌아간다', (tester) async {
     var deletionCount = 0;
     final authenticationControl = AuthenticationControl.development();

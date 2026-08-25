@@ -97,6 +97,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
 
   bool get _isBusy => _isAnalyzing || _isSelectingImage || _isSaving;
 
+  bool get _batchEnabled =>
+      widget.userSetting.multiPillIdentificationLabEnabled;
+
   bool get _allDraftsReady =>
       _drafts.isNotEmpty && _drafts.every((draft) => draft.hasFrontImage);
 
@@ -136,7 +139,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
 
   @override
   Widget build(BuildContext context) {
-    final text = _PillIdentificationText(widget.userSetting.language);
+    final text = _PillIdentificationText(
+      widget.userSetting.language,
+      batchEnabled: _batchEnabled,
+    );
     final textScale = widget.userSetting.contentTextScale;
     final pendingCount = _pendingDraftIndexes.length;
     final hasVisibleResults = _drafts.any((draft) => draft.result != null);
@@ -402,6 +408,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 함수명: _buildAddPhotoActions
   // 역할: 카메라로 다음 알약을 추가하거나 갤러리 사진 여러 장을 한꺼번에 등록하게 한다.
   Widget _buildAddPhotoActions(_PillIdentificationText text, double textScale) {
+    if (!_batchEnabled) {
+      return const SizedBox.shrink();
+    }
     final occupiedCount = _drafts.where((draft) => draft.hasFrontImage).length;
     final canAddPhotoSet =
         !_isBusy && _drafts.length < IdentifyPillBatch.maxBatchSize;
@@ -701,7 +710,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 함수명: _selectMultipleFrontImages
   // 역할: 갤러리에서 고른 여러 장을 각각 별도의 알약 앞면 사진으로 등록한다.
   Future<void> _selectMultipleFrontImages(_PillIdentificationText text) async {
-    if (_isBusy) {
+    if (!_batchEnabled || _isBusy) {
       return;
     }
     final occupiedCount = _drafts.where((draft) => draft.hasFrontImage).length;
@@ -763,7 +772,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   void _addPhotoDraft() {
-    if (_isBusy || _drafts.length >= IdentifyPillBatch.maxBatchSize) {
+    if (!_batchEnabled ||
+        _isBusy ||
+        _drafts.length >= IdentifyPillBatch.maxBatchSize) {
       return;
     }
     setState(() {
@@ -789,7 +800,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (!_allDraftsReady || pendingIndexes.isEmpty) {
       return;
     }
-    final text = _PillIdentificationText(widget.userSetting.language);
+    final text = _PillIdentificationText(
+      widget.userSetting.language,
+      batchEnabled: _batchEnabled,
+    );
     setState(() {
       _isAnalyzing = true;
       _isBatchSaved = false;
@@ -1155,7 +1169,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (error is! PillIdentificationException) {
       return fallback;
     }
-    final text = _PillIdentificationText(widget.userSetting.language);
+    final text = _PillIdentificationText(
+      widget.userSetting.language,
+      batchEnabled: _batchEnabled,
+    );
     return switch (error.failure) {
       PillIdentificationFailure.emptyImage => text.emptyImage,
       PillIdentificationFailure.oversizedImage => text.oversizedImage,
@@ -1654,19 +1671,33 @@ class _EmptyResult extends StatelessWidget {
 
 class _PillIdentificationText {
   final String language;
+  final bool batchEnabled;
 
-  const _PillIdentificationText(this.language);
+  const _PillIdentificationText(this.language, {required this.batchEnabled});
 
   bool get isEnglish => language == 'en';
   String get title => isEnglish ? 'Identify a Pill' : '알약 식별';
   String get safetyNotice => isEnglish
       ? 'Photos are analyzed by an external AI and are not stored by MedBuddy. Matching only suggests candidates; verify the package or ask a pharmacist.'
       : '사진은 외부 AI로 분석되며 MedBuddy에 저장되지 않습니다. 비교 결과는 후보일 뿐이므로 포장 정보 또는 약사에게 확인하세요.';
-  String get photoSectionTitle =>
-      isEnglish ? 'Add one photo set per pill' : '알약마다 사진을 따로 추가해주세요';
-  String get photoSectionDescription => isEnglish
-      ? 'Photograph each pill separately. Keep one pill in focus with its outline visible; adding its reverse side improves matching. You can combine up to 10 pills in one review.'
-      : '알약을 한곳에 모아 찍지 말고 한 알씩 선명하게 촬영하세요. 같은 알약의 뒷면을 추가하면 정확도가 높아지며, 최대 10개를 한 번에 검토할 수 있습니다.';
+  String get photoSectionTitle {
+    if (batchEnabled) {
+      return isEnglish ? 'Add one photo set per pill' : '알약마다 사진을 따로 추가해주세요';
+    }
+    return isEnglish ? 'Add a pill photo' : '알약 사진을 추가해주세요';
+  }
+
+  String get photoSectionDescription {
+    if (batchEnabled) {
+      return isEnglish
+          ? 'Photograph each pill separately. Keep one pill in focus with its outline visible; adding its reverse side improves matching. You can combine up to 10 pills in one review.'
+          : '알약을 한곳에 모아 찍지 말고 한 알씩 선명하게 촬영하세요. 같은 알약의 뒷면을 추가하면 정확도가 높아지며, 최대 10개를 한 번에 검토할 수 있습니다.';
+    }
+    return isEnglish
+        ? 'Keep one pill in focus with its outline visible. Adding its reverse side improves matching.'
+        : '알약 한 알의 윤곽이 보이도록 선명하게 촬영하세요. 뒷면 사진을 추가하면 정확도가 높아집니다.';
+  }
+
   String pillPhotoTitle(int number) =>
       isEnglish ? 'Pill $number photo' : '알약 $number 사진';
   String get comparisonComplete => isEnglish ? 'Compared' : '비교 완료';
@@ -1681,9 +1712,17 @@ class _PillIdentificationText {
   String batchLimitReached(int limit) => isEnglish
       ? 'You can compare up to $limit pills at once.'
       : '알약은 한 번에 최대 $limit개까지 비교할 수 있습니다.';
-  String get frontPhotoRequiredForEveryPill => isEnglish
-      ? 'Add a front photo for every pill before starting the comparison.'
-      : '비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요.';
+  String get frontPhotoRequiredForEveryPill {
+    if (batchEnabled) {
+      return isEnglish
+          ? 'Add a front photo for every pill before starting the comparison.'
+          : '비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요.';
+    }
+    return isEnglish
+        ? 'Add a front photo before starting the comparison.'
+        : '비교를 시작하려면 알약 앞면 사진을 추가해주세요.';
+  }
+
   String get frontPhoto => isEnglish ? 'Front' : '앞면';
   String get backPhoto => isEnglish ? 'Back' : '뒷면';
   String get requiredLabel => isEnglish ? 'Required' : '필수';

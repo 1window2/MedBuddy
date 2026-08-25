@@ -26,7 +26,11 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
   required BuildContext context,
   required UserSetting userSetting,
 }) {
-  final text = _MedicationCaptureText(userSetting.language);
+  final text = _MedicationCaptureText(
+    userSetting.language,
+    multiPillIdentificationEnabled:
+        userSetting.multiPillIdentificationLabEnabled,
+  );
 
   return showModalBottomSheet<MedicationCaptureTask>(
     context: context,
@@ -85,7 +89,11 @@ Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
   required BuildContext context,
   required UserSetting userSetting,
 }) {
-  final text = _MedicationCaptureText(userSetting.language);
+  final text = _MedicationCaptureText(
+    userSetting.language,
+    multiPillIdentificationEnabled:
+        userSetting.multiPillIdentificationLabEnabled,
+  );
 
   return showModalBottomSheet<PrescriptionImageSource>(
     context: context,
@@ -242,8 +250,12 @@ class _MedicationCaptureOption extends StatelessWidget {
 // 역할: 공통 약 정보 입력 선택 화면의 한국어와 영어 문구를 제공한다.
 class _MedicationCaptureText {
   final String language;
+  final bool multiPillIdentificationEnabled;
 
-  const _MedicationCaptureText(this.language);
+  const _MedicationCaptureText(
+    this.language, {
+    required this.multiPillIdentificationEnabled,
+  });
 
   bool get isEnglish => language == 'en';
 
@@ -253,9 +265,17 @@ class _MedicationCaptureText {
       ? 'Extract medication names and schedules.'
       : '처방전에서 약 이름과 복약 일정을 확인합니다.';
   String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
-  String get pillTaskSubtitle => isEnglish
-      ? 'Compare a photographed pill with MFDS candidates.'
-      : '촬영한 알약을 식약처 제품 후보와 비교합니다.';
+  String get pillTaskSubtitle {
+    if (multiPillIdentificationEnabled) {
+      return isEnglish
+          ? 'Identify one pill or add separate photos for a Labs batch review.'
+          : '한 알을 식별하거나 알약별 사진을 추가해 실험실 일괄 검토를 합니다.';
+    }
+    return isEnglish
+        ? 'Compare a photographed pill with MFDS candidates.'
+        : '촬영한 알약 한 개를 식약처 제품 후보와 비교합니다.';
+  }
+
   String get manualTask => isEnglish ? 'Add manually' : '직접 등록';
   String get manualTaskSubtitle => isEnglish
       ? 'Enter a medication name and schedule without a photo.'

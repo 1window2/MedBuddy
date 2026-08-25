@@ -110,6 +110,30 @@ void main() {
     );
   });
 
+  test('다중 알약 식별 실험 설정은 사용자별 기기에 저장된다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+
+    final savedSetting = await control.saveMultiPillIdentificationLabSetting(
+      currentSetting: const UserSetting(),
+      enabled: true,
+    );
+    final restoredSetting = await control.requestUserSetting();
+
+    expect(savedSetting.multiPillIdentificationLabEnabled, isTrue);
+    expect(restoredSetting.multiPillIdentificationLabEnabled, isTrue);
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getBool(
+        'user_setting_user-a_multi_pill_identification_lab_enabled',
+      ),
+      isTrue,
+    );
+  });
+
   test('requestUserSetting restores saved values', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_font_size': 14,
@@ -151,6 +175,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'user_setting_user-a_nearby_pharmacy_lab_enabled': true,
       'user_setting_user-a_linked_medication_chat_lab_enabled': true,
+      'user_setting_user-a_multi_pill_identification_lab_enabled': true,
     });
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
@@ -204,6 +229,7 @@ void main() {
     expect(setting.defaultBedtime, '23:10');
     expect(setting.nearbyPharmacyLabEnabled, isTrue);
     expect(setting.linkedMedicationChatLabEnabled, isTrue);
+    expect(setting.multiPillIdentificationLabEnabled, isTrue);
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getInt('user_setting_user-a_font_size'), 20);
     control.dispose();
@@ -217,6 +243,10 @@ void main() {
       expect(requestBody.containsKey('nearby_pharmacy_lab_enabled'), isFalse);
       expect(
         requestBody.containsKey('linked_medication_chat_lab_enabled'),
+        isFalse,
+      );
+      expect(
+        requestBody.containsKey('multi_pill_identification_lab_enabled'),
         isFalse,
       );
       expect(requestBody['language_mode'], 'system');
@@ -263,6 +293,7 @@ void main() {
       currentSetting: const UserSetting(
         nearbyPharmacyLabEnabled: true,
         linkedMedicationChatLabEnabled: true,
+        multiPillIdentificationLabEnabled: true,
       ),
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
@@ -290,6 +321,7 @@ void main() {
     expect(result.setting.notificationDetailMode, 'type_only');
     expect(result.setting.nearbyPharmacyLabEnabled, isTrue);
     expect(result.setting.linkedMedicationChatLabEnabled, isTrue);
+    expect(result.setting.multiPillIdentificationLabEnabled, isTrue);
     control.dispose();
   });
 

@@ -204,6 +204,25 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('다중 알약 실험 기능을 끄면 단일 사진 입력만 표시한다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _FakeIdentifyPill(),
+        ),
+      ),
+    );
+
+    expect(find.text('알약 사진을 추가해주세요'), findsOneWidget);
+    expect(find.byKey(const Key('add-pill-photo-set-button')), findsNothing);
+    expect(
+      find.byKey(const Key('add-multiple-pill-images-button')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('pill candidate flow requires explicit user confirmation', (
     tester,
   ) async {
@@ -317,7 +336,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
-          userSetting: const UserSetting(language: 'ko'),
+          userSetting: const UserSetting(
+            language: 'ko',
+            multiPillIdentificationLabEnabled: true,
+          ),
           control: _MultipleIdentifyPill(),
           onBatchSaveRequested: (requests) async {
             savedRequests = requests;
@@ -383,7 +405,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
-          userSetting: const UserSetting(language: 'ko'),
+          userSetting: const UserSetting(
+            language: 'ko',
+            multiPillIdentificationLabEnabled: true,
+          ),
           control: _DuplicateIdentifyPill(),
           onBatchSaveRequested: (requests) async {
             savedRequests = requests;
