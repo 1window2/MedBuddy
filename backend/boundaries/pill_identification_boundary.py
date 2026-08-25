@@ -7,7 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from io import BytesIO
 from typing import Any, TypeVar
@@ -53,6 +53,14 @@ class PillVisionResponseError(RuntimeError):
     """Raised when the visual service returns an invalid response contract."""
 
 
+@dataclass(frozen=True)
+class PillImagePreprocessingResult:
+    """전처리 이미지와 보수적으로 판정한 알약 개수를 함께 전달한다."""
+
+    image: bytes
+    detected_pill_count: int | None
+
+
 class PillImageProcessingBoundary:
     """Bounds, decodes, crops, and normalizes an uploaded pill photo."""
 
@@ -60,6 +68,14 @@ class PillImageProcessingBoundary:
     _MIN_IMAGE_DIMENSION = 128
 
     def preprocessPillImage(self, image: bytes) -> bytes:
+        return self.preprocessPillImageWithAssessment(image).image
+
+    def preprocessPillImageWithAssessment(
+        self,
+        image: bytes,
+    ) -> PillImagePreprocessingResult:
+        """이미지를 정규화하고 확실히 구분되는 알약 개수만 함께 반환한다."""
+
         if not image:
             raise PillImageQualityError("The pill image is empty.")
         if len(image) > MAX_PILL_IMAGE_BYTES:
@@ -117,7 +133,7 @@ class PillImageProcessingBoundary:
             raise PillImageQualityError("The pill image resolution is too small.")
 
         normalized = self._resize_for_analysis(decoded)
-        cropped = self._crop_likely_foreground(normalized)
+        cropped, detected_pill_count = self._crop_likely_foreground(normalized)
         success, output = cv2.imencode(
             ".jpg",
             cropped,
@@ -125,7 +141,10 @@ class PillImageProcessingBoundary:
         )
         if not success:
             raise PillImageQualityError("The pill image could not be normalized.")
-        return output.tobytes()
+        return PillImagePreprocessingResult(
+            image=output.tobytes(),
+            detected_pill_count=detected_pill_count,
+        )
 
     def _resize_for_analysis(self, image: np.ndarray) -> np.ndarray:
         height, width = image.shape[:2]
@@ -140,7 +159,10 @@ class PillImageProcessingBoundary:
             interpolation=cv2.INTER_AREA,
         )
 
-    def _crop_likely_foreground(self, image: np.ndarray) -> np.ndarray:
+    def _crop_likely_foreground(
+        self,
+        image: np.ndarray,
+    ) -> tuple[np.ndarray, int | None]:
         height, width = image.shape[:2]
         border_size = max(2, min(height, width) // 40)
         border_pixels = np.concatenate(
@@ -176,7 +198,7 @@ class PillImageProcessingBoundary:
             cv2.CHAIN_APPROX_SIMPLE,
         )
         if not contours:
-            return image
+            return image, None
 
         image_area = float(height * width)
         frame_margin = max(border_size, min(height, width) // 100)
@@ -245,20 +267,20 @@ class PillImageProcessingBoundary:
             crop_candidates.append((score, area_ratio, contour))
 
         if not crop_candidates:
-            return image
+            return image, None
 
         crop_candidates.sort(key=lambda candidate: candidate[0], reverse=True)
         best_score, best_area_ratio, contour = crop_candidates[0]
-        if len(crop_candidates) > 1:
-            second_score, second_area_ratio, _ = crop_candidates[1]
-            comparable_area = (
-                0.5 <= second_area_ratio / best_area_ratio <= 2.0
-            )
-            if comparable_area and second_score >= best_score * 0.93:
-                # Contours alone cannot distinguish multiple pills from textured
-                # backgrounds reliably. Preserve the frame so the vision boundary
-                # can make the semantic image-quality decision.
-                return image
+        comparable_candidates = [
+            candidate
+            for candidate in crop_candidates
+            if candidate[0] >= max(0.72, best_score * 0.93)
+            and 0.5 <= candidate[1] / best_area_ratio <= 2.0
+        ]
+        if len(comparable_candidates) > 1:
+            # 서로 분리된 고신뢰 윤곽이 여러 개면 원본 구도를 보존하고
+            # 외부 AI를 호출하기 전에 재촬영 대상으로 처리한다.
+            return image, len(comparable_candidates)
 
         x, y, crop_width, crop_height = cv2.boundingRect(contour)
         padding = max(12, round(max(crop_width, crop_height) * 0.12))
@@ -267,10 +289,10 @@ class PillImageProcessingBoundary:
         right = min(width, x + crop_width + padding)
         bottom = min(height, y + crop_height + padding)
         if right - left < self._MIN_IMAGE_DIMENSION // 2:
-            return image
+            return image, None
         if bottom - top < self._MIN_IMAGE_DIMENSION // 2:
-            return image
-        return image[top:bottom, left:right]
+            return image, None
+        return image[top:bottom, left:right], 1
 
 
 class GeminiPillVisionAPI:
@@ -338,6 +360,9 @@ class GeminiPillVisionAPI:
           alone is not an image-quality defect.
         - Mark quality as poor only when blur, glare, occlusion, multiple pills,
           or missing visual evidence prevents reliable attribute extraction.
+        - detected_pill_count is the greatest number of distinct physical pills
+          visible in either supplied image. Front and back images of the same pill
+          still mean detected_pill_count is 1.
         - When two images are supplied, compare shape, color, score lines, and
           imprints. Set same_pill to false if they appear to be different pills.
         - side_consistency_confidence must be between 0.0 and 1.0.
@@ -425,6 +450,7 @@ class PillVisionBoundary:
             "back_line",
             "quality",
             "quality_issues",
+            "detected_pill_count",
             "same_pill",
             "side_consistency_confidence",
         ],
@@ -444,6 +470,11 @@ class PillVisionBoundary:
                 "type": "ARRAY",
                 "items": {"type": "STRING", "maxLength": 80},
                 "maxItems": 5,
+            },
+            "detected_pill_count": {
+                "type": "INTEGER",
+                "minimum": 1,
+                "maximum": 10,
             },
             "same_pill": {"type": "BOOLEAN"},
             "side_consistency_confidence": {
@@ -512,10 +543,21 @@ class PillVisionBoundary:
         front_image: bytes,
         back_image: bytes | None,
     ) -> PillVisualFeatures:
-        processed_front, processed_back = await self._preprocess_images_with_capacity(
-            front_image,
-            back_image,
+        (
+            processed_front,
+            processed_back,
+            front_pill_count,
+            back_pill_count,
+        ) = await self._preprocess_images_with_capacity(front_image, back_image)
+        local_counts = tuple(
+            count
+            for count in (front_pill_count, back_pill_count)
+            if count is not None
         )
+        if any(count > 1 for count in local_counts):
+            raise PillImageQualityError(
+                "Multiple pills were detected. Please photograph one pill at a time."
+            )
 
         try:
             response_text = await self.vision_api.requestVisualFeatures(
@@ -541,6 +583,26 @@ class PillVisionBoundary:
         if not isinstance(payload, dict):
             raise PillVisionResponseError(
                 "The visual analysis returned an invalid response."
+            )
+
+        try:
+            ai_pill_count = self._required_int(
+                payload,
+                "detected_pill_count",
+                minimum=1,
+                maximum=10,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PillVisionResponseError(
+                "The visual analysis returned an invalid response."
+            ) from exc
+        if ai_pill_count != 1:
+            raise PillImageQualityError(
+                "Multiple pills were detected. Please photograph one pill at a time."
+            )
+        if local_counts and any(count != ai_pill_count for count in local_counts):
+            raise PillImageQualityError(
+                "The detected pill count is inconsistent. Please retake the photo."
             )
 
         features = self._to_features(
@@ -576,24 +638,43 @@ class PillVisionBoundary:
         self,
         front_image: bytes,
         back_image: bytes | None,
-    ) -> tuple[bytes, bytes | None]:
+    ) -> tuple[bytes, bytes | None, int | None, int | None]:
         """Normalizes both sides sequentially to cap per-request decode memory."""
 
-        processed_front = self.image_processing_boundary.preprocessPillImage(
-            front_image
+        processed_front, front_pill_count = self._preprocess_one_image(front_image)
+        if back_image is None:
+            return processed_front, None, front_pill_count, None
+        processed_back, back_pill_count = self._preprocess_one_image(back_image)
+        return (
+            processed_front,
+            processed_back,
+            front_pill_count,
+            back_pill_count,
         )
-        processed_back = (
-            self.image_processing_boundary.preprocessPillImage(back_image)
-            if back_image is not None
-            else None
+
+    def _preprocess_one_image(
+        self,
+        image: bytes,
+    ) -> tuple[bytes, int | None]:
+        """신규 개수 판정 API가 없는 테스트 대역과 기존 구현도 계속 지원한다."""
+
+        processor = self.image_processing_boundary
+        assessment_method = getattr(
+            processor,
+            "preprocessPillImageWithAssessment",
+            None,
         )
-        return processed_front, processed_back
+        if callable(assessment_method):
+            assessment = assessment_method(image)
+            if isinstance(assessment, PillImagePreprocessingResult):
+                return assessment.image, assessment.detected_pill_count
+        return processor.preprocessPillImage(image), None
 
     async def _preprocess_images_with_capacity(
         self,
         front_image: bytes,
         back_image: bytes | None,
-    ) -> tuple[bytes, bytes | None]:
+    ) -> tuple[bytes, bytes | None, int | None, int | None]:
         """Keeps decode capacity reserved until a timed-out worker really exits."""
 
         await self._preprocessing_semaphore.acquire()
@@ -618,7 +699,9 @@ class PillVisionBoundary:
 
     def _release_preprocessing_capacity(
         self,
-        worker: asyncio.Task[tuple[bytes, bytes | None]],
+        worker: asyncio.Task[
+            tuple[bytes, bytes | None, int | None, int | None]
+        ],
     ) -> None:
         """Consumes a detached worker result and releases its capacity slot."""
 
@@ -740,6 +823,23 @@ class PillVisionBoundary:
         if not math.isfinite(normalized) or not 0.0 <= normalized <= 1.0:
             raise ValueError(f"Invalid {key} value.")
         return normalized
+
+    @staticmethod
+    def _required_int(
+        payload: dict[str, Any],
+        key: str,
+        *,
+        minimum: int,
+        maximum: int,
+    ) -> int:
+        """AI 응답의 필수 정수 필드와 허용 범위를 함께 검증한다."""
+
+        value = payload[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"Invalid {key} value.")
+        if not minimum <= value <= maximum:
+            raise ValueError(f"Invalid {key} value.")
+        return value
 
     @classmethod
     def _required_enum(

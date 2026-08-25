@@ -42,11 +42,13 @@ class _FakeVisionAPI:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
         self.received_back_image = False
+        self.request_count = 0
 
     async def requestVisualFeatures(
         self,
         **kwargs: object,
     ) -> str:
+        self.request_count += 1
         self.received_back_image = kwargs.get("back_image") is not None
         return json.dumps(self.payload)
 
@@ -114,6 +116,7 @@ def _valid_visual_payload(**overrides: object) -> dict[str, Any]:
         "back_line": "none",
         "quality": "good",
         "quality_issues": [],
+        "detected_pill_count": 1,
         "same_pill": True,
         "side_consistency_confidence": 1.0,
     }
@@ -200,6 +203,11 @@ def test_image_preprocessing_preserves_ambiguous_multi_object_frame() -> None:
 
     assert decoded is not None
     assert decoded.shape[:2] == image.shape[:2]
+
+    assessment = PillImageProcessingBoundary().preprocessPillImageWithAssessment(
+        encoded.tobytes()
+    )
+    assert assessment.detected_pill_count == 2
 
 
 def test_image_preprocessing_ignores_edge_clutter_when_cropping() -> None:
@@ -298,6 +306,57 @@ async def test_visual_boundary_rejects_two_pills_even_when_one_is_small() -> Non
     )
 
     with pytest.raises(PillImageQualityError, match="retake"):
+        await boundary.extractVisualFeatures(b"front")
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_rejects_multiple_local_contours_before_ai() -> None:
+    image = np.full((500, 700, 3), 245, dtype=np.uint8)
+    cv2.circle(image, (210, 250), 80, (30, 210, 230), thickness=-1)
+    cv2.circle(image, (490, 250), 80, (30, 210, 230), thickness=-1)
+    success, encoded = cv2.imencode(".jpg", image)
+    assert success
+    vision_api = _FakeVisionAPI(_valid_visual_payload())
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=PillImageProcessingBoundary(),
+        vision_api=vision_api,  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="Multiple pills"):
+        await boundary.extractVisualFeatures(encoded.tobytes())
+
+    assert vision_api.request_count == 0
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_rejects_ai_multiple_pill_count() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(detected_pill_count=2)
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillImageQualityError, match="Multiple pills"):
+        await boundary.extractVisualFeatures(b"front")
+
+
+@pytest.mark.anyio
+async def test_visual_boundary_rejects_invalid_ai_pill_count() -> None:
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(),
+        vision_api=_FakeVisionAPI(
+            _valid_visual_payload(detected_pill_count="two")
+        ),  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    with pytest.raises(PillVisionResponseError, match="invalid response"):
         await boundary.extractVisualFeatures(b"front")
 
 
