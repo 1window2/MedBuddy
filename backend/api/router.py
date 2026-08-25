@@ -27,6 +27,7 @@ from api.dependencies import (
     get_check_saved_medication,
     get_check_today_medication_info,
     get_check_caregiver_medication,
+    get_check_caregiver_monitoring,
     get_manage_user_setting,
     get_manage_account,
     get_manage_push_token,
@@ -56,6 +57,7 @@ from controls.check_schedule_control import CheckSchedule
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
+from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from controls.input_prescription_control import (
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
@@ -841,6 +843,30 @@ def get_patient_caregiver_links(
 ) -> dict[str, object]:
     authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
     return link_patient_caregiver_control.requestLinkScreen(authorized_user_hash)
+
+
+# 함수이름: get_caregiver_monitoring_snapshot
+# 함수역할:
+# - 보호자가 관리하는 모든 환자의 알림 설정과 오늘 일정을 한 요청으로 반환한다.
+@router.get("/caregiver/monitoring")
+@router.get("/guardian/monitoring", include_in_schema=False)
+def get_caregiver_monitoring_snapshot(
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    monitoring_control: CheckCaregiverMonitoring = Depends(
+        get_check_caregiver_monitoring
+    ),
+) -> dict[str, object]:
+    requested_caregiver_hash = caregiver_hash or guardian_hash
+    authorized_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        requested_caregiver_hash,
+    )
+    return monitoring_control.requestMonitoringSnapshot(
+        authorized_caregiver_hash
+    )
 
 
 # Function Name: get_caregiver_patient_medication_info

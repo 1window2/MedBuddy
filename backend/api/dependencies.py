@@ -77,6 +77,7 @@ from controls.manage_account_control import (
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
+from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from controls.manage_push_token_control import ManagePushToken
 from controls.manage_linked_chat_control import ManageLinkedChat
 from controls.request_voice_guide_control import RequestVoiceGuide
@@ -638,6 +639,14 @@ def get_check_caregiver_medication(
     db: Session = Depends(get_db),
 ) -> CheckCaregiverMedication:
     return CheckCaregiverMedication(db=db)
+
+
+# 함수이름: get_check_caregiver_monitoring
+# 함수역할: 여러 연동 환자의 알림 감시 자료를 통합 조회하는 Control을 생성한다.
+def get_check_caregiver_monitoring(
+    db: Session = Depends(get_db),
+) -> CheckCaregiverMonitoring:
+    return CheckCaregiverMonitoring(db=db)
 
 
 # 함수이름: get_set_notification

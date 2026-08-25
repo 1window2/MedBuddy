@@ -2,6 +2,7 @@
 // 역할: 보호자 알림 감시의 시간대별 완료와 미복용 조건을 검증한다.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:medbuddy_frontend/entities/caregiver_monitoring_snapshot_entity.dart';
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
@@ -296,6 +297,96 @@ void main() {
     );
   });
 
+  test('통합 조회 한 번으로 여러 환자를 확인하고 서버 별칭을 캐시한다', () async {
+    var aggregateRequestCount = 0;
+    var legacyLinkRequestCount = 0;
+    var legacySettingRequestCount = 0;
+    final monitor = CaregiverNotificationMonitorService(
+      caregiverHash: 'caregiver_test',
+      loadMonitoringSnapshots: () async {
+        aggregateRequestCount += 1;
+        return [
+          _monitoringSnapshot(patientHash: 'patient-a', patientAlias: '어머니'),
+          _monitoringSnapshot(patientHash: 'patient-b', patientAlias: '아버지'),
+        ];
+      },
+      loadLinks: () async {
+        legacyLinkRequestCount += 1;
+        return const <PatientCaregiverLink>[];
+      },
+      loadSettings: (_) async {
+        legacySettingRequestCount += 1;
+        return const <String, CaregiverNotification>{};
+      },
+      loadSchedules: (_) async => const <MedicationSchedule>[],
+      sendAlert:
+          ({
+            required int id,
+            required String title,
+            required String body,
+            required String patientHash,
+          }) async {},
+      permissionRequester: () async => true,
+    );
+    addTearDown(monitor.dispose);
+
+    expect(await monitor.checkNow(), isTrue);
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(aggregateRequestCount, 1);
+    expect(legacyLinkRequestCount, 0);
+    expect(legacySettingRequestCount, 0);
+    expect(monitor.hasCaregiverLinks, isTrue);
+    expect(
+      preferences.getString('caregiver_patient_label.caregiver_test.patient-a'),
+      '어머니',
+    );
+    expect(
+      preferences.getString('caregiver_patient_label.caregiver_test.patient-b'),
+      '아버지',
+    );
+  });
+
+  test('통합 조회 실패 시 기존 환자별 조회로 자동 복구한다', () async {
+    var legacyLinkRequestCount = 0;
+    var legacySettingRequestCount = 0;
+    final monitor = CaregiverNotificationMonitorService(
+      caregiverHash: 'caregiver_test',
+      loadMonitoringSnapshots: () async {
+        throw StateError('구버전 서버 또는 일시적인 통합 조회 실패');
+      },
+      loadLinks: () async {
+        legacyLinkRequestCount += 1;
+        return const [
+          PatientCaregiverLink(
+            caregiverHash: 'caregiver_test',
+            patientHash: 'patient_test',
+            linkStatus: true,
+          ),
+        ];
+      },
+      loadSettings: (_) async {
+        legacySettingRequestCount += 1;
+        return const <String, CaregiverNotification>{};
+      },
+      loadSchedules: (_) async => const <MedicationSchedule>[],
+      sendAlert:
+          ({
+            required int id,
+            required String title,
+            required String body,
+            required String patientHash,
+          }) async {},
+      permissionRequester: () async => true,
+    );
+    addTearDown(monitor.dispose);
+
+    expect(await monitor.checkNow(), isTrue);
+    expect(legacyLinkRequestCount, 1);
+    expect(legacySettingRequestCount, 1);
+    expect(monitor.hasCaregiverLinks, isTrue);
+  });
+
   test('알림을 끄면 해당 시간대의 이전 알림 상태를 정리한다', () async {
     const scope = 'caregiver_alert.caregiver_test.patient_test.morning';
     SharedPreferences.setMockInitialValues({
@@ -414,5 +505,22 @@ MedicationSchedule _schedule({
     medicationTime: 3,
     prescriptionDate: DateTime(2026, 7, 29),
     slotStatuses: {'morning': morningCompleted, 'evening': eveningCompleted},
+  );
+}
+
+CaregiverMonitoringSnapshot _monitoringSnapshot({
+  required String patientHash,
+  required String patientAlias,
+}) {
+  return CaregiverMonitoringSnapshot(
+    link: PatientCaregiverLink(
+      linkId: patientHash == 'patient-a' ? 1 : 2,
+      caregiverHash: 'caregiver_test',
+      patientHash: patientHash,
+      patientAlias: patientAlias,
+      linkStatus: true,
+    ),
+    notificationSettings: const <String, CaregiverNotification>{},
+    schedules: const <MedicationSchedule>[],
   );
 }

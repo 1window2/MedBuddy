@@ -57,6 +57,7 @@ class CaregiverNotificationMonitorFactory {
 
     return CaregiverNotificationMonitorService(
       caregiverHash: caregiverHash,
+      loadMonitoringSnapshots: medicationControl.requestMonitoringSnapshot,
       loadLinks: linkControl.requestLinkScreen,
       loadSettings: (patientHash) {
         return settingControl.requestCaregiverNotificationSettings(

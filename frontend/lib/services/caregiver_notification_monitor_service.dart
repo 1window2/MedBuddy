@@ -7,6 +7,7 @@ import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/foundation.dart';
+import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
@@ -14,6 +15,8 @@ import '../entities/patient_hash_entity.dart';
 import 'caregiver_patient_local_state_service.dart';
 
 typedef CaregiverLinkLoader = Future<List<PatientCaregiverLink>> Function();
+typedef CaregiverMonitoringLoader =
+    Future<List<CaregiverMonitoringSnapshot>> Function();
 typedef CaregiverSettingsLoader =
     Future<Map<String, CaregiverNotification>> Function(String patientHash);
 typedef CaregiverScheduleLoader =
@@ -42,6 +45,7 @@ class CaregiverNotificationMonitorService {
   static const int maximumParallelPatientChecks = 4;
 
   final String caregiverHash;
+  final CaregiverMonitoringLoader? _loadMonitoringSnapshots;
   final CaregiverLinkLoader _loadLinks;
   final CaregiverSettingsLoader _loadSettings;
   final CaregiverScheduleLoader _loadSchedules;
@@ -70,6 +74,7 @@ class CaregiverNotificationMonitorService {
 
   CaregiverNotificationMonitorService({
     required this.caregiverHash,
+    CaregiverMonitoringLoader? loadMonitoringSnapshots,
     required CaregiverLinkLoader loadLinks,
     required CaregiverSettingsLoader loadSettings,
     required CaregiverScheduleLoader loadSchedules,
@@ -84,7 +89,8 @@ class CaregiverNotificationMonitorService {
     this.monitorCompletionTransitions = true,
     ValueChanged<bool>? onCaregiverStatusChanged,
     VoidCallback? onDispose,
-  }) : _loadLinks = loadLinks,
+  }) : _loadMonitoringSnapshots = loadMonitoringSnapshots,
+       _loadLinks = loadLinks,
        _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
        _sendAlert = sendAlert,
@@ -122,54 +128,33 @@ class CaregiverNotificationMonitorService {
       final normalizedCaregiverHash = PatientHash.normalizePatientHash(
         caregiverHash,
       );
-      final links = await _loadLinks();
-      final caregiverLinks = links
-          .where((link) {
-            return link.linkStatus &&
-                PatientHash.normalizePatientHash(link.caregiverHash) ==
-                    normalizedCaregiverHash &&
-                link.patientHash.trim().isNotEmpty &&
-                PatientHash.normalizePatientHash(link.patientHash) !=
-                    normalizedCaregiverHash;
-          })
-          .toList(growable: false);
       final preferences = await _loadPreferences();
-      final patientHashes = caregiverLinks
-          .map((link) => PatientHash.normalizePatientHash(link.patientHash))
-          .toSet()
-          .toList(growable: false);
-      await CaregiverPatientLocalStateService.synchronizeLinkedPatients(
-        preferences,
-        caregiverHash: normalizedCaregiverHash,
-        patientHashes: patientHashes,
-      );
-      _updateCaregiverStatus(patientHashes.isNotEmpty);
-
-      var allPatientChecksSucceeded = true;
-      for (
-        var start = 0;
-        start < patientHashes.length;
-        start += maximumParallelPatientChecks
-      ) {
-        final proposedEnd = start + maximumParallelPatientChecks;
-        final end = proposedEnd < patientHashes.length
-            ? proposedEnd
-            : patientHashes.length;
-        final results = await Future.wait(
-          patientHashes
-              .sublist(start, end)
-              .map(
-                (patientHash) => _checkPatientSafely(preferences, patientHash),
-              ),
-        );
-        if (results.any((succeeded) => !succeeded)) {
-          allPatientChecksSucceeded = false;
+      final aggregateLoader = _loadMonitoringSnapshots;
+      if (aggregateLoader != null) {
+        try {
+          final snapshots = await aggregateLoader();
+          final succeeded = await _checkMonitoringSnapshots(
+            preferences,
+            normalizedCaregiverHash,
+            snapshots,
+          );
+          _recordCheckResult(succeeded);
+          return succeeded;
+        } catch (error, stackTrace) {
+          developer.log(
+            '보호자 통합 조회에 실패해 기존 환자별 조회로 전환합니다.',
+            name: 'CaregiverNotificationMonitorService',
+            error: error,
+            stackTrace: stackTrace,
+          );
         }
       }
-      _consecutiveFailures = allPatientChecksSucceeded
-          ? 0
-          : (_consecutiveFailures + 1).clamp(0, 4);
-      return allPatientChecksSucceeded;
+      final succeeded = await _checkPatientsIndividually(
+        preferences,
+        normalizedCaregiverHash,
+      );
+      _recordCheckResult(succeeded);
+      return succeeded;
     } catch (error, stackTrace) {
       developer.log(
         '보호자 알림 상태 확인에 실패했습니다.',
@@ -182,6 +167,142 @@ class CaregiverNotificationMonitorService {
     } finally {
       _isChecking = false;
     }
+  }
+
+  // 함수이름: _checkMonitoringSnapshots
+  // 함수역할:
+  // - 서버가 한 번에 반환한 여러 환자의 연동, 별칭, 설정, 일정을 처리한다.
+  // - 서버 별칭을 기기 캐시에 반영해 오프라인에서도 같은 이름을 유지한다.
+  Future<bool> _checkMonitoringSnapshots(
+    SharedPreferences preferences,
+    String normalizedCaregiverHash,
+    List<CaregiverMonitoringSnapshot> snapshots,
+  ) async {
+    final validSnapshots = snapshots
+        .where((snapshot) {
+          final link = snapshot.link;
+          return link.linkStatus &&
+              PatientHash.normalizePatientHash(link.caregiverHash) ==
+                  normalizedCaregiverHash &&
+              link.patientHash.trim().isNotEmpty &&
+              PatientHash.normalizePatientHash(link.patientHash) !=
+                  normalizedCaregiverHash;
+        })
+        .toList(growable: false);
+    final patientHashes = validSnapshots
+        .map(
+          (snapshot) => PatientHash.normalizePatientHash(snapshot.patientHash),
+        )
+        .toSet()
+        .toList(growable: false);
+    await _synchronizeLinkedPatients(
+      preferences,
+      normalizedCaregiverHash,
+      patientHashes,
+    );
+
+    var allPatientChecksSucceeded = true;
+    for (final snapshot in validSnapshots) {
+      try {
+        final patientHash = PatientHash.normalizePatientHash(
+          snapshot.patientHash,
+        );
+        final serverAlias = snapshot.patientAlias;
+        if (serverAlias != null) {
+          // 서버의 빈 문자열은 명시적인 별칭 삭제이므로 로컬 캐시에도 반영한다.
+          await CaregiverPatientLocalStateService.saveLabel(
+            preferences,
+            caregiverHash: normalizedCaregiverHash,
+            patientHash: patientHash,
+            label: serverAlias,
+          );
+        }
+        await _checkResolvedPatient(
+          preferences,
+          patientHash,
+          snapshot.notificationSettings,
+          snapshot.schedules,
+        );
+      } catch (error, stackTrace) {
+        allPatientChecksSucceeded = false;
+        developer.log(
+          '통합 응답에서 연동 환자 한 명의 알림 처리를 완료하지 못했습니다.',
+          name: 'CaregiverNotificationMonitorService',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    return allPatientChecksSucceeded;
+  }
+
+  // 함수이름: _checkPatientsIndividually
+  // 함수역할:
+  // - 통합 API를 사용할 수 없을 때 기존 환자별 조회 방식으로 복구한다.
+  Future<bool> _checkPatientsIndividually(
+    SharedPreferences preferences,
+    String normalizedCaregiverHash,
+  ) async {
+    final links = await _loadLinks();
+    final patientHashes = links
+        .where((link) {
+          return link.linkStatus &&
+              PatientHash.normalizePatientHash(link.caregiverHash) ==
+                  normalizedCaregiverHash &&
+              link.patientHash.trim().isNotEmpty &&
+              PatientHash.normalizePatientHash(link.patientHash) !=
+                  normalizedCaregiverHash;
+        })
+        .map((link) => PatientHash.normalizePatientHash(link.patientHash))
+        .toSet()
+        .toList(growable: false);
+    await _synchronizeLinkedPatients(
+      preferences,
+      normalizedCaregiverHash,
+      patientHashes,
+    );
+
+    var allPatientChecksSucceeded = true;
+    for (
+      var start = 0;
+      start < patientHashes.length;
+      start += maximumParallelPatientChecks
+    ) {
+      final proposedEnd = start + maximumParallelPatientChecks;
+      final end = proposedEnd < patientHashes.length
+          ? proposedEnd
+          : patientHashes.length;
+      final results = await Future.wait(
+        patientHashes
+            .sublist(start, end)
+            .map(
+              (patientHash) => _checkPatientSafely(preferences, patientHash),
+            ),
+      );
+      if (results.any((succeeded) => !succeeded)) {
+        allPatientChecksSucceeded = false;
+      }
+    }
+    return allPatientChecksSucceeded;
+  }
+
+  Future<void> _synchronizeLinkedPatients(
+    SharedPreferences preferences,
+    String normalizedCaregiverHash,
+    List<String> patientHashes,
+  ) async {
+    await CaregiverPatientLocalStateService.synchronizeLinkedPatients(
+      preferences,
+      caregiverHash: normalizedCaregiverHash,
+      patientHashes: patientHashes,
+    );
+    _updateCaregiverStatus(patientHashes.isNotEmpty);
+  }
+
+  void _recordCheckResult(bool succeeded) {
+    _consecutiveFailures = succeeded
+        ? 0
+        : (_consecutiveFailures + 1).clamp(0, 4);
   }
 
   // 함수이름: _checkPatientSafely
@@ -247,11 +368,6 @@ class CaregiverNotificationMonitorService {
     SharedPreferences preferences,
     String patientHash,
   ) async {
-    final patientLabel = CaregiverPatientLocalStateService.resolveSavedLabel(
-      preferences,
-      caregiverHash: caregiverHash,
-      patientHash: patientHash,
-    );
     final settings = await _loadSettings(patientHash);
     final hasActiveSetting = settings.values.any(
       (setting) => setting.mode != CaregiverNotificationMode.disabled,
@@ -259,6 +375,20 @@ class CaregiverNotificationMonitorService {
     final schedules = hasActiveSetting
         ? await _loadSchedules(patientHash)
         : const <MedicationSchedule>[];
+    await _checkResolvedPatient(preferences, patientHash, settings, schedules);
+  }
+
+  Future<void> _checkResolvedPatient(
+    SharedPreferences preferences,
+    String patientHash,
+    Map<String, CaregiverNotification> settings,
+    List<MedicationSchedule> schedules,
+  ) async {
+    final patientLabel = CaregiverPatientLocalStateService.resolveSavedLabel(
+      preferences,
+      caregiverHash: caregiverHash,
+      patientHash: patientHash,
+    );
     for (final slotKey in caregiverNotificationSlotKeys) {
       final setting =
           settings[slotKey] ??

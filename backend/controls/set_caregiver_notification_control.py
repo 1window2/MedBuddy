@@ -99,6 +99,58 @@ class SetCaregiverNotification:
             "data": settings,
         }
 
+    # 함수명: loadCaregiverNotificationSettingsForPatients
+    # 역할:
+    # - 이미 연동 권한을 확인한 여러 환자의 시간대별 설정을 한 쿼리로 읽는다.
+    # - 설정이 없는 환자도 네 시간대의 비활성 기본값을 반환한다.
+    def loadCaregiverNotificationSettingsForPatients(
+        self,
+        caregiver_hash: str,
+        patient_hashes: list[str],
+    ) -> dict[str, list[dict[str, object]]]:
+        normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
+        normalized_patient_hashes = list(
+            dict.fromkeys(
+                normalize_patient_hash(patient_hash)
+                for patient_hash in patient_hashes
+            )
+        )
+        if not normalized_patient_hashes:
+            return {}
+
+        settings = (
+            self.db.query(_CaregiverNotification)
+            .filter(
+                _CaregiverNotification.caregiver_hash
+                == normalized_caregiver_hash,
+                _CaregiverNotification.patient_hash.in_(
+                    normalized_patient_hashes
+                ),
+            )
+            .all()
+        )
+        setting_by_patient = {
+            str(setting.patient_hash): setting for setting in settings
+        }
+        return {
+            patient_hash: [
+                (
+                    CaregiverNotification(
+                        caregiver_hash=normalized_caregiver_hash,
+                        patient_hash=patient_hash,
+                        slot_key=slot_key,
+                    )
+                    if setting_by_patient.get(patient_hash) is None
+                    else self._to_entity(
+                        setting_by_patient[patient_hash],
+                        slot_key,
+                    )
+                ).to_response_dict()
+                for slot_key in CAREGIVER_NOTIFICATION_SLOT_KEYS
+            ]
+            for patient_hash in normalized_patient_hashes
+        }
+
     # 함수명: saveCaregiverNotificationSetting
     # 역할:
     # - 연동 관계를 검증한 뒤 지정한 시간대의 알림 설정만 생성하거나 갱신한다.

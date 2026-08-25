@@ -56,6 +56,21 @@ class PatientCaregiverLinkRepository:
             .all()
         )
 
+    def list_active_for_caregiver(
+        self,
+        caregiver_hash: str,
+    ) -> list[_PatientCaregiverLink]:
+        """보호자가 관리하는 모든 활성 환자 연결을 반환한다."""
+        return (
+            self.db.query(_PatientCaregiverLink)
+            .filter(
+                _PatientCaregiverLink.caregiver_hash == caregiver_hash,
+                _PatientCaregiverLink.linked.is_(True),
+            )
+            .order_by(_PatientCaregiverLink.id.asc())
+            .all()
+        )
+
     def find_active_for_user_by_id(
         self,
         link_id: int,
