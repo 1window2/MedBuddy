@@ -576,7 +576,7 @@ class _HomeText {
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
   String get patientCaregiverLinkSubtitle => isEnglish
       ? 'Connect patient and caregiver medication schedules'
-      : '환자와 보호자의 복약 일정을 연결하세요';
+      : '환자와 보호자의 복약 일정을 연결';
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
@@ -689,7 +689,7 @@ class _HomeMedicationTipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = isEnglish ? 'Medication tip' : '복약 관리 팁';
+    final title = isEnglish ? 'Your medication guide' : '복약 관리 팁';
     final message = isEnglish
         ? 'A prescription or pill photo can make medication details easier to review.'
         : '처방전이나 낱알약 사진을 촬영하면 약 정보를 더 쉽게 확인할 수 있어요.';
