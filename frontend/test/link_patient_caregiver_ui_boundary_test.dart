@@ -15,15 +15,17 @@ import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
+  final String fakeUserHash;
   final List<Completer<List<PatientCaregiverLink>>> linkRequests = [];
   final List<Completer<PatientLinkCode>> codeRequests = [];
   final List<Completer<PatientCaregiverLink>> registrationRequests = [];
   final List<String> registrationCodes = [];
+  final List<(int, String)> aliasUpdates = [];
   int disposeCount = 0;
 
-  _FakeLinkPatientCaregiver(String userHash)
+  _FakeLinkPatientCaregiver(this.fakeUserHash)
     : super(
-        userHash: userHash,
+        userHash: fakeUserHash,
         client: MockClient((http.Request request) async {
           return http.Response('{}', 500);
         }),
@@ -49,6 +51,21 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
     final request = Completer<PatientCaregiverLink>();
     registrationRequests.add(request);
     return request.future;
+  }
+
+  @override
+  Future<PatientCaregiverLink> savePatientAlias({
+    required int linkId,
+    required String patientAlias,
+  }) async {
+    aliasUpdates.add((linkId, patientAlias));
+    return PatientCaregiverLink(
+      linkId: linkId,
+      patientHash: 'patient-a',
+      caregiverHash: fakeUserHash,
+      linkStatus: true,
+      patientAlias: patientAlias,
+    );
   }
 
   @override

@@ -3,12 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../entities/patient_hash_entity.dart';
 
 // 파일명: caregiver_patient_local_state_service.dart
-// 역할: 보호자 기기에서 환자별 표시 이름과 알림 중복 방지 상태를 관리한다.
+// 역할: 서버 환자 별칭의 오프라인 캐시와 알림 중복 방지 상태를 관리한다.
 
 // 클래스명: CaregiverPatientLocalStateService
-// 역할: 한 보호자와 연결된 여러 환자의 로컬 상태가 서로 섞이지 않게 분리한다.
+// 역할: 한 보호자와 연결된 여러 환자의 기기 캐시가 서로 섞이지 않게 분리한다.
 // 주요 책임:
-// - 보호자가 정한 환자 표시 이름을 환자별로 저장한다.
+// - 서버에서 받은 환자 표시 이름을 오프라인 확인용으로 환자별 저장한다.
 // - 별칭이 없으면 개인식별정보 노출을 줄인 짧은 환자 식별명을 만든다.
 // - 연결이 해제된 환자의 알림 스냅샷과 표시 이름을 정리한다.
 class CaregiverPatientLocalStateService {

@@ -51,6 +51,7 @@ class _PatientCaregiverLink(Base):
         nullable=False,
         index=True,
     )
+    patient_alias = Column(String(20), nullable=True)
     linked = Column(Boolean, nullable=False, default=True, server_default="1")
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
@@ -105,6 +106,7 @@ class PatientCaregiverLink(BaseModel):
     caregiver_id: str = ""
     patient_hash: str = ""
     caregiver_hash: str = ""
+    patient_alias: str | None = None
     link_status: bool = False
     linked_at: datetime | None = None
 

@@ -104,6 +104,22 @@ class PatientCaregiverLinkRepository:
             query = query.filter(_PatientCaregiverLink.patient_hash == patient_hash)
         return query.order_by(_PatientCaregiverLink.id.asc()).first()
 
+    def find_active_for_caregiver_by_id(
+        self,
+        link_id: int,
+        caregiver_hash: str,
+    ) -> _PatientCaregiverLink | None:
+        """보호자 소유 범위에서 별칭을 변경할 활성 연결 하나를 찾는다."""
+        return (
+            self.db.query(_PatientCaregiverLink)
+            .filter(
+                _PatientCaregiverLink.id == link_id,
+                _PatientCaregiverLink.caregiver_hash == caregiver_hash,
+                _PatientCaregiverLink.linked.is_(True),
+            )
+            .first()
+        )
+
     def has_active_pair(self, caregiver_hash: str, patient_hash: str) -> bool:
         """보호자가 해당 환자에게 접근 가능한지 확인한다."""
         return (

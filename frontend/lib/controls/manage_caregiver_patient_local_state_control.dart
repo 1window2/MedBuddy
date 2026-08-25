@@ -40,6 +40,17 @@ class ManageCaregiverPatientLocalState {
       if (link.caregiverHash != caregiverHash) {
         continue;
       }
+      final serverAlias = link.patientAlias;
+      if (serverAlias != null) {
+        // NULL은 서버 별칭 도입 전의 기존 행이므로 기기 별칭을 보존한다.
+        // 빈 문자열은 사용자가 다른 기기에서 별칭을 지운 상태이므로 캐시도 비운다.
+        await CaregiverPatientLocalStateService.saveLabel(
+          preferences,
+          caregiverHash: caregiverHash,
+          patientHash: link.patientHash,
+          label: serverAlias,
+        );
+      }
       labels[link.patientHash] = CaregiverPatientLocalStateService.resolveLabel(
         preferences,
         caregiverHash: caregiverHash,

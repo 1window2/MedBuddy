@@ -153,6 +153,45 @@ class LinkPatientCaregiver {
     }
   }
 
+  // 함수이름: savePatientAlias
+  // 함수역할:
+  // - 현재 보호자가 지정한 환자 표시 이름을 서버 연동 관계에 저장한다.
+  // - 빈 문자열은 별칭을 삭제하고 기본 표시 이름으로 되돌린다.
+  Future<PatientCaregiverLink> savePatientAlias({
+    required int linkId,
+    required String patientAlias,
+  }) async {
+    try {
+      final response = await _client
+          .patch(
+            _buildLinkUri('link/$linkId/patient-alias'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'patient_alias': patientAlias}),
+          )
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.decodeBody(response);
+      if (response.statusCode != 200) {
+        throw StateError(
+          'Patient alias save failed (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        );
+      }
+      return _decodeSingleLink(
+        ApiResponseParser.decodeMap(responseBody)['data'],
+      );
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        '환자 표시 이름 서버 저장에 실패했습니다.',
+        name: 'LinkPatientCaregiver',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw StateError('Patient alias save failed.');
+    }
+  }
+
   // Function Name: requestUnlink
   // Description:
   // - Removes one patient-caregiver link for the current user hash.

@@ -216,6 +216,49 @@ class LinkPatientCaregiverTest(unittest.TestCase):
 
         self.assertEqual(self.db.query(_CaregiverNotification).count(), 0)
 
+    def test_caregiver_patient_alias_is_shared_by_link_lookup(self) -> None:
+        """보호자가 저장한 별칭이 서버 연동 조회에서도 유지되는지 검증한다."""
+        code_response = self.control.generatePatientHash("patient-a")
+        link_response = self.control.requestPatientCaregiverLink(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+        self.assertIsNone(link_response["data"]["patient_alias"])
+
+        alias_response = self.control.updatePatientAlias(
+            link_response["data"]["id"],
+            "guardian-a",
+            "  어머니  ",
+        )
+        links_response = self.control.requestLinkScreen("guardian-a")
+
+        self.assertEqual(alias_response["data"]["patient_alias"], "어머니")
+        self.assertEqual(links_response["data"][0]["patient_alias"], "어머니")
+
+        cleared_response = self.control.updatePatientAlias(
+            link_response["data"]["id"],
+            "guardian-a",
+            "",
+        )
+        self.assertEqual(cleared_response["data"]["patient_alias"], "")
+
+    def test_patient_alias_update_rejects_another_caregiver(self) -> None:
+        """다른 보호자가 환자 별칭을 변경하지 못하는지 검증한다."""
+        code_response = self.control.generatePatientHash("patient-a")
+        link_response = self.control.requestPatientCaregiverLink(
+            "guardian-a",
+            code_response["data"]["patient_code"],
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            self.control.updatePatientAlias(
+                link_response["data"]["id"],
+                "guardian-b",
+                "잘못된 별칭",
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

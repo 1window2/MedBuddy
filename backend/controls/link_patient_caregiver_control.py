@@ -26,6 +26,7 @@ from repositories.patient_caregiver_link_repository import (
 
 _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
+_MAX_PATIENT_ALIAS_LENGTH = 20
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +66,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link lookup succeeded.",
-            "data": [self._to_response_dict(link) for link in links],
+            "data": [self.toResponseDict(link) for link in links],
         }
 
     # 함수이름: generatePatientHash
@@ -198,7 +199,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link was created.",
-            "data": self._to_response_dict(link),
+            "data": self.toResponseDict(link),
         }
 
     # 함수이름: requestUnlink
@@ -250,7 +251,52 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link was removed.",
-            "data": self._to_response_dict(link),
+            "data": self.toResponseDict(link),
+        }
+
+    # 함수이름: updatePatientAlias
+    # 함수역할:
+    # - 보호자가 지정한 환자 별칭을 연결 관계에 저장한다.
+    # - 빈 별칭은 서버 값과 기기 캐시를 기본 표시 이름으로 되돌릴 수 있게 허용한다.
+    def updatePatientAlias(
+        self,
+        link_id: int,
+        caregiver_hash: str,
+        patient_alias: str,
+    ) -> dict[str, object]:
+        normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
+        link = self.link_repository.find_active_for_caregiver_by_id(
+            link_id,
+            normalized_caregiver_hash,
+        )
+        if link is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Patient-caregiver link was not found.",
+            )
+
+        normalized_alias = self._normalize_patient_alias(patient_alias)
+        try:
+            # 빈 문자열은 사용자가 별칭을 명시적으로 지운 상태로 보존한다.
+            # 기존 행의 NULL과 구분해야 다른 기기의 오래된 캐시도 정리할 수 있다.
+            link.patient_alias = normalized_alias
+            self.db.commit()
+            self.db.refresh(link)
+        except Exception as exc:
+            self.db.rollback()
+            logger.error(
+                "Patient alias persistence failed: %s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Patient alias could not be saved.",
+            ) from exc
+
+        return {
+            "success": True,
+            "message": "Patient alias was saved.",
+            "data": self.toResponseDict(link),
         }
 
     def _revoke_caregiver_notification(
@@ -301,6 +347,10 @@ class LinkPatientCaregiver:
             raise HTTPException(status_code=400, detail="Patient code is required.")
         return normalized_patient_code
 
+    def _normalize_patient_alias(self, patient_alias: str) -> str:
+        normalized_alias = " ".join((patient_alias or "").split())
+        return normalized_alias[:_MAX_PATIENT_ALIAS_LENGTH]
+
     def _generate_unique_patient_code(self, patient_hash: str) -> str:
         for _ in range(_MAX_CODE_GENERATION_ATTEMPTS):
             patient_code = PatientHash(patient_hash=patient_hash).createPatientHash()
@@ -350,15 +400,22 @@ class LinkPatientCaregiver:
     ) -> _PatientCaregiverLink | None:
         return self.link_repository.find_pair(patient_hash, caregiver_hash)
 
-    def _to_response_dict(self, link: _PatientCaregiverLink) -> dict[str, object]:
+    @staticmethod
+    def toResponseDict(link: _PatientCaregiverLink) -> dict[str, object]:
+        """연결 레코드를 모든 연동 API가 공유하는 응답 형식으로 변환한다."""
         return {
             "id": link.id,
             "link_id": link.id,
             "patient_hash": link.patient_hash,
             "caregiver_hash": link.caregiver_hash,
             "guardian_hash": link.caregiver_hash,
+            "patient_alias": link.patient_alias,
             "linked": link.linked,
             "link_status": link.linked,
             "created_at": link.created_at.isoformat() if link.created_at else "",
             "linked_at": link.created_at.isoformat() if link.created_at else "",
         }
+
+    def _to_response_dict(self, link: _PatientCaregiverLink) -> dict[str, object]:
+        """이전 내부 호출과 테스트를 위한 호환 별칭이다."""
+        return self.toResponseDict(link)

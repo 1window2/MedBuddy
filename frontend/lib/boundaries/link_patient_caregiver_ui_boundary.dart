@@ -512,23 +512,50 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     if (submittedLabel == null || !mounted) {
       return;
     }
-    final savedLabel = await _localStateControl.saveLabel(
-      caregiverHash: link.caregiverHash,
-      patientHash: link.patientHash,
-      label: submittedLabel,
-    );
-    if (!mounted) {
+    final linkId = link.linkId;
+    if (linkId == null) {
+      setState(() {
+        _statusMessage = _text.missingAliasLinkId;
+      });
       return;
     }
-    setState(() {
-      _patientLabels = {..._patientLabels, link.patientHash: savedLabel};
+    String? savedLabel;
+    final request = await _runLinkAction((request) async {
+      final updatedLink = await request.control.savePatientAlias(
+        linkId: linkId,
+        patientAlias: submittedLabel,
+      );
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
+      savedLabel = await _localStateControl.saveLabel(
+        caregiverHash: link.caregiverHash,
+        patientHash: link.patientHash,
+        label: updatedLink.patientAlias ?? submittedLabel,
+      );
+      if (!_isCurrentRequest(request)) {
+        return;
+      }
+      setState(() {
+        _links = _links
+            .map(
+              (currentLink) =>
+                  currentLink.linkId == linkId ? updatedLink : currentLink,
+            )
+            .toList(growable: false);
+        _patientLabels = {..._patientLabels, link.patientHash: savedLabel!};
+      });
     });
+    final confirmedLabel = savedLabel;
+    if (request == null || confirmedLabel == null || !mounted) {
+      return;
+    }
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(_text.patientLabelSaved(savedLabel)),
+          content: Text(_text.patientLabelSaved(confirmedLabel)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -1544,8 +1571,11 @@ class _LinkPatientCaregiverText {
   String get patientLabelHint =>
       isEnglish ? 'Example: Mom, Dad' : '예: 어머니, 아버지';
   String get patientLabelHelper => isEnglish
-      ? 'This name is stored only on this caregiver device.'
-      : '이 이름은 현재 보호자 기기에만 저장됩니다.';
+      ? 'This name is synced to your caregiver account.'
+      : '이 이름은 보호자 계정에 동기화됩니다.';
+  String get missingAliasLinkId => isEnglish
+      ? 'This patient name cannot be saved because the link identifier is missing.'
+      : '연동 식별자가 없어 환자 표시 이름을 저장할 수 없습니다.';
   String get cancel => isEnglish ? 'Cancel' : '취소';
   String get save => isEnglish ? 'Save' : '저장';
   String patientLabelSaved(String label) =>

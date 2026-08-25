@@ -305,6 +305,22 @@ class PatientCodeRegister(BaseModel):
         return value
 
 
+# 클래스명: PatientAliasUpdate
+# 역할:
+# - 보호자가 환자별로 지정하는 표시 이름을 검증한다.
+# - 빈 문자열을 허용해 저장된 별칭을 기본 이름으로 되돌릴 수 있게 한다.
+class PatientAliasUpdate(BaseModel):
+    patient_alias: str = Field(
+        default="",
+        max_length=20,
+        validation_alias=AliasChoices(
+            "patient_alias",
+            "patientAlias",
+            "display_name",
+        ),
+    )
+
+
 # Class Name: MedicationResponse
 # Role: Response DTO for medication lookup results.
 # Attributes:

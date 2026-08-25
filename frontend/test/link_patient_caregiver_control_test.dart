@@ -216,6 +216,60 @@ void main() {
     expect(link.linkStatus, isFalse);
   });
 
+  test('savePatientAlias updates the caregiver-owned link alias', () async {
+    late Map<String, dynamic> requestBody;
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/link/7/patient-alias');
+      expect(request.url.queryParameters['user_hash'], 'caregiver-a');
+      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'id': 7,
+            'patient_hash': 'patient-a',
+            'caregiver_hash': 'caregiver-a',
+            'patient_alias': '어머니',
+            'linked': true,
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = LinkPatientCaregiver(
+      baseUrl: 'http://localhost',
+      userHash: 'caregiver-a',
+      client: client,
+    );
+
+    final link = await control.savePatientAlias(linkId: 7, patientAlias: '어머니');
+
+    expect(requestBody['patient_alias'], '어머니');
+    expect(link.patientAlias, '어머니');
+  });
+
+  test('PatientCaregiverLink는 미설정 별칭과 명시적 삭제를 구분한다', () {
+    final unsetAlias = PatientCaregiverLink.fromJson(const {
+      'id': 1,
+      'patient_hash': 'patient-a',
+      'caregiver_hash': 'caregiver-a',
+      'patient_alias': null,
+      'linked': true,
+    });
+    final clearedAlias = PatientCaregiverLink.fromJson(const {
+      'id': 1,
+      'patient_hash': 'patient-a',
+      'caregiver_hash': 'caregiver-a',
+      'patient_alias': '',
+      'linked': true,
+    });
+
+    expect(unsetAlias.patientAlias, isNull);
+    expect(clearedAlias.patientAlias, '');
+  });
+
   test('PatientHash normalizes an empty local patient scope', () {
     expect(
       PatientHash.normalizePatientHash(' '),

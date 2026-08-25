@@ -34,6 +34,10 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
             column["name"]
             for column in inspector.get_columns("user_accounts")
         }
+        caregiver_link_columns = {
+            column["name"]
+            for column in inspector.get_columns("patient_caregiver_links")
+        }
     finally:
         engine.dispose()
     assert {
@@ -64,6 +68,7 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "deletion_requested_at",
         "identity_deleted_at",
     }.issubset(user_account_columns)
+    assert "patient_alias" in caregiver_link_columns
     assert any(
         foreign_key["referred_table"] == "saved_medications"
         for foreign_key in completion_foreign_keys

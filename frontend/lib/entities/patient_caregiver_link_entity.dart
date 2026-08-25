@@ -58,6 +58,7 @@ class PatientCaregiverLink {
   final String caregiverId;
   final String patientHash;
   final String caregiverHash;
+  final String? patientAlias;
   final bool linkStatus;
   final DateTime? linkedAt;
 
@@ -67,6 +68,7 @@ class PatientCaregiverLink {
     this.caregiverId = '',
     this.patientHash = '',
     this.caregiverHash = '',
+    this.patientAlias,
     this.linkStatus = false,
     this.linkedAt,
   });
@@ -97,6 +99,7 @@ class PatientCaregiverLink {
             json['guardian_id'] ??
             json['guardianID'],
       ),
+      patientAlias: _readPatientAlias(json),
       linkStatus: _readBool(
         json['link_status'] ?? json['linkStatus'] ?? json['linked'],
       ),
@@ -118,6 +121,7 @@ class PatientCaregiverLink {
       'caregiver_id': caregiverId,
       'patient_hash': patientHash,
       'caregiver_hash': caregiverHash,
+      'patient_alias': patientAlias,
       'link_status': linkStatus,
       'linked_at': linkedAt?.toIso8601String(),
     };
@@ -150,6 +154,7 @@ class PatientCaregiverLink {
     String? caregiverId,
     String? patientHash,
     String? caregiverHash,
+    String? patientAlias,
     bool? linkStatus,
     DateTime? linkedAt,
   }) {
@@ -159,6 +164,7 @@ class PatientCaregiverLink {
       caregiverId: caregiverId ?? this.caregiverId,
       patientHash: patientHash ?? this.patientHash,
       caregiverHash: caregiverHash ?? this.caregiverHash,
+      patientAlias: patientAlias ?? this.patientAlias,
       linkStatus: linkStatus ?? this.linkStatus,
       linkedAt: linkedAt ?? this.linkedAt,
     );
@@ -169,6 +175,22 @@ class PatientCaregiverLink {
       return '';
     }
     return value.toString().trim();
+  }
+
+  // 함수명: _readPatientAlias
+  // 함수역할:
+  // - 서버에 아직 별칭이 없는 NULL과 사용자가 지운 빈 문자열을 구분한다.
+  // - 과거 서버가 별칭 필드를 생략한 응답도 NULL로 처리한다.
+  static String? _readPatientAlias(Map<String, dynamic> json) {
+    const aliasKeys = ['patient_alias', 'patientAlias', 'display_name'];
+    for (final key in aliasKeys) {
+      if (!json.containsKey(key)) {
+        continue;
+      }
+      final rawAlias = json[key];
+      return rawAlias == null ? null : _readString(rawAlias);
+    }
+    return null;
   }
 
   static int? _readInt(dynamic value) {

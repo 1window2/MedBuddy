@@ -84,6 +84,7 @@ from schemas.medication import (
     CaregiverNotificationUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
+    PatientAliasUpdate,
     PushTokenRegistration,
     SavedMedicationCreate,
     UserSettingUpdate,
@@ -920,6 +921,31 @@ def register_patient_link_code(
     return link_patient_caregiver_control.requestPatientCaregiverLink(
         caregiver_hash,
         request.patient_code,
+    )
+
+
+# 함수이름: update_patient_alias
+# 함수역할:
+# - 현재 보호자가 소유한 연동 관계에 환자 표시 이름을 저장한다.
+@router.patch("/link/{link_id}/patient-alias")
+def update_patient_alias(
+    link_id: int,
+    request: PatientAliasUpdate,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    link_patient_caregiver_control: LinkPatientCaregiver = Depends(
+        get_link_patient_caregiver_control
+    ),
+) -> dict[str, object]:
+    authorized_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        user_hash,
+    )
+    return link_patient_caregiver_control.updatePatientAlias(
+        link_id,
+        authorized_caregiver_hash,
+        request.patient_alias,
     )
 
 
