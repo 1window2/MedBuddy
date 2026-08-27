@@ -6,6 +6,7 @@ import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/app_version_label.dart';
 
 typedef SettingPreviewSpeaker =
     Future<void> Function(
@@ -236,6 +237,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                               ),
                             ),
                           ],
+                          const SizedBox(height: 24),
+                          const Center(child: AppVersionLabel()),
                         ],
                       ),
                     ),
