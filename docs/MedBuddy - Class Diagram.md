@@ -3,7 +3,7 @@
 ## Document Contract
 
 This is the canonical implementation-grounded class view for the
-`v0.1.0-beta` candidate and its `v0.0.9-alpha` functional baseline.
+`v0.1.1-beta` maintenance candidate and its published `v0.1.0-beta` baseline.
 
 - `docs/temp/class diagram v5.png` remains the authoritative first-semester
   conceptual baseline.

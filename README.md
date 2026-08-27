@@ -25,6 +25,10 @@ features are kept out of this branch.
 We'll clean up this branch after these fixes are merged into the stable
 release.
 
+The release-candidate summary, deferred device verification, and the exact
+merge-forward procedure for `beta/v0.2.0` are maintained in
+[`docs/releases/v0.1.1-beta.md`](docs/releases/v0.1.1-beta.md).
+
 ## Key Features
 
 ### Prescription and Pill-Envelope Analysis

@@ -3,16 +3,24 @@
 ## Status
 
 - Scope frozen: 2026-07-20
-- Implementation review: 2026-08-03
-- Functional baseline: `v0.0.9-alpha`
-- Target release line: `v0.1.0-beta.*`
+- Release-preparation review: 2026-08-27
+- Stable baseline: `v0.1.0-beta`
+- Active maintenance branch: `beta/v0.1.1`
+- Target release tag: `v0.1.1-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
 
-This document is the release boundary for the first beta. New feature ideas do
-not enter the beta unless they close a safety, security, data-integrity, or
-release-operability gap.
+This document is the release boundary for the v0.1.1 maintenance beta. New
+feature ideas do not enter this branch unless they close a safety, security,
+data-integrity, accessibility, or release-operability gap.
+
+Automated source verification continues while no Android physical device is
+available. Physical-device and two-device checklist items remain unchecked and
+are explicitly deferred; they are not represented as passed. This accepted
+deferral does not block code preparation, merge review, or the v0.1.1
+publication decision, but it remains a recorded release risk until the device
+pass is completed.
 
 ## Functional Scope Included
 
@@ -43,7 +51,7 @@ The following implemented flows are frozen for beta hardening:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-08-03: P0 controls and release configuration
+Implementation status as of 2026-08-27: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
@@ -117,7 +125,8 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 
 ## Beta Exit Criteria
 
-The first beta may be published only when all of the following are true:
+Except for the explicitly accepted physical-device deferral above, the v0.1.1
+maintenance beta may be published only when all of the following are true:
 
 - P0 identity, authorization, HTTPS, and signing requirements are complete.
 - Release configuration has no clear-text, demo-scope, debug-signing, or local
@@ -127,7 +136,11 @@ The first beta may be published only when all of the following are true:
 - CI is green for backend tests, Flutter analysis/tests, CodeQL, dependency
   validation, and Android release compilation.
 - The security and privacy review covers all external AI/public-data calls.
-- A signed artifact passes physical-device smoke testing on supported Android
-  versions.
+- Physical-device smoke testing remains a post-publication follow-up for this
+  candidate and must not be represented as completed.
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
+
+Release-candidate changes, deferred verification, and the required
+post-publication merge-forward procedure are recorded in
+[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md).
