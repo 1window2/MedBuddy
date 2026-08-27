@@ -10,6 +10,7 @@ import '../services/camera_lifecycle_coordinator.dart';
 import '../services/prescription_camera_layout_service.dart';
 import '../services/prescription_camera_orientation_service.dart';
 import '../services/prescription_frame_analyzer.dart';
+import '../services/prescription_image_crop_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: guided_prescription_camera_ui_boundary.dart
@@ -43,6 +44,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       CameraLifecycleCoordinator();
   final PrescriptionCameraOrientationService _orientationService =
       const PrescriptionCameraOrientationService();
+  final PrescriptionImageCropService _imageCropService =
+      const PrescriptionImageCropService();
   CameraController? _cameraController;
   PrescriptionCameraGuideStatus _guideStatus =
       PrescriptionCameraGuideStatus.searching;
@@ -52,6 +55,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   bool _isCapturing = false;
   bool _isTorchEnabled = false;
   int _cameraGeneration = 0;
+  Rect _normalizedGuideRect = const Rect.fromLTWH(0, 0, 1, 1);
   DeviceOrientation? _lastCameraOrientation;
   late final Future<void> _orientationActivation;
 
@@ -258,7 +262,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
 
   // 함수이름: _capturePrescription
   // 함수역할:
-  // - 현재 카메라 프레임을 파일로 저장하고 호출 화면에 반환한다.
+  // - 현재 카메라 프레임을 저장하고 화면 가이드 안쪽만 잘라 호출 화면에 반환한다.
   // 반환값:
   // - 없음
   Future<void> _capturePrescription() async {
@@ -275,8 +279,12 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         await controller.stopImageStream();
       }
       final image = await controller.takePicture();
+      final croppedImage = await _imageCropService.cropToGuide(
+        sourceImage: image,
+        normalizedGuideRect: _normalizedGuideRect,
+      );
       if (mounted) {
-        Navigator.pop(context, image);
+        Navigator.pop(context, croppedImage);
       }
     } catch (_) {
       await _recoverFromCaptureFailure(controller);
@@ -477,6 +485,23 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         final guideColor = _guideStatus == PrescriptionCameraGuideStatus.aligned
             ? MedBuddyColors.primary
             : const Color(0xFFFFC247);
+        final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        final previewSize = controller.value.previewSize;
+        final isLandscape = viewportSize.width > viewportSize.height;
+        final displayedImageSize = previewSize == null
+            ? viewportSize
+            : isLandscape
+            ? Size(previewSize.width, previewSize.height)
+            : Size(previewSize.height, previewSize.width);
+        final guideRect = PrescriptionCameraLayoutService.guideRect(
+          viewportSize,
+        );
+        _normalizedGuideRect =
+            PrescriptionCameraLayoutService.normalizedSourceRect(
+              viewportSize: viewportSize,
+              displayedImageSize: displayedImageSize,
+              guideRect: guideRect,
+            );
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -484,28 +509,28 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: SizedBox(
-                  width:
-                      controller.value.previewSize?.height ??
-                      constraints.maxWidth,
-                  height:
-                      controller.value.previewSize?.width ??
-                      constraints.maxHeight,
+                  width: displayedImageSize.width,
+                  height: displayedImageSize.height,
                   child: CameraPreview(controller),
                 ),
               ),
             ),
             CustomPaint(
-              painter: _PrescriptionGuidePainter(guideColor: guideColor),
-            ),
-            Positioned(
-              left: 24,
-              right: 24,
-              bottom: 22,
-              child: _GuideMessage(
-                message: _text.guideMessage(_guideStatus),
-                color: guideColor,
+              painter: _PrescriptionGuidePainter(
+                guideColor: guideColor,
+                guideRect: guideRect,
               ),
             ),
+            if (!isLandscape)
+              Positioned(
+                left: 24,
+                right: 24,
+                bottom: 22,
+                child: _GuideMessage(
+                  message: _text.guideMessage(_guideStatus),
+                  color: guideColor,
+                ),
+              ),
           ],
         );
       },
@@ -558,9 +583,19 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         controller?.value.isInitialized == true &&
         !_isCapturing &&
         _cameraErrorMessage.isEmpty;
+    final guideColor = _guideStatus == PrescriptionCameraGuideStatus.aligned
+        ? MedBuddyColors.primary
+        : const Color(0xFFFFC247);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isLandscape) ...[
+          _GuideMessage(
+            message: _text.guideMessage(_guideStatus),
+            color: guideColor,
+          ),
+          const SizedBox(height: 14),
+        ],
         Text(
           _text.captureHint,
           textAlign: TextAlign.center,
@@ -568,6 +603,15 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
             color: Colors.white,
             fontSize: isLandscape ? 15 : 16,
             fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _text.cropNotice,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: isLandscape ? 12 : 13,
           ),
         ),
         SizedBox(height: isLandscape ? 18 : 14),
@@ -654,27 +698,16 @@ class _GuideMessage extends StatelessWidget {
 // - 가이드 바깥 영역을 어둡게 표시한다.
 // - 거리 판정 상태 색상으로 네 모서리 선을 표시한다.
 class _PrescriptionGuidePainter extends CustomPainter {
-  static const double _landscapePrescriptionAspectRatio = 21.5 / 15;
   final Color guideColor;
+  final Rect guideRect;
 
-  const _PrescriptionGuidePainter({required this.guideColor});
+  const _PrescriptionGuidePainter({
+    required this.guideColor,
+    required this.guideRect,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final maximumGuideWidth = size.width * 0.86;
-    final maximumGuideHeight = size.height * 0.58;
-    final preferredGuideHeight =
-        maximumGuideWidth / _landscapePrescriptionAspectRatio;
-    final guideHeight = preferredGuideHeight <= maximumGuideHeight
-        ? preferredGuideHeight
-        : maximumGuideHeight;
-    final guideWidth = guideHeight * _landscapePrescriptionAspectRatio;
-    final guideRect = Rect.fromLTWH(
-      (size.width - guideWidth) / 2,
-      size.height * 0.12,
-      guideWidth,
-      guideHeight,
-    );
     final guideRRect = RRect.fromRectAndRadius(
       guideRect,
       const Radius.circular(18),
@@ -739,7 +772,8 @@ class _PrescriptionGuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PrescriptionGuidePainter oldDelegate) {
-    return oldDelegate.guideColor != guideColor;
+    return oldDelegate.guideColor != guideColor ||
+        oldDelegate.guideRect != guideRect;
   }
 }
 
@@ -753,6 +787,9 @@ class _GuidedCameraText {
   String get captureHint => isEnglish
       ? 'Keep the entire prescription clear and inside the guide.'
       : '처방전 전체가 선명하게 보이도록 촬영해주세요';
+  String get cropNotice => isEnglish
+      ? 'Only the area inside the guide will be used.'
+      : '가이드 안쪽 영역만 촬영 결과로 사용합니다.';
   String get cameraUnavailable =>
       isEnglish ? 'The camera is unavailable.' : '카메라를 사용할 수 없습니다.';
   String get permissionDenied => isEnglish

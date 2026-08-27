@@ -50,4 +50,43 @@ void main() {
       PrescriptionCameraLayoutService.maximumLandscapePanelWidth,
     );
   });
+
+  test('가로 가이드는 미리보기 높이의 80퍼센트까지 넓어진다', () {
+    const viewportSize = Size(700, 390);
+
+    final guideRect = PrescriptionCameraLayoutService.guideRect(viewportSize);
+
+    expect(
+      guideRect.height,
+      closeTo(
+        viewportSize.height *
+            PrescriptionCameraLayoutService.landscapeGuideHeightFactor,
+        0.001,
+      ),
+    );
+    expect((Offset.zero & viewportSize).contains(guideRect.topLeft), isTrue);
+    expect(
+      (Offset.zero & viewportSize).contains(guideRect.bottomRight),
+      isTrue,
+    );
+  });
+
+  test('화면 가이드를 BoxFit cover 원본 이미지의 정규화 좌표로 변환한다', () {
+    const viewportSize = Size(400, 600);
+    const displayedImageSize = Size(1600, 900);
+    final guideRect = PrescriptionCameraLayoutService.guideRect(viewportSize);
+
+    final normalizedRect = PrescriptionCameraLayoutService.normalizedSourceRect(
+      viewportSize: viewportSize,
+      displayedImageSize: displayedImageSize,
+      guideRect: guideRect,
+    );
+
+    expect(normalizedRect.left, inInclusiveRange(0, 1));
+    expect(normalizedRect.top, inInclusiveRange(0, 1));
+    expect(normalizedRect.right, inInclusiveRange(0, 1));
+    expect(normalizedRect.bottom, inInclusiveRange(0, 1));
+    expect(normalizedRect.width, lessThan(1));
+    expect(normalizedRect.height, lessThan(1));
+  });
 }
