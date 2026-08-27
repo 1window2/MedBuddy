@@ -365,11 +365,11 @@ package "Flutter Frontend" {
         class "PrescriptionGuideLayout" as PrescriptionGuideLayout <<Service: 촬영 가이드 좌표>> {
             + {static} prescriptionAspectRatio: double
             + {static} guideRect(viewportSize): Rect
-            + {static} normalizedSourceRect(viewportSize, imageSize): Rect
+            + {static} normalizedSourceRect(viewportSize, displayedImageSize, guideRect): Rect
         }
 
-        class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 가이드 영역 Crop>> {
-            + cropToGuide(image, viewportSize, guideRect): Future<XFile>
+        class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 가이드 영역 자르기>> {
+            + cropToGuide(sourceImage, normalizedGuideRect): Future<XFile>
         }
 
         interface "DeviceLocationBoundary" as DeviceLocationBoundary {
@@ -1372,7 +1372,7 @@ ManageUserSettingUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
 GuidedPrescriptionCameraUI ..> PrescriptionGuideLayout
-GuidedPrescriptionCameraUI ..> PrescriptionImageCropService
+GuidedPrescriptionCameraUI *-- PrescriptionImageCropService
 
 PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
 CheckResultUI --> "0..*" FAnalyzedMedication

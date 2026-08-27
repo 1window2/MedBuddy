@@ -1,6 +1,3 @@
-// 파일명: guided_prescription_camera_ui_boundary.dart
-// 역할: 처방전 촬영 가이드, 기기 회전 대응과 가이드 영역 촬영을 제공한다.
-
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -17,7 +14,7 @@ import '../services/prescription_image_crop_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: guided_prescription_camera_ui_boundary.dart
-// 역할: 처방전을 카메라 가이드 안에 맞춰 촬영하는 전용 화면을 제공한다.
+// 역할: 처방전 촬영 가이드, 기기 회전 대응과 가이드 영역 촬영을 제공한다.
 
 // 클래스명: GuidedPrescriptionCameraUI
 // 역할: 실시간 카메라 미리보기, 거리 안내, 촬영 결과 반환을 담당한다.

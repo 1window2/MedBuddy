@@ -44,6 +44,12 @@ failed step, users can retry the analysis, return to OCR review, retake the
 photo, choose another image, or explicitly confirm continuing with verified
 medications without restarting the entire flow.
 
+The guided prescription camera uses one shared guide rectangle for both the
+screen overlay and the captured-image crop. After a successful capture, only
+the area shown inside the guide is retained and passed to on-device OCR; the
+uncropped app-created camera file is removed. Gallery images remain owned by
+the user and are never deleted by this flow.
+
 The frontend also supports saved medication management, patient- and
 caregiver-scoped per-slot schedule views, patient health recommendations,
 persisted medication reminders, and independent completion for multi-dose

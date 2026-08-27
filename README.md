@@ -40,7 +40,8 @@ release.
 ### Prescription and Pill-Envelope Analysis
 
 - The Flutter app captures or selects a prescription or pill-envelope image and performs Korean OCR on the device with Google ML Kit.
-- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. The original prescription image remains on the device during this text-analysis flow.
+- Guided camera captures use the same calculated rectangle for the visible guide and the saved OCR image. Only the area inside the guide is retained, while the uncropped app-created camera file is removed after a successful crop.
+- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. Prescription image content is processed only on the device during this text-analysis flow and is not uploaded to the backend.
 - Only the de-identified OCR text is sent to FastAPI through the prescription-text endpoint. The backend parses and validates that text, normalizes the result into UML-aligned prescription analysis entities, and uses bounded Gemini text recovery only where the structured pipeline requires it.
 - Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.

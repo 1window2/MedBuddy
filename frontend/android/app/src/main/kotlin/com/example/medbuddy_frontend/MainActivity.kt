@@ -9,7 +9,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 // 클래스명: MainActivity
-// 역할: Flutter 화면과 Android 시스템 설정 화면 사이의 최소 연결을 제공한다.
+// 역할: Flutter 화면과 Android 알림 설정 및 처방전 촬영 회전 정책 사이의 연결을 제공한다.
 class MainActivity : FlutterActivity() {
     private val settingsChannel = "com.medbuddy.app/settings"
     private val prescriptionCameraChannel = "com.medbuddy.app/prescription-camera"

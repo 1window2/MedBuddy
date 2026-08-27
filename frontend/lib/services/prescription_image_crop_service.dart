@@ -12,6 +12,8 @@ import 'package:image/image.dart' as image_library;
 class PrescriptionImageCropService {
   const PrescriptionImageCropService();
 
+  // 함수명: cropToGuide
+  // 역할: 촬영 원본을 올바른 방향으로 회전한 뒤 가이드 영역만 JPEG로 저장한다.
   Future<XFile> cropToGuide({
     required XFile sourceImage,
     required Rect normalizedGuideRect,

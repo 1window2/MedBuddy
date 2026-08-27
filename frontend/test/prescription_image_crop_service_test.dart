@@ -9,9 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_library;
 import 'package:medbuddy_frontend/services/prescription_image_crop_service.dart';
 
-// 파일명: prescription_image_crop_service_test.dart
-// 역할: 촬영 결과가 화면 가이드에 해당하는 영역만 남기는지 검증한다.
-
 void main() {
   test('정규화된 가이드 좌표만 잘라 새 이미지로 저장한다', () async {
     final temporaryDirectory = await Directory.systemTemp.createTemp(
