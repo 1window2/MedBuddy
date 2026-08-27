@@ -415,11 +415,17 @@ async def test_public_basic_detail_preserves_product_code() -> None:
                 "efcyQesitm": "effect",
                 "useMethodQesitm": "usage",
                 "atpnWarnQesitm": "warning",
+                "intrcQesitm": "interaction",
+                "seQesitm": "side effect",
+                "depositMethodQesitm": "storage method",
             }
         ]
     )
 
     assert details[0].item_seq == "200000001"
+    assert details[0].interaction == "interaction"
+    assert details[0].side_effect == "side effect"
+    assert details[0].storage_method == "storage method"
 
 
 @pytest.mark.anyio

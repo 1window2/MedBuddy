@@ -1286,6 +1286,9 @@ class CheckMedicationDetail:
                 efficacy=_read_text(item.get("efcyQesitm")),
                 usage_method=_read_text(item.get("useMethodQesitm")),
                 warning=_read_text(item.get("atpnWarnQesitm")),
+                interaction=_read_text(item.get("intrcQesitm")),
+                side_effect=_read_text(item.get("seQesitm")),
+                storage_method=_read_text(item.get("depositMethodQesitm")),
                 image_url=read_public_image_url(item),
                 source="Basic (e약은요)",
             )
