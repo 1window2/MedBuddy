@@ -9,8 +9,40 @@ import 'package:flutter/material.dart';
 // 역할: 세로·가로 화면에 맞는 가이드 영역과 원본 이미지 기준 자르기 비율을 제공한다.
 class PrescriptionGuideLayout {
   static const double prescriptionAspectRatio = 1.5;
+  static const double minimumLandscapePanelWidth = 196;
+  static const double maximumLandscapePanelWidth = 260;
 
   const PrescriptionGuideLayout._();
+
+  // 함수명: shouldUseLandscapeLayout
+  // 역할:
+  // - 화면 크기와 카메라 센서 방향을 함께 확인해 가로 촬영 화면 사용 여부를 결정한다.
+  // - 화면 비율이 명확하면 화면 크기를 우선해 늦게 갱신된 센서 값이 배치를 뒤집지 않게 한다.
+  // - 회전 중 화면이 정사각형에 가까운 짧은 구간에서만 센서 방향을 보조로 사용한다.
+  static bool shouldUseLandscapeLayout({
+    required Size viewportSize,
+    bool cameraReportsLandscape = false,
+  }) {
+    if (viewportSize.isEmpty) {
+      return cameraReportsLandscape;
+    }
+    const decisiveAspectRatio = 1.10;
+    if (viewportSize.width >= viewportSize.height * decisiveAspectRatio) {
+      return true;
+    }
+    if (viewportSize.height >= viewportSize.width * decisiveAspectRatio) {
+      return false;
+    }
+    return cameraReportsLandscape;
+  }
+
+  // 함수명: landscapePanelWidth
+  // 역할: 가로 화면에서 미리보기와 조작 패널이 균형을 이루도록 패널 너비를 계산한다.
+  static double landscapePanelWidth(Size viewportSize) {
+    return (viewportSize.width * 0.30)
+        .clamp(minimumLandscapePanelWidth, maximumLandscapePanelWidth)
+        .toDouble();
+  }
 
   static Rect guideRect(Size viewportSize) {
     if (viewportSize.isEmpty) {

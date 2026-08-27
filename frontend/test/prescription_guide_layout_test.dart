@@ -6,6 +6,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/prescription_guide_layout.dart';
 
 void main() {
+  test('명확한 화면 비율은 늦게 갱신된 카메라 방향보다 우선한다', () {
+    expect(
+      PrescriptionGuideLayout.shouldUseLandscapeLayout(
+        viewportSize: const Size(700, 390),
+      ),
+      isTrue,
+    );
+    expect(
+      PrescriptionGuideLayout.shouldUseLandscapeLayout(
+        viewportSize: const Size(390, 700),
+        cameraReportsLandscape: true,
+      ),
+      isFalse,
+    );
+    expect(
+      PrescriptionGuideLayout.shouldUseLandscapeLayout(
+        viewportSize: const Size(390, 700),
+      ),
+      isFalse,
+    );
+  });
+
+  test('회전 중 화면 비율이 비슷할 때만 카메라 방향을 보조로 사용한다', () {
+    expect(
+      PrescriptionGuideLayout.shouldUseLandscapeLayout(
+        viewportSize: const Size(410, 400),
+        cameraReportsLandscape: true,
+      ),
+      isTrue,
+    );
+    expect(
+      PrescriptionGuideLayout.shouldUseLandscapeLayout(
+        viewportSize: const Size(400, 410),
+      ),
+      isFalse,
+    );
+  });
+
+  test('가로 조작 패널은 미리보기 공간을 침범하지 않도록 너비를 제한한다', () {
+    expect(
+      PrescriptionGuideLayout.landscapePanelWidth(const Size(600, 300)),
+      PrescriptionGuideLayout.minimumLandscapePanelWidth,
+    );
+    expect(
+      PrescriptionGuideLayout.landscapePanelWidth(const Size(1200, 600)),
+      PrescriptionGuideLayout.maximumLandscapePanelWidth,
+    );
+  });
+
   test('세로와 가로 화면 모두 가이드가 미리보기 안에 유지된다', () {
     const portraitSize = Size(390, 700);
     const landscapeSize = Size(700, 390);

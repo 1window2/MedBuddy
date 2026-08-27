@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../entities/prescription_camera_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/camera_lifecycle_coordinator.dart';
+import '../services/prescription_camera_orientation_service.dart';
 import '../services/prescription_frame_analyzer.dart';
 import '../services/prescription_guide_layout.dart';
 import '../services/prescription_image_crop_service.dart';
@@ -46,6 +47,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       const PrescriptionImageCropService();
   final CameraLifecycleCoordinator _cameraLifecycleCoordinator =
       CameraLifecycleCoordinator();
+  final PrescriptionCameraOrientationService _orientationService =
+      const PrescriptionCameraOrientationService();
   CameraController? _cameraController;
   PrescriptionCameraGuideStatus _guideStatus =
       PrescriptionCameraGuideStatus.searching;
@@ -56,6 +59,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   bool _isTorchEnabled = false;
   int _cameraGeneration = 0;
   Rect _normalizedGuideRect = const Rect.fromLTWH(0, 0, 1, 1);
+  DeviceOrientation? _lastCameraOrientation;
+  late final Future<void> _orientationActivation;
 
   bool get _isEnglish =>
       widget.userSetting.language.trim().toLowerCase().startsWith('en');
@@ -66,6 +71,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _orientationActivation = _orientationService.enableSensorRotation();
     unawaited(_initializeCamera());
   }
 
@@ -86,7 +92,18 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_releaseCamera());
+    unawaited(_restoreOrientation());
     super.dispose();
+  }
+
+  // 함수명: _restoreOrientation
+  // 함수역할:
+  // - 촬영 화면의 회전 허용 요청이 끝난 뒤 기존 앱 방향 정책을 복원한다.
+  // 반환값:
+  // - 방향 정책 복원이 끝나면 완료된다.
+  Future<void> _restoreOrientation() async {
+    await _orientationActivation;
+    await _orientationService.restoreOrientation();
   }
 
   // 함수이름: _initializeCamera
@@ -141,6 +158,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
 
       _cameraController = initializingController;
       initializingController = null;
+      _lastCameraOrientation = _cameraController!.value.deviceOrientation;
+      _cameraController!.addListener(_handleCameraOrientationChanged);
       await _cameraController!.setFlashMode(FlashMode.off);
       await _cameraController!.startImageStream(_analyzeCameraImage);
       if (mounted) {
@@ -180,9 +199,11 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   Future<void> _disposeCurrentController() async {
     final controller = _cameraController;
     _cameraController = null;
+    _lastCameraOrientation = null;
     if (controller == null) {
       return;
     }
+    controller.removeListener(_handleCameraOrientationChanged);
     try {
       if (controller.value.isStreamingImages) {
         await controller.stopImageStream();
@@ -191,6 +212,19 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       // 카메라가 이미 중지된 경우에도 dispose는 계속 수행한다.
     }
     await controller.dispose();
+  }
+
+  // 함수명: _handleCameraOrientationChanged
+  // 역할:
+  // - 카메라 센서 방향이 바뀌면 화면을 다시 구성해 가로 전용 배치를 즉시 적용한다.
+  void _handleCameraOrientationChanged() {
+    final orientation = _cameraController?.value.deviceOrientation;
+    if (!mounted || orientation == null || orientation == _lastCameraOrientation) {
+      return;
+    }
+    setState(() {
+      _lastCameraOrientation = orientation;
+    });
   }
 
   // 함수이름: _analyzeCameraImage
@@ -369,27 +403,44 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       child: Scaffold(
         backgroundColor: const Color(0xFF111827),
         body: SafeArea(
-          child: OrientationBuilder(
-            builder: (context, orientation) {
+          child: LayoutBuilder(
+            builder: (context, constraints) {
               final preview = _cameraErrorMessage.isNotEmpty
                   ? _buildCameraError()
                   : _buildPreview(controller);
-              if (orientation == Orientation.landscape) {
-                return Column(
+              final viewportSize = Size(
+                constraints.maxWidth,
+                constraints.maxHeight,
+              );
+              final cameraOrientation =
+                  controller?.value.deviceOrientation ?? _lastCameraOrientation;
+              final cameraReportsLandscape =
+                  cameraOrientation == DeviceOrientation.landscapeLeft ||
+                  cameraOrientation == DeviceOrientation.landscapeRight;
+              final useLandscapeLayout =
+                  PrescriptionGuideLayout.shouldUseLandscapeLayout(
+                    viewportSize: viewportSize,
+                    cameraReportsLandscape: cameraReportsLandscape,
+                  );
+              if (useLandscapeLayout) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildHeader(controller),
                     Expanded(
-                      child: Row(
+                      child: Column(
                         children: [
+                          _buildHeader(controller, isCompact: true),
                           Expanded(child: preview),
-                          SizedBox(
-                            width: 230,
-                            child: _buildCapturePanel(
-                              controller,
-                              isLandscape: true,
-                            ),
-                          ),
                         ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: PrescriptionGuideLayout.landscapePanelWidth(
+                        viewportSize,
+                      ),
+                      child: _buildCapturePanel(
+                        controller,
+                        isLandscape: true,
                       ),
                     ),
                   ],
@@ -409,9 +460,12 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     );
   }
 
-  Widget _buildHeader(CameraController? controller) {
+  Widget _buildHeader(
+    CameraController? controller, {
+    bool isCompact = false,
+  }) {
     return SizedBox(
-      height: 68,
+      height: isCompact ? 54 : 68,
       child: Row(
         children: [
           IconButton(
@@ -424,9 +478,11 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
             child: Text(
               _text.title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 22,
+                fontSize: isCompact ? 18 : 22,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -557,6 +613,58 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         controller?.value.isInitialized == true &&
         !_isCapturing &&
         _cameraErrorMessage.isEmpty;
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _text.captureHint,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: isLandscape ? 15 : 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _text.cropNotice,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: isLandscape ? 12 : 13,
+          ),
+        ),
+        SizedBox(height: isLandscape ? 18 : 14),
+        Semantics(
+          button: true,
+          label: _text.capture,
+          child: SizedBox.square(
+            dimension: isLandscape ? 72 : 76,
+            child: IconButton.filled(
+              tooltip: _text.capture,
+              onPressed: canCapture ? _capturePrescription : null,
+              style: IconButton.styleFrom(
+                backgroundColor: MedBuddyColors.primary,
+                disabledBackgroundColor: Colors.white24,
+              ),
+              icon: _isCapturing
+                  ? const SizedBox.square(
+                      dimension: 28,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.photo_camera_outlined,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
@@ -566,55 +674,9 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         isLandscape ? 16 : 22,
       ),
       color: const Color(0xFF171717),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            _text.captureHint,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _text.cropNotice,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-          const SizedBox(height: 14),
-          Semantics(
-            button: true,
-            label: _text.capture,
-            child: SizedBox.square(
-              dimension: 76,
-              child: IconButton.filled(
-                tooltip: _text.capture,
-                onPressed: canCapture ? _capturePrescription : null,
-                style: IconButton.styleFrom(
-                  backgroundColor: MedBuddyColors.primary,
-                  disabledBackgroundColor: Colors.white24,
-                ),
-                icon: _isCapturing
-                    ? const SizedBox.square(
-                        dimension: 28,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 3,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.photo_camera_outlined,
-                        color: Colors.white,
-                        size: 36,
-                      ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: isLandscape
+          ? Center(child: SingleChildScrollView(child: content))
+          : content,
     );
   }
 }
