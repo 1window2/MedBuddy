@@ -10,6 +10,7 @@ import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/app_version_label.dart';
 import 'set_notification_ui_boundary.dart';
 
 typedef SettingPreviewSpeaker =
@@ -1032,6 +1033,8 @@ class _SettingsOverview extends StatelessWidget {
           summary: text.accountMenuSummary,
           onTap: () => onSectionSelected(_SettingSection.account),
         ),
+        const SizedBox(height: 24),
+        const Center(child: AppVersionLabel()),
       ],
     );
   }
