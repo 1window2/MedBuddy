@@ -18,6 +18,7 @@ from entities.caregiver_alert_outbox_entity import (
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientLinkCode
 from entities.saved_medication_entity import _SavedMedication
+from services.chat_message_retention import ChatMessageRetentionPolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
@@ -29,12 +30,17 @@ logger = logging.getLogger(__name__)
 # - 복용 종료 후 30일이 지난 저장 약과 완료 기록을 정리한다.
 # - 원본 약이 없는 완료 기록과 만료된 연동 코드를 제거한다.
 # - 오래된 건강 추천 캐시를 제거한다.
+# - 보관 기간이 지난 환자·보호자 채팅을 제거한다.
 class DataMaintenanceService:
     def __init__(
         self,
         retention_policy: SavedMedicationRetentionPolicy | None = None,
+        chat_retention_policy: ChatMessageRetentionPolicy | None = None,
     ) -> None:
         self.retention_policy = retention_policy or SavedMedicationRetentionPolicy()
+        self.chat_retention_policy = (
+            chat_retention_policy or ChatMessageRetentionPolicy()
+        )
 
     # 함수명: runOnce
     # 역할:
@@ -85,6 +91,11 @@ class DataMaintenanceService:
                     _CaregiverAlertOutbox.sent_at < outbox_cutoff,
                 )
                 .delete(synchronize_session=False)
+            ),
+            "chat_messages": self.chat_retention_policy.cleanup_expired_messages(
+                db,
+                now=utc_now,
+                commit=False,
             ),
         }
         db.commit()

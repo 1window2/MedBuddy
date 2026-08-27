@@ -227,7 +227,7 @@ jobs:
             --image "${IMAGE}" \
             --service-account "${MAINTENANCE_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${CLOUD_SQL_CONNECTION}" \
-            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=maintenance,AUTH_MODE=disabled,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,APPLICATION_TIME_ZONE=Asia/Seoul" \
+            --set-env-vars "APP_ENV=production,RUNTIME_ROLE=maintenance,AUTH_MODE=disabled,AUTO_CREATE_SCHEMA=false,PERIODIC_MAINTENANCE_ENABLED=false,CHAT_MESSAGE_RETENTION_DAYS=90,APPLICATION_TIME_ZONE=Asia/Seoul" \
             --set-secrets "DATABASE_URL=medbuddy-database-url:latest" \
             --command python \
             --args=-m,scripts.run_data_maintenance \

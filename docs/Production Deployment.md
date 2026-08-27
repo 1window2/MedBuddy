@@ -126,6 +126,17 @@ never prunes unvisited rows. Production retries a failed full refresh after one
 hour. Configure the two intervals in `deploy/.env`; do not add
 `--only-if-empty` to this periodic service.
 
+The backend maintenance runner also removes linked-chat messages after the
+configured retention period. The tracked production template uses 90 days:
+
+```text
+CHAT_MESSAGE_RETENTION_DAYS=90
+```
+
+Self-hosted production keeps Redis on the private Docker network and requires
+it for shared request quotas. This makes API and chat limits consistent across
+all backend workers instead of maintaining a separate counter per process.
+
 ## Verify
 
 Verify the backend locally:

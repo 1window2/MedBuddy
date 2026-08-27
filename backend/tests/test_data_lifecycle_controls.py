@@ -19,13 +19,19 @@ from core.request_rate_limits import (
     RateLimitRule,
     RequestRateLimitMiddleware,
     RequestRateLimitStore,
+    resolve_rate_limit_rule,
 )
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
+from entities.chat_message_entity import _ChatMessage
 from entities.medication_completion_entity import _MedicationCompletion
-from entities.patient_caregiver_link_entity import _PatientLinkCode
+from entities.patient_caregiver_link_entity import (
+    _PatientCaregiverLink,
+    _PatientLinkCode,
+)
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import _UserAccount
 from services.data_maintenance import DataMaintenanceService
+from services.chat_message_retention import ChatMessageRetentionPolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 
@@ -202,6 +208,57 @@ def test_zero_day_retention_preserves_ended_medication_history(db_session) -> No
     assert deleted == 0
     assert db_session.get(_SavedMedication, medication.id) is medication
 
+
+# 함수명: test_data_maintenance_removes_only_expired_chat_messages
+# 역할: 정기 작업이 채팅 보관 기한을 넘긴 메시지만 삭제하는지 검증한다.
+def test_data_maintenance_removes_only_expired_chat_messages(db_session) -> None:
+    now = datetime.now(UTC).replace(tzinfo=None)
+    patient_hash = "patient-chat-retention"
+    caregiver_hash = "caregiver-chat-retention"
+    db_session.add_all(
+        [
+            _UserAccount(user_hash=patient_hash),
+            _UserAccount(user_hash=caregiver_hash),
+        ]
+    )
+    db_session.flush()
+    link = _PatientCaregiverLink(
+        patient_hash=patient_hash,
+        caregiver_hash=caregiver_hash,
+        linked=True,
+    )
+    db_session.add(link)
+    db_session.flush()
+    db_session.add_all(
+        [
+            _ChatMessage(
+                link_id=link.id,
+                sender_hash=patient_hash,
+                client_message_id="expired-message",
+                body="보관 기한이 지난 메시지",
+                created_at=now - timedelta(days=91),
+            ),
+            _ChatMessage(
+                link_id=link.id,
+                sender_hash=caregiver_hash,
+                client_message_id="recent-message",
+                body="아직 보관할 메시지",
+                created_at=now - timedelta(days=89),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    deleted = DataMaintenanceService(
+        chat_retention_policy=ChatMessageRetentionPolicy(retention_days=90),
+    ).runOnce(db_session)
+
+    remaining_messages = db_session.query(_ChatMessage).all()
+    assert deleted["chat_messages"] == 1
+    assert [row.client_message_id for row in remaining_messages] == [
+        "recent-message"
+    ]
+
 async def _empty_asgi_app(scope, receive, send) -> None:
     return None
 
@@ -356,6 +413,34 @@ def test_pill_identification_limit_accepts_a_full_client_batch() -> None:
     ]
 
     assert rule.max_requests >= 10
+
+
+# 함수명: test_rate_limit_resolver_matches_dynamic_chat_route
+# 역할: 숫자 식별자가 포함된 채팅 요청도 정규 경로 제한에 연결되는지 검증한다.
+def test_rate_limit_resolver_matches_dynamic_chat_route() -> None:
+    resolved = resolve_rate_limit_rule(
+        "POST",
+        "/api/v1/chat/links/27/messages",
+    )
+
+    assert resolved is not None
+    rule, canonical_path = resolved
+    assert rule == RateLimitRule(max_requests=20, window_seconds=60)
+    assert canonical_path == "/api/v1/chat/links/{link_id}/messages"
+
+
+# 함수명: test_rate_limit_resolver_applies_default_to_unlisted_api
+# 역할: 별도 규칙이 없는 API도 메서드별 기본 제한에서 빠지지 않는지 검증한다.
+def test_rate_limit_resolver_applies_default_to_unlisted_api() -> None:
+    resolved = resolve_rate_limit_rule(
+        "PATCH",
+        "/api/v1/medication/items/123",
+    )
+
+    assert resolved is not None
+    rule, canonical_path = resolved
+    assert rule == RateLimitRule(max_requests=60, window_seconds=60)
+    assert canonical_path == "/api/v1/medication/items/{id}"
 
 
 @pytest.mark.anyio

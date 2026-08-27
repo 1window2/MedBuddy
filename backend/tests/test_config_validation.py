@@ -65,6 +65,10 @@ class ConfigValidationTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Settings(_env_file=None, TRUSTED_HOSTS="*")
 
+    def test_non_positive_chat_retention_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, CHAT_MESSAGE_RETENTION_DAYS=0)
+
 
 if __name__ == "__main__":
     unittest.main()
