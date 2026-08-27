@@ -80,6 +80,14 @@ void main() {
     );
     expect(landscapeGuide.width, greaterThan(landscapeGuide.height));
     expect(
+      landscapeGuide.height,
+      closeTo(
+        landscapeSize.height *
+            PrescriptionGuideLayout.landscapeGuideHeightFactor,
+        0.001,
+      ),
+    );
+    expect(
       landscapeGuide.width / landscapeGuide.height,
       closeTo(PrescriptionGuideLayout.prescriptionAspectRatio, 0.001),
     );

@@ -219,7 +219,9 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // - 카메라 센서 방향이 바뀌면 화면을 다시 구성해 가로 전용 배치를 즉시 적용한다.
   void _handleCameraOrientationChanged() {
     final orientation = _cameraController?.value.deviceOrientation;
-    if (!mounted || orientation == null || orientation == _lastCameraOrientation) {
+    if (!mounted ||
+        orientation == null ||
+        orientation == _lastCameraOrientation) {
       return;
     }
     setState(() {
@@ -438,10 +440,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
                       width: PrescriptionGuideLayout.landscapePanelWidth(
                         viewportSize,
                       ),
-                      child: _buildCapturePanel(
-                        controller,
-                        isLandscape: true,
-                      ),
+                      child: _buildCapturePanel(controller, isLandscape: true),
                     ),
                   ],
                 );
@@ -460,10 +459,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     );
   }
 
-  Widget _buildHeader(
-    CameraController? controller, {
-    bool isCompact = false,
-  }) {
+  Widget _buildHeader(CameraController? controller, {bool isCompact = false}) {
     return SizedBox(
       height: isCompact ? 54 : 68,
       child: Row(
@@ -552,15 +548,16 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
                 guideRect: guideRect,
               ),
             ),
-            Positioned(
-              left: isLandscape ? 18 : 24,
-              right: isLandscape ? 18 : 24,
-              top: guideMessageTop,
-              child: _GuideMessage(
-                message: _text.guideMessage(_guideStatus),
-                color: guideColor,
+            if (!isLandscape)
+              Positioned(
+                left: 24,
+                right: 24,
+                top: guideMessageTop,
+                child: _GuideMessage(
+                  message: _text.guideMessage(_guideStatus),
+                  color: guideColor,
+                ),
               ),
-            ),
           ],
         );
       },
@@ -613,9 +610,19 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         controller?.value.isInitialized == true &&
         !_isCapturing &&
         _cameraErrorMessage.isEmpty;
+    final guideColor = _guideStatus == PrescriptionCameraGuideStatus.aligned
+        ? MedBuddyColors.primary
+        : const Color(0xFFFFC247);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isLandscape) ...[
+          _GuideMessage(
+            message: _text.guideMessage(_guideStatus),
+            color: guideColor,
+          ),
+          const SizedBox(height: 14),
+        ],
         Text(
           _text.captureHint,
           textAlign: TextAlign.center,

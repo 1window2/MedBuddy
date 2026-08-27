@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 // 역할: 세로·가로 화면에 맞는 가이드 영역과 원본 이미지 기준 자르기 비율을 제공한다.
 class PrescriptionGuideLayout {
   static const double prescriptionAspectRatio = 1.5;
+  static const double landscapeGuideWidthFactor = 0.90;
+  static const double landscapeGuideHeightFactor = 0.80;
   static const double minimumLandscapePanelWidth = 196;
   static const double maximumLandscapePanelWidth = 260;
 
@@ -50,8 +52,10 @@ class PrescriptionGuideLayout {
     }
 
     final isLandscape = viewportSize.width > viewportSize.height;
-    final maximumWidth = viewportSize.width * (isLandscape ? 0.84 : 0.86);
-    final maximumHeight = viewportSize.height * (isLandscape ? 0.72 : 0.48);
+    final maximumWidth =
+        viewportSize.width * (isLandscape ? landscapeGuideWidthFactor : 0.86);
+    final maximumHeight =
+        viewportSize.height * (isLandscape ? landscapeGuideHeightFactor : 0.48);
     final widthFromHeight = maximumHeight * prescriptionAspectRatio;
     final guideWidth = math.min(maximumWidth, widthFromHeight);
     final guideHeight = guideWidth / prescriptionAspectRatio;
