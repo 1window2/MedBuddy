@@ -25,6 +25,7 @@ class _FakeWebSocket:
     def __init__(self, headers: dict[str, str] | None = None) -> None:
         self.headers = headers or {}
         self.accepted = False
+        self.closed_code: int | None = None
         self.events: list[dict[str, object]] = []
 
     async def accept(self) -> None:
@@ -32,6 +33,10 @@ class _FakeWebSocket:
 
     async def send_json(self, event: dict[str, object]) -> None:
         self.events.append(event)
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        del reason
+        self.closed_code = code
 
 
 class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
@@ -88,6 +93,27 @@ class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
                 user_hash="caregiver-a",
             )
         )
+
+    async def test_connect_rejects_connections_above_user_limit(self) -> None:
+        """한 사용자가 연결 상한을 넘어 서버 자원을 점유하지 못하는지 검증한다."""
+        manager = ChatConnectionManager(max_connections_per_user=1)
+        first_socket = _FakeWebSocket()
+        second_socket = _FakeWebSocket()
+
+        first_connected = await manager.connect(
+            link_id=17,
+            user_hash="patient-a",
+            websocket=cast(WebSocket, first_socket),
+        )
+        second_connected = await manager.connect(
+            link_id=17,
+            user_hash="patient-a",
+            websocket=cast(WebSocket, second_socket),
+        )
+
+        self.assertTrue(first_connected)
+        self.assertFalse(second_connected)
+        self.assertEqual(second_socket.closed_code, 4429)
 
     def test_websocket_requires_matching_api_contract(self) -> None:
         """호환되지 않는 앱이 실시간 채널에 연결되지 못하는지 검증한다."""

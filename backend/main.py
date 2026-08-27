@@ -257,7 +257,11 @@ def create_app() -> FastAPI:
         require_redis=settings.RATE_LIMIT_REQUIRE_REDIS,
     )
     app.state.request_rate_limit_store = rate_limit_store
-    app.state.chat_connection_manager = ChatConnectionManager()
+    app.state.chat_connection_manager = ChatConnectionManager(
+        max_connections_per_user=(
+            settings.CHAT_WEBSOCKET_MAX_CONNECTIONS_PER_USER
+        )
+    )
     app.state.readiness_probe_cache = _ReadinessProbeCache(
         _READINESS_CACHE_TTL_SECONDS
     )

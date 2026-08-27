@@ -181,6 +181,39 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
+    CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
+    CHAT_MESSAGE_RETENTION_DAYS: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description="환자·보호자 채팅 메시지를 보관하는 일수",
+    )
+    CHAT_PUSH_MIN_INTERVAL_SECONDS: int = Field(default=10, ge=1, le=300)
+    CHAT_WEBSOCKET_MAX_CONNECTIONS_PER_USER: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+    CHAT_WEBSOCKET_CONNECTIONS_PER_MINUTE: int = Field(
+        default=12,
+        ge=1,
+        le=120,
+    )
+    CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS: int = Field(
+        default=90,
+        ge=30,
+        le=600,
+    )
+    CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS: int = Field(
+        default=10,
+        ge=1,
+        le=60,
+    )
+    CHAT_WEBSOCKET_MAX_FRAME_BYTES: int = Field(
+        default=4_096,
+        ge=256,
+        le=65_536,
+    )
     API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
 
     # 함수이름: build_structured_database_url

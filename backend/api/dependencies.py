@@ -54,8 +54,8 @@ from boundaries.push_notification_boundary import (
 from core.config import settings
 from core.database import get_db
 from core.request_rate_limits import (
-    DEFAULT_RATE_LIMIT_RULES,
     RequestRateLimitStore,
+    resolve_rate_limit_rule,
 )
 from controls.authorization_control import AuthorizationControl
 from controls.check_medication_detail_control import (
@@ -301,15 +301,19 @@ async def get_registered_principal(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     db: Session = Depends(get_db),
 ) -> AuthenticatedPrincipal:
-    rule = DEFAULT_RATE_LIMIT_RULES.get(
-        (request.method.upper(), request.url.path)
+    route = request.scope.get("route")
+    route_path = str(getattr(route, "path", request.url.path))
+    resolved_rule = resolve_rate_limit_rule(
+        request.method,
+        route_path,
     )
-    if settings.RATE_LIMIT_ENABLED and rule is not None:
+    if settings.RATE_LIMIT_ENABLED and resolved_rule is not None:
+        rule, canonical_path = resolved_rule
         try:
             rate_limit_store = get_request_rate_limit_store(request)
             allowed, retry_after = await rate_limit_store.consume(
                 identity=f"user:{principal.user_hash}",
-                request_scope=f"{request.method.upper()}:{request.url.path}",
+                request_scope=f"{request.method.upper()}:{canonical_path}",
                 rule=rule,
             )
         except RuntimeError as exc:
@@ -351,6 +355,17 @@ async def get_registered_principal(
             detail="This account is busy. Retry the request shortly.",
             headers={"Retry-After": "5"},
         ) from exc
+    return principal
+
+
+# 함수명: get_authenticated_app_principal
+# 역할:
+# - App Check와 사용자 인증·계정 등록·호출 제한을 하나의 의존성으로 묶는다.
+# - 라우터 공통 의존성을 사용하지 않는 채팅 REST API의 보호 정책을 통일한다.
+async def get_authenticated_app_principal(
+    _app_check: None = Depends(verify_app_check_token),
+    principal: AuthenticatedPrincipal = Depends(get_registered_principal),
+) -> AuthenticatedPrincipal:
     return principal
 
 

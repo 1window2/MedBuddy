@@ -2,6 +2,7 @@
 # 역할: 비용이 크거나 반복 대입 위험이 있는 API의 호출 횟수를 제한한다.
 
 import logging
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,6 +13,10 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
+
+_API_PATH_PREFIX = "/api/v1/"
+_PATH_PARAMETER_PATTERN = re.compile(r"^\{[^/{}]+\}$")
+_INTEGER_PATH_SEGMENT_PATTERN = re.compile(r"^\d+$")
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -26,6 +31,79 @@ return count
 class RateLimitRule:
     max_requests: int
     window_seconds: int
+
+
+# 함수이름: resolve_rate_limit_rule
+# 함수역할:
+# - 실제 요청 경로를 고정 경로 또는 매개변수 경로 규칙과 연결한다.
+# - 별도 규칙이 없는 인증 API에도 읽기·쓰기 기본 제한을 적용한다.
+# 매개변수:
+# - method: HTTP 메서드
+# - path: 실제 또는 FastAPI 정규 경로
+# - rules: 우선 적용할 경로별 제한 규칙
+# - include_api_default: /api/v1 경로에 기본 제한을 적용할지 여부
+# - collapse_default_scope: 기본 제한 카운터를 메서드별 공통 범위로 묶을지 여부
+# 반환값: 적용 규칙과 카운터를 공유할 정규 경로 또는 None
+def resolve_rate_limit_rule(
+    method: str,
+    path: str,
+    *,
+    rules: Mapping[tuple[str, str], RateLimitRule] | None = None,
+    include_api_default: bool = True,
+    collapse_default_scope: bool = False,
+) -> tuple[RateLimitRule, str] | None:
+    """요청에 적용할 가장 구체적인 호출 제한 규칙을 반환한다."""
+    normalized_method = method.upper()
+    normalized_path = path or "/"
+    configured_rules = DEFAULT_RATE_LIMIT_RULES if rules is None else rules
+
+    exact_rule = configured_rules.get((normalized_method, normalized_path))
+    if exact_rule is not None:
+        return exact_rule, normalized_path
+
+    for (rule_method, rule_path), rule in configured_rules.items():
+        if rule_method != normalized_method:
+            continue
+        if _path_matches_template(normalized_path, rule_path):
+            return rule, rule_path
+
+    if not include_api_default or not normalized_path.startswith(_API_PATH_PREFIX):
+        return None
+    default_rule = DEFAULT_AUTHENTICATED_API_RULES.get(normalized_method)
+    if default_rule is None:
+        return None
+    canonical_path = (
+        f"{_API_PATH_PREFIX}*"
+        if collapse_default_scope
+        else _canonicalize_api_path(normalized_path)
+    )
+    return default_rule, canonical_path
+
+
+def _path_matches_template(path: str, template: str) -> bool:
+    """중괄호 매개변수 한 칸을 임의의 단일 경로 조각과 비교한다."""
+    path_segments = path.strip("/").split("/")
+    template_segments = template.strip("/").split("/")
+    if len(path_segments) != len(template_segments):
+        return False
+    return all(
+        _PATH_PARAMETER_PATTERN.fullmatch(template_segment) is not None
+        or path_segment == template_segment
+        for path_segment, template_segment in zip(
+            path_segments,
+            template_segments,
+            strict=True,
+        )
+    )
+
+
+def _canonicalize_api_path(path: str) -> str:
+    """숫자 식별자를 정규 조각으로 바꿔 카운터 키가 무한히 늘지 않게 한다."""
+    segments = path.split("/")
+    return "/".join(
+        "{id}" if _INTEGER_PATH_SEGMENT_PATTERN.fullmatch(segment) else segment
+        for segment in segments
+    )
 
 
 class AsyncRateLimitRedis(Protocol):
@@ -189,15 +267,16 @@ class RequestRateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        rule = self.rules.get(
-            (
-                str(scope.get("method", "")).upper(),
-                str(scope.get("path", "")),
-            )
+        resolved_rule = resolve_rate_limit_rule(
+            str(scope.get("method", "")),
+            str(scope.get("path", "")),
+            rules=self.rules,
+            collapse_default_scope=True,
         )
-        if rule is None:
+        if resolved_rule is None:
             await self.app(scope, receive, send)
             return
+        rule, canonical_path = resolved_rule
 
         retry_after = 0
         try:
@@ -207,7 +286,10 @@ class RequestRateLimitMiddleware:
             )
             allowed, retry_after = await self.store.consume(
                 identity=self._request_ip_identity(scope),
-                request_scope=self._request_scope(scope),
+                request_scope=self._request_scope(
+                    scope,
+                    canonical_path=canonical_path,
+                ),
                 rule=identity_rule,
             )
             if not allowed:
@@ -242,10 +324,14 @@ class RequestRateLimitMiddleware:
         return f"ip:{client_host}"
 
     @staticmethod
-    def _request_scope(scope: Scope) -> str:
+    def _request_scope(
+        scope: Scope,
+        *,
+        canonical_path: str | None = None,
+    ) -> str:
         return (
             f"{str(scope.get('method', '')).upper()}:"
-            f"{str(scope.get('path', ''))}"
+            f"{canonical_path or str(scope.get('path', ''))}"
         )
 
 
@@ -265,4 +351,31 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
     ("GET", "/api/v1/pharmacy/nearby"): RateLimitRule(30, 60),
     ("POST", "/api/v1/medication/link/code"): RateLimitRule(10, 3_600),
     ("POST", "/api/v1/medication/link/register"): RateLimitRule(5, 300),
+    ("GET", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(60, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/medications"): RateLimitRule(60, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/schedule-contexts"): RateLimitRule(
+        60,
+        60,
+    ),
+    (
+        "GET",
+        "/api/v1/chat/links/{link_id}/medications/{medication_id}",
+    ): RateLimitRule(60, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(20, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/read"): RateLimitRule(60, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/unread-count"): RateLimitRule(
+        60,
+        60,
+    ),
+}
+
+
+# 목록에 별도 제한이 없는 인증 API도 무제한으로 남지 않도록 보수적인
+# 기본값을 적용한다. 비용이 큰 API는 위의 더 엄격한 규칙이 우선한다.
+DEFAULT_AUTHENTICATED_API_RULES: dict[str, RateLimitRule] = {
+    "GET": RateLimitRule(180, 60),
+    "POST": RateLimitRule(60, 60),
+    "PUT": RateLimitRule(60, 60),
+    "PATCH": RateLimitRule(60, 60),
+    "DELETE": RateLimitRule(30, 60),
 }

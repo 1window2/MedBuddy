@@ -3,6 +3,10 @@
 
 """환자·보호자 연동별 채팅 REST 및 WebSocket API를 제공한다."""
 
+import asyncio
+import logging
+import time
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -17,10 +21,12 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
+    get_authenticated_app_principal,
     get_authenticated_principal,
     get_authorization_control,
     get_manage_linked_chat,
     get_push_notification_boundary,
+    get_request_rate_limit_store,
     verify_app_check_token,
 )
 from controls.authorization_control import AuthorizationControl
@@ -28,12 +34,14 @@ from controls.dispatch_chat_message_alert_control import DispatchChatMessageAler
 from controls.manage_linked_chat_control import ManageLinkedChat
 from core.config import settings
 from core.database import SessionLocal
+from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from schemas.chat import ChatMessageCreate, ChatReadUpdate
 from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # 함수이름: get_chat_connection_manager
@@ -58,7 +66,7 @@ def get_chat_messages(
     user_hash: str = DEFAULT_PATIENT_HASH,
     before_message_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -80,7 +88,7 @@ def get_chat_messages(
 def get_chat_medications(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -100,7 +108,7 @@ def get_chat_medications(
 def get_chat_schedule_contexts(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -121,7 +129,7 @@ def get_chat_medication_detail(
     link_id: int,
     medication_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -145,12 +153,16 @@ async def post_chat_message(
     background_tasks: BackgroundTasks,
     request: Request,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """메시지를 저장하고 채팅방에 즉시 방송하며 필요하면 푸시를 예약한다."""
     authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    await _enforce_chat_daily_quota(
+        request=request,
+        user_hash=authorized_user_hash,
+    )
     result = chat.send_message(
         link_id=link_id,
         sender_hash=authorized_user_hash,
@@ -173,7 +185,11 @@ async def post_chat_message(
             link_id=link_id,
             user_hash=result.recipient_hash,
         )
-        if not recipient_is_connected:
+        if not recipient_is_connected and await _reserve_chat_push_notification(
+            request=request,
+            recipient_hash=result.recipient_hash,
+            link_id=link_id,
+        ):
             background_tasks.add_task(
                 _dispatch_chat_notification,
                 recipient_hash=result.recipient_hash,
@@ -199,7 +215,7 @@ async def mark_chat_read(
     payload: ChatReadUpdate,
     request: Request,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -231,7 +247,7 @@ async def mark_chat_read(
 def get_chat_unread_count(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
@@ -261,10 +277,24 @@ async def stream_chat_events(
         db.close()
         return
     authorized_user_hash = ""
+    connected = False
     try:
         principal = _authenticate_websocket(websocket)
         authorization = AuthorizationControl(db)
         authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+        try:
+            allowed, retry_after = await _reserve_websocket_connection(
+                websocket=websocket,
+                user_hash=authorized_user_hash,
+            )
+        except RuntimeError:
+            await websocket.close(code=1013)
+            db.close()
+            return
+        if not allowed:
+            await websocket.close(code=4429, reason=str(max(1, retry_after)))
+            db.close()
+            return
         ManageLinkedChat(db).require_active_link(
             link_id=link_id,
             user_hash=authorized_user_hash,
@@ -282,25 +312,136 @@ async def stream_chat_events(
         return
 
     try:
-        await manager.connect(
+        connected = await manager.connect(
             link_id=link_id,
             user_hash=authorized_user_hash,
             websocket=websocket,
         )
+        if not connected:
+            return
         await websocket.send_json({"type": "chat_ready", "link_id": link_id})
+        last_ping_at = 0.0
         while True:
-            message = await websocket.receive_text()
-            if message == "ping":
-                await websocket.send_json({"type": "pong"})
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=settings.CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                await websocket.close(code=4408)
+                return
+            if len(message.encode("utf-8")) > settings.CHAT_WEBSOCKET_MAX_FRAME_BYTES:
+                await websocket.close(code=1009)
+                return
+            if message != "ping":
+                await websocket.close(code=1003)
+                return
+            now = time.monotonic()
+            if (
+                last_ping_at > 0
+                and now - last_ping_at
+                < settings.CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS
+            ):
+                await websocket.close(code=4429)
+                return
+            last_ping_at = now
+            await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         pass
     finally:
-        await manager.disconnect(
-            link_id=link_id,
-            user_hash=authorized_user_hash,
-            websocket=websocket,
-        )
+        if connected:
+            await manager.disconnect(
+                link_id=link_id,
+                user_hash=authorized_user_hash,
+                websocket=websocket,
+            )
         db.close()
+
+
+# 함수이름: _enforce_chat_daily_quota
+# 함수역할: 한 사용자가 하루 동안 저장할 수 있는 채팅 메시지 수를 제한한다.
+# 매개변수: request, user_hash
+# 반환값: 없음. 제한 초과 시 HTTP 오류를 발생시킨다.
+async def _enforce_chat_daily_quota(
+    *,
+    request: Request,
+    user_hash: str,
+) -> None:
+    if not settings.RATE_LIMIT_ENABLED:
+        return
+    try:
+        allowed, retry_after = await get_request_rate_limit_store(request).consume(
+            identity=f"user:{user_hash}",
+            request_scope="POST:/api/v1/chat/messages:daily",
+            rule=RateLimitRule(
+                settings.CHAT_MESSAGE_DAILY_LIMIT,
+                86_400,
+            ),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Request quota storage is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다.",
+            headers={"Retry-After": str(max(1, retry_after))},
+        )
+
+
+# 함수이름: _reserve_chat_push_notification
+# 함수역할: 짧은 시간에 같은 상대에게 푸시가 반복 전송되지 않도록 예약한다.
+# 매개변수: request, recipient_hash, link_id
+# 반환값: 이번 메시지에 푸시를 전송할지 여부
+async def _reserve_chat_push_notification(
+    *,
+    request: Request,
+    recipient_hash: str,
+    link_id: int,
+) -> bool:
+    if not settings.RATE_LIMIT_ENABLED:
+        return True
+    try:
+        allowed, _ = await get_request_rate_limit_store(request).consume(
+            identity=f"chat-push:{recipient_hash}:{link_id}",
+            request_scope="POST:/api/v1/chat/push",
+            rule=RateLimitRule(
+                1,
+                settings.CHAT_PUSH_MIN_INTERVAL_SECONDS,
+            ),
+        )
+        return allowed
+    except RuntimeError:
+        # 푸시 제한 저장소 장애가 채팅 저장 자체를 실패시키지 않게 한다.
+        logger.warning("Chat push quota storage is temporarily unavailable.")
+        return False
+
+
+# 함수이름: _reserve_websocket_connection
+# 함수역할: 반복적인 실시간 연결 시도로 서버 자원이 고갈되지 않게 제한한다.
+# 매개변수: websocket, user_hash
+# 반환값: 연결 허용 여부와 재시도 대기 초
+async def _reserve_websocket_connection(
+    *,
+    websocket: WebSocket,
+    user_hash: str,
+) -> tuple[bool, int]:
+    if not settings.RATE_LIMIT_ENABLED:
+        return True, 0
+    store = getattr(websocket.app.state, "request_rate_limit_store", None)
+    if not isinstance(store, RequestRateLimitStore):
+        raise RuntimeError("Request rate-limit store is not initialized.")
+    return await store.consume(
+        identity=f"websocket:{user_hash}",
+        request_scope="CONNECT:/api/v1/chat/stream",
+        rule=RateLimitRule(
+            settings.CHAT_WEBSOCKET_CONNECTIONS_PER_MINUTE,
+            60,
+        ),
+    )
 
 
 # 함수이름: _authenticate_websocket

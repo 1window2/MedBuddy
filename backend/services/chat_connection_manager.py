@@ -15,7 +15,8 @@ from fastapi import WebSocket
 class ChatConnectionManager:
     """연동과 사용자별 WebSocket을 추적하고 실시간 이벤트를 방송한다."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_connections_per_user: int = 3) -> None:
+        self._max_connections_per_user = max_connections_per_user
         self._connections: dict[int, dict[str, set[WebSocket]]] = defaultdict(
             lambda: defaultdict(set)
         )
@@ -24,18 +25,27 @@ class ChatConnectionManager:
     # 함수이름: connect
     # 함수역할: WebSocket을 수락하고 연동 참여자의 연결로 등록한다.
     # 매개변수: link_id, user_hash, websocket
-    # 반환값: 없음
+    # 반환값: 연결 등록 성공 여부
     async def connect(
         self,
         *,
         link_id: int,
         user_hash: str,
         websocket: WebSocket,
-    ) -> None:
-        """WebSocket을 수락하고 해당 연동 참여자의 연결로 등록한다."""
+    ) -> bool:
+        """사용자별 연결 상한을 확인한 뒤 WebSocket을 등록한다."""
         await websocket.accept()
         async with self._lock:
-            self._connections[link_id][user_hash].add(websocket)
+            user_connections = self._connections[link_id][user_hash]
+            if len(user_connections) >= self._max_connections_per_user:
+                await websocket.close(code=4429)
+                if not user_connections:
+                    self._connections[link_id].pop(user_hash, None)
+                if not self._connections[link_id]:
+                    self._connections.pop(link_id, None)
+                return False
+            user_connections.add(websocket)
+            return True
 
     # 함수이름: disconnect
     # 함수역할: 닫힌 연결을 제거하고 빈 연동 항목을 정리한다.
