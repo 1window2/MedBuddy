@@ -298,6 +298,15 @@ package "Flutter Frontend" {
             + analyze(luminanceBytes, width, height): PrescriptionCameraGuideResult
         }
 
+        class "PrescriptionCameraLayoutService" as PrescriptionCameraLayoutService <<Service: 촬영 가이드 좌표>> {
+            + {static} guideRect(viewportSize): Rect
+            + {static} normalizedSourceRect(viewportSize, displayedImageSize, guideRect): Rect
+        }
+
+        class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 촬영 이미지 자르기>> {
+            + cropToGuide(sourceImage, normalizedGuideRect): Future<XFile>
+        }
+
         class "CameraLifecycleCoordinator" as CameraLifecycleCoordinator <<Service: camera lifecycle serialization>> {
             - _tail: Future<void>
             + schedule(transition): Future<void>
@@ -1013,6 +1022,8 @@ CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 ManageUserSettingUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
+GuidedPrescriptionCameraUI ..> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI *-- PrescriptionImageCropService
 
 PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
 CheckResultUI --> "0..*" FAnalyzedMedication

@@ -192,7 +192,9 @@ alt 가이드 카메라 촬영
     User -> UI : 촬영 버튼 선택
     UI -> MediaService : 처방전 이미지 촬영
     MediaService --> UI : 촬영 이미지
-    UI -> ViewModel : requestCapturedPrescriptionImage(image)
+    UI -> FrontService : PrescriptionImageCropService.cropToGuide(image, guideRect)
+    FrontService --> UI : 가이드 영역으로 자른 이미지
+    UI -> ViewModel : requestCapturedPrescriptionImage(croppedImage)
 else 사진첩 이미지 선택
     UI -> ViewModel : requestPrescriptionImageFromGallery()
     ViewModel -> FrontControl : InputPrescription.requestPrescriptionImageFromGallery()

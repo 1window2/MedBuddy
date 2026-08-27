@@ -43,6 +43,7 @@
 ### 수정 논거
 
 - 처방전 OCR은 기기 내 Google ML Kit에서 수행하고 개인정보 필터를 통과한 비식별 텍스트만 서버에 전송한다.
+- 가이드 카메라 촬영은 화면에 표시한 영역과 같은 원본 좌표를 사용해 이미지를 자른 뒤 OCR로 전달한다.
 - OCR 누락 행은 사용자가 표에서 직접 추가할 수 있으며, 수정한 행 식별자와 순서는 상세 조회까지 유지한다.
 - 일부 상세 조회만 실패하면 확인된 행은 잠그고 미확인 행만 수정·재시도한다. 미확인 행을 제외하고 계속 진행하려면 별도 확인을 거친다.
 - 모든 조회가 연결·시간초과 같은 기술 오류로 실패한 경우에만 전체 실패 화면으로 분기한다.
@@ -51,8 +52,10 @@
 @startuml SD01_Prescription_Analysis
 autonumber
 actor "환자" as Patient
+boundary "GuidedPrescriptionCameraUI" as CameraUI
 boundary "PrescriptionAnalysisPreviewUI" as UI
 control "MedBuddyViewModel" as VM
+boundary "PrescriptionImageCropService" as Crop
 boundary "PrescriptionLocalOcrService" as OCR
 boundary "PrescriptionPrivacyFilter" as Privacy
 boundary "FastAPI prescription-text endpoint" as API
@@ -61,16 +64,23 @@ boundary "MedicationDetail endpoint" as Detail
 entity "MedicationSchedule review rows" as Rows
 entity "PrescriptionAnalysisResult" as Result
 
-Patient -> UI : openPrescriptionCapture()
-UI --> Patient : displayCaptureScreen()
+Patient -> CameraUI : openPrescriptionCapture()
+CameraUI --> Patient : displayGuideAndCameraPreview()
 
 break [pickedFile == null]
-  Patient -> UI : cancelCapture()
-  UI --> Patient : keepPreviousScreen()
+  Patient -> CameraUI : cancelCapture()
+  CameraUI --> Patient : keepPreviousScreen()
 end
 
-Patient -> UI : submitPrescriptionImage(image)
-UI -> OCR : recognize(image)
+alt [guided camera capture]
+  Patient -> CameraUI : captureInsideGuide()
+  CameraUI -> Crop : cropToGuide(image, normalizedGuideRect)
+  Crop --> CameraUI : croppedImage
+  CameraUI -> UI : submitPrescriptionImage(croppedImage)
+else [gallery selection]
+  Patient -> UI : submitPrescriptionImage(galleryImage)
+end
+UI -> OCR : recognize(selectedImage)
 activate OCR
 OCR -> Privacy : removeSensitiveText(recognizedBlocks)
 Privacy --> OCR : deidentifiedText, displayRegions

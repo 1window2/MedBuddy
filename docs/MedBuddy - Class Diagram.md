@@ -52,6 +52,7 @@ package "Flutter / Boundary" as FE_Boundary {
   class AuthenticationUI <<boundary>>
   class HomeScreen <<boundary>>
   class InputPrescriptionUI <<boundary>>
+  class GuidedPrescriptionCameraUI <<boundary>>
   class PrescriptionAnalysisProgressUI <<boundary>>
   class PrescriptionAnalysisPreviewUI <<boundary>>
   class PrescriptionAnalysisSuccessUI <<boundary>>
@@ -122,6 +123,8 @@ package "Flutter / External and Shared Services" as FE_Service {
   class NotificationService <<external boundary>>
   class TTSService <<external boundary>>
   class PrescriptionLocalOcrService <<privacy boundary>>
+  class PrescriptionCameraLayoutService <<layout service>>
+  class PrescriptionImageCropService <<image service>>
   class PushNotificationService <<external boundary>>
   class CaregiverNotificationMonitorService <<application service>>
   class CaregiverNotificationBackgroundScheduler <<runtime scheduler>>
@@ -232,6 +235,7 @@ MedBuddyApp o-- MedBuddyViewModel : authenticated session
 MedBuddyApp --> HomeScreen
 HomeScreen --> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
+HomeScreen ..> GuidedPrescriptionCameraUI
 HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> CheckScheduleUI
 HomeScreen ..> LinkPatientCaregiverUI
@@ -264,6 +268,8 @@ PillIdentificationUI --> FE_IdentifyPill
 ' Frontend entities and local external services
 FE_InputPrescription --> FE_AnalyzedMedication
 FE_InputPrescription --> PrescriptionLocalOcrService
+GuidedPrescriptionCameraUI --> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI --> PrescriptionImageCropService
 FE_CheckMedicationDetail --> FE_MedicationDetail
 FE_CheckSavedMedication --> FE_MedicationDetail
 FE_CheckSchedule --> FE_MedicationSchedule
