@@ -70,7 +70,7 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
           onTap: onTap,
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               borderRadius: MedBuddyRadii.card,
               border: Border.all(color: MedBuddyColors.successBorder),
@@ -81,53 +81,44 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 60,
-                  height: 60,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     color: MedBuddyColors.mint,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(17),
                   ),
                   child: const Icon(
                     Icons.schedule_rounded,
                     color: MedBuddyColors.primaryDark,
-                    size: 40,
+                    size: 32,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   displayedTitle,
-                  maxLines: largeTextGridLayout ? 2 : 2,
+                  maxLines: largeTextGridLayout ? 3 : 2,
                   overflow: largeTextGridLayout
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
-                  textScaler: largeTextGridLayout
-                      ? TextScaler.linear(userSetting.preferredTextScale)
-                      : null,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: largeTextGridLayout ? 16 : 17 * scale,
+                    fontSize: largeTextGridLayout ? 14 : 16 * scale,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 if (!largeTextGridLayout) ...[
                   const SizedBox(height: 2),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FittedBox(
-                      alignment: Alignment.centerLeft,
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        summary.primaryText,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: summary.isActionable
-                              ? MedBuddyColors.primaryDark
-                              : MedBuddyColors.textSubtle,
-                          fontSize: 10 * scale,
-                          height: 1.2,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                  Text(
+                    summary.primaryText,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: summary.isActionable
+                          ? MedBuddyColors.primaryDark
+                          : MedBuddyColors.textSubtle,
+                      fontSize: 11 * scale,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],

@@ -24,6 +24,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final int todayMedicationCompletedCount;
   final int todayMedicationTotalCount;
   final bool isTodayScheduleLoading;
+  final DateTime Function()? nowProvider;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onPillIdentificationRequested;
@@ -42,6 +43,7 @@ class InputPrescriptionUI extends StatelessWidget {
     this.todayMedicationCompletedCount = 0,
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
+    this.nowProvider,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
@@ -58,6 +60,7 @@ class InputPrescriptionUI extends StatelessWidget {
       todayMedicationCompletedCount = 0,
       todayMedicationTotalCount = 0,
       isTodayScheduleLoading = false,
+      nowProvider = null,
       onPrescriptionScanRequested = null,
       onPrescriptionGalleryRequested = null,
       onPillIdentificationRequested = null,
@@ -99,6 +102,7 @@ class InputPrescriptionUI extends StatelessWidget {
                           completedCount: todayMedicationCompletedCount,
                           totalCount: todayMedicationTotalCount,
                           isLoading: isTodayScheduleLoading,
+                          nowProvider: nowProvider,
                         ),
                         const SizedBox(height: 14),
                         LayoutBuilder(
@@ -189,7 +193,9 @@ class InputPrescriptionUI extends StatelessWidget {
                                   physics: const NeverScrollableScrollPhysics(),
                                   crossAxisSpacing: 14,
                                   mainAxisSpacing: 14,
-                                  childAspectRatio: 1,
+                                  childAspectRatio: useLargeTextGridLayout
+                                      ? 0.75
+                                      : 1,
                                   children: homeActions,
                                 ),
                               ],
@@ -467,7 +473,7 @@ class _HomeActionCard extends StatelessWidget {
           width: double.infinity,
           constraints: compact ? null : const BoxConstraints(minHeight: 94),
           padding: compact
-              ? const EdgeInsets.all(10)
+              ? const EdgeInsets.all(8)
               : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.largeCard,
@@ -484,50 +490,41 @@ class _HomeActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 60,
-                      height: 60,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
                         color: filled
                             ? Colors.white.withValues(alpha: 0.16)
                             : Colors.white.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(17),
                       ),
-                      child: Icon(icon, color: foreground, size: 40),
+                      child: Icon(icon, color: foreground, size: 32),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       displayedTitle,
-                      maxLines: largeTextGridLayout ? 2 : 2,
+                      maxLines: largeTextGridLayout ? 3 : 2,
                       overflow: largeTextGridLayout
                           ? TextOverflow.visible
                           : TextOverflow.ellipsis,
-                      textScaler: largeTextGridLayout
-                          ? TextScaler.linear(userSetting.preferredTextScale)
-                          : null,
                       style: TextStyle(
                         color: foreground,
-                        fontSize: largeTextGridLayout ? 16 : 17 * scale,
+                        fontSize: largeTextGridLayout ? 14 : 16 * scale,
                         height: 1.18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     if (!largeTextGridLayout) ...[
                       const SizedBox(height: 2),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FittedBox(
-                          alignment: Alignment.centerLeft,
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            subtitle,
-                            maxLines: 1,
-                            style: TextStyle(
-                              color: secondary,
-                              fontSize: 10 * scale,
-                              height: 1.2,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: secondary,
+                          fontSize: 11 * scale,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -613,7 +610,7 @@ class _HomeText {
       : '처방전 또는 낱알약을 촬영해 분석하세요';
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
   String get largeSavedMedication =>
-      isEnglish ? 'Saved\nMedication' : '지정된\n복약 정보';
+      isEnglish ? 'Saved\nMedication' : '저장된\n복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장해 둔 약 정보를 확인하세요';
   String get patientCaregiverLink =>
@@ -635,6 +632,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final int completedCount;
   final int totalCount;
   final bool isLoading;
+  final DateTime Function()? nowProvider;
 
   const _HomeEncouragementPanel({
     required this.userSetting,
@@ -643,6 +641,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
     required this.completedCount,
     required this.totalCount,
     required this.isLoading,
+    this.nowProvider,
   });
 
   @override
@@ -657,6 +656,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
       totalCount: totalCount,
       isLoading: isLoading,
       isEnglish: isEnglish,
+      nowProvider: nowProvider,
     );
     final useStackedProgressLabel =
         MediaQuery.textScalerOf(context).scale(16) / 16 > 1.1;
@@ -858,6 +858,7 @@ class _HomeDashboardSummary {
     required int totalCount,
     required bool isLoading,
     required bool isEnglish,
+    DateTime Function()? nowProvider,
   }) {
     if (isLoading) {
       return _HomeDashboardSummary(
@@ -882,7 +883,7 @@ class _HomeDashboardSummary {
     final progressLabel = displayTotal == 0
         ? '-/-'
         : '$safeCompleted/$displayTotal';
-    final now = DateTime.now();
+    final now = nowProvider?.call() ?? DateTime.now();
     final pendingSlots = <_DashboardPendingSlot>[];
 
     for (final slotKey in _slotOrder) {
@@ -908,7 +909,8 @@ class _HomeDashboardSummary {
             alarm.hour,
             alarm.minute,
           ),
-          medication: pendingSchedules.first,
+          alarm: alarm,
+          medications: pendingSchedules,
         ),
       );
     }
@@ -934,38 +936,64 @@ class _HomeDashboardSummary {
       );
     }
 
-    final nextSlot = pendingSlots.firstWhere(
-      (slot) => !slot.scheduledAt.isBefore(now),
-      orElse: () => pendingSlots.first,
+    pendingSlots.sort(
+      (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
     );
+    final nextSlot =
+        pendingSlots.cast<_DashboardPendingSlot?>().firstWhere(
+          (slot) => !slot!.scheduledAt.isBefore(now),
+          orElse: () => null,
+        ) ??
+        pendingSlots.first;
     final isPastDue = nextSlot.scheduledAt.isBefore(now);
     final timeLabel =
         '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
-    final medicationName = nextSlot.medication.displayNameForLanguage(
+    final medicationName = nextSlot.medications.first.displayNameForLanguage(
       isEnglish ? 'en' : 'ko',
     );
+    final additionalMedicationCount = nextSlot.medications.length - 1;
+    final medicationSummary = additionalMedicationCount == 0
+        ? medicationName
+        : isEnglish
+        ? '$medicationName and $additionalMedicationCount more'
+        : '$medicationName 외 $additionalMedicationCount개';
+    final statusMessage = isPastDue
+        ? (isEnglish
+              ? 'You have a missed medication to check'
+              : '미복용한 약을 확인해주세요')
+        : (isEnglish
+              ? 'You are keeping up with your medication'
+              : '오늘도 복약을 꾸준히 이어가고 있어요');
+    final nextMedicationLabel = isPastDue
+        ? (isEnglish ? 'Missed dose check' : '미복용 확인')
+        : isEnglish
+        ? (nextSlot.alarm.isEnabled
+              ? 'Next medication alert'
+              : 'Next medication')
+        : (nextSlot.alarm.isEnabled ? '다음 복약 알림' : '다음 복약 일정');
 
     return _HomeDashboardSummary(
       progress: progress,
       progressLabel: progressLabel,
-      statusMessage: displayTotal == 0
-          ? (isEnglish
-                ? 'Your medication guide is ready'
-                : '오늘도 복약을 차분히 시작해보세요')
-          : (isEnglish
-                ? 'You are keeping up with your medication'
-                : '오늘도 복약을 꾸준히 이어가고 있어요'),
+      statusMessage: statusMessage,
       hasNextMedication: true,
-      nextMedicationLabel: isPastDue
-          ? (isEnglish ? 'Missed dose check' : '미복용 확인')
-          : (isEnglish ? 'Next medication' : '다음 복약 알림'),
+      nextMedicationLabel: nextMedicationLabel,
       nextMedicationGuide: isEnglish
-          ? '${_slotLabel(nextSlot.slotKey)} $timeLabel · $medicationName\n${isPastDue ? 'Please take it as soon as you can.' : 'Take it on time.'}'
-          : '${_slotLabel(nextSlot.slotKey)} $timeLabel · $medicationName\n${isPastDue ? '늦지 않게 복용하세요.' : '시간에 맞춰 챙겨드세요.'}',
+          ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Please take it as soon as you can.' : 'Take it on time.'}'
+          : '${_slotLabel(nextSlot.slotKey, isEnglish: false)} $timeLabel · $medicationSummary\n${isPastDue ? '늦지 않게 복용하세요.' : '시간에 맞춰 챙겨드세요.'}',
     );
   }
 
-  static String _slotLabel(String slotKey) {
+  static String _slotLabel(String slotKey, {required bool isEnglish}) {
+    if (isEnglish) {
+      return switch (slotKey) {
+        'morning' => 'Morning',
+        'lunch' => 'Lunch',
+        'evening' => 'Evening',
+        'bedtime' => 'Bedtime',
+        _ => slotKey,
+      };
+    }
     return switch (slotKey) {
       'morning' => '아침',
       'lunch' => '점심',
@@ -979,11 +1007,13 @@ class _HomeDashboardSummary {
 class _DashboardPendingSlot {
   final String slotKey;
   final DateTime scheduledAt;
-  final MedicationSchedule medication;
+  final MedicationAlarm alarm;
+  final List<MedicationSchedule> medications;
 
   const _DashboardPendingSlot({
     required this.slotKey,
     required this.scheduledAt,
-    required this.medication,
+    required this.alarm,
+    required this.medications,
   });
 }

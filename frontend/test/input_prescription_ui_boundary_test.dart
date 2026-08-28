@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
+import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
@@ -122,4 +124,200 @@ void main() {
     expect(find.text('오늘의 복약 일정'), findsNothing);
     expect(find.text("Today's Medication"), findsOneWidget);
   });
+
+  testWidgets('large grid preserves inherited scale and saved-card wording', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1100));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: _home(userSetting: const UserSetting(fontSize: 20)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final captureTitle = tester.widget<Text>(find.text('약 정보\n촬영하기'));
+    final scheduleTitle = tester.widget<Text>(find.text('오늘의\n복약 일정'));
+    expect(captureTitle.textScaler, isNull);
+    expect(scheduleTitle.textScaler, isNull);
+    expect(find.text('저장된\n복약 정보'), findsOneWidget);
+    expect(find.text('지정된\n복약 정보'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('compact subtitles wrap without shrinking inside FittedBox', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1000));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _home(userSetting: const UserSetting(language: 'en')),
+      ),
+    );
+
+    final subtitleFinder = find.text(
+      'Connect patient and caregiver medication schedules',
+    );
+    final subtitle = tester.widget<Text>(subtitleFinder);
+    expect(subtitle.maxLines, 2);
+    expect(subtitle.style?.fontSize, 11);
+    expect(
+      find.ancestor(of: subtitleFinder, matching: find.byType(FittedBox)),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dashboard chooses the earliest alarm and localizes its slot', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1000));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _home(
+          userSetting: const UserSetting(language: 'en'),
+          schedules: const [
+            MedicationSchedule(
+              medicationName: 'MorningMed',
+              scheduleSlotKeys: ['morning'],
+            ),
+            MedicationSchedule(
+              medicationName: 'LunchMed',
+              scheduleSlotKeys: ['lunch'],
+            ),
+          ],
+          alarms: const {
+            'morning': MedicationAlarm(
+              slotKey: 'morning',
+              hour: 20,
+              minute: 0,
+              enabled: true,
+            ),
+            'lunch': MedicationAlarm(
+              slotKey: 'lunch',
+              hour: 12,
+              minute: 0,
+              enabled: true,
+            ),
+          },
+          totalCount: 2,
+          nowProvider: () => DateTime(2026, 1, 1, 10),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('Lunch 12:00 · LunchMed'), findsOneWidget);
+    expect(find.textContaining('점심 12:00'), findsNothing);
+  });
+
+  testWidgets('dashboard represents every due medication and disabled alarm', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1000));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _home(
+          schedules: const [
+            MedicationSchedule(
+              medicationName: '약A',
+              scheduleSlotKeys: ['lunch'],
+            ),
+            MedicationSchedule(
+              medicationName: '약B',
+              scheduleSlotKeys: ['lunch'],
+            ),
+          ],
+          alarms: const {
+            'lunch': MedicationAlarm(
+              slotKey: 'lunch',
+              hour: 12,
+              minute: 0,
+              enabled: false,
+            ),
+          },
+          totalCount: 2,
+          nowProvider: () => DateTime(2026, 1, 1, 10),
+        ),
+      ),
+    );
+
+    expect(find.text('다음 복약 일정'), findsOneWidget);
+    expect(find.text('다음 복약 알림'), findsNothing);
+    expect(find.textContaining('점심 12:00 · 약A 외 1개'), findsOneWidget);
+  });
+
+  testWidgets('dashboard uses an overdue-specific status message', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1000));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _home(
+          schedules: const [
+            MedicationSchedule(
+              medicationName: '아침약',
+              scheduleSlotKeys: ['morning'],
+            ),
+          ],
+          alarms: const {
+            'morning': MedicationAlarm(
+              slotKey: 'morning',
+              hour: 8,
+              minute: 0,
+              enabled: true,
+            ),
+          },
+          totalCount: 1,
+          nowProvider: () => DateTime(2026, 1, 1, 23),
+        ),
+      ),
+    );
+
+    expect(find.text('미복용한 약을 확인해주세요'), findsOneWidget);
+    expect(find.text('미복용 확인'), findsOneWidget);
+    expect(find.text('오늘도 복약을 꾸준히 이어가고 있어요'), findsNothing);
+  });
+}
+
+void _setViewport(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+InputPrescriptionUI _home({
+  UserSetting userSetting = const UserSetting(),
+  List<MedicationSchedule> schedules = const [],
+  Map<String, MedicationAlarm> alarms = const {},
+  int completedCount = 0,
+  int totalCount = 0,
+  DateTime Function()? nowProvider,
+}) {
+  return InputPrescriptionUI(
+    statusMessage: '',
+    userSetting: userSetting,
+    todayMedicationScheduleList: schedules,
+    medicationReminderSettings: alarms,
+    todayMedicationCompletedCount: completedCount,
+    todayMedicationTotalCount: totalCount,
+    nowProvider: nowProvider,
+    onPrescriptionScanRequested: () {},
+    onPrescriptionGalleryRequested: () {},
+    onPillIdentificationRequested: () {},
+    onTodayScheduleRequested: () {},
+    onSavedMedicationRequested: () {},
+    onPatientCaregiverLinkRequested: () {},
+    onUserSettingRequested: () {},
+  );
 }
