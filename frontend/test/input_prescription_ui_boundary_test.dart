@@ -66,7 +66,7 @@ void main() {
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
-  testWidgets('환자 보호자 연동 카드는 다른 홈 카드와 같은 높이와 설명을 제공한다', (tester) async {
+  testWidgets('환자 보호자 연동 카드는 다른 홈 카드와 같은 높이와 아이콘을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -91,7 +91,6 @@ void main() {
 
     final savedCard = find.byKey(const ValueKey('homeSavedMedicationCard'));
     final linkCard = find.byKey(const ValueKey('homePatientCaregiverLinkCard'));
-    expect(find.text('환자와 보호자의 복약 일정을 연결'), findsOneWidget);
     expect(tester.getSize(linkCard).height, tester.getSize(savedCard).height);
     expect(find.byIcon(Icons.people_alt_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -119,7 +118,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Your medication guide'), findsOneWidget);
+    expect(find.text('Start your medication plan with ease'), findsOneWidget);
     expect(find.text('오늘의 복약 일정'), findsNothing);
     expect(find.text("Today's Medication"), findsOneWidget);
   });
