@@ -215,14 +215,29 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('MedBuddy'), findsOneWidget);
-        expect(find.text('오늘의 복약 일정'), findsOneWidget);
-        expect(find.text('약 정보 촬영하기'), findsOneWidget);
+        expect(
+          find.text(
+            viewportCase.size.width >= 350 ? '오늘의\n복약 일정' : '오늘의 복약 일정',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            viewportCase.size.width >= 350 ? '약 정보\n촬영하기' : '약 정보 촬영하기',
+          ),
+          findsOneWidget,
+        );
         await tester.drag(
           find.byType(SingleChildScrollView),
           const Offset(0, -300),
         );
         await tester.pumpAndSettle();
-        expect(find.text('환자/보호자 연동'), findsOneWidget);
+        expect(
+          find.text(
+            viewportCase.size.width >= 350 ? '환자/보호자\n연동' : '환자/보호자 연동',
+          ),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       });
     }

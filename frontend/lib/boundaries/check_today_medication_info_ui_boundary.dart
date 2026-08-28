@@ -31,6 +31,8 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
   final int totalCount;
   final bool isLoading;
   final bool compact;
+  final bool largeTextGridLayout;
+  final String? largeGridTitle;
   final VoidCallback? onTap;
   final DateTime Function()? nowProvider;
 
@@ -47,12 +49,17 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     required this.onTap,
     this.nowProvider,
     this.compact = false,
+    this.largeTextGridLayout = false,
+    this.largeGridTitle,
   });
 
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
     final summary = _buildScheduleSummary();
+    final displayedTitle = largeTextGridLayout
+        ? largeGridTitle ?? title
+        : title;
 
     if (compact) {
       return Material(
@@ -63,7 +70,7 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
           onTap: onTap,
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               borderRadius: MedBuddyRadii.card,
               border: Border.all(color: MedBuddyColors.successBorder),
@@ -74,43 +81,47 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     color: MedBuddyColors.mint,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(17),
                   ),
                   child: const Icon(
                     Icons.schedule_rounded,
                     color: MedBuddyColors.primaryDark,
-                    size: 20,
+                    size: 32,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 5),
                 Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  displayedTitle,
+                  maxLines: largeTextGridLayout ? 3 : 2,
+                  overflow: largeTextGridLayout
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 15 * scale,
+                    fontSize: largeTextGridLayout ? 14 : 16 * scale,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  summary.primaryText,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: summary.isActionable
-                        ? MedBuddyColors.primaryDark
-                        : MedBuddyColors.textSubtle,
-                    fontSize: 11 * scale,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
+                if (!largeTextGridLayout) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    summary.primaryText,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: summary.isActionable
+                          ? MedBuddyColors.primaryDark
+                          : MedBuddyColors.textSubtle,
+                      fontSize: 11 * scale,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

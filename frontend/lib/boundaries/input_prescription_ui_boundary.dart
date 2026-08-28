@@ -24,6 +24,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final int todayMedicationCompletedCount;
   final int todayMedicationTotalCount;
   final bool isTodayScheduleLoading;
+  final DateTime Function()? nowProvider;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
   final VoidCallback? onPillIdentificationRequested;
@@ -42,6 +43,7 @@ class InputPrescriptionUI extends StatelessWidget {
     this.todayMedicationCompletedCount = 0,
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
+    this.nowProvider,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
@@ -58,6 +60,7 @@ class InputPrescriptionUI extends StatelessWidget {
       todayMedicationCompletedCount = 0,
       todayMedicationTotalCount = 0,
       isTodayScheduleLoading = false,
+      nowProvider = null,
       onPrescriptionScanRequested = null,
       onPrescriptionGalleryRequested = null,
       onPillIdentificationRequested = null,
@@ -70,9 +73,6 @@ class InputPrescriptionUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
-    final encouragement = _HomeEncouragement.forToday(
-      isEnglish: text.isEnglish,
-    );
 
     if (isAnalyzing) {
       return _buildAnalyzingScreen(text);
@@ -95,93 +95,113 @@ class InputPrescriptionUI extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        _HomeEncouragementPanel(encouragement: encouragement),
+                        _HomeEncouragementPanel(
+                          userSetting: userSetting,
+                          schedules: todayMedicationScheduleList,
+                          reminderSettings: medicationReminderSettings,
+                          completedCount: todayMedicationCompletedCount,
+                          totalCount: todayMedicationTotalCount,
+                          isLoading: isTodayScheduleLoading,
+                          nowProvider: nowProvider,
+                        ),
                         const SizedBox(height: 14),
                         LayoutBuilder(
                           builder: (context, constraints) {
-                        final textScale =
-                            MediaQuery.textScalerOf(context).scale(16) / 16;
-                        final useGrid =
-                            MediaQuery.sizeOf(context).width >= 350 &&
-                            textScale <= 1.1;
-                        final homeActions = <Widget>[
-                            CheckTodayMedicationInfoUI(
-                              title: text.todaySchedule,
-                              noMedicationLabel: text.noMedication,
-                              userSetting: userSetting,
-                              schedules: todayMedicationScheduleList,
-                              reminderSettings: medicationReminderSettings,
-                              completedCount: todayMedicationCompletedCount,
-                              totalCount: todayMedicationTotalCount,
-                              isLoading: isTodayScheduleLoading,
-                              onTap: onTodayScheduleRequested,
-                              compact: useGrid,
-                            ),
-                            _HomeActionCard(
-                              cardKey: const ValueKey('homeCaptureCard'),
-                              icon: Icons.photo_camera_outlined,
-                              title: text.scanPrescription,
-                              subtitle: text.scanPrescriptionSubtitle,
-                              filled: true,
-                              compact: useGrid,
-                              userSetting: userSetting,
-                              onTap: () => _showAnalysisTaskOptions(context),
-                            ),
-                            _HomeActionCard(
-                              cardKey: const ValueKey('homeSavedMedicationCard'),
-                              icon: Icons.medication_outlined,
-                              title: text.savedMedication,
-                              subtitle: text.savedMedicationSubtitle,
-                              filled: false,
-                              compact: useGrid,
-                              userSetting: userSetting,
-                              onTap: onSavedMedicationRequested,
-                            ),
-                            _HomeActionCard(
-                              cardKey: const ValueKey(
-                                'homePatientCaregiverLinkCard',
+                            final textScale =
+                                MediaQuery.textScalerOf(context).scale(16) / 16;
+                            final useGrid =
+                                MediaQuery.sizeOf(context).width >= 350;
+                            final useLargeTextGridLayout = textScale > 1.1;
+                            final homeActions = <Widget>[
+                              CheckTodayMedicationInfoUI(
+                                title: text.todaySchedule,
+                                noMedicationLabel: text.noMedication,
+                                userSetting: userSetting,
+                                schedules: todayMedicationScheduleList,
+                                reminderSettings: medicationReminderSettings,
+                                completedCount: todayMedicationCompletedCount,
+                                totalCount: todayMedicationTotalCount,
+                                isLoading: isTodayScheduleLoading,
+                                onTap: onTodayScheduleRequested,
+                                compact: useGrid,
+                                largeTextGridLayout: useLargeTextGridLayout,
+                                largeGridTitle: text.largeTodaySchedule,
                               ),
-                              icon: Icons.people_alt_outlined,
-                              title: text.patientCaregiverLink,
-                              subtitle: text.patientCaregiverLinkSubtitle,
-                              filled: false,
-                              compact: useGrid,
-                              userSetting: userSetting,
-                              onTap: onPatientCaregiverLinkRequested,
-                            ),
-                        ];
+                              _HomeActionCard(
+                                cardKey: const ValueKey('homeCaptureCard'),
+                                icon: Icons.photo_camera_outlined,
+                                title: text.scanPrescription,
+                                subtitle: text.scanPrescriptionSubtitle,
+                                filled: true,
+                                compact: useGrid,
+                                largeTextGridLayout: useLargeTextGridLayout,
+                                largeGridTitle: text.largeScanPrescription,
+                                userSetting: userSetting,
+                                onTap: () => _showAnalysisTaskOptions(context),
+                              ),
+                              _HomeActionCard(
+                                cardKey: const ValueKey(
+                                  'homeSavedMedicationCard',
+                                ),
+                                icon: Icons.medication_outlined,
+                                title: text.savedMedication,
+                                subtitle: text.savedMedicationSubtitle,
+                                filled: false,
+                                compact: useGrid,
+                                largeTextGridLayout: useLargeTextGridLayout,
+                                largeGridTitle: text.largeSavedMedication,
+                                userSetting: userSetting,
+                                onTap: onSavedMedicationRequested,
+                              ),
+                              _HomeActionCard(
+                                cardKey: const ValueKey(
+                                  'homePatientCaregiverLinkCard',
+                                ),
+                                icon: Icons.people_alt_outlined,
+                                title: text.patientCaregiverLink,
+                                subtitle: text.patientCaregiverLinkSubtitle,
+                                filled: false,
+                                compact: useGrid,
+                                largeTextGridLayout: useLargeTextGridLayout,
+                                largeGridTitle: text.largePatientCaregiverLink,
+                                userSetting: userSetting,
+                                onTap: onPatientCaregiverLinkRequested,
+                              ),
+                            ];
 
-                        if (!useGrid) {
-                          return Column(
-                            children: [
-                              for (int index = 0;
-                                  index < homeActions.length;
-                                  index++) ...[
-                                homeActions[index],
-                                if (index != homeActions.length - 1)
-                                  const SizedBox(height: 14),
+                            if (!useGrid) {
+                              return Column(
+                                children: [
+                                  for (
+                                    int index = 0;
+                                    index < homeActions.length;
+                                    index++
+                                  ) ...[
+                                    homeActions[index],
+                                    if (index != homeActions.length - 1)
+                                      const SizedBox(height: 14),
+                                  ],
+                                ],
+                              );
+                            }
+
+                            return Column(
+                              children: [
+                                GridView.count(
+                                  crossAxisCount: 2,
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  crossAxisSpacing: 14,
+                                  mainAxisSpacing: 14,
+                                  childAspectRatio: useLargeTextGridLayout
+                                      ? 0.75
+                                      : 1,
+                                  children: homeActions,
+                                ),
                               ],
-                            ],
-                          );
-                        }
-
-                        return Column(
-                          children: [
-                            GridView.count(
-                              crossAxisCount: 2,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisSpacing: 14,
-                              mainAxisSpacing: 14,
-                              childAspectRatio: 0.84,
-                              children: homeActions,
-                            ),
-                          ],
-                        );
+                            );
                           },
                         ),
-                        const SizedBox(height: 20),
-                        _HomeMedicationTipCard(isEnglish: text.isEnglish),
                       ],
                     ),
                   ),
@@ -342,37 +362,37 @@ class _HomeHeader extends StatelessWidget {
             children: [
               const Expanded(
                 child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'MedBuddy',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textScaler: TextScaler.noScaling,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 26,
-                            height: 1.1,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        SizedBox(height: 5),
-                        Text(
-                          '건강한 복약 관리 도우미',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textScaler: TextScaler.noScaling,
-                          style: TextStyle(
-                            color: MedBuddyColors.textSubtle,
-                            fontSize: 13,
-                            height: 1.2,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'MedBuddy',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 26,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
                     ),
+                    SizedBox(height: 5),
+                    Text(
+                      '건강한 복약 관리 도우미',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: MedBuddyColors.textSubtle,
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(width: 16),
               Material(
@@ -407,6 +427,8 @@ class _HomeActionCard extends StatelessWidget {
   final String subtitle;
   final bool filled;
   final bool compact;
+  final bool largeTextGridLayout;
+  final String? largeGridTitle;
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
@@ -417,6 +439,8 @@ class _HomeActionCard extends StatelessWidget {
     required this.subtitle,
     required this.filled,
     this.compact = false,
+    this.largeTextGridLayout = false,
+    this.largeGridTitle,
     required this.userSetting,
     required this.onTap,
   });
@@ -429,8 +453,13 @@ class _HomeActionCard extends StatelessWidget {
         ? MedBuddyColors.lavenderSurface
         : MedBuddyColors.mint;
     final foreground = filled ? Colors.white : MedBuddyColors.textStrong;
-    final secondary = filled ? const Color(0xFFFFE8E6) : MedBuddyColors.textMuted;
+    final secondary = filled
+        ? const Color(0xFFFFE8E6)
+        : MedBuddyColors.textMuted;
     final scale = userSetting.contentTextScale;
+    final displayedTitle = largeTextGridLayout
+        ? largeGridTitle ?? title
+        : title;
 
     return Material(
       color: background,
@@ -444,13 +473,15 @@ class _HomeActionCard extends StatelessWidget {
           width: double.infinity,
           constraints: compact ? null : const BoxConstraints(minHeight: 94),
           padding: compact
-              ? const EdgeInsets.all(14)
+              ? const EdgeInsets.all(8)
               : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.largeCard,
             boxShadow: MedBuddyShadows.soft,
             border: Border.all(
-              color: filled ? MedBuddyColors.primary : MedBuddyColors.cardBorder,
+              color: filled
+                  ? MedBuddyColors.primary
+                  : MedBuddyColors.cardBorder,
             ),
           ),
           child: compact
@@ -459,94 +490,98 @@ class _HomeActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 50,
-                      height: 50,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
                         color: filled
                             ? Colors.white.withValues(alpha: 0.16)
                             : Colors.white.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(17),
                       ),
-                      child: Icon(icon, color: foreground, size: 27),
+                      child: Icon(icon, color: foreground, size: 32),
                     ),
-                    const SizedBox(height: 13),
+                    const SizedBox(height: 5),
                     Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      displayedTitle,
+                      maxLines: largeTextGridLayout ? 3 : 2,
+                      overflow: largeTextGridLayout
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
                       style: TextStyle(
                         color: foreground,
-                        fontSize: 15 * scale,
+                        fontSize: largeTextGridLayout ? 14 : 16 * scale,
                         height: 1.18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: secondary,
-                        fontSize: 11 * scale,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
+                    if (!largeTextGridLayout) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: secondary,
+                          fontSize: 11 * scale,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 )
               : Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: filled
-                      ? Colors.white.withValues(alpha: 0.16)
-                      : Colors.white.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(icon, color: foreground, size: 25),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? Colors.white.withValues(alpha: 0.16)
+                            : Colors.white.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Icon(icon, color: foreground, size: 25),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: 17 * scale,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: secondary,
+                              fontSize: 12 * scale,
+                              height: 1.3,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: secondary,
-                        fontSize: 12 * scale,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    const SizedBox(width: 10),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: filled ? Colors.white : MedBuddyColors.textMuted,
+                      size: 17,
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: filled ? Colors.white : MedBuddyColors.textMuted,
-                size: 17,
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -561,19 +596,27 @@ class _HomeText {
   bool get isEnglish => language == 'en';
 
   String get todaySchedule => isEnglish ? 'Today\'s Medication' : '오늘의 복약 일정';
+  String get largeTodaySchedule =>
+      isEnglish ? 'Today\'s\nMedication' : '오늘의\n복약 일정';
   String get noMedication => isEnglish
       ? 'No medicine registered\nScan a prescription'
       : '등록된 약이 없습니다\n처방전을 촬영해주세요';
   String get scanPrescription =>
       isEnglish ? 'Analyze with Camera' : '약 정보 촬영하기';
+  String get largeScanPrescription =>
+      isEnglish ? 'Analyze\nwith Camera' : '약 정보\n촬영하기';
   String get scanPrescriptionSubtitle => isEnglish
       ? 'Choose a prescription or a loose pill'
       : '처방전 또는 낱알약을 촬영해 분석하세요';
   String get savedMedication => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
+  String get largeSavedMedication =>
+      isEnglish ? 'Saved\nMedication' : '저장된\n복약 정보';
   String get savedMedicationSubtitle =>
       isEnglish ? 'Check saved medication info' : '저장해 둔 약 정보를 확인하세요';
   String get patientCaregiverLink =>
       isEnglish ? 'Patient/Caregiver Link' : '환자/보호자 연동';
+  String get largePatientCaregiverLink =>
+      isEnglish ? 'Patient/\nCaregiver Link' : '환자/보호자\n연동';
   String get patientCaregiverLinkSubtitle => isEnglish
       ? 'Connect patient and caregiver medication schedules'
       : '환자와 보호자의 복약 일정을 연결';
@@ -581,164 +624,203 @@ class _HomeText {
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
 
-// 홈 화면에서만 사용하는 가벼운 안내 문구다. 계정이나 서버 상태와 무관하게
-// 하루 동안 같은 문구를 유지해 화면이 다시 그려져도 내용이 흔들리지 않는다.
-class _HomeEncouragement {
-  final String eyebrow;
-  final String message;
-
-  const _HomeEncouragement({required this.eyebrow, required this.message});
-
-  factory _HomeEncouragement.forToday({required bool isEnglish}) {
-    const koreanMessages = [
-      '작은 한 알이 건강한 하루를 만듭니다.',
-      '물 한 잔과 함께 오늘의 복약을 시작해요.',
-      '약속한 시간에 챙기는 습관이 건강을 지켜줘요.',
-      '천천히, 꾸준히. 건강한 변화는 매일 쌓여요.',
-      '오늘도 나를 위한 복약을 잊지 마세요.',
-    ];
-    const englishMessages = [
-      'Small steps build a healthier day.',
-      'Start today\'s dose with a glass of water.',
-      'A timely habit helps care for your health.',
-      'Slow and steady, healthy changes add up.',
-      'Remember to take a moment for your health today.',
-    ];
-    final messages = isEnglish ? englishMessages : koreanMessages;
-    final index = DateTime.now().difference(DateTime(2024)).inDays.abs() %
-        messages.length;
-    return _HomeEncouragement(
-      eyebrow: isEnglish ? 'A note from MedBuddy' : 'MedBuddy의 작은 응원',
-      message: messages[index],
-    );
-  }
-}
-
-// 대시보드 첫 줄을 가로지르는 안내 영역이며, 동작을 수행하지 않는 정보 전용 섹션이다.
+// 대시보드 첫 줄을 가로지르는 복약 현황 정보 영역이다.
 class _HomeEncouragementPanel extends StatelessWidget {
-  final _HomeEncouragement encouragement;
+  final UserSetting userSetting;
+  final List<MedicationSchedule> schedules;
+  final Map<String, MedicationAlarm> reminderSettings;
+  final int completedCount;
+  final int totalCount;
+  final bool isLoading;
+  final DateTime Function()? nowProvider;
 
-  const _HomeEncouragementPanel({required this.encouragement});
+  const _HomeEncouragementPanel({
+    required this.userSetting,
+    required this.schedules,
+    required this.reminderSettings,
+    required this.completedCount,
+    required this.totalCount,
+    required this.isLoading,
+    this.nowProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF18A66A), MedBuddyColors.primaryDark],
-        ),
-        borderRadius: MedBuddyRadii.largeCard,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(17),
-            ),
-            child: const Icon(
-              Icons.favorite_rounded,
-              color: Colors.white,
-              size: 25,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  encouragement.eyebrow,
-                  style: const TextStyle(
-                    color: Color(0xFFD6F2E3),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  encouragement.message,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    height: 1.35,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    final isEnglish = userSetting.language.trim().toLowerCase().startsWith(
+      'en',
     );
-  }
-}
-
-class _HomeMedicationTipCard extends StatelessWidget {
-  final bool isEnglish;
-
-  const _HomeMedicationTipCard({required this.isEnglish});
-
-  @override
-  Widget build(BuildContext context) {
-    final title = isEnglish ? 'Your medication guide' : '복약 관리 팁';
-    final message = isEnglish
-        ? 'A prescription or pill photo can make medication details easier to review.'
-        : '처방전이나 낱알약 사진을 촬영하면 약 정보를 더 쉽게 확인할 수 있어요.';
+    final dashboard = _HomeDashboardSummary.from(
+      schedules: schedules,
+      reminderSettings: reminderSettings,
+      completedCount: completedCount,
+      totalCount: totalCount,
+      isLoading: isLoading,
+      isEnglish: isEnglish,
+      nowProvider: nowProvider,
+    );
+    final useStackedProgressLabel =
+        MediaQuery.textScalerOf(context).scale(16) / 16 > 1.1;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      constraints: const BoxConstraints(minHeight: 260),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: MedBuddyColors.surfaceSubtle,
+        color: MedBuddyColors.surface,
         borderRadius: MedBuddyRadii.largeCard,
         border: Border.all(color: MedBuddyColors.cardBorder),
+        boxShadow: MedBuddyShadows.soft,
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: MedBuddyColors.mint,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.lightbulb_outline_rounded,
-              color: MedBuddyColors.primaryDark,
-              size: 23,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: MedBuddyColors.mint,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.favorite_rounded,
+                  color: MedBuddyColors.primaryDark,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      dashboard.statusMessage,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 17,
+                        height: 1.3,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
+          const SizedBox(height: 20),
+          if (useStackedProgressLabel)
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 3),
                 Text(
-                  message,
+                  dashboard.progressLabel,
                   style: const TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 13,
-                    height: 1.42,
-                    fontWeight: FontWeight.w500,
+                    color: MedBuddyColors.primaryDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Text(
+                  isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  dashboard.progressLabel,
+                  style: const TextStyle(
+                    color: MedBuddyColors.primaryDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: MedBuddyRadii.pill,
+            child: LinearProgressIndicator(
+              value: dashboard.progress,
+              minHeight: 9,
+              color: MedBuddyColors.primary,
+              backgroundColor: MedBuddyColors.mint,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: MedBuddyColors.surfaceSubtle,
+              borderRadius: MedBuddyRadii.card,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: dashboard.hasNextMedication
+                        ? MedBuddyColors.mint
+                        : MedBuddyColors.lavenderSurface,
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    dashboard.hasNextMedication
+                        ? Icons.alarm_outlined
+                        : Icons.event_available_outlined,
+                    color: MedBuddyColors.primaryDark,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dashboard.nextMedicationLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: MedBuddyColors.textStrong,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        dashboard.nextMedicationGuide,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: MedBuddyColors.textMuted,
+                          fontSize: 12,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -748,4 +830,190 @@ class _HomeMedicationTipCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeDashboardSummary {
+  static const _slotOrder = ['morning', 'lunch', 'evening', 'bedtime'];
+
+  final double progress;
+  final String progressLabel;
+  final String statusMessage;
+  final bool hasNextMedication;
+  final String nextMedicationLabel;
+  final String nextMedicationGuide;
+
+  const _HomeDashboardSummary({
+    required this.progress,
+    required this.progressLabel,
+    required this.statusMessage,
+    required this.hasNextMedication,
+    required this.nextMedicationLabel,
+    required this.nextMedicationGuide,
+  });
+
+  factory _HomeDashboardSummary.from({
+    required List<MedicationSchedule> schedules,
+    required Map<String, MedicationAlarm> reminderSettings,
+    required int completedCount,
+    required int totalCount,
+    required bool isLoading,
+    required bool isEnglish,
+    DateTime Function()? nowProvider,
+  }) {
+    if (isLoading) {
+      return _HomeDashboardSummary(
+        progress: 0,
+        progressLabel: '-/-',
+        statusMessage: isEnglish
+            ? 'Preparing your medication plan'
+            : '복약 일정을 준비하고 있어요',
+        hasNextMedication: false,
+        nextMedicationLabel: isEnglish ? 'Next medication' : '다음 복약',
+        nextMedicationGuide: isEnglish
+            ? 'Please wait a moment.'
+            : '잠시만 기다려주세요.',
+      );
+    }
+
+    final displayTotal = totalCount > 0 ? totalCount : schedules.length;
+    final safeCompleted = displayTotal == 0
+        ? 0
+        : completedCount.clamp(0, displayTotal);
+    final progress = displayTotal == 0 ? 0.0 : safeCompleted / displayTotal;
+    final progressLabel = displayTotal == 0
+        ? '-/-'
+        : '$safeCompleted/$displayTotal';
+    final now = nowProvider?.call() ?? DateTime.now();
+    final pendingSlots = <_DashboardPendingSlot>[];
+
+    for (final slotKey in _slotOrder) {
+      final pendingSchedules = schedules
+          .where(
+            (schedule) =>
+                schedule.slotKeys.contains(slotKey) &&
+                !schedule.isSlotCompleted(slotKey),
+          )
+          .toList(growable: false);
+      if (pendingSchedules.isEmpty) {
+        continue;
+      }
+      final alarm =
+          reminderSettings[slotKey] ?? MedicationAlarm.defaults(slotKey);
+      pendingSlots.add(
+        _DashboardPendingSlot(
+          slotKey: slotKey,
+          scheduledAt: DateTime(
+            now.year,
+            now.month,
+            now.day,
+            alarm.hour,
+            alarm.minute,
+          ),
+          alarm: alarm,
+          medications: pendingSchedules,
+        ),
+      );
+    }
+
+    if (pendingSlots.isEmpty) {
+      return _HomeDashboardSummary(
+        progress: progress,
+        progressLabel: progressLabel,
+        statusMessage: displayTotal == 0
+            ? (isEnglish
+                  ? 'Start your medication plan with ease'
+                  : '오늘도 건강한 복약을 시작해보세요')
+            : (isEnglish
+                  ? 'You have completed today\'s medication'
+                  : '오늘의 복약을 모두 완료했어요'),
+        hasNextMedication: false,
+        nextMedicationLabel: isEnglish
+            ? 'No upcoming medication'
+            : '다음 복약 일정이 없어요',
+        nextMedicationGuide: isEnglish
+            ? 'Take time to rest and recharge.'
+            : '남은 시간도 편안하게 보내세요.',
+      );
+    }
+
+    pendingSlots.sort(
+      (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
+    );
+    final nextSlot =
+        pendingSlots.cast<_DashboardPendingSlot?>().firstWhere(
+          (slot) => !slot!.scheduledAt.isBefore(now),
+          orElse: () => null,
+        ) ??
+        pendingSlots.first;
+    final isPastDue = nextSlot.scheduledAt.isBefore(now);
+    final timeLabel =
+        '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
+    final medicationName = nextSlot.medications.first.displayNameForLanguage(
+      isEnglish ? 'en' : 'ko',
+    );
+    final additionalMedicationCount = nextSlot.medications.length - 1;
+    final medicationSummary = additionalMedicationCount == 0
+        ? medicationName
+        : isEnglish
+        ? '$medicationName and $additionalMedicationCount more'
+        : '$medicationName 외 $additionalMedicationCount개';
+    final statusMessage = isPastDue
+        ? (isEnglish
+              ? 'You have a missed medication to check'
+              : '미복용한 약을 확인해주세요')
+        : (isEnglish
+              ? 'You are keeping up with your medication'
+              : '오늘도 복약을 꾸준히 이어가고 있어요');
+    final nextMedicationLabel = isPastDue
+        ? (isEnglish ? 'Missed dose check' : '미복용 확인')
+        : isEnglish
+        ? (nextSlot.alarm.isEnabled
+              ? 'Next medication alert'
+              : 'Next medication')
+        : (nextSlot.alarm.isEnabled ? '다음 복약 알림' : '다음 복약 일정');
+
+    return _HomeDashboardSummary(
+      progress: progress,
+      progressLabel: progressLabel,
+      statusMessage: statusMessage,
+      hasNextMedication: true,
+      nextMedicationLabel: nextMedicationLabel,
+      nextMedicationGuide: isEnglish
+          ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Please take it as soon as you can.' : 'Take it on time.'}'
+          : '${_slotLabel(nextSlot.slotKey, isEnglish: false)} $timeLabel · $medicationSummary\n${isPastDue ? '늦지 않게 복용하세요.' : '시간에 맞춰 챙겨드세요.'}',
+    );
+  }
+
+  static String _slotLabel(String slotKey, {required bool isEnglish}) {
+    if (isEnglish) {
+      return switch (slotKey) {
+        'morning' => 'Morning',
+        'lunch' => 'Lunch',
+        'evening' => 'Evening',
+        'bedtime' => 'Bedtime',
+        _ => slotKey,
+      };
+    }
+    return switch (slotKey) {
+      'morning' => '아침',
+      'lunch' => '점심',
+      'evening' => '저녁',
+      'bedtime' => '취침 전',
+      _ => slotKey,
+    };
+  }
+}
+
+class _DashboardPendingSlot {
+  final String slotKey;
+  final DateTime scheduledAt;
+  final MedicationAlarm alarm;
+  final List<MedicationSchedule> medications;
+
+  const _DashboardPendingSlot({
+    required this.slotKey,
+    required this.scheduledAt,
+    required this.alarm,
+    required this.medications,
+  });
 }
