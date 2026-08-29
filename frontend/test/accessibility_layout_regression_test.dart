@@ -188,6 +188,69 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    for (final viewportSize in const [Size(360, 640), Size(412, 915)]) {
+      testWidgets(
+        '홈 화면은 ${viewportSize.width.toInt()}x${viewportSize.height.toInt()} '
+        '기본 글씨에서 스크롤 없이 핵심 정보를 표시한다',
+        (tester) async {
+          await _setViewport(tester, viewportSize);
+
+          await tester.pumpWidget(
+            _scaledMaterialApp(
+              textScale: 1,
+              home: InputPrescriptionUI(
+                statusMessage: '',
+                userSetting: const UserSetting(),
+                todayMedicationScheduleList: const [
+                  MedicationSchedule(
+                    medicationID: 'compact-home-1',
+                    medicationName: '데파스정1밀리그람(에티졸람)',
+                    dosage: '1',
+                    intakeTime: '1일 3회',
+                    medicationTime: 3,
+                  ),
+                ],
+                medicationReminderSettings: const {
+                  'morning': MedicationAlarm(
+                    slotKey: 'morning',
+                    hour: 8,
+                    minute: 0,
+                    enabled: true,
+                  ),
+                },
+                todayMedicationCompletedCount: 0,
+                todayMedicationTotalCount: 4,
+                nowProvider: () => DateTime(2026, 8, 30, 7),
+                onPrescriptionScanRequested: () {},
+                onPrescriptionGalleryRequested: () {},
+                onPillIdentificationRequested: () {},
+                onTodayScheduleRequested: () {},
+                onSavedMedicationRequested: () {},
+                onPatientCaregiverLinkRequested: () {},
+                onUserSettingRequested: () {},
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final dashboardScrollable = find.descendant(
+            of: find.byKey(const ValueKey('homeDashboardScrollView')),
+            matching: find.byType(Scrollable),
+          );
+          expect(dashboardScrollable, findsAtLeastNWidgets(1));
+          final scrollableState = tester.state<ScrollableState>(
+            dashboardScrollable.first,
+          );
+          expect(scrollableState.position.maxScrollExtent, 0);
+          expect(
+            find.byKey(const ValueKey('homePatientCaregiverLinkCard')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
     for (final viewportCase in const [
       (size: Size(320, 568), textScale: 1.3),
       (size: Size(360, 640), textScale: 2.0),
@@ -417,6 +480,35 @@ void main() {
         medicationDetail.voiceGuideText,
         contains(medicationDetail.usageMethod),
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('약 상세정보는 다중 문장 효능을 독립된 명사형으로 정리한다', (tester) async {
+      const medicationDetail = MedicationDetail(
+        itemName: '테스트정',
+        efficacy:
+            '이 약은 우울 증상을 완화합니다. 또한 경추증, '
+            '두통 등 질환으로 인한 근육 긴장을 풀어주고, '
+            '통증 및 발열을 수반하는 감염증에 사용합니다.',
+        usageMethod: '식후 충분한 물과 함께 복용하세요.',
+        warning: '주의사항',
+      );
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 1,
+          home: const CheckMedicationDetailUI(
+            medicationDetail: medicationDetail,
+            userSetting: UserSetting(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('우울 증상'), findsOneWidget);
+      expect(find.text('경추증'), findsOneWidget);
+      expect(find.text('두통 등 질환으로 인한 근육 긴장'), findsOneWidget);
+      expect(find.text('통증 및 발열을 수반하는 감염증'), findsOneWidget);
+      expect(medicationDetail.efficacy, contains('우울 증상을 완화합니다'));
       expect(tester.takeException(), isNull);
     });
     testWidgets('처방 분석 결과는 긴 약 이름과 2배 글씨에서도 저장 명령을 유지한다', (tester) async {

@@ -57,47 +57,47 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
                   children: [
-                _DetailHeader(
-                  title: '약 상세정보',
-                  onBackRequested: () => Navigator.pop(context),
-                ),
-                const SizedBox(height: 28),
-                _MedicationHeroCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                ),
-                const SizedBox(height: 24),
-                _DetailQuestionSection(
-                  title: '이 약은 어디가 좋아지나요?',
-                  values: _summaryValues(widget.medicationDetail.efficacy),
-                  scale: scale,
-                ),
-                const SizedBox(height: 24),
-                _DetailQuestionSection(
-                  title: '어떻게 먹나요?',
-                  values: widget.medicationDetail.compactDosageGuideLines,
-                  scale: scale,
-                ),
-                const SizedBox(height: 24),
-                _RecommendedDosageCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                ),
-                const SizedBox(height: 22),
-                _DetailedDosageGuideCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                ),
-                const SizedBox(height: 18),
-                _MedicationRiskCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                ),
-                const SizedBox(height: 18),
-                _MedicationChecklistCard(
-                  medicationDetail: widget.medicationDetail,
-                  scale: scale,
-                ),
+                    _DetailHeader(
+                      title: '약 상세정보',
+                      onBackRequested: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(height: 28),
+                    _MedicationHeroCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _DetailQuestionSection(
+                      title: '이 약은 어디가 좋아지나요?',
+                      values: _summaryValues(widget.medicationDetail.efficacy),
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _DetailQuestionSection(
+                      title: '어떻게 먹나요?',
+                      values: widget.medicationDetail.compactDosageGuideLines,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 24),
+                    _RecommendedDosageCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 22),
+                    _DetailedDosageGuideCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 18),
+                    _MedicationRiskCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                    ),
+                    const SizedBox(height: 18),
+                    _MedicationChecklistCard(
+                      medicationDetail: widget.medicationDetail,
+                      scale: scale,
+                    ),
                   ],
                 ),
               ),
@@ -617,12 +617,12 @@ List<String> _summaryValues(String value) {
   }
 
   final values = normalizedValue
-      .split(RegExp(r'[,/;·\n]+'))
+      .split(RegExp(r'[,/;·\n]+|[.!?。]+\s*|\s+(?:또한|그리고|아울러)\s+'))
       .map(_compactIndicationLabel)
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
   final fallback = _compactIndicationLabel(normalizedValue);
-  return values.isEmpty ? [fallback] : values;
+  return values.isEmpty ? [fallback.isEmpty ? '정보 없음' : fallback] : values;
 }
 
 // Function Name: _compactIndicationLabel
@@ -635,6 +635,7 @@ List<String> _summaryValues(String value) {
 // - A concise indication label suitable for the detail screen.
 String _compactIndicationLabel(String value) {
   var label = value.trim();
+  label = label.replaceFirst(RegExp(r'^(?:또한|그리고|아울러)\s*'), '');
   label = label.replaceFirst(RegExp(r'^(?:이\s*약(?:은|이)?|본\s*약은)\s*'), '');
   label = label.replaceFirst(
     RegExp(
@@ -643,7 +644,19 @@ String _compactIndicationLabel(String value) {
     ),
     '',
   );
-  label = label.replaceFirst(RegExp(r'\s*(?:을|를)\s*(?:치료|완화|개선)합니다\.?$'), '');
+  label = label.replaceFirst(
+    RegExp(
+      r'\s*(?:을|를)\s*'
+      r'(?:치료|완화|개선|경감|예방)'
+      r'(?:합니다|해줍니다|하는\s*데\s*사용(?:합니다|됩니다))?\.?$',
+    ),
+    '',
+  );
+  label = label.replaceFirst(
+    RegExp(r'\s*(?:을|를)\s*풀어주(?:고|며|는\s*데\s*사용(?:합니다|됩니다))\.?$'),
+    '',
+  );
+  label = label.replaceFirst(RegExp(r'\s*(?:에|에서)\s*효과가\s*있습니다\.?$'), '');
   return label.replaceFirst(RegExp(r'[.!?。]+$'), '').trim();
 }
 
