@@ -1,0 +1,86 @@
+@startuml
+allowmixing
+scale max 1920 width
+left to right direction
+!pragma layout smetana
+
+title Medication Management - Key Classes
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+
+skinparam classBackgroundColor<<UI>> #E8F4FF
+skinparam classBorderColor<<UI>> #147BC1
+skinparam classBackgroundColor<<Control>> #EAF8F0
+skinparam classBorderColor<<Control>> #159957
+skinparam classBackgroundColor<<Service>> #F8FAFC
+skinparam classBorderColor<<Service>> #64748B
+skinparam classBackgroundColor<<Entity>> #F5F3FF
+skinparam classBorderColor<<Entity>> #7C3AED
+skinparam classBackgroundColor<<Database>> #FFF7E6
+skinparam classBorderColor<<Database>> #D97706
+skinparam classBackgroundColor<<External>> #FFF7E6
+skinparam classBorderColor<<External>> #D97706
+
+package "Flutter Frontend" #E8F4FF {
+  class CheckScheduleUI <<UI>>
+  class CheckSavedMedicationUI <<UI>>
+  class CheckMedicationDetailUI <<UI>>
+  class MedBuddyViewModel <<Control>>
+  class "CheckSchedule" as FCheckSchedule <<Control>>
+  class "CheckSavedMedication" as FCheckSavedMedication <<Control>>
+  class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
+  class "MedicationSchedule" as FMedicationSchedule <<Entity>>
+  class "MedicationDetail" as FMedicationDetail <<Entity>>
+}
+
+package "FastAPI Backend" #EAF8F0 {
+  class "CheckSchedule" as BCheckSchedule <<Control>>
+  class "CheckSavedMedication" as BCheckSavedMedication <<Control>>
+  class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
+  class MedicationCoursePolicy <<Service>>
+  class SavedMedicationRetentionPolicy <<Service>>
+  class SavedMedicationRepository <<Service>>
+  class LocalMedicationCatalog <<Service>>
+  database "saved_medications" as DBSavedMedication <<Database>>
+  database "medication_completions" as DBMedicationCompletion <<Database>>
+}
+
+cloud "MFDS Drug APIs" as MFDS
+
+CheckScheduleUI --> MedBuddyViewModel
+CheckSavedMedicationUI --> MedBuddyViewModel
+CheckMedicationDetailUI --> MedBuddyViewModel
+MedBuddyViewModel --> FCheckSchedule
+MedBuddyViewModel --> FCheckSavedMedication
+MedBuddyViewModel --> FCheckMedicationDetail
+
+FCheckSchedule --> BCheckSchedule : schedule API
+FCheckSavedMedication --> BCheckSavedMedication : saved medication API
+FCheckMedicationDetail --> BCheckMedicationDetail : detail API
+
+BCheckSchedule --> MedicationCoursePolicy
+BCheckSchedule --> SavedMedicationRetentionPolicy
+BCheckSchedule --> SavedMedicationRepository
+BCheckSchedule --> DBSavedMedication
+BCheckSchedule --> DBMedicationCompletion
+
+BCheckSavedMedication --> MedicationCoursePolicy
+BCheckSavedMedication --> SavedMedicationRetentionPolicy
+BCheckSavedMedication --> SavedMedicationRepository
+BCheckSavedMedication --> DBSavedMedication
+
+BCheckMedicationDetail --> LocalMedicationCatalog
+BCheckMedicationDetail --> MFDS
+
+BCheckSchedule --> FMedicationSchedule : daily schedule
+BCheckMedicationDetail --> FMedicationDetail : medication detail
+@enduml
