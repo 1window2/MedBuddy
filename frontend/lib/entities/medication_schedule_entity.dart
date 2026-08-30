@@ -295,7 +295,10 @@ class MedicationSchedule {
     }
 
     final amount = match.group(1) ?? value;
-    final detectedUnit = match.group(2) ?? _koreanDosageUnit(medicationName);
+    final detectedUnit = match.group(2);
+    if (detectedUnit == null) {
+      return value;
+    }
     if (!isEnglish) {
       return '$amount$detectedUnit';
     }
@@ -452,19 +455,6 @@ class MedicationSchedule {
 
   static bool _isEnglishLanguage(String language) {
     return language.trim().toLowerCase().startsWith('en');
-  }
-
-  static String _koreanDosageUnit(String medicationName) {
-    final normalizedName = medicationName.replaceAll(' ', '');
-    if (normalizedName.contains('캡슐')) {
-      return '캡슐';
-    }
-    if (normalizedName.contains('시럽') ||
-        normalizedName.contains('과립') ||
-        normalizedName.endsWith('산')) {
-      return '포';
-    }
-    return '정';
   }
 
   static double _readDouble(dynamic value) {

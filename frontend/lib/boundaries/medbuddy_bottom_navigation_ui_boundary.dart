@@ -30,6 +30,10 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _BottomNavigationText(language);
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(11) * 1.1;
+    final navigationHeight = scaledLabelHeight + 58 < 70
+        ? 70.0
+        : scaledLabelHeight + 58;
     final items = <_BottomNavigationItem>[
       _BottomNavigationItem(
         destination: MedBuddyDestination.home,
@@ -68,7 +72,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
         top: false,
         minimum: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         child: SizedBox(
-          height: 70,
+          height: navigationHeight,
           child: Row(
             children: [
               for (final item in items)
@@ -135,7 +139,6 @@ class _BottomNavigationButton extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      textScaler: TextScaler.noScaling,
                       style: TextStyle(
                         color: foreground,
                         fontSize: 11,

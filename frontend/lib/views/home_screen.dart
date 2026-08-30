@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -243,6 +245,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _selectDestination(MedBuddyDestination destination) {
+    if (destination == MedBuddyDestination.schedule &&
+        _visitedDestinations.contains(MedBuddyDestination.schedule)) {
+      unawaited(context.read<MedBuddyViewModel>().refreshMedicationSchedule());
+    }
     if (_selectedDestination == destination) {
       return;
     }

@@ -273,6 +273,7 @@ class _PrescriptionAnalysisPreviewUIState
     final defaultSchedule = MedicationSchedule(
       medicationName: '',
       prescriptionDate: referenceSchedule?.prescriptionDate ?? DateTime.now(),
+      prescriptionBatchId: referenceSchedule?.prescriptionBatchId ?? '',
       dosage: '1',
       intakeTime: '1',
       medicationTime: referenceSchedule?.medicationTime ?? 1,

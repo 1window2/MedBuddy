@@ -1139,12 +1139,12 @@ class _HomeDashboardSummary {
     pendingSlots.sort(
       (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
     );
-    final nextSlot =
-        pendingSlots.cast<_DashboardPendingSlot?>().firstWhere(
-          (slot) => !slot!.scheduledAt.isBefore(now),
-          orElse: () => null,
-        ) ??
-        pendingSlots.first;
+    final overdueSlots = pendingSlots
+        .where((slot) => slot.scheduledAt.isBefore(now))
+        .toList(growable: false);
+    final nextSlot = overdueSlots.isNotEmpty
+        ? overdueSlots.first
+        : pendingSlots.first;
     final isPastDue = nextSlot.scheduledAt.isBefore(now);
     final timeLabel =
         '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
