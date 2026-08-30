@@ -28,6 +28,7 @@ class MedBuddyColors {
   static const Color textSubtle = Color(0xFF797782);
   static const Color textLight = Color(0xFFA3A1AA);
   static const Color infoBlue = Color(0xFF1C398E);
+  static const Color reminderAccent = Color(0xFF8B6A00);
   static const Color danger = Color(0xFFD92D20);
   static const Color slotMorning = Color(0xFF168872);
   static const Color slotLunch = Color(0xFF247C6D);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -10,42 +11,50 @@ import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('home camera entry separates prescription and pill tasks', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    var pillTaskRequested = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: InputPrescriptionUI(
-          statusMessage: '',
-          userSetting: const UserSetting(language: 'ko'),
-          onPrescriptionScanRequested: () {},
-          onPrescriptionGalleryRequested: () {},
-          onPillIdentificationRequested: () {
-            pillTaskRequested = true;
-          },
-          onTodayScheduleRequested: () {},
-          onSavedMedicationRequested: () {},
-          onPatientCaregiverLinkRequested: () {},
-          onUserSettingRequested: () {},
+  testWidgets(
+    'home exposes prescription and pill actions without duplication',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var pillTaskRequested = false;
+      var prescriptionScanRequested = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InputPrescriptionUI(
+            statusMessage: '',
+            userSetting: const UserSetting(language: 'ko'),
+            onPrescriptionScanRequested: () {
+              prescriptionScanRequested = true;
+            },
+            onPrescriptionGalleryRequested: () {},
+            onPillIdentificationRequested: () {
+              pillTaskRequested = true;
+            },
+            onTodayScheduleRequested: () {},
+            onHealthRecommendationRequested: () {},
+            onMedicationReminderRequested: () {},
+            onUserSettingRequested: () {},
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.text('약 정보 촬영하기'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('처방전 분석'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('처방전 분석'), findsOneWidget);
-    expect(find.text('낱알약 식별'), findsOneWidget);
+      expect(find.text('카메라로 촬영'), findsOneWidget);
+      expect(find.text('갤러리에서 선택'), findsOneWidget);
 
-    await tester.tap(find.text('낱알약 식별'));
-    await tester.pumpAndSettle();
-    expect(pillTaskRequested, isTrue);
-  });
+      await tester.tap(find.text('카메라로 촬영'));
+      await tester.pumpAndSettle();
+      expect(prescriptionScanRequested, isTrue);
+
+      await tester.tap(find.text('낱알약 식별'));
+      await tester.pump();
+      expect(pillTaskRequested, isTrue);
+    },
+  );
 
   testWidgets('home owns navigation into loose-pill identification', (
     tester,
@@ -68,7 +77,72 @@ void main() {
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
-  testWidgets('환자 보호자 연동 카드는 다른 홈 카드와 같은 높이와 아이콘을 제공한다', (tester) async {
+  testWidgets('application shell separates destinations from home actions', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 844));
+    final viewModel = MedBuddyViewModel();
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+
+    expect(find.byType(MedBuddyBottomNavigationUI), findsOneWidget);
+    expect(find.text('홈'), findsOneWidget);
+    expect(find.text('일정'), findsOneWidget);
+    expect(find.text('복약함'), findsOneWidget);
+    expect(find.text('내 정보'), findsOneWidget);
+    expect(find.text('처방전 분석'), findsOneWidget);
+    expect(find.text('낱알약 식별'), findsOneWidget);
+    expect(find.text('건강 관리 추천'), findsOneWidget);
+    expect(find.text('복약 알림 설정'), findsOneWidget);
+    expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsOneWidget);
+    expect(find.text('환자/보호자 연동'), findsNothing);
+    expect(find.byKey(const ValueKey('homeSettingsButton')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bottom navigation exposes four labelled destinations', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 200));
+    var selected = MedBuddyDestination.home;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          bottomNavigationBar: MedBuddyBottomNavigationUI(
+            selectedDestination: selected,
+            language: 'ko',
+            onDestinationSelected: (destination) {
+              selected = destination;
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('홈'), findsOneWidget);
+    expect(find.text('일정'), findsOneWidget);
+    expect(find.text('복약함'), findsOneWidget);
+    expect(find.text('내 정보'), findsOneWidget);
+    expect(find.text('처방전 분석'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-schedule')));
+    expect(selected, MedBuddyDestination.schedule);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('bottomNavigation-schedule')))
+          .height,
+      greaterThanOrEqualTo(48),
+    );
+  });
+
+  testWidgets('빠른 기능 카드는 서로 같은 높이와 고유한 아이콘을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -83,18 +157,26 @@ void main() {
           onPrescriptionGalleryRequested: () {},
           onPillIdentificationRequested: () {},
           onTodayScheduleRequested: () {},
-          onSavedMedicationRequested: () {},
-          onPatientCaregiverLinkRequested: () {},
+          onHealthRecommendationRequested: () {},
+          onMedicationReminderRequested: () {},
           onUserSettingRequested: () {},
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final savedCard = find.byKey(const ValueKey('homeSavedMedicationCard'));
-    final linkCard = find.byKey(const ValueKey('homePatientCaregiverLinkCard'));
-    expect(tester.getSize(linkCard).height, tester.getSize(savedCard).height);
-    expect(find.byIcon(Icons.people_alt_outlined), findsOneWidget);
+    final healthCard = find.byKey(
+      const ValueKey('homeHealthRecommendationCard'),
+    );
+    final reminderCard = find.byKey(
+      const ValueKey('homeMedicationReminderCard'),
+    );
+    expect(
+      tester.getSize(reminderCard).height,
+      tester.getSize(healthCard).height,
+    );
+    expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -113,16 +195,17 @@ void main() {
           onPrescriptionGalleryRequested: () {},
           onPillIdentificationRequested: () {},
           onTodayScheduleRequested: () {},
-          onSavedMedicationRequested: () {},
-          onPatientCaregiverLinkRequested: () {},
+          onHealthRecommendationRequested: () {},
+          onMedicationReminderRequested: () {},
           onUserSettingRequested: () {},
         ),
       ),
     );
 
     expect(find.text('Start your medication plan with ease'), findsOneWidget);
-    expect(find.text('오늘의 복약 일정'), findsNothing);
-    expect(find.text("Today's Medication"), findsOneWidget);
+    expect(find.text('빠른 기능'), findsNothing);
+    expect(find.text('Quick Actions'), findsNothing);
+    expect(find.text('Prescription Analysis'), findsOneWidget);
   });
 
   testWidgets('large grid preserves inherited scale and saved-card wording', (
@@ -133,8 +216,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: const TextScaler.linear(2)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
           child: child!,
         ),
         home: _home(userSetting: const UserSetting(fontSize: 20)),
@@ -142,12 +226,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final captureTitle = tester.widget<Text>(find.text('약 정보\n촬영하기'));
-    final scheduleTitle = tester.widget<Text>(find.text('오늘의\n복약 일정'));
-    expect(captureTitle.textScaler, isNull);
-    expect(scheduleTitle.textScaler, isNull);
-    expect(find.text('저장된\n복약 정보'), findsOneWidget);
-    expect(find.text('지정된\n복약 정보'), findsNothing);
+    final prescriptionTitle = tester.widget<Text>(find.text('처방전\n분석'));
+    final pillTitle = tester.widget<Text>(find.text('낱알약\n식별'));
+    expect(prescriptionTitle.textScaler, isNull);
+    expect(pillTitle.textScaler, isNull);
+    expect(find.text('건강 관리\n추천'), findsOneWidget);
+    expect(find.text('복약 알림\n설정'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -163,7 +247,7 @@ void main() {
     );
 
     final subtitleFinder = find.text(
-      'Connect patient and caregiver medication schedules',
+      'Review food and activity guidance for your medications',
     );
     final subtitle = tester.widget<Text>(subtitleFinder);
     expect(subtitle.maxLines, 2);
@@ -316,8 +400,8 @@ InputPrescriptionUI _home({
     onPrescriptionGalleryRequested: () {},
     onPillIdentificationRequested: () {},
     onTodayScheduleRequested: () {},
-    onSavedMedicationRequested: () {},
-    onPatientCaregiverLinkRequested: () {},
+    onHealthRecommendationRequested: () {},
+    onMedicationReminderRequested: () {},
     onUserSettingRequested: () {},
   );
 }

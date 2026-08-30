@@ -5,9 +5,13 @@ import 'package:provider/provider.dart';
 import '../boundaries/check_result_ui_boundary.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
+import '../boundaries/health_recommendation_ui_boundary.dart';
 import '../boundaries/guided_prescription_camera_ui_boundary.dart';
 import '../boundaries/input_prescription_ui_boundary.dart';
 import '../boundaries/link_patient_caregiver_ui_boundary.dart';
+import '../boundaries/manage_user_hub_ui_boundary.dart';
+import '../boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
+import '../boundaries/medication_reminder_settings_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
@@ -16,6 +20,7 @@ import '../boundaries/prescription_analysis_status_ui_boundary.dart';
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../entities/prescription_flow_entity.dart';
+import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 
@@ -27,8 +32,18 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 // 주요 책임:
 // - PrescriptionFlowState 값을 기준으로 하나의 화면만 렌더링한다.
 // - 홈 화면에서 저장 목록, 오늘 일정, 설정 화면으로 이동하는 navigation을 연결한다.
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  MedBuddyDestination _selectedDestination = MedBuddyDestination.home;
+  final Set<MedBuddyDestination> _visitedDestinations = {
+    MedBuddyDestination.home,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -128,23 +143,18 @@ class HomeScreen extends StatelessWidget {
         onMedicationSaveRequested: viewModel.requestMedicationSave,
         onTodayScheduleRequested: () {
           viewModel.clearAnalysisResult();
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
-          ).then((_) => viewModel.fetchTodayMedicationSchedule());
+          _selectDestination(MedBuddyDestination.schedule);
         },
         onSavedMedicationRequested: () {
           viewModel.clearAnalysisResult();
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const CheckSavedMedicationUI(),
-            ),
-          );
+          _selectDestination(MedBuddyDestination.medicationCabinet);
         },
-        onHomeRequested: viewModel.clearAnalysisResult,
+        onHomeRequested: () {
+          viewModel.clearAnalysisResult();
+          _selectDestination(MedBuddyDestination.home);
+        },
       ),
-      PrescriptionFlowState.idle => _buildHomeInput(context, viewModel),
+      PrescriptionFlowState.idle => _buildApplicationShell(context, viewModel),
     };
 
     return PopScope<void>(
@@ -158,6 +168,88 @@ class HomeScreen extends StatelessWidget {
       },
       child: activeScreen,
     );
+  }
+
+  // 함수이름: _buildApplicationShell
+  // 함수역할:
+  // - 홈, 일정, 복약함, 내 정보의 최상위 목적지와 공통 하단 탐색 막대를 구성한다.
+  // - 최초로 선택한 목적지만 생성하고 이후에는 IndexedStack으로 화면 상태를 보존한다.
+  // 매개변수:
+  // - context: Provider와 화면 이동에 사용할 BuildContext
+  // - viewModel: 각 목적지에서 공유하는 MedBuddyViewModel
+  // 반환값:
+  // - 선택 목적지와 공통 하단 탐색 막대를 포함한 Widget
+  Widget _buildApplicationShell(
+    BuildContext context,
+    MedBuddyViewModel viewModel,
+  ) {
+    final destinations = MedBuddyDestination.values;
+    final selectedIndex = destinations.indexOf(_selectedDestination);
+
+    return PopScope<void>(
+      canPop: _selectedDestination == MedBuddyDestination.home,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectedDestination != MedBuddyDestination.home) {
+          _selectDestination(MedBuddyDestination.home);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: IndexedStack(
+          index: selectedIndex,
+          children: [
+            _buildDestination(
+              MedBuddyDestination.home,
+              () => _buildHomeInput(context, viewModel),
+            ),
+            _buildDestination(
+              MedBuddyDestination.schedule,
+              () => const CheckScheduleUI(showBackButton: false),
+            ),
+            _buildDestination(
+              MedBuddyDestination.medicationCabinet,
+              () => const CheckSavedMedicationUI(showCloseButton: false),
+            ),
+            _buildDestination(
+              MedBuddyDestination.profile,
+              () => ManageUserHubUI(
+                userSetting: viewModel.userSetting,
+                authenticationControl: context.read<AuthenticationControl>(),
+                onPatientCaregiverLinkRequested: () =>
+                    _openPatientCaregiverLink(context, viewModel),
+                onUserSettingRequested: () =>
+                    _openUserSettings(context, viewModel),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: MedBuddyBottomNavigationUI(
+          selectedDestination: _selectedDestination,
+          language: viewModel.userSetting.language,
+          onDestinationSelected: _selectDestination,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDestination(
+    MedBuddyDestination destination,
+    Widget Function() builder,
+  ) {
+    if (!_visitedDestinations.contains(destination)) {
+      return const SizedBox.shrink();
+    }
+    return KeyedSubtree(key: ValueKey(destination), child: builder());
+  }
+
+  void _selectDestination(MedBuddyDestination destination) {
+    if (_selectedDestination == destination) {
+      return;
+    }
+    setState(() {
+      _selectedDestination = destination;
+      _visitedDestinations.add(destination);
+    });
   }
 
   // 함수명: _buildHomeInput
@@ -193,68 +285,85 @@ class HomeScreen extends StatelessWidget {
         );
       },
       onTodayScheduleRequested: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
-        ).then((_) => viewModel.fetchTodayMedicationSchedule());
+        _selectDestination(MedBuddyDestination.schedule);
       },
-      onSavedMedicationRequested: () {
+      onHealthRecommendationRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const CheckSavedMedicationUI(),
+            builder: (context) => const HealthRecommendationUI(),
           ),
         );
       },
-      onPatientCaregiverLinkRequested: () {
+      onMedicationReminderRequested: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LinkPatientCaregiverUI(initialUserHash: viewModel.patientHash),
+            builder: (context) => const MedicationReminderSettingsUI(),
           ),
         );
       },
-      onUserSettingRequested: () {
-        final authenticationControl = context.read<AuthenticationControl>();
-        final appLanguageControl = context.read<AppLanguageControl>();
+      onUserSettingRequested: () => _openUserSettings(context, viewModel),
+    );
+  }
 
-        Future<void> deleteCurrentAccount() async {
-          await authenticationControl.prepareAccountDeletion();
-          await viewModel.requestAccountDataDeletion();
-          await authenticationControl.finishAccountDeletion();
-        }
+  void _openPatientCaregiverLink(
+    BuildContext context,
+    MedBuddyViewModel viewModel,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            LinkPatientCaregiverUI(initialUserHash: viewModel.patientHash),
+      ),
+    );
+  }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ManageUserSettingUI(
-              initialSetting: viewModel.userSetting,
-              authenticationControl: authenticationControl,
-              onSettingSaveRequested:
-                  ({
-                    required String fontSizeOption,
-                    required String readingSpeedOption,
-                    required String language,
-                  }) async {
-                    final result = await viewModel.requestUserSettingSave(
-                      fontSizeOption: fontSizeOption,
-                      readingSpeedOption: readingSpeedOption,
-                      language: language,
-                    );
-                    await appLanguageControl.setLanguage(
-                      result.setting.language,
-                    );
-                    return result;
-                  },
-              onSignOutRequested: authenticationControl.isAnonymous
-                  ? deleteCurrentAccount
-                  : authenticationControl.signOut,
-              onDeleteAccountRequested: deleteCurrentAccount,
-            ),
-          ),
-        );
-      },
+  // 함수이름: _openUserSettings
+  // 함수역할:
+  // - 홈 헤더와 내 정보 화면이 동일한 사용자 설정 및 계정 생명주기 흐름을 사용하게 한다.
+  // 매개변수:
+  // - context: 인증 및 언어 Control 조회와 화면 이동에 사용할 BuildContext
+  // - viewModel: 사용자 설정 저장 및 계정 데이터 삭제 요청을 제공하는 ViewModel
+  // 반환값:
+  // - 없음
+  void _openUserSettings(BuildContext context, MedBuddyViewModel viewModel) {
+    final authenticationControl = context.read<AuthenticationControl>();
+    final appLanguageControl = context.read<AppLanguageControl>();
+
+    Future<void> deleteCurrentAccount() async {
+      await authenticationControl.prepareAccountDeletion();
+      await viewModel.requestAccountDataDeletion();
+      await authenticationControl.finishAccountDeletion();
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ManageUserSettingUI(
+          initialSetting: viewModel.userSetting,
+          authenticationControl: authenticationControl,
+          onSettingSaveRequested:
+              ({
+                required String fontSizeOption,
+                required String readingSpeedOption,
+                required String language,
+              }) async {
+                final result = await viewModel.requestUserSettingSave(
+                  fontSizeOption: fontSizeOption,
+                  readingSpeedOption: readingSpeedOption,
+                  language: language,
+                );
+                await appLanguageControl.setLanguage(result.setting.language);
+                return result;
+              },
+          onSignOutRequested: authenticationControl.isAnonymous
+              ? deleteCurrentAccount
+              : authenticationControl.signOut,
+          onDeleteAccountRequested: deleteCurrentAccount,
+        ),
+      ),
     );
   }
 

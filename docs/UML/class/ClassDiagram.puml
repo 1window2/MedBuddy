@@ -39,6 +39,19 @@ package "Flutter Frontend" {
         }
 
         class "HomeScreen" as HomeScreen <<Screen: 홈 탐색>> {
+            + createState(): State<HomeScreen>
+        }
+
+        enum "MedBuddyDestination" as MedBuddyDestination {
+            home
+            schedule
+            medicationCabinet
+            profile
+        }
+
+        class "MedBuddyBottomNavigationUI" as MedBuddyBottomNavigationUI <<Boundary: 최상위 탐색>> {
+            + selectedDestination: MedBuddyDestination
+            + language: String
             + build(context): Widget
         }
 
@@ -85,6 +98,10 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "MedicationReminderSettingsUI" as MedicationReminderSettingsUI <<UI: 복약 알림 통합 설정>> {
+            + createState(): State
+        }
+
         class "PillIdentificationUI" as PillIdentificationUI <<UI: 낱알 식별>> {
             + userSetting: UserSetting
             + control: IdentifyPill?
@@ -108,6 +125,12 @@ package "Flutter Frontend" {
             + initialSetting: UserSetting
             + authenticationControl: AuthenticationControl
             + createState(): State
+        }
+
+        class "ManageUserHubUI" as ManageUserHubUI <<UI: 내 정보 허브>> {
+            + userSetting: UserSetting
+            + authenticationControl: AuthenticationControl
+            + build(context): Widget
         }
     }
 
@@ -1010,6 +1033,8 @@ AuthenticationGate ..> AuthenticationUI
 AuthenticationGate ..> HomeScreen
 HomeScreen ..> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
+HomeScreen *-- MedBuddyBottomNavigationUI
+HomeScreen ..> MedBuddyDestination
 HomeScreen ..> GuidedPrescriptionCameraUI
 HomeScreen ..> PrescriptionAnalysisPreviewUI
 HomeScreen ..> CheckResultUI
@@ -1018,17 +1043,21 @@ HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> PillIdentificationUI
 HomeScreen ..> LinkPatientCaregiverUI
 HomeScreen ..> ManageUserSettingUI
+HomeScreen ..> ManageUserHubUI
+HomeScreen ..> MedicationReminderSettingsUI
 HomeScreen ..> AppLanguageControl
 
 CheckScheduleUI ..> MedBuddyViewModel
 CheckSavedMedicationUI ..> MedBuddyViewModel
 HealthRecommendationUI ..> MedBuddyViewModel
+MedicationReminderSettingsUI ..> MedBuddyViewModel
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
 CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
 CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 ManageUserSettingUI --> FAuthenticationControl
+ManageUserHubUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
 GuidedPrescriptionCameraUI ..> PrescriptionCameraLayoutService

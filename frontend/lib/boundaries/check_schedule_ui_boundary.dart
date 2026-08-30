@@ -22,7 +22,9 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 // - 1일 복용 횟수를 기준으로 아침/점심/저녁/취침 전 슬롯에 약을 배치한다.
 // - 시간대별 알림 설정 팝업을 열고 로컬 알림 예약을 요청한다.
 class CheckScheduleUI extends StatefulWidget {
-  const CheckScheduleUI({super.key});
+  final bool showBackButton;
+
+  const CheckScheduleUI({super.key, this.showBackButton = true});
 
   @override
   State<CheckScheduleUI> createState() => _CheckScheduleUIState();
@@ -97,7 +99,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             text: text,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onBackRequested: () => Navigator.pop(context),
+            onBackRequested: widget.showBackButton
+                ? () => Navigator.pop(context)
+                : null,
           ),
           Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
@@ -136,34 +140,39 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: MedBuddySpacing.contentMaxWidth),
+        constraints: const BoxConstraints(
+          maxWidth: MedBuddySpacing.contentMaxWidth,
+        ),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
             for (final slot in slots) ...[
               _TimeSlotCard(
-            text: text,
-            slot: slot,
-            reminderSetting:
-                viewModel.medicationReminderSettings[slot.key] ??
-                MedicationAlarm.defaults(slot.key),
-            isCompletedProvider: (schedule) {
-              return viewModel.isMedicationDoseCompleted(slot.key, schedule);
-            },
-            onReminderRequested: () {
-              _handleReminderToggle(viewModel, slot, text);
-            },
-            onGuideRequested: (schedule) {
-              _showMedicationDetail(viewModel, schedule);
-            },
-            onStatusChanged: (schedule, medicationStatus) =>
-                _handleMedicationStatusChange(
-                  viewModel: viewModel,
-                  slot: slot,
-                  schedule: schedule,
-                  medicationStatus: medicationStatus,
-                  text: text,
-                ),
+                text: text,
+                slot: slot,
+                reminderSetting:
+                    viewModel.medicationReminderSettings[slot.key] ??
+                    MedicationAlarm.defaults(slot.key),
+                isCompletedProvider: (schedule) {
+                  return viewModel.isMedicationDoseCompleted(
+                    slot.key,
+                    schedule,
+                  );
+                },
+                onReminderRequested: () {
+                  _handleReminderToggle(viewModel, slot, text);
+                },
+                onGuideRequested: (schedule) {
+                  _showMedicationDetail(viewModel, schedule);
+                },
+                onStatusChanged: (schedule, medicationStatus) =>
+                    _handleMedicationStatusChange(
+                      viewModel: viewModel,
+                      slot: slot,
+                      schedule: schedule,
+                      medicationStatus: medicationStatus,
+                      text: text,
+                    ),
               ),
               const SizedBox(height: 12),
             ],
@@ -408,7 +417,7 @@ class _ScheduleHeader extends StatelessWidget {
   final _ScheduleText text;
   final int completedCount;
   final int totalCount;
-  final VoidCallback onBackRequested;
+  final VoidCallback? onBackRequested;
 
   const _ScheduleHeader({
     required this.text,
@@ -442,16 +451,19 @@ class _ScheduleHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              IconButton(
-                tooltip: text.back,
-                onPressed: onBackRequested,
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 24,
+              if (onBackRequested != null) ...[
+                IconButton(
+                  tooltip: text.back,
+                  onPressed: onBackRequested,
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ] else
+                const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   text.title,

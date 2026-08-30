@@ -68,7 +68,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _orientationActivation = _orientationService.enableSensorRotation();
+    _orientationActivation = _orientationService.lockPortrait();
     unawaited(_initializeCamera());
   }
 
@@ -97,7 +97,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // 역할: 촬영 화면에서 허용한 센서 회전을 해제하고 기존 앱 방향 정책을 복원한다.
   Future<void> _restoreOrientation() async {
     await _orientationActivation;
-    await _orientationService.restoreOrientation();
+    await _orientationService.restorePortrait();
   }
 
   // 함수이름: _initializeCamera

@@ -9,6 +9,7 @@ import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.d
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_reminder_settings_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_preview_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/set_caregiver_notification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
@@ -191,7 +192,7 @@ void main() {
     for (final viewportSize in const [Size(360, 640), Size(412, 915)]) {
       testWidgets(
         '홈 화면은 ${viewportSize.width.toInt()}x${viewportSize.height.toInt()} '
-        '기본 글씨에서 스크롤 없이 핵심 정보를 표시한다',
+        '기본 글씨에서 화면 높이에 맞게 핵심 정보를 표시한다',
         (tester) async {
           await _setViewport(tester, viewportSize);
 
@@ -225,8 +226,8 @@ void main() {
                 onPrescriptionGalleryRequested: () {},
                 onPillIdentificationRequested: () {},
                 onTodayScheduleRequested: () {},
-                onSavedMedicationRequested: () {},
-                onPatientCaregiverLinkRequested: () {},
+                onHealthRecommendationRequested: () {},
+                onMedicationReminderRequested: () {},
                 onUserSettingRequested: () {},
               ),
             ),
@@ -243,7 +244,11 @@ void main() {
           );
           expect(scrollableState.position.maxScrollExtent, 0);
           expect(
-            find.byKey(const ValueKey('homePatientCaregiverLinkCard')),
+            find.byKey(const ValueKey('homeMedicationReminderCard')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('homeMedicationTipCard')),
             findsOneWidget,
           );
           expect(tester.takeException(), isNull);
@@ -269,8 +274,8 @@ void main() {
               onPrescriptionGalleryRequested: () {},
               onPillIdentificationRequested: () {},
               onTodayScheduleRequested: () {},
-              onSavedMedicationRequested: () {},
-              onPatientCaregiverLinkRequested: () {},
+              onHealthRecommendationRequested: () {},
+              onMedicationReminderRequested: () {},
               onUserSettingRequested: () {},
             ),
           ),
@@ -279,15 +284,11 @@ void main() {
 
         expect(find.text('MedBuddy'), findsOneWidget);
         expect(
-          find.text(
-            viewportCase.size.width >= 350 ? '오늘의\n복약 일정' : '오늘의 복약 일정',
-          ),
+          find.text(viewportCase.size.width >= 350 ? '처방전\n분석' : '처방전 분석'),
           findsOneWidget,
         );
         expect(
-          find.text(
-            viewportCase.size.width >= 350 ? '약 정보\n촬영하기' : '약 정보 촬영하기',
-          ),
+          find.text(viewportCase.size.width >= 350 ? '낱알약\n식별' : '낱알약 식별'),
           findsOneWidget,
         );
         await tester.drag(
@@ -296,9 +297,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          find.text(
-            viewportCase.size.width >= 350 ? '환자/보호자\n연동' : '환자/보호자 연동',
-          ),
+          find.text(viewportCase.size.width >= 350 ? '복약 알림\n설정' : '복약 알림 설정'),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);
@@ -383,6 +382,36 @@ void main() {
       expect(find.byType(ListView), findsOneWidget);
       await tester.drag(find.byType(ListView), const Offset(0, -240));
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('복약 알림 빠른 설정은 작은 화면과 큰 글씨에서도 모든 시간대를 제공한다', (tester) async {
+      await _setViewport(tester, const Size(320, 568));
+      SharedPreferences.setMockInitialValues({});
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: _AccessibilityScheduleControl(),
+        setNotification: _EmptyNotificationControl(),
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: _scaledMaterialApp(
+            textScale: 1.6,
+            home: const MedicationReminderSettingsUI(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('복약 알림 설정'), findsOneWidget);
+      expect(find.text('아침'), findsOneWidget);
+      expect(find.text('점심'), findsOneWidget);
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(find.text('저녁'), findsOneWidget);
+      expect(find.text('취침 전'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
