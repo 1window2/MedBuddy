@@ -4,7 +4,9 @@ import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
@@ -16,6 +18,16 @@ class _CountingCheckSchedule extends CheckSchedule {
 
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    requestCount += 1;
+    return const [];
+  }
+}
+
+class _CountingCheckSavedMedication extends CheckSavedMedication {
+  int requestCount = 0;
+
+  @override
+  Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     requestCount += 1;
     return const [];
   }
@@ -142,6 +154,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(checkSchedule.requestCount, 2);
+  });
+
+  testWidgets('medication cabinet refreshes whenever it is revisited', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 844));
+    final checkSavedMedication = _CountingCheckSavedMedication();
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: checkSavedMedication,
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
+    );
+    await tester.pumpAndSettle();
+    expect(checkSavedMedication.requestCount, 1);
+
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(checkSavedMedication.requestCount, 2);
   });
 
   testWidgets('bottom navigation exposes four labelled destinations', (

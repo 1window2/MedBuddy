@@ -135,6 +135,11 @@ class _MedicationReminderSettingsUIState
                             color: MedBuddyColors.primary,
                           ),
                         )
+                      : viewModel.hasTodayScheduleLoadError
+                      ? _ReminderScheduleLoadError(
+                          text: text,
+                          onRetryRequested: viewModel.refreshMedicationSchedule,
+                        )
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                           itemCount: _slots.length,
@@ -401,6 +406,62 @@ class _ReminderSlotDefinition {
   String label(bool isEnglish) => isEnglish ? englishLabel : koreanLabel;
 }
 
+class _ReminderScheduleLoadError extends StatelessWidget {
+  final _ReminderSettingsText text;
+  final Future<void> Function() onRetryRequested;
+
+  const _ReminderScheduleLoadError({
+    required this.text,
+    required this.onRetryRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          key: const Key('reminder-schedule-load-error'),
+          width: 320,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+          decoration: BoxDecoration(
+            color: MedBuddyColors.surface,
+            borderRadius: MedBuddyRadii.largeCard,
+            boxShadow: MedBuddyShadows.card,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.cloud_off_outlined,
+                size: 52,
+                color: MedBuddyColors.textMuted,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                text.scheduleLoadFailed,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                key: const Key('reminder-schedule-load-retry'),
+                onPressed: onRetryRequested,
+                icon: const Icon(Icons.refresh),
+                label: Text(text.retry),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ReminderSettingsText {
   final String language;
 
@@ -415,6 +476,10 @@ class _ReminderSettingsText {
   String get back => isEnglish ? 'Back' : '뒤로';
   String get noMedication =>
       isEnglish ? 'No medication in this time slot' : '이 시간대에 등록된 약이 없습니다';
+  String get scheduleLoadFailed => isEnglish
+      ? 'Could not load your medication schedule.'
+      : '복약 일정을 불러오지 못했습니다.';
+  String get retry => isEnglish ? 'Retry' : '다시 시도';
   String enabledAt(String time, int count) => isEnglish
       ? '$time · $count medication${count == 1 ? '' : 's'}'
       : '$time · 약 $count개';

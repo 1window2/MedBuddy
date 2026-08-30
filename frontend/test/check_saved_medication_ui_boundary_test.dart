@@ -8,10 +8,24 @@ import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
+import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _CancelledGalleryInputPrescription extends InputPrescription {
+  int requestCount = 0;
+
+  @override
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    requestCount += 1;
+    return null;
+  }
+}
 
 void main() {
   testWidgets('빈 저장 목록의 촬영 버튼은 처방전 분석과 낱알약 식별을 제공한다', (tester) async {
@@ -82,6 +96,54 @@ void main() {
     expect(find.text('카메라로 촬영'), findsOneWidget);
     expect(find.text('갤러리에서 선택'), findsOneWidget);
   });
+
+  testWidgets(
+    'embedded empty cabinet keeps the root route during gallery input',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
+      final client = MockClient(_emptySavedMedicationResponse);
+      final inputPrescription = _CancelledGalleryInputPrescription();
+      final viewModel = MedBuddyViewModel(
+        inputPrescription: inputPrescription,
+        checkSavedMedication: CheckSavedMedication(
+          baseUrl: 'http://medbuddy.test',
+          client: client,
+        ),
+        apiClient: client,
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: viewModel,
+          child: const MaterialApp(
+            home: Scaffold(
+              key: ValueKey('embedded-cabinet-root'),
+              body: CheckSavedMedicationUI(showCloseButton: false),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('처방전 촬영하기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('처방전 분석'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('갤러리에서 선택'));
+      await tester.pumpAndSettle();
+
+      expect(inputPrescription.requestCount, 1);
+      expect(
+        find.byKey(const ValueKey('embedded-cabinet-root')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('patient saved list does not expose guardian alert control', (
     tester,

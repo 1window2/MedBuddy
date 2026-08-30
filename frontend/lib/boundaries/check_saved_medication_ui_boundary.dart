@@ -421,11 +421,15 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       if (!mounted || image == null) {
         return;
       }
-      Navigator.pop(context);
+      if (widget.showCloseButton) {
+        Navigator.pop(context);
+      }
       await viewModel.requestCapturedPrescriptionImage(image);
       return;
     }
-    Navigator.pop(context);
+    if (widget.showCloseButton) {
+      Navigator.pop(context);
+    }
     viewModel.requestPrescriptionImageFromGallery();
   }
 

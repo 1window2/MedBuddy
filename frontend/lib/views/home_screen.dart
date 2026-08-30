@@ -245,9 +245,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _selectDestination(MedBuddyDestination destination) {
-    if (destination == MedBuddyDestination.schedule &&
-        _visitedDestinations.contains(MedBuddyDestination.schedule)) {
-      unawaited(context.read<MedBuddyViewModel>().refreshMedicationSchedule());
+    if (_visitedDestinations.contains(destination)) {
+      final viewModel = context.read<MedBuddyViewModel>();
+      switch (destination) {
+        case MedBuddyDestination.schedule:
+          unawaited(viewModel.refreshMedicationSchedule());
+        case MedBuddyDestination.medicationCabinet:
+          unawaited(viewModel.fetchSavedMedicationInfo());
+        case MedBuddyDestination.home:
+        case MedBuddyDestination.profile:
+          break;
+      }
     }
     if (_selectedDestination == destination) {
       return;
