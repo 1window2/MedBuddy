@@ -6,9 +6,10 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from api.dependencies import (
+    _sqlite_account_locks,
     get_authenticated_principal,
     get_registered_principal,
     verify_app_check_token,
@@ -115,6 +116,30 @@ def _request(app: FastAPI, method: str, path: str) -> Request:
     )
 
 
+# Function Name: _resolve_registered_principal
+# Description:
+# - Enters and closes the request-scoped registration dependency in unit tests.
+# Parameters:
+# - request: Synthetic FastAPI request under test.
+# - principal: Verified identity to register.
+# - db_session: SQLite session used by the dependency.
+# Returns:
+# - The principal yielded for endpoint handling.
+async def _resolve_registered_principal(
+    request: Request,
+    principal: AuthenticatedPrincipal,
+    db_session: Session,
+) -> AuthenticatedPrincipal:
+    dependency = get_registered_principal(
+        request=request,
+        principal=principal,
+        db=db_session,
+    )
+    registered_principal = await anext(dependency)
+    await dependency.aclose()
+    return registered_principal
+
+
 @pytest.mark.anyio
 async def test_deleted_account_only_allows_authenticated_deletion_retry(
     db_session,
@@ -130,16 +155,16 @@ async def test_deleted_account_only_allows_authenticated_deletion_retry(
     app = FastAPI()
 
     with patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False):
-        deletion_principal = await get_registered_principal(
+        deletion_principal = await _resolve_registered_principal(
             request=_request(app, "DELETE", "/api/v1/auth/account-data"),
             principal=principal,
-            db=db_session,
+            db_session=db_session,
         )
         with pytest.raises(HTTPException) as denied:
-            await get_registered_principal(
+            await _resolve_registered_principal(
                 request=_request(app, "GET", "/api/v1/auth/session"),
                 principal=principal,
-                db=db_session,
+                db_session=db_session,
             )
 
     assert deletion_principal == principal
@@ -196,23 +221,23 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
             get_authenticated_principal(token_credentials)
             for token_credentials in credentials
         ]
-        await get_registered_principal(
+        await _resolve_registered_principal(
             request=_request(
                 app,
                 "POST",
                 "/api/v1/medication/identify",
             ),
             principal=principals[0],
-            db=db_session,
+            db_session=db_session,
         )
-        await get_registered_principal(
+        await _resolve_registered_principal(
             request=_request(
                 app,
                 "GET",
                 "/api/v1/medication/health/recommendation",
             ),
             principal=principals[1],
-            db=db_session,
+            db_session=db_session,
         )
 
     assert verifier.tokens == ["rotated-token-one", "rotated-token-two"]
@@ -230,6 +255,29 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
         "POST:/api/v1/medication/identify",
         "GET:/api/v1/medication/health/recommendation",
     ]
+
+
+@pytest.mark.anyio
+async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
+    db_session,
+) -> None:
+    principal = _principal("request-lifetime-lock-user")
+    app = FastAPI()
+    dependency = get_registered_principal(
+        request=_request(app, "POST", "/save"),
+        principal=principal,
+        db=db_session,
+    )
+
+    with patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False):
+        assert await anext(dependency) == principal
+        account_lock = _sqlite_account_locks[principal.user_hash]
+        assert account_lock.locked()
+        assert account_lock.acquire(blocking=False) is False
+        await dependency.aclose()
+
+    assert account_lock.locked() is False
+    assert principal.user_hash not in _sqlite_account_locks
 
 
 def test_production_configuration_fails_closed_without_firebase() -> None:

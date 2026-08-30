@@ -69,6 +69,9 @@ class CheckSavedMedicationTest(unittest.TestCase):
             efficacy="effect",
             use_method="usage",
             warning_message="warning",
+            interaction="avoid anticoagulants",
+            side_effect="drowsiness",
+            storage_method="store below 25 C",
             dosage_per_time="1 tablet",
             daily_frequency="3 times",
             total_days="7 days",
@@ -89,6 +92,9 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(saved_row.dosage_per_time, "1 tablet")
         self.assertEqual(saved_row.daily_frequency, "3 times")
         self.assertEqual(saved_row.total_days, "7 days")
+        self.assertEqual(saved_row.interaction, "avoid anticoagulants")
+        self.assertEqual(saved_row.side_effect, "drowsiness")
+        self.assertEqual(saved_row.storage_method, "store below 25 C")
         self.assertEqual(saved_row.prescription_date, self.active_prescription_date)
         self.assertEqual(
             saved_row.prescription_batch_id,
@@ -98,6 +104,12 @@ class CheckSavedMedicationTest(unittest.TestCase):
             saved_row.image_url,
             "https://nedrug.mfds.go.kr/medicine.jpg",
         )
+        list_item = self.control.requestSavedMedicationInfo("patient-a")["data"][
+            0
+        ]
+        self.assertEqual(list_item["interaction"], "avoid anticoagulants")
+        self.assertEqual(list_item["side_effect"], "drowsiness")
+        self.assertEqual(list_item["storage_method"], "store below 25 C")
 
     def test_save_preserves_user_confirmed_schedule_slots(self) -> None:
         response = self.control.saveMedicationDetail(
@@ -154,6 +166,9 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertIn("item_seq", existing_columns)
         self.assertIn("schedule_slot_keys", existing_columns)
         self.assertIn("prescription_batch_id", existing_columns)
+        self.assertIn("interaction", existing_columns)
+        self.assertIn("side_effect", existing_columns)
+        self.assertIn("storage_method", existing_columns)
 
         session_factory = sessionmaker(
             autocommit=False,
@@ -169,6 +184,9 @@ class CheckSavedMedicationTest(unittest.TestCase):
             self.assertIsNotNone(saved_row)
             self.assertEqual(saved_row.ai_guide, "guide")
             self.assertEqual(saved_row.item_seq, "200000001")
+            self.assertEqual(saved_row.interaction, "avoid anticoagulants")
+            self.assertEqual(saved_row.side_effect, "drowsiness")
+            self.assertEqual(saved_row.storage_method, "store below 25 C")
         finally:
             db.close()
             engine.dispose()

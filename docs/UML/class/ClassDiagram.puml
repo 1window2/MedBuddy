@@ -399,6 +399,9 @@ package "Flutter Frontend" {
             + efficacy: String
             + usageMethod: String
             + warning: String
+            + interaction: String
+            + sideEffect: String
+            + storageMethod: String
             + imageUrl: String
             + aiGuide: String
             + fromJson(json): MedicationDetail
@@ -819,6 +822,9 @@ package "FastAPI Backend" {
             + efficacy: str
             + usage_method: str
             + warning: str
+            + interaction: str
+            + side_effect: str
+            + storage_method: str
             + ai_guide: str
             + getMedicationDetail(): dict
             + getVoiceGuideText(language): str
@@ -873,6 +879,9 @@ package "FastAPI Backend" {
             + item_name: String
             + prescription_date: Date
             + prescription_batch_id: String?
+            + interaction: Text?
+            + side_effect: Text?
+            + storage_method: Text?
             + schedule_slot_keys: Text
             + medication_status: Boolean
         }

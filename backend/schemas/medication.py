@@ -48,6 +48,9 @@ class MedicationRequest(BaseModel):
 #   - efficacy: Medication efficacy summary.
 #   - use_method: Medication use method summary.
 #   - warning_message: Medication warning summary.
+#   - interaction: Medication interaction guidance shown in the detail view.
+#   - side_effect: Medication side-effect guidance shown in the detail view.
+#   - storage_method: Medication storage guidance shown in the detail view.
 #   - dosage_per_time: Optional dose per administration from prescription analysis.
 #   - daily_frequency: Optional daily frequency from prescription analysis.
 #   - total_days: Optional total medication days from prescription analysis.
@@ -71,6 +74,9 @@ class SavedMedicationCreate(BaseModel):
     efficacy: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
     use_method: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
     warning_message: str = Field(max_length=_MAX_DETAIL_TEXT_LENGTH)
+    interaction: str = Field(default="", max_length=_MAX_DETAIL_TEXT_LENGTH)
+    side_effect: str = Field(default="", max_length=_MAX_DETAIL_TEXT_LENGTH)
+    storage_method: str = Field(default="", max_length=_MAX_DETAIL_TEXT_LENGTH)
     dosage_per_time: Optional[str] = Field(
         default=None,
         max_length=_MAX_SHORT_TEXT_LENGTH,
