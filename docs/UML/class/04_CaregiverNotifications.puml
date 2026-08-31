@@ -1,0 +1,81 @@
+@startuml
+allowmixing
+scale max 1920 width
+left to right direction
+!pragma layout smetana
+
+title Patient-Caregiver Link and Notifications - Key Classes
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+
+skinparam classBackgroundColor<<UI>> #E8F4FF
+skinparam classBorderColor<<UI>> #147BC1
+skinparam classBackgroundColor<<Control>> #EAF8F0
+skinparam classBorderColor<<Control>> #159957
+skinparam classBackgroundColor<<Service>> #F8FAFC
+skinparam classBorderColor<<Service>> #64748B
+skinparam classBackgroundColor<<Database>> #FFF7E6
+skinparam classBorderColor<<Database>> #D97706
+skinparam classBackgroundColor<<External>> #FFF7E6
+skinparam classBorderColor<<External>> #D97706
+
+package "Flutter Frontend" #E8F4FF {
+  class LinkPatientCaregiverUI <<UI>>
+  class CheckCaregiverMedicationUI <<UI>>
+  class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
+  class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Control>>
+  class "SetCaregiverNotification" as FSetCaregiverNotification <<Control>>
+  class PushNotificationService <<Service>>
+  class NotificationService <<Service>>
+}
+
+package "FastAPI Backend" #EAF8F0 {
+  class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control>>
+  class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control>>
+  class "CheckSchedule" as BCheckSchedule <<Control>>
+  class DispatchCaregiverAlert <<Control>>
+  class ProcessCaregiverAlertOutbox <<Control>>
+  class PatientCaregiverLinkRepository <<Service>>
+  database "patient_caregiver_links" as DBPatientCaregiverLink <<Database>>
+  database "guardian_alert_settings" as DBCaregiverNotification <<Database>>
+  database "caregiver_alert_outbox" as DBCaregiverAlertOutbox <<Database>>
+  database "device_push_tokens" as DBDevicePushToken <<Database>>
+}
+
+cloud "Firebase Cloud Messaging" as FCM
+
+LinkPatientCaregiverUI --> FLinkPatientCaregiver
+CheckCaregiverMedicationUI --> FCheckCaregiverMedication
+CheckCaregiverMedicationUI --> FSetCaregiverNotification
+
+FLinkPatientCaregiver --> BLinkPatientCaregiver : link API
+FCheckCaregiverMedication --> BCheckCaregiverMedication : patient status API
+BLinkPatientCaregiver --> PatientCaregiverLinkRepository
+BLinkPatientCaregiver --> DBPatientCaregiverLink
+BLinkPatientCaregiver --> DBCaregiverNotification
+
+BCheckCaregiverMedication --> BLinkPatientCaregiver : verifies relationship
+BCheckCaregiverMedication --> BCheckSchedule : reads schedule
+BCheckSchedule --> DBCaregiverAlertOutbox : completion event
+DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
+ProcessCaregiverAlertOutbox --> DispatchCaregiverAlert
+DispatchCaregiverAlert --> DBCaregiverNotification
+DispatchCaregiverAlert --> DBDevicePushToken
+DispatchCaregiverAlert --> FCM
+FCM --> PushNotificationService
+PushNotificationService --> NotificationService
+
+note bottom of DispatchCaregiverAlert
+  Medication completion is delivered through
+  a retryable outbox instead of direct best-effort push.
+end note
+@enduml

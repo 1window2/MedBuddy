@@ -238,6 +238,11 @@ class CaregiverNotificationMonitorService {
     SharedPreferences preferences,
     String patientHash,
   ) async {
+    final patientLabel = CaregiverPatientLocalStateService.resolveSavedLabel(
+      preferences,
+      caregiverHash: caregiverHash,
+      patientHash: patientHash,
+    );
     final settings = await _loadSettings(patientHash);
     final hasActiveSetting = settings.values.any(
       (setting) => setting.mode != CaregiverNotificationMode.disabled,
@@ -256,6 +261,7 @@ class CaregiverNotificationMonitorService {
       await _checkSlot(
         preferences: preferences,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         setting: setting,
         schedules: schedules,
@@ -269,6 +275,7 @@ class CaregiverNotificationMonitorService {
   Future<void> _checkSlot({
     required SharedPreferences preferences,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required CaregiverNotification setting,
     required List<MedicationSchedule> schedules,
@@ -301,6 +308,7 @@ class CaregiverNotificationMonitorService {
         preferences: preferences,
         scope: scope,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         previousSnapshot: previousSnapshot,
         currentSnapshot: currentSnapshot,
@@ -312,6 +320,7 @@ class CaregiverNotificationMonitorService {
         preferences: preferences,
         scope: scope,
         patientHash: patientHash,
+        patientLabel: patientLabel,
         slotKey: slotKey,
         setting: setting,
         schedules: schedules,
@@ -336,6 +345,7 @@ class CaregiverNotificationMonitorService {
     required SharedPreferences preferences,
     required String scope,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required Map<String, bool> previousSnapshot,
     required Map<String, bool> currentSnapshot,
@@ -359,10 +369,11 @@ class CaregiverNotificationMonitorService {
       return;
     }
     final slotName = _slotName(slotKey);
+    final patientSubject = _patientSubject(patientLabel);
     await _sendAlert(
       id: _stableNotificationId('completed|$patientHash|$dateKey|$slotKey'),
       title: '환자 복약 완료',
-      body: '연동된 환자의 $slotName 복약이 모두 완료되었습니다.',
+      body: '$patientSubject의 $slotName 복약이 모두 완료되었습니다.',
       patientHash: patientHash,
     );
     await preferences.setString('$scope.completion_notice', noticeSignature);
@@ -372,6 +383,7 @@ class CaregiverNotificationMonitorService {
     required SharedPreferences preferences,
     required String scope,
     required String patientHash,
+    required String? patientLabel,
     required String slotKey,
     required CaregiverNotification setting,
     required List<MedicationSchedule> schedules,
@@ -420,11 +432,12 @@ class CaregiverNotificationMonitorService {
         '${setting.deadlineHour!.toString().padLeft(2, '0')}:'
         '${setting.deadlineMinute!.toString().padLeft(2, '0')}';
     final slotName = _slotName(slotKey);
+    final patientSubject = _patientSubject(patientLabel);
     await _sendAlert(
       id: _stableNotificationId('missed|$patientHash|$noticeSignature'),
       title: '미복용 일정 확인',
       body:
-          '연동된 환자의 $slotName 복약 중 $deadlineLabel 기준으로 '
+          '$patientSubject의 $slotName 복약 중 $deadlineLabel 기준으로 '
           '아직 체크되지 않은 일정이 '
           '$remainingCount건 있습니다.',
       patientHash: patientHash,
@@ -512,6 +525,15 @@ class CaregiverNotificationMonitorService {
       'bedtime' => '취침 전',
       _ => '복약 일정',
     };
+  }
+
+  // 함수명: _patientSubject
+  // 역할: 저장된 별칭을 우선 사용하고 내부 환자 hash는 알림에 노출하지 않는다.
+  String _patientSubject(String? patientLabel) {
+    final normalizedLabel = patientLabel?.trim();
+    return normalizedLabel == null || normalizedLabel.isEmpty
+        ? '연동된 환자'
+        : normalizedLabel;
   }
 
   int _stableNotificationId(String source) {

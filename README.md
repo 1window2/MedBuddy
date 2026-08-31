@@ -6,18 +6,43 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescription or pill-envelope photos, enriches medication information with Korean public drug data and Gemini, and helps patients manage saved medications, schedules, reminders, and patient-caregiver linked views with caregiver notification preferences.
 
+## 브랜치 목적 / Branch Purpose
+
+**한국어**
+
+`beta/v0.1.1`은 공개된 `v0.1.0`에서 발견된 버그와 회귀 문제를
+수정하고 안정성을 높이기 위한 유지보수 브랜치입니다. 실험적인 신규
+기능은 이 브랜치에 포함하지 않습니다.
+
+수정 사항이 정식 버전에 반영된 뒤에는 이 브랜치를 정리할 예정입니다.
+
+**English**
+
+`beta/v0.1.1` is the maintenance branch for fixing bugs and regressions found
+in the released `v0.1.0` and improving overall stability. Experimental new
+features are kept out of this branch.
+
+We'll clean up this branch after these fixes are merged into the stable
+release.
+
+The release-candidate summary, deferred device verification, and the exact
+merge-forward procedure for `beta/v0.2.0` are maintained in
+[`docs/releases/v0.1.1-beta.md`](docs/releases/v0.1.1-beta.md).
+
 ## Key Features
 
 ### Prescription and Pill-Envelope Analysis
 
 - The Flutter app captures or selects a prescription or pill-envelope image and performs Korean OCR on the device with Google ML Kit.
-- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. The original prescription image remains on the device during this text-analysis flow.
+- Guided camera captures use the same calculated rectangle for the visible guide and the saved OCR image. Only the area inside the guide is retained, while the uncropped app-created camera file is removed after a successful crop.
+- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. Prescription image content is processed only on the device during this text-analysis flow and is not uploaded to the backend.
 - Only the de-identified OCR text is sent to FastAPI through the prescription-text endpoint. The backend parses and validates that text, normalizes the result into UML-aligned prescription analysis entities, and uses bounded Gemini text recovery only where the structured pipeline requires it.
 - Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
 - Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
 - Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
-- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
-- When parsing or medication lookup fails, the UI replaces technical exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to the OCR review, retake the photo, or select another image as appropriate.
+- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names, manually add an OCR-missed medication row, and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
+- Medication-detail responses remain tied to their original OCR rows, so a failed lookup cannot silently remove or reorder another medication. When only some rows fail, verified rows are locked and struck through while unresolved rows remain editable and can be retried independently.
+- When parsing or every medication lookup fails for a technical reason, the UI replaces exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to OCR review, retake the photo, or select another image as appropriate. Continuing with verified medications while unresolved rows remain requires an explicit confirmation.
 - The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
 - After saving all analyzed medications, users can continue directly to today's schedule or the saved-medication list.
 
@@ -71,6 +96,7 @@
   FCM push alerts when a dose is newly completed. Missed-deadline checks remain
   an authenticated Android background task. Local demo mode polls for both
   completion and missed-deadline changes and displays local notifications.
+- Local demo caregiver alerts use the patient alias saved on the caregiver device when available. Otherwise they use a generic linked-patient label and never expose the internal patient hash in notification text.
 
 ### Health Recommendations and Reminders
 
@@ -287,6 +313,6 @@ Development workflow, verification commands, UML alignment rules, documentation 
 | Profile | Name | Role | GitHub |
 | :---: | :---: | :---: | :---: |
 | <img src="https://github.com/1window2.png" width="80"> | **1window2** | Full-Stack Architecture & AI Pipeline Lead | [@1window2](https://github.com/1window2) |
-| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Full-Stack Feature Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
+| <img src="https://github.com/tmdgusdl9647.png" width="80"> | **tmdgusdl9647** | Team Lead & Developer | [@tmdgusdl9647](https://github.com/tmdgusdl9647) |
 | <img src="https://github.com/jeeon0318.png" width="80"> | **jeeon0318** | UML Documentation & Legal Compliance Lead | [@jeeon0318](https://github.com/jeeon0318) |
 | <img src="https://github.com/onlyone130.png" width="80"> | **onlyone130** | UI/UX Design Lead | [@onlyone130](https://github.com/onlyone130) |

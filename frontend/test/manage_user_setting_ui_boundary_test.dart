@@ -7,9 +7,44 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 // 파일명: manage_user_setting_ui_boundary_test.dart
-// 역할: 환경설정 저장 중복 방지와 실패 복구 동작을 검증한다.
+// 역할: 설정의 실시간 미리보기, 저장과 음성 안내 상호작용을 검증한다.
 
 void main() {
+  testWidgets('뒤로가기 버튼은 설정 내용을 스크롤해도 같은 위치에 고정된다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    final backButton = find.byKey(const ValueKey('settingsBackButton'));
+    final initialPosition = tester.getTopLeft(backButton);
+
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -700),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(backButton), initialPosition);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('English를 선택하면 설정 화면 전체와 저장 언어가 함께 바뀐다', (tester) async {
     String? savedLanguage;
     final authenticationControl = AuthenticationControl.development();
@@ -49,6 +84,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(savedLanguage, 'en');
+    expect(find.text('Text Size'), findsOneWidget);
   });
 
   testWidgets('기존 영어 설정은 영어로 열리고 한국어로 전환할 수 있다', (tester) async {
@@ -178,6 +214,46 @@ void main() {
     await tester.pump();
     expect(stopRequestCount, greaterThanOrEqualTo(2));
     expect(find.text('음성으로 들어보기'), findsOneWidget);
+    expect(find.text('음성 미리보기를 재생하지 못했습니다.'), findsNothing);
+  });
+
+  testWidgets('사용자가 음성 미리보기를 중지하면 취소 오류를 안내하지 않는다', (tester) async {
+    final playback = Completer<void>();
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          previewSpeaker: (text, setting, {onComplete}) => playback.future,
+          previewStopper: () async {
+            if (!playback.isCompleted) {
+              playback.completeError(StateError('playback cancelled'));
+            }
+          },
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('음성으로 들어보기'));
+    await tester.tap(find.text('음성으로 들어보기'));
+    await tester.pump();
+    expect(find.text('듣기 중지'), findsOneWidget);
+
+    await tester.tap(find.text('듣기 중지'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('음성으로 들어보기'), findsOneWidget);
+    expect(find.text('음성 미리보기를 재생하지 못했습니다.'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('큰 글씨 선택은 미리보기에서 확실한 크기 차이를 보여준다', (tester) async {
@@ -206,6 +282,83 @@ void main() {
     );
 
     expect(previewText.style?.fontSize, 20);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('글씨 크기를 선택하면 저장 전에도 설정 화면 전체 배율이 바뀐다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManageUserSettingUI(
+          initialSetting: const UserSetting(),
+          authenticationControl: authenticationControl,
+          onSettingSaveRequested:
+              ({
+                required fontSizeOption,
+                required readingSpeedOption,
+                required language,
+              }) async => _saveResult(),
+        ),
+      ),
+    );
+
+    double currentScale() {
+      final titleContext = tester.element(find.text('글씨크기'));
+      return MediaQuery.textScalerOf(titleContext).scale(16) / 16;
+    }
+
+    expect(currentScale(), 1.0);
+    await tester.tap(find.text('크게'));
+    await tester.pump();
+    expect(currentScale(), 1.30);
+
+    await tester.tap(find.text('작게'));
+    await tester.pump();
+    expect(currentScale(), 0.92);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('설정을 저장해도 환경설정 화면에 그대로 머문다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ManageUserSettingUI(
+                    initialSetting: const UserSetting(),
+                    authenticationControl: authenticationControl,
+                    onSettingSaveRequested:
+                        ({
+                          required fontSizeOption,
+                          required readingSpeedOption,
+                          required language,
+                        }) async => _saveResult(),
+                  ),
+                ),
+              ),
+              child: const Text('설정 열기'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('설정 열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('글씨크기'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '저장하기'), findsOneWidget);
+    expect(find.text('설정 열기'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

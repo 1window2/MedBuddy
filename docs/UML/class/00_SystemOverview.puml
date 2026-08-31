@@ -1,0 +1,44 @@
+@startuml
+scale max 1920 width
+top to bottom direction
+!pragma layout smetana
+
+title MedBuddy System Overview
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 18
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam packageBorderColor #CBD5E1
+skinparam packageFontColor #0F172A
+skinparam rectangle {
+  RoundCorner 14
+  BorderThickness 2
+  FontColor #0F172A
+}
+
+actor Patient as Patient
+actor Caregiver as Caregiver
+
+rectangle "Flutter Frontend\n\nMobile UI and device services" as Frontend #E8F4FF
+rectangle "FastAPI Backend\n\nBusiness rules and secured APIs" as Backend #EAF8F0
+database "PostgreSQL / SQLite\nApplication Data" as Database #F8FAFC
+cloud "External Services\n\nFirebase, MFDS, Gemini" as External #FFF7E6
+
+Patient --> Frontend : uses
+Caregiver --> Frontend : uses
+Patient -[hidden]right-> Caregiver
+Frontend --> Backend : authenticated HTTPS API
+Backend --> Database : persists and queries
+Backend --> External : verifies and enriches
+Database -[hidden]right-> External
+External --> Frontend : push notifications
+
+legend bottom
+  Main presentation view: responsibilities and communication boundaries only
+endlegend
+@enduml

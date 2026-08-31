@@ -6,6 +6,7 @@ import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/app_version_label.dart';
 
 typedef SettingPreviewSpeaker =
     Future<void> Function(
@@ -59,6 +60,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _language;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
+  int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
 
   @override
@@ -84,147 +86,170 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final contentScale = UserSetting(
+    final draftSetting = widget.initialSetting.copyWith(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
-    ).contentTextScale;
+      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+      language: _language,
+    );
+    final platformMediaQuery = MediaQueryData.fromView(View.of(context));
+    final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
+    final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
+    final mediaQuery = MediaQuery.of(context);
+    final contentScale = draftSetting.contentTextScale;
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CloseButton(
-                          tooltip: text.close,
-                          onTap: () => Navigator.maybePop(context),
-                        ),
-                        const SizedBox(height: 22),
-                        _SettingTitle(text.fontSizeTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(
-                              value: 'small',
-                              label: text.small,
-                              labelFontSize: 14,
-                            ),
-                            _SettingOption(
-                              value: 'medium',
-                              label: text.medium,
-                              labelFontSize: 17,
-                            ),
-                            _SettingOption(
-                              value: 'large',
-                              label: text.large,
-                              labelFontSize: 23,
-                            ),
-                          ],
-                          selectedValue: _fontSize,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _fontSize = value),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.readingSpeedTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: [
-                            _SettingOption(value: 'slow', label: text.slow),
-                            _SettingOption(value: 'medium', label: text.medium),
-                            _SettingOption(value: 'fast', label: text.fast),
-                          ],
-                          selectedValue: _readingSpeed,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              unawaited(_selectReadingSpeed(value)),
-                        ),
-                        const SizedBox(height: 45),
-                        _SettingTitle(text.languageTitle),
-                        const SizedBox(height: 22),
-                        _OptionRow(
-                          options: const [
-                            _SettingOption(value: 'ko', label: '한국어'),
-                            _SettingOption(value: 'en', label: 'English'),
-                          ],
-                          selectedValue: _language,
-                          contentScale: contentScale,
-                          onSelected: (value) =>
-                              setState(() => _language = value),
-                        ),
-                        const SizedBox(height: 42),
-                        _PreviewPanel(
-                          text: text,
-                          fontSize: _fontSize,
-                          readingSpeed: _readingSpeed,
-                          isSpeaking: _isPreviewSpeaking,
-                          onVoicePreviewRequested: _toggleVoicePreview,
-                        ),
-                        if (widget
-                            .authenticationControl
-                            .phoneAuthenticationEnabled) ...[
-                          const SizedBox(height: 28),
-                          ListenableBuilder(
-                            listenable: widget.authenticationControl,
-                            builder: (context, _) => _MfaSettingsPanel(
-                              enabled: widget
-                                  .authenticationControl
-                                  .hasEnrolledSmsMfa,
-                              available:
-                                  widget.authenticationControl.canEnrollSmsMfa,
-                              onEnrollRequested: _showMfaEnrollment,
-                            ),
-                          ),
-                        ],
-                        if (widget.onSignOutRequested != null) ...[
-                          const SizedBox(height: 28),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _isSaving
-                                  ? null
-                                  : _handleSignOutRequested,
-                              icon: const Icon(Icons.logout),
-                              label: Text(text.signOut),
-                            ),
-                          ),
-                        ],
-                        if (widget.onDeleteAccountRequested != null) ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: MedBuddyColors.danger,
-                                side: const BorderSide(
-                                  color: MedBuddyColors.danger,
-                                ),
-                              ),
-                              onPressed: _isSaving
-                                  ? null
-                                  : _confirmAccountDeletion,
-                              icon: const Icon(Icons.delete_forever_outlined),
-                              label: Text(text.deleteAccount),
-                            ),
-                          ),
-                        ],
-                      ],
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: TextScaler.linear(selectedTextScale),
+      ),
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _SettingsBackButton(
+                        tooltip: text.back,
+                        onTap: () => Navigator.maybePop(context),
+                      ),
                     ),
                   ),
-                ),
-                _SettingSaveFooter(
-                  text: text,
-                  isSaving: _isSaving,
-                  onSaveRequested: _handleSaveRequested,
-                ),
-              ],
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _SettingTitle(text.fontSizeTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(
+                                value: 'small',
+                                label: text.small,
+                                labelFontSize: 14,
+                              ),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                                labelFontSize: 17,
+                              ),
+                              _SettingOption(
+                                value: 'large',
+                                label: text.large,
+                                labelFontSize: 23,
+                              ),
+                            ],
+                            selectedValue: _fontSize,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _fontSize = value),
+                          ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.readingSpeedTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: [
+                              _SettingOption(value: 'slow', label: text.slow),
+                              _SettingOption(
+                                value: 'medium',
+                                label: text.medium,
+                              ),
+                              _SettingOption(value: 'fast', label: text.fast),
+                            ],
+                            selectedValue: _readingSpeed,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                unawaited(_selectReadingSpeed(value)),
+                          ),
+                          const SizedBox(height: 45),
+                          _SettingTitle(text.languageTitle),
+                          const SizedBox(height: 22),
+                          _OptionRow(
+                            options: const [
+                              _SettingOption(value: 'ko', label: '한국어'),
+                              _SettingOption(value: 'en', label: 'English'),
+                            ],
+                            selectedValue: _language,
+                            contentScale: contentScale,
+                            onSelected: (value) =>
+                                setState(() => _language = value),
+                          ),
+                          const SizedBox(height: 42),
+                          _PreviewPanel(
+                            text: text,
+                            fontSize: _fontSize,
+                            readingSpeed: _readingSpeed,
+                            isSpeaking: _isPreviewSpeaking,
+                            onVoicePreviewRequested: _toggleVoicePreview,
+                          ),
+                          if (widget
+                              .authenticationControl
+                              .phoneAuthenticationEnabled) ...[
+                            const SizedBox(height: 28),
+                            ListenableBuilder(
+                              listenable: widget.authenticationControl,
+                              builder: (context, _) => _MfaSettingsPanel(
+                                enabled: widget
+                                    .authenticationControl
+                                    .hasEnrolledSmsMfa,
+                                available: widget
+                                    .authenticationControl
+                                    .canEnrollSmsMfa,
+                                onEnrollRequested: _showMfaEnrollment,
+                              ),
+                            ),
+                          ],
+                          if (widget.onSignOutRequested != null) ...[
+                            const SizedBox(height: 28),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isSaving
+                                    ? null
+                                    : _handleSignOutRequested,
+                                icon: const Icon(Icons.logout),
+                                label: Text(text.signOut),
+                              ),
+                            ),
+                          ],
+                          if (widget.onDeleteAccountRequested != null) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: MedBuddyColors.danger,
+                                  side: const BorderSide(
+                                    color: MedBuddyColors.danger,
+                                  ),
+                                ),
+                                onPressed: _isSaving
+                                    ? null
+                                    : _confirmAccountDeletion,
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                label: Text(text.deleteAccount),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          const Center(child: AppVersionLabel()),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _SettingSaveFooter(
+                    text: text,
+                    isSaving: _isSaving,
+                    onSaveRequested: _handleSaveRequested,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -258,6 +283,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       return;
     }
 
+    final requestId = ++_voicePreviewRequestId;
     final text = _SettingText(_language);
     final previewSetting = UserSetting(
       fontSize: UserSetting.fontSizeFromOption(_fontSize),
@@ -271,10 +297,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       await speaker(
         text.previewSentence,
         previewSetting,
-        onComplete: _finishVoicePreview,
+        onComplete: () => _finishVoicePreview(requestId),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || requestId != _voicePreviewRequestId) {
         return;
       }
       setState(() => _isPreviewSpeaking = false);
@@ -290,16 +316,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 반환값:
   // - 없음
   Future<void> _stopVoicePreview() async {
+    // 사용자가 중지를 누르면 진행 중인 재생 요청을 먼저 무효화해 취소를 오류와 구분한다.
+    _voicePreviewRequestId += 1;
+    if (mounted && _isPreviewSpeaking) {
+      setState(() => _isPreviewSpeaking = false);
+    }
+
     final stopper = widget.previewStopper;
-    if (stopper != null) {
-      await stopper();
-    } else {
-      await _ownedTtsService?.stop();
+    try {
+      if (stopper != null) {
+        await stopper();
+      } else {
+        await _ownedTtsService?.stop();
+      }
+    } catch (_) {
+      // 사용자가 직접 중지한 경우 플랫폼의 취소 응답은 재생 실패로 안내하지 않는다.
     }
-    if (!mounted || !_isPreviewSpeaking) {
-      return;
-    }
-    setState(() => _isPreviewSpeaking = false);
   }
 
   // 함수명: _finishVoicePreview
@@ -307,8 +339,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // - TTS 엔진이 재생 완료를 알리면 미리보기 버튼 상태를 복구한다.
   // 반환값:
   // - 없음
-  void _finishVoicePreview() {
-    if (!mounted || !_isPreviewSpeaking) {
+  void _finishVoicePreview(int requestId) {
+    if (!mounted ||
+        requestId != _voicePreviewRequestId ||
+        !_isPreviewSpeaking) {
       return;
     }
     setState(() => _isPreviewSpeaking = false);
@@ -346,7 +380,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           ),
         ),
       );
-      Navigator.maybePop(context);
     } catch (_) {
       if (!mounted) {
         return;
@@ -615,11 +648,11 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
   }
 }
 
-class _CloseButton extends StatelessWidget {
+class _SettingsBackButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
 
-  const _CloseButton({required this.tooltip, required this.onTap});
+  const _SettingsBackButton({required this.tooltip, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -628,12 +661,17 @@ class _CloseButton extends StatelessWidget {
       button: true,
       child: ExcludeSemantics(
         child: IconButton(
+          key: const ValueKey('settingsBackButton'),
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           tooltip: tooltip,
           onPressed: onTap,
-          icon: const Icon(Icons.close, color: Color(0xFF4A5565), size: 31),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF4A5565),
+            size: 31,
+          ),
         ),
       ),
     );
@@ -930,7 +968,7 @@ class _SettingText {
 
   bool get isEnglish => language == 'en';
 
-  String get close => isEnglish ? 'Close' : '닫기';
+  String get back => isEnglish ? 'Back' : '뒤로가기';
   String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
   String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
   String get languageTitle => isEnglish ? 'Language' : '언어';

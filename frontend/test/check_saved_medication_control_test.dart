@@ -33,6 +33,9 @@ void main() {
         efficacy: 'effect',
         usageMethod: 'usage',
         warning: 'warning',
+        interaction: 'avoid anticoagulants',
+        sideEffect: 'drowsiness',
+        storageMethod: 'store below 25 C',
         imageUrl: 'https://nedrug.mfds.go.kr/medicine.jpg',
       ),
       medicationSchedule: const MedicationSchedule(
@@ -53,6 +56,9 @@ void main() {
     expect(requestBody['dosage_per_time'], '1 tablet');
     expect(requestBody['daily_frequency'], '3 times');
     expect(requestBody['total_days'], '7\uC77C');
+    expect(requestBody['interaction'], 'avoid anticoagulants');
+    expect(requestBody['side_effect'], 'drowsiness');
+    expect(requestBody['storage_method'], 'store below 25 C');
     expect(requestBody['image_url'], 'https://nedrug.mfds.go.kr/medicine.jpg');
   });
 
@@ -132,6 +138,9 @@ void main() {
                 'efficacy': 'effect',
                 'use_method': 'usage',
                 'warning_message': 'warning',
+                'interaction': 'avoid anticoagulants',
+                'side_effect': 'drowsiness',
+                'storage_method': 'store below 25 C',
                 'dosage_per_time': '1 tablet',
                 'daily_frequency': '3 times',
                 'total_days': '7 days',
@@ -156,6 +165,9 @@ void main() {
       expect(medications.first.patientHash, 'patient-a');
       expect(medications.first.itemSeq, '200000001');
       expect(medications.first.dosagePerTime, '1 tablet');
+      expect(medications.first.interaction, 'avoid anticoagulants');
+      expect(medications.first.sideEffect, 'drowsiness');
+      expect(medications.first.storageMethod, 'store below 25 C');
       expect(
         medications.first.imageUrl,
         'https://nedrug.mfds.go.kr/medicine.jpg',

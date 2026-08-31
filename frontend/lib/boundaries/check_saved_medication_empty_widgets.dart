@@ -208,16 +208,16 @@ class _SavedMedicationDateCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
+        border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: Row(
               children: [
                 Expanded(
@@ -225,7 +225,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                     group.displayDate,
                     style: TextStyle(
                       color: const Color(0xFF0A0A0A),
-                      fontSize: 20 * scale,
+                      fontSize: 18 * scale,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0,
                     ),
@@ -234,7 +234,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: MedBuddyColors.outline),
+          const Divider(height: 1, color: MedBuddyColors.divider),
           for (final medication in group.medications) ...[
             _SavedMedicationNameRow(
               medication: medication,
@@ -251,13 +251,13 @@ class _SavedMedicationDateCard extends StatelessWidget {
               onImageRequested: () => onImageRequested(medication),
             ),
             if (medication != group.medications.last)
-              const Divider(height: 1, color: MedBuddyColors.outline),
+              const Divider(height: 1, color: MedBuddyColors.divider),
           ],
           if (!isSelectionMode) ...[
-            const Divider(height: 1, color: MedBuddyColors.outline),
+            const Divider(height: 1, color: MedBuddyColors.divider),
             TextButton(
               style: TextButton.styleFrom(
-                minimumSize: const Size.fromHeight(70),
+                minimumSize: const Size.fromHeight(54),
                 foregroundColor: const Color(0xFFFF1F2D),
                 textStyle: TextStyle(
                   fontSize: 16 * scale,

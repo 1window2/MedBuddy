@@ -1,0 +1,66 @@
+@startuml
+scale max 1920 width
+top to bottom direction
+!pragma layout smetana
+
+title MedBuddy Feature Map
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam packageBorderColor #94A3B8
+skinparam packageFontColor #0F172A
+skinparam rectangle {
+  RoundCorner 12
+  BorderThickness 2
+  FontColor #0F172A
+}
+
+package "Flutter Frontend" as FE #E8F4FF {
+  rectangle "App and\nAuthentication" as FE_AUTH #DCEEFF
+  rectangle "Prescription\nAnalysis" as FE_RX #DCEEFF
+  rectangle "Medication\nManagement" as FE_MED #DCEEFF
+  rectangle "Caregiver and\nNotifications" as FE_CARE #DCEEFF
+  rectangle "Settings and\nAccessibility" as FE_SETTINGS #DCEEFF
+
+  FE_AUTH -[hidden]right-> FE_RX
+  FE_RX -[hidden]right-> FE_MED
+  FE_MED -[hidden]right-> FE_CARE
+  FE_CARE -[hidden]right-> FE_SETTINGS
+}
+
+package "FastAPI Backend" as BE #EAF8F0 {
+  rectangle "API and\nSecurity" as BE_API #DDF5E7
+  rectangle "Prescription\nand OCR" as BE_RX #DDF5E7
+  rectangle "Medication\nServices" as BE_MED #DDF5E7
+  rectangle "Schedule and\nNotification" as BE_SCHEDULE #DDF5E7
+  rectangle "Caregiver\nServices" as BE_CARE #DDF5E7
+  rectangle "External API\nIntegration" as BE_EXTERNAL #FFF1CC
+  database "Persistence" as BE_DB #F8FAFC
+
+  BE_API -[hidden]right-> BE_RX
+  BE_RX -[hidden]right-> BE_MED
+  BE_MED -[hidden]right-> BE_SCHEDULE
+  BE_SCHEDULE -[hidden]right-> BE_CARE
+  BE_CARE -[hidden]right-> BE_EXTERNAL
+  BE_EXTERNAL -[hidden]right-> BE_DB
+}
+
+FE_AUTH --> BE_API
+FE_RX --> BE_RX
+FE_MED --> BE_MED
+FE_MED --> BE_SCHEDULE
+FE_CARE --> BE_CARE
+FE_SETTINGS --> BE_API
+
+BE_RX --> BE_EXTERNAL
+BE_MED --> BE_EXTERNAL
+BE_MED --> BE_DB
+BE_SCHEDULE --> BE_DB
+BE_CARE --> BE_DB
+@enduml

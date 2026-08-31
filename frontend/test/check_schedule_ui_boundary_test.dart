@@ -398,7 +398,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('복약 완료 안내는 접근성 모드에서도 5초 뒤 자동으로 닫힌다', (tester) async {
+  testWidgets('복약 완료 안내는 화면 이동 후에도 접근성 모드에서 자동으로 닫힌다', (tester) async {
     final viewModel = MedBuddyViewModel(
       checkSchedule: _CompletableCheckSchedule(),
       setNotification: _EmptySetNotification(),
@@ -425,6 +425,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
+    expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsOneWidget);
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (context) => const Scaffold(body: Text('환경설정')),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 5));

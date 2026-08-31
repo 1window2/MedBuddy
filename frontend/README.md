@@ -2,7 +2,7 @@
 
 Flutter client for the MedBuddy Android beta source and local demo.
 
-Current app version: **0.1.0+11**.
+Current app version: **0.1.1+12**.
 
 ## Role
 
@@ -28,12 +28,22 @@ while limiting the change scope of each feature.
 Prescription input uses on-device Google ML Kit Korean OCR. Before the
 prescription-text request leaves the device, the privacy filter removes
 sensitive lines and masks inline identifiers. The preview shows recognized and
-masked regions, and users can correct medication names and confirm the
-prescription date and morning, lunch, evening, or bedtime slots.
+masked regions, and users can correct medication names, manually add an
+OCR-missed medication row, and confirm the prescription date and morning,
+lunch, evening, or bedtime slots. Medication-detail responses preserve their
+original OCR-row identity. If only some rows fail, verified rows are locked and
+struck through while unresolved rows remain editable and are retried alone.
 Analysis and medication-lookup failures are converted into actionable messages
 for connection, timeout, response-data, and OCR review cases. Depending on the
 failed step, users can retry the analysis, return to OCR review, retake the
-photo, or choose another image without restarting the entire flow.
+photo, choose another image, or explicitly confirm continuing with verified
+medications without restarting the entire flow.
+
+The guided prescription camera uses one shared guide rectangle for both the
+screen overlay and the captured-image crop. After a successful capture, only
+the area shown inside the guide is retained and passed to on-device OCR; the
+uncropped app-created camera file is removed. Gallery images remain owned by
+the user and are never deleted by this flow.
 
 The frontend also supports saved medication management, patient- and
 caregiver-scoped per-slot schedule views, patient health recommendations,

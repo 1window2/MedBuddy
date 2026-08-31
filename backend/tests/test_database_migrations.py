@@ -45,6 +45,11 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
     assert "deduplication_key" in saved_columns
     assert "prescription_batch_id" in saved_columns
     assert {
+        "interaction",
+        "side_effect",
+        "storage_method",
+    }.issubset(saved_columns)
+    assert {
         "deletion_requested_at",
         "identity_deleted_at",
     }.issubset(user_account_columns)

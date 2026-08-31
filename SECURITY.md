@@ -2,14 +2,15 @@
 
 ## Project Status
 
-MedBuddy is preparing its first Android beta. Published alpha demos remain
-pre-release builds and are not production-ready stable releases.
+MedBuddy has published its first Android beta and is preparing the v0.1.1
+maintenance beta. Published alpha demos remain superseded pre-release builds.
 
 ## Supported Versions
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.1.0-beta` source | Beta candidate | Security fixes are applied to the beta branch before publication. |
+| `v0.1.1-beta` source | Maintenance beta candidate | Applicable fixes are prepared on `beta/v0.1.1` and must pass the release gates before publication. |
+| `v0.1.0-beta` | Published beta | Remains the current downloadable beta until v0.1.1 is published; applicable fixes are accumulated on `beta/v0.1.1`. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.

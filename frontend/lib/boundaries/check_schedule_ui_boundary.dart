@@ -22,7 +22,9 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 // - 1일 복용 횟수를 기준으로 아침/점심/저녁/취침 전 슬롯에 약을 배치한다.
 // - 시간대별 알림 설정 팝업을 열고 로컬 알림 예약을 요청한다.
 class CheckScheduleUI extends StatefulWidget {
-  const CheckScheduleUI({super.key});
+  final bool showBackButton;
+
+  const CheckScheduleUI({super.key, this.showBackButton = true});
 
   @override
   State<CheckScheduleUI> createState() => _CheckScheduleUIState();
@@ -61,8 +63,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     ),
   ];
 
-  int _completionSnackBarGeneration = 0;
-
   @override
   void initState() {
     super.initState();
@@ -92,14 +92,16 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: MedBuddyColors.surface,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: Column(
         children: [
           _ScheduleHeader(
             text: text,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onBackRequested: () => Navigator.pop(context),
+            onBackRequested: widget.showBackButton
+                ? () => Navigator.pop(context)
+                : null,
           ),
           Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
@@ -136,37 +138,47 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return _ScheduleEmptyState(text: text);
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(34, 14, 34, 12),
-      children: [
-        for (final slot in slots) ...[
-          _TimeSlotCard(
-            text: text,
-            slot: slot,
-            reminderSetting:
-                viewModel.medicationReminderSettings[slot.key] ??
-                MedicationAlarm.defaults(slot.key),
-            isCompletedProvider: (schedule) {
-              return viewModel.isMedicationDoseCompleted(slot.key, schedule);
-            },
-            onReminderRequested: () {
-              _handleReminderToggle(viewModel, slot, text);
-            },
-            onGuideRequested: (schedule) {
-              _showMedicationDetail(viewModel, schedule);
-            },
-            onStatusChanged: (schedule, medicationStatus) =>
-                _handleMedicationStatusChange(
-                  viewModel: viewModel,
-                  slot: slot,
-                  schedule: schedule,
-                  medicationStatus: medicationStatus,
-                  text: text,
-                ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: MedBuddySpacing.contentMaxWidth,
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          children: [
+            for (final slot in slots) ...[
+              _TimeSlotCard(
+                text: text,
+                slot: slot,
+                reminderSetting:
+                    viewModel.medicationReminderSettings[slot.key] ??
+                    MedicationAlarm.defaults(slot.key),
+                isCompletedProvider: (schedule) {
+                  return viewModel.isMedicationDoseCompleted(
+                    slot.key,
+                    schedule,
+                  );
+                },
+                onReminderRequested: () {
+                  _handleReminderToggle(viewModel, slot, text);
+                },
+                onGuideRequested: (schedule) {
+                  _showMedicationDetail(viewModel, schedule);
+                },
+                onStatusChanged: (schedule, medicationStatus) =>
+                    _handleMedicationStatusChange(
+                      viewModel: viewModel,
+                      slot: slot,
+                      schedule: schedule,
+                      medicationStatus: medicationStatus,
+                      text: text,
+                    ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -190,7 +202,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
     if (!success) {
-      _completionSnackBarGeneration += 1;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(text.statusUpdateFailed),
@@ -201,7 +212,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     }
 
     final messenger = ScaffoldMessenger.of(context);
-    _completionSnackBarGeneration += 1;
     messenger.hideCurrentSnackBar();
     if (!medicationStatus) {
       messenger.showSnackBar(
@@ -213,17 +223,16 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
 
-    final snackBarGeneration = _completionSnackBarGeneration;
     messenger.showSnackBar(
       SnackBar(
         content: Text(
           text.completionSaved(text.slotTitle(slot.key), schedule.displayName),
         ),
         duration: _completionSnackBarDuration,
+        persist: false,
         action: SnackBarAction(
           label: text.undo,
           onPressed: () async {
-            _completionSnackBarGeneration += 1;
             final undoSucceeded = await viewModel
                 .requestMedicationDoseStatusUpdate(slot.key, schedule, false);
             if (!mounted) {
@@ -243,15 +252,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         ),
       ),
     );
-    Future<void>.delayed(_completionSnackBarDuration, () {
-      if (!mounted || snackBarGeneration != _completionSnackBarGeneration) {
-        return;
-      }
-      _completionSnackBarGeneration += 1;
-      ScaffoldMessenger.of(
-        context,
-      ).hideCurrentSnackBar(reason: SnackBarClosedReason.timeout);
-    });
   }
 
   void _openHealthRecommendation() {
@@ -417,7 +417,7 @@ class _ScheduleHeader extends StatelessWidget {
   final _ScheduleText text;
   final int completedCount;
   final int totalCount;
-  final VoidCallback onBackRequested;
+  final VoidCallback? onBackRequested;
 
   const _ScheduleHeader({
     required this.text,
@@ -432,11 +432,18 @@ class _ScheduleHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: MedBuddyColors.topBar,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF249B62), MedBuddyColors.topBar],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
       padding: EdgeInsets.fromLTRB(
-        18,
+        20,
         MediaQuery.of(context).padding.top + 12,
-        28,
+        20,
         18,
       ),
       child: Column(
@@ -444,16 +451,19 @@ class _ScheduleHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              IconButton(
-                tooltip: text.back,
-                onPressed: onBackRequested,
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 30,
+              if (onBackRequested != null) ...[
+                IconButton(
+                  tooltip: text.back,
+                  onPressed: onBackRequested,
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ] else
+                const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   text.title,
@@ -461,7 +471,7 @@ class _ScheduleHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: 21,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -470,11 +480,12 @@ class _ScheduleHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Container(
-            margin: const EdgeInsets.only(left: 26),
-            padding: const EdgeInsets.fromLTRB(15, 12, 15, 15),
+            margin: const EdgeInsets.only(left: 12, right: 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             decoration: BoxDecoration(
-              color: MedBuddyColors.primaryDark,
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withValues(alpha: 0.12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
               children: [
@@ -484,7 +495,7 @@ class _ScheduleHeader extends StatelessWidget {
                       child: Text(
                         text.progress,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFFD6F2E3),
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
@@ -494,7 +505,7 @@ class _ScheduleHeader extends StatelessWidget {
                       '$completedCount/$totalCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -505,9 +516,9 @@ class _ScheduleHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: progress,
-                    minHeight: 10,
-                    color: Colors.white,
-                    backgroundColor: MedBuddyColors.progressTrack,
+                    minHeight: 7,
+                    color: Color(0xFFE7FFF1),
+                    backgroundColor: Colors.white.withValues(alpha: 0.18),
                   ),
                 ),
               ],
@@ -547,27 +558,29 @@ class _TimeSlotCard extends StatelessWidget {
     final slotTitle = text.slotTitle(slot.key);
 
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      elevation: 5,
-      shadowColor: const Color.fromRGBO(0, 0, 0, 0.12),
+      color: MedBuddyColors.lavenderSurface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.cardBorder),
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.card,
         child: Column(
           children: [
             Container(
               color: slot.color,
-              padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
+              padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
               child: Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(slot.icon, color: Colors.white, size: 26),
+                    child: Icon(slot.icon, color: Colors.white, size: 23),
                   ),
                   const SizedBox(width: 11),
                   Expanded(
@@ -578,7 +591,7 @@ class _TimeSlotCard extends StatelessWidget {
                           slotTitle,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -650,7 +663,7 @@ class _MedicationScheduleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: MedBuddyColors.divider)),
       ),
@@ -670,7 +683,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                   color: isCompleted
                       ? MedBuddyColors.primary
                       : MedBuddyColors.outline,
-                  size: 28,
+                  size: 25,
                 ),
               ),
             ),
@@ -696,7 +709,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                         decoration: isCompleted
                             ? TextDecoration.lineThrough
                             : null,
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -707,7 +720,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF667085),
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

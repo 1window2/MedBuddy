@@ -3,7 +3,7 @@
 ## Document Contract
 
 This is the canonical implementation-grounded class view for the
-`v0.1.0-beta` candidate and its `v0.0.9-alpha` functional baseline.
+`v0.1.1-beta` maintenance candidate and its published `v0.1.0-beta` baseline.
 
 - `docs/temp/class diagram v5.png` remains the authoritative first-semester
   conceptual baseline.
@@ -52,6 +52,7 @@ package "Flutter / Boundary" as FE_Boundary {
   class AuthenticationUI <<boundary>>
   class HomeScreen <<boundary>>
   class InputPrescriptionUI <<boundary>>
+  class GuidedPrescriptionCameraUI <<boundary>>
   class PrescriptionAnalysisProgressUI <<boundary>>
   class PrescriptionAnalysisPreviewUI <<boundary>>
   class PrescriptionAnalysisSuccessUI <<boundary>>
@@ -122,6 +123,8 @@ package "Flutter / External and Shared Services" as FE_Service {
   class NotificationService <<external boundary>>
   class TTSService <<external boundary>>
   class PrescriptionLocalOcrService <<privacy boundary>>
+  class PrescriptionCameraLayoutService <<layout service>>
+  class PrescriptionImageCropService <<image service>>
   class PushNotificationService <<external boundary>>
   class CaregiverNotificationMonitorService <<application service>>
   class CaregiverNotificationBackgroundScheduler <<runtime scheduler>>
@@ -232,6 +235,7 @@ MedBuddyApp o-- MedBuddyViewModel : authenticated session
 MedBuddyApp --> HomeScreen
 HomeScreen --> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
+HomeScreen ..> GuidedPrescriptionCameraUI
 HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> CheckScheduleUI
 HomeScreen ..> LinkPatientCaregiverUI
@@ -264,6 +268,8 @@ PillIdentificationUI --> FE_IdentifyPill
 ' Frontend entities and local external services
 FE_InputPrescription --> FE_AnalyzedMedication
 FE_InputPrescription --> PrescriptionLocalOcrService
+GuidedPrescriptionCameraUI --> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI --> PrescriptionImageCropService
 FE_CheckMedicationDetail --> FE_MedicationDetail
 FE_CheckSavedMedication --> FE_MedicationDetail
 FE_CheckSchedule --> FE_MedicationSchedule
@@ -482,6 +488,7 @@ nodes:
 | `UserSettingUI` | `ManageUserSettingUI` | Matches the implemented UC-14 control/UI pair. |
 | `PrescriptionAnalysisControl` | frontend/backend `InputPrescription` | v5 responsibility preserved across the HTTP boundary. |
 | Prescription comparison extension | frontend/backend `CheckPrescriptionChange`, `PrescriptionChangeRadarUI` | Compares a confirmed prescription with related saved history without expanding `InputPrescription` beyond analysis. |
+| Prescription partial-recovery review | `PrescriptionAnalysisPreviewUI`, `MedBuddyViewModel`, `MedicationSchedule` review state | Keeps detail responses aligned with original OCR rows, lets users add omitted rows, and isolates unresolved-row editing and retry from verified results. |
 | `MedicationSaveControl` | `CheckMedicationDetail` plus `CheckSavedMedication` | Detail enrichment and persistence remain separate cohesive controls. |
 | `SavedMedicationControl` | `CheckSavedMedication` | Direct implementation mapping. |
 | `TodayMedicationControl` | `CheckTodayMedicationInfo`, `CheckSchedule`, `SetNotification`, `CheckHealthRecommendation`, `RequestVoiceGuide` | Split by the original UC-3/8/10/11/12 responsibilities. |

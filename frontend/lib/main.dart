@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
@@ -33,6 +34,9 @@ import 'views/home_screen.dart';
 // - 없음
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]);
   try {
     await CaregiverNotificationBackgroundScheduler.initialize();
   } catch (error, stackTrace) {

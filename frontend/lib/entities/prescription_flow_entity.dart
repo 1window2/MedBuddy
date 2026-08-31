@@ -6,6 +6,7 @@ enum PrescriptionFlowState {
   recognizingPrescription,
   previewReady,
   analyzingMedication,
+  medicationReviewRequired,
   analysisSucceeded,
   analysisFailed,
   resultReady,
