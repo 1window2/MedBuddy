@@ -326,6 +326,11 @@ package "Flutter Frontend" {
             + {static} normalizedSourceRect(viewportSize, displayedImageSize, guideRect): Rect
         }
 
+        class "PrescriptionCameraOrientationService" as PrescriptionCameraOrientationService <<Service: 촬영 중 화면 회전>> {
+            + enableSensorOrientation(): Future<void>
+            + restorePortrait(): Future<void>
+        }
+
         class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 촬영 이미지 자르기>> {
             + cropToGuide(sourceImage, normalizedGuideRect): Future<XFile>
         }
@@ -1061,6 +1066,7 @@ ManageUserHubUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
 GuidedPrescriptionCameraUI ..> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI *-- PrescriptionCameraOrientationService
 GuidedPrescriptionCameraUI *-- PrescriptionImageCropService
 
 PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule

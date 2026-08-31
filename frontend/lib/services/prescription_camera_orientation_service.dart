@@ -1,10 +1,10 @@
 // 파일명: prescription_camera_orientation_service.dart
-// 역할: 처방전 촬영 중에도 네이티브 화면을 세로 방향으로 유지한다.
+// 역할: 처방전 촬영 중에만 네이티브 센서 회전을 허용하고 종료 후 세로 방향을 복원한다.
 
 import 'package:flutter/services.dart';
 
 // 클래스명: PrescriptionCameraOrientationService
-// 역할: 처방전 촬영 화면의 세로 고정과 세로 정책 복원을 Android에 요청한다.
+// 역할: 처방전 촬영 화면의 센서 회전 허용과 세로 정책 복원을 Android에 요청한다.
 class PrescriptionCameraOrientationService {
   static const MethodChannel _defaultChannel = MethodChannel(
     'com.medbuddy.app/prescription-camera',
@@ -16,16 +16,16 @@ class PrescriptionCameraOrientationService {
     MethodChannel channel = _defaultChannel,
   }) : _channel = channel;
 
-  // 함수명: lockPortrait
+  // 함수명: enableSensorOrientation
   // 함수역할:
-  // - 촬영 화면에서도 앱의 세로 방향 정책을 유지하도록 요청한다.
-  Future<void> lockPortrait() async {
-    await _invokeSafely('lockPortrait');
+  // - 처방전 촬영 화면에서만 세로와 가로 센서 회전을 허용하도록 요청한다.
+  Future<void> enableSensorOrientation() async {
+    await _invokeSafely('enableSensorOrientation');
   }
 
   // 함수명: restorePortrait
   // 함수역할:
-  // - 촬영 화면을 열기 전에 사용하던 세로 방향 정책을 복원한다.
+  // - 처방전 촬영 화면을 열기 전에 사용하던 세로 방향 정책을 복원한다.
   Future<void> restorePortrait() async {
     await _invokeSafely('restorePortrait');
   }

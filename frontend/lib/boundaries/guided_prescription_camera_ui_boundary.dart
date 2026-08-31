@@ -68,7 +68,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _orientationActivation = _orientationService.lockPortrait();
+    _orientationActivation = _orientationService.enableSensorOrientation();
     unawaited(_initializeCamera());
   }
 

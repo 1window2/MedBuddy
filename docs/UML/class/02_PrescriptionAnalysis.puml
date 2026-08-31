@@ -30,6 +30,7 @@ skinparam classBorderColor<<External>> #D97706
 
 package "Flutter Frontend" #E8F4FF {
   class GuidedPrescriptionCameraUI <<UI>>
+  class PrescriptionCameraOrientationService <<Service>>
   class PrescriptionImageCropService <<Service>>
   class PrescriptionLocalOcrService <<Service>>
   class PrescriptionPrivacyFilter <<Service>>
@@ -47,6 +48,7 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Gemini OCR" as Gemini
 
 GuidedPrescriptionCameraUI -right-> PrescriptionImageCropService : crops to guide
+GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera-only rotation
 PrescriptionImageCropService -right-> PrescriptionLocalOcrService : captured image
 PrescriptionLocalOcrService -down-> PrescriptionPrivacyFilter : masks identifiers
 PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR regions
@@ -64,6 +66,7 @@ end note
 
 note top of GuidedPrescriptionCameraUI
   Camera quality and guide coordinates
-  are checked before capture.
+  are checked before capture. Sensor rotation
+  is allowed only while this UI is active.
 end note
 @enduml
