@@ -124,6 +124,7 @@ package "Flutter / External and Shared Services" as FE_Service {
   class TTSService <<external boundary>>
   class PrescriptionLocalOcrService <<privacy boundary>>
   class PrescriptionCameraLayoutService <<layout service>>
+  class PrescriptionCameraOrientationService <<platform orientation service>>
   class PrescriptionImageCropService <<image service>>
   class PushNotificationService <<external boundary>>
   class CaregiverNotificationMonitorService <<application service>>
@@ -269,6 +270,7 @@ PillIdentificationUI --> FE_IdentifyPill
 FE_InputPrescription --> FE_AnalyzedMedication
 FE_InputPrescription --> PrescriptionLocalOcrService
 GuidedPrescriptionCameraUI --> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI --> PrescriptionCameraOrientationService
 GuidedPrescriptionCameraUI --> PrescriptionImageCropService
 FE_CheckMedicationDetail --> FE_MedicationDetail
 FE_CheckSavedMedication --> FE_MedicationDetail

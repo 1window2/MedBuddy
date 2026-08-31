@@ -1,7 +1,6 @@
 # File Name: dependencies.py
 # Role: Provides FastAPI dependency factories for backend use-case collaborators.
 
-from _thread import LockType
 import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
@@ -91,8 +90,9 @@ _app_check_token_verifier: AppCheckTokenVerifier | None = None
 _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
 _sqlite_account_lock_registry_guard = Lock()
-_sqlite_account_locks: dict[str, LockType] = {}
+_sqlite_account_locks: dict[str, asyncio.Lock] = {}
 _sqlite_account_lock_references: dict[str, int] = {}
+_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -295,9 +295,9 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
 # - user_hash: Server-derived account scope used as the serialization key.
 # Returns:
 # - The retained per-account lock.
-def _retain_sqlite_account_lock(user_hash: str) -> LockType:
+def _retain_sqlite_account_lock(user_hash: str) -> asyncio.Lock:
     with _sqlite_account_lock_registry_guard:
-        account_lock = _sqlite_account_locks.setdefault(user_hash, Lock())
+        account_lock = _sqlite_account_locks.setdefault(user_hash, asyncio.Lock())
         _sqlite_account_lock_references[user_hash] = (
             _sqlite_account_lock_references.get(user_hash, 0) + 1
         )
@@ -314,7 +314,7 @@ def _retain_sqlite_account_lock(user_hash: str) -> LockType:
 # - None.
 def _drop_sqlite_account_lock_reference(
     user_hash: str,
-    account_lock: LockType,
+    account_lock: asyncio.Lock,
 ) -> None:
     with _sqlite_account_lock_registry_guard:
         references = _sqlite_account_lock_references.get(user_hash, 0) - 1
@@ -333,7 +333,7 @@ def _drop_sqlite_account_lock_reference(
 # - account_lock: Lock held for the completed request.
 # Returns:
 # - None.
-def _release_sqlite_account_lock(user_hash: str, account_lock: LockType) -> None:
+def _release_sqlite_account_lock(user_hash: str, account_lock: asyncio.Lock) -> None:
     account_lock.release()
     _drop_sqlite_account_lock_reference(user_hash, account_lock)
 
@@ -369,15 +369,15 @@ async def get_registered_principal(
                 detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
                 headers={"Retry-After": str(max(1, retry_after))},
             )
-    sqlite_account_lock: LockType | None = None
+    sqlite_account_lock: asyncio.Lock | None = None
     if db.get_bind().dialect.name == "sqlite":
         sqlite_account_lock = _retain_sqlite_account_lock(principal.user_hash)
-        acquired = await run_in_threadpool(
-            sqlite_account_lock.acquire,
-            True,
-            5.0,
-        )
-        if not acquired:
+        try:
+            await asyncio.wait_for(
+                sqlite_account_lock.acquire(),
+                timeout=_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS,
+            )
+        except TimeoutError:
             _drop_sqlite_account_lock_reference(
                 principal.user_hash,
                 sqlite_account_lock,

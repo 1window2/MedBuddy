@@ -6,7 +6,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 // 클래스명: MainActivity
-// 역할: 앱과 처방전 촬영 화면을 세로 방향으로 고정한다.
+// 역할: 앱은 세로 방향으로 유지하고 처방전 촬영 중에만 센서 회전을 허용한다.
 class MainActivity : FlutterActivity() {
     private val prescriptionCameraChannel = "com.medbuddy.app/prescription-camera"
     private var orientationBeforePrescriptionCamera: Int? = null
@@ -16,8 +16,8 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, prescriptionCameraChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "lockPortrait" -> {
-                        lockPortraitForPrescriptionCamera()
+                    "enableSensorOrientation" -> {
+                        enableSensorOrientationForPrescriptionCamera()
                         result.success(null)
                     }
                     "restorePortrait" -> {
@@ -29,13 +29,13 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    // 함수명: lockPortraitForPrescriptionCamera
-    // 역할: 처방전 촬영 중에도 앱의 세로 방향 정책을 유지한다.
-    private fun lockPortraitForPrescriptionCamera() {
+    // 함수명: enableSensorOrientationForPrescriptionCamera
+    // 역할: 처방전 촬영 중에만 세로와 가로 센서 회전을 모두 허용한다.
+    private fun enableSensorOrientationForPrescriptionCamera() {
         if (orientationBeforePrescriptionCamera == null) {
             orientationBeforePrescriptionCamera = requestedOrientation
         }
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
     }
 
     // 함수명: restorePortraitAfterPrescriptionCamera
