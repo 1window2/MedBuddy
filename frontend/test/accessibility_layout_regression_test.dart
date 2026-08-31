@@ -243,6 +243,19 @@ void main() {
             dashboardScrollable.first,
           );
           expect(scrollableState.position.maxScrollExtent, 0);
+          final dashboardRect = tester.getRect(
+            find.byKey(const ValueKey('homeEncouragementPanel')),
+          );
+          final firstActionRect = tester.getRect(
+            find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
+          );
+          expect(
+            firstActionRect.top - dashboardRect.bottom,
+            moreOrLessEquals(
+              viewportSize.height >= 900 ? 32 : 20,
+              epsilon: 0.1,
+            ),
+          );
           expect(
             find.byKey(const ValueKey('homeMedicationReminderCard')),
             findsOneWidget,

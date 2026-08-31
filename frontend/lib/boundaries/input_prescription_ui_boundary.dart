@@ -91,7 +91,11 @@ class InputPrescriptionUI extends StatelessWidget {
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
                       viewportConstraints.maxWidth >= 350 && textScale <= 1.1;
-                  final sectionSpacing = useCompactDashboard ? 10.0 : 14.0;
+                  final dashboardActionSpacing = useCompactDashboard
+                      ? viewportConstraints.maxHeight >= 600
+                            ? 32.0
+                            : 20.0
+                      : 24.0;
 
                   return SingleChildScrollView(
                     key: const ValueKey('homeDashboardScrollView'),
@@ -119,7 +123,7 @@ class InputPrescriptionUI extends StatelessWidget {
                               compact: useCompactDashboard,
                               onTap: onTodayScheduleRequested,
                             ),
-                            SizedBox(height: sectionSpacing),
+                            SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final useGrid =
@@ -209,7 +213,9 @@ class InputPrescriptionUI extends StatelessWidget {
                                   children: [
                                     GridView.count(
                                       crossAxisCount: 2,
+                                      primary: false,
                                       shrinkWrap: true,
+                                      padding: EdgeInsets.zero,
                                       physics:
                                           const NeverScrollableScrollPhysics(),
                                       crossAxisSpacing: useCompactDashboard
@@ -849,6 +855,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
         MediaQuery.textScalerOf(context).scale(16) / 16 > 1.1;
 
     return Material(
+      key: const ValueKey('homeEncouragementPanel'),
       color: MedBuddyColors.surface,
       borderRadius: MedBuddyRadii.largeCard,
       child: InkWell(
