@@ -252,7 +252,7 @@ void main() {
           expect(
             firstActionRect.top - dashboardRect.bottom,
             moreOrLessEquals(
-              viewportSize.height >= 900 ? 32 : 20,
+              viewportSize.height >= 900 ? 20 : 12,
               epsilon: 0.1,
             ),
           );

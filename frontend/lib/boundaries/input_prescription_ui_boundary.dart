@@ -93,9 +93,9 @@ class InputPrescriptionUI extends StatelessWidget {
                       viewportConstraints.maxWidth >= 350 && textScale <= 1.1;
                   final dashboardActionSpacing = useCompactDashboard
                       ? viewportConstraints.maxHeight >= 600
-                            ? 32.0
-                            : 20.0
-                      : 24.0;
+                            ? 20.0
+                            : 12.0
+                      : 20.0;
 
                   return SingleChildScrollView(
                     key: const ValueKey('homeDashboardScrollView'),
@@ -1146,12 +1146,12 @@ class _HomeDashboardSummary {
     pendingSlots.sort(
       (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
     );
-    final overdueSlots = pendingSlots
-        .where((slot) => slot.scheduledAt.isBefore(now))
+    final upcomingSlots = pendingSlots
+        .where((slot) => !slot.scheduledAt.isBefore(now))
         .toList(growable: false);
-    final nextSlot = overdueSlots.isNotEmpty
-        ? overdueSlots.first
-        : pendingSlots.first;
+    final nextSlot = upcomingSlots.isNotEmpty
+        ? upcomingSlots.first
+        : pendingSlots.last;
     final isPastDue = nextSlot.scheduledAt.isBefore(now);
     final timeLabel =
         '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
@@ -1186,8 +1186,8 @@ class _HomeDashboardSummary {
       hasNextMedication: true,
       nextMedicationLabel: nextMedicationLabel,
       nextMedicationGuide: isEnglish
-          ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Please take it as soon as you can.' : 'Take it on time.'}'
-          : '${_slotLabel(nextSlot.slotKey, isEnglish: false)} $timeLabel · $medicationSummary\n${isPastDue ? '늦지 않게 복용하세요.' : '시간에 맞춰 챙겨드세요.'}',
+          ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Check your prescription guidance before taking a missed dose.' : 'Take it on time.'}'
+          : '${_slotLabel(nextSlot.slotKey, isEnglish: false)} $timeLabel · $medicationSummary\n${isPastDue ? '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.' : '시간에 맞춰 챙겨드세요.'}',
     );
   }
 
