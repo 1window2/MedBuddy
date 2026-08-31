@@ -67,7 +67,7 @@ void main() {
     expect(alerts.single.patientHash, 'patient_test');
   });
 
-  test('저장한 환자 별칭은 상세 보호자 알림에 표시한다', () async {
+  test('저장한 환자 별칭은 잠금 화면 보호자 알림에 표시하지 않는다', () async {
     SharedPreferences.setMockInitialValues({
       'caregiver_patient_label.caregiver_test.patient_test': '어머니',
     });
@@ -85,11 +85,15 @@ void main() {
     await monitor.checkNow();
 
     expect(alerts, hasLength(1));
-    expect(alerts.single.body, '어머니의 아침 복약이 모두 완료되었습니다.');
+    expect(alerts.single.body, '연동된 환자의 아침 복약이 모두 완료되었습니다.');
+    expect(alerts.single.body, isNot(contains('어머니')));
     expect(alerts.single.body, isNot(contains('patient_test')));
   });
 
   test('마감 시각 이후 미복용 일정은 같은 날 한 번만 알린다', () async {
+    SharedPreferences.setMockInitialValues({
+      'caregiver_patient_label.caregiver_test.patient_test': '어머니',
+    });
     final alerts = <_AlertRecord>[];
     final monitor = _buildMonitor(
       mode: CaregiverNotificationMode.missedDeadline,
@@ -107,6 +111,7 @@ void main() {
     expect(alerts, hasLength(1));
     expect(alerts.single.title, '미복용 일정 확인');
     expect(alerts.single.body, startsWith('연동된 환자의 아침 복약 중'));
+    expect(alerts.single.body, isNot(contains('어머니')));
     expect(alerts.single.body, isNot(contains('TEST')));
     expect(alerts.single.body, contains('20:00'));
     expect(alerts.single.body, contains('1건'));

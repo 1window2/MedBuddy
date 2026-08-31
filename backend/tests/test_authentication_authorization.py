@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -273,8 +274,22 @@ async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
         assert await anext(dependency) == principal
         account_lock = _sqlite_account_locks[principal.user_hash]
         assert account_lock.locked()
-        assert account_lock.acquire(blocking=False) is False
-        await dependency.aclose()
+
+        contender = get_registered_principal(
+            request=_request(app, "GET", "/list"),
+            principal=principal,
+            db=db_session,
+        )
+        with patch(
+            "api.dependencies.run_in_threadpool",
+            side_effect=AssertionError("SQLite lock waits must remain asynchronous"),
+        ):
+            contender_task = asyncio.create_task(anext(contender))
+            await asyncio.sleep(0)
+            assert contender_task.done() is False
+            await dependency.aclose()
+            assert await contender_task == principal
+            await contender.aclose()
 
     assert account_lock.locked() is False
     assert principal.user_hash not in _sqlite_account_locks

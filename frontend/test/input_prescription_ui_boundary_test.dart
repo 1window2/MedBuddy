@@ -480,10 +480,12 @@ void main() {
 
     expect(find.text('미복용한 약을 확인해주세요'), findsOneWidget);
     expect(find.text('미복용 확인'), findsOneWidget);
+    expect(find.textContaining('임의로 추가 복용하지 말고'), findsOneWidget);
+    expect(find.textContaining('늦지 않게 복용하세요.'), findsNothing);
     expect(find.text('오늘도 복약을 꾸준히 이어가고 있어요'), findsNothing);
   });
 
-  testWidgets('dashboard prioritizes an overdue dose over a future dose', (
+  testWidgets('dashboard prioritizes a future dose over an overdue dose', (
     tester,
   ) async {
     _setViewport(tester, const Size(390, 1000));
@@ -521,9 +523,10 @@ void main() {
       ),
     );
 
-    expect(find.text('미복용 확인'), findsOneWidget);
-    expect(find.textContaining('아침 08:00 · 아침약'), findsOneWidget);
-    expect(find.textContaining('점심 12:00 · 점심약'), findsNothing);
+    expect(find.text('다음 복약 알림'), findsOneWidget);
+    expect(find.textContaining('점심 12:00 · 점심약'), findsOneWidget);
+    expect(find.textContaining('아침 08:00 · 아침약'), findsNothing);
+    expect(find.textContaining('임의로 추가 복용하지 말고'), findsNothing);
   });
 }
 

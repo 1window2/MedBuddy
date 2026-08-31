@@ -78,6 +78,7 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `8f183c08b844819185f2fadbf4f7da98` | Overdue-first dashboard can encourage dose stacking | Fixed in this branch | The dashboard prefers the next future dose whenever one remains. When every remaining slot is overdue, it shows the most recent missed slot with neutral guidance to check the prescription instead of directing immediate consumption. |
 | `ef9f49949edc8191ae02743da8011a58` | Expired medication records are no longer purged on reads | Already resolved in beta | Retention/cleanup is explicit and no longer depends on a read-side destructive effect. |
 | `c40e2f6828bc81918c1de15552fc5629` | Process-wide OCR fallback cache leaks recent medication lookups | Fixed in this branch | The bounded fallback cache is request-controller-instance state, not process-global state. |
 | `70b229b197ac81918e43d0983ce8c8b4` | Upload endpoint no longer rejects non-image files | Fixed in this branch | Prescription upload rejects missing/non-image media types with HTTP 415 before reading the body. |
@@ -87,6 +88,9 @@ does not mean the original report was invalid.
 
 | ID | Finding | Disposition | Verified control |
 | --- | --- | --- | --- |
+| `9323ab8eaadc819186d95e88bed825b2` | SQLite account lock enables shared thread-pool exhaustion | Fixed in this branch | Development SQLite account serialization now waits on an async lock with the existing five-second bound, so contenders do not occupy Starlette/AnyIO worker threads. PostgreSQL advisory locking is unchanged. |
+| `a176ccb5a38881918b91a2518615f022` | Crop failures leave full prescription photos on disk | Fixed in this branch | Guided-camera crop processing deletes the app-owned source in a failure-safe finalizer and removes a partial derived file when processing or source cleanup fails. |
+| `63e2e184e1988191bbf5127a1a2778ab` | Patient aliases exposed in lock-screen caregiver alerts | Fixed in this branch | Completed-dose and missed-deadline system notifications use generic patient text even when a local alias exists; patient identity remains in the private authenticated tap payload. |
 | `5df0a574c8148191b552d13f27a13fc0` | Unanchored APK cert parser allows digest spoofing | Fixed in this branch | The parser accepts only the anchored `Signer #N certificate SHA-256 digest` line and requires exactly 64 hexadecimal characters after normalization. |
 | `707b27f248348191a49eebcfcc1927ee` | AAB verifier no longer fails on jarsigner warnings | Fixed in this branch | `jarsigner -verify -strict` makes unsigned entries and other security warnings release-blocking before the certificate comparison. |
 | `a17d9ff1f0248191980988706f2afb33` | Patient labels exposed in caregiver notifications | Fixed in this branch | Background and foreground caregiver notifications use generic patient text; the patient hash remains only in the private navigation payload. |
