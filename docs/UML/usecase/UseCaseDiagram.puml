@@ -44,7 +44,7 @@ rectangle "메드버디" {
         usecase "UC-03P\n환자 오늘 복약 일정 확인" as UC3P
         usecase "UC-04P\n환자 저장 약 관리" as UC4P
         usecase "UC-05\n저장 약 삭제" as UC5
-        usecase "UC-08\n시간대별 복약 완료 및 취소" as UC8
+        usecase "UC-08\n개별/시간대 전체 복약\n완료 및 취소" as UC8
         usecase "UC-10\n건강 추천 확인" as UC10
         usecase "UC-12\n환자 복약 알림 설정" as UC12
     }

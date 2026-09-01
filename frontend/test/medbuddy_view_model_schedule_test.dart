@@ -181,6 +181,92 @@ void main() {
   });
 
   test(
+    'whole-slot update replaces every returned schedule in one request',
+    () async {
+      var patchCount = 0;
+      final client = MockClient((http.Request request) async {
+        if (request.method == 'GET') {
+          return _jsonResponse({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'first-tablet',
+                'daily_frequency': '3 times',
+                'slot_statuses': {
+                  'morning': false,
+                  'lunch': false,
+                  'evening': false,
+                },
+                'patient_hash': 'patient-a',
+              },
+              {
+                'medication_id': '8',
+                'drug_name': 'second-tablet',
+                'schedule_slot_keys': ['morning'],
+                'slot_statuses': {'morning': false},
+                'patient_hash': 'patient-a',
+              },
+            ],
+          });
+        }
+
+        patchCount += 1;
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/schedule/slot/morning/status');
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'medication_id': '7',
+              'drug_name': 'first-tablet',
+              'daily_frequency': '3 times',
+              'slot_statuses': {
+                'morning': true,
+                'lunch': false,
+                'evening': false,
+              },
+              'patient_hash': 'patient-a',
+            },
+            {
+              'medication_id': '8',
+              'drug_name': 'second-tablet',
+              'schedule_slot_keys': ['morning'],
+              'slot_statuses': {'morning': true},
+              'patient_hash': 'patient-a',
+            },
+          ],
+        });
+      });
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.fetchTodayMedicationSchedule();
+
+      final success = await viewModel.requestMedicationSlotStatusUpdate(
+        'morning',
+        true,
+      );
+
+      expect(success, isTrue);
+      expect(patchCount, 1);
+      expect(
+        viewModel.todayMedicationScheduleList.every(
+          (schedule) => schedule.isSlotCompleted('morning'),
+        ),
+        isTrue,
+      );
+      expect(viewModel.todayMedicationProgress.completedCount, 2);
+      expect(viewModel.todayMedicationProgress.totalCount, 4);
+    },
+  );
+
+  test(
     'older schedule GET cannot overwrite a newer completion PATCH',
     () async {
       final staleGetStarted = Completer<void>();

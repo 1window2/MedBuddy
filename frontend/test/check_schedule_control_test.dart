@@ -188,6 +188,84 @@ void main() {
     expect(updatedSchedule.isSlotCompleted('lunch'), isFalse);
   });
 
+  test(
+    'updateMedicationSlotStatus sends one scoped whole-slot patch',
+    () async {
+      late Map<String, dynamic> requestBody;
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/schedule/slot/morning/status');
+        expect(request.url.queryParameters['patient_hash'], 'patient-a');
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'medication_id': '7',
+                'drug_name': 'first-tablet',
+                'daily_frequency': '3 times',
+                'slot_statuses': {
+                  'morning': true,
+                  'lunch': false,
+                  'evening': false,
+                },
+                'patient_hash': 'patient-a',
+              },
+              {
+                'medication_id': '8',
+                'drug_name': 'second-tablet',
+                'schedule_slot_keys': ['morning'],
+                'slot_statuses': {'morning': true},
+                'patient_hash': 'patient-a',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      );
+
+      final updatedSchedules = await control.updateMedicationSlotStatus(
+        'Morning',
+        true,
+      );
+
+      expect(requestBody, {'medication_status': true});
+      expect(updatedSchedules.map((schedule) => schedule.medicationID), [
+        '7',
+        '8',
+      ]);
+      expect(
+        updatedSchedules.every(
+          (schedule) => schedule.isSlotCompleted('morning'),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'updateMedicationSlotStatus rejects unsupported slots locally',
+    () async {
+      final control = CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+
+      await expectLater(
+        control.updateMedicationSlotStatus('after-midnight', true),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
+
   test('MedicationSchedule accepts diagram typo status alias', () {
     final schedule = MedicationSchedule.fromScheduleJson({
       'medicationID': '9',

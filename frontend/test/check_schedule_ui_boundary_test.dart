@@ -71,6 +71,7 @@ class _ActiveCheckSchedule extends CheckSchedule {
 // 역할: 복약 완료 안내와 실행 취소 SnackBar의 표시 시간을 검증할 일정을 제공한다.
 class _CompletableCheckSchedule extends CheckSchedule {
   bool _completed = false;
+  int wholeSlotUpdateCount = 0;
 
   MedicationSchedule get _schedule => MedicationSchedule(
     medicationID: 'completion-tablet',
@@ -96,6 +97,17 @@ class _CompletableCheckSchedule extends CheckSchedule {
   }) async {
     _completed = medicationStatus;
     return _schedule;
+  }
+
+  @override
+  Future<List<MedicationSchedule>> updateMedicationSlotStatus(
+    String slotKey,
+    bool medicationStatus,
+  ) async {
+    expect(slotKey, 'morning');
+    wholeSlotUpdateCount += 1;
+    _completed = medicationStatus;
+    return [_schedule];
   }
 }
 
@@ -494,6 +506,66 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('시간대 전체 버튼은 알림 오른쪽에서 전부 체크와 해제를 반복한다', (tester) async {
+    final checkSchedule = _CompletableCheckSchedule();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: checkSchedule,
+      setNotification: _EmptySetNotification(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: CheckScheduleUI()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final reminderButton = find.byTooltip('아침 알림 설정');
+    final wholeSlotButton = find.byKey(
+      const ValueKey('schedule-entire-slot-toggle-morning'),
+    );
+    expect(
+      find.byKey(const ValueKey('schedule-entire-slot-toggle-lunch')),
+      findsNothing,
+    );
+    expect(find.byTooltip('아침 복약 전부 체크'), findsOneWidget);
+    expect(
+      tester.getCenter(wholeSlotButton).dx,
+      greaterThan(tester.getCenter(reminderButton).dx),
+    );
+
+    await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+
+    expect(checkSchedule.wholeSlotUpdateCount, 1);
+    expect(find.text('아침 복약을 모두 완료했습니다.'), findsOneWidget);
+    expect(find.byTooltip('아침 복약 전부 해제'), findsOneWidget);
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.single,
+      ),
+      isTrue,
+    );
+
+    await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+
+    expect(checkSchedule.wholeSlotUpdateCount, 2);
+    expect(find.text('아침 복약 완료를 모두 해제했습니다.'), findsOneWidget);
+    expect(find.byTooltip('아침 복약 전부 체크'), findsOneWidget);
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.single,
+      ),
+      isFalse,
+    );
     expect(tester.takeException(), isNull);
   });
 

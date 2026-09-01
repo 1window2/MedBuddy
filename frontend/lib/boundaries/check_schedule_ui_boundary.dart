@@ -96,6 +96,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   final Map<String, GlobalKey> _slotKeys = {
     for (final definition in _slotDefinitions) definition.key: GlobalKey(),
   };
+  final Set<String> _updatingEntireSlotKeys = <String>{};
   bool _didRevealInitialSlot = false;
   late Set<String> _selectedMedicationIds;
   @override
@@ -324,6 +325,24 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                         medicationStatus: medicationStatus,
                         text: text,
                       ),
+                  isEntireSlotCompleted:
+                      slot.medications.isNotEmpty &&
+                      slot.medications.every(
+                        (schedule) => viewModel.isMedicationDoseCompleted(
+                          slot.key,
+                          schedule,
+                        ),
+                      ),
+                  isEntireSlotUpdating: _updatingEntireSlotKeys.contains(
+                    slot.key,
+                  ),
+                  onEntireSlotStatusChanged: (medicationStatus) =>
+                      _handleEntireSlotStatusChange(
+                        viewModel: viewModel,
+                        slot: slot,
+                        medicationStatus: medicationStatus,
+                        text: text,
+                      ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -411,6 +430,56 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  // Function Name: _handleEntireSlotStatusChange
+  // Description:
+  // - Applies one completion state to every medication in the selected slot.
+  // - Prevents repeated taps while the atomic backend request is in flight and
+  //   reports one concise result for the whole action.
+  // Parameters:
+  // - viewModel: Screen state and schedule update coordinator.
+  // - slot: Time slot whose medications should be updated together.
+  // - medicationStatus: Completion state applied to the whole slot.
+  // - text: Localized schedule strings.
+  // Returns:
+  // - None.
+  Future<void> _handleEntireSlotStatusChange({
+    required MedBuddyViewModel viewModel,
+    required _ScheduleSlot slot,
+    required bool medicationStatus,
+    required _ScheduleText text,
+  }) async {
+    if (_updatingEntireSlotKeys.contains(slot.key) ||
+        slot.medications.isEmpty) {
+      return;
+    }
+    setState(() => _updatingEntireSlotKeys.add(slot.key));
+    final success = await viewModel.requestMedicationSlotStatusUpdate(
+      slot.key,
+      medicationStatus,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _updatingEntireSlotKeys.remove(slot.key));
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? medicationStatus
+                    ? text.entireSlotCompletionSaved(text.slotTitle(slot.key))
+                    : text.entireSlotCompletionCancelled(
+                        text.slotTitle(slot.key),
+                      )
+              : text.statusUpdateFailed,
+        ),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -867,6 +936,9 @@ class _TimeSlotCard extends StatelessWidget {
   final bool isSelectionMode;
   final bool Function(MedicationSchedule schedule)? isSelectedProvider;
   final void Function(MedicationSchedule schedule)? onSelectionRequested;
+  final bool isEntireSlotCompleted;
+  final bool isEntireSlotUpdating;
+  final Future<void> Function(bool medicationStatus)? onEntireSlotStatusChanged;
 
   const _TimeSlotCard({
     required this.text,
@@ -880,6 +952,9 @@ class _TimeSlotCard extends StatelessWidget {
     this.isSelectionMode = false,
     this.isSelectedProvider,
     this.onSelectionRequested,
+    this.isEntireSlotCompleted = false,
+    this.isEntireSlotUpdating = false,
+    this.onEntireSlotStatusChanged,
   });
 
   @override
@@ -942,13 +1017,29 @@ class _TimeSlotCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (!isSelectionMode)
+                  if (!isSelectionMode) ...[
                     _ReminderIconButton(
                       text: text,
                       slotTitle: slotTitle,
                       isEnabled: reminderSetting.isEnabled,
                       onPressed: onReminderRequested,
                     ),
+                    if (slot.medications.isNotEmpty) ...[
+                      const SizedBox(width: 2),
+                      _SlotCompletionToggleButton(
+                        text: text,
+                        slotKey: slot.key,
+                        slotTitle: slotTitle,
+                        isCompleted: isEntireSlotCompleted,
+                        isUpdating: isEntireSlotUpdating,
+                        onPressed: onEntireSlotStatusChanged == null
+                            ? null
+                            : () => onEntireSlotStatusChanged!(
+                                !isEntireSlotCompleted,
+                              ),
+                      ),
+                    ],
+                  ],
                 ],
               ),
             ),
@@ -972,6 +1063,7 @@ class _TimeSlotCard extends StatelessWidget {
                   isCompleted: isCompletedProvider(schedule),
                   onGuideRequested: () => onGuideRequested(schedule),
                   onStatusChanged: (value) => onStatusChanged(schedule, value),
+                  isStatusUpdating: isEntireSlotUpdating,
                   isSelectionMode: isSelectionMode,
                   isSelected: isSelectedProvider?.call(schedule) ?? false,
                   onSelectionRequested: onSelectionRequested == null
@@ -991,6 +1083,7 @@ class _MedicationScheduleRow extends StatelessWidget {
   final bool isCompleted;
   final VoidCallback onGuideRequested;
   final Future<void> Function(bool medicationStatus) onStatusChanged;
+  final bool isStatusUpdating;
   final bool isSelectionMode;
   final bool isSelected;
   final VoidCallback? onSelectionRequested;
@@ -1001,6 +1094,7 @@ class _MedicationScheduleRow extends StatelessWidget {
     required this.isCompleted,
     required this.onGuideRequested,
     required this.onStatusChanged,
+    this.isStatusUpdating = false,
     this.isSelectionMode = false,
     this.isSelected = false,
     this.onSelectionRequested,
@@ -1031,24 +1125,35 @@ class _MedicationScheduleRow extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: isSelectionMode
                   ? onSelectionRequested
+                  : isStatusUpdating
+                  ? null
                   : () => onStatusChanged(!isCompleted),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(
-                  isSelectionMode
-                      ? isSelected
-                            ? Icons.check_circle
-                            : Icons.circle_outlined
-                      : isCompleted
-                      ? Icons.check_circle_outline
-                      : Icons.circle_outlined,
-                  color: isSelectionMode
-                      ? MedBuddyColors.primary
-                      : isCompleted
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.outline,
-                  size: 25,
-                ),
+                child: isStatusUpdating && !isSelectionMode
+                    ? const SizedBox(
+                        width: 25,
+                        height: 25,
+                        child: Padding(
+                          padding: EdgeInsets.all(3),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Icon(
+                        isSelectionMode
+                            ? isSelected
+                                  ? Icons.check_circle
+                                  : Icons.circle_outlined
+                            : isCompleted
+                            ? Icons.check_circle_outline
+                            : Icons.circle_outlined,
+                        color: isSelectionMode
+                            ? MedBuddyColors.primary
+                            : isCompleted
+                            ? MedBuddyColors.primary
+                            : MedBuddyColors.outline,
+                        size: 25,
+                      ),
               ),
             ),
           ),
@@ -1218,6 +1323,78 @@ class _ReminderIconButton extends StatelessWidget {
                   : Icons.notifications_none_outlined,
               color: iconColor,
               size: 29,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Class Name: _SlotCompletionToggleButton
+// Role: Checks or unchecks every medication displayed in one schedule slot.
+// Responsibilities:
+// - Presents a distinct whole-slot action beside the reminder control.
+// - Communicates the next action through its icon, tooltip, and semantics.
+// - Prevents duplicate requests while the atomic update is running.
+class _SlotCompletionToggleButton extends StatelessWidget {
+  final _ScheduleText text;
+  final String slotKey;
+  final String slotTitle;
+  final bool isCompleted;
+  final bool isUpdating;
+  final VoidCallback? onPressed;
+
+  const _SlotCompletionToggleButton({
+    required this.text,
+    required this.slotKey,
+    required this.slotTitle,
+    required this.isCompleted,
+    required this.isUpdating,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tooltip = text.entireSlotTooltip(slotTitle, isCompleted);
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        enabled: !isUpdating && onPressed != null,
+        child: Material(
+          color: isCompleted
+              ? Colors.white
+              : Colors.white.withValues(alpha: 0.0),
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: ValueKey('schedule-entire-slot-toggle-$slotKey'),
+            customBorder: const CircleBorder(),
+            onTap: isUpdating ? null : onPressed,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: isUpdating
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        isCompleted
+                            ? Icons.remove_done_rounded
+                            : Icons.done_all_rounded,
+                        color: isCompleted
+                            ? MedBuddyColors.primaryDark
+                            : Colors.white,
+                        size: 27,
+                      ),
+              ),
             ),
           ),
         ),
@@ -1421,6 +1598,27 @@ class _ScheduleText {
     return isEnglish
         ? '$medicationName completion was undone.'
         : '$medicationName 복용 완료를 취소했습니다.';
+  }
+
+  String entireSlotTooltip(String slotTitle, bool isCompleted) {
+    if (isEnglish) {
+      return isCompleted
+          ? 'Undo all $slotTitle medications'
+          : 'Mark all $slotTitle medications as taken';
+    }
+    return isCompleted ? '$slotTitle 복약 전부 해제' : '$slotTitle 복약 전부 체크';
+  }
+
+  String entireSlotCompletionSaved(String slotTitle) {
+    return isEnglish
+        ? 'All $slotTitle medications were marked as taken.'
+        : '$slotTitle 복약을 모두 완료했습니다.';
+  }
+
+  String entireSlotCompletionCancelled(String slotTitle) {
+    return isEnglish
+        ? 'All $slotTitle medication completions were undone.'
+        : '$slotTitle 복약 완료를 모두 해제했습니다.';
   }
 
   // 함수이름: dosageLabel

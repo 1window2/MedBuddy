@@ -473,15 +473,24 @@ ApiClient --> FrontControl : MedicationSchedule 목록
 FrontControl --> ViewModel : 일정 상태 갱신
 ViewModel --> UI : CheckScheduleUI 출력
 
-Patient -> UI : 특정 시간대 복약 완료 선택
-UI -> ViewModel : requestMedicationDoseStatusUpdate(slotKey, schedule)
-ViewModel -> FrontControl : CheckSchedule.updateMedicationStatus()
-FrontControl -> ApiClient : PATCH /schedule/{id}/status
-ApiClient -> Router : 시간대 완료 상태 변경
-Router -> BackControl : CheckSchedule.updateMedicationStatus()
+alt 개별 약 복약 완료 또는 취소
+    Patient -> UI : 특정 약의 복약 완료 상태 선택
+    UI -> ViewModel : requestMedicationDoseStatusUpdate(slotKey, schedule)
+    ViewModel -> FrontControl : CheckSchedule.updateMedicationStatus()
+    FrontControl -> ApiClient : PATCH /schedule/{id}/status
+    ApiClient -> Router : 개별 시간대 완료 상태 변경
+    Router -> BackControl : CheckSchedule.updateMedicationStatus()
+else 시간대 전부 체크 또는 전부 해제
+    Patient -> UI : 시간대 전체 상태 Toggle 선택
+    UI -> ViewModel : requestMedicationSlotStatusUpdate(slotKey, status)
+    ViewModel -> FrontControl : CheckSchedule.updateMedicationSlotStatus()
+    FrontControl -> ApiClient : PATCH /schedule/slot/{slotKey}/status
+    ApiClient -> Router : 시간대 전체 완료 상태 변경
+    Router -> BackControl : CheckSchedule.updateMedicationSlotStatus()
+end
 BackControl -> Database : medication_completions Upsert와\n신규 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
 Database --> BackControl : commit된 완료 상태와 outbox_id
-BackControl --> Router : 갱신된 MedicationSchedule과\ncommit 이후 completion event
+BackControl --> Router : 갱신된 MedicationSchedule 목록과\ncommit 이후 completion event
 Router --> ApiClient : 완료 처리 결과
 ApiClient --> FrontControl : 완료 상태
 FrontControl --> ViewModel : 시간대 상태 갱신

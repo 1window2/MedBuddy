@@ -83,6 +83,8 @@ class CheckScheduleTest(unittest.TestCase):
         created_date: date | None = None,
         prescription_date: date | None = None,
         total_days: str | None = "7 days",
+        daily_frequency: str | None = "3 times",
+        schedule_slot_keys: str = "[]",
         medication_status: bool = False,
         medication_status_date: date | None = None,
     ) -> _SavedMedication:
@@ -95,8 +97,9 @@ class CheckScheduleTest(unittest.TestCase):
             use_method="usage",
             warning_message="warning",
             dosage_per_time="1 tablet",
-            daily_frequency="3 times",
+            daily_frequency=daily_frequency,
             total_days=total_days,
+            schedule_slot_keys=schedule_slot_keys,
             medication_status=medication_status,
             medication_status_date=medication_status_date,
             ai_guide="guide",
@@ -233,6 +236,100 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(len(completions), 1)
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
+
+    def test_whole_slot_update_is_atomic_scoped_and_reversible(self) -> None:
+        first_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="first-tablet",
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="second-tablet",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+        other_patient_medication = self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-patient-tablet",
+        )
+        event_recorder = _CompletionEventRecorder()
+        control = CheckSchedule(
+            self.db,
+            completion_event_boundary=event_recorder,
+        )
+
+        completed_response = control.updateMedicationSlotStatus(
+            "morning",
+            True,
+            "patient-a",
+        )
+
+        self.assertTrue(completed_response["success"])
+        self.assertEqual(
+            {schedule["medication_id"] for schedule in completed_response["data"]},
+            {str(first_medication.id), str(second_medication.id)},
+        )
+        self.assertTrue(
+            all(
+                schedule["slot_statuses"]["morning"]
+                for schedule in completed_response["data"]
+            )
+        )
+        self.assertEqual(
+            event_recorder.events,
+            [{"patient_hash": "patient-a", "slot_key": "morning"}],
+        )
+        completion_events = control.consumeCompletionEvents()
+        self.assertEqual(len(completion_events), 1)
+        self.assertIsInstance(completion_events[0]["outbox_id"], int)
+
+        unchecked_response = control.updateMedicationSlotStatus(
+            "morning",
+            False,
+            "patient-a",
+        )
+
+        self.assertTrue(
+            all(
+                not schedule["slot_statuses"]["morning"]
+                for schedule in unchecked_response["data"]
+            )
+        )
+        self.assertEqual(control.consumeCompletionEvents(), [])
+        self.db.refresh(other_patient_medication)
+        self.assertFalse(other_patient_medication.medication_status)
+        other_patient_completions = (
+            self.db.query(_MedicationCompletion)
+            .filter(
+                _MedicationCompletion.saved_medication_id
+                == other_patient_medication.id
+            )
+            .all()
+        )
+        self.assertEqual(other_patient_completions, [])
+
+    def test_whole_slot_update_rejects_invalid_or_empty_slot(self) -> None:
+        self._saved_medication(
+            patient_hash="patient-a",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+
+        with self.assertRaises(HTTPException) as invalid_context:
+            self.control.updateMedicationSlotStatus(
+                "after-midnight",
+                True,
+                "patient-a",
+            )
+        self.assertEqual(invalid_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as empty_context:
+            self.control.updateMedicationSlotStatus(
+                "bedtime",
+                True,
+                "patient-a",
+            )
+        self.assertEqual(empty_context.exception.status_code, 404)
 
     def test_completion_event_is_emitted_only_when_slot_becomes_fully_completed(
         self,

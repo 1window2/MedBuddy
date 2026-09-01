@@ -23,6 +23,7 @@ from entities.medication_completion_entity import (
 from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
+    MEDICATION_SCHEDULE_SLOT_KEYS,
     MedicationSchedule,
     decode_medication_schedule_slot_keys,
     medication_schedule_slot_keys_for_frequency,
@@ -242,6 +243,141 @@ class CheckSchedule:
             "success": True,
             "message": "Medication status was updated.",
             "data": self._to_schedule_dict(medication, today),
+        }
+
+    # Function Name: updateMedicationSlotStatus
+    # Description:
+    # - Atomically applies one completion state to every active medication in
+    #   the requested time slot for the authenticated patient.
+    # - Creates at most one caregiver-completion outbox event when the whole
+    #   slot transitions from incomplete to complete.
+    # Parameters:
+    # - slot_key: Supported medication schedule time-slot key.
+    # - medication_status: Completion state applied to every medication.
+    # - patient_hash: Patient ownership key used to scope the update.
+    # Returns:
+    # - API-compatible list of every updated medication schedule.
+    def updateMedicationSlotStatus(
+        self,
+        slot_key: str,
+        medication_status: bool,
+        patient_hash: str | None = None,
+    ) -> dict[str, object]:
+        self._pending_completion_events.clear()
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        normalized_slot_key = slot_key.strip().lower()
+        if normalized_slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported medication schedule slot.",
+            )
+
+        today = application_today()
+        medications = [
+            medication
+            for medication in self.medication_repository.list_by_patient(
+                normalized_patient_hash
+            )
+            if self._is_active_today(medication, today)
+            and normalized_slot_key in self._slot_keys_for_medication(medication)
+        ]
+        if not medications:
+            raise HTTPException(
+                status_code=404,
+                detail="No active medications exist in this schedule slot.",
+            )
+
+        target_slot_keys = [normalized_slot_key]
+        previous_slot_completion_states = self._slot_completion_states_for_patient(
+            normalized_patient_hash,
+            today,
+            target_slot_keys,
+        )
+
+        try:
+            # Step 1: Preserve explicit states for every non-target slot when
+            # older rows still represent completion only at medication level.
+            for medication in medications:
+                if self._is_legacy_completed_on(medication, today):
+                    self._materialize_missing_completion_slots(
+                        medication,
+                        normalized_patient_hash,
+                        today,
+                        self._slot_statuses_for_medication(medication, today),
+                    )
+            self.db.flush()
+
+            # Step 2: Apply the requested state to the whole slot in the same
+            # transaction so users never observe a partially updated group.
+            for medication in medications:
+                self._upsert_completion(
+                    medication,
+                    normalized_patient_hash,
+                    today,
+                    normalized_slot_key,
+                    medication_status,
+                )
+            self.db.flush()
+
+            # Step 3: Keep the legacy row-level completion flag consistent and
+            # enqueue one caregiver event only for a full-slot completion.
+            for medication in medications:
+                slot_statuses = self._slot_statuses_for_medication(
+                    medication,
+                    today,
+                )
+                medication.medication_status = self._all_slots_completed(
+                    slot_statuses
+                )
+                medication.medication_status_date = today
+            current_slot_completion_states = (
+                self._slot_completion_states_for_patient(
+                    normalized_patient_hash,
+                    today,
+                    target_slot_keys,
+                )
+            )
+            completion_events = self._new_slot_completion_events(
+                patient_hash=normalized_patient_hash,
+                schedule_date=today,
+                target_slot_keys=target_slot_keys,
+                previous_slot_completion_states=previous_slot_completion_states,
+                current_slot_completion_states=current_slot_completion_states,
+            )
+            for completion_event in completion_events:
+                outbox_row = self._get_or_create_completion_outbox(
+                    event_key=str(completion_event["event_key"]),
+                    patient_hash=normalized_patient_hash,
+                    slot_key=normalized_slot_key,
+                )
+                self.db.flush()
+                completion_event["outbox_id"] = int(outbox_row.id)
+            self.db.commit()
+            for medication in medications:
+                self.db.refresh(medication)
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as exc:
+            self.db.rollback()
+            logger.error(
+                "Medication slot completion update failed: %s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Medication slot status could not be updated.",
+            ) from exc
+
+        self._pending_completion_events.extend(completion_events)
+        self._notify_completion_event_boundary(completion_events)
+        return {
+            "success": True,
+            "message": "Medication slot status was updated.",
+            "data": [
+                self._to_schedule_dict(medication, today)
+                for medication in medications
+            ],
         }
 
     # 함수명: _new_slot_completion_events

@@ -108,6 +108,52 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     );
   }
 
+  // Function Name: requestMedicationSlotStatusUpdate
+  // Description:
+  // - Checks or unchecks every active medication in one time slot through one
+  //   atomic backend request.
+  // - Replaces only schedules returned by the scoped update while preserving
+  //   the rest of today's locally loaded schedule.
+  // Parameters:
+  // - slotKey: Time slot whose medications should be updated together.
+  // - medicationStatus: Completion state applied to the full slot.
+  // Returns:
+  // - True when the backend update and local state replacement succeed.
+  Future<bool> requestMedicationSlotStatusUpdate(
+    String slotKey,
+    bool medicationStatus,
+  ) async {
+    try {
+      final updatedSchedules = await checkSchedule.updateMedicationSlotStatus(
+        slotKey,
+        medicationStatus,
+      );
+      final updatedById = {
+        for (final schedule in updatedSchedules)
+          schedule.medicationID: schedule,
+      };
+      _todayScheduleEpoch += 1;
+      _todayMedicationScheduleList = _todayMedicationScheduleList
+          .map((schedule) => updatedById[schedule.medicationID] ?? schedule)
+          .toList(growable: false);
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      return true;
+    } on StateError catch (error) {
+      _statusMessage = UserFacingErrorMessage.resolve(
+        error,
+        isEnglish: _isEnglishSetting,
+      );
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      return false;
+    } catch (_) {
+      _statusMessage = _isEnglishSetting
+          ? 'Could not update the entire medication slot.'
+          : '시간대 전체 복약 상태를 업데이트하지 못했습니다.';
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      return false;
+    }
+  }
+
   Future<bool> requestMedicationStatusUpdate(
     MedicationSchedule medicationSchedule,
     bool medicationStatus, {

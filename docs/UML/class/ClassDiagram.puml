@@ -201,6 +201,7 @@ package "Flutter Frontend" {
             + requestPrescriptionAnalysis(): Future<void> {extension}
             + fetchTodayMedicationSchedule(): Future<void> {extension}
             + requestMedicationDoseStatusUpdate(): Future<bool> {extension}
+            + requestMedicationSlotStatusUpdate(): Future<bool> {extension}
             + requestAllAnalyzedMedicationSave(): Future<bool> {extension}
         }
 
@@ -240,6 +241,7 @@ package "Flutter Frontend" {
             + requestTodayMedicationSchedule(): Future<List<MedicationSchedule>>
             + requestMedicationScheduleWindow(days): Future<List<MedicationSchedule>>
             + updateMedicationStatus(id, status): Future<MedicationSchedule>
+            + updateMedicationSlotStatus(slotKey, status): Future<List<MedicationSchedule>>
         }
 
         class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Controller: 처방 변경 요청>> {
@@ -777,6 +779,7 @@ package "FastAPI Backend" {
             + requestTodayMedicationSchedule(patient_hash): dict
             + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
+            + updateMedicationSlotStatus(patient_hash, slot_key, status): dict
         }
 
         class "CheckTodayMedicationInfo" as BCheckTodayMedicationInfo <<Control: 오늘 복약 요약>> {

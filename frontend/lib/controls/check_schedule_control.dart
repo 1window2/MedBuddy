@@ -160,6 +160,55 @@ class CheckSchedule {
     }
   }
 
+  // Function Name: updateMedicationSlotStatus
+  // Description:
+  // - Atomically applies one completion state to every medication in a time
+  //   slot through the backend bulk-update endpoint.
+  // Parameters:
+  // - slotKey: Morning, lunch, evening, or bedtime schedule key.
+  // - medicationStatus: Completion state applied to the whole slot.
+  // Returns:
+  // - Updated schedules returned by the backend.
+  Future<List<MedicationSchedule>> updateMedicationSlotStatus(
+    String slotKey,
+    bool medicationStatus,
+  ) async {
+    final normalizedSlotKey = slotKey.trim().toLowerCase();
+    if (!medicationScheduleSlotKeys.contains(normalizedSlotKey)) {
+      throw ArgumentError.value(slotKey, 'slotKey', 'Unsupported slot key.');
+    }
+    try {
+      final response = await _client
+          .patch(
+            _buildScheduleUri('schedule/slot/$normalizedSlotKey/status'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'medication_status': medicationStatus}),
+          )
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.decodeBody(response);
+      if (response.statusCode != 200) {
+        throw StateError(
+          'Slot status update failed (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        );
+      }
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
+      return _decodeMedicationScheduleList(decodedData['data']);
+    } on ArgumentError {
+      rethrow;
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Medication slot status update failed.',
+        name: 'CheckSchedule',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw StateError('Slot status update failed.');
+    }
+  }
+
   List<MedicationSchedule> _decodeMedicationScheduleList(dynamic rawItems) {
     return MedicationSchedule.fromScheduleJsonList(rawItems);
   }

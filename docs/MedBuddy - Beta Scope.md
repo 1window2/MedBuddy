@@ -31,10 +31,11 @@ The following implemented flows are in v0.2.0 verification:
    full-screen image inspection, deletion, and medication-course retention,
    with active/completed filtering and registration- or medication-date
    sorting in either direction.
-3. Today's schedule generation, per-slot completion, progress display, local
-   medication reminders, notification-to-schedule navigation, next-dose home
-   summaries, tappable medication-image inspection, completion undo, and
-   reminder setup or cancellation feedback.
+3. Today's schedule generation, per-medication completion and atomic whole-slot
+   check/uncheck, progress display, local medication reminders,
+   notification-to-schedule navigation, next-dose home summaries, tappable
+   medication-image inspection, completion undo, and reminder setup or
+   cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
 5. User notification, display, language, reading-speed, and laboratory feature

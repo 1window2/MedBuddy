@@ -475,6 +475,44 @@ def _process_caregiver_completion_alert(
         db.close()
 
 
+# Function Name: update_medication_slot_status
+# Description:
+# - Atomically checks or unchecks every active medication in one time slot.
+# - Queues the same caregiver completion outbox processing used by individual
+#   medication updates when the slot becomes fully complete.
+# Parameters:
+# - slot_key: Morning, lunch, evening, or bedtime schedule key.
+# - request: Requested completion state.
+# - patient_hash: Optional patient selector resolved through authorization.
+# Returns:
+# - Updated schedules belonging to the selected slot.
+@router.patch("/schedule/slot/{slot_key}/status")
+def update_medication_slot_status(
+    slot_key: str,
+    request: MedicationStatusUpdate,
+    background_tasks: BackgroundTasks,
+    patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    authorized_patient_hash = authorization.resolvePatientScope(
+        principal,
+        patient_hash,
+    )
+    response = check_schedule.updateMedicationSlotStatus(
+        slot_key,
+        request.medication_status,
+        authorized_patient_hash,
+    )
+    for completion_event in check_schedule.consumeCompletionEvents():
+        background_tasks.add_task(
+            _process_caregiver_completion_alert,
+            int(completion_event["outbox_id"]),
+        )
+    return response
+
+
 # 함수명: update_medication_status
 # 역할:
 # - 오늘의 복약 완료 상태를 저장하고 보호자 알림은 응답 이후 작업으로 예약한다.
