@@ -1,5 +1,5 @@
 # File Name: input_prescription_control.py
-# Role: Control class for prescription image analysis.
+# Role: Control class for de-identified prescription text analysis.
 
 import asyncio
 import json
@@ -32,7 +32,6 @@ from services.prescription_parser import (
 )
 
 logger = logging.getLogger(__name__)
-MAX_PRESCRIPTION_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 class PrescriptionAnalysisTimeoutError(RuntimeError):
@@ -801,13 +800,13 @@ class _PrescriptionMedicationNameVerifier:
 
 
 # Class Name: InputPrescription
-# Role: Coordinates prescription image preprocessing and structured extraction.
+# Role: Coordinates de-identified prescription text structuring and validation.
 # Responsibilities:
-#   - Preprocess prescription image bytes.
-#   - Request structured prescription extraction from Gemini Vision.
+#   - Accept only prescription text already de-identified on the user's device.
+#   - Request structured prescription extraction from Gemini.
 #   - Clean, decode, mask, and validate extracted prescription data.
 # Attributes:
-#   - client: Gemini client used for prescription image analysis.
+#   - client: Gemini client used for prescription text analysis.
 #   - model_name: Gemini model name.
 class InputPrescription:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
@@ -816,7 +815,6 @@ class InputPrescription:
             "hospital_name",
             "prescription_date",
             "medications",
-            "recognized_regions",
         ],
         "properties": {
             "hospital_name": {
@@ -858,41 +856,6 @@ class InputPrescription:
                     },
                 },
             },
-            "recognized_regions": {
-                "type": "ARRAY",
-                "description": (
-                    "복약 분석에 사용한 조제일자와 약품 행, "
-                    "미리보기에서 가릴 환자 민감정보의 위치"
-                ),
-                "items": {
-                    "type": "OBJECT",
-                    "required": ["category", "text", "box_2d"],
-                    "properties": {
-                        "category": {
-                            "type": "STRING",
-                            "description": (
-                                "prescription_date, medication_name 또는 "
-                                "sensitive_info"
-                            ),
-                        },
-                        "text": {
-                            "type": "STRING",
-                            "description": (
-                                "복약 관련 문구. sensitive_info이면 "
-                                "반드시 빈 문자열"
-                            ),
-                        },
-                        "box_2d": {
-                            "type": "ARRAY",
-                            "items": {"type": "INTEGER"},
-                            "description": (
-                                "[ymin, xmin, ymax, xmax] 순서의 "
-                                "0~1000 정규화 좌표"
-                            ),
-                        },
-                    },
-                },
-            },
         },
     }
 
@@ -925,22 +888,10 @@ class InputPrescription:
             )
         )
 
-    # Function Name: requestPrescriptionImage
-    # Description:
-    # - Runs the full prescription image analysis pipeline.
-    # Parameters:
-    # - image: Raw image bytes uploaded by the frontend.
-    # Returns:
-    # - API-compatible dictionary containing medication schedule data.
-    async def requestPrescriptionImage(self, image: bytes) -> dict[str, object]:
-        image_bytes = image
-        self._validate_prescription_image(image_bytes)
-        response_text = await self._extract_prescription_text(image_bytes)
-        return await self._build_prescription_response(response_text)
-
     # 함수명: requestPrescriptionText
     # 역할:
     # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화 처방 정보로 변환한다.
+    # - 개인정보 보호 경계상 원본 처방전 이미지는 백엔드에서 받지 않는다.
     # 매개변수:
     # - masked_text: 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
     # 반환값:
@@ -962,23 +913,18 @@ class InputPrescription:
             raise PrescriptionAnalysisTimeoutError(
                 "처방전 인식 서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
             ) from exc
-        return await self._build_prescription_response(
-            response_text,
-            recognized_regions=[],
-        )
+        return await self._build_prescription_response(response_text)
 
     # 함수명: _build_prescription_response
     # 역할:
-    # - 이미지 또는 비식별 텍스트 분석 응답을 공통 복약 일정 응답으로 변환한다.
+    # - 비식별 텍스트 분석 응답을 복약 일정 응답으로 변환한다.
     # 매개변수:
     # - response_text: Gemini가 반환한 구조화 JSON 문자열
-    # - recognized_regions: 기기에서 별도로 관리할 때 덮어쓸 인식 영역 목록
     # 반환값:
     # - 검증된 복약 일정과 인식 통계를 포함한 API 응답
     async def _build_prescription_response(
         self,
         response_text: str,
-        recognized_regions: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
         cleaned_text = self._clean_response_text(response_text)
 
@@ -998,13 +944,6 @@ class InputPrescription:
             medication_candidates,
             raw_medication_count,
         ) = normalize_prescription_candidates(masked_data)
-        normalized_regions = (
-            recognized_regions
-            if recognized_regions is not None
-            else self._normalize_recognized_regions(
-                masked_data.get("recognized_regions")
-            )
-        )
         safe_data = self.buildAnalysisResult(
             medication_candidates,
             hospital_name=hospital_name,
@@ -1033,74 +972,7 @@ class InputPrescription:
             ),
             "parsed_medication_count": len(medication_schedules),
             "skipped_medication_count": safe_data.get("skipped_medication_count", 0),
-            "recognized_regions": normalized_regions,
         }
-
-    # 함수이름: _normalize_recognized_regions
-    # 함수역할:
-    # - OCR이 반환한 복약 정보와 민감정보 마스킹 영역의 좌표를 검증한다.
-    # - 모델이 분류를 잘못해도 식별 문구가 노출되지 않도록 모든 실제 문구를 제거한다.
-    # - 화면 강조 및 마스킹에는 검증된 종류와 좌표만 전달한다.
-    # 매개변수:
-    # - raw_regions: Gemini가 반환한 OCR 인식 영역 목록
-    # 반환값:
-    # - 빈 문구와 0~1000 좌표만 포함한 최대 40개 영역 목록
-    def _normalize_recognized_regions(
-        self,
-        raw_regions: object,
-    ) -> list[dict[str, object]]:
-        if not isinstance(raw_regions, list):
-            return []
-
-        medication_categories = {
-            "prescription_date",
-            "medication_name",
-            "medication_row",
-        }
-        sensitive_categories = {
-            "sensitive_info",
-            "patient_name",
-            "resident_registration_number",
-            "birth_date",
-            "phone_number",
-            "address",
-            "patient_number",
-            "patient_identifier",
-            "medical_record_number",
-            "insurance_number",
-        }
-        normalized_regions: list[dict[str, object]] = []
-        for raw_region in raw_regions[:40]:
-            if not isinstance(raw_region, dict):
-                continue
-            category = str(raw_region.get("category") or "").strip()
-            text = str(raw_region.get("text") or "").strip()
-            raw_box = raw_region.get("box_2d")
-            is_sensitive = category in sensitive_categories
-            if (
-                (category not in medication_categories and not is_sensitive)
-                or (not is_sensitive and not text)
-                or not isinstance(raw_box, list)
-                or len(raw_box) != 4
-            ):
-                continue
-            try:
-                box = [
-                    max(0, min(1000, int(float(value))))
-                    for value in raw_box
-                ]
-            except (TypeError, ValueError):
-                continue
-            if box[0] >= box[2] or box[1] >= box[3]:
-                continue
-            normalized_regions.append(
-                {
-                    "category": "sensitive_info" if is_sensitive else category,
-                    "text": "",
-                    "box_2d": box,
-                }
-            )
-        return normalized_regions
 
     # Function Name: buildAnalysisResult
     # Description:
@@ -1124,28 +996,6 @@ class InputPrescription:
         for candidate in candidates.candidates:
             analysis_result.addMedicationCandidate(candidate)
         return analysis_result
-
-    # Function Name: _extract_prescription_text
-    # Description:
-    # - Delegates OCR extraction to OCRServiceBoundary.
-    # Parameters:
-    # - image: Raw prescription image bytes.
-    # Returns:
-    # - Raw Gemini text response.
-    async def _extract_prescription_text(self, image: bytes) -> str:
-        try:
-            return await self.ocr_service_boundary.extractPrescriptionData(image)
-        except TimeoutError as exc:
-            raise PrescriptionAnalysisTimeoutError(
-                "처방전 인식 서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
-            ) from exc
-
-    @staticmethod
-    def _validate_prescription_image(image: bytes) -> None:
-        if not image:
-            raise ValueError("Prescription image is empty.")
-        if len(image) > MAX_PRESCRIPTION_IMAGE_BYTES:
-            raise ValueError("Prescription image exceeds the 15 MB size limit.")
 
     # Function Name: _clean_response_text
     # Description:

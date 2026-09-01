@@ -1,5 +1,5 @@
 # File Name: prescription_parser.py
-# Role: Deterministic parser and normalizer for prescription OCR output.
+# Role: Deterministic normalizer for structured prescription analysis output.
 
 import math
 import re
@@ -122,105 +122,6 @@ def normalize_date(text: str) -> str | None:
         return None
 
 
-def extract_patient_name(line: str) -> str | None:
-    normalized_line = normalize_text(line)
-    for label in ("\ud658\uc790\uba85", "patient name", "patient"):
-        cleaned = _remove_literal_case_insensitive(normalized_line, label)
-        if cleaned == normalized_line:
-            continue
-        cleaned = cleaned.strip(": ").strip()
-        return cleaned if cleaned else None
-    return None
-
-
-def extract_prescription_date(line: str) -> str | None:
-    normalized_line = normalize_text(line)
-    lowered_line = normalized_line.lower()
-    if not any(
-        label in lowered_line
-        for label in ("\ucc98\ubc29", "\uc870\uc81c", "prescription", "dispense")
-    ):
-        return None
-    return normalize_date(normalized_line)
-
-
-def parse_medication_line(line: str) -> dict[str, Any] | None:
-    normalized_line = normalize_text(line)
-    medication_fields = normalized_line.rsplit(maxsplit=3)
-    if len(medication_fields) != 4:
-        return None
-
-    name, dose_raw, frequency_raw, days_raw = medication_fields
-    cleaned_name = _clean_medication_name(name)
-    if _is_unknown(cleaned_name) or len(cleaned_name) > MAX_MEDICATION_NAME_LENGTH:
-        return None
-
-    dose = _parse_number(dose_raw)
-    frequency_per_day = _parse_int(frequency_raw)
-    duration_days = _parse_int(days_raw)
-    if (
-        dose is None
-        or dose <= 0
-        or frequency_per_day is None
-        or frequency_per_day <= 0
-        or duration_days is None
-        or duration_days <= 0
-    ):
-        return None
-
-    dosage_text = _format_numeric_text(dose_raw)
-    frequency_text = _format_numeric_text(frequency_raw)
-    days_text = _format_numeric_text(days_raw)
-    return {
-        "name": cleaned_name,
-        "drug_name": cleaned_name,
-        "dose_per_time": dose,
-        "dosage_per_time": dosage_text,
-        "frequency_per_day": frequency_per_day,
-        "daily_frequency": frequency_text,
-        "duration_days": duration_days,
-        "total_days": days_text,
-    }
-
-
-def parse_prescription(lines: list[str]) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "patient_name": None,
-        "prescription_date": None,
-        "medicines": [],
-        "medications": [],
-    }
-
-    for raw_line in lines:
-        line = normalize_text(raw_line)
-        if not line:
-            continue
-
-        patient_name = extract_patient_name(line)
-        if patient_name:
-            result["patient_name"] = patient_name
-            continue
-
-        prescription_date = extract_prescription_date(line)
-        if prescription_date:
-            result["prescription_date"] = prescription_date
-            continue
-
-        medication = parse_medication_line(line)
-        if medication:
-            result["medicines"].append(medication)
-            result["medications"].append(
-                {
-                    "drug_name": medication["drug_name"],
-                    "dosage_per_time": medication["dosage_per_time"],
-                    "daily_frequency": medication["daily_frequency"],
-                    "total_days": medication["total_days"],
-                }
-            )
-
-    return result
-
-
 def normalize_prescription_candidates(
     data: dict[str, Any],
 ) -> tuple[str, str, MedicationCandidateList, int]:
@@ -303,25 +204,6 @@ def _format_numeric_text(value: Any) -> str:
     if number.is_integer():
         return str(int(number))
     return str(number).rstrip("0").rstrip(".")
-
-
-def _parse_number(value: Any) -> int | float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(number):
-        return None
-    if number.is_integer():
-        return int(number)
-    return number
-
-
-def _parse_int(value: Any) -> int | None:
-    parsed_value = _parse_number(value)
-    if isinstance(parsed_value, int):
-        return parsed_value
-    return None
 
 
 def _clean_medication_name(name: str) -> str:

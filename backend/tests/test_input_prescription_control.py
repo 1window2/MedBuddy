@@ -4,7 +4,6 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from google.genai import types
 from sqlalchemy import create_engine, event
@@ -18,7 +17,6 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from controls.input_prescription_control import (  # noqa: E402
-    MAX_PRESCRIPTION_IMAGE_BYTES,
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
     _PrescriptionMedicationNameVerifier,
@@ -64,15 +62,17 @@ class _RecordingOCRServiceBoundary:
     def __init__(self, response_text: str = "{}") -> None:
         self.response_text = response_text
         self.call_count = 0
+        self.received_text = ""
 
-    async def extractPrescriptionData(self, image: bytes) -> str:
+    async def extractPrescriptionTextData(self, masked_text: str) -> str:
         self.call_count += 1
+        self.received_text = masked_text
         return self.response_text
 
 
 class _TimedOutOCRServiceBoundary:
-    async def extractPrescriptionData(self, image: bytes) -> str:
-        raise TimeoutError("external OCR deadline exceeded")
+    async def extractPrescriptionTextData(self, masked_text: str) -> str:
+        raise TimeoutError("external text analysis deadline exceeded")
 
 
 class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
@@ -647,9 +647,9 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
         self.assertEqual(fake_client.models.call_count, 1)
 
-    def test_request_prescription_image_normalizes_alias_payload(self) -> None:
+    def test_request_prescription_text_normalizes_alias_payload(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
-        fake_client = _FakeGeminiClient(
+        ocr_boundary = _RecordingOCRServiceBoundary(
             json.dumps(
                 {
                     "hospitalName": "\ud14c\uc2a4\ud2b8\uc57d\uad6d",
@@ -668,36 +668,20 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
                             "total_days": "5",
                         },
                     ],
-                    "recognized_regions": [
-                        {
-                            "category": "medication_row",
-                            "text": (
-                                f"{canonical_name} "
-                                "환자명 홍길동 010-1234-5678 "
-                                "900101-1234567 1정 1일 3회"
-                            ),
-                            "box_2d": [-10, 20, 400, 1100],
-                        },
-                        {
-                            "category": "patient_name",
-                            "text": "환자명 홍길동",
-                            "box_2d": [10, 10, 30, 200],
-                        },
-                    ],
                 },
                 ensure_ascii=False,
             )
         )
-        self.control = InputPrescription(client=fake_client)
+        self.control = InputPrescription(
+            client=object(),
+            ocr_service_boundary=ocr_boundary,
+        )
 
-        with patch(
-            "boundaries.prescription_ocr_boundary.preprocess_prescription_image",
-            return_value=b"processed-image",
-        ):
-            payload = asyncio.run(
-                self.control.requestPrescriptionImage(b"raw-image"),
-            )
+        payload = asyncio.run(
+            self.control.requestPrescriptionText("masked prescription text"),
+        )
 
+        self.assertEqual(ocr_boundary.received_text, "masked prescription text")
         self.assertEqual(payload["hospital_name"], "\ud14c\uc2a4\ud2b8\uc57d\uad6d")
         self.assertEqual(payload["prescription_date"], "2026-07-08")
         self.assertRegex(
@@ -712,34 +696,9 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(payload["medications"][0]["dosage_per_time"], "1")
         self.assertEqual(payload["medications"][0]["daily_frequency"], "3")
         self.assertEqual(payload["medications"][0]["total_days"], "5")
-        self.assertEqual(len(payload["recognized_regions"]), 2)
-        self.assertEqual(
-            payload["recognized_regions"][0]["box_2d"],
-            [0, 20, 400, 1000],
-        )
-        self.assertEqual(payload["recognized_regions"][0]["text"], "")
-        self.assertEqual(
-            payload["recognized_regions"][1],
-            {
-                "category": "sensitive_info",
-                "text": "",
-                "box_2d": [10, 10, 30, 200],
-            },
-        )
+        self.assertNotIn("recognized_regions", payload)
 
-    def test_request_prescription_image_rejects_empty_input_before_ocr(self) -> None:
-        ocr_boundary = _RecordingOCRServiceBoundary()
-        self.control = InputPrescription(
-            client=object(),
-            ocr_service_boundary=ocr_boundary,
-        )
-
-        with self.assertRaisesRegex(ValueError, "empty"):
-            asyncio.run(self.control.requestPrescriptionImage(b""))
-
-        self.assertEqual(ocr_boundary.call_count, 0)
-
-    def test_request_prescription_image_rejects_oversized_input_before_ocr(
+    def test_request_prescription_text_rejects_empty_input_before_analysis(
         self,
     ) -> None:
         ocr_boundary = _RecordingOCRServiceBoundary()
@@ -748,16 +707,26 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             ocr_service_boundary=ocr_boundary,
         )
 
-        with self.assertRaisesRegex(ValueError, "15 MB"):
-            asyncio.run(
-                self.control.requestPrescriptionImage(
-                    b"x" * (MAX_PRESCRIPTION_IMAGE_BYTES + 1)
-                )
-            )
+        with self.assertRaisesRegex(ValueError, "empty"):
+            asyncio.run(self.control.requestPrescriptionText("  "))
 
         self.assertEqual(ocr_boundary.call_count, 0)
 
-    def test_request_prescription_image_translates_ocr_timeout(self) -> None:
+    def test_request_prescription_text_rejects_oversized_input_before_analysis(
+        self,
+    ) -> None:
+        ocr_boundary = _RecordingOCRServiceBoundary()
+        self.control = InputPrescription(
+            client=object(),
+            ocr_service_boundary=ocr_boundary,
+        )
+
+        with self.assertRaisesRegex(ValueError, "100,000 characters"):
+            asyncio.run(self.control.requestPrescriptionText("x" * 100_001))
+
+        self.assertEqual(ocr_boundary.call_count, 0)
+
+    def test_request_prescription_text_translates_analysis_timeout(self) -> None:
         self.control = InputPrescription(
             client=object(),
             ocr_service_boundary=_TimedOutOCRServiceBoundary(),
@@ -767,7 +736,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             PrescriptionAnalysisTimeoutError,
             "응답 시간이 초과",
         ):
-            asyncio.run(self.control.requestPrescriptionImage(b"image"))
+            asyncio.run(self.control.requestPrescriptionText("masked text"))
 
     def test_invalid_ocr_response_is_not_written_to_logs(self) -> None:
         sensitive_response = "patient-medication-data"
@@ -783,7 +752,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         ) as captured_logs:
             with self.assertRaisesRegex(ValueError, "invalid JSON"):
                 asyncio.run(
-                    self.control.requestPrescriptionImage(b"image"),
+                    self.control.requestPrescriptionText("masked text"),
                 )
 
         self.assertNotIn(sensitive_response, "\n".join(captured_logs.output))

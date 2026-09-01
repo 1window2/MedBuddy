@@ -186,7 +186,6 @@ package "Flutter Frontend" {
             + requestTimeout: Duration
             + lastSelectedImagePath: String
             + lastSelectedImageOwnedByApp: bool
-            + requestPrescriptionImage(): Future<List<MedicationSchedule>>
             + requestPrescriptionImageFromGallery(): Future<List<MedicationSchedule>>
             + requestCapturedPrescriptionImage(image): Future<List<MedicationSchedule>>
             + clearSelectedImage(): Future<void>
@@ -539,7 +538,6 @@ package "FastAPI Backend" {
 
         class "InputPrescription" as BInputPrescription <<Control: 처방전 분석>> {
             + model_name: str
-            + requestPrescriptionImage(image): dict
             + requestPrescriptionText(masked_text): dict
             + maskSensitiveInfo(rawText): str
         }
@@ -785,10 +783,6 @@ package "FastAPI Backend" {
 
     package "External Integration Layer" {
 
-        class "PrescriptionImageProcessor" as PrescriptionImageProcessor <<Utility: bounded image decode>> {
-            + preprocess_prescription_image(image): bytes
-        }
-
         class "OIDCTokenVerifier" as OIDCTokenVerifier <<Wrapper: Firebase Token 검증>> {
             - _check_revoked: bool
             + verifyIdToken(token): dict
@@ -809,8 +803,11 @@ package "FastAPI Backend" {
 
         class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
             + model_name: str
-            + extractPrescriptionData(image): str
             + extractPrescriptionTextData(masked_text): str
+        }
+
+        class "GeminiPrescriptionTextClient" as GeminiPrescriptionTextClient <<Wrapper: Gemini 텍스트 요청>> {
+            + generate_text_content(masked_text): str
         }
 
         class "LLMService" as LLMService <<Wrapper: Gemini 건강 추천>> {
@@ -1196,7 +1193,7 @@ FAnalyzedMedication *-- FMedicationSchedule
 FAnalyzedMedication *-- FMedicationDetail
 
 BInputPrescription o-- OCRServiceBoundary
-OCRServiceBoundary --> PrescriptionImageProcessor
+OCRServiceBoundary --> GeminiPrescriptionTextClient
 BInputPrescription *-- MedicationNameVerifier
 BInputPrescription ..> BMedicationSchedule
 

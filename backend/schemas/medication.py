@@ -310,23 +310,6 @@ class MedicationResponse(BaseModel):
     data: list[MedicationDetail] = Field(default_factory=list)
 
 
-# 클래스명: RecognizedRegionResponse
-# 역할: 처방전 미리보기에서 표시할 비식별 OCR 영역을 검증한다.
-class RecognizedRegionResponse(BaseModel):
-    category: str = Field(max_length=64)
-    text: str = Field(default="", max_length=300)
-    box_2d: list[int] = Field(min_length=4, max_length=4)
-
-    @field_validator("box_2d")
-    @classmethod
-    def validate_box(cls, value: list[int]) -> list[int]:
-        if any(coordinate < 0 or coordinate > 1000 for coordinate in value):
-            raise ValueError("OCR region coordinates must be between 0 and 1000.")
-        if value[0] >= value[2] or value[1] >= value[3]:
-            raise ValueError("OCR region coordinates must describe a valid box.")
-        return value
-
-
 # 클래스명: PrescriptionMedicationResponse
 # 역할: 처방전에서 검증된 한 약의 일정 정보를 고정된 응답 형태로 제공한다.
 class PrescriptionMedicationResponse(BaseModel):
@@ -350,4 +333,3 @@ class PrescriptionAnalysisResponse(BaseModel):
     raw_medication_count: int = Field(ge=0)
     parsed_medication_count: int = Field(ge=0)
     skipped_medication_count: int = Field(ge=0)
-    recognized_regions: list[RecognizedRegionResponse] = Field(default_factory=list)
