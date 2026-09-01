@@ -2,8 +2,9 @@
 # 역할: 백엔드 사용 사례 협력 객체를 생성하는 FastAPI 의존성 팩토리를 제공한다.
 
 import asyncio
-import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+import logging
 from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -105,6 +106,10 @@ _app_check_token_verifier_lock = Lock()
 _app_check_token_verifier: AppCheckTokenVerifier | None = None
 _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
+_sqlite_account_lock_registry_guard = Lock()
+_sqlite_account_locks: dict[str, asyncio.Lock] = {}
+_sqlite_account_lock_references: dict[str, int] = {}
+_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -247,15 +252,19 @@ def get_recently_authenticated_principal(
     return principal
 
 
-# 함수이름: _lock_account_operation
-# 함수역할:
-# - 인증된 계정 요청과 계정 삭제가 동시에 실행되지 않도록 직렬화한다.
-# - 운영 PostgreSQL에서는 트랜잭션 잠금, 로컬 SQLite에서는 쓰기 트랜잭션을 사용한다.
-# 매개변수:
-# - db: 요청 범위 SQLAlchemy 세션
-# - user_hash: 잠금 구분에만 쓰는 서버 검증 사용자 식별값
-# 반환값:
-# - 없음. 요청 트랜잭션이 끝날 때까지 잠금을 유지한다.
+# Function Name: _lock_account_operation
+# Description:
+# - Serializes each authenticated account request with account deletion.
+# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and
+#   a short SQLite write transaction while registering the account scope.
+# - SQLite request-lifetime serialization is provided by the per-account lock
+#   retained by get_registered_principal because endpoint controls commit.
+# Parameters:
+# - db: Request-scoped SQLAlchemy session shared by endpoint controls.
+# - user_hash: Server-derived account scope used only as a lock namespace.
+# Returns:
+# - None. PostgreSQL holds the lock for its transaction; SQLite holds it until
+#   account registration commits inside _register_account_scope.
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
@@ -292,6 +301,58 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
     if db.get_bind().dialect.name == "sqlite":
         db.commit()
 
+
+# Function Name: _retain_sqlite_account_lock
+# Description:
+# - Returns one process-local lock per authenticated account for SQLite mode.
+# - Reference counting removes idle locks so anonymous account churn cannot grow
+#   the registry without bound.
+# Parameters:
+# - user_hash: Server-derived account scope used as the serialization key.
+# Returns:
+# - The retained per-account lock.
+def _retain_sqlite_account_lock(user_hash: str) -> asyncio.Lock:
+    with _sqlite_account_lock_registry_guard:
+        account_lock = _sqlite_account_locks.setdefault(user_hash, asyncio.Lock())
+        _sqlite_account_lock_references[user_hash] = (
+            _sqlite_account_lock_references.get(user_hash, 0) + 1
+        )
+        return account_lock
+
+
+# Function Name: _drop_sqlite_account_lock_reference
+# Description:
+# - Releases one registry reference and removes an idle per-account lock.
+# Parameters:
+# - user_hash: Server-derived account scope used as the serialization key.
+# - account_lock: Exact lock instance retained for the current request.
+# Returns:
+# - None.
+def _drop_sqlite_account_lock_reference(
+    user_hash: str,
+    account_lock: asyncio.Lock,
+) -> None:
+    with _sqlite_account_lock_registry_guard:
+        references = _sqlite_account_lock_references.get(user_hash, 0) - 1
+        if references <= 0 and _sqlite_account_locks.get(user_hash) is account_lock:
+            _sqlite_account_lock_references.pop(user_hash, None)
+            _sqlite_account_locks.pop(user_hash, None)
+            return
+        _sqlite_account_lock_references[user_hash] = references
+
+
+# Function Name: _release_sqlite_account_lock
+# Description:
+# - Releases request ownership before dropping its registry reference.
+# Parameters:
+# - user_hash: Server-derived account scope used as the serialization key.
+# - account_lock: Lock held for the completed request.
+# Returns:
+# - None.
+def _release_sqlite_account_lock(user_hash: str, account_lock: asyncio.Lock) -> None:
+    account_lock.release()
+    _drop_sqlite_account_lock_reference(user_hash, account_lock)
+
 # 함수명: get_registered_principal
 # 역할:
 # - 검증된 인증 주체를 내부 user_accounts 범위에 등록하고 반환한다.
@@ -300,7 +361,7 @@ async def get_registered_principal(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     db: Session = Depends(get_db),
-) -> AuthenticatedPrincipal:
+) -> AsyncGenerator[AuthenticatedPrincipal, None]:
     route = request.scope.get("route")
     route_path = str(getattr(route, "path", request.url.path))
     resolved_rule = resolve_rate_limit_rule(
@@ -328,6 +389,25 @@ async def get_registered_principal(
                 detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
                 headers={"Retry-After": str(max(1, retry_after))},
             )
+    sqlite_account_lock: asyncio.Lock | None = None
+    if db.get_bind().dialect.name == "sqlite":
+        sqlite_account_lock = _retain_sqlite_account_lock(principal.user_hash)
+        try:
+            await asyncio.wait_for(
+                sqlite_account_lock.acquire(),
+                timeout=_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS,
+            )
+        except TimeoutError:
+            _drop_sqlite_account_lock_reference(
+                principal.user_hash,
+                sqlite_account_lock,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="This account is busy. Retry the request shortly.",
+                headers={"Retry-After": "5"},
+            )
+
     try:
         if db.get_bind().dialect.name == "postgresql":
             await run_in_threadpool(
@@ -343,19 +423,47 @@ async def get_registered_principal(
             and request.url.path == "/api/v1/auth/account-data"
         )
         if is_account_deletion_retry:
-            return principal
-        raise HTTPException(
-            status_code=410,
-            detail="This MedBuddy account has been deleted.",
-        ) from exc
+            pass
+        else:
+            if sqlite_account_lock is not None:
+                _release_sqlite_account_lock(
+                    principal.user_hash,
+                    sqlite_account_lock,
+                )
+                sqlite_account_lock = None
+            raise HTTPException(
+                status_code=410,
+                detail="This MedBuddy account has been deleted.",
+            ) from exc
     except OperationalError as exc:
         db.rollback()
+        if sqlite_account_lock is not None:
+            _release_sqlite_account_lock(
+                principal.user_hash,
+                sqlite_account_lock,
+            )
+            sqlite_account_lock = None
         raise HTTPException(
             status_code=503,
             detail="This account is busy. Retry the request shortly.",
             headers={"Retry-After": "5"},
         ) from exc
-    return principal
+    except BaseException:
+        if sqlite_account_lock is not None:
+            _release_sqlite_account_lock(
+                principal.user_hash,
+                sqlite_account_lock,
+            )
+            sqlite_account_lock = None
+        raise
+    try:
+        yield principal
+    finally:
+        if sqlite_account_lock is not None:
+            _release_sqlite_account_lock(
+                principal.user_hash,
+                sqlite_account_lock,
+            )
 
 
 # 함수명: get_authenticated_app_principal

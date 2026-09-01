@@ -50,7 +50,6 @@ class _PrescriptionTextAnalysisStub:
             "raw_medication_count": 1,
             "parsed_medication_count": 1,
             "skipped_medication_count": 0,
-            "recognized_regions": [],
         }
 
 

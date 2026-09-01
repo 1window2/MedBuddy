@@ -34,7 +34,9 @@ part 'check_saved_medication_support.dart';
 // - 저장 날짜별로 약 목록을 묶어 표 형태에 가깝게 표시한다.
 // - 가이드/사진/삭제 팝업 같은 저장 목록 세부 동작을 제공한다.
 class CheckSavedMedicationUI extends StatefulWidget {
-  const CheckSavedMedicationUI({super.key});
+  final bool showCloseButton;
+
+  const CheckSavedMedicationUI({super.key, this.showCloseButton = true});
 
   @override
   State<CheckSavedMedicationUI> createState() => _CheckSavedMedicationUIState();
@@ -107,121 +109,129 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    key: const ValueKey('savedMedicationCloseButton'),
-                    tooltip: text.close,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 42,
-                      height: 42,
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close,
-                      color: MedBuddyColors.textMuted,
-                      size: 30,
-                    ),
-                  ),
-                  if (savedMedicationInfoList.isNotEmpty)
-                    PopupMenuButton<_SavedMedicationSortMode>(
-                      key: const ValueKey('savedMedicationSortModeButton'),
-                      tooltip: text.sortSettings,
-                      initialValue: _sortMode,
-                      onSelected: (sortMode) {
-                        setState(() {
-                          _sortMode = sortMode;
-                        });
-                      },
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: _SavedMedicationSortMode.registeredDate,
-                          child: _SavedMedicationSortMenuItem(
-                            label: text.sortByRegisteredDate,
-                            isSelected:
-                                _sortMode ==
-                                _SavedMedicationSortMode.registeredDate,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (widget.showCloseButton)
+                        IconButton(
+                          key: const ValueKey('savedMedicationCloseButton'),
+                          tooltip: text.close,
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 42,
+                            height: 42,
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.close,
+                            color: MedBuddyColors.textMuted,
+                            size: 30,
                           ),
                         ),
-                        PopupMenuItem(
-                          value: _SavedMedicationSortMode.medicationDate,
-                          child: _SavedMedicationSortMenuItem(
-                            label: text.sortByMedicationDate,
-                            isSelected:
-                                _sortMode ==
-                                _SavedMedicationSortMode.medicationDate,
+                      if (!widget.showCloseButton) const Spacer(),
+                      if (savedMedicationInfoList.isNotEmpty)
+                        PopupMenuButton<_SavedMedicationSortMode>(
+                          key: const ValueKey('savedMedicationSortModeButton'),
+                          tooltip: text.sortSettings,
+                          initialValue: _sortMode,
+                          onSelected: (sortMode) {
+                            setState(() {
+                              _sortMode = sortMode;
+                            });
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: _SavedMedicationSortMode.registeredDate,
+                              child: _SavedMedicationSortMenuItem(
+                                label: text.sortByRegisteredDate,
+                                isSelected:
+                                    _sortMode ==
+                                    _SavedMedicationSortMode.registeredDate,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: _SavedMedicationSortMode.medicationDate,
+                              child: _SavedMedicationSortMenuItem(
+                                label: text.sortByMedicationDate,
+                                isSelected:
+                                    _sortMode ==
+                                    _SavedMedicationSortMode.medicationDate,
+                              ),
+                            ),
+                          ],
+                          icon: const Icon(Icons.tune_rounded),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: compactLayout ? 14 : 30),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          text.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF0A0A0A),
+                            fontSize: 27,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
                           ),
+                        ),
+                      ),
+                      if (savedMedicationInfoList.isNotEmpty)
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _isSelectionMode = !_isSelectionMode;
+                              _selectedMedicationIds.clear();
+                            });
+                          },
+                          child: Text(
+                            _isSelectionMode ? text.done : text.select,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (savedMedicationInfoList.isNotEmpty) ...[
+                    SizedBox(height: compactLayout ? 8 : 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: _SavedMedicationFilterControl(
+                            filterMode: _filterMode,
+                            text: text,
+                            onChanged: (filterMode) {
+                              setState(() {
+                                _filterMode = filterMode;
+                                _selectedMedicationIds.clear();
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _SavedMedicationSortControl(
+                          sortDirection: _sortDirection,
+                          text: text,
+                          onDirectionChanged: (sortDirection) {
+                            setState(() {
+                              _sortDirection = sortDirection;
+                            });
+                          },
                         ),
                       ],
-                      icon: const Icon(Icons.tune_rounded),
-                    ),
-                ],
-              ),
-              SizedBox(height: compactLayout ? 14 : 30),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      text.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF0A0A0A),
-                        fontSize: 27,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                  if (savedMedicationInfoList.isNotEmpty)
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _isSelectionMode = !_isSelectionMode;
-                          _selectedMedicationIds.clear();
-                        });
-                      },
-                      child: Text(_isSelectionMode ? text.done : text.select),
-                    ),
-                ],
-              ),
-              if (savedMedicationInfoList.isNotEmpty) ...[
-                SizedBox(height: compactLayout ? 8 : 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: _SavedMedicationFilterControl(
-                        filterMode: _filterMode,
-                        text: text,
-                        onChanged: (filterMode) {
-                          setState(() {
-                            _filterMode = filterMode;
-                            _selectedMedicationIds.clear();
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _SavedMedicationSortControl(
-                      sortDirection: _sortDirection,
-                      text: text,
-                      onDirectionChanged: (sortDirection) {
-                        setState(() {
-                          _sortDirection = sortDirection;
-                        });
-                      },
                     ),
                   ],
-                ),
-              ],
-              SizedBox(height: compactLayout ? 10 : 20),
-              Expanded(
-                child: _buildContent(viewModel, savedMedicationInfoList, text),
-              ),
+                  SizedBox(height: compactLayout ? 10 : 20),
+                  Expanded(
+                    child: _buildContent(
+                      viewModel,
+                      savedMedicationInfoList,
+                      text,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -432,11 +442,15 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       if (!mounted || image == null) {
         return;
       }
-      Navigator.pop(context);
+      if (widget.showCloseButton) {
+        Navigator.pop(context);
+      }
       await viewModel.requestCapturedPrescriptionImage(image);
       return;
     }
-    Navigator.pop(context);
+    if (widget.showCloseButton) {
+      Navigator.pop(context);
+    }
     viewModel.requestPrescriptionImageFromGallery();
   }
 

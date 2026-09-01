@@ -1,65 +1,37 @@
+# File Name: test_prescription_ocr_boundary.py
+# Role: Verifies the de-identified prescription text boundary and Gemini request.
+
 import asyncio
-import threading
 from typing import Any
 
 import pytest
 from google.genai import types
 
 from boundaries.prescription_ocr_boundary import (
-    GeminiVisionClient,
+    GeminiPrescriptionTextClient,
     OCRServiceBoundary,
-    PrescriptionPreprocessingCapacityError,
 )
 
 
-class _RecordingPrescriptionImageProcessor:
+class _RecordingPrescriptionTextClient:
     def __init__(self) -> None:
-        self.thread_id: int | None = None
+        self.masked_text = ""
 
-    def preprocess_prescription_image(self, image: bytes) -> bytes:
-        self.thread_id = threading.get_ident()
-        return b"processed-image"
-
-
-class _RecordingGeminiVisionClient:
-    async def generate_content(
+    async def generate_text_content(
         self,
         *,
         client: object,
         model_name: str,
         prompt: str,
-        processed_image: bytes,
+        masked_text: str,
         response_schema: dict[str, Any],
     ) -> str:
-        assert processed_image == b"processed-image"
+        self.masked_text = masked_text
         return "{}"
 
 
-class _ConcurrentPrescriptionImageProcessor:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self.release = threading.Event()
-        self.active_count = 0
-        self.max_active_count = 0
-
-    def preprocess_prescription_image(self, image: bytes) -> bytes:
-        with self._lock:
-            self.active_count += 1
-            self.max_active_count = max(
-                self.max_active_count,
-                self.active_count,
-            )
-        self.release.wait(timeout=2)
-        with self._lock:
-            self.active_count -= 1
-        return b"processed-image"
-
-
-class _SlowGeminiVisionClient:
-    async def generate_content(
-        self,
-        **_kwargs: object,
-    ) -> str:
+class _SlowPrescriptionTextClient:
+    async def generate_text_content(self, **_kwargs: object) -> str:
         await asyncio.sleep(1)
         return "{}"
 
@@ -88,130 +60,123 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+# Function Name: test_text_extraction_normalizes_input_before_delegation
+# Description:
+# - Verifies that only normalized, de-identified text reaches Gemini.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_image_preprocessing_runs_outside_the_event_loop_thread() -> None:
-    image_processor = _RecordingPrescriptionImageProcessor()
-    event_loop_thread_id = threading.get_ident()
-    ocr_boundary = OCRServiceBoundary(
+async def test_text_extraction_normalizes_input_before_delegation() -> None:
+    text_client = _RecordingPrescriptionTextClient()
+    boundary = OCRServiceBoundary(
         client=object(),  # type: ignore[arg-type]
         model_name="test-model",
         response_schema={},
-        prescription_image_processor=image_processor,
-        gemini_vision_client=_RecordingGeminiVisionClient(),  # type: ignore[arg-type]
+        gemini_text_client=text_client,  # type: ignore[arg-type]
     )
 
-    response = await ocr_boundary.extractPrescriptionData(b"source-image")
+    response = await boundary.extractPrescriptionTextData("  masked text  ")
 
     assert response == "{}"
-    assert image_processor.thread_id is not None
-    assert image_processor.thread_id != event_loop_thread_id
+    assert text_client.masked_text == "masked text"
 
 
+# Function Name: test_text_extraction_rejects_empty_input
+# Description:
+# - Prevents empty requests from consuming the external AI quota.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_image_preprocessing_rejects_excess_work_before_queueing() -> None:
-    image_processor = _ConcurrentPrescriptionImageProcessor()
-    boundaries = [
-        OCRServiceBoundary(
-            client=object(),  # type: ignore[arg-type]
-            model_name="test-model",
-            response_schema={},
-            prescription_image_processor=image_processor,
-            gemini_vision_client=_RecordingGeminiVisionClient(),  # type: ignore[arg-type]
-        )
-        for _ in range(2)
-    ]
-    first_task = asyncio.create_task(
-        boundaries[0].extractPrescriptionData(b"source-image")
-    )
-
-    for _ in range(50):
-        if image_processor.active_count > 0:
-            break
-        await asyncio.sleep(0.01)
-    try:
-        with pytest.raises(
-            PrescriptionPreprocessingCapacityError,
-            match="temporarily busy",
-        ):
-            await boundaries[1].extractPrescriptionData(b"source-image")
-        assert image_processor.max_active_count == 1
-    finally:
-        image_processor.release.set()
-        await first_task
-
-
-@pytest.mark.anyio
-async def test_structured_extraction_is_bounded_by_boundary_timeout() -> None:
-    ocr_boundary = OCRServiceBoundary(
+async def test_text_extraction_rejects_empty_input() -> None:
+    boundary = OCRServiceBoundary(
         client=object(),  # type: ignore[arg-type]
         model_name="test-model",
         response_schema={},
-        prescription_image_processor=_RecordingPrescriptionImageProcessor(),
-        gemini_vision_client=_SlowGeminiVisionClient(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ValueError, match="empty"):
+        await boundary.extractPrescriptionTextData("  ")
+
+
+# Function Name: test_text_extraction_is_bounded_by_boundary_timeout
+# Description:
+# - Verifies that stalled Gemini text analysis cannot run indefinitely.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_text_extraction_is_bounded_by_boundary_timeout() -> None:
+    boundary = OCRServiceBoundary(
+        client=object(),  # type: ignore[arg-type]
+        model_name="test-model",
+        response_schema={},
+        gemini_text_client=_SlowPrescriptionTextClient(),  # type: ignore[arg-type]
         request_timeout_seconds=0.01,
     )
 
-    with pytest.raises(TimeoutError, match="OCR service timed out"):
-        await ocr_boundary.extractPrescriptionData(b"source-image")
+    with pytest.raises(TimeoutError, match="text service timed out"):
+        await boundary.extractPrescriptionTextData("masked text")
 
 
+# Function Name: test_timeout_does_not_log_request_configuration
+# Description:
+# - Ensures a timeout does not expose model or prescription request details.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_timeout_does_not_log_request_configuration(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    ocr_boundary = OCRServiceBoundary(
+    boundary = OCRServiceBoundary(
         client=object(),  # type: ignore[arg-type]
         model_name="sensitive-test-model",
         response_schema={},
-        prescription_image_processor=_RecordingPrescriptionImageProcessor(),
-        gemini_vision_client=_SlowGeminiVisionClient(),  # type: ignore[arg-type]
+        gemini_text_client=_SlowPrescriptionTextClient(),  # type: ignore[arg-type]
         request_timeout_seconds=0.01,
     )
 
-    with pytest.raises(TimeoutError, match="OCR service timed out"):
-        await ocr_boundary.extractPrescriptionData(b"source-image")
+    with pytest.raises(TimeoutError, match="text service timed out"):
+        await boundary.extractPrescriptionTextData("masked text")
 
-    boundary_records = [
+    records = [
         record
         for record in caplog.records
         if record.name == "boundaries.prescription_ocr_boundary"
     ]
-    assert boundary_records == []
+    assert records == []
 
 
+# Function Name: test_structured_text_request_uses_low_latency_config
+# Description:
+# - Keeps the text-only Gemini request deterministic and output-bounded.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_structured_extraction_uses_low_latency_high_resolution_config() -> None:
+async def test_structured_text_request_uses_low_latency_config() -> None:
     client = _RecordingGeminiClient()
 
-    response = await GeminiVisionClient().generate_content(
+    response = await GeminiPrescriptionTextClient().generate_text_content(
         client=client,  # type: ignore[arg-type]
         model_name="test-model",
         prompt="extract",
-        processed_image=b"processed-image",
+        masked_text="masked text",
         response_schema={},
     )
 
     assert response == "{}"
     assert client.models.last_request is not None
+    assert client.models.last_request["contents"] == ["extract", "masked text"]
     config = client.models.last_request["config"]
     assert config.thinking_config.thinking_level == types.ThinkingLevel.MINIMAL
-    assert (
-        config.media_resolution
-        == types.MediaResolution.MEDIA_RESOLUTION_HIGH
-    )
     assert config.max_output_tokens == 2048
 
 
-# 함수이름: test_ocr_prompt_requests_tight_medication_name_regions
-# 함수역할:
-# - OCR 지시문이 약품 행 전체가 아닌 약품명 글자 영역만 요청하는지 검증한다.
-# 매개변수:
-# - 없음
-# 반환값:
-# - 없음
-def test_ocr_prompt_requests_tight_medication_name_regions() -> None:
-    prompt = OCRServiceBoundary._prescription_extraction_prompt()
+# Function Name: test_text_prompt_preserves_the_privacy_boundary
+# Description:
+# - Verifies that the prompt forbids reconstructing images or removed identifiers.
+# Returns:
+# - None.
+def test_text_prompt_preserves_the_privacy_boundary() -> None:
+    prompt = OCRServiceBoundary._masked_text_extraction_prompt()
 
-    assert "medication_name" in prompt
-    assert "약품 행 전체가 아니라" in prompt
-    assert "투약량·횟수·일수 열은 포함하지 마세요" in prompt
+    assert "원본 이미지나 제거된 개인정보를 추측하지 말고" in prompt
+    assert "반드시 지정된 JSON 스키마로만 반환하세요" in prompt

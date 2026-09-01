@@ -29,7 +29,7 @@ dependencies:
   shared_preferences: ^2.3.3
   timezone: ^0.11.1
   url_launcher: ^6.3.2
-  workmanager: ^0.9.0+3
+  workmanager: ^0.10.9
   flutter_naver_map: 1.4.4
 
 dev_dependencies:

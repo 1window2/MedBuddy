@@ -6,76 +6,24 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and experimental nearby-pharmacy and chat flows.
 
-## 브랜치 목적 / Branch Purpose
-
-**한국어**
-
-`beta/v0.2.0`은 `v0.1.x`의 안정적인 복약 관리 흐름을 유지하면서 다음
-주요 기능을 개발하고 검증하는 브랜치입니다.
-
-- 복약정보 직접 등록
-- 여러 낱알약의 일괄 식별과 개별 결과 확인
-- 근처 운영 약국 조회와 앱 내 지도 확인
-- 환자·보호자 복약 맥락 채팅
-- 처방전 촬영 가이드와 OCR·복약 일정 검토 개선
-
-이 기능들이 정식 버전에 반영된 뒤에는 이 브랜치를 정리할 예정입니다.
-
-**English**
-
-`beta/v0.2.0` keeps the stable medication-management flow from `v0.1.x`
-while we develop and verify the following features:
-
-- Direct medication entry
-- Batch identification and individual review of multiple loose pills
-- Nearby open-pharmacy lookup with an in-app map
-- Medication-context chat between patients and caregivers
-- Improved prescription capture guidance and OCR/schedule review
-
-We'll clean up this branch after these features are merged into the stable
-release.
-
 ## Key Features
 
 ### Prescription and Pill-Envelope Analysis
 
-- The Flutter app captures or selects a prescription or pill-envelope image and performs Korean OCR on the device with Google ML Kit.
-- Guided camera captures use the same calculated rectangle for the visible guide and the saved OCR image. Only the area inside the guide is retained, while the uncropped app-created camera file is removed after a successful crop.
-- Before any prescription analysis request, the local privacy filter removes patient-identifying lines and masks resident numbers, phone numbers, email addresses, and other inline identifiers. Prescription image content is processed only on the device during this text-analysis flow and is not uploaded to the backend.
-- Only the de-identified OCR text is sent to FastAPI through the prescription-text endpoint. The backend parses and validates that text, normalizes the result into UML-aligned prescription analysis entities, and uses bounded Gemini text recovery only where the structured pipeline requires it.
-- Extracted medication names are verified against the local medication catalog before the detail lookup pipeline runs.
-- Common Korean OCR vowel confusions are corrected through bounded local-catalog candidates; unresolved ambiguous names can use a Gemini fallback that is constrained to catalog candidates and cached by model/request.
-- Low-confidence, malformed, or out-of-candidate fallback results are rejected conservatively rather than silently replacing a medication name.
-- Recognized text regions and masked sensitive areas are shown in the Flutter preview. Users can correct medication names, manually add an OCR-missed medication row, and confirm the prescription date and morning, lunch, evening, or bedtime schedule slots before analysis.
-- Medication-detail responses remain tied to their original OCR rows, so a failed lookup cannot silently remove or reorder another medication. When only some rows fail, verified rows are locked and struck through while unresolved rows remain editable and can be retried independently.
-- When parsing or every medication lookup fails for a technical reason, the UI replaces exception text with an actionable connection, timeout, data, or OCR review message. Users can retry the analysis, return to OCR review, retake the photo, or select another image as appropriate. Continuing with verified medications while unresolved rows remain requires an explicit confirmation.
-- The analysis result can be saved into the user's medication list while preserving user-confirmed prescription dates, schedule slots, dose per time, daily frequency, and total days.
-- After saving all analyzed medications, users can continue directly to today's schedule or the saved-medication list.
+- Capture or select prescription and pill-envelope images, with a guided prescription camera that supports portrait and landscape framing only while the camera is active.
+- Perform Korean OCR and privacy masking on-device, then send only de-identified text to the authenticated FastAPI analysis pipeline.
+- Review recognized fields, correct or add medications, confirm schedule details, and save verified results to the medication list.
 
 ### Medication Detail and Guidance
 
-- Extracted medication names are normalized before lookup.
-- When `backend/medbuddy.db` contains the mirrored public drug catalog, SQLite is used first.
-- Redis and Korean public drug APIs remain fallback paths for records missing from the local catalog.
-- Gemini Text generates patient-friendly medication guidance from the retrieved drug information.
-- The Flutter app can present medication details and voice guidance through the TTS service.
-- Voice guidance reads only the medication name, administration method, and warnings, in that order.
-- Medication images use validated `e약은요` URLs first, then the MFDS pill-identification API for exact solid-medication matches; unsupported dosage forms retain the placeholder.
-- Validated medication images can be opened from medication details or today's schedule in a shared full-screen pan-and-zoom viewer.
-- OCR-derived search candidates are generated with bounded string handling to avoid ReDoS-prone regular expression behavior on untrusted OCR text.
+- Resolve normalized medication names through the local catalog, Redis cache, and Korean public drug APIs.
+- Present validated medication information, images, patient-friendly guidance, and focused TTS playback.
 
 ### Experimental Loose-Pill Identification
 
-- Users can add up to ten loose pills as separate photo sets. Each set requires a front photo and can include an optional reverse-side photo.
-- The Flutter batch control identifies at most two photo sets concurrently, preserves input order, and reports per-pill failures without discarding successful candidates.
-- Server request limits allow one complete ten-pill review under normal use. If a request is rate-limited, the client honors the bounded Retry-After value, keeps completed results, and automatically retries only the affected item while showing retry progress.
-- Before the vision request, local image preprocessing checks for multiple distinct pill contours. The vision response must also report exactly one detected pill and agree with a confident local count; otherwise the item is rejected with a retake prompt before catalog matching.
-- A dedicated vision boundary extracts only visible shape, color, imprint, score-line, and quality attributes; it does not ask the AI to name the product.
-- The backend ranks those attributes deterministically against the authoritative MFDS pill-identification catalog. Local development stores reference rows in `backend/medbuddy.db`; beta deployment seeds the same Alembic-managed table in shared PostgreSQL before deploying the API revision.
-- Results are candidate matches rather than diagnoses. The UI requires explicit selection, never saves a candidate automatically, and directs users to verify packaging or consult a pharmacist.
-- When multiple photos resolve to the same product, the review shows the duplicate count and lets the user keep them separate or merge them. Merging removes only entries whose product and user-confirmed schedule are identical; different doses, dates, durations, or slots remain separate.
-- Before identified candidates are saved, users review and can correct the medication start date, course duration, daily frequency, dose, and morning, lunch, evening, or bedtime slots. When dosage directions are unknown, the review screen applies explicit pill-flow defaults instead of presenting them as OCR facts.
-- This v0.0.9 extension is documented separately from the original UML baseline in [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md).
+- Compare front and optional reverse-side photos against the MFDS pill-identification catalog using visible attributes and deterministic ranking.
+- Treat results as candidates requiring explicit user confirmation, with guidance to verify packaging or consult a pharmacist.
+- See [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md) for the detailed pipeline.
 
 ### Direct Medication Entry
 
@@ -97,57 +45,26 @@ release.
 
 ### User Settings and Voice Playback
 
-- Settings opens with a compact account summary and four focused entry points: Medication & Notifications, Display & Voice, Labs, and Account. Each section keeps the same back-navigation position, and partially edited values remain available while moving between sections.
-- Users can independently enable medication, caregiver, and chat notifications, open Android notification settings, and choose whether lock-screen notifications show full medication/message details or only the notification type.
-- Morning, lunch, evening, and bedtime defaults apply only when new schedules are created. Existing medication schedules keep their individually confirmed times.
-- Users can preview display font size and device/Korean/English language changes immediately, choose 12-hour or 24-hour time display, then save all selected settings without being forced back to the home screen.
-- A fixed back control remains available while the settings content scrolls, matching the navigation behavior of the rest of the app.
-- User settings are persisted through the backend and cached locally for offline fallback.
-- Medication voice guidance uses the selected language and visibly differentiated slow, medium, or fast reading speeds, with local guide text fallback when the backend voice-guide endpoint is unavailable. An intentional stop is treated as a normal user action rather than a playback failure.
+- Persist medication, caregiver, and chat notification preferences; lock-screen privacy; schedule defaults; font size; reading speed; language; and time format with a local fallback.
+- Apply display and voice preferences consistently without changing existing confirmed medication schedules.
 
 ### Saved Medication and Schedule Management
 
-- Users can save, list, and delete medications in a patient-scoped pillbox.
-- Saved medications retain the confirmed prescription date, dosage fields, medication period, and schedule slots used to build today's medication schedule.
-- The saved-medication list can be filtered by active, completed, or all courses and sorted by registration date or medication date in either direction.
-- The home schedule card summarizes the next medication slot, the number of medications due, and today's completion progress.
-- Today's schedule supports patient-scoped and caregiver-scoped status updates.
-- Multi-dose medications are rendered and updated by schedule slot, so morning, lunch, evening, and bedtime doses can be checked independently.
-- Completing a dose provides immediate feedback and an undo action, while reminder setup and cancellation display a clear result message at the bottom of the schedule screen.
-- Slot completion state is stored separately from saved medication snapshots and is cleaned up when the owning medication or account is deleted.
-- Ended medication records remain visible in the completed-history section by default. Operators may configure a nonzero retention window, but the beta self-hosted profile preserves history until user deletion.
+- Save patient-scoped medications with prescription dates, dosage details, treatment periods, and schedule slots.
+- Filter active and completed courses, track each daily dose independently, and undo accidental completion updates.
+- Surface the next dose and daily progress on the home screen while retaining completed medication history.
 
 ### Patient and Caregiver Link Flow
 
-- Patients can create a temporary link code.
-- Caregivers can register the code, view linked patient medication data, and unlink when needed.
-- Caregivers can configure each linked patient's morning, lunch, evening, and bedtime alert independently. Each slot supports alerts when a dose is completed or when it remains unchecked after a selected deadline.
-- Firebase Authentication establishes the user identity in beta mode, and the
-  backend derives the user's internal scope from the verified token. A
-  caregiver can select another patient only when an active server-side link
-  authorizes that scope; client hashes are selectors, never credentials.
-- In Firebase beta mode, authenticated device tokens receive transition-based
-  FCM push alerts when a dose is newly completed. Missed-deadline checks remain
-  an authenticated Android background task. Local demo mode polls for both
-  completion and missed-deadline changes and displays local notifications.
-- Caregiver monitoring requests one aggregate snapshot containing every active link, per-slot alert settings, and the schedules needed for notification checks. Older servers remain usable through a bounded per-patient fallback.
-- Patient aliases are stored on the caregiver-owned server link and cached on the device for offline display. A newly upgraded server preserves an existing local alias until the caregiver explicitly saves or clears it, and notification text never exposes the internal patient hash.
-- The v0.2.0 medication-context chat laboratory feature is hidden until enabled in Settings. It requires an active patient-caregiver link and at least one active patient medication.
-- Patients and caregivers can select and remove multiple active medications through the same slot-grouped layout used by today's schedule. Every attached medication is rendered in the message, and a selected or previously sent medication card opens the authorized medication-detail screen.
-- The conversation can carry server-verified schedule-slot cards, caregiver check requests, automatic slot-completion events, medication-shortage or discomfort context, and pharmacy snapshots. The server rebuilds every structured snapshot from the authorized link, active medication course, current schedule, or pharmacy catalog instead of trusting display fields supplied by the client.
-- Quick replies use patient-oriented or caregiver-oriented wording according to the current participant. A patient can open today's schedule at the corresponding slot by selecting a schedule card; the caregiver sees the same card as read-only status information.
-- When all medications in a slot are completed, one idempotent completion event is persisted per link, date, and slot. Schedule-context notifications can reopen today's schedule at the relevant morning, lunch, evening, or bedtime card.
-- REST history and WebSocket events share the same server authorization check, client message identifiers make retries idempotent, and unread state is tracked per participant.
-- Chat notifications route the recipient back to the authorized linked conversation and show a whitespace-normalized message preview limited to 120 characters. Message previews are sensitive notification content and remain subject to the device's lock-screen privacy settings.
+- Link patients and caregivers through temporary codes backed by authenticated, server-derived ownership.
+- Let caregivers view linked medication data, unlink safely, and configure per-slot completion or missed-dose alerts.
+- Deliver transition-based FCM alerts in beta mode without exposing internal patient identifiers.
+- Support opt-in medication-context chat with server-verified schedules, medication cards, pharmacy snapshots, idempotent events, and participant-scoped unread state.
 
 ### Health Recommendations and Reminders
 
-- The backend can generate patient-scoped health recommendations using saved medication context.
-- The frontend includes health recommendation UI state and API controls.
-- Local notification support provides persisted per-slot medication reminder scheduling for demo use.
-- Reminder times can be selected with rotating time wheels before the existing alarm control persists and registers them.
-- Caregiver notification settings persist the UC-13 preference state per caregiver, patient, and schedule slot.
-- Reminder and schedule views use the shared Figma-derived theme tokens for top bars, slot colors, dividers, card borders, and text shades.
+- Generate patient-scoped health recommendations from saved medication context.
+- Schedule persistent per-slot medication reminders and caregiver notification preferences.
 
 ## Roadmap
 

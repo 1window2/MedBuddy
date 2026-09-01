@@ -412,6 +412,7 @@ void main() {
             MedicationSchedule(
               medicationName: '기존약',
               prescriptionDate: DateTime(2026, 8, 25),
+              prescriptionBatchId: 'batch_20260825_alpha',
               dosage: '1정',
               intakeTime: '2회',
               medicationTime: 4,
@@ -448,6 +449,7 @@ void main() {
     expect(addedSchedule?.intakeTime, '3회');
     expect(addedSchedule?.medicationTime, 4);
     expect(addedSchedule?.prescriptionDate, DateTime(2026, 8, 25));
+    expect(addedSchedule?.prescriptionBatchId, 'batch_20260825_alpha');
     expect(addedSchedule?.nameCorrectionSource, 'manual_add');
     expect(tester.takeException(), isNull);
   });

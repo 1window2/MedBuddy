@@ -1,0 +1,84 @@
+@startuml
+allowmixing
+scale max 1920 width
+left to right direction
+!pragma layout smetana
+
+title Authentication, Settings, and Accessibility - Key Classes
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+
+skinparam classBackgroundColor<<UI>> #E8F4FF
+skinparam classBorderColor<<UI>> #147BC1
+skinparam classBackgroundColor<<Control>> #EAF8F0
+skinparam classBorderColor<<Control>> #159957
+skinparam classBackgroundColor<<Service>> #F8FAFC
+skinparam classBorderColor<<Service>> #64748B
+skinparam classBackgroundColor<<Entity>> #F5F3FF
+skinparam classBorderColor<<Entity>> #7C3AED
+skinparam classBackgroundColor<<Database>> #FFF7E6
+skinparam classBorderColor<<Database>> #D97706
+skinparam classBackgroundColor<<External>> #FFF7E6
+skinparam classBorderColor<<External>> #D97706
+
+package "Flutter Frontend" #E8F4FF {
+  class AuthenticationGate <<UI>>
+  class AuthenticationUI <<UI>>
+  class "AuthenticationControl" as FAuthenticationControl <<Control>>
+  class FirebaseRuntimeService <<Service>>
+  class AuthenticatedApiClient <<Service>>
+  class ManageUserSettingUI <<UI>>
+  class "ManageUserSetting" as FManageUserSetting <<Control>>
+  class AppLanguageControl <<Control>>
+  class "RequestVoiceGuide" as FRequestVoiceGuide <<Control>>
+  class TTSService <<Service>>
+  class "UserSetting" as FUserSetting <<Entity>>
+}
+
+package "FastAPI Backend" #EAF8F0 {
+  class OIDCTokenVerifier <<Service>>
+  class AppCheckTokenVerifier <<Service>>
+  class ApiContractMiddleware <<Service>>
+  note "api/dependencies.py module functions\nApp Check 및 ID Token 검증\nauth freshness, account lock, registration" as BAccountDependencies
+  class "AuthorizationControl" as BAuthorizationControl <<Control>>
+  class "ManageUserSetting" as BManageUserSetting <<Control>>
+  class "RequestVoiceGuide" as BRequestVoiceGuide <<Control>>
+  database "user_accounts" as DBUserAccount <<Database>>
+  database "user_settings" as DBUserSetting <<Database>>
+}
+
+cloud "Firebase Authentication" as FirebaseAuth
+cloud "Firebase App Check" as FirebaseAppCheck
+
+AuthenticationGate --> AuthenticationUI
+AuthenticationUI --> FAuthenticationControl
+FAuthenticationControl --> FirebaseRuntimeService
+FAuthenticationControl --> FirebaseAuth : sign-in and session state
+FirebaseRuntimeService --> FirebaseAuth
+FirebaseRuntimeService --> FirebaseAppCheck
+FAuthenticationControl --> AuthenticatedApiClient
+AppCheckTokenVerifier --> FirebaseAppCheck : Firebase Admin verification
+BAccountDependencies --> OIDCTokenVerifier : ID token verification
+BAccountDependencies --> AppCheckTokenVerifier : App Check verification
+BAccountDependencies --> BAuthorizationControl
+BAuthorizationControl --> DBUserAccount
+
+ManageUserSettingUI --> FManageUserSetting
+ManageUserSettingUI --> AppLanguageControl
+FManageUserSetting --> BManageUserSetting : settings API
+BManageUserSetting --> DBUserSetting
+BManageUserSetting --> FUserSetting : persisted preferences
+
+ManageUserSettingUI --> FRequestVoiceGuide
+FRequestVoiceGuide --> BRequestVoiceGuide : guide text API
+FRequestVoiceGuide --> TTSService : on-device speech
+@enduml

@@ -34,4 +34,50 @@ void main() {
     expect(await sourceFile.exists(), isFalse);
     expect(await File(result.path).exists(), isTrue);
   });
+
+  test('이미지 해석에 실패해도 민감한 촬영 원본을 삭제한다', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-crop-failure-',
+    );
+    addTearDown(() => temporaryDirectory.delete(recursive: true));
+    final sourceFile = File('${temporaryDirectory.path}/source.jpg');
+    await sourceFile.writeAsBytes([0, 1, 2, 3]);
+
+    const service = PrescriptionImageCropService();
+
+    await expectLater(
+      service.cropToGuide(
+        sourceImage: XFile(sourceFile.path),
+        normalizedGuideRect: const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9),
+      ),
+      throwsA(anything),
+    );
+    expect(await sourceFile.exists(), isFalse);
+    expect(
+      await File('${temporaryDirectory.path}/source_guide.jpg').exists(),
+      isFalse,
+    );
+  });
+
+  test('파생 이미지 쓰기에 실패해도 촬영 원본을 삭제한다', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-write-failure-',
+    );
+    addTearDown(() => temporaryDirectory.delete(recursive: true));
+    final sourceFile = File('${temporaryDirectory.path}/source.png');
+    final sourceImage = image_library.Image(width: 20, height: 20);
+    await sourceFile.writeAsBytes(image_library.encodePng(sourceImage));
+    await Directory('${temporaryDirectory.path}/source_guide.jpg').create();
+
+    const service = PrescriptionImageCropService();
+
+    await expectLater(
+      service.cropToGuide(
+        sourceImage: XFile(sourceFile.path),
+        normalizedGuideRect: const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9),
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await sourceFile.exists(), isFalse);
+  });
 }

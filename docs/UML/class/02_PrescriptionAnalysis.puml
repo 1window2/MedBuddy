@@ -1,0 +1,72 @@
+@startuml
+allowmixing
+scale max 1920 width
+top to bottom direction
+!pragma layout smetana
+
+title Prescription Analysis - Key Classes
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 2
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+
+skinparam classBackgroundColor<<UI>> #E8F4FF
+skinparam classBorderColor<<UI>> #147BC1
+skinparam classBackgroundColor<<Control>> #EAF8F0
+skinparam classBorderColor<<Control>> #159957
+skinparam classBackgroundColor<<Service>> #F8FAFC
+skinparam classBorderColor<<Service>> #64748B
+skinparam classBackgroundColor<<Entity>> #F5F3FF
+skinparam classBorderColor<<Entity>> #7C3AED
+skinparam classBackgroundColor<<External>> #FFF7E6
+skinparam classBorderColor<<External>> #D97706
+
+package "Flutter Frontend" #E8F4FF {
+  class GuidedPrescriptionCameraUI <<UI>>
+  class PrescriptionCameraOrientationService <<Service>>
+  class PrescriptionImageCropService <<Service>>
+  class PrescriptionLocalOcrService <<Service>>
+  class PrescriptionPrivacyFilter <<Service>>
+  class PrescriptionAnalysisPreviewUI <<UI>>
+  class "InputPrescription" as FInputPrescription <<Control>>
+}
+
+package "FastAPI Backend" #EAF8F0 {
+  class "InputPrescription" as BInputPrescription <<Control>>
+  class OCRServiceBoundary <<Service>>
+  class MedicationNameVerifier <<Service>>
+  class "MedicationSchedule" as BMedicationSchedule <<Entity>>
+}
+
+cloud "Gemini OCR" as Gemini
+
+GuidedPrescriptionCameraUI -right-> PrescriptionImageCropService : crops to guide
+GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera-only rotation
+PrescriptionImageCropService -right-> PrescriptionLocalOcrService : captured image
+PrescriptionLocalOcrService -down-> PrescriptionPrivacyFilter : masks identifiers
+PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR regions
+PrescriptionAnalysisPreviewUI -right-> FInputPrescription : confirmed rows
+FInputPrescription -down-> BInputPrescription : authenticated API
+BInputPrescription -right-> OCRServiceBoundary : structures text
+OCRServiceBoundary -right-> Gemini
+BInputPrescription -right-> MedicationNameVerifier : verifies medication names
+BInputPrescription -right-> BMedicationSchedule : response DTO
+
+note bottom of PrescriptionAnalysisPreviewUI
+  Users review OCR rows and restore
+  missing medications before analysis.
+end note
+
+note top of GuidedPrescriptionCameraUI
+  Camera quality and guide coordinates
+  are checked before capture. Sensor rotation
+  is allowed only while this UI is active.
+end note
+@enduml

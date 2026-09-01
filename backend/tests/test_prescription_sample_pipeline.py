@@ -72,13 +72,13 @@ class _FakeGeminiClient:
         self.aio = _FakeGeminiAio(self.models)
 
 
-class _FakeOcrBoundary:
+class _FakePrescriptionTextBoundary:
     def __init__(self, response_text: str) -> None:
         self.response_text = response_text
-        self.received_image = b""
+        self.received_text = ""
 
-    async def extractPrescriptionData(self, image: bytes) -> str:
-        self.received_image = image
+    async def extractPrescriptionTextData(self, masked_text: str) -> str:
+        self.received_text = masked_text
         return self.response_text
 
 
@@ -108,19 +108,24 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
     def test_sample_prescription_flows_into_today_schedule_and_notifications(
         self,
     ) -> None:
-        ocr_boundary = _FakeOcrBoundary(self._sample_ocr_response())
+        text_boundary = _FakePrescriptionTextBoundary(self._sample_ocr_response())
         ai_client = _FakeGeminiClient(json.dumps({"corrections": []}))
         prescription_control = InputPrescription(
             client=ai_client,
             db=self.db,
-            ocr_service_boundary=ocr_boundary,
+            ocr_service_boundary=text_boundary,
         )
 
         analysis_payload = asyncio.run(
-            prescription_control.requestPrescriptionImage(b"sample-image")
+            prescription_control.requestPrescriptionText(
+                "masked sample prescription text"
+            )
         )
 
-        self.assertEqual(ocr_boundary.received_image, b"sample-image")
+        self.assertEqual(
+            text_boundary.received_text,
+            "masked sample prescription text",
+        )
         self.assertEqual(analysis_payload["prescription_date"], date.today().isoformat())
         self.assertEqual(analysis_payload["raw_medication_count"], 5)
         self.assertEqual(analysis_payload["parsed_medication_count"], 5)

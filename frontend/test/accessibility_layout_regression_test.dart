@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.d
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_reminder_settings_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_preview_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/set_caregiver_notification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
@@ -194,6 +195,86 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    for (final viewportSize in const [Size(360, 640), Size(412, 915)]) {
+      testWidgets(
+        '홈 화면은 ${viewportSize.width.toInt()}x${viewportSize.height.toInt()} '
+        '기본 글씨에서 화면 높이에 맞게 핵심 정보를 표시한다',
+        (tester) async {
+          await _setViewport(tester, viewportSize);
+
+          await tester.pumpWidget(
+            _scaledMaterialApp(
+              textScale: 1,
+              home: InputPrescriptionUI(
+                statusMessage: '',
+                userSetting: const UserSetting(),
+                todayMedicationScheduleList: const [
+                  MedicationSchedule(
+                    medicationID: 'compact-home-1',
+                    medicationName: '데파스정1밀리그람(에티졸람)',
+                    dosage: '1',
+                    intakeTime: '1일 3회',
+                    medicationTime: 3,
+                  ),
+                ],
+                medicationReminderSettings: const {
+                  'morning': MedicationAlarm(
+                    slotKey: 'morning',
+                    hour: 8,
+                    minute: 0,
+                    enabled: true,
+                  ),
+                },
+                todayMedicationCompletedCount: 0,
+                todayMedicationTotalCount: 4,
+                nowProvider: () => DateTime(2026, 8, 30, 7),
+                onPrescriptionScanRequested: () {},
+                onPrescriptionGalleryRequested: () {},
+                onPillIdentificationRequested: () {},
+                onTodayScheduleRequested: () {},
+                onHealthRecommendationRequested: () {},
+                onMedicationReminderRequested: () {},
+                onUserSettingRequested: () {},
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final dashboardScrollable = find.descendant(
+            of: find.byKey(const ValueKey('homeDashboardScrollView')),
+            matching: find.byType(Scrollable),
+          );
+          expect(dashboardScrollable, findsAtLeastNWidgets(1));
+          final scrollableState = tester.state<ScrollableState>(
+            dashboardScrollable.first,
+          );
+          expect(scrollableState.position.maxScrollExtent, 0);
+          final dashboardRect = tester.getRect(
+            find.byKey(const ValueKey('homeEncouragementPanel')),
+          );
+          final firstActionRect = tester.getRect(
+            find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
+          );
+          expect(
+            firstActionRect.top - dashboardRect.bottom,
+            moreOrLessEquals(
+              viewportSize.height >= 900 ? 20 : 12,
+              epsilon: 0.1,
+            ),
+          );
+          expect(
+            find.byKey(const ValueKey('homeMedicationReminderCard')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('homeMedicationTipCard')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
     for (final viewportCase in const [
       (size: Size(320, 568), textScale: 1.3),
       (size: Size(360, 640), textScale: 2.0),
@@ -212,8 +293,8 @@ void main() {
               onPrescriptionGalleryRequested: () {},
               onPillIdentificationRequested: () {},
               onTodayScheduleRequested: () {},
-              onSavedMedicationRequested: () {},
-              onPatientCaregiverLinkRequested: () {},
+              onHealthRecommendationRequested: () {},
+              onMedicationReminderRequested: () {},
               onUserSettingRequested: () {},
             ),
           ),
@@ -221,14 +302,23 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('MedBuddy'), findsOneWidget);
-        expect(find.text('오늘의 복약 일정'), findsOneWidget);
-        expect(find.text('약 정보 촬영하기'), findsOneWidget);
+        expect(
+          find.text(viewportCase.size.width >= 350 ? '처방전\n분석' : '처방전 분석'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(viewportCase.size.width >= 350 ? '낱알약\n식별' : '낱알약 식별'),
+          findsOneWidget,
+        );
         await tester.drag(
           find.byType(SingleChildScrollView),
           const Offset(0, -300),
         );
         await tester.pumpAndSettle();
-        expect(find.text('환자/보호자 연동'), findsOneWidget);
+        expect(
+          find.text(viewportCase.size.width >= 350 ? '복약 알림\n설정' : '복약 알림 설정'),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       });
     }
@@ -311,6 +401,36 @@ void main() {
       expect(find.byType(ListView), findsOneWidget);
       await tester.drag(find.byType(ListView), const Offset(0, -240));
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('복약 알림 빠른 설정은 작은 화면과 큰 글씨에서도 모든 시간대를 제공한다', (tester) async {
+      await _setViewport(tester, const Size(320, 568));
+      SharedPreferences.setMockInitialValues({});
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: _AccessibilityScheduleControl(),
+        setNotification: _EmptyNotificationControl(),
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: _scaledMaterialApp(
+            textScale: 1.6,
+            home: const MedicationReminderSettingsUI(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('복약 알림 설정'), findsOneWidget);
+      expect(find.text('아침'), findsOneWidget);
+      expect(find.text('점심'), findsOneWidget);
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(find.text('저녁'), findsOneWidget);
+      expect(find.text('취침 전'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -437,6 +557,35 @@ void main() {
         medicationDetail.voiceGuideText,
         contains(medicationDetail.usageMethod),
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('약 상세정보는 다중 문장 효능을 독립된 명사형으로 정리한다', (tester) async {
+      const medicationDetail = MedicationDetail(
+        itemName: '테스트정',
+        efficacy:
+            '이 약은 우울 증상을 완화합니다. 또한 경추증, '
+            '두통 등 질환으로 인한 근육 긴장을 풀어주고, '
+            '통증 및 발열을 수반하는 감염증에 사용합니다.',
+        usageMethod: '식후 충분한 물과 함께 복용하세요.',
+        warning: '주의사항',
+      );
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 1,
+          home: const CheckMedicationDetailUI(
+            medicationDetail: medicationDetail,
+            userSetting: UserSetting(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('우울 증상'), findsOneWidget);
+      expect(find.text('경추증'), findsOneWidget);
+      expect(find.text('두통 등 질환으로 인한 근육 긴장'), findsOneWidget);
+      expect(find.text('통증 및 발열을 수반하는 감염증'), findsOneWidget);
+      expect(medicationDetail.efficacy, contains('우울 증상을 완화합니다'));
       expect(tester.takeException(), isNull);
     });
     testWidgets('처방 분석 결과는 긴 약 이름과 2배 글씨에서도 저장 명령을 유지한다', (tester) async {

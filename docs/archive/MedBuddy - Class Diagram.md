@@ -3,7 +3,7 @@
 ## Document Contract
 
 This is the canonical implementation-grounded class view for the
-`v0.2.0-beta` development branch and its released `v0.1.0` functional baseline.
+`v0.1.1-beta` maintenance candidate and its published `v0.1.0-beta` baseline.
 
 - `docs/temp/class diagram v5.png` remains the authoritative first-semester
   conceptual baseline.
@@ -24,8 +24,8 @@ controls, and protocol boundaries that participate in a use case are retained.
 
 1. Frontend and backend classes with the same name are separate tier-local
    implementations and are qualified by package in this document.
-2. `api.router`, `api.pharmacy_router`, and `api.chat_router` are FastAPI
-   boundary modules. They are not fictional router classes.
+2. `api.router` is the FastAPI boundary. It is a module, not a fictional
+   `MedicationRouter` class.
 3. `api.dependencies` is the backend composition root. It constructs controls
    and shared boundaries; domain controls do not construct the API router.
 4. Cross-tier calls use HTTP through `api.router`. No Flutter class directly
@@ -60,7 +60,6 @@ package "Flutter / Boundary" as FE_Boundary {
   class CheckResultUI <<boundary>>
   class PrescriptionChangeRadarUI <<boundary>>
   class CheckMedicationDetailUI <<boundary>>
-  class MedicationImageViewer <<shared boundary>>
   class CheckSavedMedicationUI <<boundary>>
   class CheckTodayMedicationInfoUI <<boundary>>
   class CheckScheduleUI <<boundary>>
@@ -71,11 +70,6 @@ package "Flutter / Boundary" as FE_Boundary {
   class SetNotificationUI <<boundary>>
   class ManageUserSettingUI <<boundary>>
   class PillIdentificationUI <<boundary>>
-  class ManualMedicationEntryUI <<boundary>>
-  class MedicationScheduleReviewBoundary <<function boundary>>
-  class CheckNearbyPharmacyUI <<boundary>>
-  class NearbyPharmacyMap <<boundary>>
-  class LinkedChatUI <<boundary>>
 }
 
 package "Flutter / Control" as FE_Control {
@@ -96,9 +90,6 @@ package "Flutter / Control" as FE_Control {
   class "SetNotification" as FE_SetNotification <<control>>
   class "ManageUserSetting" as FE_ManageUserSetting <<control>>
   class "IdentifyPill" as FE_IdentifyPill <<control>>
-  class "IdentifyPillBatch" as FE_IdentifyPillBatch <<control>>
-  class "CheckNearbyPharmacy" as FE_CheckNearbyPharmacy <<control>>
-  class "ManageLinkedChat" as FE_ManageLinkedChat <<control>>
 }
 
 package "Flutter / Entity" as FE_Entity {
@@ -112,17 +103,10 @@ package "Flutter / Entity" as FE_Entity {
   class "PatientHash" as FE_PatientHash <<entity>>
   class "PatientLinkCode" as FE_PatientLinkCode <<entity>>
   class "PatientCaregiverLink" as FE_PatientCaregiverLink <<entity>>
-  class CaregiverMonitoringSnapshot <<entity>>
   class "UserSetting" as FE_UserSetting <<entity>>
   class "PillVisualFeatures" as FE_PillVisualFeatures <<entity>>
   class "PillIdentificationCandidate" as FE_PillCandidate <<entity>>
   class "PillIdentificationResult" as FE_PillResult <<entity>>
-  class "ManualMedicationEntry" as FE_ManualMedicationEntry <<entity>>
-  class "NearbyPharmacy" as FE_NearbyPharmacy <<entity>>
-  class "ChatMedicationContext" as FE_ChatMedicationContext <<entity>>
-  class "ChatScheduleContext" as FE_ChatScheduleContext <<entity>>
-  class "ChatPharmacyContext" as FE_ChatPharmacyContext <<entity>>
-  class "ChatMessage" as FE_ChatMessage <<entity>>
 }
 
 package "Flutter / External and Shared Services" as FE_Service {
@@ -139,27 +123,16 @@ package "Flutter / External and Shared Services" as FE_Service {
   class NotificationService <<external boundary>>
   class TTSService <<external boundary>>
   class PrescriptionLocalOcrService <<privacy boundary>>
+  class PrescriptionCameraLayoutService <<layout service>>
+  class PrescriptionCameraOrientationService <<platform orientation service>>
+  class PrescriptionImageCropService <<image service>>
   class PushNotificationService <<external boundary>>
   class CaregiverNotificationMonitorService <<application service>>
   class CaregiverNotificationBackgroundScheduler <<runtime scheduler>>
-  class LinkedChatNotificationMonitorService <<application service>>
-  class LinkedChatNotificationMonitorFactory <<composition root>>
-  interface DeviceLocationBoundary <<device boundary>>
-  class GeolocatorDeviceLocationService <<device boundary>>
-  class PharmacyFavoriteService <<local preference service>>
-  class PharmacyExternalActionService <<validated external action service>>
-  cloud "Naver Dynamic Map SDK" as NaverDynamicMapSDK
-  class PrescriptionGuideLayout <<layout service>>
-  class PrescriptionImageCropService <<image service>>
-  class ManualMedicationImageStore <<local storage boundary>>
-  interface LinkedChatEventSource <<stream boundary>>
-  class LinkedChatRealtimeService <<WebSocket service>>
 }
 
 package "FastAPI / API Boundary" as BE_API {
   component "api.router" as APIRouter <<boundary>>
-  component "api.pharmacy_router" as PharmacyRouter <<boundary>>
-  component "api.chat_router" as ChatRouter <<boundary>>
   component "api.dependencies" as APIDependencies <<composition root>>
   class RequestBodyLimitMiddleware <<middleware>>
   class RequestRateLimitMiddleware <<middleware>>
@@ -181,14 +154,10 @@ package "FastAPI / Control" as BE_Control {
   class "RequestVoiceGuide" as BE_RequestVoiceGuide <<control>>
   class "LinkPatientCaregiver" as BE_LinkPatientCaregiver <<control>>
   class "CheckCaregiverMedication" as BE_CheckCaregiverMedication <<control>>
-  class CheckCaregiverMonitoring <<control>>
   class "SetCaregiverNotification" as BE_SetCaregiverNotification <<control>>
   class "SetNotification" as BE_SetNotification <<control>>
   class "ManageUserSetting" as BE_ManageUserSetting <<control>>
   class "IdentifyPill" as BE_IdentifyPill <<control>>
-  class "CheckNearbyPharmacy" as BE_CheckNearbyPharmacy <<control>>
-  class "ManageLinkedChat" as BE_ManageLinkedChat <<control>>
-  class DispatchChatMessageAlert <<control>>
 }
 
 package "FastAPI / Entity" as BE_Entity {
@@ -212,10 +181,6 @@ package "FastAPI / Entity" as BE_Entity {
   class "PillIdentificationCandidate" as BE_PillCandidate <<entity>>
   class "PillIdentificationResult" as BE_PillResult <<entity>>
   class PillIdentificationReference <<reference mapping>>
-  class PharmacyLocationRecord <<entity>>
-  class PharmacyCatalogEntry <<entity>>
-  class "NearbyPharmacy" as BE_NearbyPharmacy <<entity>>
-  class "ChatMessage" as BE_ChatMessage <<entity>>
 }
 
 package "FastAPI / External Boundary" as BE_Boundary {
@@ -240,26 +205,18 @@ package "FastAPI / External Boundary" as BE_Boundary {
   class PillVisionBoundary <<external boundary>>
   class MFDSPillAPI <<external boundary>>
   class MFDSPillCatalogBoundary <<external boundary>>
-  interface PharmacyLookupBoundary <<protocol boundary>>
-  class NationalEmergencyMedicalCenterPharmacyAPI <<external boundary>>
-  class KoreanHolidayAPI <<external boundary>>
 }
 
 package "FastAPI / Policy and Repository" as BE_Support {
   class MedicationCoursePolicy <<policy>>
   class SavedMedicationRetentionPolicy <<policy>>
   class PillIdentificationCatalogRepository <<repository>>
-  class PharmacyCatalogRepository <<repository>>
-  class PatientCaregiverLinkRepository <<repository>>
-  class ChatMessageRepository <<repository>>
-  class ChatConnectionManager <<runtime service>>
 }
 
 package "Persistence" {
   database "medbuddy.db\n(local/demo SQLite)" as MedicationDB
   database "Self-hosted PostgreSQL\n(beta production)" as ProductionDB
   database "Redis\n(cache + distributed quota)" as RedisCache
-  database "chat_messages\n(link-scoped message history)" as ChatMessageStore
 }
 
 ' Main Flutter navigation, authentication, and use-case coordination
@@ -284,8 +241,6 @@ HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> CheckScheduleUI
 HomeScreen ..> LinkPatientCaregiverUI
 HomeScreen ..> PillIdentificationUI
-HomeScreen ..> ManualMedicationEntryUI
-HomeScreen ..> CheckNearbyPharmacyUI
 ManageUserSettingUI ..> AuthenticationControl : signOut()
 InputPrescriptionUI --> MedBuddyViewModel
 PrescriptionAnalysisPreviewUI --> MedBuddyViewModel
@@ -309,30 +264,13 @@ SetCaregiverNotificationUI ..> SetNotificationUI : selects deadline
 SetNotificationUI --> FE_SetNotification
 CheckMedicationDetailUI --> FE_CheckMedicationDetail
 CheckMedicationDetailUI --> FE_RequestVoiceGuide
-CheckMedicationDetailUI ..> MedicationImageViewer : opens image
-CheckScheduleUI ..> MedicationImageViewer : opens image
 PillIdentificationUI --> FE_IdentifyPill
-PillIdentificationUI --> FE_IdentifyPillBatch
-PillIdentificationUI ..> MedicationScheduleReviewBoundary
-PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
-ManualMedicationEntryUI --> FE_ManualMedicationEntry
-ManualMedicationEntryUI --> FE_CheckSavedMedication
-ManualMedicationEntryUI --> ManualMedicationImageStore
-CheckNearbyPharmacyUI --> FE_CheckNearbyPharmacy
-CheckNearbyPharmacyUI --> NearbyPharmacyMap
-CheckNearbyPharmacyUI --> PharmacyFavoriteService
-CheckNearbyPharmacyUI --> PharmacyExternalActionService
-CheckCaregiverMedicationUI ..> LinkedChatUI
-LinkedChatUI --> FE_ManageLinkedChat
-LinkedChatUI --> LinkedChatRealtimeService
-LinkedChatUI --> PharmacyExternalActionService
-LinkedChatUI ..> CheckScheduleUI : reuses medication selection
-LinkedChatUI ..> CheckMedicationDetailUI : opens authorized detail
 
 ' Frontend entities and local external services
 FE_InputPrescription --> FE_AnalyzedMedication
 FE_InputPrescription --> PrescriptionLocalOcrService
-GuidedPrescriptionCameraUI --> PrescriptionGuideLayout
+GuidedPrescriptionCameraUI --> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI --> PrescriptionCameraOrientationService
 GuidedPrescriptionCameraUI --> PrescriptionImageCropService
 FE_CheckMedicationDetail --> FE_MedicationDetail
 FE_CheckSavedMedication --> FE_MedicationDetail
@@ -341,27 +279,9 @@ FE_CheckSchedule --> FE_MedicationAlarm
 FE_CheckHealthRecommendation --> FE_HealthRecommendation
 FE_LinkPatientCaregiver --> FE_PatientLinkCode
 FE_LinkPatientCaregiver --> FE_PatientCaregiverLink
-FE_CheckCaregiverMedication --> CaregiverMonitoringSnapshot
-CaregiverMonitoringSnapshot *-- FE_PatientCaregiverLink
-CaregiverMonitoringSnapshot o-- "0..*" FE_CaregiverNotification
-CaregiverMonitoringSnapshot o-- "0..*" FE_MedicationSchedule
 FE_SetCaregiverNotification --> FE_CaregiverNotification
 FE_ManageUserSetting --> FE_UserSetting
 FE_IdentifyPill --> FE_PillResult
-FE_IdentifyPillBatch --> FE_IdentifyPill
-FE_CheckNearbyPharmacy --> DeviceLocationBoundary
-GeolocatorDeviceLocationService ..|> DeviceLocationBoundary
-FE_CheckNearbyPharmacy --> FE_NearbyPharmacy
-NearbyPharmacyMap ..> FE_NearbyPharmacy : marker data
-NearbyPharmacyMap --> NaverDynamicMapSDK : authenticated map rendering
-FE_ManageLinkedChat --> FE_ChatMessage
-FE_ManageLinkedChat --> FE_ChatMedicationContext
-FE_ManageLinkedChat --> FE_ChatScheduleContext
-FE_ManageLinkedChat --> FE_ChatPharmacyContext
-FE_ChatMessage o-- "0..*" FE_ChatMedicationContext
-FE_ChatMessage o-- "0..1" FE_ChatScheduleContext
-FE_ChatMessage o-- "0..1" FE_ChatPharmacyContext
-LinkedChatRealtimeService ..|> LinkedChatEventSource
 FE_PillResult *-- "0..*" FE_PillCandidate
 FE_PillResult *-- FE_PillVisualFeatures
 FE_MedicationDetail ..> MedicationImageUrlPolicy : sanitize API and stored value
@@ -375,13 +295,8 @@ PillIdentificationUI ..> MedicationImageUrlPolicy : revalidate before fetch
 FE_SetNotification ..> NotificationService
 FE_RequestVoiceGuide ..> TTSService
 PushNotificationService --> AuthenticatedApiClient : token lifecycle
-CaregiverNotificationMonitorService --> FE_CheckCaregiverMedication : aggregate adherence snapshot
+CaregiverNotificationMonitorService --> AuthenticatedApiClient : adherence polling
 CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorService
-LinkedChatNotificationMonitorService --> LinkedChatRealtimeService : active-link events
-LinkedChatNotificationMonitorService --> NotificationService : bounded preview alert
-LinkedChatNotificationMonitorFactory ..> LinkedChatNotificationMonitorService
-LinkedChatNotificationMonitorFactory ..> FE_LinkPatientCaregiver
-LinkedChatNotificationMonitorFactory ..> FE_ManageUserSetting
 
 ' Every Flutter control reaches the backend only through authenticated HTTP
 FE_Control ..> AuthenticatedApiClient
@@ -394,8 +309,6 @@ RequestBodyLimitMiddleware --> APIRouter
 RequestRateLimitMiddleware --> APIRouter
 RequestRateLimitMiddleware --> RedisCache : distributed quota
 APIRouter --> APIDependencies
-PharmacyRouter --> APIDependencies
-ChatRouter --> APIDependencies
 APIDependencies o-- OIDCTokenVerifier
 APIDependencies o-- AppCheckTokenVerifier
 OIDCTokenVerifier --> FirebaseAdminModule : get_firebase_admin_app()
@@ -421,15 +334,10 @@ APIDependencies o-- BE_CheckHealthRecommendation
 APIDependencies o-- BE_RequestVoiceGuide
 APIDependencies o-- BE_LinkPatientCaregiver
 APIDependencies o-- BE_CheckCaregiverMedication
-APIDependencies o-- CheckCaregiverMonitoring
 APIDependencies o-- BE_SetCaregiverNotification
 APIDependencies o-- BE_SetNotification
 APIDependencies o-- BE_ManageUserSetting
 APIDependencies o-- BE_IdentifyPill
-APIDependencies o-- BE_CheckNearbyPharmacy
-APIDependencies o-- BE_ManageLinkedChat
-APIDependencies o-- DispatchChatMessageAlert
-APIDependencies o-- ChatConnectionManager
 
 ' Prescription pipeline
 BE_InputPrescription --> OCRServiceBoundary
@@ -459,11 +367,6 @@ DispatchCaregiverAlert --> BE_CaregiverNotification
 BE_SetCaregiverNotification --> BE_CaregiverNotification
 BE_LinkPatientCaregiver --> BE_PatientLinkCode
 BE_LinkPatientCaregiver --> BE_PatientCaregiverLink
-BE_LinkPatientCaregiver --> PatientCaregiverLinkRepository
-CheckCaregiverMonitoring --> PatientCaregiverLinkRepository
-CheckCaregiverMonitoring --> BE_SetCaregiverNotification
-CheckCaregiverMonitoring --> BE_CheckTodayMedicationInfo
-PatientCaregiverLinkRepository --> BE_PatientCaregiverLink
 BE_CheckHealthRecommendation --> LLMService
 BE_CheckHealthRecommendation --> BE_HealthRecommendation
 BE_ManageUserSetting --> BE_UserSetting
@@ -487,24 +390,6 @@ BE_PillResult *-- "0..*" BE_PillCandidate
 BE_PillResult *-- BE_PillVisualFeatures
 BE_PillCandidate --> PillCatalogEntry
 
-' v0.2.0 direct-entry, nearby-pharmacy, and medication-context chat extensions
-FE_ManualMedicationEntry --> FE_MedicationSchedule
-BE_CheckNearbyPharmacy --> PharmacyCatalogRepository
-BE_CheckNearbyPharmacy --> KoreanHolidayAPI
-NationalEmergencyMedicalCenterPharmacyAPI ..|> PharmacyLookupBoundary
-NationalEmergencyMedicalCenterPharmacyAPI --> PharmacyCatalogEntry
-PharmacyCatalogRepository --> PharmacyCatalogEntry
-BE_CheckNearbyPharmacy --> BE_NearbyPharmacy
-BE_ManageLinkedChat --> ChatMessageRepository
-BE_ManageLinkedChat --> PharmacyCatalogRepository
-BE_ManageLinkedChat --> BE_PatientCaregiverLink
-BE_ManageLinkedChat --> BE_MedicationSchedule
-BE_ManageLinkedChat --> BE_ChatMessage
-DispatchChatMessageAlert --> PushNotificationBoundary
-ChatRouter --> ChatConnectionManager : suppress push for live recipient
-ChatRouter --> DispatchChatMessageAlert : offline recipient alert
-ChatMessageRepository --> ChatMessageStore
-
 ' Persistence is logical; private ORM rows implement these mappings
 BE_Control ..> MedicationDB
 BE_Control ..> ProductionDB : production mapping
@@ -516,7 +401,6 @@ MedicationDB ..> MedicationCompletion
 MedicationDB ..> BE_CaregiverNotification
 MedicationDB ..> BE_PatientCaregiverLink
 MedicationDB ..> BE_UserSetting
-MedicationDB ..> ChatMessageStore
 @enduml
 ```
 
@@ -617,13 +501,6 @@ nodes:
 | `MedicationAPIBoundary` | `api.router` module | The real FastAPI boundary is documented without inventing a class. |
 | Firebase Admin SDK ownership | `boundaries.firebase_admin_boundary` module | A locked module-level `get_firebase_admin_app()` factory owns the shared SDK application; no helper class is invented. |
 | UC-15 types | `IdentifyPill`, `PillVisionBoundary`, pill entities/repository | Deliberate v0.0.9 extension documented separately. |
-| Guided capture and schedule confirmation | `PrescriptionGuideLayout`, `PrescriptionImageCropService`, `MedicationScheduleReviewBoundary` | Captured content is cropped to the visible guide and recognized schedules remain user-correctable before analysis or save. |
-| Direct medication entry | `ManualMedicationEntryUI`, `ManualMedicationImageStore`, shared saved-medication control | Manual input reuses the established medication persistence and schedule model instead of creating a parallel domain. |
-| Multi-pill batch identification | `IdentifyPillBatch` over `IdentifyPill` | Bounded concurrency, row-ordered outcomes, Retry-After-aware per-item retry, and preserved successes extend the single-pill control without duplicating the identification pipeline. |
-| Nearby pharmacy laboratory feature | frontend/backend `CheckNearbyPharmacy`, `DeviceLocationBoundary`, `NearbyPharmacyMap`, `PharmacyFavoriteService`, `PharmacyExternalActionService`, `PharmacyLookupBoundary` | Device location, user-scoped local favorites, freshness/opening-state calculation, server API-key ownership, normalized fallback lookup, map rendering, and validated call/directions actions remain separate cohesive boundaries. |
-| Medication-context chat laboratory feature | frontend/backend `ManageLinkedChat`, `LinkedChatRealtimeService`, `LinkedChatNotificationMonitorService`, `ChatMessageRepository` | Active-link authorization, REST persistence, WebSocket delivery, bounded multi-medication selection with server-rebuilt snapshots, role-specific quick replies, patient schedule-card navigation, idempotent slot-completion messages, authorized detail lookup, and bounded message-preview alerts are separated by responsibility. |
-| Multi-patient caregiver monitoring | frontend `CaregiverNotificationMonitorService`, `CaregiverMonitoringSnapshot`; backend `CheckCaregiverMonitoring`, `PatientCaregiverLinkRepository` | One caregiver-scoped snapshot combines active links, server-synchronized aliases, slot settings, and required schedules. A bounded legacy fallback keeps older local servers usable. |
-| Shared medication image inspection | `MedicationImageViewer` reused by `CheckScheduleUI` and `CheckMedicationDetailUI` | Local and trusted remote images share one pan-and-zoom boundary instead of duplicating dialogs in each screen. |
 
 ## Known Beta Architecture Gaps
 
@@ -639,9 +516,3 @@ nodes:
   persistence, and self-hosted runtime roles are implemented in source.
   Public ingress, provisioned Firebase configuration, and signed two-device
   tests remain operational beta gates.
-- The nearby-pharmacy and medication-context chat features are disabled by
-  default laboratory toggles. Enabling a toggle changes presentation only;
-  backend authorization, active-link checks, and medication ownership checks
-  remain mandatory.
-- WebSocket chat delivery still requires production `WSS` routing, reconnect
-  verification, and two-device notification tests before a v0.2.0 release.

@@ -2,16 +2,18 @@
 
 ## Project Status
 
-MedBuddy is developing the Android v0.2.0 beta on top of the published v0.1.0
-baseline. Laboratory pharmacy and linked-chat features are not production-ready
-until the v0.2.0 privacy and two-device release checks are complete.
+MedBuddy has completed the Android v0.1.1 beta and is developing v0.2.0 on that
+stable baseline. Laboratory pharmacy and linked-chat features are not
+production-ready until the v0.2.0 privacy and two-device release checks are
+complete.
 
 ## Supported Versions
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `beta/v0.2.0` source | Beta candidate | Security fixes are applied before the v0.2.0 beta is published. |
-| `v0.1.0` | Current baseline | Critical fixes are evaluated for the supported release branch. |
+| `v0.2.0-beta` source | In development | Security fixes are applied before the v0.2.0 beta is published. |
+| `v0.1.1-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.0. |
+| `v0.1.0-beta` | Superseded beta | Receives no routine backports. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.

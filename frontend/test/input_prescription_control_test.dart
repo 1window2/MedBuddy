@@ -99,7 +99,7 @@ class _AbortAwareClient extends http.BaseClient {
 }
 
 void main() {
-  test('촬영된 처방전 파일은 이미지 선택기 없이 OCR API로 전송한다', () async {
+  test('촬영된 처방전 파일은 이미지 선택기 없이 로컬 OCR로 처리한다', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-captured-prescription-test-',
     );
@@ -120,13 +120,6 @@ void main() {
         jsonEncode({
           'prescription_date': '2026-07-25',
           'prescription_batch_id': 'batch_1234567890abcdef',
-          'recognized_regions': [
-            {
-              'category': 'medication_row',
-              'text': '테스트정 1정 1일 2회',
-              'box_2d': [120, 80, 240, 920],
-            },
-          ],
           'medications': [
             {
               'drug_name': '테스트정',
@@ -144,7 +137,18 @@ void main() {
       baseUrl: 'http://localhost',
       imagePicker: _FakeImagePicker(null),
       client: client,
-      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(
+        result: const LocalPrescriptionOcrResult(
+          maskedText: '테스트정 1 2 3',
+          regions: [
+            RecognizedTextRegion(
+              category: 'recognized_text',
+              text: '테스트정',
+              box2d: [120, 80, 240, 920],
+            ),
+          ],
+        ),
+      ),
     );
     addTearDown(() => _disposeControl(control));
 
@@ -162,7 +166,7 @@ void main() {
     expect(control.lastSelectedImagePath, imageFile.path);
     expect(control.lastSelectedImageOwnedByApp, isTrue);
     expect(control.lastRecognizedTextRegions, hasLength(1));
-    expect(control.lastRecognizedTextRegions.first.text, '테스트정 1정 1일 2회');
+    expect(control.lastRecognizedTextRegions.first.text, '테스트정');
 
     await control.clearSelectedImage();
     expect(await imageFile.exists(), isFalse);
@@ -244,7 +248,7 @@ void main() {
     expect(await imageFile.exists(), isFalse);
   });
 
-  test('서버 약품 영역을 사용해도 로컬 개인정보 마스킹 영역을 보존한다', () async {
+  test('로컬 약품 영역과 개인정보 마스킹 영역을 함께 보존한다', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-region-merge-test-',
     );
@@ -259,13 +263,6 @@ void main() {
       (request) async => http.Response(
         jsonEncode({
           'prescription_date': '2026-07-25',
-          'recognized_regions': [
-            {
-              'category': 'medication_row',
-              'text': '테스트정 1정 1일 2회',
-              'box_2d': [120, 80, 240, 920],
-            },
-          ],
           'medications': [
             {
               'drug_name': '테스트정',
@@ -292,6 +289,11 @@ void main() {
               text: '',
               box2d: [20, 40, 80, 400],
             ),
+            RecognizedTextRegion(
+              category: 'recognized_text',
+              text: '테스트정',
+              box2d: [120, 80, 240, 920],
+            ),
           ],
         ),
       ),
@@ -311,7 +313,7 @@ void main() {
     );
   });
 
-  test('서버 좌표가 없으면 OCR 오탈자가 있는 약품 영역만 유사도로 남긴다', () async {
+  test('OCR 오탈자가 있는 로컬 약품 영역만 유사도로 남긴다', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-local-region-filter-test-',
     );
@@ -371,7 +373,7 @@ void main() {
   });
 
   test(
-    'requestPrescriptionImage preserves OCR metadata from backend',
+    'prescription analysis preserves medication correction metadata',
     () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'medbuddy-prescription-test-',
@@ -434,7 +436,7 @@ void main() {
     },
   );
 
-  test('requestPrescriptionImage derives skipped count fallback', () async {
+  test('prescription analysis derives skipped count fallback', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-empty-test-',
     );
@@ -473,50 +475,47 @@ void main() {
     expect(control.lastSkippedMedicationCount, 3);
   });
 
-  test(
-    'requestPrescriptionImage surfaces backend OCR timeout detail',
-    () async {
-      final tempDirectory = await Directory.systemTemp.createTemp(
-        'medbuddy-prescription-backend-timeout-test-',
-      );
-      addTearDown(() async {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-      });
-      final imageFile = File('${tempDirectory.path}/prescription.jpg');
-      await imageFile.writeAsBytes([1, 2, 3]);
+  test('prescription analysis surfaces backend timeout detail', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-backend-timeout-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
 
-      final client = MockClient((http.Request request) async {
-        return http.Response(
-          jsonEncode({'detail': '처방전 인식 서비스 응답 시간이 초과되었습니다.'}),
-          504,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = InputPrescription(
-        baseUrl: 'http://localhost',
-        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-        client: client,
-        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        jsonEncode({'detail': '처방전 인식 서비스 응답 시간이 초과되었습니다.'}),
+        504,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
-      addTearDown(() => _disposeControl(control));
+    });
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    addTearDown(() => _disposeControl(control));
 
-      expect(
-        () => control.requestPrescriptionImageFromGallery(),
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.message,
-            'message',
-            contains('분석 실패 (504)'),
-          ),
+    expect(
+      () => control.requestPrescriptionImageFromGallery(),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('분석 실패 (504)'),
         ),
-      );
-    },
-  );
+      ),
+    );
+  });
 
   test(
-    'requestPrescriptionImage times out while reading a stalled body',
+    'prescription analysis times out while reading a stalled body',
     () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'medbuddy-prescription-timeout-test-',
@@ -545,7 +544,7 @@ void main() {
   );
 
   test(
-    'requestPrescriptionImage aborts an in-flight upload after timeout',
+    'prescription analysis aborts an in-flight request after timeout',
     () async {
       final tempDirectory = await Directory.systemTemp.createTemp(
         'medbuddy-prescription-abort-test-',
@@ -576,7 +575,7 @@ void main() {
     },
   );
 
-  test('dispose aborts an in-flight prescription upload', () async {
+  test('dispose aborts an in-flight prescription analysis request', () async {
     final tempDirectory = await Directory.systemTemp.createTemp(
       'medbuddy-prescription-dispose-test-',
     );

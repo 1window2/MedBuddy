@@ -2,10 +2,10 @@
 
 ## Status
 
-- Scope review: 2026-08-24
-- Stable functional baseline: `v0.1.0`
+- Scope review: 2026-09-01
+- Stable functional baseline: `v0.1.1-beta`
 - Active development branch: `beta/v0.2.0`
-- Target release line: `v0.2.0-beta.*`
+- Target release tag: `v0.2.0-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
@@ -72,7 +72,7 @@ The following implemented flows are in v0.2.0 verification:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-08-23: P0 controls and release configuration
+Implementation status as of 2026-09-01: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
@@ -173,13 +173,13 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 
 ## Beta Exit Criteria
 
-The first beta may be published only when all of the following are true:
+The v0.2.0 beta may be published only when all of the following are true:
 
 - P0 identity, authorization, HTTPS, and signing requirements are complete.
 - Release configuration has no clear-text, demo-scope, debug-signing, or local
   host fallback.
 - Database migrations and rollback are tested from a clean database and from
-  the v0.1.0 schema, including linked-chat tables and medication context.
+  the v0.1.1 schema, including linked-chat tables and medication context.
 - CI is green for backend tests, Flutter analysis/tests, CodeQL, dependency
   validation, and Android release compilation.
 - The security and privacy review covers all external AI/public-data calls,
@@ -188,3 +188,7 @@ The first beta may be published only when all of the following are true:
   versions.
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
+
+The completed v0.1.1 baseline is recorded in
+[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md); v0.2.0 release-candidate
+changes and verification evidence must be recorded before publication.

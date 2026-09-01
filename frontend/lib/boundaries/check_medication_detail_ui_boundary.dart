@@ -719,12 +719,12 @@ List<String> _summaryValues(String value, String noInformation) {
   }
 
   final values = normalizedValue
-      .split(RegExp(r'[,/;·\n]+'))
+      .split(RegExp(r'[,/;·\n]+|[.!?。]+\s*|\s+(?:또한|그리고|아울러)\s+'))
       .map(_compactIndicationLabel)
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
   final fallback = _compactIndicationLabel(normalizedValue);
-  return values.isEmpty ? [fallback] : values;
+  return values.isEmpty ? [fallback.isEmpty ? '정보 없음' : fallback] : values;
 }
 
 // 함수이름: _compactIndicationLabel
@@ -737,6 +737,7 @@ List<String> _summaryValues(String value, String noInformation) {
 // - 상세 화면에 표시할 간결한 효능 문구
 String _compactIndicationLabel(String value) {
   var label = value.trim();
+  label = label.replaceFirst(RegExp(r'^(?:또한|그리고|아울러)\s*'), '');
   label = label.replaceFirst(RegExp(r'^(?:이\s*약(?:은|이)?|본\s*약은)\s*'), '');
   label = label.replaceFirst(
     RegExp(
@@ -745,7 +746,19 @@ String _compactIndicationLabel(String value) {
     ),
     '',
   );
-  label = label.replaceFirst(RegExp(r'\s*(?:을|를)\s*(?:치료|완화|개선)합니다\.?$'), '');
+  label = label.replaceFirst(
+    RegExp(
+      r'\s*(?:을|를)\s*'
+      r'(?:치료|완화|개선|경감|예방)'
+      r'(?:합니다|해줍니다|하는\s*데\s*사용(?:합니다|됩니다))?\.?$',
+    ),
+    '',
+  );
+  label = label.replaceFirst(
+    RegExp(r'\s*(?:을|를)\s*풀어주(?:고|며|는\s*데\s*사용(?:합니다|됩니다))\.?$'),
+    '',
+  );
+  label = label.replaceFirst(RegExp(r'\s*(?:에|에서)\s*효과가\s*있습니다\.?$'), '');
   return label.replaceFirst(RegExp(r'[.!?。]+$'), '').trim();
 }
 

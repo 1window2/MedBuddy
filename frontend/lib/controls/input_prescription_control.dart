@@ -16,14 +16,15 @@ import '../services/prescription_local_ocr_service.dart';
 typedef PrescriptionImageSelectedCallback = void Function();
 
 // 파일명: input_prescription_control.dart
-// 역할: 카메라와 갤러리에서 처방전 이미지를 받아 백엔드 OCR API로 전송한다.
+// 역할: 처방전 이미지를 기기에서 비식별 처리하고 복약 정보 분석을 요청한다.
 
 // 클래스명: InputPrescription
-// 역할: 처방전 이미지 선택, 업로드, OCR 결과 변환을 담당한다.
+// 역할: 처방전 이미지 선택, 로컬 OCR, 비식별 텍스트 분석 결과 변환을 담당한다.
 // 주요 책임:
-// - 카메라 또는 갤러리에서 이미지를 선택한다.
+// - 전용 카메라 촬영 파일 또는 갤러리 이미지를 받는다.
 // - 이미지가 실제 선택된 뒤에만 진행 상태 콜백을 호출한다.
-// - 백엔드 OCR 응답을 MedicationSchedule 목록으로 변환한다.
+// - 원본 이미지를 전송하지 않고 기기에서 제거한 텍스트만 백엔드로 보낸다.
+// - 백엔드 분석 응답을 MedicationSchedule 목록으로 변환한다.
 class InputPrescription {
   static const double _medicationRegionSimilarityThreshold = 0.75;
   static final RegExp _medicationFormPattern = RegExp(
@@ -87,9 +88,22 @@ class InputPrescription {
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    return _requestPrescriptionImage(
-      ImageSource.gallery,
-      onImageSelected: onImageSelected,
+    await clearSelectedImage();
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 82,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      requestFullMetadata: false,
+    );
+    if (image == null) {
+      return null;
+    }
+    _prepareSelectedImage(image.path, ownedByApp: false);
+    onImageSelected?.call();
+    return _requestPrescriptionAnalysis(
+      image,
+      imageSource: ImageSource.gallery,
     );
   }
 
@@ -111,29 +125,12 @@ class InputPrescription {
     return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
   }
 
-  // 함수이름: requestPrescriptionImage
-  // 함수역할:
-  // - 시스템 카메라로 처방전 이미지를 촬영하고 OCR 분석을 요청한다.
-  // - 기존 호출부와 테스트 호환성을 위해 유지하며 앱 화면에서는 전용 카메라를 사용한다.
-  // 매개변수:
-  // - onImageSelected: 이미지 선택 직후 진행 상태로 전환하는 콜백
-  // 반환값:
-  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
-  Future<List<MedicationSchedule>?> requestPrescriptionImage({
-    PrescriptionImageSelectedCallback? onImageSelected,
-  }) async {
-    return _requestPrescriptionImage(
-      ImageSource.camera,
-      onImageSelected: onImageSelected,
-    );
-  }
-
   // 함수이름: _requestPrescriptionAnalysis
   // 함수역할:
   // - 기기에서 OCR과 개인정보 제거를 수행한 뒤 비식별 텍스트만 백엔드에 전송한다.
   // - 백엔드가 반환한 조제일자를 각 약 일정에 함께 실어 보존한다.
   // 매개변수:
-  // - image: 업로드할 처방전 이미지 파일
+  // - image: 기기 내에서 OCR할 처방전 이미지 파일
   // - imageSource: 파일 접근 오류 문구를 구분할 이미지 출처
   // 반환값:
   // - OCR에서 추출한 복약 일정 목록
@@ -187,9 +184,6 @@ class InputPrescription {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final serverRegions = RecognizedTextRegion.fromJsonList(
-        decodedData['recognized_regions'] ?? decodedData['recognizedRegions'],
-      );
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final prescriptionBatchId =
@@ -198,7 +192,6 @@ class InputPrescription {
       if (rawMedications is! List) {
         _lastRecognizedTextRegions = _resolvePreviewRegions(
           localRegions: localRegions,
-          serverRegions: serverRegions,
           medicationSchedules: const [],
         );
         _recordParseCounts(decodedData, 0);
@@ -219,7 +212,6 @@ class InputPrescription {
           .toList(growable: false);
       _lastRecognizedTextRegions = _resolvePreviewRegions(
         localRegions: localRegions,
-        serverRegions: serverRegions,
         medicationSchedules: medicationSchedules,
       );
       _recordParseCounts(decodedData, medicationSchedules.length);
@@ -236,7 +228,7 @@ class InputPrescription {
       throw StateError(_imageFileAccessErrorMessage(imageSource));
     } catch (error, stackTrace) {
       developer.log(
-        'Prescription image upload failed.',
+        'Prescription text analysis request failed.',
         name: 'InputPrescription',
         error: error,
         stackTrace: stackTrace,
@@ -250,37 +242,6 @@ class InputPrescription {
         imageOperation.complete();
       }
     }
-  }
-
-  // 함수이름: _requestPrescriptionImage
-  // 함수역할:
-  // - 이미지 소스별 선택 화면을 열고 선택된 파일의 OCR 분석을 요청한다.
-  // 매개변수:
-  // - imageSource: 카메라 또는 갤러리 이미지 소스
-  // - onImageSelected: 이미지 선택 완료 후 실행할 콜백
-  // 반환값:
-  // - OCR에서 추출한 복약 일정 목록, 취소 시 null
-  Future<List<MedicationSchedule>?> _requestPrescriptionImage(
-    ImageSource imageSource, {
-    PrescriptionImageSelectedCallback? onImageSelected,
-  }) async {
-    await clearSelectedImage();
-    final image = await _imagePicker.pickImage(
-      source: imageSource,
-      imageQuality: 82,
-      maxWidth: 1600,
-      maxHeight: 1600,
-      requestFullMetadata: false,
-    );
-    if (image == null) {
-      return null;
-    }
-    _prepareSelectedImage(
-      image.path,
-      ownedByApp: imageSource == ImageSource.camera,
-    );
-    onImageSelected?.call();
-    return _requestPrescriptionAnalysis(image, imageSource: imageSource);
   }
 
   void _prepareSelectedImage(String imagePath, {required bool ownedByApp}) {
@@ -360,28 +321,21 @@ class InputPrescription {
   // 함수이름: _resolvePreviewRegions
   // 함수역할:
   // - 로컬 개인정보 마스킹 영역을 보존하면서 약품 관련 OCR 영역만 미리보기에 남긴다.
-  // - 서버가 약품 좌표를 제공하면 이를 우선하고, 없으면 파싱된 약 이름으로 로컬 OCR 영역을 분류한다.
+  // - 파싱된 약 이름과 일치하는 로컬 OCR 영역을 약품 영역으로 분류한다.
   // 매개변수:
   // - localRegions: 기기 내 OCR이 생성한 전체 텍스트 및 개인정보 영역
-  // - serverRegions: 서버가 선택적으로 반환한 복약 정보 영역
   // - medicationSchedules: 서버가 구조화한 약품 일정 목록
   // 반환값:
   // - 약품 정보 영역과 개인정보 마스킹 영역만 포함한 정렬된 목록
   List<RecognizedTextRegion> _resolvePreviewRegions({
     required List<RecognizedTextRegion> localRegions,
-    required List<RecognizedTextRegion> serverRegions,
     required List<MedicationSchedule> medicationSchedules,
   }) {
-    final sensitiveRegions = [
-      ...localRegions.where((region) => region.isSensitive),
-      ...serverRegions.where((region) => region.isSensitive),
-    ];
-    final serverMedicationRegions = serverRegions
-        .where((region) => region.isMedication)
-        .toList(growable: false);
-    final medicationRegions = serverMedicationRegions.isNotEmpty
-        ? serverMedicationRegions
-        : _classifyLocalMedicationRegions(localRegions, medicationSchedules);
+    final sensitiveRegions = localRegions.where((region) => region.isSensitive);
+    final medicationRegions = _classifyLocalMedicationRegions(
+      localRegions,
+      medicationSchedules,
+    );
     final uniqueRegions = <RecognizedTextRegion>[];
     final seenRegionKeys = <String>{};
 

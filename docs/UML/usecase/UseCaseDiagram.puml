@@ -8,6 +8,7 @@ actor "보호자" as C
 actor "인증 API Client" as ApiClient
 
 actor "파이어베이스 인증" as FirebaseAuth
+actor "파이어베이스 앱 체크" as FirebaseAppCheck
 actor "파이어베이스 클라우드 메시징" as FCM
 actor "구글 엠엘 키트 문자 인식" as MLKit
 actor "제미나이 인공지능 서비스" as Gemini
@@ -121,6 +122,7 @@ C -- UC28
 FirebaseAuth -- UC14
 FirebaseAuth -- UC15
 FirebaseAuth -- UC16
+FirebaseAppCheck -- UC15
 
 FCM -- UC13
 
@@ -153,6 +155,7 @@ LocalNotification -- UC28
 TTS -- UC11
 TTS -- UC14
 
+Workmanager -- UC12
 Workmanager -- UC22
 
 FCM -- UC28

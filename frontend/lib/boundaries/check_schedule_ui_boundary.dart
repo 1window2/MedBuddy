@@ -31,11 +31,15 @@ class CheckScheduleUI extends StatefulWidget {
   final String selectionLanguage;
   final Set<String> initialSelectedMedicationIds;
   final String? initialSlotKey;
+  final bool showBackButton;
 
-  const CheckScheduleUI({super.key, this.initialSlotKey})
-    : selectionSchedules = null,
-      selectionLanguage = 'ko',
-      initialSelectedMedicationIds = const {};
+  const CheckScheduleUI({
+    super.key,
+    this.initialSlotKey,
+    this.showBackButton = true,
+  }) : selectionSchedules = null,
+       selectionLanguage = 'ko',
+       initialSelectedMedicationIds = const {};
 
   // 생성자명: CheckScheduleUI.selection
   // 역할: 오늘 일정의 시간대 카드 구성을 재사용해 채팅에 첨부할 약을 선택한다.
@@ -47,7 +51,8 @@ class CheckScheduleUI extends StatefulWidget {
   }) : selectionSchedules = schedules,
        selectionLanguage = language,
        initialSelectedMedicationIds = selectedMedicationIds,
-       initialSlotKey = null;
+       initialSlotKey = null,
+       showBackButton = true;
 
   bool get isSelectionMode => selectionSchedules != null;
 
@@ -93,7 +98,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   };
   bool _didRevealInitialSlot = false;
   late Set<String> _selectedMedicationIds;
-
   @override
   void initState() {
     super.initState();
@@ -243,7 +247,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             text: text,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onBackRequested: () => Navigator.pop(context),
+            onBackRequested: widget.showBackButton
+                ? () => Navigator.pop(context)
+                : null,
           ),
           Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
@@ -601,7 +607,7 @@ class _ScheduleHeader extends StatelessWidget {
   final _ScheduleText text;
   final int completedCount;
   final int totalCount;
-  final VoidCallback onBackRequested;
+  final VoidCallback? onBackRequested;
 
   const _ScheduleHeader({
     required this.text,
@@ -635,16 +641,19 @@ class _ScheduleHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              IconButton(
-                tooltip: text.back,
-                onPressed: onBackRequested,
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 24,
+              if (onBackRequested != null) ...[
+                IconButton(
+                  tooltip: text.back,
+                  onPressed: onBackRequested,
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ] else
+                const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   text.title,

@@ -6,21 +6,6 @@ part of 'medbuddy_view_model.dart';
 // 확장명: MedBuddyPrescriptionViewModel
 // 역할: MedBuddyViewModel의 해당 기능 상태 전이와 Control 호출을 한곳에 모은다.
 extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
-  // 함수이름: requestPrescriptionImage
-  // 함수역할:
-  // - 시스템 카메라 기반 처방전 OCR 흐름을 시작한다.
-  // - 전용 카메라를 사용할 수 없는 기존 호출과 테스트 호환성을 위해 유지한다.
-  // 반환값:
-  // - 없음
-  Future<void> requestPrescriptionImage() async {
-    await _requestPrescriptionRecognition(
-      imageRequest: inputPrescription.requestPrescriptionImage,
-      cancelledMessage: _isEnglishSetting
-          ? 'Photo capture was canceled.'
-          : '사진 촬영이 취소되었습니다.',
-    );
-  }
-
   // 함수이름: requestCapturedPrescriptionImage
   // 함수역할:
   // - 전용 촬영 화면에서 반환한 처방전 파일의 OCR 흐름을 시작한다.

@@ -68,7 +68,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _orientationActivation = _orientationService.enableSensorRotation();
+    _orientationActivation = _orientationService.enableSensorOrientation();
     unawaited(_initializeCamera());
   }
 
@@ -100,7 +100,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // - 방향 정책 복원이 끝나면 완료된다.
   Future<void> _restoreOrientation() async {
     await _orientationActivation;
-    await _orientationService.restoreOrientation();
+    await _orientationService.restorePortrait();
   }
 
   // 함수이름: _initializeCamera

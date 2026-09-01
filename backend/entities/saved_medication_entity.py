@@ -33,6 +33,7 @@ from entities.user_account_entity import _UserAccount  # noqa: F401
 #   - Map saved medication fields to the saved_medications table.
 #   - Keep saved medication snapshots scoped to a patient hash.
 #   - Preserve the canonical MFDS product identifier for later enrichment.
+#   - Preserve interaction, side-effect, and storage guidance shown before save.
 #   - Preserve prescription-derived dosage schedule fields for later schedule features.
 #   - Persist the current medication schedule status for CheckSchedule use cases.
 class _SavedMedication(Base):
@@ -63,6 +64,9 @@ class _SavedMedication(Base):
     efficacy = Column(String)
     use_method = Column(String)
     warning_message = Column(String)
+    interaction = Column(Text, nullable=True)
+    side_effect = Column(Text, nullable=True)
+    storage_method = Column(Text, nullable=True)
     dosage_per_time = Column(String, nullable=True)
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
@@ -167,6 +171,9 @@ def ensure_saved_medication_schema(db_engine: Engine) -> None:
         "medication_status": "BOOLEAN DEFAULT 0",
         "medication_status_date": "DATE",
         "ai_guide": "VARCHAR",
+        "interaction": "TEXT",
+        "side_effect": "TEXT",
+        "storage_method": "TEXT",
     }
     today = application_today().isoformat()
 

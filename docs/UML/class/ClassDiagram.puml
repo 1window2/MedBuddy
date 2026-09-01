@@ -39,6 +39,19 @@ package "Flutter Frontend" {
         }
 
         class "HomeScreen" as HomeScreen <<Screen: 홈 탐색>> {
+            + createState(): State<HomeScreen>
+        }
+
+        enum "MedBuddyDestination" as MedBuddyDestination {
+            home
+            schedule
+            medicationCabinet
+            profile
+        }
+
+        class "MedBuddyBottomNavigationUI" as MedBuddyBottomNavigationUI <<Boundary: 최상위 탐색>> {
+            + selectedDestination: MedBuddyDestination
+            + language: String
             + build(context): Widget
         }
 
@@ -89,6 +102,10 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "MedicationReminderSettingsUI" as MedicationReminderSettingsUI <<UI: 복약 알림 통합 설정>> {
+            + createState(): State
+        }
+
         class "PillIdentificationUI" as PillIdentificationUI <<UI: 낱알 식별>> {
             + userSetting: UserSetting
             + control: IdentifyPill?
@@ -128,6 +145,7 @@ package "Flutter Frontend" {
         class "CheckCaregiverMedicationUI" as CheckCaregiverMedicationUI <<UI: 보호자 복약 조회>> {
             + caregiverHash: String
             + patientHash: String
+            + patientLabel: String?
             + userSetting: UserSetting
             + createState(): State
         }
@@ -136,6 +154,12 @@ package "Flutter Frontend" {
             + initialSetting: UserSetting
             + authenticationControl: AuthenticationControl
             + createState(): State
+        }
+
+        class "ManageUserHubUI" as ManageUserHubUI <<UI: 내 정보 허브>> {
+            + userSetting: UserSetting
+            + authenticationControl: AuthenticationControl
+            + build(context): Widget
         }
     }
 
@@ -276,6 +300,14 @@ package "Flutter Frontend" {
             + savePatientAlias(linkId, patientAlias): Future<PatientCaregiverLink>
         }
 
+        class "ManageCaregiverPatientLocalState" as ManageCaregiverPatientLocalState <<Controller: 보호자 환자 local state>> {
+            + {static} maximumLabelLength: int
+            + loadLabel(caregiverHash, patientHash): Future<String>
+            + loadLabels(caregiverHash, links): Future<Map<String, String>>
+            + saveLabel(caregiverHash, patientHash, label): Future<String>
+            + clearPatientState(caregiverHash, patientHash): Future<void>
+        }
+
         class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Controller: 연결 환자 조회>> {
             + baseUrl: String
             + caregiverHash: String
@@ -322,15 +354,21 @@ package "Flutter Frontend" {
     package "Service Layer" {
 
         class "ApiConfig" as ApiConfig <<Configuration: API endpoint>> {
+            + {static} contractVersion: String
             + {static} validate(): void
             + {static} validateUrl(value): void
         }
 
-        class "medication_image_url_entity\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy <<Policy: image egress>>
+        note "module-level function\nmedication_image_url_entity.dart\nsafeMedicationImageUrl()" as MedicationImageUrlPolicy
+
+        class "FirebaseRuntimeService" as FirebaseRuntimeService <<Service: Firebase / App Check 초기화>> {
+            + {static} initialize(): Future<void>
+        }
 
         class "AuthenticatedApiClient" as AuthenticatedApiClient <<API Client: 인증 HTTP>> {
             - _inner: http.Client
             - _tokenProvider: IdTokenProvider
+            - _appCheckTokenProvider: AppCheckTokenProvider
             - _trustedBaseUri: Uri
             + send(request): Future<StreamedResponse>
             + close(): void
@@ -366,6 +404,11 @@ package "Flutter Frontend" {
             + {static} prescriptionAspectRatio: double
             + {static} guideRect(viewportSize): Rect
             + {static} normalizedSourceRect(viewportSize, displayedImageSize, guideRect): Rect
+        }
+
+        class "PrescriptionCameraOrientationService" as PrescriptionCameraOrientationService <<Service: 촬영 중 화면 회전>> {
+            + enableSensorOrientation(): Future<void>
+            + restorePortrait(): Future<void>
         }
 
         class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 가이드 영역 자르기>> {
@@ -463,6 +506,14 @@ package "Flutter Frontend" {
             + dispose(): void
         }
 
+        class "CaregiverPatientLocalStateService" as CaregiverPatientLocalStateService <<Service: 보호자 환자별 local state>> {
+            + {static} maximumLabelLength: int
+            + {static} resolveLabel(preferences, caregiverHash, patientHash): String
+            + {static} saveLabel(preferences, caregiverHash, patientHash, label): Future<String>
+            + {static} synchronizeLinkedPatients(preferences, caregiverHash, patientHashes): Future<void>
+            + {static} clearPatientState(preferences, caregiverHash, patientHash): Future<void>
+        }
+
         class "CaregiverNotificationMonitorFactory" as CaregiverNotificationMonitorFactory <<Composition: 보호자 감시 조립>> {
             + {static} create(caregiverHash, baseUrl, client): CaregiverNotificationMonitorService
         }
@@ -517,6 +568,9 @@ package "Flutter Frontend" {
             + efficacy: String
             + usageMethod: String
             + warning: String
+            + interaction: String
+            + sideEffect: String
+            + storageMethod: String
             + imageUrl: String
             + aiGuide: String
             + fromJson(json): MedicationDetail
@@ -681,7 +735,6 @@ package "FastAPI Backend" {
 
         class "InputPrescription" as BInputPrescription <<Control: 처방전 분석>> {
             + model_name: str
-            + requestPrescriptionImage(image): dict
             + requestPrescriptionText(masked_text): dict
             + maskSensitiveInfo(rawText): str
         }
@@ -845,13 +898,9 @@ package "FastAPI Backend" {
             + from_verified_claims(claims): AuthenticatedPrincipal
         }
 
-        class "Account Request Dependencies" as BAccountDependencies <<Dependency: auth freshness and serialization>> {
-            + get_recently_authenticated_principal(principal): AuthenticatedPrincipal
-            + lock_account_operation(db, user_hash): void
-            + get_registered_principal(principal, db): AuthenticatedPrincipal
-        }
+        note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()" as BAccountDependencies
 
-        class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Middleware: production Host allowlist>> {
+        class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Framework Middleware: production Host allowlist>> {
             + allowed_hosts: list<str>
         }
 
@@ -872,7 +921,6 @@ package "FastAPI Backend" {
         class "ProcessCaregiverAlertOutbox" as ProcessCaregiverAlertOutbox <<Control: 보호자 알림 재시도>> {
             - db: Session
             - push_boundary: PushNotificationBoundary
-            - {static} MAX_DELIVERY_ATTEMPTS: int
             + processDue(limit): dict
             + processOne(outbox_id): str
         }
@@ -912,7 +960,7 @@ package "FastAPI Backend" {
             - db: Session
             + list_all(): list<PillCatalogEntry>
             + is_fresh(minimum_rows, max_age): bool
-            + replace_all(entries): void
+            + replace_all(entries, commit): void
         }
 
         class "_DrugCatalogStore" as DrugCatalogStore <<Repository Helper: 의약품 Catalog 동기화>> {
@@ -928,15 +976,18 @@ package "FastAPI Backend" {
             - store: _DrugCatalogStore
             - public_drug_small_api: PublicDrugSmallAPI
             - public_drug_large_api: PublicDrugLargeAPI
+            - pill_catalog_api: MFDSPillAPI
             - _is_complete_dataset_sync: bool
             + sync_basic(): int
             + sync_approval(): int
+            + sync_pill_identification(): int
             + sync_all(): dict<str, int>
         }
 
         class "SavedMedicationRepository" as SavedMedicationRepository <<Repository: 저장 복약정보 조회>> {
             - db: Session
             + list_by_patient(patient_hash): list
+            + list_all(): list
             + list_recent_by_patient(patient_hash): list
             + find_owned_by_id(medication_id, patient_hash): _SavedMedication?
             + find_daily_duplicate(patient_hash, registration_date, deduplication_key): _SavedMedication?
@@ -945,10 +996,13 @@ package "FastAPI Backend" {
         class "PatientCaregiverLinkRepository" as PatientCaregiverLinkRepository <<Repository: 환자·보호자 연결 조회>> {
             - db: Session
             + list_active_for_user(user_hash): list
+            + list_for_user(user_hash): list
             + list_active_for_patient(patient_hash): list
             + list_active_for_caregiver(caregiver_hash): list
             + find_active_for_user_by_id(link_id, user_hash): _PatientCaregiverLink?
             + find_active_for_caregiver_by_id(link_id, caregiver_hash): _PatientCaregiverLink?
+            + find_pair(patient_hash, caregiver_hash): _PatientCaregiverLink?
+            + find_active_for_caregiver(caregiver_hash, patient_hash): _PatientCaregiverLink?
             + has_active_pair(caregiver_hash, patient_hash): bool
         }
 
@@ -978,14 +1032,14 @@ package "FastAPI Backend" {
 
     package "External Integration Layer" {
 
-        class "PrescriptionImageProcessor" as PrescriptionImageProcessor <<Utility: bounded image decode>> {
-            + {static} maxPixels: 24000000
-            + processPrescriptionImage(imageBytes): ndarray
-        }
-
         class "OIDCTokenVerifier" as OIDCTokenVerifier <<Wrapper: Firebase Token 검증>> {
             - _check_revoked: bool
             + verifyIdToken(token): dict
+        }
+
+        class "AppCheckTokenVerifier" as AppCheckTokenVerifier <<Wrapper: Firebase App Check 검증>> {
+            - _app: App
+            + verifyToken(token): dict
         }
 
         interface "IdentityDeletionBoundary" as IdentityDeletionBoundary {
@@ -998,8 +1052,11 @@ package "FastAPI Backend" {
 
         class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
             + model_name: str
-            + extractPrescriptionData(image): str
             + extractPrescriptionTextData(masked_text): str
+        }
+
+        class "GeminiPrescriptionTextClient" as GeminiPrescriptionTextClient <<Wrapper: Gemini 텍스트 요청>> {
+            + generate_text_content(masked_text): str
         }
 
         class "LLMService" as LLMService <<Wrapper: Gemini 건강 추천>> {
@@ -1085,6 +1142,9 @@ package "FastAPI Backend" {
             + efficacy: str
             + usage_method: str
             + warning: str
+            + interaction: str
+            + side_effect: str
+            + storage_method: str
             + ai_guide: str
             + getMedicationDetail(): dict
             + getVoiceGuideText(language): str
@@ -1189,6 +1249,9 @@ package "FastAPI Backend" {
             + item_name: String
             + prescription_date: Date
             + prescription_batch_id: String?
+            + interaction: Text?
+            + side_effect: Text?
+            + storage_method: Text?
             + schedule_slot_keys: Text
             + medication_status: Boolean
         }
@@ -1262,7 +1325,10 @@ package "FastAPI Backend" {
             + status: String
             + attempt_count: Integer
             + available_at: DateTime
+            + processing_started_at: DateTime?
+            + created_at: DateTime
             + sent_at: DateTime?
+            + last_error: String?
         }
 
         class "_HealthRecommendationCache" as DBHealthRecommendationCache <<ORM: health_recommendation_cache>> {
@@ -1278,8 +1344,9 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + normalized_item_name: String
-            + catalog_sync_token: String
+            + catalog_sync_token: String?
             + raw_json: Text
+            + updated_at: DateTime
         }
 
         class "_DrugApprovalInfo" as DBDrugApprovalInfo <<ORM: drug_approval_infos>> {
@@ -1287,17 +1354,22 @@ package "FastAPI Backend" {
             + item_seq: String
             + item_name: String
             + main_ingredient: Text
-            + catalog_sync_token: String
+            + catalog_sync_token: String?
             + raw_json: Text
+            + updated_at: DateTime
         }
 
         class "PillIdentificationReference" as DBPillIdentificationReference <<ORM: pill_identification_references>> {
             + id: Integer
             + item_seq: String
             + item_name: String
+            + image_url: Text?
             + shape: String
+            + color_primary: String?
+            + color_secondary: String?
             + print_front: String
             + print_back: String
+            + updated_at: DateTime
         }
 
         class "_ChatMessage" as DBChatMessage <<ORM: chat_messages>> {
@@ -1332,6 +1404,8 @@ AuthenticationGate ..> AuthenticationUI
 AuthenticationGate ..> HomeScreen
 HomeScreen ..> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
+HomeScreen *-- MedBuddyBottomNavigationUI
+HomeScreen ..> MedBuddyDestination
 HomeScreen ..> GuidedPrescriptionCameraUI
 HomeScreen ..> PrescriptionAnalysisPreviewUI
 HomeScreen ..> CheckResultUI
@@ -1342,11 +1416,14 @@ HomeScreen ..> ManualMedicationEntryUI
 HomeScreen ..> CheckNearbyPharmacyUI
 HomeScreen ..> LinkPatientCaregiverUI
 HomeScreen ..> ManageUserSettingUI
+HomeScreen ..> ManageUserHubUI
+HomeScreen ..> MedicationReminderSettingsUI
 HomeScreen ..> AppLanguageControl
 
 CheckScheduleUI ..> MedBuddyViewModel
 CheckSavedMedicationUI ..> MedBuddyViewModel
 HealthRecommendationUI ..> MedBuddyViewModel
+MedicationReminderSettingsUI ..> MedBuddyViewModel
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
 PillIdentificationUI o-- FIdentifyPillBatch
@@ -1360,6 +1437,7 @@ CheckNearbyPharmacyUI o-- FCheckNearbyPharmacy
 CheckNearbyPharmacyUI o-- PharmacyFavoriteService
 CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
+LinkPatientCaregiverUI ..> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
 CheckCaregiverMedicationUI o-- FSetCaregiverNotification
 CheckCaregiverMedicationUI ..> LinkedChatUI
@@ -1368,10 +1446,13 @@ LinkedChatUI o-- LinkedChatRealtimeService
 LinkedChatUI o-- PharmacyExternalActionService
 LinkedChatUI ..> CheckScheduleUI : 일정형 약 선택 화면 재사용
 LinkedChatUI ..> CheckMedicationDetailUI : 권한 검증 후 상세 열기
+CheckCaregiverMedicationUI ..> ManageCaregiverPatientLocalState
 ManageUserSettingUI --> FAuthenticationControl
+ManageUserHubUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
 GuidedPrescriptionCameraUI ..> PrescriptionGuideLayout
+GuidedPrescriptionCameraUI *-- PrescriptionCameraOrientationService
 GuidedPrescriptionCameraUI *-- PrescriptionImageCropService
 
 PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
@@ -1384,6 +1465,7 @@ CheckScheduleUI ..> MedicationImageViewer : 사진 확대
 FAuthenticationControl *-- AuthenticatedApiClient
 FAuthenticationControl --> "0..1" FAuthSession
 FAuthenticationControl ..|> AuthenticationGateState
+FAuthenticationControl ..> FirebaseRuntimeService
 
 MedBuddyViewModel *-- FInputPrescription
 MedBuddyViewModel *-- FCheckMedicationDetail
@@ -1435,6 +1517,8 @@ CaregiverNotificationMonitorService ..> NotificationService
 CaregiverNotificationMonitorService ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorService ..> FCheckCaregiverMedication
 CaregiverNotificationMonitorService ..> FSetCaregiverNotification
+CaregiverNotificationMonitorService ..> CaregiverPatientLocalStateService
+ManageCaregiverPatientLocalState ..> CaregiverPatientLocalStateService
 CaregiverNotificationMonitorFactory ..> CaregiverNotificationMonitorService
 CaregiverNotificationMonitorFactory ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorFactory ..> FCheckCaregiverMedication
@@ -1485,7 +1569,7 @@ FAnalyzedMedication *-- FMedicationSchedule
 FAnalyzedMedication *-- FMedicationDetail
 
 BInputPrescription o-- OCRServiceBoundary
-OCRServiceBoundary --> PrescriptionImageProcessor
+OCRServiceBoundary --> GeminiPrescriptionTextClient
 BInputPrescription *-- MedicationNameVerifier
 BInputPrescription ..> BMedicationSchedule
 
@@ -1584,12 +1668,11 @@ BManageAccount --> DBChatMessage
 BManageAccount --> DBUserSetting
 BManageAccount o-- IdentityDeletionBoundary
 FirebaseIdentityDeletionBoundary ..|> IdentityDeletionBoundary
-OIDCTokenVerifier ..> BAuthenticatedPrincipal : verified claims
-BAccountDependencies --> BAuthenticatedPrincipal : freshness policy
+BAccountDependencies ..> OIDCTokenVerifier : ID Token 검증
+BAccountDependencies ..> AppCheckTokenVerifier : App Check Token 검증
+BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
-BTrustedHostMiddleware ..> BAccountDependencies : rejects invalid Host before auth
-BApiContractMiddleware ..> AuthenticatedApiClient : 계약 version 응답
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary
@@ -1610,13 +1693,17 @@ SavedMedicationRetentionPolicy --> DBMedicationCompletion
 DataMaintenanceService *-- SavedMedicationRetentionPolicy
 DataMaintenanceService --> DBPatientLinkCode
 DataMaintenanceService --> DBHealthRecommendationCache
+DataMaintenanceService --> DBCaregiverAlertOutbox
 
 PeriodicDataMaintenanceRunner *-- DataMaintenanceService
 DrugCatalogSyncJob o-- DrugCatalogStore
 DrugCatalogSyncJob o-- PublicDrugSmallAPI
 DrugCatalogSyncJob o-- PublicDrugLargeAPI
+DrugCatalogSyncJob o-- MFDSPillAPI
+DrugCatalogSyncJob ..> PillCatalogRepository
 DrugCatalogStore --> DBDrugBasicInfo
 DrugCatalogStore --> DBDrugApprovalInfo
+DrugCatalogStore --> DBPillIdentificationReference
 
 DBUserAccount "1" -- "0..*" DBSavedMedication : {FK, CASCADE}
 DBSavedMedication "1" -- "0..*" DBMedicationCompletion : {FK, CASCADE}

@@ -29,12 +29,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, prescriptionCameraChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "enableSensorRotation" -> {
-                        enablePrescriptionCameraRotation()
+                    "enableSensorOrientation" -> {
+                        enableSensorOrientationForPrescriptionCamera()
                         result.success(null)
                     }
-                    "restoreOrientation" -> {
-                        restoreOrientationAfterPrescriptionCamera()
+                    "restorePortrait" -> {
+                        restorePortraitAfterPrescriptionCamera()
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -42,20 +42,20 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    // 함수명: enablePrescriptionCameraRotation
-    // 역할: 처방전 촬영 중에는 시스템 회전 잠금과 관계없이 센서 방향을 따른다.
-    private fun enablePrescriptionCameraRotation() {
+    // 함수명: enableSensorOrientationForPrescriptionCamera
+    // 역할: 처방전 촬영 중에만 세로와 가로 센서 회전을 모두 허용한다.
+    private fun enableSensorOrientationForPrescriptionCamera() {
         if (orientationBeforePrescriptionCamera == null) {
             orientationBeforePrescriptionCamera = requestedOrientation
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
     }
 
-    // 함수명: restoreOrientationAfterPrescriptionCamera
-    // 역할: 처방전 촬영 화면을 닫을 때 이전 앱 방향 정책을 복원한다.
-    private fun restoreOrientationAfterPrescriptionCamera() {
+    // 함수명: restorePortraitAfterPrescriptionCamera
+    // 역할: 촬영 화면을 닫을 때 저장된 세로 방향 정책을 복원한다.
+    private fun restorePortraitAfterPrescriptionCamera() {
         requestedOrientation = orientationBeforePrescriptionCamera
-            ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ?: ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         orientationBeforePrescriptionCamera = null
     }
 

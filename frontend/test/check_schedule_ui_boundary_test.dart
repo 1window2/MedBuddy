@@ -108,7 +108,7 @@ class _VisualScheduleCheckSchedule extends CheckSchedule {
       MedicationSchedule(
         medicationID: 'visual-tablet',
         medicationName: '테스트정',
-        dosage: '0.5',
+        dosage: '0.5정',
         intakeTime: '1회',
         medicationTime: 1,
         imageUrl: 'https://nedrug.mfds.go.kr/tablet.png',
