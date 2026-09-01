@@ -32,8 +32,10 @@ package "Flutter Frontend" #E8F4FF {
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
+  class ManageCaregiverPatientLocalState <<Control>>
   class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Control>>
   class "SetCaregiverNotification" as FSetCaregiverNotification <<Control>>
+  class CaregiverPatientLocalStateService <<Service>>
   class PushNotificationService <<Service>>
   class NotificationService <<Service>>
 }
@@ -44,6 +46,7 @@ package "FastAPI Backend" #EAF8F0 {
   class "CheckSchedule" as BCheckSchedule <<Control>>
   class DispatchCaregiverAlert <<Control>>
   class ProcessCaregiverAlertOutbox <<Control>>
+  class CaregiverAlertOutboxWorker <<Service>>
   class PatientCaregiverLinkRepository <<Service>>
   database "patient_caregiver_links" as DBPatientCaregiverLink <<Database>>
   database "guardian_alert_settings" as DBCaregiverNotification <<Database>>
@@ -54,8 +57,11 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification
+CheckCaregiverMedicationUI --> ManageCaregiverPatientLocalState
+ManageCaregiverPatientLocalState --> CaregiverPatientLocalStateService
 
 FLinkPatientCaregiver --> BLinkPatientCaregiver : link API
 FCheckCaregiverMedication --> BCheckCaregiverMedication : patient status API
@@ -67,6 +73,7 @@ BCheckCaregiverMedication --> BLinkPatientCaregiver : verifies relationship
 BCheckCaregiverMedication --> BCheckSchedule : reads schedule
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
 DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
+CaregiverAlertOutboxWorker --> ProcessCaregiverAlertOutbox : retry due events
 ProcessCaregiverAlertOutbox --> DispatchCaregiverAlert
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken

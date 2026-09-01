@@ -34,6 +34,7 @@ package "Flutter Frontend" #E8F4FF {
   class AuthenticationGate <<UI>>
   class AuthenticationUI <<UI>>
   class "AuthenticationControl" as FAuthenticationControl <<Control>>
+  class FirebaseRuntimeService <<Service>>
   class AuthenticatedApiClient <<Service>>
   class ManageUserSettingUI <<UI>>
   class "ManageUserSetting" as FManageUserSetting <<Control>>
@@ -45,7 +46,9 @@ package "Flutter Frontend" #E8F4FF {
 
 package "FastAPI Backend" #EAF8F0 {
   class OIDCTokenVerifier <<Service>>
-  class "Account Request Dependencies" as BAccountDependencies <<Control>>
+  class AppCheckTokenVerifier <<Service>>
+  class ApiContractMiddleware <<Service>>
+  note "api/dependencies.py module functions\nApp Check 및 ID Token 검증\nauth freshness, account lock, registration" as BAccountDependencies
   class "AuthorizationControl" as BAuthorizationControl <<Control>>
   class "ManageUserSetting" as BManageUserSetting <<Control>>
   class "RequestVoiceGuide" as BRequestVoiceGuide <<Control>>
@@ -54,13 +57,18 @@ package "FastAPI Backend" #EAF8F0 {
 }
 
 cloud "Firebase Authentication" as FirebaseAuth
+cloud "Firebase App Check" as FirebaseAppCheck
 
 AuthenticationGate --> AuthenticationUI
 AuthenticationUI --> FAuthenticationControl
-FAuthenticationControl --> FirebaseAuth
+FAuthenticationControl --> FirebaseRuntimeService
+FAuthenticationControl --> FirebaseAuth : sign-in and session state
+FirebaseRuntimeService --> FirebaseAuth
+FirebaseRuntimeService --> FirebaseAppCheck
 FAuthenticationControl --> AuthenticatedApiClient
-AuthenticatedApiClient --> OIDCTokenVerifier : ID token
-OIDCTokenVerifier --> BAccountDependencies
+AppCheckTokenVerifier --> FirebaseAppCheck : Firebase Admin verification
+BAccountDependencies --> OIDCTokenVerifier : ID token verification
+BAccountDependencies --> AppCheckTokenVerifier : App Check verification
 BAccountDependencies --> BAuthorizationControl
 BAuthorizationControl --> DBUserAccount
 
