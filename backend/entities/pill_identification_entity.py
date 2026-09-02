@@ -43,6 +43,74 @@ class PillCatalogEntry:
 
 
 @dataclass(frozen=True)
+class PillCatalogDownloadReport:
+    """Auditable row accounting for one complete MFDS catalog download."""
+
+    advertised_rows: int
+    fetched_rows: int
+    valid_rows: int
+    accepted_unique_rows: int
+    rejected_rows: int
+    duplicate_rows: int
+    page_count: int
+    response_bytes: int
+
+
+@dataclass(frozen=True)
+class PillCatalogSnapshot:
+    """One validated MFDS catalog generation and its reconciliation evidence."""
+
+    entries: tuple[PillCatalogEntry, ...]
+    report: PillCatalogDownloadReport
+
+    def __post_init__(self) -> None:
+        numeric_values = (
+            self.report.advertised_rows,
+            self.report.fetched_rows,
+            self.report.valid_rows,
+            self.report.accepted_unique_rows,
+            self.report.rejected_rows,
+            self.report.duplicate_rows,
+            self.report.response_bytes,
+        )
+        if any(value < 0 for value in numeric_values) or self.report.page_count < 1:
+            raise ValueError("Pill catalog snapshot counts must be non-negative.")
+        if self.report.fetched_rows != (
+            self.report.valid_rows + self.report.rejected_rows
+        ):
+            raise ValueError("Pill catalog fetched-row accounting is inconsistent.")
+        if self.report.valid_rows != (
+            self.report.accepted_unique_rows + self.report.duplicate_rows
+        ):
+            raise ValueError("Pill catalog valid-row accounting is inconsistent.")
+        if len(self.entries) != self.report.accepted_unique_rows:
+            raise ValueError("Pill catalog snapshot row accounting is inconsistent.")
+
+
+@dataclass(frozen=True)
+class PillCatalogReconciliationReport:
+    """Evidence that the downloaded identifier set was published exactly."""
+
+    source: PillCatalogDownloadReport
+    kpic_product_floor: int
+    persisted_rows: int
+    missing_persisted_rows: int
+    unexpected_persisted_rows: int
+
+    @property
+    def is_publishable(self) -> bool:
+        """Returns whether the synchronized generation satisfies every gate."""
+
+        return (
+            self.source.fetched_rows == self.source.advertised_rows
+            and self.source.accepted_unique_rows >= self.kpic_product_floor
+            and self.persisted_rows == self.source.accepted_unique_rows
+            and self.missing_persisted_rows == 0
+            and self.unexpected_persisted_rows == 0
+        )
+
+
+@dataclass(frozen=True)
 class PillIdentificationCandidate:
     """One ranked MFDS product candidate that still requires user confirmation."""
 

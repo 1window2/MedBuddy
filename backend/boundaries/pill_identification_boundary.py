@@ -23,7 +23,12 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from entities.medication_image_url_entity import safe_medication_image_url
-from entities.pill_identification_entity import PillCatalogEntry, PillVisualFeatures
+from entities.pill_identification_entity import (
+    PillCatalogDownloadReport,
+    PillCatalogEntry,
+    PillCatalogSnapshot,
+    PillVisualFeatures,
+)
 from repositories.pill_identification_catalog_repository import (
     PillIdentificationCatalogRepository,
     open_pill_catalog_session,
@@ -919,7 +924,7 @@ class MFDSPillAPI:
         timeout_seconds: float | None = None,
         page_size: int = 500,
         max_concurrency: int = 12,
-        minimum_catalog_rows: int = 1_000,
+        minimum_catalog_rows: int | None = None,
         client_factory: Callable[..., httpx.AsyncClient] | None = None,
     ) -> None:
         if page_size < 1 or page_size > 500:
@@ -933,7 +938,15 @@ class MFDSPillAPI:
         )
         if resolved_timeout <= 0:
             raise ValueError("MFDS pill catalog timeout must be positive.")
-        if minimum_catalog_rows < 1 or minimum_catalog_rows > self._MAX_CATALOG_ROWS:
+        resolved_minimum_catalog_rows = (
+            minimum_catalog_rows
+            if minimum_catalog_rows is not None
+            else settings.PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR
+        )
+        if (
+            resolved_minimum_catalog_rows < 1
+            or resolved_minimum_catalog_rows > self._MAX_CATALOG_ROWS
+        ):
             raise ValueError(
                 "MFDS pill catalog minimum rows must be between 1 and 50000."
             )
@@ -945,10 +958,23 @@ class MFDSPillAPI:
         self.timeout_seconds = resolved_timeout
         self.page_size = page_size
         self.max_concurrency = max_concurrency
-        self.minimum_catalog_rows = minimum_catalog_rows
+        self.minimum_catalog_rows = resolved_minimum_catalog_rows
         self.client_factory = client_factory or httpx.AsyncClient
 
     async def requestCatalog(self) -> list[PillCatalogEntry]:
+        """Returns entries from a fully accounted MFDS catalog generation."""
+
+        snapshot = await self.requestCatalogSnapshot()
+        return list(snapshot.entries)
+
+    # Function Name: requestCatalogSnapshot
+    # Description:
+    # - Downloads every page advertised by the MFDS pill-identification API.
+    # - Accounts for rejected and duplicate rows before returning a generation.
+    # - Rejects a generation when any advertised row was not fetched.
+    # Returns:
+    # - A sorted unique catalog and its immutable reconciliation report.
+    async def requestCatalogSnapshot(self) -> PillCatalogSnapshot:
         limits = httpx.Limits(
             max_connections=self.max_concurrency,
             max_keepalive_connections=self.max_concurrency,
@@ -973,7 +999,7 @@ class MFDSPillAPI:
 
             async def fetch_page(
                 page_no: int,
-            ) -> tuple[list[PillCatalogEntry], int]:
+            ) -> tuple[list[PillCatalogEntry], int, int]:
                 nonlocal total_response_bytes
                 async with semaphore:
                     items, page_total_count, response_bytes = await self._request_page(
@@ -995,7 +1021,7 @@ class MFDSPillAPI:
                         for item in items
                         if (entry := self._to_catalog_entry(item)) is not None
                     ]
-                    return entries, len(items)
+                    return entries, len(items), len(items) - len(entries)
 
             page_tasks = [
                 asyncio.create_task(fetch_page(page_no))
@@ -1011,18 +1037,29 @@ class MFDSPillAPI:
                 raise
 
         raw_row_count = len(first_items) + sum(
-            page_row_count for _, page_row_count in remaining_pages
+            page_row_count for _, page_row_count, _ in remaining_pages
         )
         if raw_row_count > total_count or raw_row_count > self._MAX_CATALOG_ROWS:
             raise RuntimeError("MFDS pill catalog returned too many rows.")
+        if raw_row_count != total_count:
+            raise RuntimeError("MFDS pill catalog download was incomplete.")
         deduplicated: dict[str, PillCatalogEntry] = {}
+        valid_row_count = 0
+        rejected_row_count = 0
         for item in first_items:
             entry = self._to_catalog_entry(item)
             if entry is not None:
+                valid_row_count += 1
                 deduplicated[entry.item_seq] = entry
-        for page_entries, _ in remaining_pages:
+            else:
+                rejected_row_count += 1
+        for page_entries, _, page_rejected_count in remaining_pages:
+            valid_row_count += len(page_entries)
+            rejected_row_count += page_rejected_count
             for entry in page_entries:
                 deduplicated[entry.item_seq] = entry
+
+        duplicate_row_count = valid_row_count - len(deduplicated)
 
         expected_minimum = max(
             self.minimum_catalog_rows,
@@ -1032,11 +1069,32 @@ class MFDSPillAPI:
             raise RuntimeError("MFDS pill catalog download was incomplete.")
 
         logger.info(
-            "MFDS pill catalog refreshed: rows=%d, pages=%d",
+            "MFDS pill catalog refreshed: advertised=%d, fetched=%d, "
+            "valid=%d, unique=%d, rejected=%d, duplicates=%d, pages=%d",
+            total_count,
+            raw_row_count,
+            valid_row_count,
             len(deduplicated),
+            rejected_row_count,
+            duplicate_row_count,
             page_count,
         )
-        return sorted(deduplicated.values(), key=lambda entry: entry.item_seq)
+        entries = tuple(
+            sorted(deduplicated.values(), key=lambda entry: entry.item_seq)
+        )
+        return PillCatalogSnapshot(
+            entries=entries,
+            report=PillCatalogDownloadReport(
+                advertised_rows=total_count,
+                fetched_rows=raw_row_count,
+                valid_rows=valid_row_count,
+                accepted_unique_rows=len(entries),
+                rejected_rows=rejected_row_count,
+                duplicate_rows=duplicate_row_count,
+                page_count=page_count,
+                response_bytes=total_response_bytes,
+            ),
+        )
 
     async def _request_page(
         self,

@@ -962,6 +962,7 @@ package "FastAPI Backend" {
         class "PillIdentificationCatalogRepository" as PillCatalogRepository <<Repository: 낱알 Catalog 저장>> {
             - db: Session
             + list_all(): list<PillCatalogEntry>
+            + list_item_sequences(): set<str>
             + is_fresh(minimum_rows, max_age): bool
             + replace_all(entries, commit): void
         }
@@ -981,6 +982,7 @@ package "FastAPI Backend" {
             - public_drug_large_api: PublicDrugLargeAPI
             - pill_catalog_api: MFDSPillAPI
             - _is_complete_dataset_sync: bool
+            + last_pill_reconciliation_report: PillCatalogReconciliationReport?
             + sync_basic(): int
             + sync_approval(): int
             + sync_pill_identification(): int
@@ -1096,6 +1098,30 @@ package "FastAPI Backend" {
             + base_url: str
             + page_size: int
             + requestCatalog(): list<PillCatalogEntry>
+            + requestCatalogSnapshot(): PillCatalogSnapshot
+        }
+
+        class "PillCatalogDownloadReport" as PillCatalogDownloadReport <<Entity: Catalog Download Evidence>> {
+            + advertised_rows: int
+            + fetched_rows: int
+            + valid_rows: int
+            + accepted_unique_rows: int
+            + rejected_rows: int
+            + duplicate_rows: int
+        }
+
+        class "PillCatalogSnapshot" as PillCatalogSnapshot <<Entity: Catalog Generation>> {
+            + entries: tuple<PillCatalogEntry>
+            + report: PillCatalogDownloadReport
+        }
+
+        class "PillCatalogReconciliationReport" as PillCatalogReconciliationReport <<Entity: Publication Evidence>> {
+            + source: PillCatalogDownloadReport
+            + kpic_product_floor: int
+            + persisted_rows: int
+            + missing_persisted_rows: int
+            + unexpected_persisted_rows: int
+            + is_publishable: bool
         }
 
         class "MFDSPillCatalogBoundary" as MFDSPillCatalogBoundary <<Wrapper: 낱알 Catalog Cache>> {
@@ -1704,6 +1730,9 @@ DrugCatalogSyncJob o-- PublicDrugSmallAPI
 DrugCatalogSyncJob o-- PublicDrugLargeAPI
 DrugCatalogSyncJob o-- MFDSPillAPI
 DrugCatalogSyncJob ..> PillCatalogRepository
+MFDSPillAPI ..> PillCatalogSnapshot
+PillCatalogSnapshot *-- PillCatalogDownloadReport
+DrugCatalogSyncJob ..> PillCatalogReconciliationReport
 DrugCatalogStore --> DBDrugBasicInfo
 DrugCatalogStore --> DBDrugApprovalInfo
 DrugCatalogStore --> DBPillIdentificationReference

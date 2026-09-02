@@ -168,6 +168,13 @@ class DrugCatalogSyncTest(unittest.TestCase):
         synchronized_count = asyncio.run(sync_job.sync_pill_identification())
 
         self.assertEqual(synchronized_count, 1)
+        self.assertIsNotNone(sync_job.last_pill_reconciliation_report)
+        assert sync_job.last_pill_reconciliation_report is not None
+        self.assertTrue(sync_job.last_pill_reconciliation_report.is_publishable)
+        self.assertEqual(
+            sync_job.last_pill_reconciliation_report.persisted_rows,
+            1,
+        )
         self.assertEqual(
             self.db.query(PillIdentificationReference).one().item_seq,
             "PILL-1",
@@ -195,6 +202,30 @@ class DrugCatalogSyncTest(unittest.TestCase):
 
         self.assertEqual(synchronized_count, 1)
         commit.assert_called_once_with()
+
+    def test_pill_sync_rejects_catalog_below_kpic_product_floor(self) -> None:
+        class _BelowFloorPillCatalogAPI:
+            minimum_catalog_rows = 2
+
+            async def requestCatalog(self) -> list[PillCatalogEntry]:
+                return [PillCatalogEntry(item_seq="PILL-1", item_name="pill")]
+
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=object(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=_BelowFloorPillCatalogAPI(),  # type: ignore[arg-type]
+            page_size=100,
+        )
+
+        with self.assertRaisesRegex(
+            CatalogSyncIncompleteError,
+            "identifier-set reconciliation",
+        ):
+            asyncio.run(sync_job.sync_pill_identification())
+
+        self.assertEqual(self.db.query(PillIdentificationReference).count(), 0)
+        self.assertIsNone(sync_job.last_pill_reconciliation_report)
 
     def test_all_sync_rolls_back_earlier_datasets_after_late_failure(self) -> None:
         self.db.add_all(

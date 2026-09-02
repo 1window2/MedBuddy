@@ -18,18 +18,21 @@ record.
 
 The primary coverage target is every solid oral medication that is searchable in
 the Korean Pharmaceutical Information Center (KPIC) identification catalog. The
-KPIC status dashboard reported 24,660 distinct products and 26,317 registration
-records on 2026-09-01. These values are a dated reconciliation baseline, not a
-permanent hard-coded constant.
+KPIC status dashboard reported 24,667 distinct products and 26,325 registration
+records on 2026-09-02. The product count is represented by the dated
+`PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR` deployment setting; it must be reviewed
+against the dashboard before each release rather than treated as permanent.
 
 - Continue ingesting the MFDS pill-identification OpenAPI as the machine-readable
   source because its public-data license permits reuse and the current sync is
-  atomic and validates 95% of the upstream-reported row count.
+  atomic, requires every upstream-advertised raw row to be fetched, and verifies
+  the exact persisted `item_seq` set before publication.
 - Do not scrape or redistribute KPIC images without explicit permission. Use the
   KPIC status dashboard to detect material coverage gaps until an authorized KPIC
   export or API is available.
-- Record upstream row count, raw fetched rows, unique `item_seq` count, rejected
-  rows, and refresh time for every synchronization.
+- Record upstream row count, raw fetched rows, valid rows, unique `item_seq`
+  count, rejected rows, duplicate rows, response bytes, and the exact persisted
+  identifier-set result for every synchronization.
 - A release may claim full catalog eligibility only when every valid unique MFDS
   row is stored and a reconciliation against the current KPIC product count has
   no unexplained gap. A lower count must fail readiness rather than silently

@@ -876,11 +876,14 @@ Router -> Database : 상대 메시지 read_at 일괄 갱신
 loop 설정된 주기마다 catalog-refresh 실행
     BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청
     MFDS --> BackService : 최신 MFDS Dataset
+    BackService -> BackService : 낱알 advertised/fetched/valid/unique/rejected/duplicate 집계
     BackService -> Database : 기본/허가 Row에 Sync Token 표시
     BackService -> Database : 미관측 기본/허가 Row 제거,\n낱알 Catalog 교체 (한 Transaction)
-    alt 전체 Dataset 성공
+    BackService -> Database : 낱알 persisted item_seq Set 재조회
+    alt 전체 Dataset 성공 + 모든 advertised Row 수신 +\nKPIC Product Floor 충족 + item_seq Set 일치
         Database --> BackService : Commit
-    else 일부 Dataset 실패
+        BackService -> BackService : 구조화된 Reconciliation Log 기록
+    else 일부 Dataset 실패 또는 Reconciliation 불일치
         Database --> BackService : Rollback, 기존 Catalog 보존
         BackService -> BackService : 설정된 Backoff 후 재시도
     end

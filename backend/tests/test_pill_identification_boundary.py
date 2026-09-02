@@ -657,6 +657,54 @@ async def test_mfds_api_downloads_and_normalizes_complete_catalog() -> None:
 
 
 @pytest.mark.anyio
+async def test_mfds_api_reports_rejected_and_duplicate_rows() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 40,
+                    "items": [
+                        *[
+                            {
+                                "ITEM_SEQ": str(index),
+                                "ITEM_NAME": f"pill-{index}",
+                            }
+                            for index in range(1, 39)
+                        ],
+                        {"ITEM_SEQ": "1", "ITEM_NAME": "pill-1"},
+                        {"ITEM_SEQ": "", "ITEM_NAME": "invalid"},
+                    ],
+                },
+            },
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    snapshot = await MFDSPillAPI(
+        page_size=40,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    ).requestCatalogSnapshot()
+
+    assert len(snapshot.entries) == 38
+    assert snapshot.report.advertised_rows == 40
+    assert snapshot.report.fetched_rows == 40
+    assert snapshot.report.valid_rows == 39
+    assert snapshot.report.accepted_unique_rows == 38
+    assert snapshot.report.rejected_rows == 1
+    assert snapshot.report.duplicate_rows == 1
+    assert snapshot.report.page_count == 1
+    assert snapshot.report.response_bytes > 0
+
+
+@pytest.mark.anyio
 async def test_mfds_api_rejects_incomplete_multi_page_download() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         page_no = int(request.url.params["pageNo"])
@@ -694,6 +742,46 @@ async def test_mfds_api_rejects_incomplete_multi_page_download() -> None:
 
     with pytest.raises(RuntimeError, match="incomplete"):
         await api.requestCatalog()
+
+
+@pytest.mark.anyio
+async def test_mfds_api_requires_every_advertised_raw_row() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        item_count = 10 if page_no == 1 else 9
+        offset = (page_no - 1) * 10
+        return httpx.Response(
+            200,
+            json={
+                "header": {"resultCode": "00"},
+                "body": {
+                    "totalCount": 20,
+                    "items": [
+                        {
+                            "ITEM_SEQ": str(offset + index),
+                            "ITEM_NAME": f"pill-{offset + index}",
+                        }
+                        for index in range(item_count)
+                    ],
+                },
+            },
+        )
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    api = MFDSPillAPI(
+        page_size=10,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete"):
+        await api.requestCatalogSnapshot()
 
 
 @pytest.mark.anyio

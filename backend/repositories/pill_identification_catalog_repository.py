@@ -74,6 +74,12 @@ class PillIdentificationCatalogRepository:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
         return oldest_update >= cutoff
 
+    def list_item_sequences(self) -> set[str]:
+        """Returns the exact persisted public identifiers for reconciliation."""
+
+        rows = self.db.query(PillIdentificationReference.item_seq).all()
+        return {str(row.item_seq) for row in rows}
+
     def replace_all(
         self,
         entries: list[PillCatalogEntry],

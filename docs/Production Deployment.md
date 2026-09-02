@@ -126,6 +126,13 @@ never prunes unvisited rows. Production retries a failed full refresh after one
 hour. Configure the two intervals in `deploy/.env`; do not add
 `--only-if-empty` to this periodic service.
 
+The pill catalog additionally requires complete upstream row accounting and an
+exact persisted `item_seq` reconciliation. Keep
+`PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR` aligned with the dated product count on
+the public KPIC status dashboard before each release. A higher MFDS catalog
+count is acceptable; a lower unique count fails closed and preserves the prior
+generation.
+
 The backend maintenance runner also removes linked-chat messages after the
 configured retention period. The tracked production template uses 90 days:
 
@@ -178,7 +185,8 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
    SELECT 'pharmacy_catalog_records', COUNT(*) FROM pharmacy_catalog_records;"
 ```
 
-Both results must be greater than zero before physical-device pill
+The pill result must also be at least `PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR`;
+the pharmacy result must be greater than zero before physical-device pill
 identification and nearby-pharmacy testing are considered ready.
 
 Verify that periodic refresh is running and inspect its last synchronization:
@@ -189,6 +197,12 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   logs --tail=100 catalog-refresh
 ```
+
+The drug refresh log must contain `pill catalog reconciliation` with equal
+`advertised_rows`/`fetched_rows` and `accepted_unique_rows`/`persisted_rows`,
+zero missing or unexpected persisted rows, and a unique count at or above the
+configured KPIC floor. Rejected and duplicate counts describe upstream data and
+must be reviewed when they change materially.
 
 To request an immediate, atomic refresh without waiting for the next interval:
 

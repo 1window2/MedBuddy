@@ -39,6 +39,8 @@ _DEFAULT_API_CONTRACT_VERSION = (
 #   - PILL_IDENTIFICATION_CATALOG_TTL_HOURS: Local MFDS catalog cache lifetime.
 #   - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: Maximum full catalog
 #     refresh duration.
+#   - PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR: Dated KPIC product-count floor that
+#     a complete MFDS pill catalog must satisfy before publication.
 #   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
 #   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
 #     duration.
@@ -126,6 +128,11 @@ class Settings(BaseSettings):
         default=30.0,
         gt=0,
         le=600,
+    )
+    PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR: int = Field(
+        default=24_667,
+        ge=1_000,
+        le=50_000,
     )
     PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: bool = True
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = Field(

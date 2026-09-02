@@ -63,6 +63,7 @@ def test_repository_replaces_and_reads_complete_catalog(db: Session) -> None:
     repository.replace_all([_entry("1", "첫번째정"), _entry("2", "두번째정")])
 
     assert [entry.item_seq for entry in repository.list_all()] == ["1", "2"]
+    assert repository.list_item_sequences() == {"1", "2"}
     assert repository.is_fresh(
         minimum_rows=2,
         max_age=timedelta(minutes=1),
