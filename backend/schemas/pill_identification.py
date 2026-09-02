@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import (
+    MultiplePillIdentificationResult,
+    MultiplePillObservation,
+    PillBoundingBox,
     PillIdentificationCandidate,
     PillIdentificationResult,
     PillVisualFeatures,
@@ -105,5 +108,65 @@ class PillIdentificationResponse(BaseModel):
             data=[
                 PillIdentificationCandidateResponse.from_domain(candidate)
                 for candidate in result.candidates
+            ],
+        )
+
+
+class PillBoundingBoxResponse(BaseModel):
+    left: float = Field(ge=0.0, le=1.0)
+    top: float = Field(ge=0.0, le=1.0)
+    width: float = Field(gt=0.0, le=1.0)
+    height: float = Field(gt=0.0, le=1.0)
+
+    @classmethod
+    def from_domain(cls, box: PillBoundingBox) -> "PillBoundingBoxResponse":
+        return cls(left=box.left, top=box.top, width=box.width, height=box.height)
+
+
+class MultiplePillObservationResponse(BaseModel):
+    index: int = Field(ge=1, le=10)
+    bounding_box: PillBoundingBoxResponse
+    identification: PillIdentificationResponse
+
+    @classmethod
+    def from_domain(
+        cls,
+        observation: MultiplePillObservation,
+    ) -> "MultiplePillObservationResponse":
+        return cls(
+            index=observation.index,
+            bounding_box=PillBoundingBoxResponse.from_domain(
+                observation.bounding_box
+            ),
+            identification=PillIdentificationResponse.from_domain(
+                observation.identification
+            ),
+        )
+
+
+class MultiplePillIdentificationResponse(BaseModel):
+    success: Literal[True] = True
+    message: str
+    requires_confirmation: Literal[True] = True
+    observations: list[MultiplePillObservationResponse] = Field(
+        min_length=1,
+        max_length=10,
+    )
+
+    @classmethod
+    def from_domain(
+        cls,
+        result: MultiplePillIdentificationResult,
+    ) -> "MultiplePillIdentificationResponse":
+        return cls(
+            success=True,
+            message=(
+                f"Detected {len(result.observations)} pills. "
+                "Confirm each candidate before saving."
+            ),
+            requires_confirmation=True,
+            observations=[
+                MultiplePillObservationResponse.from_domain(observation)
+                for observation in result.observations
             ],
         )

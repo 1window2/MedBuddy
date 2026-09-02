@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import (
+    PillBoundingBox,
     PillCatalogDownloadReport,
     PillCatalogEntry,
     PillCatalogSnapshot,
@@ -66,6 +67,15 @@ class PillImagePreprocessingResult:
     detected_pill_count: int | None
 
 
+@dataclass(frozen=True)
+class MultiplePillImagePreprocessingResult:
+    """Composition-preserving JPEG used for one-photo object detection."""
+
+    image: bytes
+    width: int
+    height: int
+
+
 class PillImageProcessingBoundary:
     """Bounds, decodes, crops, and normalizes an uploaded pill photo."""
 
@@ -75,67 +85,35 @@ class PillImageProcessingBoundary:
     def preprocessPillImage(self, image: bytes) -> bytes:
         return self.preprocessPillImageWithAssessment(image).image
 
+    def preprocessMultiplePillImage(
+        self,
+        image: bytes,
+    ) -> MultiplePillImagePreprocessingResult:
+        """Validates and bounds an image without cropping away spatial context."""
+
+        decoded = self._decode_bounded_image(image)
+        normalized = self._resize_for_analysis(decoded)
+        height, width = normalized.shape[:2]
+        success, output = cv2.imencode(
+            ".jpg",
+            normalized,
+            [cv2.IMWRITE_JPEG_QUALITY, 90],
+        )
+        if not success:
+            raise PillImageQualityError("The pill image could not be normalized.")
+        return MultiplePillImagePreprocessingResult(
+            image=output.tobytes(),
+            width=width,
+            height=height,
+        )
+
     def preprocessPillImageWithAssessment(
         self,
         image: bytes,
     ) -> PillImagePreprocessingResult:
         """이미지를 정규화하고 확실히 구분되는 알약 개수만 함께 반환한다."""
 
-        if not image:
-            raise PillImageQualityError("The pill image is empty.")
-        if len(image) > MAX_PILL_IMAGE_BYTES:
-            raise PillImageQualityError("The pill image must be 10 MB or smaller.")
-
-        try:
-            with Image.open(BytesIO(image)) as source:
-                width, height = source.size
-                if min(height, width) < self._MIN_IMAGE_DIMENSION:
-                    raise PillImageQualityError(
-                        "The pill image resolution is too small."
-                    )
-                if height * width > MAX_PILL_IMAGE_PIXELS:
-                    raise PillImageQualityError(
-                        "The pill image resolution is too large."
-                    )
-
-                # JPEG draft decoding avoids materializing the full camera frame
-                # before it is reduced to the bounded analysis resolution.
-                if source.format == "JPEG":
-                    source.draft(
-                        "RGB",
-                        (
-                            self._MAX_ANALYSIS_DIMENSION,
-                            self._MAX_ANALYSIS_DIMENSION,
-                        ),
-                    )
-                source.load()
-                oriented = ImageOps.exif_transpose(source)
-                oriented.thumbnail(
-                    (
-                        self._MAX_ANALYSIS_DIMENSION,
-                        self._MAX_ANALYSIS_DIMENSION,
-                    ),
-                    Image.Resampling.LANCZOS,
-                )
-                rgb_image = oriented.convert("RGB")
-                decoded = cv2.cvtColor(
-                    np.asarray(rgb_image, dtype=np.uint8),
-                    cv2.COLOR_RGB2BGR,
-                )
-        except PillImageQualityError:
-            raise
-        except (
-            Image.DecompressionBombError,
-            UnidentifiedImageError,
-            OSError,
-            ValueError,
-        ) as exc:
-            raise PillImageQualityError(
-                "The uploaded file is not a valid image."
-            ) from exc
-        height, width = decoded.shape[:2]
-        if min(height, width) < self._MIN_IMAGE_DIMENSION:
-            raise PillImageQualityError("The pill image resolution is too small.")
+        decoded = self._decode_bounded_image(image)
 
         normalized = self._resize_for_analysis(decoded)
         cropped, detected_pill_count = self._crop_likely_foreground(normalized)
@@ -150,6 +128,54 @@ class PillImageProcessingBoundary:
             image=output.tobytes(),
             detected_pill_count=detected_pill_count,
         )
+
+    def _decode_bounded_image(self, image: bytes) -> np.ndarray:
+        """Decodes an oriented RGB image after byte and pixel bounds are checked."""
+
+        if not image:
+            raise PillImageQualityError("The pill image is empty.")
+        if len(image) > MAX_PILL_IMAGE_BYTES:
+            raise PillImageQualityError("The pill image must be 10 MB or smaller.")
+        try:
+            with Image.open(BytesIO(image)) as source:
+                width, height = source.size
+                if min(height, width) < self._MIN_IMAGE_DIMENSION:
+                    raise PillImageQualityError(
+                        "The pill image resolution is too small."
+                    )
+                if height * width > MAX_PILL_IMAGE_PIXELS:
+                    raise PillImageQualityError(
+                        "The pill image resolution is too large."
+                    )
+                if source.format == "JPEG":
+                    source.draft(
+                        "RGB",
+                        (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
+                    )
+                source.load()
+                oriented = ImageOps.exif_transpose(source)
+                oriented.thumbnail(
+                    (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
+                    Image.Resampling.LANCZOS,
+                )
+                decoded = cv2.cvtColor(
+                    np.asarray(oriented.convert("RGB"), dtype=np.uint8),
+                    cv2.COLOR_RGB2BGR,
+                )
+        except PillImageQualityError:
+            raise
+        except (
+            Image.DecompressionBombError,
+            UnidentifiedImageError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise PillImageQualityError(
+                "The uploaded file is not a valid image."
+            ) from exc
+        if min(decoded.shape[:2]) < self._MIN_IMAGE_DIMENSION:
+            raise PillImageQualityError("The pill image resolution is too small.")
+        return decoded
 
     def _resize_for_analysis(self, image: np.ndarray) -> np.ndarray:
         height, width = image.shape[:2]
@@ -342,6 +368,40 @@ class GeminiPillVisionAPI:
             )
         return response_text
 
+    async def requestMultipleVisualFeatures(
+        self,
+        *,
+        client: genai.Client,
+        model_name: str,
+        image: bytes,
+        response_schema: dict[str, Any],
+    ) -> str:
+        """Detects every distinct pill and extracts only visible attributes."""
+
+        response = await client.aio.models.generate_content(
+            model=model_name,
+            contents=[
+                self._multiple_prompt(),
+                types.Part.from_bytes(data=image, mime_type="image/jpeg"),
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+                temperature=0.0,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL,
+                ),
+                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+                max_output_tokens=4096,
+            ),
+        )
+        response_text = response.text
+        if not response_text or not response_text.strip():
+            raise PillVisionResponseError(
+                "The multiple-pill analysis returned an invalid response."
+            )
+        return response_text
+
     @staticmethod
     def _prompt(*, has_back_image: bool) -> str:
         back_instruction = (
@@ -371,6 +431,25 @@ class GeminiPillVisionAPI:
         - When two images are supplied, compare shape, color, score lines, and
           imprints. Set same_pill to false if they appear to be different pills.
         - side_consistency_confidence must be between 0.0 and 1.0.
+        - Return only the requested JSON object.
+        """
+
+    @staticmethod
+    def _multiple_prompt() -> str:
+        return """
+        Detect every distinct loose pill, tablet, or capsule visible in this one
+        image. Return one object per physical pill, even when pills look identical.
+        box_2d is [ymin, xmin, ymax, xmax], normalized to integers from 0 to 1000.
+
+        Safety rules:
+        - Do not identify or guess medicine or product names.
+        - Ignore packaging text, fingers, hands, bags, bottles, and printed labels.
+        - Read only characters visibly imprinted or engraved on each pill.
+        - Do not invent hidden reverse-side markings; back fields must be empty or unknown.
+        - A partially occluded or blurry pill remains a separate object, but mark its
+          quality poor and explain why.
+        - Tight boxes must contain the complete visible pill and minimal background.
+        - Return at most 10 pills in top-to-bottom, then left-to-right reading order.
         - Return only the requested JSON object.
         """
 
@@ -489,6 +568,55 @@ class PillVisionBoundary:
             },
         },
     }
+    _MULTI_RESPONSE_SCHEMA: dict[str, Any] = {
+        "type": "OBJECT",
+        "required": ["pills"],
+        "properties": {
+            "pills": {
+                "type": "ARRAY",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": {
+                    "type": "OBJECT",
+                    "required": [
+                        "box_2d",
+                        "shape",
+                        "colors",
+                        "front_imprint",
+                        "front_line",
+                        "quality",
+                        "quality_issues",
+                    ],
+                    "properties": {
+                        "box_2d": {
+                            "type": "ARRAY",
+                            "minItems": 4,
+                            "maxItems": 4,
+                            "items": {
+                                "type": "INTEGER",
+                                "minimum": 0,
+                                "maximum": 1000,
+                            },
+                        },
+                        "shape": {"type": "STRING", "enum": list(_SHAPES)},
+                        "colors": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING", "enum": list(_COLORS)},
+                            "maxItems": 2,
+                        },
+                        "front_imprint": {"type": "STRING", "maxLength": 32},
+                        "front_line": {"type": "STRING", "enum": list(_LINES)},
+                        "quality": {"type": "STRING", "enum": list(_QUALITIES)},
+                        "quality_issues": {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING", "maxLength": 80},
+                            "maxItems": 5,
+                        },
+                    },
+                },
+            }
+        },
+    }
 
     def __init__(
         self,
@@ -542,6 +670,117 @@ class PillVisionBoundary:
                     )
         except TimeoutError as exc:
             raise TimeoutError("Pill visual analysis timed out.") from exc
+
+    async def extractMultipleVisualFeatures(
+        self,
+        image: bytes,
+    ) -> tuple[tuple[PillBoundingBox, PillVisualFeatures], ...]:
+        """Returns validated, spatially ordered observations from one image."""
+
+        try:
+            async with asyncio.timeout(self.timeout_seconds):
+                async with self._analysis_semaphore:
+                    processed = await asyncio.to_thread(
+                        self.image_processing_boundary.preprocessMultiplePillImage,
+                        image,
+                    )
+                    response_text = await self.vision_api.requestMultipleVisualFeatures(
+                        client=self.client,
+                        model_name=self.model_name,
+                        image=processed.image,
+                        response_schema=self._MULTI_RESPONSE_SCHEMA,
+                    )
+                    return self._parse_multiple_visual_features(response_text)
+        except TimeoutError as exc:
+            raise TimeoutError("Multiple-pill visual analysis timed out.") from exc
+        except (PillImageQualityError, PillVisionResponseError):
+            raise
+        except Exception as exc:
+            raise PillVisionUnavailableError(
+                "The multiple-pill visual analysis service is temporarily unavailable."
+            ) from exc
+
+    def _parse_multiple_visual_features(
+        self,
+        response_text: str,
+    ) -> tuple[tuple[PillBoundingBox, PillVisualFeatures], ...]:
+        """Rejects malformed, duplicate, or implausibly overlapping observations."""
+
+        try:
+            payload = json.loads(response_text)
+            raw_pills = payload["pills"]
+            if not isinstance(raw_pills, list) or not 1 <= len(raw_pills) <= 10:
+                raise ValueError
+            observations: list[tuple[PillBoundingBox, PillVisualFeatures]] = []
+            for raw_pill in raw_pills:
+                if not isinstance(raw_pill, dict):
+                    raise ValueError
+                raw_box = raw_pill["box_2d"]
+                if (
+                    not isinstance(raw_box, list)
+                    or len(raw_box) != 4
+                    or any(isinstance(value, bool) or not isinstance(value, int) for value in raw_box)
+                ):
+                    raise ValueError
+                ymin, xmin, ymax, xmax = raw_box
+                if not (0 <= ymin < ymax <= 1000 and 0 <= xmin < xmax <= 1000):
+                    raise ValueError
+                box = PillBoundingBox(
+                    left=xmin / 1000.0,
+                    top=ymin / 1000.0,
+                    width=(xmax - xmin) / 1000.0,
+                    height=(ymax - ymin) / 1000.0,
+                )
+                if box.width * box.height < 0.0004:
+                    raise ValueError
+                feature_payload = dict(raw_pill)
+                feature_payload.update(
+                    {
+                        "back_imprint": "",
+                        "back_line": "unknown",
+                        "same_pill": True,
+                        "side_consistency_confidence": 1.0,
+                    }
+                )
+                features = self._to_features(feature_payload, has_back_image=False)
+                observations.append((box, features))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise PillVisionResponseError(
+                "The multiple-pill analysis returned an invalid response."
+            ) from exc
+
+        observations.sort(
+            key=lambda observation: (
+                round(observation[0].top, 2),
+                observation[0].left,
+            )
+        )
+        for index, (box, _features) in enumerate(observations):
+            for other_box, _other_features in observations[index + 1 :]:
+                if self._intersection_over_union(box, other_box) > 0.72:
+                    raise PillVisionResponseError(
+                        "The multiple-pill analysis returned overlapping observations."
+                    )
+        return tuple(observations)
+
+    @staticmethod
+    def _intersection_over_union(
+        first: PillBoundingBox,
+        second: PillBoundingBox,
+    ) -> float:
+        left = max(first.left, second.left)
+        top = max(first.top, second.top)
+        right = min(first.left + first.width, second.left + second.width)
+        bottom = min(first.top + first.height, second.top + second.height)
+        intersection = max(0.0, right - left) * max(0.0, bottom - top)
+        if intersection == 0.0:
+            return 0.0
+        union = (
+            first.width * first.height
+            + second.width * second.height
+            - intersection
+        )
+        return intersection / union
 
     async def _extract_visual_features(
         self,

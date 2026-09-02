@@ -346,6 +346,10 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
         12,
         60,
     ),
+    ("POST", "/api/v1/medication/pill-identification/multiple-candidates"): RateLimitRule(
+        8,
+        60,
+    ),
     ("POST", "/api/v1/medication/identify"): RateLimitRule(30, 60),
     ("GET", "/api/v1/medication/health/recommendation"): RateLimitRule(12, 60),
     ("GET", "/api/v1/pharmacy/nearby"): RateLimitRule(30, 60),

@@ -260,6 +260,7 @@ package "Flutter Frontend" {
             + baseUrl: String
             + requestPillImage(source): Future<Uint8List?>
             + requestPillIdentification(front, back): Future<PillIdentificationResult>
+            + requestMultiplePillIdentification(image): Future<MultiplePillIdentificationResult>
             + dispose(): void
         }
 
@@ -650,6 +651,12 @@ package "Flutter Frontend" {
             + observedFeatures: PillVisualFeatures
             + candidates: List<PillIdentificationCandidate>
             + fromJson(json): PillIdentificationResult
+        }
+
+        class "MultiplePillIdentificationResult" as FMultiplePillIdentificationResult <<Entity: 한 장 다중 낱알 결과>> {
+            + observations: List<MultiplePillObservation>
+            + requiresConfirmation: bool
+            + fromJson(json): MultiplePillIdentificationResult
         }
 
         class "ManualMedicationEntry" as FManualMedicationEntry <<Entity: 직접 입력 복약정보>> {
@@ -1091,6 +1098,7 @@ package "FastAPI Backend" {
         class "PillVisionBoundary" as PillVisionBoundary <<Wrapper: 낱알 Vision 조정>> {
             + model_name: str
             + extractVisualFeatures(front_image, back_image): PillVisualFeatures
+            + extractMultipleVisualFeatures(image): tuple
             + close(): void
         }
 
@@ -1207,6 +1215,11 @@ package "FastAPI Backend" {
             + observed_features: PillVisualFeatures
             + candidates: tuple
             + is_confident: bool
+            + requires_confirmation: bool
+        }
+
+        class "MultiplePillIdentificationResult" as BMultiplePillIdentificationResult <<Entity: 한 장 다중 낱알 결과>> {
+            + observations: tuple<MultiplePillObservation>
             + requires_confirmation: bool
         }
 
@@ -1575,6 +1588,7 @@ PillIdentificationUI ..> MedicationImageUrlPolicy : fetch guard
 FCheckPrescriptionChange ..> FPrescriptionChangeRadar
 FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
+FIdentifyPill ..> FMultiplePillIdentificationResult
 FIdentifyPillBatch ..> FPillIdentificationResult
 FCheckNearbyPharmacy ..> FNearbyPharmacy
 FManageLinkedChat ..> FChatMessage
@@ -1642,6 +1656,7 @@ BCheckHealthRecommendation ..> BHealthRecommendation
 BIdentifyPill o-- PillVisionBoundary
 BIdentifyPill o-- MFDSPillCatalogBoundary
 BIdentifyPill ..> BPillIdentificationResult
+BIdentifyPill ..> BMultiplePillIdentificationResult
 
 PillVisionBoundary *-- GeminiPillVisionAPI
 PillVisionBoundary ..> BPillVisualFeatures

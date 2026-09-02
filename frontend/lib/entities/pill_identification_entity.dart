@@ -174,6 +174,100 @@ class PillIdentificationResult {
   }
 }
 
+class PillBoundingBox {
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+
+  const PillBoundingBox({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+  });
+
+  factory PillBoundingBox.fromJson(Map<String, dynamic> json) {
+    final left = _readRequiredScore(json['left'], 'left');
+    final top = _readRequiredScore(json['top'], 'top');
+    final width = _readRequiredScore(json['width'], 'width');
+    final height = _readRequiredScore(json['height'], 'height');
+    if (width <= 0 || height <= 0 || left + width > 1 || top + height > 1) {
+      throw const FormatException('bounding_box must stay inside the image.');
+    }
+    return PillBoundingBox(left: left, top: top, width: width, height: height);
+  }
+}
+
+class MultiplePillObservation {
+  final int index;
+  final PillBoundingBox boundingBox;
+  final PillIdentificationResult identification;
+
+  const MultiplePillObservation({
+    required this.index,
+    required this.boundingBox,
+    required this.identification,
+  });
+}
+
+class MultiplePillIdentificationResult {
+  final List<MultiplePillObservation> observations;
+  final bool requiresConfirmation;
+
+  const MultiplePillIdentificationResult({
+    required this.observations,
+    required this.requiresConfirmation,
+  });
+
+  factory MultiplePillIdentificationResult.fromJson(Map<String, dynamic> json) {
+    if (json['success'] is! bool || json['success'] != true) {
+      throw const FormatException('success must be true.');
+    }
+    if (json['requires_confirmation'] != true) {
+      throw const FormatException('Confirmation must remain mandatory.');
+    }
+    final rawObservations = json['observations'];
+    if (rawObservations is! List ||
+        rawObservations.isEmpty ||
+        rawObservations.length > 10) {
+      throw const FormatException('observations must contain 1 to 10 pills.');
+    }
+    final observations = <MultiplePillObservation>[];
+    for (var position = 0; position < rawObservations.length; position += 1) {
+      final raw = rawObservations[position];
+      if (raw is! Map) {
+        throw const FormatException('Every observation must be an object.');
+      }
+      final observation = Map<String, dynamic>.from(raw);
+      final index = observation['index'];
+      final rawBox = observation['bounding_box'];
+      final rawIdentification = observation['identification'];
+      if (index is! int || index != position + 1) {
+        throw const FormatException('Observation indexes must be contiguous.');
+      }
+      if (rawBox is! Map || rawIdentification is! Map) {
+        throw const FormatException('Observation payload is incomplete.');
+      }
+      observations.add(
+        MultiplePillObservation(
+          index: index,
+          boundingBox: PillBoundingBox.fromJson(
+            Map<String, dynamic>.from(rawBox),
+          ),
+          identification: PillIdentificationResult.fromJson(
+            Map<String, dynamic>.from(rawIdentification),
+          ),
+        ),
+      );
+    }
+    return MultiplePillIdentificationResult(
+      observations: List<MultiplePillObservation>.unmodifiable(observations),
+      requiresConfirmation: true,
+    );
+  }
+}
+
 bool _readRequiredBool(dynamic value, String fieldName) {
   if (value is! bool) {
     throw FormatException('$fieldName must be a boolean.');

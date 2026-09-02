@@ -83,6 +83,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   final ResolveDuplicatePillSelectionControl _duplicateSelectionControl =
       const ResolveDuplicatePillSelectionControl();
   final List<_PillPhotoDraft> _drafts = [_PillPhotoDraft()];
+  Uint8List? _multiplePillSourceImage;
+  List<MultiplePillObservation> _multiplePillObservations = const [];
   bool _isAnalyzing = false;
   bool _isSelectingImage = false;
   bool _isSaving = false;
@@ -190,10 +192,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 ),
               ),
               const SizedBox(height: 16),
-              for (var index = 0; index < _drafts.length; index += 1) ...[
-                _buildPhotoDraft(index, text, textScale),
-                if (index < _drafts.length - 1) const Divider(height: 32),
-              ],
+              if (_multiplePillSourceImage != null)
+                _MultiplePillObservationPreview(
+                  imageBytes: _multiplePillSourceImage!,
+                  observations: _multiplePillObservations,
+                  textScale: textScale,
+                  description: text.multiplePhotoPreviewDescription,
+                )
+              else
+                for (var index = 0; index < _drafts.length; index += 1) ...[
+                  _buildPhotoDraft(index, text, textScale),
+                  if (index < _drafts.length - 1) const Divider(height: 32),
+                ],
               const SizedBox(height: 14),
               _buildAddPhotoActions(text, textScale),
               if (!_allDraftsReady && _drafts.any((draft) => draft.hasAnyImage))
@@ -213,50 +223,52 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 const SizedBox(height: 14),
                 _ErrorNotice(message: _errorMessage),
               ],
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: FilledButton.icon(
-                  key: const Key('identify-pill-button'),
-                  onPressed: !_allDraftsReady || pendingCount == 0 || _isBusy
-                      ? null
-                      : _requestIdentification,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: MedBuddyColors.primary,
-                    disabledBackgroundColor: MedBuddyColors.outline,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+              if (_multiplePillSourceImage == null) ...[
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: FilledButton.icon(
+                    key: const Key('identify-pill-button'),
+                    onPressed: !_allDraftsReady || pendingCount == 0 || _isBusy
+                        ? null
+                        : _requestIdentification,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      disabledBackgroundColor: MedBuddyColors.outline,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                  ),
-                  icon: _isAnalyzing
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.search),
-                  label: Text(
-                    _isAnalyzing
-                        ? text.analysisProgress(
-                            completedCount: _analysisCompletedCount,
-                            totalCount: _analysisTotalCount,
-                            isWaitingForRetry: _retryingRequestCount > 0,
+                    icon: _isAnalyzing
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
                           )
-                        : text.identifyPills(pendingCount),
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 17 * textScale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                        : const Icon(Icons.search),
+                    label: Text(
+                      _isAnalyzing
+                          ? text.analysisProgress(
+                              completedCount: _analysisCompletedCount,
+                              totalCount: _analysisTotalCount,
+                              isWaitingForRetry: _retryingRequestCount > 0,
+                            )
+                          : text.identifyPills(pendingCount),
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17 * textScale,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
               if (_isAnalyzing && _retryingRequestCount > 0) ...[
                 const SizedBox(height: 10),
                 Semantics(
@@ -413,12 +425,45 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
     final occupiedCount = _drafts.where((draft) => draft.hasFrontImage).length;
     final canAddPhotoSet =
-        !_isBusy && _drafts.length < IdentifyPillBatch.maxBatchSize;
+        !_isBusy &&
+        (_multiplePillSourceImage != null ||
+            _drafts.length < IdentifyPillBatch.maxBatchSize);
     final canAddGalleryImages =
         !_isBusy && occupiedCount < IdentifyPillBatch.maxBatchSize;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        FilledButton.icon(
+          key: const Key('identify-multiple-pills-from-one-photo-button'),
+          onPressed: _isBusy
+              ? null
+              : _multiplePillSourceImage != null &&
+                    _multiplePillObservations.isEmpty
+              ? () => _analyzeMultiplePillPhoto(_multiplePillSourceImage!, text)
+              : () => _selectMultiplePillPhoto(text),
+          icon: _isAnalyzing
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.center_focus_strong_outlined),
+          label: Text(
+            _multiplePillSourceImage == null
+                ? text.identifyMultipleFromOnePhoto
+                : _multiplePillObservations.isEmpty
+                ? text.retryMultiplePillPhoto
+                : text.retakeMultiplePillPhoto,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14 * textScale,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const Key('add-pill-photo-set-button'),
           onPressed: canAddPhotoSet ? _addPhotoDraft : null,
@@ -679,6 +724,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         return;
       }
       setState(() {
+        if (_multiplePillSourceImage != null) {
+          _drafts
+            ..clear()
+            ..add(_PillPhotoDraft());
+        }
+        _clearMultiplePillPhoto();
         final draft = _drafts[draftIndex];
         if (isFront) {
           draft.frontImage = imageBytes;
@@ -713,10 +764,14 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (!_batchEnabled || _isBusy) {
       return;
     }
-    final occupiedCount = _drafts.where((draft) => draft.hasFrontImage).length;
+    final replacingMultiplePhoto = _multiplePillSourceImage != null;
+    final occupiedCount = replacingMultiplePhoto
+        ? 0
+        : _drafts.where((draft) => draft.hasFrontImage).length;
     final remainingCapacity = IdentifyPillBatch.maxBatchSize - occupiedCount;
     if (remainingCapacity <= 0) {
       setState(() {
+        _clearMultiplePillPhoto();
         _errorMessage = text.batchLimitReached(IdentifyPillBatch.maxBatchSize);
       });
       return;
@@ -735,6 +790,12 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         return;
       }
       setState(() {
+        if (replacingMultiplePhoto) {
+          _drafts
+            ..clear()
+            ..add(_PillPhotoDraft());
+          _clearMultiplePillPhoto();
+        }
         for (final image in images) {
           _PillPhotoDraft? emptyDraft;
           for (final draft in _drafts) {
@@ -774,10 +835,17 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   void _addPhotoDraft() {
     if (!_batchEnabled ||
         _isBusy ||
-        _drafts.length >= IdentifyPillBatch.maxBatchSize) {
+        (_multiplePillSourceImage == null &&
+            _drafts.length >= IdentifyPillBatch.maxBatchSize)) {
       return;
     }
     setState(() {
+      if (_multiplePillSourceImage != null) {
+        _drafts
+          ..clear()
+          ..add(_PillPhotoDraft());
+      }
+      _clearMultiplePillPhoto();
       _drafts.add(_PillPhotoDraft());
       _isBatchSaved = false;
       _errorMessage = '';
@@ -877,6 +945,120 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
   }
 
+  // 함수명: _selectMultiplePillPhoto
+  // 역할: 한 장을 촬영하거나 선택한 뒤 서버에서 공간별 알약 후보를 한 번에 분석한다.
+  Future<void> _selectMultiplePillPhoto(_PillIdentificationText text) async {
+    if (!_batchEnabled || _isBusy) {
+      return;
+    }
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ImageSourceOption(
+                icon: Icons.photo_camera_outlined,
+                title: text.camera,
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              const SizedBox(height: 8),
+              _ImageSourceOption(
+                icon: Icons.photo_library_outlined,
+                title: text.gallery,
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || source == null) {
+      return;
+    }
+    setState(() {
+      _isSelectingImage = true;
+      _errorMessage = '';
+    });
+    try {
+      final image = await _control.requestPillImage(source);
+      if (!mounted || image == null) {
+        return;
+      }
+      await _analyzeMultiplePillPhoto(image, text);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = _stateErrorMessage(error, text.requestFailed);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSelectingImage = false);
+      }
+    }
+  }
+
+  Future<void> _analyzeMultiplePillPhoto(
+    Uint8List image,
+    _PillIdentificationText text,
+  ) async {
+    setState(() {
+      _isAnalyzing = true;
+      _analysisCompletedCount = 0;
+      _analysisTotalCount = 1;
+      _isBatchSaved = false;
+      _errorMessage = '';
+      _multiplePillSourceImage = image;
+      _multiplePillObservations = const [];
+      _drafts
+        ..clear()
+        ..add(_PillPhotoDraft()..frontImage = image);
+    });
+    try {
+      final result = await _control.requestMultiplePillIdentification(
+        image: image,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _multiplePillSourceImage = image;
+        _multiplePillObservations = result.observations;
+        _drafts
+          ..clear()
+          ..addAll([
+            for (final observation in result.observations)
+              _PillPhotoDraft()
+                ..frontImage = image
+                ..result = observation.identification,
+          ]);
+        _analysisCompletedCount = 1;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = _stateErrorMessage(error, text.requestFailed);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAnalyzing = false);
+      }
+    }
+  }
+
+  void _clearMultiplePillPhoto() {
+    _multiplePillSourceImage = null;
+    _multiplePillObservations = const [];
+  }
+
   void _removeImage({required int index, required bool isFront}) {
     setState(() {
       final draft = _drafts[index];
@@ -892,6 +1074,15 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   void _prepareRetry(int index) {
+    final multipleImage = _multiplePillSourceImage;
+    if (multipleImage != null) {
+      final text = _PillIdentificationText(
+        widget.userSetting.language,
+        batchEnabled: _batchEnabled,
+      );
+      _analyzeMultiplePillPhoto(multipleImage, text);
+      return;
+    }
     setState(() {
       _drafts[index].clearResult();
       _isBatchSaved = false;
@@ -1184,6 +1375,121 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       PillIdentificationFailure.fileUnreadable => text.imageSelectionFailed,
     };
   }
+}
+
+class _MultiplePillObservationPreview extends StatelessWidget {
+  final Uint8List imageBytes;
+  final List<MultiplePillObservation> observations;
+  final double textScale;
+  final String description;
+
+  const _MultiplePillObservationPreview({
+    required this.imageBytes,
+    required this.observations,
+    required this.textScale,
+    required this.description,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      key: const Key('multiple-pill-observation-preview'),
+      container: true,
+      label: description,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                Image.memory(
+                  imageBytes,
+                  width: double.infinity,
+                  fit: BoxFit.fitWidth,
+                  gaplessPlayback: true,
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _MultiplePillBoxPainter(observations),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 12 * textScale,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MultiplePillBoxPainter extends CustomPainter {
+  final List<MultiplePillObservation> observations;
+
+  const _MultiplePillBoxPainter(this.observations);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final border = Paint()
+      ..color = MedBuddyColors.primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    final badge = Paint()
+      ..color = MedBuddyColors.primary
+      ..style = PaintingStyle.fill;
+    for (final observation in observations) {
+      final box = observation.boundingBox;
+      final rect = Rect.fromLTWH(
+        box.left * size.width,
+        box.top * size.height,
+        box.width * size.width,
+        box.height * size.height,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+        border,
+      );
+      final badgeCenter = Offset(
+        size.width < 28
+            ? size.width / 2
+            : (rect.left + 14).clamp(14, size.width - 14),
+        size.height < 28
+            ? size.height / 2
+            : (rect.top + 14).clamp(14, size.height - 14),
+      );
+      canvas.drawCircle(badgeCenter, 14, badge);
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${observation.index}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(
+        canvas,
+        badgeCenter - Offset(label.width / 2, label.height / 2),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MultiplePillBoxPainter oldDelegate) =>
+      oldDelegate.observations != observations;
 }
 
 class _SafetyNotice extends StatelessWidget {
@@ -1682,7 +1988,7 @@ class _PillIdentificationText {
       : '사진은 외부 AI로 분석되며 MedBuddy에 저장되지 않습니다. 비교 결과는 후보일 뿐이므로 포장 정보 또는 약사에게 확인하세요.';
   String get photoSectionTitle {
     if (batchEnabled) {
-      return isEnglish ? 'Add one photo set per pill' : '알약마다 사진을 따로 추가해주세요';
+      return isEnglish ? 'Photograph one or more pills' : '알약을 한 개 이상 촬영해주세요';
     }
     return isEnglish ? 'Add a pill photo' : '알약 사진을 추가해주세요';
   }
@@ -1690,8 +1996,8 @@ class _PillIdentificationText {
   String get photoSectionDescription {
     if (batchEnabled) {
       return isEnglish
-          ? 'Photograph each pill separately. Keep one pill in focus with its outline visible; adding its reverse side improves matching. You can combine up to 10 pills in one review.'
-          : '알약을 한곳에 모아 찍지 말고 한 알씩 선명하게 촬영하세요. 같은 알약의 뒷면을 추가하면 정확도가 높아지며, 최대 10개를 한 번에 검토할 수 있습니다.';
+          ? 'For the fastest review, place up to 10 separated pills in one clear photo. You can still add separate front and back photos when closer inspection is needed.'
+          : '가장 빠르게 확인하려면 서로 겹치지 않은 알약을 최대 10개까지 한 장에 선명하게 촬영하세요. 자세한 비교가 필요하면 알약별 앞뒷면 사진도 추가할 수 있습니다.';
     }
     return isEnglish
         ? 'Keep one pill in focus with its outline visible. Adding its reverse side improves matching.'
@@ -1706,6 +2012,15 @@ class _PillIdentificationText {
   String get addAnotherPill => isEnglish ? 'Add another pill' : '알약 한 개 더 추가';
   String get addMultipleFromGallery =>
       isEnglish ? 'Add multiple pill photos from gallery' : '갤러리에서 여러 알약 사진 추가';
+  String get identifyMultipleFromOnePhoto =>
+      isEnglish ? 'Find every pill in one photo' : '한 장에서 모든 알약 찾기';
+  String get retakeMultiplePillPhoto =>
+      isEnglish ? 'Retake the group photo' : '여러 알약 사진 다시 촬영';
+  String get retryMultiplePillPhoto =>
+      isEnglish ? 'Analyze this photo again' : '이 사진 다시 분석';
+  String get multiplePhotoPreviewDescription => isEnglish
+      ? 'Detected pills are numbered on the photo. Review the candidate list for every number before saving.'
+      : '사진에서 찾은 알약에 번호를 표시했습니다. 저장하기 전에 각 번호의 후보를 모두 확인해주세요.';
   String batchLimitNotice(int limit) => isEnglish
       ? 'Up to $limit pills per batch. Use one front photo for each pill.'
       : '한 번에 최대 $limit개까지 가능하며, 알약마다 앞면 사진이 한 장씩 필요합니다.';

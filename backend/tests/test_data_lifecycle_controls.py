@@ -415,6 +415,14 @@ def test_pill_identification_limit_accepts_a_full_client_batch() -> None:
     assert rule.max_requests >= 10
 
 
+def test_multiple_pill_identification_has_a_dedicated_cost_limit() -> None:
+    rule = DEFAULT_RATE_LIMIT_RULES[
+        ("POST", "/api/v1/medication/pill-identification/multiple-candidates")
+    ]
+
+    assert 1 <= rule.max_requests <= 10
+
+
 # 함수명: test_rate_limit_resolver_matches_dynamic_chat_route
 # 역할: 숫자 식별자가 포함된 채팅 요청도 정규 경로 제한에 연결되는지 검증한다.
 def test_rate_limit_resolver_matches_dynamic_chat_route() -> None:

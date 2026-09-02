@@ -210,6 +210,75 @@ class IdentifyPill {
     }
   }
 
+  // 함수명: requestMultiplePillIdentification
+  // 역할: 한 장의 사진을 전송하고 공간적으로 구분된 모든 알약 후보를 반환한다.
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    try {
+      _validateImageBytes(image);
+      final abortTrigger = Completer<void>();
+      _abortTriggers.add(abortTrigger);
+      final request =
+          http.AbortableMultipartRequest(
+              'POST',
+              Uri.parse('$baseUrl/pill-identification/multiple-candidates'),
+              abortTrigger: abortTrigger.future,
+            )
+            ..files.add(
+              http.MultipartFile.fromBytes(
+                'image',
+                image,
+                filename: 'multiple-pills.jpg',
+              ),
+            );
+      late final http.Response response;
+      try {
+        response = await _client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(
+              requestTimeout,
+              onTimeout: () {
+                if (!abortTrigger.isCompleted) {
+                  abortTrigger.complete();
+                }
+                throw const PillIdentificationException(
+                  PillIdentificationFailure.timedOut,
+                );
+              },
+            );
+      } finally {
+        _abortTriggers.remove(abortTrigger);
+      }
+      if (response.statusCode != 200) {
+        throw _exceptionForResponse(response);
+      }
+      final responseBody = ApiResponseParser.decodeBody(response);
+      return MultiplePillIdentificationResult.fromJson(
+        ApiResponseParser.decodeMap(responseBody),
+      );
+    } on PillIdentificationException {
+      rethrow;
+    } on FormatException catch (error) {
+      developer.log(
+        'Multiple-pill response parsing failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.invalidResponse,
+      );
+    } catch (error) {
+      developer.log(
+        'Multiple-pill request failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.serviceUnavailable,
+      );
+    }
+  }
+
   Future<Uint8List> _readBoundedImage(XFile image) async {
     final imageLength = await image.length();
     if (imageLength == 0) {

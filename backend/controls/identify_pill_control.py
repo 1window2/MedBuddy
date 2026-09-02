@@ -12,6 +12,8 @@ from boundaries.pill_identification_boundary import (
     PillVisionBoundary,
 )
 from entities.pill_identification_entity import (
+    MultiplePillIdentificationResult,
+    MultiplePillObservation,
     PillCatalogEntry,
     PillIdentificationCandidate,
     PillIdentificationResult,
@@ -106,6 +108,57 @@ class IdentifyPill:
             observed_features=features,
             candidates=tuple(candidates),
             is_confident=is_confident,
+            requires_confirmation=True,
+        )
+
+    async def requestMultiplePillIdentification(
+        self,
+        image: bytes,
+    ) -> MultiplePillIdentificationResult:
+        """Detects and independently ranks every pill visible in one photo."""
+
+        vision_task = asyncio.create_task(
+            self.vision_boundary.extractMultipleVisualFeatures(image)
+        )
+        catalog_task = asyncio.create_task(self.catalog_boundary.getCatalog())
+        required_tasks = (vision_task, catalog_task)
+        try:
+            observations, catalog = await asyncio.gather(*required_tasks)
+        except BaseException:
+            for task in required_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*required_tasks, return_exceptions=True)
+            raise
+
+        results: list[MultiplePillObservation] = []
+        for index, (bounding_box, features) in enumerate(observations, start=1):
+            identification = await self._build_result(features, catalog)
+            results.append(
+                MultiplePillObservation(
+                    index=index,
+                    bounding_box=bounding_box,
+                    identification=identification,
+                )
+            )
+        return MultiplePillIdentificationResult(observations=tuple(results))
+
+    async def _build_result(
+        self,
+        features: PillVisualFeatures,
+        catalog: tuple[PillCatalogEntry, ...],
+    ) -> PillIdentificationResult:
+        """Builds one confirmation-required result from a shared catalog snapshot."""
+
+        ranked_candidates = await self._rank_candidates_with_capacity(
+            features,
+            catalog,
+            max(self.candidate_limit, 2),
+        )
+        return PillIdentificationResult(
+            observed_features=features,
+            candidates=tuple(ranked_candidates[: self.candidate_limit]),
+            is_confident=self._is_confident(features, ranked_candidates),
             requires_confirmation=True,
         )
 

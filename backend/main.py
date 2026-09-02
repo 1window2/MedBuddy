@@ -272,6 +272,9 @@ def create_app() -> FastAPI:
             "/api/v1/medication/pill-identification/candidates": (
                 2 * MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
             ),
+            "/api/v1/medication/pill-identification/multiple-candidates": (
+                MAX_PILL_IMAGE_BYTES + multipart_overhead_bytes
+            ),
         },
         default_limit=1024 * 1024,
     )

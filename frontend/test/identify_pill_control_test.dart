@@ -20,6 +20,116 @@ class _AbortAwareClient extends http.BaseClient {
 }
 
 void main() {
+  test(
+    'requestMultiplePillIdentification parses numbered observations',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/pill-identification/multiple-candidates');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'message': 'Detected 2 pills.',
+            'requires_confirmation': true,
+            'observations': [
+              {
+                'index': 1,
+                'bounding_box': {
+                  'left': 0.1,
+                  'top': 0.2,
+                  'width': 0.3,
+                  'height': 0.25,
+                },
+                'identification': {
+                  'success': false,
+                  'message': 'No matching pill candidates were found.',
+                  'is_confident': false,
+                  'requires_confirmation': true,
+                  'observed_features': {
+                    'shape': 'round',
+                    'colors': ['white'],
+                    'same_pill': true,
+                    'side_consistency_confidence': 1.0,
+                  },
+                  'data': const [],
+                },
+              },
+              {
+                'index': 2,
+                'bounding_box': {
+                  'left': 0.6,
+                  'top': 0.5,
+                  'width': 0.2,
+                  'height': 0.2,
+                },
+                'identification': {
+                  'success': false,
+                  'message': 'No matching pill candidates were found.',
+                  'is_confident': false,
+                  'requires_confirmation': true,
+                  'observed_features': {
+                    'shape': 'round',
+                    'colors': ['yellow'],
+                    'same_pill': true,
+                    'side_consistency_confidence': 1.0,
+                  },
+                  'data': const [],
+                },
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final control = IdentifyPill(baseUrl: 'http://localhost', client: client);
+
+      final result = await control.requestMultiplePillIdentification(
+        image: Uint8List.fromList([1, 2, 3]),
+      );
+
+      expect(result.requiresConfirmation, isTrue);
+      expect(result.observations, hasLength(2));
+      expect(result.observations.first.index, 1);
+      expect(result.observations.first.boundingBox.left, 0.1);
+      expect(result.observations.last.identification.observedFeatures.colors, [
+        'yellow',
+      ]);
+    },
+  );
+
+  test('multiple-pill parsing rejects non-contiguous indexes', () {
+    expect(
+      () => MultiplePillIdentificationResult.fromJson({
+        'success': true,
+        'requires_confirmation': true,
+        'observations': [
+          {
+            'index': 2,
+            'bounding_box': {
+              'left': 0.1,
+              'top': 0.1,
+              'width': 0.2,
+              'height': 0.2,
+            },
+            'identification': {
+              'success': false,
+              'message': 'No candidates.',
+              'is_confident': false,
+              'requires_confirmation': true,
+              'observed_features': {
+                'same_pill': true,
+                'side_consistency_confidence': 1.0,
+              },
+              'data': const [],
+            },
+          },
+        ],
+      }),
+      throwsFormatException,
+    );
+  });
+
   test('requestPillIdentification parses ranked MFDS candidates', () async {
     final client = MockClient((request) async {
       expect(request.method, 'POST');

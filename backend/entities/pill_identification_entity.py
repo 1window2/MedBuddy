@@ -142,6 +142,56 @@ class PillIdentificationResult:
             raise ValueError("An empty pill result cannot be confident.")
 
 
+@dataclass(frozen=True)
+class PillBoundingBox:
+    """Normalized pill location within the source image."""
+
+    left: float
+    top: float
+    width: float
+    height: float
+
+    def __post_init__(self) -> None:
+        values = (self.left, self.top, self.width, self.height)
+        if any(not 0.0 <= value <= 1.0 for value in values):
+            raise ValueError("Pill bounding-box coordinates must be normalized.")
+        if self.width <= 0.0 or self.height <= 0.0:
+            raise ValueError("Pill bounding boxes must have positive dimensions.")
+        if self.left + self.width > 1.0 or self.top + self.height > 1.0:
+            raise ValueError("Pill bounding boxes must stay inside the image.")
+
+
+@dataclass(frozen=True)
+class MultiplePillObservation:
+    """One spatially distinct pill and its independently ranked result."""
+
+    index: int
+    bounding_box: PillBoundingBox
+    identification: PillIdentificationResult
+
+    def __post_init__(self) -> None:
+        if self.index < 1:
+            raise ValueError("Pill observation indexes are one-based.")
+
+
+@dataclass(frozen=True)
+class MultiplePillIdentificationResult:
+    """Safe one-photo result that never bypasses per-pill confirmation."""
+
+    observations: tuple[MultiplePillObservation, ...]
+    requires_confirmation: Literal[True] = True
+
+    def __post_init__(self) -> None:
+        if self.requires_confirmation is not True:
+            raise ValueError("Multiple-pill identification always requires confirmation.")
+        if not 1 <= len(self.observations) <= 10:
+            raise ValueError("A multiple-pill result must contain 1 to 10 observations.")
+        expected = tuple(range(1, len(self.observations) + 1))
+        actual = tuple(observation.index for observation in self.observations)
+        if actual != expected:
+            raise ValueError("Pill observations must use contiguous one-based indexes.")
+
+
 class PillIdentificationReference(Base):
     """Shared cached copy of public MFDS pill-identification metadata."""
 

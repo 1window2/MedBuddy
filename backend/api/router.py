@@ -92,7 +92,10 @@ from schemas.medication import (
     UserSettingUpdate,
     VoiceGuideRequest,
 )
-from schemas.pill_identification import PillIdentificationResponse
+from schemas.pill_identification import (
+    MultiplePillIdentificationResponse,
+    PillIdentificationResponse,
+)
 from schemas.prescription_change import (
     PrescriptionChangeRequest,
     PrescriptionChangeResponse,
@@ -1159,4 +1162,60 @@ async def identify_loose_pill(
         raise HTTPException(
             status_code=500,
             detail="The pill could not be identified due to a server error.",
+        ) from exc
+
+
+# Function Name: identify_multiple_loose_pills
+# Description:
+# - Detects and independently ranks every visible pill in one bounded photo.
+# Parameters:
+# - image: One photo containing between one and ten distinct pills.
+# - identify_pill: Shared identification control injected by FastAPI.
+# Returns:
+# - Numbered observations with normalized boxes and confirmation-required candidates.
+@router.post(
+    "/pill-identification/multiple-candidates",
+    response_model=MultiplePillIdentificationResponse,
+)
+async def identify_multiple_loose_pills(
+    image: UploadFile = File(...),
+    identify_pill: IdentifyPill = Depends(get_identify_pill),
+) -> MultiplePillIdentificationResponse:
+    """Returns independent MFDS candidate lists for one multi-pill photo."""
+
+    try:
+        content = await image.read(MAX_PILL_IMAGE_BYTES + 1)
+        if len(content) > MAX_PILL_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="The pill image must be 10 MB or smaller.",
+            )
+        result = await identify_pill.requestMultiplePillIdentification(content)
+        return MultiplePillIdentificationResponse.from_domain(result)
+    except HTTPException:
+        raise
+    except PillImageQualityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PillCatalogUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PillVisionUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PillVisionResponseError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The multiple-pill analysis returned an invalid response.",
+        ) from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Multiple-pill identification timed out. Please try again.",
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Multiple-pill identification failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The pills could not be identified due to a server error.",
         ) from exc

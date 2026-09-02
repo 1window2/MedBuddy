@@ -397,15 +397,31 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
     alt 단일 낱알 식별
         User -> UI : 앞면 필수 및 선택적 뒷면 이미지 입력
         UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
-    else 다중 낱알 일괄 식별
+    else 알약별 사진 일괄 식별
         User -> UI : 최대 10개 항목에 앞면 필수·뒷면 선택 이미지 입력
         UI -> FrontControl : IdentifyPillBatch.requestBatchIdentification(inputs)
         loop 입력 순서를 보존하며 최대 2개 동시 실행
             FrontControl -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
         end
+    else 한 장의 다중 낱알 식별
+        User -> UI : 최대 10개의 분리된 알약을 한 장에 입력
+        UI -> FrontControl : IdentifyPill.requestMultiplePillIdentification(image)
+        FrontControl -> ApiClient : POST /pill-identification/multiple-candidates
+        ApiClient -> Router : 다중 낱알 이미지 분석 요청
+        Router -> BackControl : IdentifyPill.requestMultiplePillIdentification()
+        BackControl -> BackService : PillVisionBoundary.extractMultipleVisualFeatures()
+        BackService -> BackService : 구도 보존 전처리 및 좌표/중복 상자 검증
+        BackService -> Gemini : 한 장의 알약 객체와 시각 특징 요청
+        Gemini --> BackService : 최대 10개 정규화 상자와 관찰 특징
+        BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog() 1회
+        loop 번호가 부여된 각 물리 관찰
+            BackControl -> BackControl : 후보 독립 순위화
+        end
+        BackControl --> FrontControl : MultiplePillIdentificationResult
+        FrontControl --> UI : 원본 사진 번호 상자와 번호별 후보
     end
 
-    loop 각 낱알 입력마다
+    loop 단일 또는 알약별 사진 입력마다 (한 장 다중 경로 제외)
         FrontControl -> ApiClient : POST /pill-identification/candidates
         ApiClient -> Router : 낱알 이미지 분석 요청
         Router -> BackControl : IdentifyPill.requestPillIdentification()

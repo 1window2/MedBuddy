@@ -10,8 +10,9 @@ record.
 
 - The schedule can update one medication dose or atomically check/uncheck every
   active medication in one time slot.
-- The loose-pill batch flow accepts up to ten **separately photographed** pills.
-  It does not yet separate several physical pills from one image.
+- The loose-pill flow accepts either per-pill front/back photos or one image with
+  up to ten spatially distinct pills. One-image observations are numbered and
+  ranked independently against one shared catalog snapshot.
 - Every pill candidate requires confirmation before it becomes a saved schedule.
 
 ## Catalog Coverage Target
@@ -45,6 +46,12 @@ against the dashboard before each release rather than treated as permanent.
 
 Introduce a separate multi-object boundary instead of weakening the existing
 single-pill contract.
+
+Implementation status: the separate authenticated API, composition-preserving
+image boundary, model-assisted normalized boxes, strict geometry validation,
+independent deterministic ranking, numbered Flutter overlay, and confirmation
+workflow are implemented on `beta/v0.2.0`. Release readiness still requires the
+licensed physical-device corpus and measured acceptance evidence below.
 
 1. Detect a bounded number of pill objects in one image and return a normalized
    bounding box, crop, visible attributes, quality score, and occlusion warning

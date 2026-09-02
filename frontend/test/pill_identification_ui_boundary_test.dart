@@ -157,6 +157,67 @@ class _MultipleIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
+  @override
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    return const MultiplePillIdentificationResult(
+      requiresConfirmation: true,
+      observations: [
+        MultiplePillObservation(
+          index: 1,
+          boundingBox: PillBoundingBox(
+            left: 0.1,
+            top: 0.1,
+            width: 0.3,
+            height: 0.3,
+          ),
+          identification: PillIdentificationResult(
+            isConfident: true,
+            requiresConfirmation: true,
+            observedFeatures: PillVisualFeatures(
+              shape: 'round',
+              colors: ['yellow'],
+            ),
+            candidates: [
+              PillIdentificationCandidate(
+                itemSeq: 'group-1',
+                itemName: '첫 번째 알약',
+                matchScore: 0.9,
+              ),
+            ],
+          ),
+        ),
+        MultiplePillObservation(
+          index: 2,
+          boundingBox: PillBoundingBox(
+            left: 0.6,
+            top: 0.55,
+            width: 0.25,
+            height: 0.25,
+          ),
+          identification: PillIdentificationResult(
+            isConfident: false,
+            requiresConfirmation: true,
+            observedFeatures: PillVisualFeatures(
+              shape: 'oval',
+              colors: ['white'],
+            ),
+            candidates: [
+              PillIdentificationCandidate(
+                itemSeq: 'group-2',
+                itemName: '두 번째 알약',
+                matchScore: 0.75,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // 클래스명: _DuplicateIdentifyPill
 // 역할: 서로 다른 사진이 같은 품목으로 판정된 중복 검토 흐름을 재현한다.
 class _DuplicateIdentifyPill extends _FakeIdentifyPill {
@@ -204,6 +265,42 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('한 장의 사진에서 찾은 알약을 번호별 후보로 표시한다', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(
+            language: 'ko',
+            multiPillIdentificationLabEnabled: true,
+          ),
+          control: _OnePhotoMultipleIdentifyPill(),
+        ),
+      ),
+    );
+
+    final groupButton = find.byKey(
+      const Key('identify-multiple-pills-from-one-photo-button'),
+    );
+    await _tapVisible(tester, groupButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('multiple-pill-observation-preview')),
+      findsOneWidget,
+    );
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(find.text('두 번째 알약'), findsOneWidget);
+    expect(find.textContaining('알약 1'), findsWidgets);
+    expect(find.textContaining('알약 2'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('다중 알약 실험 기능을 끄면 단일 사진 입력만 표시한다', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
