@@ -63,25 +63,26 @@ def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
     assert workflow.count("test-key-for-ci") >= 4
 
 
-# Function Name: test_android_signing_secrets_are_limited_to_release_branches
+# Function Name: test_android_signing_secrets_are_limited_to_exact_release_refs
 # Description:
-# - Prevents arbitrary beta branches or version-like tags from selecting
-#   repository-controlled build code that receives Android signing secrets.
-# - Keeps the repository gate aligned with the beta-android environment's
-#   protected-main deployment policy.
+# - Restricts signing secrets to main and the exact active beta branch.
+# - Prevents wildcard beta branches, version-like tags, or main builds from
+#   overriding the repository-controlled production API endpoint.
 # Returns:
 # - None; pytest reports a failure when broad signing refs are reintroduced.
-def test_android_signing_secrets_are_limited_to_main() -> None:
+def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
     workflow = (
         _REPOSITORY_ROOT / ".github" / "workflows" / "release-android.yml"
     ).read_text(encoding="utf-8")
 
-    assert "test \"${GITHUB_REF}\" = \"refs/heads/main\"" in workflow
     assert "github.ref == 'refs/heads/main'" in workflow
-    assert "refs/heads/beta/v0.1.0" not in workflow
+    assert workflow.count("refs/heads/beta/v0.2.0") >= 4
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow
+    assert workflow.count(
+        "github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url"
+    ) == 2
 
 
 # Function Name: test_android_artifact_signature_checks_are_fail_closed

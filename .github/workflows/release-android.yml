@@ -2,13 +2,20 @@ name: Build Signed Android Release
 
 on:
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Optional public HTTPS API URL for an isolated beta build
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/beta/v0.2.0'
     runs-on: ubuntu-latest
     environment: beta-android
 
@@ -24,8 +31,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF}" = "refs/heads/main" || {
-            echo "Signed Android builds are restricted to the protected main branch." >&2
+          [[ "${GITHUB_REF}" == "refs/heads/main" || \
+             "${GITHUB_REF}" == "refs/heads/beta/v0.2.0" ]] || {
+            echo "Signed Android builds are restricted to main and the active beta branch." >&2
             exit 1
           }
 
@@ -59,7 +67,7 @@ jobs:
       - name: Validate standalone backend endpoint
         shell: bash
         env:
-          MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -244,7 +252,7 @@ jobs:
           MEDBUDDY_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'
           EXPECTED_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
-          MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
           FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
