@@ -76,7 +76,8 @@ respectively, but the signed Android workflow must use the same App Check
 setting reported by `/ready`. Firebase Authentication remains mandatory in
 production in either mode. The workflow applies the selected policy only to
 the directly installable APK; its Google Play AAB is always built with App
-Check enabled.
+Check enabled. The temporary exception and the mandatory v0.2.0 restoration
+checklist are tracked in [TODO.md](TODO.md).
 
 ## Start or Update Production
 
