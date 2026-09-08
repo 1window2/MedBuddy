@@ -28,7 +28,10 @@ def test_readiness_checks_database_connectivity() -> None:
     assert response.json() == {
         "status": "ready",
         "api_contract": "medbuddy-api-v1",
+        "app_env": "development",
+        "runtime_role": "api",
         "auth_mode": "disabled",
+        "firebase_project_id": "",
         "app_check_required": False,
     }
 
@@ -85,6 +88,11 @@ def test_production_readiness_checks_schema_firebase_and_redis() -> None:
         response = client.get("/ready")
 
     assert response.status_code == 200
+    assert response.json()["app_env"] == "production"
+    assert response.json()["runtime_role"] == "api"
+    assert response.json()["auth_mode"] == "firebase"
+    assert response.json()["firebase_project_id"] == "medbuddy-test"
+    assert response.json()["app_check_required"] is True
     verify_revision.assert_called_once()
     verify_catalog_seed.assert_called_once()
     verify_firebase_credentials.assert_called_once_with("medbuddy-test")

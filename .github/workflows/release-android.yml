@@ -45,11 +45,35 @@ jobs:
       - name: Package Get
         run: flutter pub get
 
+      - name: Normalize release App Check policy
+        shell: bash
+        env:
+          FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+
+          value = os.environ.get(
+              "FIREBASE_APP_CHECK_REQUIRED", ""
+          ).strip().lower()
+          if value not in ("", "true", "false"):
+              raise SystemExit(
+                  "FIREBASE_APP_CHECK_REQUIRED must be true or false."
+              )
+          normalized = value or "true"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(
+                  "MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED="
+                  f"{normalized}\n"
+              )
+          PY
+
       - name: Validate standalone backend endpoint
         shell: bash
         env:
           MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
-          FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -109,14 +133,9 @@ jobs:
               .read_text(encoding="utf-8")
               .strip()
           )
-          app_check_value = os.environ.get(
-              "FIREBASE_APP_CHECK_REQUIRED", ""
-          ).strip().lower()
-          if app_check_value not in ("", "true", "false"):
-              raise SystemExit(
-                  "FIREBASE_APP_CHECK_REQUIRED must be true or false."
-              )
-          expected_app_check = app_check_value != "false"
+          expected_app_check = (
+              os.environ["MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED"] == "true"
+          )
           for probe_name in ("backend-health.json", "backend-ready.json"):
               payload = json.loads(
                   Path(os.environ["RUNNER_TEMP"])
@@ -133,10 +152,30 @@ jobs:
               .joinpath("backend-ready.json")
               .read_text(encoding="utf-8")
           )
+          if (
+              ready_payload.get("app_env") != "production"
+              or ready_payload.get("runtime_role") != "api"
+          ):
+              raise SystemExit(
+                  "The standalone backend must be a production API runtime "
+                  "before an Android release can be built."
+              )
           if ready_payload.get("auth_mode") != "firebase":
               raise SystemExit(
                   "The standalone backend must enforce Firebase Authentication "
                   "before an Android release can be built."
+              )
+          expected_project_id = os.environ.get(
+              "FIREBASE_PROJECT_ID", ""
+          ).strip()
+          if (
+              not expected_project_id
+              or ready_payload.get("firebase_project_id")
+              != expected_project_id
+          ):
+              raise SystemExit(
+                  "The standalone backend Firebase project does not match the "
+                  "Android release configuration."
               )
           if ready_payload.get("app_check_required") is not expected_app_check:
               raise SystemExit(
@@ -262,17 +301,9 @@ jobs:
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
         run: |
           set -euo pipefail
-          APP_CHECK_REQUIRED="${FIREBASE_APP_CHECK_REQUIRED:-true}"
-          case "${APP_CHECK_REQUIRED}" in
-            true|false) ;;
-            *)
-              echo "FIREBASE_APP_CHECK_REQUIRED must be true or false." >&2
-              exit 1
-              ;;
-          esac
+          APP_CHECK_REQUIRED="${MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED}"
           EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           ACTUAL_CERT="$(keytool -list -v \
             -keystore "${MEDBUDDY_KEYSTORE_PATH}" \

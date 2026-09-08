@@ -126,8 +126,9 @@ curl -i https://api.medbuddy.pp.ua/ready
 ```
 
 Both must return HTTP 200 with the expected API contract. `/ready` must also
-report `auth_mode` as `firebase`; its `app_check_required` value must match the
-Android artifact being distributed.
+report `app_env` as `production`, `runtime_role` as `api`, and `auth_mode` as
+`firebase`. Its `firebase_project_id` must match the Android client, and its
+`app_check_required` value must match the APK being distributed.
 
 Verify that the pill-identification catalog was populated:
 
