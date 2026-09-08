@@ -284,18 +284,21 @@ jobs:
             | tr '[:lower:]' '[:upper:]')"
           test -n "${EXPECTED_CERT}"
           test "${ACTUAL_CERT}" = "${EXPECTED_CERT}"
-          DEFINES=(
+          COMMON_DEFINES=(
             --dart-define=MEDBUDDY_AUTH_MODE=firebase
             --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
-            "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
             "--dart-define=MEDBUDDY_API_BASE_URL=${MEDBUDDY_API_BASE_URL}"
             "--dart-define=MEDBUDDY_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
             "--dart-define=MEDBUDDY_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
           )
-          flutter build apk --release --no-pub "${DEFINES[@]}"
-          flutter build appbundle --release --no-pub "${DEFINES[@]}"
+          flutter build apk --release --no-pub \
+            "${COMMON_DEFINES[@]}" \
+            "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
+          flutter build appbundle --release --no-pub \
+            "${COMMON_DEFINES[@]}" \
+            --dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=true
           sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app-release.apk.sha256
           sha256sum build/app/outputs/bundle/release/app-release.aab > build/app-release.aab.sha256
 

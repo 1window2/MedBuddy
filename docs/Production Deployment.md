@@ -74,7 +74,9 @@ Leave `FIREBASE_APP_CHECK_REQUIRED=true` and
 directly installed, off-Play beta may temporarily use `false` and `true`
 respectively, but the signed Android workflow must use the same App Check
 setting reported by `/ready`. Firebase Authentication remains mandatory in
-production in either mode.
+production in either mode. The workflow applies the selected policy only to
+the directly installable APK; its Google Play AAB is always built with App
+Check enabled.
 
 ## Start or Update Production
 
