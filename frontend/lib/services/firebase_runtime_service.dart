@@ -54,9 +54,11 @@ class FirebaseRuntimeService {
         );
       }
     }
-    await FirebaseAppCheck.instance.activate(
-      providerAndroid: _androidProvider(),
-    );
+    if (AuthConfig.appCheckRequired) {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: _androidProvider(),
+      );
+    }
   }
 
   static AndroidAppCheckProvider _androidProvider() {

@@ -300,6 +300,22 @@ def test_production_configuration_fails_closed_without_firebase() -> None:
         _production_api_settings(AUTH_MODE="disabled")
 
 
+def test_production_configuration_allows_explicit_off_play_beta_mode() -> None:
+    settings = _production_api_settings(
+        FIREBASE_APP_CHECK_REQUIRED=False,
+        FIREBASE_OFF_PLAY_BETA_MODE=True,
+    )
+
+    assert settings.AUTH_MODE == "firebase"
+    assert settings.FIREBASE_APP_CHECK_REQUIRED is False
+    assert settings.FIREBASE_OFF_PLAY_BETA_MODE is True
+
+
+def test_off_play_beta_mode_rejects_conflicting_app_check_requirement() -> None:
+    with pytest.raises(ValueError, match="FIREBASE_OFF_PLAY_BETA_MODE"):
+        _production_api_settings(FIREBASE_OFF_PLAY_BETA_MODE=True)
+
+
 @pytest.mark.parametrize(
     ("override", "message"),
     [
@@ -527,6 +543,11 @@ def test_missing_app_check_token_is_rejected_when_required() -> None:
             verify_app_check_token(None)
 
     assert denied.value.status_code == 403
+
+
+def test_missing_app_check_token_is_accepted_in_off_play_beta_mode() -> None:
+    with patch("api.dependencies.settings.FIREBASE_APP_CHECK_REQUIRED", False):
+        verify_app_check_token(None)
 
 
 def test_valid_app_check_token_is_accepted() -> None:

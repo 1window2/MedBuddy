@@ -91,6 +91,17 @@ The backend receives structured host/user/password fields and lets SQLAlchemy
 encode the connection URL, so passwords containing URL-reserved characters
 such as `@`, `:`, `/`, `?`, or `#` work without a second encoded secret.
 
+`deploy/.env` also owns the client-attestation policy consumed by Compose.
+Leave `FIREBASE_APP_CHECK_REQUIRED=true` and
+`FIREBASE_OFF_PLAY_BETA_MODE=false` for Google Play-distributed builds. A
+directly installed, off-Play beta may temporarily use `false` and `true`
+respectively, but the signed Android workflow must use the same App Check
+setting reported by `/ready`. Firebase Authentication remains mandatory in
+production in either mode. The workflow applies the selected policy only to
+the directly installable APK; its Google Play AAB is always built with App
+Check enabled. The temporary exception and the mandatory v0.2.0 restoration
+checklist are tracked in [TODO.md](TODO.md).
+
 ## Start or Update Production
 
 From the repository root:
@@ -158,7 +169,10 @@ Verify the public Cloudflare path:
 curl -i https://api.medbuddy.pp.ua/ready
 ```
 
-Both must return HTTP 200 with the expected API contract.
+Both must return HTTP 200 with the expected API contract. `/ready` must also
+report `app_env` as `production`, `runtime_role` as `api`, and `auth_mode` as
+`firebase`. Its `firebase_project_id` must match the Android client, and its
+`app_check_required` value must match the APK being distributed.
 
 Verify that the database reached the latest migration, including pharmacy
 schedule provenance and structured linked-chat contexts:
