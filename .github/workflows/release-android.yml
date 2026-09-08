@@ -133,6 +133,11 @@ jobs:
               .joinpath("backend-ready.json")
               .read_text(encoding="utf-8")
           )
+          if ready_payload.get("auth_mode") != "firebase":
+              raise SystemExit(
+                  "The standalone backend must enforce Firebase Authentication "
+                  "before an Android release can be built."
+              )
           if ready_payload.get("app_check_required") is not expected_app_check:
               raise SystemExit(
                   "The standalone backend App Check policy does not match the "

@@ -28,6 +28,7 @@ def test_readiness_checks_database_connectivity() -> None:
     assert response.json() == {
         "status": "ready",
         "api_contract": "medbuddy-api-v1",
+        "auth_mode": "disabled",
         "app_check_required": False,
     }
 

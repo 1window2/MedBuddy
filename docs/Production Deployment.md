@@ -68,6 +68,14 @@ The backend receives structured host/user/password fields and lets SQLAlchemy
 encode the connection URL, so passwords containing URL-reserved characters
 such as `@`, `:`, `/`, `?`, or `#` work without a second encoded secret.
 
+`deploy/.env` also owns the client-attestation policy consumed by Compose.
+Leave `FIREBASE_APP_CHECK_REQUIRED=true` and
+`FIREBASE_OFF_PLAY_BETA_MODE=false` for Google Play-distributed builds. A
+directly installed, off-Play beta may temporarily use `false` and `true`
+respectively, but the signed Android workflow must use the same App Check
+setting reported by `/ready`. Firebase Authentication remains mandatory in
+production in either mode.
+
 ## Start or Update Production
 
 From the repository root:
@@ -115,7 +123,9 @@ Verify the public Cloudflare path:
 curl -i https://api.medbuddy.pp.ua/ready
 ```
 
-Both must return HTTP 200 with the expected API contract.
+Both must return HTTP 200 with the expected API contract. `/ready` must also
+report `auth_mode` as `firebase`; its `app_check_required` value must match the
+Android artifact being distributed.
 
 Verify that the pill-identification catalog was populated:
 

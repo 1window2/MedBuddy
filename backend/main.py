@@ -316,6 +316,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ready",
             "api_contract": settings.API_CONTRACT_VERSION,
+            "auth_mode": settings.AUTH_MODE,
             "app_check_required": settings.FIREBASE_APP_CHECK_REQUIRED,
         }
 
