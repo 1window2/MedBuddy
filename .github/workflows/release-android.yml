@@ -49,6 +49,7 @@ jobs:
         shell: bash
         env:
           MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+          FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -108,6 +109,14 @@ jobs:
               .read_text(encoding="utf-8")
               .strip()
           )
+          app_check_value = os.environ.get(
+              "FIREBASE_APP_CHECK_REQUIRED", ""
+          ).strip().lower()
+          if app_check_value not in ("", "true", "false"):
+              raise SystemExit(
+                  "FIREBASE_APP_CHECK_REQUIRED must be true or false."
+              )
+          expected_app_check = app_check_value != "false"
           for probe_name in ("backend-health.json", "backend-ready.json"):
               payload = json.loads(
                   Path(os.environ["RUNNER_TEMP"])
@@ -119,6 +128,16 @@ jobs:
                       "The standalone backend API contract does not match the "
                       "Android release contract."
                   )
+          ready_payload = json.loads(
+              Path(os.environ["RUNNER_TEMP"])
+              .joinpath("backend-ready.json")
+              .read_text(encoding="utf-8")
+          )
+          if ready_payload.get("app_check_required") is not expected_app_check:
+              raise SystemExit(
+                  "The standalone backend App Check policy does not match the "
+                  "Android release configuration."
+              )
           PY
 
       - name: Restore Firebase Android configuration
