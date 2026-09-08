@@ -304,7 +304,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/ready", include_in_schema=False)
-    async def readiness_check() -> dict[str, str]:
+    async def readiness_check() -> dict[str, str | bool]:
         is_ready = await app.state.readiness_probe_cache.request_readiness(
             _verify_runtime_dependencies
         )
@@ -316,6 +316,11 @@ def create_app() -> FastAPI:
         return {
             "status": "ready",
             "api_contract": settings.API_CONTRACT_VERSION,
+            "app_env": settings.APP_ENV,
+            "runtime_role": settings.RUNTIME_ROLE,
+            "auth_mode": settings.AUTH_MODE,
+            "firebase_project_id": settings.FIREBASE_PROJECT_ID,
+            "app_check_required": settings.FIREBASE_APP_CHECK_REQUIRED,
         }
 
     return app

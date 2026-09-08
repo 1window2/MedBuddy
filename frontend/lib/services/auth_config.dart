@@ -41,6 +41,10 @@ class AuthConfig {
     'MEDBUDDY_PHONE_AUTH_ENABLED',
     defaultValue: false,
   );
+  static const bool appCheckRequired = bool.fromEnvironment(
+    'MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED',
+    defaultValue: true,
+  );
 
   static void validate() {
     if ((kReleaseMode || kProfileMode) && mode != AuthenticationMode.firebase) {

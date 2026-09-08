@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False
     FIREBASE_APP_CHECK_REQUIRED: bool = False
+    FIREBASE_OFF_PLAY_BETA_MODE: bool = False
     TRUSTED_HOSTS: str = (
         "api.medbuddy.pp.ua,localhost,127.0.0.1,backend,testserver"
     )
@@ -314,9 +315,21 @@ class Settings(BaseSettings):
                 raise ValueError("Production API requires AUTH_MODE=firebase.")
             if not self.FIREBASE_PROJECT_ID.strip():
                 raise ValueError("Production API requires FIREBASE_PROJECT_ID.")
-            if not self.FIREBASE_APP_CHECK_REQUIRED:
+            if (
+                not self.FIREBASE_APP_CHECK_REQUIRED
+                and not self.FIREBASE_OFF_PLAY_BETA_MODE
+            ):
                 raise ValueError(
-                    "Production API requires FIREBASE_APP_CHECK_REQUIRED=true."
+                    "Production API requires FIREBASE_APP_CHECK_REQUIRED=true "
+                    "unless FIREBASE_OFF_PLAY_BETA_MODE=true is explicitly set."
+                )
+            if (
+                self.FIREBASE_APP_CHECK_REQUIRED
+                and self.FIREBASE_OFF_PLAY_BETA_MODE
+            ):
+                raise ValueError(
+                    "FIREBASE_OFF_PLAY_BETA_MODE requires "
+                    "FIREBASE_APP_CHECK_REQUIRED=false."
                 )
             if not self.RATE_LIMIT_ENABLED:
                 raise ValueError("Production API requires RATE_LIMIT_ENABLED=true.")
