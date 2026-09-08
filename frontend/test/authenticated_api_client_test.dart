@@ -201,6 +201,31 @@ void main() {
     client.close();
   });
 
+  test('off-Play beta mode skips App Check without weakening Firebase Auth', () async {
+    var appCheckProviderWasCalled = false;
+    final inner = MockClient((request) async {
+      expect(request.headers['authorization'], 'Bearer verified-token');
+      expect(request.headers.containsKey('x-firebase-appcheck'), isFalse);
+      return http.Response('{}', 200);
+    });
+    final client = AuthenticatedApiClient(
+      inner: inner,
+      tokenProvider: () async => 'verified-token',
+      appCheckTokenProvider: () async {
+        appCheckProviderWasCalled = true;
+        throw StateError('Play Integrity is unavailable');
+      },
+      appCheckRequired: false,
+      trustedBaseUri: Uri.parse('https://api.example.test'),
+    );
+
+    final response = await client.get(Uri.parse('https://api.example.test'));
+
+    expect(response.statusCode, 200);
+    expect(appCheckProviderWasCalled, isFalse);
+    client.close();
+  });
+
   test(
     'does not send a request when authentication acquisition fails',
     () async {

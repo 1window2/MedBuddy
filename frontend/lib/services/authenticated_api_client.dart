@@ -38,6 +38,7 @@ class AuthenticatedApiClient extends http.BaseClient {
   final http.Client _inner;
   final IdTokenProvider _tokenProvider;
   final AppCheckTokenProvider _appCheckTokenProvider;
+  final bool _appCheckRequired;
   final UnauthorizedResponseHandler? _onUnauthorized;
   final Uri _trustedBaseUri;
 
@@ -45,11 +46,13 @@ class AuthenticatedApiClient extends http.BaseClient {
     http.Client? inner,
     IdTokenProvider? tokenProvider,
     AppCheckTokenProvider? appCheckTokenProvider,
+    bool? appCheckRequired,
     UnauthorizedResponseHandler? onUnauthorized,
     Uri? trustedBaseUri,
   }) : _inner = inner ?? http.Client(),
        _tokenProvider = tokenProvider ?? _firebaseIdToken,
        _appCheckTokenProvider = appCheckTokenProvider ?? _firebaseAppCheckToken,
+       _appCheckRequired = appCheckRequired ?? AuthConfig.appCheckRequired,
        _onUnauthorized = onUnauthorized,
        _trustedBaseUri = trustedBaseUri ?? Uri.parse(ApiConfig.baseUrl);
 
@@ -95,18 +98,20 @@ class AuthenticatedApiClient extends http.BaseClient {
     if (token != null && token.trim().isNotEmpty) {
       request.headers['Authorization'] = 'Bearer ${token.trim()}';
     }
-    late final String? appCheckToken;
-    try {
-      appCheckToken = await _appCheckTokenProvider().timeout(_appCheckTimeout);
-    } catch (_) {
-      throw const AppAttestationUnavailableException();
-    }
-    if (AuthConfig.mode == AuthenticationMode.firebase &&
-        (appCheckToken == null || appCheckToken.trim().isEmpty)) {
-      throw const AppAttestationUnavailableException();
-    }
-    if (appCheckToken != null && appCheckToken.trim().isNotEmpty) {
-      request.headers['X-Firebase-AppCheck'] = appCheckToken.trim();
+    if (_appCheckRequired) {
+      late final String? appCheckToken;
+      try {
+        appCheckToken = await _appCheckTokenProvider().timeout(_appCheckTimeout);
+      } catch (_) {
+        throw const AppAttestationUnavailableException();
+      }
+      if (AuthConfig.mode == AuthenticationMode.firebase &&
+          (appCheckToken == null || appCheckToken.trim().isEmpty)) {
+        throw const AppAttestationUnavailableException();
+      }
+      if (appCheckToken != null && appCheckToken.trim().isNotEmpty) {
+        request.headers['X-Firebase-AppCheck'] = appCheckToken.trim();
+      }
     }
     request.headers.putIfAbsent('Accept', () => 'application/json');
     request.headers['X-MedBuddy-Api-Contract'] = ApiConfig.contractVersion;

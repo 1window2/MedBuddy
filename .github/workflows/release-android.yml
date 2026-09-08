@@ -238,8 +238,17 @@ jobs:
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
         run: |
           set -euo pipefail
+          APP_CHECK_REQUIRED="${FIREBASE_APP_CHECK_REQUIRED:-true}"
+          case "${APP_CHECK_REQUIRED}" in
+            true|false) ;;
+            *)
+              echo "FIREBASE_APP_CHECK_REQUIRED must be true or false." >&2
+              exit 1
+              ;;
+          esac
           EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           ACTUAL_CERT="$(keytool -list -v \
             -keystore "${MEDBUDDY_KEYSTORE_PATH}" \
@@ -254,6 +263,7 @@ jobs:
           DEFINES=(
             --dart-define=MEDBUDDY_AUTH_MODE=firebase
             --dart-define=MEDBUDDY_PHONE_AUTH_ENABLED=false
+            "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
             "--dart-define=MEDBUDDY_API_BASE_URL=${MEDBUDDY_API_BASE_URL}"
             "--dart-define=MEDBUDDY_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
             "--dart-define=MEDBUDDY_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
