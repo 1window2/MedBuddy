@@ -545,6 +545,11 @@ def test_missing_app_check_token_is_rejected_when_required() -> None:
     assert denied.value.status_code == 403
 
 
+def test_missing_app_check_token_is_accepted_in_off_play_beta_mode() -> None:
+    with patch("api.dependencies.settings.FIREBASE_APP_CHECK_REQUIRED", False):
+        verify_app_check_token(None)
+
+
 def test_valid_app_check_token_is_accepted() -> None:
     verifier = type(
         "Verifier",
