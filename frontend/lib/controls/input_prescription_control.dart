@@ -178,13 +178,13 @@ class InputPrescription {
     return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
   }
 
-  // Function Name: _requestPrescriptionAnalysis
-  // Description: Runs local OCR and redaction before uploading only masked text, preserves prescription date and batch metadata per schedule, records preview regions and parse counts, and tracks file use until completion.
-  // Parameters:
-  // - image (XFile): Local image file selected or captured by the user.
-  // - imageSource (ImageSource): Camera or gallery source.
-  // Returns:
-  // - Future<List<MedicationSchedule>>: Runs local OCR and redaction before uploading only masked text, preserves prescription date and batch metadata per schedule, records preview regions and parse counts, and tracks file use until completion.
+  // 함수이름: _requestPrescriptionAnalysis
+  // 함수역할: 로컬 OCR·비식별 처리 후 텍스트만 분석 서버에 보내고 처방 메타데이터를 보존한다.
+  //           실패 단계는 진단 로그에 남기되 원래 예외 종류를 유지하여 연결 오류로 잘못 안내하지 않는다.
+  // 매개변수:
+  // - image (XFile): 선택하거나 촬영한 로컬 처방 이미지.
+  // - imageSource (ImageSource): 카메라 또는 갤러리 입력 구분.
+  // 반환값: Future<List<MedicationSchedule>>: 인식된 복약 일정; 실패 시 원인별 예외.
   Future<List<MedicationSchedule>> _requestPrescriptionAnalysis(
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
@@ -192,12 +192,14 @@ class InputPrescription {
     final imageOperation = Completer<void>();
     _activeImageOperations[image.path] = imageOperation;
     _lastRecognizedTextRegions = [];
+    var failureStage = 'local OCR';
     try {
       final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
         image.path,
       );
       final localRegions = localOcrResult.regions;
       _lastRecognizedTextRegions = localRegions;
+      failureStage = 'server request';
       final abortTrigger = Completer<void>();
       _abortTriggers.add(abortTrigger);
       final request = http.AbortableRequest(
@@ -231,6 +233,7 @@ class InputPrescription {
       } finally {
         _abortTriggers.remove(abortTrigger);
       }
+      failureStage = 'response parsing';
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
@@ -303,12 +306,12 @@ class InputPrescription {
       throw StateError(_imageFileAccessErrorMessage(imageSource));
     } catch (error, stackTrace) {
       developer.log(
-        'Prescription text analysis request failed.',
+        'Prescription recognition failed during $failureStage.',
         name: 'InputPrescription',
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('서버 연결에 실패했습니다.');
+      rethrow;
     } finally {
       if (identical(_activeImageOperations[image.path], imageOperation)) {
         _activeImageOperations.remove(image.path);

@@ -417,12 +417,14 @@ void main() {
           );
           expect(
             find.byKey(const ValueKey('homeMedicationTipCard')),
-            findsOneWidget,
+            findsNothing,
           );
-          final tip = find.byKey(const ValueKey('homeMedicationTipCard'));
-          await tester.ensureVisible(tip);
+          final reminders = find.byKey(
+            const ValueKey('homeMedicationReminderCard'),
+          );
+          await tester.ensureVisible(reminders);
           await tester.pumpAndSettle();
-          expect(tip.hitTestable(), findsOneWidget);
+          expect(reminders.hitTestable(), findsOneWidget);
           expect(tester.takeException(), isNull);
         },
       );

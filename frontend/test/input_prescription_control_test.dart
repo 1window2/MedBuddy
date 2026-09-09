@@ -12,6 +12,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/services/prescription_local_ocr_service.dart';
+import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
+import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 
 // Class Name: _FakeImagePicker
 // Role: Image-picker substitute with a preselected file or cancellation result.
@@ -208,6 +210,81 @@ class _AbortAwareClient extends http.BaseClient {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final error in <Object>[
+    http.ClientException('connection closed'),
+    const SocketException('connection refused'),
+    const ApiContractMismatchException('incompatible-test-version'),
+    const AuthenticationUnavailableException(),
+    const FormatException('malformed response'),
+  ]) {
+    // 함수이름: test 콜백
+    // 함수역할: 원래 서버·인증·파싱 오류를 보존하고 연결 오류로 일괄 변환하지 않는지 확인한다.
+    // 매개변수: 없음. 반환값: Future<void>: 예외 종류와 사용자 안내 확인 완료.
+    test(
+      'recognition preserves ${error.runtimeType} for error guidance',
+      () async {
+        final client = MockClient(
+          // 함수이름: MockClient 콜백
+          // 함수역할: 검사할 네트워크 또는 응답 처리 예외를 발생시킨다.
+          // 매개변수: request (http.Request): 분석 요청. 반환값: 오류로 완료하는 Future.
+          (request) async => throw error,
+        );
+        final control = InputPrescription(
+          imagePicker: _FakeImagePicker(XFile('test-prescription.png')),
+          localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+          client: client,
+        );
+        addTearDown(client.close);
+        // 함수이름: addTearDown 콜백
+        // 함수역할: 테스트 제어기의 이미지 참조와 자원을 정리한다.
+        // 매개변수: 없음. 반환값: Future<void>: 자원 정리 완료.
+        addTearDown(() => _disposeControl(control));
+        await expectLater(
+          control.requestPrescriptionImageFromGallery(),
+          throwsA(same(error)),
+        );
+        final guidance = UserFacingErrorMessage.resolve(
+          error,
+          isEnglish: false,
+        );
+        if (error is http.ClientException || error is SocketException) {
+          expect(guidance, contains('인터넷 연결'));
+        } else {
+          expect(guidance, isNot(contains('인터넷 연결')));
+          expect(guidance, isNot(contains('서버 연결에 실패')));
+        }
+      },
+    );
+  }
+
+  // 함수이름: test 콜백
+  // 함수역할: 잘못된 JSON 응답이 실제 파싱 오류로 전달되는지 확인한다.
+  // 매개변수: 없음. 반환값: Future<void>: 예외 검증 완료.
+  test(
+    'malformed prescription JSON is not reported as a connection error',
+    () async {
+      final client = MockClient(
+        // 함수이름: MockClient 콜백
+        // 함수역할: HTTP는 성공했지만 JSON 형식이 잘못된 응답을 제공한다.
+        // 매개변수: request (http.Request): 분석 요청. 반환값: 비정상 JSON 응답.
+        (request) async => http.Response('not json', 200),
+      );
+      final control = InputPrescription(
+        imagePicker: _FakeImagePicker(XFile('test-prescription.png')),
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+        client: client,
+      );
+      addTearDown(client.close);
+      // 함수이름: addTearDown 콜백
+      // 함수역할: 테스트 제어기의 자원을 정리한다.
+      // 매개변수: 없음. 반환값: Future<void>: 정리 완료.
+      addTearDown(() => _disposeControl(control));
+      await expectLater(
+        control.requestPrescriptionImageFromGallery(),
+        throwsFormatException,
+      );
+    },
+  );
   // Function Name: test callback
   // Description:
   // - Verify that a captured prescription enters local OCR without invoking the image picker.

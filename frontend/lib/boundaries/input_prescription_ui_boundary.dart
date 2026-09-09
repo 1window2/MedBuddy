@@ -336,8 +336,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                 );
                               },
                             ),
-                            SizedBox(height: useCompactDashboard ? 8 : 12),
-                            _MedicationTipCard(text: text),
                           ],
                         ),
                       ),
@@ -954,20 +952,6 @@ class _HomeText {
   String get medicationReminderSubtitle => isEnglish
       ? 'Adjust reminder times to fit your routine'
       : '복약 알림 시간을 내 생활에 맞게 조정해요';
-  // Function Name: medicationTipTitle
-  // Description: Provides localized wording for "Medication tip" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get medicationTipTitle => isEnglish ? 'Medication tip' : '복약 팁';
-  // Function Name: medicationTipBody
-  // Description: Provides localized wording for "Take medicine with water and follow your care instructions." using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get medicationTipBody => isEnglish
-      ? 'Take medicine with water and follow your care instructions.'
-      : '약은 충분한 물과 함께, 처방·복약지도에 맞춰 복용하세요.';
   // 함수이름: nearbyPharmacy
   // 함수역할: 현재 언어와 입력값에 맞춰 "근처 운영 약국" 문구를 제공한다.
   // 매개변수:
@@ -988,91 +972,6 @@ class _HomeText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
-}
-
-// Class Name: _MedicationTipCard
-// Role: Represents the safe-medication tip at the bottom of the home screen.
-// Responsibilities:
-// - Composes the safe-medication tip at the bottom of the home screen using the display values and actions supplied by its parent.
-class _MedicationTipCard extends StatelessWidget {
-  final _HomeText text;
-
-  // Function Name: _MedicationTipCard
-  // Description: Initializes the safe-medication tip at the bottom of the home screen with the supplied configuration.
-  // Parameters:
-  // - text (_HomeText): Localized labels used by this section.
-  // Returns: Initialized _MedicationTipCard instance.
-  const _MedicationTipCard({required this.text});
-
-  // Function Name: build
-  // Description: Renders the safe-medication tip at the bottom of the home screen from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the safe-medication tip at the bottom of the home screen.
-  @override
-  Widget build(BuildContext context) {
-    final useCompactText =
-        MediaQuery.textScalerOf(context).scale(16) / 16 <= 1.1;
-
-    return Semantics(
-      label: '${text.medicationTipTitle}. ${text.medicationTipBody}',
-      container: true,
-      child: Container(
-        key: const ValueKey('homeMedicationTipCard'),
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 48),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: MedBuddyColors.successSurface,
-          borderRadius: MedBuddyRadii.card,
-          border: Border.all(color: MedBuddyColors.successBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: MedBuddyColors.mint,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 19,
-                color: MedBuddyColors.primaryDark,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ExcludeSemantics(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${text.medicationTipTitle} · ',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      TextSpan(text: text.medicationTipBody),
-                    ],
-                  ),
-                  maxLines: useCompactText ? 2 : null,
-                  overflow: useCompactText
-                      ? TextOverflow.ellipsis
-                      : TextOverflow.visible,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textBody,
-                    fontSize: 12,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // Class Name: _HomeEncouragementPanel

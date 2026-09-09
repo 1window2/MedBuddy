@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_status_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
@@ -165,6 +166,84 @@ class _EmptySchedule extends CheckSchedule {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    for (final size in [
+      const Size(390, 844),
+      const Size(320, 568),
+      const Size(640, 360),
+    ]) {
+      for (final textScale in [1.0, 1.3, 2.0]) {
+        // 함수이름: testWidgets 콜백
+        // 함수역할: 실패 복구 버튼의 글자가 잘리지 않고 일반 휴대폰의 큰 글씨에서 한 줄인지 검사한다.
+        // 매개변수: tester (WidgetTester): 화면 크기·글씨 배율과 버튼을 검사할 제어기.
+        // 반환값: Future<void>: 화면 배치와 터치 영역 확인 완료.
+        testWidgets('failure actions fit $language $size at $textScale', (
+          tester,
+        ) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          var galleryRequests = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              // 함수이름: builder 콜백
+              // 함수역할: 테스트할 시스템 글씨 배율을 적용한다.
+              // 매개변수: context (BuildContext), child (Widget?): 기존 화면.
+              // 반환값: 글씨 배율을 적용한 MediaQuery.
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+              home: PrescriptionAnalysisFailureUI(
+                message: '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+                userSetting: UserSetting(language: language),
+                failureStep: AnalysisProgressStep.prescriptionRecognition,
+                onCameraRetryRequested: _ignoreRecovery,
+                // 함수이름: onGalleryRetryRequested 콜백
+                // 함수역할: 갤러리 복구 동작 횟수를 기록한다.
+                // 매개변수: 없음. 반환값: 없음.
+                onGalleryRetryRequested: () => galleryRequests++,
+                onHomeRequested: _ignoreRecovery,
+              ),
+            ),
+          );
+          final button = find.byKey(
+            const Key('prescription-gallery-retry-button'),
+          );
+          await tester.ensureVisible(button);
+          await tester.pumpAndSettle();
+          final label = find.descendant(
+            of: button,
+            matching: find.byType(Text),
+          );
+          final paragraph = tester.renderObject<RenderParagraph>(label);
+          final labelRect = tester.getRect(label);
+          final buttonRect = tester.getRect(button);
+          expect(buttonRect.height, greaterThanOrEqualTo(48));
+          expect(buttonRect.contains(labelRect.topLeft), isTrue);
+          expect(buttonRect.contains(labelRect.bottomRight), isTrue);
+          if (language == 'ko' && size.width >= 390 && textScale <= 1.3) {
+            final boxes = paragraph.getBoxesForSelection(
+              TextSelection(
+                baseOffset: 0,
+                extentOffset: paragraph.text.toPlainText().length,
+              ),
+            );
+            // 함수이름: map 콜백
+            // 함수역할: 텍스트 조각의 윗좌표로 실제 줄 수를 확인한다.
+            // 매개변수: box (TextBox): 선택된 글자 영역. 반환값: 해당 줄의 윗좌표.
+            expect(boxes.map((box) => box.top).toSet(), hasLength(1));
+          }
+          await tester.tap(button);
+          expect(galleryRequests, 1);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 처방 분석 실패 화면에서 카메라와 갤러리 재시도 명령을 제공하는지 검증한다.
@@ -527,3 +606,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+// 함수이름: _ignoreRecovery
+// 함수역할: 배치만 검사하는 테스트에서 화면 이동을 실행하지 않는다.
+// 매개변수: 없음. 반환값: 없음.
+void _ignoreRecovery() {}

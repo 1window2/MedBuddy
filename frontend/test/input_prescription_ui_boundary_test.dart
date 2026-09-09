@@ -272,7 +272,8 @@ void main() {
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('근처 운영 약국'), findsOneWidget);
     expect(find.text('복약 알림 설정'), findsOneWidget);
-    expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsOneWidget);
+    expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsNothing);
+    expect(find.text('복약 팁'), findsNothing);
     expect(find.text('환자/보호자 연동'), findsNothing);
     expect(find.byKey(const ValueKey('homeSettingsButton')), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -272,11 +272,12 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
             ),
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             child: Center(
               child: Container(
-                width: 328,
-                padding: const EdgeInsets.fromLTRB(42, 44, 42, 42),
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 400),
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -294,10 +295,10 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
-                    const SizedBox(height: 34),
+                    const SizedBox(height: 24),
                     Container(
-                      width: 130,
-                      height: 130,
+                      width: 96,
+                      height: 96,
                       decoration: const BoxDecoration(
                         color: Color(0xFFFF1F2D),
                         shape: BoxShape.circle,
@@ -305,10 +306,10 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       child: const Icon(
                         Icons.cancel_outlined,
                         color: Colors.white,
-                        size: 72,
+                        size: 56,
                       ),
                     ),
-                    const SizedBox(height: 34),
+                    const SizedBox(height: 24),
                     Text(
                       text.failureMessage(isMedicationAnalysisFailure),
                       textAlign: TextAlign.center,
@@ -378,11 +379,17 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       scale: scale,
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 63,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: double.infinity,
+                        minHeight: 56,
+                      ),
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 14,
+                          ),
                           foregroundColor: MedBuddyColors.textStrong,
                           side: const BorderSide(color: MedBuddyColors.outline),
                           shape: RoundedRectangleBorder(
@@ -395,7 +402,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                           ),
                         ),
                         onPressed: onHomeRequested,
-                        child: Text(text.home),
+                        child: Text(text.home, textAlign: TextAlign.center),
                       ),
                     ),
                   ],
@@ -408,16 +415,16 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     );
   }
 
-  // Function Name: _buildActionButton
-  // Description: Builds a primary or outlined recovery action using the same icon, label, and text scale.
-  // Parameters:
-  // - key (Key): Widget identity used to distinguish elements and preserve state.
-  // - isPrimary (bool): Whether the action uses primary emphasis.
-  // - onPressed (VoidCallback): Callback executing the item's documented primary action.
-  // - icon (IconData): Icon shown in normal or selected state.
-  // - label (String): Wording identifying a field, choice, or action.
-  // - scale (double): Content text scale reflecting user accessibility settings.
-  // Returns: Widget tree for stage-specific retry, recapture, and image-reselection actions.
+  // 함수이름: _buildActionButton
+  // 함수역할: 아이콘 간격과 좌우 여백을 줄이고, 매우 큰 글씨에서는 높이를 늘려 복구 명령을 모두 표시한다.
+  // 매개변수:
+  // - key (Key): 복구 버튼 식별 키.
+  // - isPrimary (bool): 주요 명령 강조 여부.
+  // - onPressed (VoidCallback): 선택한 복구 동작.
+  // - icon (IconData): 명령을 나타내는 아이콘.
+  // - label (String): 생략 없이 표시할 명령 이름.
+  // - scale (double): 사용자 글씨 배율.
+  // 반환값: 최소 터치 높이를 보장하는 복구 버튼.
   Widget _buildActionButton({
     required Key key,
     required bool isPrimary,
@@ -433,23 +440,38 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
       letterSpacing: 0,
     );
 
-    return SizedBox(
-      width: double.infinity,
-      height: 63,
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 6),
+        Flexible(child: Text(label, textAlign: TextAlign.center)),
+      ],
+    );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: double.infinity,
+        minHeight: 56,
+      ),
       child: isPrimary
-          ? FilledButton.icon(
+          ? FilledButton(
               key: key,
               style: FilledButton.styleFrom(
                 backgroundColor: MedBuddyColors.primary,
                 foregroundColor: Colors.white,
                 shape: shape,
                 textStyle: textStyle,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 14,
+                ),
               ),
               onPressed: onPressed,
-              icon: Icon(icon),
-              label: Text(label),
+              child: content,
             )
-          : OutlinedButton.icon(
+          : OutlinedButton(
               key: key,
               style: OutlinedButton.styleFrom(
                 foregroundColor: MedBuddyColors.primaryDark,
@@ -459,10 +481,13 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                 ),
                 shape: shape,
                 textStyle: textStyle,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 14,
+                ),
               ),
               onPressed: onPressed,
-              icon: Icon(icon),
-              label: Text(label),
+              child: content,
             ),
     );
   }
