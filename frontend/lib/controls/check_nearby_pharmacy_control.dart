@@ -12,6 +12,12 @@ import '../services/authenticated_api_client.dart';
 import '../services/device_location_service.dart';
 import '../services/pharmacy_external_action_service.dart';
 
+// 함수이름: ExternalUriLauncher
+// 함수역할: 약국 외부 동작 서비스의 URI 실행 콜백 계약을 조회 Control에서도 같은 타입으로 사용하게 한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - PharmacyUriLauncher와 동일한 외부 URI 실행 콜백 타입.
 typedef ExternalUriLauncher = PharmacyUriLauncher;
 
 // 클래스명: CheckNearbyPharmacy
@@ -20,12 +26,24 @@ typedef ExternalUriLauncher = PharmacyUriLauncher;
 // - 기기 위치 경계를 통해 사용자의 현재 좌표를 요청한다.
 // - 인증된 MedBuddy 백엔드에서 근처 약국 목록을 가져온다.
 // - 전화와 외부 지도 실행을 검증된 URI로 위임한다.
+// 속성:
+// - _locationBoundary (DeviceLocationBoundary): 위치 권한·현재 좌표·설정 이동 경계
+// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
 class CheckNearbyPharmacy {
   final DeviceLocationBoundary _locationBoundary;
   final http.Client _client;
   final PharmacyExternalActionService _externalActionService;
   final bool _ownsClient;
 
+  // 함수이름: CheckNearbyPharmacy
+  // 함수역할: 위치 조회·인증 HTTP·URI 실행·클립보드 경계를 연결하고 주입하지 않은 클라이언트만 직접 소유한다.
+  // 매개변수:
+  // - locationBoundary (DeviceLocationBoundary?): 위치 권한·현재 좌표·설정 이동 경계
+  // - client (http.Client?): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+  // - uriLauncher (ExternalUriLauncher?): 외부 전화·지도 앱 실행 경계
+  // - clipboardWriter (PharmacyClipboardWriter?): 기기 클립보드에 텍스트를 기록할 경계
+  // 반환값:
+  // - CheckNearbyPharmacy: 초기화된 인스턴스.
   CheckNearbyPharmacy({
     DeviceLocationBoundary? locationBoundary,
     http.Client? client,
@@ -40,11 +58,14 @@ class CheckNearbyPharmacy {
        ),
        _ownsClient = client == null;
 
-  // 함수명: requestNearbyPharmacies
-  // 역할:
-  // - 현재 위치를 확인하고 최대 20km 안의 약국 목록을 서버에서 조회한다.
-  // 반환값:
-  // - 영업 중 약국이 먼저 정렬된 NearbyPharmacy 목록
+  // Function Name: requestNearbyPharmacies
+  // Description: Returns the pharmacy list from a location-based search using the requested opening-time mode, target time, and distance limit.
+  // Parameters:
+  // - searchMode (PharmacySearchMode): Pharmacy filter such as opening time or late-night service.
+  // - targetDateTime (DateTime?): Reference timestamp for checking pharmacy opening status.
+  // - maxDistanceKm (double): Maximum pharmacy search radius in kilometers.
+  // Returns:
+  // - Future<List<NearbyPharmacy>>: The pharmacy list from a location-based search using the requested opening-time mode, target time, and distance limit.
   Future<List<NearbyPharmacy>> requestNearbyPharmacies({
     PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
     DateTime? targetDateTime,
@@ -58,6 +79,14 @@ class CheckNearbyPharmacy {
     return result.data;
   }
 
+  // Function Name: requestNearbyPharmacySearch
+  // Description: Queries nearby pharmacies with the current coordinates and search constraints, dropping unidentified entries while preserving catalog freshness and holiday metadata.
+  // Parameters:
+  // - searchMode (PharmacySearchMode): Pharmacy filter such as opening time or late-night service.
+  // - targetDateTime (DateTime?): Reference timestamp for checking pharmacy opening status.
+  // - maxDistanceKm (double): Maximum pharmacy search radius in kilometers.
+  // Returns:
+  // - Future<NearbyPharmacySearchResult>: Queries nearby pharmacies with the current coordinates and search constraints, dropping unidentified entries while preserving catalog freshness and holiday metadata.
   Future<NearbyPharmacySearchResult> requestNearbyPharmacySearch({
     PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
     DateTime? targetDateTime,
@@ -95,9 +124,21 @@ class CheckNearbyPharmacy {
       final pharmacies = rawItems
           .whereType<Map>()
           .map(
+            // 함수이름: map 콜백
+            // 함수역할: 주변 약국 응답 항목을 약국 정보 모델로 변환한다.
+            // 매개변수:
+            // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
+            // 반환값:
+            // - 위치와 영업 정보를 담은 약국 모델.
             (item) => NearbyPharmacy.fromJson(Map<String, dynamic>.from(item)),
           )
-          .where((item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty)
+          .where(/* 함수이름: where 콜백
+           * 함수역할: 식별자와 이름이 모두 있는 약국만 검색 결과에 남긴다.
+           * 매개변수:
+           * - item (NearbyPharmacy): 현재 변환·검사 중인 응답 또는 목록 항목
+           * 반환값:
+           * - 두 필수 필드가 비어 있지 않으면 true.
+           */(item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty)
           .toList(growable: false);
       return NearbyPharmacySearchResult(
         data: pharmacies,
@@ -127,12 +168,22 @@ class CheckNearbyPharmacy {
     }
   }
 
+  // 함수이름: requestPhoneCall
+  // 함수역할: 약국 전화번호를 외부 동작 서비스에 전달해 전화 앱 실행을 요청한다.
+  // 매개변수:
+  // - telephone (String): 약국 전화번호 원문
+  // 반환값:
+  // - Future<bool>: 약국 전화번호를 외부 동작 서비스에 전달해 전화 앱 실행을 요청한다.
   Future<bool> requestPhoneCall(String telephone) async {
     return _externalActionService.requestPhoneCall(telephone);
   }
 
-  // 함수명: requestDirections
-  // 역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
+  // 함수이름: requestDirections
+  // 함수역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
+  // 매개변수:
+  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // 반환값:
+  // - Future<bool>: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
   Future<bool> requestDirections(NearbyPharmacy pharmacy) async {
     return _externalActionService.requestDirections(
       name: pharmacy.name,
@@ -141,8 +192,12 @@ class CheckNearbyPharmacy {
     );
   }
 
-  // 함수명: requestInstalledMapDirections
-  // 역할: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
+  // 함수이름: requestInstalledMapDirections
+  // 함수역할: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
+  // 매개변수:
+  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // 반환값:
+  // - Future<bool>: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
   Future<bool> requestInstalledMapDirections(NearbyPharmacy pharmacy) {
     return _externalActionService.requestInstalledMapDirections(
       name: pharmacy.name,
@@ -151,8 +206,12 @@ class CheckNearbyPharmacy {
     );
   }
 
-  // 함수명: requestGoogleMapDirections
-  // 역할: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
+  // 함수이름: requestGoogleMapDirections
+  // 함수역할: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
+  // 매개변수:
+  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // 반환값:
+  // - Future<bool>: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
   Future<bool> requestGoogleMapDirections(NearbyPharmacy pharmacy) {
     return _externalActionService.requestGoogleMapDirections(
       latitude: pharmacy.latitude,
@@ -160,24 +219,50 @@ class CheckNearbyPharmacy {
     );
   }
 
-  // 함수명: copyPharmacyAddress
-  // 역할: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
+  // 함수이름: copyPharmacyAddress
+  // 함수역할: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
+  // 매개변수:
+  // - address (String): 복사하거나 표시할 약국 주소
+  // 반환값:
+  // - Future<bool>: 지도 앱을 열 수 없는 상황에 대비해 약국 주소를 복사한다.
   Future<bool> copyPharmacyAddress(String address) {
     return _externalActionService.copyAddress(address);
   }
 
-  // 함수명: requestMapAttribution
-  // 역할: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
+  // 함수이름: requestMapAttribution
+  // 함수역할: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 앱 내 지도 제공자인 네이버 지도의 안내 페이지를 연다.
   Future<bool> requestMapAttribution() {
     return _externalActionService.requestMapAttribution();
   }
 
+  // 함수이름: openApplicationSettings
+  // 함수역할: 앱별 위치 권한을 변경할 수 있는 운영체제 설정 화면을 연다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 앱별 위치 권한을 변경할 수 있는 운영체제 설정 화면을 연다.
   Future<bool> openApplicationSettings() =>
       _locationBoundary.openApplicationSettings();
 
+  // 함수이름: openDeviceLocationSettings
+  // 함수역할: 기기 위치 서비스 활성화를 위한 운영체제 설정 화면을 연다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 기기 위치 서비스 활성화를 위한 운영체제 설정 화면을 연다.
   Future<bool> openDeviceLocationSettings() =>
       _locationBoundary.openDeviceLocationSettings();
 
+  // 함수이름: dispose
+  // 함수역할: 직접 생성한 HTTP 클라이언트만 닫고 외부에서 주입한 클라이언트의 수명은 호출자에게 맡긴다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
   void dispose() {
     if (_ownsClient) {
       _client.close();

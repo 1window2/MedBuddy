@@ -11,8 +11,8 @@ import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-// 파일명: check_medication_detail_control.dart
-// 역할: OCR로 추출한 약 이름을 백엔드 약품 상세 조회 API와 연결한다.
+// File Name: check_medication_detail_control.dart
+// Role: Looks up public medication details from prescription-recognized drug names.
 
 // 클래스명: CheckMedicationDetail
 // 역할: 처방전에서 인식된 약 이름으로 공공데이터 기반 상세 정보를 요청한다.
@@ -20,21 +20,29 @@ import '../services/api_response_parser.dart';
 // - 약 이름이 비어 있는 경우 불필요한 API 호출을 막는다.
 // - 서버 응답을 MedicationDetail 목록으로 변환한다.
 // - 네트워크/서버 오류를 화면에서 처리 가능한 StateError로 바꾼다.
+// 속성:
+// - baseUrl (String): 복약 API 기본 주소
+// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
 class CheckMedicationDetail {
   final String baseUrl;
   final http.Client _client;
   final bool _ownsClient;
 
+  // Function Name: CheckMedicationDetail
+  // Description: Binds medication-name detail lookup to the configured backend and an injected or owned authenticated HTTP client.
+  // Parameters:
+  // - baseUrl (String): Base URL of the medication API.
+  // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
+  // Returns:
+  // - CheckMedicationDetail: the initialized instance.
   CheckMedicationDetail({this.baseUrl = ApiConfig.baseUrl, http.Client? client})
     : _client = client ?? AuthenticatedApiClient(),
       _ownsClient = client == null;
 
-  // 함수명: requestMedicationDetail
-  // 함수역할:
-  // - 처방전 OCR 결과의 약 이름으로 백엔드 상세 조회 API를 호출한다.
-  // - 여러 후보가 반환되면 현재 화면 흐름에서는 첫 번째 후보를 사용한다.
+  // 함수이름: requestMedicationDetail
+  // 함수역할: 처방전 OCR 결과의 약 이름으로 백엔드 상세 조회 API를 호출한다. 여러 후보가 반환되면 현재 화면 흐름에서는 첫 번째 후보를 사용한다.
   // 매개변수:
-  // - medicationSchedule: OCR에서 인식한 약 이름과 복약 일정 정보
+  // - medicationSchedule (MedicationSchedule): OCR에서 인식한 약 이름과 복약 일정 정보
   // 반환값:
   // - 조회 성공 시 첫 번째 MedicationDetail
   // - 약 이름이 없거나 조회 결과가 없으면 null
@@ -88,6 +96,13 @@ class CheckMedicationDetail {
     }
   }
 
+  // 함수이름: _messageForStatus
+  // 함수역할: 인증 만료, 조회 결과 없음, 시간 초과, 과부하와 서버 오류를 구분해 재시도에 필요한 안내를 만든다.
+  // 매개변수:
+  // - statusCode (int): 오류 안내를 선택할 HTTP 상태 코드
+  // - responseBody (dynamic): UTF-8로 읽은 서버 응답 본문
+  // 반환값:
+  // - String: 인증 만료, 조회 결과 없음, 시간 초과, 과부하와 서버 오류를 구분해 재시도에 필요한 안내를 만든다.
   String _messageForStatus(int statusCode, dynamic responseBody) {
     if (statusCode == 401 || statusCode == 403) {
       return '로그인 정보가 만료되었습니다. 다시 로그인해주세요.';
@@ -108,6 +123,12 @@ class CheckMedicationDetail {
         '${ApiResponseParser.extractErrorDetail(responseBody)}';
   }
 
+  // Function Name: _decodeMedicationDetailList
+  // Description: Converts map entries into medication detail candidates, returning an empty list for a nonlist response.
+  // Parameters:
+  // - rawItems (dynamic): Raw server item or list before model conversion.
+  // Returns:
+  // - List<MedicationDetail>: Converts map entries into medication detail candidates, returning an empty list for a nonlist response.
   List<MedicationDetail> _decodeMedicationDetailList(dynamic rawItems) {
     if (rawItems is! List) {
       return [];
@@ -116,11 +137,23 @@ class CheckMedicationDetail {
     return rawItems
         .whereType<Map>()
         .map(
+          // Function Name: map callback
+          // Description: Parses each medication API result into the shared medication-detail model.
+          // Parameters:
+          // - item (Map): Current response or collection entry being transformed or checked.
+          // Returns:
+          // - The parsed medication details.
           (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(growable: false);
   }
 
+  // Function Name: dispose
+  // Description: Closes the HTTP client only when this control created it; injected clients remain owned by the caller.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
   void dispose() {
     if (_ownsClient) {
       _client.close();

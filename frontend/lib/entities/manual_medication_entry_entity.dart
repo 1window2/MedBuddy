@@ -9,6 +9,14 @@ import 'medication_schedule_entity.dart';
 // - 복용 시작일과 종료일을 총 복용 일수로 계산한다.
 // - 1회 복용량과 단위를 화면 및 서버가 공유하는 문자열로 만든다.
 // - 선택한 시간대를 MedicationSchedule로 변환해 기존 저장 흐름을 재사용한다.
+// 속성:
+// - medicationName (String): 화면과 저장에 사용할 약 이름
+// - dosageAmount (String): 직접 입력한 1회 복용량 숫자
+// - dosageUnit (String): 직접 입력한 복용량의 단위
+// - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
+// - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
+// - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
+// - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
 class ManualMedicationEntry {
   final String medicationName;
   final String dosageAmount;
@@ -18,6 +26,18 @@ class ManualMedicationEntry {
   final List<String> scheduleSlotKeys;
   final String localImagePath;
 
+  // 함수이름: ManualMedicationEntry
+  // 함수역할: 직접 입력한 약명·복용량·단위·기간·시간대와 선택적 기기 사진 경로를 보존한다.
+  // 매개변수:
+  // - medicationName (String): 화면과 저장에 사용할 약 이름
+  // - dosageAmount (String): 직접 입력한 1회 복용량 숫자
+  // - dosageUnit (String): 직접 입력한 복용량의 단위
+  // - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
+  // - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
+  // - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
+  // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
+  // 반환값:
+  // - ManualMedicationEntry: 초기화된 인스턴스.
   const ManualMedicationEntry({
     required this.medicationName,
     required this.dosageAmount,
@@ -28,6 +48,12 @@ class ManualMedicationEntry {
     this.localImagePath = '',
   });
 
+  // 함수이름: totalDays
+  // 함수역할: 시작일과 종료일의 시각을 제거하고 양 끝 날짜를 포함한 복용 일수를 계산한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - int: 시작일과 종료일의 시각을 제거하고 양 끝 날짜를 포함한 복용 일수를 계산한다.
   int get totalDays {
     final normalizedStart = DateTime(
       startDate.year,
@@ -38,12 +64,24 @@ class ManualMedicationEntry {
     return normalizedEnd.difference(normalizedStart).inDays + 1;
   }
 
+  // 함수이름: dosage
+  // 함수역할: 공백을 정리한 복용량 숫자와 단위를 붙여 저장할 1회 용량 문자열을 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 공백을 정리한 복용량 숫자와 단위를 붙여 저장할 1회 용량 문자열을 만든다.
   String get dosage {
     final amount = dosageAmount.trim();
     final unit = dosageUnit.trim();
     return '$amount$unit';
   }
 
+  // 함수이름: toMedicationSchedule
+  // 함수역할: 직접 입력값을 복약 일정으로 변환하고 시작일·총 일수·시간대를 보존하며 약명 출처를 manual_entry로 표시한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - MedicationSchedule: 직접 입력값을 복약 일정으로 변환하고 시작일·총 일수·시간대를 보존하며 약명 출처를 manual_entry로 표시한다.
   MedicationSchedule toMedicationSchedule() {
     final slots = List<String>.of(scheduleSlotKeys, growable: false);
     return MedicationSchedule(
