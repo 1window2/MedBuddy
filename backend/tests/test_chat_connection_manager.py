@@ -40,6 +40,16 @@ class _FakeWebSocket:
 
 
 class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_private_delete_event_does_not_reach_peer(self) -> None:
+        manager = ChatConnectionManager()
+        own, peer = _FakeWebSocket(), _FakeWebSocket()
+        await manager.connect(link_id=17, user_hash="patient-a", websocket=cast(WebSocket, own))
+        await manager.connect(link_id=17, user_hash="caregiver-a", websocket=cast(WebSocket, peer))
+        event = {"type": "chat_messages_deleted", "message_ids": [1], "scope": "me"}
+        await manager.broadcast(link_id=17, event=event, recipient_hash="patient-a")
+        self.assertEqual(own.events, [event])
+        self.assertEqual(peer.events, [])
+
     """연동별 WebSocket 등록, 방송, 해제를 확인한다."""
 
     async def test_broadcast_reaches_all_connections_in_same_link(self) -> None:

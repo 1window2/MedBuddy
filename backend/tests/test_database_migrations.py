@@ -5,10 +5,43 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, MetaData, Table, select
+from datetime import datetime
 
 from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
+
+
+def test_chat_deletion_upgrade_preserves_existing_content_and_round_trips(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'chat-deletion.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = database_url
+    command.upgrade(config, "9c4e7b2a6d10")
+    engine = create_engine(database_url)
+    metadata = MetaData()
+    users = Table("user_accounts", metadata, autoload_with=engine)
+    links = Table("patient_caregiver_links", metadata, autoload_with=engine)
+    messages = Table("chat_messages", metadata, autoload_with=engine)
+    now = datetime(2026, 9, 9)
+    with engine.begin() as connection:
+        connection.execute(users.insert(), [
+            {"user_hash": user, "created_at": now, "updated_at": now}
+            for user in ("patient-a", "caregiver-a")
+        ])
+        connection.execute(links.insert().values(id=1, patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True, created_at=now))
+        connection.execute(messages.insert().values(id=1, link_id=1, sender_hash="patient-a", client_message_id="preserved_001", body="Keep this message", created_at=now))
+    try:
+        command.upgrade(config, "head")
+        columns = {item["name"] for item in inspect(engine).get_columns("chat_messages")}
+        assert {"patient_deleted_at", "caregiver_deleted_at", "deleted_for_everyone_at"} <= columns
+        with engine.connect() as connection:
+            assert connection.execute(select(messages.c.body)).scalar_one() == "Keep this message"
+        command.downgrade(config, "9c4e7b2a6d10")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.execute(select(messages.c.body)).scalar_one() == "Keep this message"
+    finally:
+        engine.dispose()
 
 
 def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:

@@ -37,7 +37,7 @@ from core.database import SessionLocal
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from schemas.chat import ChatMessageCreate, ChatReadUpdate
+from schemas.chat import ChatMessageCreate, ChatMessageDelete, ChatReadUpdate
 from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
@@ -78,6 +78,33 @@ def get_chat_messages(
         before_message_id=before_message_id,
         limit=limit,
     )
+
+
+# Function Name: delete_chat_messages
+# Description: Adapts an authenticated selection to the deletion use case.
+# Parameters: link_id, payload, request and authentication/control dependencies.
+# Returns: Deleted IDs and scope, broadcast privately or to both participants.
+@router.post("/links/{link_id}/messages/delete")
+async def delete_chat_messages(
+    link_id: int,
+    payload: ChatMessageDelete,
+    request: Request,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    chat: ManageLinkedChat = Depends(get_manage_linked_chat),
+) -> dict[str, object]:
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    response = chat.delete_messages(
+        link_id=link_id, user_hash=authorized_user_hash,
+        message_ids=payload.message_ids, scope=payload.scope,
+    )
+    await get_chat_connection_manager(request).broadcast(
+        link_id=link_id,
+        recipient_hash=authorized_user_hash if payload.scope == "me" else None,
+        event={"type": "chat_messages_deleted", **response["data"]},
+    )
+    return response
 
 
 # 함수이름: get_chat_medications
@@ -195,6 +222,7 @@ async def post_chat_message(
                 recipient_hash=result.recipient_hash,
                 link_id=link_id,
                 message_body=result.message.body,
+                message_id=result.message.message_id,
                 message_kind=result.message.message_kind,
                 context_payload=result.message.context_payload,
             )
@@ -495,6 +523,7 @@ def _dispatch_chat_notification(
     message_body: str,
     message_kind: str,
     context_payload: dict[str, object] | None,
+    message_id: int,
 ) -> None:
     """응답 이후 별도 DB 세션으로 오프라인 상대의 푸시를 전송한다."""
     db = SessionLocal()
@@ -508,6 +537,7 @@ def _dispatch_chat_notification(
             message_body=message_body,
             message_kind=message_kind,
             slot_key=_notification_slot_key(context_payload),
+            message_id=message_id,
         )
     finally:
         db.close()

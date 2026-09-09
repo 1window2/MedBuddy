@@ -79,14 +79,18 @@ class ChatConnectionManager:
 
     # 함수이름: broadcast
     # 함수역할: 현재 연동의 모든 연결에 동일한 실시간 이벤트를 전송한다.
-    # 매개변수: link_id, event
+    # 매개변수: link_id, event, recipient_hash - 생략하면 양쪽 참여자에게 전송
     # 반환값: 없음
-    async def broadcast(self, *, link_id: int, event: dict[str, object]) -> None:
+    async def broadcast(
+        self, *, link_id: int, event: dict[str, object],
+        recipient_hash: str | None = None,
+    ) -> None:
         """현재 연동의 모든 기기에 동일한 실시간 이벤트를 전송한다."""
         async with self._lock:
             targets = [
                 (user_hash, websocket)
                 for user_hash, sockets in self._connections.get(link_id, {}).items()
+                if recipient_hash is None or user_hash == recipient_hash
                 for websocket in sockets
             ]
         failed: list[tuple[str, WebSocket]] = []

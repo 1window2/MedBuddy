@@ -95,6 +95,9 @@ class _ChatMessage(Base):
     medication_dosage = Column(String(length=100), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utc_now, index=True)
     read_at = Column(DateTime, nullable=True)
+    patient_deleted_at = Column(DateTime, nullable=True)
+    caregiver_deleted_at = Column(DateTime, nullable=True)
+    deleted_for_everyone_at = Column(DateTime, nullable=True)
 
 
 # 클래스명: ChatMessage
@@ -118,13 +121,17 @@ class ChatMessage(BaseModel):
     medication_image_url: str | None = None
     medication_dosage: str | None = None
     read_at: datetime | None = None
+    hidden_for_me: bool = False
+    deleted_for_everyone: bool = False
 
     # 함수이름: from_row
     # 함수역할: SQLAlchemy 채팅 행을 불변 응답 모델로 변환한다.
     # 매개변수: row - 저장된 채팅 메시지 행
     # 반환값: ChatMessage
     @classmethod
-    def from_row(cls, row: _ChatMessage) -> "ChatMessage":
+    def from_row(
+        cls, row: _ChatMessage, *, hidden_for_me: bool = False,
+    ) -> "ChatMessage":
         """SQLAlchemy 행을 채팅 응답 모델로 변환한다."""
         return cls(
             message_id=int(row.id),
@@ -146,6 +153,8 @@ class ChatMessage(BaseModel):
             medication_image_url=row.medication_image_url,
             medication_dosage=row.medication_dosage,
             read_at=row.read_at,
+            hidden_for_me=hidden_for_me,
+            deleted_for_everyone=row.deleted_for_everyone_at is not None,
         )
 
     # 함수이름: to_response_dict
@@ -158,7 +167,7 @@ class ChatMessage(BaseModel):
         medication_contexts = self._medication_contexts_response(
             fallback=medication_context,
         )
-        return {
+        response = {
             "message_id": self.message_id,
             "link_id": self.link_id,
             "sender_hash": self.sender_hash,
@@ -172,7 +181,16 @@ class ChatMessage(BaseModel):
             "read_at": (
                 _as_utc_isoformat(self.read_at) if self.read_at is not None else None
             ),
+            "hidden_for_me": self.hidden_for_me,
+            "deleted_for_everyone": self.deleted_for_everyone,
         }
+        if self.hidden_for_me or self.deleted_for_everyone:
+            response.update({
+                "body": "", "message_kind": CHAT_MESSAGE_KIND_TEXT,
+                "context": None, "medication_context": None,
+                "medication_contexts": [],
+            })
+        return response
 
     def _medication_context_response(self) -> dict[str, object] | None:
         """전송 당시 보존한 약 정보를 클라이언트 표시 형식으로 반환한다."""

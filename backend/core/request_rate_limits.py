@@ -367,6 +367,7 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
     ): RateLimitRule(60, 60),
     ("POST", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(20, 60),
     ("POST", "/api/v1/chat/links/{link_id}/read"): RateLimitRule(60, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/messages/delete"): RateLimitRule(10, 60),
     ("GET", "/api/v1/chat/links/{link_id}/unread-count"): RateLimitRule(
         60,
         60,

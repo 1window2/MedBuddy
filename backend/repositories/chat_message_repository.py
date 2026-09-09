@@ -19,6 +19,18 @@ class ChatMessageRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    # Function Name: find_selected_for_update
+    # Description: Locks selected rows within one link for atomic deletion checks.
+    # Parameters: link_id, message_ids - validated bounded selection.
+    # Returns: Stored rows; missing or foreign IDs are checked by the control.
+    def find_selected_for_update(
+        self, *, link_id: int, message_ids: list[int],
+    ) -> list[_ChatMessage]:
+        return self.db.query(_ChatMessage).filter(
+            _ChatMessage.link_id == link_id,
+            _ChatMessage.id.in_(message_ids),
+        ).order_by(_ChatMessage.id).with_for_update().all()
+
     # 함수이름: list_recent
     # 함수역할: 최신 메시지 기준 페이지를 오래된 순서로 반환한다.
     # 매개변수: link_id, before_message_id, limit
@@ -82,12 +94,16 @@ class ChatMessageRepository:
         reader_hash: str,
         through_message_id: int | None,
         read_at: datetime,
+        is_patient: bool = False,
     ) -> tuple[int, int | None]:
         """상대가 보낸 미확인 메시지를 지정한 메시지까지 읽음 처리한다."""
         query = self.db.query(_ChatMessage).filter(
             _ChatMessage.link_id == link_id,
             _ChatMessage.sender_hash != reader_hash,
             _ChatMessage.read_at.is_(None),
+            _ChatMessage.deleted_for_everyone_at.is_(None),
+            (_ChatMessage.patient_deleted_at if is_patient
+             else _ChatMessage.caregiver_deleted_at).is_(None),
         )
         if through_message_id is not None:
             query = query.filter(_ChatMessage.id <= through_message_id)
@@ -102,7 +118,9 @@ class ChatMessageRepository:
     # 함수역할: 현재 사용자가 읽지 않은 상대 메시지 수를 계산한다.
     # 매개변수: link_id, reader_hash
     # 반환값: 읽지 않은 메시지 수
-    def unread_count(self, *, link_id: int, reader_hash: str) -> int:
+    def unread_count(
+        self, *, link_id: int, reader_hash: str, is_patient: bool = False,
+    ) -> int:
         """현재 사용자가 아직 읽지 않은 상대 메시지 개수를 반환한다."""
         return (
             self.db.query(_ChatMessage)
@@ -110,6 +128,9 @@ class ChatMessageRepository:
                 _ChatMessage.link_id == link_id,
                 _ChatMessage.sender_hash != reader_hash,
                 _ChatMessage.read_at.is_(None),
+                _ChatMessage.deleted_for_everyone_at.is_(None),
+                (_ChatMessage.patient_deleted_at if is_patient
+                 else _ChatMessage.caregiver_deleted_at).is_(None),
             )
             .count()
         )

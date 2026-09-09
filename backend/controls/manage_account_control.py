@@ -4,7 +4,7 @@
 import logging
 from datetime import date, datetime
 
-from sqlalchemy import inspect as sqlalchemy_inspect, or_
+from sqlalchemy import and_, inspect as sqlalchemy_inspect, or_
 from sqlalchemy.orm import Session
 
 from entities.caregiver_notification_entity import _CaregiverNotification
@@ -108,8 +108,14 @@ class ManageAccount:
             )
             .filter(
                 or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                    and_(
+                        _PatientCaregiverLink.patient_hash == normalized_user_hash,
+                        _ChatMessage.patient_deleted_at.is_(None),
+                    ),
+                    and_(
+                        _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
+                        _ChatMessage.caregiver_deleted_at.is_(None),
+                    ),
                 )
             )
             .all()

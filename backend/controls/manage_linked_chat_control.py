@@ -109,7 +109,7 @@ class ManageLinkedChat:
         limit: int,
     ) -> dict[str, object]:
         """참여자에게 연동별 채팅 기록 한 페이지를 반환한다."""
-        self.require_active_link(link_id=link_id, user_hash=user_hash)
+        link = self.require_active_link(link_id=link_id, user_hash=user_hash)
         rows, has_more = self.message_repository.list_recent(
             link_id,
             before_message_id=before_message_id,
@@ -117,9 +117,73 @@ class ManageLinkedChat:
         )
         return {
             "success": True,
-            "data": [ChatMessage.from_row(row).to_response_dict() for row in rows],
+            "data": [self._message_for_user(row, link, user_hash).to_response_dict()
+                     for row in rows],
             "has_more": has_more,
         }
+
+    # Function Name: delete_messages
+    # Description: Deletes a selection privately, or redacts the sender's own
+    # messages for everyone within 24 hours. The entire selection succeeds or fails.
+    # Parameters: link_id, user_hash, message_ids, scope (me/everyone).
+    # Returns: IDs and scope only; medication records and links are unchanged.
+    def delete_messages(
+        self, *, link_id: int, user_hash: str,
+        message_ids: list[int], scope: str,
+    ) -> dict[str, object]:
+        link = self.require_active_link(link_id=link_id, user_hash=user_hash)
+        ids = sorted(set(message_ids))
+        if not ids or len(ids) > 50 or any(item < 1 for item in ids):
+            raise HTTPException(status_code=400, detail="Invalid message selection.")
+        if scope not in ("me", "everyone"):
+            raise HTTPException(status_code=400, detail="Invalid deletion scope.")
+        try:
+            rows = self.message_repository.find_selected_for_update(
+                link_id=link_id, message_ids=ids,
+            )
+            now = utc_now()
+            if len(rows) != len(ids):
+                raise HTTPException(status_code=404, detail="Selected messages were not found.")
+            if scope == "everyone":
+                for row in rows:
+                    if str(row.sender_hash) != user_hash:
+                        raise HTTPException(status_code=403, detail="Only the sender can delete for everyone.")
+                    if row.deleted_for_everyone_at is None and not (
+                        now - timedelta(hours=24) < row.created_at <= now
+                    ):
+                        raise HTTPException(status_code=409, detail="The 24-hour deletion window has expired.")
+            for row in rows:
+                if scope == "me":
+                    field = ("patient_deleted_at" if str(link.patient_hash) == user_hash
+                             else "caregiver_deleted_at")
+                    if getattr(row, field) is None:
+                        setattr(row, field, now)
+                elif row.deleted_for_everyone_at is None:
+                    row.deleted_for_everyone_at = now
+                    row.body = ""
+                    row.message_kind = CHAT_MESSAGE_KIND_TEXT
+                    row.context_payload = None
+                    row.medication_id = None
+                    row.medication_name = None
+                    row.medication_image_url = None
+                    row.medication_dosage = None
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return {"success": True, "data": {"message_ids": ids, "scope": scope}}
+
+    # Function Name: _message_for_user
+    # Description: Produces a private tombstone instead of returning hidden text.
+    # Parameters: row, link, user_hash - stored message and authorized participant.
+    # Returns: Audience-specific response model.
+    @staticmethod
+    def _message_for_user(
+        row: _ChatMessage, link: _PatientCaregiverLink, user_hash: str,
+    ) -> ChatMessage:
+        hidden_at = (row.patient_deleted_at if str(link.patient_hash) == user_hash
+                     else row.caregiver_deleted_at)
+        return ChatMessage.from_row(row, hidden_for_me=hidden_at is not None)
 
     # 함수이름: request_medication_contexts
     # 함수역할: 연동 환자가 오늘 복용 중인 약을 채팅 선택 목록으로 반환한다.
@@ -216,7 +280,7 @@ class ManageLinkedChat:
         )
         if existing is not None:
             return ChatSendResult(
-                message=ChatMessage.from_row(existing),
+                message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
                 created=False,
             )
@@ -288,7 +352,7 @@ class ManageLinkedChat:
             if existing is None:
                 raise
             return ChatSendResult(
-                message=ChatMessage.from_row(existing),
+                message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
                 created=False,
             )
@@ -342,13 +406,14 @@ class ManageLinkedChat:
         through_message_id: int | None,
     ) -> dict[str, object]:
         """상대가 보낸 메시지를 읽음 처리하고 변경 범위를 반환한다."""
-        self.require_active_link(link_id=link_id, user_hash=reader_hash)
+        link = self.require_active_link(link_id=link_id, user_hash=reader_hash)
         read_at = utc_now()
         count, last_read_message_id = self.message_repository.mark_incoming_read(
             link_id=link_id,
             reader_hash=reader_hash,
             through_message_id=through_message_id,
             read_at=read_at,
+            is_patient=str(link.patient_hash) == reader_hash,
         )
         self.db.commit()
         return {
@@ -371,13 +436,14 @@ class ManageLinkedChat:
         user_hash: str,
     ) -> dict[str, object]:
         """현재 연동에서 사용자가 읽지 않은 메시지 수를 반환한다."""
-        self.require_active_link(link_id=link_id, user_hash=user_hash)
+        link = self.require_active_link(link_id=link_id, user_hash=user_hash)
         return {
             "success": True,
             "data": {
                 "unread_count": self.message_repository.unread_count(
                     link_id=link_id,
                     reader_hash=user_hash,
+                    is_patient=str(link.patient_hash) == user_hash,
                 )
             },
         }

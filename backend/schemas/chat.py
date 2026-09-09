@@ -3,6 +3,8 @@
 
 """환자·보호자 채팅 API 요청 DTO를 정의한다."""
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from entities.chat_message_entity import (
@@ -96,3 +98,12 @@ class ChatReadUpdate(BaseModel):
     """현재 화면에서 확인한 마지막 메시지 식별자를 전달한다."""
 
     through_message_id: int | None = Field(default=None, ge=1)
+
+
+# Class Name: ChatMessageDelete
+# Role: Limits a deletion to an explicit message selection and visibility scope.
+class ChatMessageDelete(BaseModel):
+    message_ids: list[Annotated[int, Field(strict=True, gt=0)]] = Field(
+        min_length=1, max_length=50,
+    )
+    scope: Literal["me", "everyone"]

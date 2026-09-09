@@ -10,6 +10,8 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from entities.device_push_token_entity import _DevicePushToken
+from entities.chat_message_entity import _ChatMessage
+from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.user_setting_entity import _UserSetting
 
 
@@ -37,8 +39,23 @@ class DispatchChatMessageAlert:
         message_body: str,
         message_kind: str = "text",
         slot_key: str | None = None,
+        message_id: int | None = None,
     ) -> PushDeliveryResult:
         """상대 기기에 길이를 제한한 실제 채팅 내용을 미리 보여준다."""
+        # Recheck queued work before exposing a preview; completed delivery cannot be recalled.
+        if message_id is not None:
+            row = self.db.get(_ChatMessage, message_id)
+            link = self.db.get(_PatientCaregiverLink, link_id)
+            if row is None or link is None or not link.linked or row.link_id != link_id:
+                return PushDeliveryResult(success_count=0)
+            if recipient_hash not in (str(link.patient_hash), str(link.caregiver_hash)):
+                return PushDeliveryResult(success_count=0)
+            hidden_at = (row.patient_deleted_at if recipient_hash == str(link.patient_hash)
+                         else row.caregiver_deleted_at)
+            if hidden_at is not None or row.deleted_for_everyone_at is not None:
+                return PushDeliveryResult(success_count=0)
+            message_body = str(row.body)
+            message_kind = str(row.message_kind)
         token_rows = (
             self.db.query(_DevicePushToken)
             .filter(
