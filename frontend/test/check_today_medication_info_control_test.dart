@@ -1,3 +1,5 @@
+// File Name: check_today_medication_info_control_test.dart
+// Role: Regression coverage for today-medication summary response decoding.
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,10 +7,31 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 오늘 복약 요약 응답 해석 검증 사례와 테스트 대역을 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 오늘 복약 요약 응답에서 환자 범위의 일정 목록과 완료 정보를 해석하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test(
     'requestTodayMedicationInfo decodes schedules from summary payload',
     () async {
+      // Function Name: MockClient callback
+      // Description:
+      // - Assert the patient-scoped summary request and provide counts together with per-slot schedules.
+      // Parameters:
+      // - request (http.Request): HTTP request intercepted instead of reaching the server.
+      // Returns:
+      // - HTTP 200 with one completed dose out of three.
       final client = MockClient((http.Request request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/schedule/today/info');

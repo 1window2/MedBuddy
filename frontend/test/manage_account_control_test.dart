@@ -8,9 +8,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 
+// Function Name: main
+// Description:
+// - Register regression cases for server-authorized account deletion and user-scoped cache cleanup.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // Function Name: test callback
+  // Description:
+  // - Verify that successful server deletion clears only the current user's cached data.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('서버 삭제 성공 후 현재 사용자 캐시만 비운다', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_usr_test_font_size': 'large',
@@ -21,6 +35,13 @@ void main() {
     late http.Request capturedRequest;
     final control = ManageAccount(
       userHash: 'usr_test',
+      // 함수이름: MockClient 콜백
+      // 함수역할:
+      // - 서버 계정 삭제 요청을 보관하고 삭제 성공을 제공한다.
+      // 매개변수:
+      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+      // 반환값:
+      // - success=true인 HTTP 200 응답.
       client: MockClient((request) async {
         capturedRequest = request;
         return http.Response('{"success":true}', 200);
@@ -43,12 +64,26 @@ void main() {
     expect(preferences.getString('medbuddy_app_language'), 'ko');
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Verify that rejected server deletion preserves local user data.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('서버 삭제 실패 시 로컬 캐시를 보존한다', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_usr_test_font_size': 'large',
     });
     final control = ManageAccount(
       userHash: 'usr_test',
+      // 함수이름: MockClient 콜백
+      // 함수역할:
+      // - 네트워크 없이 HTTP 500 상태와 고정 응답 본문를 제공한다.
+      // 매개변수:
+      // - _ (http.Request): 사용하지 않는 가로챈 HTTP 요청.
+      // 반환값:
+      // - HTTP 500 응답 Future.
       client: MockClient((_) async => http.Response('failure', 500)),
     );
 

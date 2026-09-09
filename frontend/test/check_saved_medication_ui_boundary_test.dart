@@ -1,5 +1,6 @@
-// 파일명: check_saved_medication_ui_boundary_test.dart
-// 역할: 저장 복약정보 화면의 필터, 정렬, 삭제와 빈 상태를 검증한다.
+// File Name: check_saved_medication_ui_boundary_test.dart
+// Role: Regression coverage for saved-medication entry, grouped deletion, ordering, and accessible
+//   layouts.
 
 import 'dart:convert';
 
@@ -18,9 +19,23 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Class Name: _CancelledGalleryInputPrescription
+// Role: Gallery-input stub that records selection attempts and simulates cancellation.
+// Responsibilities:
+// - Count gallery requests and model user cancellation without selecting an image.
+// Attributes:
+// - requestCount (int): Number of intercepted control requests.
 class _CancelledGalleryInputPrescription extends InputPrescription {
   int requestCount = 0;
 
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description:
+  // - Count gallery requests and model user cancellation without selecting an image.
+  // Parameters:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
+  //   selected. Accepted but not consumed by this fixture.
+  // Returns:
+  // - Null, indicating no prescription image was selected.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -30,7 +45,22 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
   }
 }
 
+// Function Name: main
+// Description:
+// - Register regression cases for saved-medication entry, grouped deletion, ordering, and accessible
+//   layouts.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
@@ -68,6 +98,13 @@ void main() {
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
@@ -101,6 +138,13 @@ void main() {
     expect(find.text('갤러리에서 선택'), findsOneWidget);
   });
 
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: embedded empty cabinet keeps the root route during gallery input.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   testWidgets(
     'embedded empty cabinet keeps the root route during gallery input',
     (tester) async {
@@ -149,6 +193,13 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 환자 자신의 저장 약 목록에는 보호자 알림 설정을 표시하지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('patient saved list does not expose guardian alert control', (
     tester,
   ) async {
@@ -173,6 +224,13 @@ void main() {
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다', (tester) async {
     tester.view.physicalSize = const Size(320, 520);
     tester.view.devicePixelRatio = 1;
@@ -193,6 +251,14 @@ void main() {
       ChangeNotifierProvider.value(
         value: viewModel,
         child: MaterialApp(
+          // 함수이름: builder 콜백
+          // 함수역할:
+          // - 기존 하위 화면에 2배 글씨를 적용해 접근성 배치를 검사한다.
+          // 매개변수:
+          // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+          // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+          // 반환값:
+          // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
@@ -216,6 +282,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 묶음 삭제 일부만 성공한 경우 전체 성공 대신 혼합 결과를 안내하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('group delete reports mixed results instead of full success', (
     tester,
   ) async {
@@ -260,12 +333,26 @@ void main() {
     expect(find.text('Deleted.'), findsNothing);
     expect(
       viewModel.savedMedicationInfoList
+          // Function Name: map callback
+          // Description:
+          // - Extract the saved medication ID for the collection assertion.
+          // Parameters:
+          // - medication (MedicationDetail): Saved medication whose ID is inspected.
+          // Returns:
+          // - The element's id value.
           .map((medication) => medication.id)
           .toList(),
       [2],
     );
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 저장 약 목록이 등록일 기준과 복용일 기준 정렬을 전환하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets(
     'saved medication list switches between registration and medication dates',
     (tester) async {
@@ -342,6 +429,13 @@ void main() {
     },
   );
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -368,6 +462,14 @@ void main() {
       ChangeNotifierProvider.value(
         value: viewModel,
         child: MaterialApp(
+          // 함수이름: builder 콜백
+          // 함수역할:
+          // - 기존 하위 화면에 1.3배 글씨를 적용해 접근성 배치를 검사한다.
+          // 매개변수:
+          // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+          // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+          // 반환값:
+          // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
@@ -385,6 +487,13 @@ void main() {
   });
 }
 
+// 함수이름: _emptySavedMedicationResponse
+// 함수역할:
+// - 저장 목록 GET에는 빈 성공 응답을, 그 외 경로에는 404를 제공한다.
+// 매개변수:
+// - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+// 반환값:
+// - 빈 저장 목록의 HTTP 200 또는 미지원 경로의 404 응답.
 Future<http.Response> _emptySavedMedicationResponse(
   http.Request request,
 ) async {
@@ -398,6 +507,13 @@ Future<http.Response> _emptySavedMedicationResponse(
   return http.Response('Not found', 404);
 }
 
+// Function Name: _savedMedicationResponse
+// Description:
+// - Provide one saved medication scoped to the request patient, with an image and fixed dates.
+// Parameters:
+// - request (http.Request): HTTP request intercepted instead of reaching the server.
+// Returns:
+// - HTTP 200 containing the saved-tablet fixture.
 Future<http.Response> _savedMedicationResponse(http.Request request) async {
   return http.Response(
     jsonEncode({
@@ -423,6 +539,13 @@ Future<http.Response> _savedMedicationResponse(http.Request request) async {
   );
 }
 
+// Function Name: _mixedDeleteResponse
+// Description:
+// - Serve two saved tablets, fail deletion of the second, and return an empty refreshed schedule.
+// Parameters:
+// - request (http.Request): HTTP request intercepted instead of reaching the server.
+// Returns:
+// - HTTP 200 for supported reads/first deletion, 500 for the second deletion, or 404 otherwise.
 Future<http.Response> _mixedDeleteResponse(http.Request request) async {
   if (request.method == 'GET' && request.url.path == '/list') {
     return http.Response(
@@ -455,6 +578,13 @@ Future<http.Response> _mixedDeleteResponse(http.Request request) async {
   return http.Response('Not found', 404);
 }
 
+// 함수이름: _sortableMedicationResponse
+// 함수역할:
+// - 등록일과 복용일의 최신 순서가 서로 다른 두 약을 반환해 정렬 전환을 구별한다.
+// 매개변수:
+// - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+// 반환값:
+// - 목록 GET의 두 약 응답 또는 미지원 경로의 HTTP 404.
 Future<http.Response> _sortableMedicationResponse(http.Request request) async {
   if (request.method != 'GET' || request.url.path != '/list') {
     return http.Response('Not found', 404);
@@ -480,6 +610,15 @@ Future<http.Response> _sortableMedicationResponse(http.Request request) async {
   );
 }
 
+// Function Name: _savedMedicationJson
+// Description:
+// - Build a saved-medication JSON fixture with request-scoped patient identity and a trusted image.
+// Parameters:
+// - request (http.Request): HTTP request intercepted instead of reaching the server.
+// - id (int): Identifier of the medication, message, or notification fixture.
+// - name (String): Display name of the saved-medication fixture.
+// Returns:
+// - The medication map for the supplied ID and name.
 Map<String, dynamic> _savedMedicationJson(
   http.Request request,
   int id,

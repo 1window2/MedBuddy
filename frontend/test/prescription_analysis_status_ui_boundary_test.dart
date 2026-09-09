@@ -1,3 +1,6 @@
+// File Name: prescription_analysis_status_ui_boundary_test.dart
+// Role: Regression coverage for prescription-analysis retry routes, back navigation, and bulk-save
+//   exclusion.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,9 +18,23 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:provider/provider.dart';
 
+// Class Name: _EmptyGalleryInputPrescription
+// Role: Gallery-recognition spy with an empty successful OCR result.
+// Responsibilities:
+// - Count gallery retries, signal selection, and complete recognition without medication rows.
+// Attributes:
+// - galleryRequestCount (int): Gallery-recognition attempts initiated by retry navigation.
 class _EmptyGalleryInputPrescription extends InputPrescription {
   int galleryRequestCount = 0;
 
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description:
+  // - Count gallery retries, signal selection, and complete recognition without medication rows.
+  // Parameters:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
+  //   selected.
+  // Returns:
+  // - An empty recognized-schedule list.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -28,7 +45,19 @@ class _EmptyGalleryInputPrescription extends InputPrescription {
   }
 }
 
+// Class Name: _SuccessfulGalleryInputPrescription
+// Role: Gallery-recognition fixture with one successfully recognized prescription item.
+// Responsibilities:
+// - Signal image selection and supply a three-day, three-times-daily tablet schedule.
 class _SuccessfulGalleryInputPrescription extends InputPrescription {
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description:
+  // - Signal image selection and supply a three-day, three-times-daily tablet schedule.
+  // Parameters:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
+  //   selected.
+  // Returns:
+  // - One recognized medication schedule.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -45,7 +74,18 @@ class _SuccessfulGalleryInputPrescription extends InputPrescription {
   }
 }
 
+// Class Name: _SuccessfulMedicationDetail
+// Role: Successful medication-detail fixture for analysis-result navigation.
+// Responsibilities:
+// - Resolve the recognized medication name to fixed efficacy, usage, and warning text.
 class _SuccessfulMedicationDetail extends CheckMedicationDetail {
+  // Function Name: requestMedicationDetail
+  // Description:
+  // - Resolve the recognized medication name to fixed efficacy, usage, and warning text.
+  // Parameters:
+  // - medicationSchedule (MedicationSchedule): Recognized or reviewed dose schedule for the medication.
+  // Returns:
+  // - Medication details retaining the requested name.
   @override
   Future<MedicationDetail?> requestMedicationDetail(
     MedicationSchedule medicationSchedule,
@@ -59,10 +99,25 @@ class _SuccessfulMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// Class Name: _DeferredSavedMedication
+// Role: Saved-medication fixture that holds bulk saving pending for back-navigation checks.
+// Responsibilities:
+// - Keep saving pending until the test releases its completion barrier.
+// - Return an empty cabinet after the controlled save without backend access.
 class _DeferredSavedMedication extends CheckSavedMedication {
   final Completer<MedicationSaveResult> saveCompleter =
       Completer<MedicationSaveResult>();
 
+  // Function Name: saveMedicationDetail
+  // Description:
+  // - Keep saving pending until the test releases its completion barrier.
+  // Parameters:
+  // - medicationDetail (MedicationDetail): Resolved medication details requested for saving. Accepted
+  //   but not consumed by this fixture.
+  // - medicationSchedule (MedicationSchedule?): Recognized or reviewed dose schedule for the medication.
+  //   Accepted but not consumed by this fixture.
+  // Returns:
+  // - The controlled medication-save Future.
   @override
   Future<MedicationSaveResult> saveMedicationDetail(
     MedicationDetail medicationDetail, {
@@ -71,20 +126,52 @@ class _DeferredSavedMedication extends CheckSavedMedication {
     return saveCompleter.future;
   }
 
+  // Function Name: requestSavedMedicationInfo
+  // Description:
+  // - Return an empty cabinet after the controlled save without backend access.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - An empty saved-medication list.
   @override
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     return const [];
   }
 }
 
+// Class Name: _EmptySchedule
+// Role: Empty schedule fixture for the analysis flow's destination refresh.
+// Responsibilities:
+// - Complete schedule refresh successfully without any due medications.
 class _EmptySchedule extends CheckSchedule {
+  // Function Name: requestTodayMedicationSchedule
+  // Description:
+  // - Complete schedule refresh successfully without any due medications.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - An empty schedule list.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [];
   }
 }
 
+// 함수이름: main
+// 함수역할:
+// - 처방 분석 재시도 경로, 뒤로가기와 일괄 저장 중 이동 차단 검증 사례와 테스트 대역을 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 처방 분석 실패 화면에서 카메라와 갤러리 재시도 명령을 제공하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('analysis failure offers camera and gallery retry actions', (
     tester,
   ) async {
@@ -97,8 +184,29 @@ void main() {
           message: 'The request failed.',
           userSetting: const UserSetting(language: 'en'),
           failureStep: AnalysisProgressStep.prescriptionRecognition,
+          // Function Name: onCameraRetryRequested callback
+          // Description:
+          // - Record prescription camera retry so the test can assert the action was dispatched.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the callback completes after its recorded side effects.
           onCameraRetryRequested: () => cameraRetryCount += 1,
+          // Function Name: onGalleryRetryRequested callback
+          // Description:
+          // - Record gallery-recognition retry so the test can assert the action was dispatched.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the callback completes after its recorded side effects.
           onGalleryRetryRequested: () => galleryRetryCount += 1,
+          // Function Name: onHomeRequested callback
+          // Description:
+          // - Keep home navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onHomeRequested: () {},
         ),
       ),
@@ -124,6 +232,13 @@ void main() {
     expect(find.text('Possible reasons'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 약 상세 분석 실패에는 해당 단계의 재시도 명령을 제공하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('medication analysis failure offers stage-specific retry', (
     tester,
   ) async {
@@ -135,9 +250,37 @@ void main() {
           message: 'Medication lookup failed.',
           userSetting: const UserSetting(language: 'en'),
           failureStep: AnalysisProgressStep.medicationAnalysis,
+          // Function Name: onAnalysisRetryRequested callback
+          // Description:
+          // - Record medication-analysis retry so the test can assert the action was dispatched.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the callback completes after its recorded side effects.
           onAnalysisRetryRequested: () => analysisRetryCount += 1,
+          // Function Name: onCameraRetryRequested callback
+          // Description:
+          // - Keep prescription camera retry available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onCameraRetryRequested: () {},
+          // Function Name: onGalleryRetryRequested callback
+          // Description:
+          // - Keep gallery-recognition retry available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onGalleryRetryRequested: () {},
+          // Function Name: onHomeRequested callback
+          // Description:
+          // - Keep home navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onHomeRequested: () {},
         ),
       ),
@@ -155,6 +298,13 @@ void main() {
     expect(analysisRetryCount, 1);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 갤러리 재시도가 갤러리 처방 인식 흐름으로 다시 진입하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('gallery retry re-enters the gallery recognition flow', (
     tester,
   ) async {
@@ -195,6 +345,13 @@ void main() {
     );
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 처방 결과 화면에서 시스템 뒤로가기를 누르면 홈으로 돌아가는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('system back from prescription result returns to home', (
     tester,
   ) async {
@@ -228,6 +385,13 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 일괄 저장이 끝날 때까지 화면 뒤로가기 명령을 차단하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('back actions stay blocked until bulk save completes', (
     tester,
   ) async {
@@ -284,6 +448,13 @@ void main() {
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 작은 화면과 큰 글씨에서도 분석 실패 후 명령이 넘치지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('analysis failure actions fit a compact large-text viewport', (
     tester,
   ) async {
@@ -294,6 +465,14 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        // 함수이름: builder 콜백
+        // 함수역할:
+        // - 기존 하위 화면에 1.3배 글씨를 적용해 접근성 배치를 검사한다.
+        // 매개변수:
+        // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+        // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+        // 반환값:
+        // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -304,9 +483,37 @@ void main() {
           message: 'The request failed.',
           userSetting: const UserSetting(language: 'en', fontSize: 20),
           failureStep: AnalysisProgressStep.medicationAnalysis,
+          // Function Name: onAnalysisRetryRequested callback
+          // Description:
+          // - Keep medication-analysis retry available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRetryRequested: () {},
+          // Function Name: onCameraRetryRequested callback
+          // Description:
+          // - Keep prescription camera retry available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onCameraRetryRequested: () {},
+          // Function Name: onGalleryRetryRequested callback
+          // Description:
+          // - Keep gallery-recognition retry available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onGalleryRetryRequested: () {},
+          // Function Name: onHomeRequested callback
+          // Description:
+          // - Keep home navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onHomeRequested: () {},
         ),
       ),

@@ -11,7 +11,22 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
+// Function Name: main
+// Description:
+// - Register regression cases for OCR preview masking, correction limits, missing rows, and partial
+//   review.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: OCR 영역을 표시하고 확대 화면에서 개인정보 처리를 안내한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('OCR 영역을 표시하고 확대 화면에서 개인정보 처리를 안내한다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
     var analysisRequested = false;
@@ -19,6 +34,13 @@ void main() {
       'medbuddy-ocr-preview-test-',
     );
     final imageFile = File('${tempDirectory.path}/prescription.png');
+    // 함수이름: addTearDown 콜백
+    // 함수역할:
+    // - 미리보기 이미지 캐시를 비우고 테스트 임시 이미지 폴더를 정리한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - 임시 파일 정리 완료.
     addTearDown(() {
       imageCache.evict(FileImage(imageFile));
       if (tempDirectory.existsSync()) {
@@ -64,8 +86,30 @@ void main() {
           ],
           previewImagePath: imageFile.path,
           userSetting: const UserSetting(),
+          // 함수이름: onBackRequested 콜백
+          // 함수역할:
+          // - 뒤로가기 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - 없음.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onBackRequested: () {},
+          // 함수이름: onAnalysisRequested 콜백
+          // 함수역할:
+          // - 약 상세 분석 요청을 기록해 해당 사용자 명령의 전달 여부를 검사한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값:
+          // - 없음; 기록 또는 상태 변경을 마친다.
           onAnalysisRequested: () => analysisRequested = true,
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
         ),
       ),
@@ -122,6 +166,13 @@ void main() {
     expect(analysisRequested, isTrue);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 수정된 약명과 큰 글씨에서도 OCR 미리보기 행이 넘치지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('corrected medication rows fit the preview at large text size', (
     tester,
   ) async {
@@ -133,8 +184,30 @@ void main() {
           medicationScheduleList: _correctedSchedules(),
           recognitionNotice: '5 medication names were checked.',
           userSetting: const UserSetting(fontSize: 20),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
         ),
       ),
@@ -160,6 +233,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 작은 화면에서도 미리보기 카드의 내용을 스크롤할 수 있는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('preview card remains scrollable on a compact viewport', (
     tester,
   ) async {
@@ -167,6 +247,14 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        // 함수이름: builder 콜백
+        // 함수역할:
+        // - 기존 하위 화면에 1.3배 글씨를 적용해 접근성 배치를 검사한다.
+        // 매개변수:
+        // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+        // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+        // 반환값:
+        // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
         builder: (context, child) {
           return MediaQuery(
             data: MediaQuery.of(
@@ -179,8 +267,30 @@ void main() {
           medicationScheduleList: _correctedSchedules(),
           recognitionNotice: '5 medication names were checked.',
           userSetting: const UserSetting(fontSize: 20),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
         ),
       ),
@@ -189,6 +299,13 @@ void main() {
 
     expect(tester.takeException(), isNull);
     final verticalScroll = find.byWidgetPredicate(
+      // 함수이름: byWidgetPredicate 콜백
+      // 함수역할:
+      // - 세로 스크롤이 가능한 미리보기 영역만 찾도록 위젯 종류와 방향을 검사한다.
+      // 매개변수:
+      // - widget (Widget): 탐색 조건으로 검사할 후보 위젯.
+      // 반환값:
+      // - 세로 SingleChildScrollView이면 true.
       (widget) =>
           widget is SingleChildScrollView &&
           widget.scrollDirection == Axis.vertical,
@@ -198,6 +315,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 검토 필요 배지와 수정 버튼이 있는 네 행이 넘치지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('검토 필요 배지와 수정 버튼이 있는 네 행이 넘치지 않는다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
 
@@ -206,6 +330,13 @@ void main() {
         home: PrescriptionAnalysisPreviewUI(
           medicationScheduleList: List.generate(
             4,
+            // 함수이름: generate 콜백
+            // 함수역할:
+            // - 미확인 표시와 순번별 긴 약명이 있는 OCR 행을 만들어 배지·수정 버튼 배치를 검사한다.
+            // 매개변수:
+            // - index (int): 0부터 시작하는 행 또는 생성 대역의 순번.
+            // 반환값:
+            // - 검토 필요 상태의 MedicationSchedule.
             (index) => MedicationSchedule(
               medicationName: '검토가 필요한 긴 약 이름 ${index + 1}',
               intakeTime: '${index + 1}',
@@ -213,8 +344,30 @@ void main() {
             ),
           ),
           userSetting: const UserSetting(),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
         ),
       ),
@@ -227,6 +380,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: OCR 수정값을 콜백으로 전달한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('OCR 수정값을 콜백으로 전달한다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
     MedicationSchedule? updatedSchedule;
@@ -245,8 +405,30 @@ void main() {
             ),
           ],
           userSetting: const UserSetting(),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - 수정한 OCR 행의 위치와 새 일정을 기록한다.
+          // 매개변수:
+          // - index (int): 0부터 시작하는 행 또는 생성 대역의 순번.
+          // - schedule (MedicationSchedule): 화면에서 전달하거나 수정한 복약 일정.
+          // 반환값:
+          // - 없음; 수정 행 인덱스와 일정이 저장된다.
           onMedicationScheduleChanged: (index, schedule) {
             updatedIndex = index;
             updatedSchedule = schedule;
@@ -298,11 +480,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: OCR 수정 입력의 길이와 총 투약일 숫자를 제한한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('OCR 수정 입력의 길이와 총 투약일 숫자를 제한한다', (tester) async {
     await _setViewport(tester, const Size(320, 560));
 
     await tester.pumpWidget(
       MaterialApp(
+        // 함수이름: builder 콜백
+        // 함수역할:
+        // - 기존 하위 화면에 1.3배 글씨를 적용해 접근성 배치를 검사한다.
+        // 매개변수:
+        // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+        // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+        // 반환값:
+        // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -319,8 +516,30 @@ void main() {
             ),
           ],
           userSetting: const UserSetting(),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
         ),
       ),
@@ -360,6 +579,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 직접 입력한 조제일자도 달력과 같은 허용 범위를 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('직접 입력한 조제일자도 달력과 같은 허용 범위를 검증한다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
     MedicationSchedule? updatedSchedule;
@@ -376,8 +602,30 @@ void main() {
             ),
           ],
           userSetting: const UserSetting(),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - 날짜 검증을 통과한 수정 일정을 기록한다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - schedule (MedicationSchedule): 화면에서 전달하거나 수정한 복약 일정.
+          // 반환값:
+          // - 없음; 수정 일정이 저장된다.
           onMedicationScheduleChanged: (_, schedule) {
             updatedSchedule = schedule;
           },
@@ -401,6 +649,13 @@ void main() {
     expect(find.text('2000-01-01부터 오늘 기준 1년 이내 날짜를 입력해주세요.'), findsOneWidget);
   });
 
+  // Function Name: testWidgets callback
+  // Description:
+  // - Verify that a medication omitted by OCR can be added directly to the review table.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   testWidgets('OCR에서 누락된 약을 표에 직접 추가한다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
     MedicationSchedule? addedSchedule;
@@ -420,9 +675,38 @@ void main() {
             ),
           ],
           userSetting: const UserSetting(),
+          // Function Name: onBackRequested callback
+          // Description:
+          // - Keep back navigation available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onBackRequested: () {},
+          // Function Name: onAnalysisRequested callback
+          // Description:
+          // - Keep medication analysis available in the fixture without performing the action.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the action is intentionally inert.
           onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
+          // 함수이름: onMedicationScheduleAdded 콜백
+          // 함수역할:
+          // - 사용자가 추가한 OCR 누락 약 일정을 기록한다.
+          // 매개변수:
+          // - schedule (MedicationSchedule): 화면에서 전달하거나 수정한 복약 일정.
+          // 반환값:
+          // - 추가된 일정; 호출자는 기록된 값으로 입력 내용을 검사한다.
           onMedicationScheduleAdded: (schedule) => addedSchedule = schedule,
         ),
       ),
@@ -454,6 +738,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 조회 완료 약은 잠그고 미확인 약만 수정해 다시 조회한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('조회 완료 약은 잠그고 미확인 약만 수정해 다시 조회한다', (tester) async {
     await _setViewport(tester, const Size(376, 856));
     var retryRequested = false;
@@ -467,11 +758,40 @@ void main() {
             MedicationSchedule(medicationName: '미확인약'),
           ],
           userSetting: const UserSetting(),
+          // 함수이름: onBackRequested 콜백
+          // 함수역할:
+          // - 뒤로가기 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - 없음.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onBackRequested: () {},
+          // 함수이름: onAnalysisRequested 콜백
+          // 함수역할:
+          // - 약 상세 분석 요청을 기록해 해당 사용자 명령의 전달 여부를 검사한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값:
+          // - 없음; 기록 또는 상태 변경을 마친다.
           onAnalysisRequested: () => retryRequested = true,
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할:
+          // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+          // 매개변수:
+          // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+          // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+          // 반환값:
+          // - 없음; 외부 동작을 수행하지 않는다.
           onMedicationScheduleChanged: (_, _) {},
           verifiedScheduleIndexes: const {0},
           isMedicationLookupReview: true,
+          // 함수이름: onVerifiedOnlyContinueRequested 콜백
+          // 함수역할:
+          // - 확인된 약만으로 계속 진행 요청을 기록해 해당 사용자 명령의 전달 여부를 검사한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값:
+          // - 없음; 기록 또는 상태 변경을 마친다.
           onVerifiedOnlyContinueRequested: () => continueRequested = true,
         ),
       ),
@@ -514,6 +834,14 @@ void main() {
   });
 }
 
+// Function Name: _setViewport
+// Description:
+// - Apply a logical viewport at unit pixel ratio and register restoration after the test.
+// Parameters:
+// - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+// - size (Size): Logical viewport dimensions used for layout checks.
+// Returns:
+// - Completion after setting the test viewport.
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -521,9 +849,23 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetPhysicalSize);
 }
 
+// Function Name: _correctedSchedules
+// Description:
+// - Build five corrected OCR rows with retained original names and alternating dose frequencies.
+// Parameters:
+// - None.
+// Returns:
+// - A fixed-length list of corrected medication schedules.
 List<MedicationSchedule> _correctedSchedules() {
   return List.generate(
     5,
+    // Function Name: generate callback
+    // Description:
+    // - Build a corrected OCR row retaining its original name and alternating two/three-dose frequency.
+    // Parameters:
+    // - index (int): Zero-based row or generated fixture position.
+    // Returns:
+    // - The indexed corrected MedicationSchedule.
     (index) => MedicationSchedule(
       medicationName: 'Corrected medication name ${index + 1}',
       rawMedicationName: 'OCR medication ${index + 1}',

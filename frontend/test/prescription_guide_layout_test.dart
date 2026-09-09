@@ -5,7 +5,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/prescription_guide_layout.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 방향별 처방 가이드와 원본 이미지 좌표 변환 검증 사례와 테스트 대역을 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 명확한 화면 비율은 늦게 갱신된 카메라 방향보다 우선한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('명확한 화면 비율은 늦게 갱신된 카메라 방향보다 우선한다', () {
     expect(
       PrescriptionGuideLayout.shouldUseLandscapeLayout(
@@ -28,6 +42,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 회전 중 화면 비율이 비슷할 때만 카메라 방향을 보조로 사용한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('회전 중 화면 비율이 비슷할 때만 카메라 방향을 보조로 사용한다', () {
     expect(
       PrescriptionGuideLayout.shouldUseLandscapeLayout(
@@ -44,6 +65,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 가로 조작 패널은 미리보기 공간을 침범하지 않도록 너비를 제한한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('가로 조작 패널은 미리보기 공간을 침범하지 않도록 너비를 제한한다', () {
     expect(
       PrescriptionGuideLayout.landscapePanelWidth(const Size(600, 300)),
@@ -55,6 +83,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 세로와 가로 화면 모두 가이드가 미리보기 안에 유지된다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('세로와 가로 화면 모두 가이드가 미리보기 안에 유지된다', () {
     const portraitSize = Size(390, 700);
     const landscapeSize = Size(700, 390);
@@ -93,6 +128,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 화면 가이드를 BoxFit cover 원본 이미지의 정규화 좌표로 변환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('화면 가이드를 BoxFit cover 원본 이미지의 정규화 좌표로 변환한다', () {
     const viewportSize = Size(400, 600);
     const sourceSize = Size(1600, 900);

@@ -1,5 +1,6 @@
-// 파일명: check_saved_medication_control_test.dart
-// 역할: 저장 복약정보의 등록, 중복 판정, 조회와 삭제 요청을 검증한다.
+// File Name: check_saved_medication_control_test.dart
+// Role: Regression coverage for patient-scoped medication persistence, duplicate results, and
+//   manual/OCR fields.
 
 import 'dart:convert';
 
@@ -11,12 +12,32 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 
-// 파일명: check_saved_medication_control_test.dart
-// 역할: 저장 복약 control의 요청 payload, 조회 범위, 삭제 API 호출을 검증한다.
 
+// Function Name: main
+// Description:
+// - Register regression cases for patient-scoped medication persistence, duplicate results, and
+//   manual/OCR fields.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: saveMedicationDetail sends patient hash and schedule fields.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('saveMedicationDetail sends patient hash and schedule fields', () async {
     late Map<String, dynamic> requestBody;
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 약 저장 POST 경로를 검사하고 JSON 본문을 기록한 뒤 저장 식별자 37을 제공한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - 저장 성공과 id 37의 HTTP 200 응답.
     final client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
       expect(request.url.toString(), 'http://localhost/save');
@@ -66,8 +87,22 @@ void main() {
     expect(requestBody['image_url'], 'https://nedrug.mfds.go.kr/medicine.jpg');
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 사용자가 수정한 OCR 약명을 저장 이름으로 우선한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('사용자가 수정한 OCR 약명을 저장 이름으로 우선한다', () async {
     late Map<String, dynamic> requestBody;
+    // Function Name: MockClient callback
+    // Description:
+    // - Capture the save JSON so the corrected OCR medication name can be checked.
+    // Parameters:
+    // - request (http.Request): HTTP request intercepted instead of reaching the server.
+    // Returns:
+    // - HTTP 200 acknowledging a successful save.
     final client = MockClient((http.Request request) async {
       requestBody = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response('{"success":true}', 200);
@@ -95,8 +130,22 @@ void main() {
     expect(requestBody['item_name'], '애니코프캡슐');
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 직접 등록한 약명과 복용 시간대를 저장 요청에 반영한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('직접 등록한 약명과 복용 시간대를 저장 요청에 반영한다', () async {
     late Map<String, dynamic> requestBody;
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 직접 등록 저장 본문을 기록하고 새 저장 식별자 42를 제공한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - 저장 성공과 id 42의 HTTP 200 응답.
     final client = MockClient((http.Request request) async {
       requestBody = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response('{"success":true,"id":42}', 200);
@@ -133,7 +182,21 @@ void main() {
     expect(requestBody['schedule_slot_keys'], ['morning', 'evening']);
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 약 저장 응답의 중복 여부를 신규 저장 성공과 구별하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('saveMedicationDetail reports duplicate result', () async {
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 같은 약이 이미 저장되어 신규 저장이 거절된 결과를 제공한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청. 이 대역에서는 직접 사용하지 않는다.
+    // 반환값:
+    // - duplicate=true, success=false인 HTTP 200 응답.
     final client = MockClient((http.Request request) async {
       return http.Response(
         '{"success":false,"duplicate":true,"message":"이미 추가된 약입니다."}',
@@ -161,9 +224,24 @@ void main() {
     expect(result.message, '이미 추가된 약입니다.');
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: requestSavedMedicationInfo scopes list request by patient hash.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test(
     'requestSavedMedicationInfo scopes list request by patient hash',
     () async {
+      // Function Name: MockClient callback
+      // Description:
+      // - Assert the patient-scoped saved-list request and provide full medication, dosage, image, and guide
+      //   fields.
+      // Parameters:
+      // - request (http.Request): HTTP request intercepted instead of reaching the server.
+      // Returns:
+      // - HTTP 200 with the saved medication fixture.
       final client = MockClient((http.Request request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/list');
@@ -217,7 +295,21 @@ void main() {
     },
   );
 
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: requestDelete scopes delete request by patient hash.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('requestDelete scopes delete request by patient hash', () async {
+    // Function Name: MockClient callback
+    // Description:
+    // - Assert patient-scoped deletion without legacy role/user parameters and acknowledge removal.
+    // Parameters:
+    // - request (http.Request): HTTP request intercepted instead of reaching the server.
+    // Returns:
+    // - HTTP 200 with a successful deletion result.
     final client = MockClient((http.Request request) async {
       expect(request.method, 'DELETE');
       expect(request.url.path, '/delete/3');
@@ -237,6 +329,13 @@ void main() {
     expect(success, isTrue);
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: default patient hash remains available before UC-6 linking.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('default patient hash remains available before UC-6 linking', () {
     expect(PatientHash.defaultPatientHash, 'local_patient');
   });
