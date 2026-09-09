@@ -1,5 +1,6 @@
-# 파일명: test_manage_user_setting_control.py
-# 역할: 사용자 설정 저장과 기존 DB 스키마 확장을 검증한다.
+# File Name: test_manage_user_setting_control.py
+# Role: Regression coverage for user preference defaults, persistence, validation, and legacy
+#   schema upgrades.
 
 import sys
 import unittest
@@ -18,7 +19,25 @@ from core.database import Base  # noqa: E402
 from entities.user_setting_entity import _UserSetting, ensure_user_setting_schema  # noqa: E402
 
 
+# 클래스명: ManageUserSettingTest
+# 역할: 사용자별 표시·음성·알림 설정과 기존 스키마 이행을 검증하는 테스트 모음이다.
+# 주요 책임:
+# - 설정이 없으면 한국어·24시간제·기본 글꼴·낭독속도·알림·복약 시각을 제공하되 DB 행은 생성하지 않는지 검증한다.
+# - 범위를 벗어난 글꼴·속도와 잘못된 언어·시간 형식·알림 상세·복약 시각을 각각 400으로 거절하는지 검증한다.
+# - 구형 설정 테이블에 누락 컬럼과 기본값을 채우고 동일 사용자 중복 행을 하나로 정리하는지 검증한다.
+# 속성:
+# - engine (Engine): 격리 인메모리 SQLite 엔진.
+# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
+# - control (ManageUserSetting): 운영 상태와 분리하여 검증할 유스케이스 control.
 class ManageUserSettingTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an isolated user-settings database, upgrades its schema, and prepares the
+    #   settings control.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -34,10 +53,24 @@ class ManageUserSettingTest(unittest.TestCase):
         self.db = session_factory()
         self.control = ManageUserSetting(self.db)
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the settings-test session and disposes its database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # 함수이름: test_request_returns_default_when_no_setting_exists
+    # 함수역할:
+    # - 설정이 없으면 한국어·24시간제·기본 글꼴·낭독속도·알림·복약 시각을 제공하되 DB 행은 생성하지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_request_returns_default_when_no_setting_exists(self) -> None:
         response = self.control.requestUserSetting("user-a")
 
@@ -58,6 +91,14 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(response["data"]["default_bedtime"], "22:00")
         self.assertEqual(self.db.query(_UserSetting).count(), 0)
 
+    # Function Name: test_save_user_setting_persists_and_updates_values
+    # Description:
+    # - Persists changed font, reading speed, and language values while reusing one
+    #   user-settings row on update.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_save_user_setting_persists_and_updates_values(self) -> None:
         save_response = self.control.saveUserSetting("user-a", 20, 1.2, "en")
 
@@ -74,6 +115,13 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(update_response["data"]["language"], "ko")
         self.assertEqual(self.db.query(_UserSetting).count(), 1)
 
+    # 함수이름: test_save_user_setting_persists_notification_and_display_options
+    # 함수역할:
+    # - 시스템 언어·12시간제·알림 비활성·종류만 표시 및 사용자 지정 복약 시각이 저장 후 그대로 복원되는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_save_user_setting_persists_notification_and_display_options(self) -> None:
         response = self.control.saveUserSetting(
             "user-a",
@@ -107,6 +155,13 @@ class ManageUserSettingTest(unittest.TestCase):
         restored = self.control.requestUserSetting("user-a")["data"]
         self.assertEqual(restored, data)
 
+    # 함수이름: test_invalid_user_setting_values_are_rejected
+    # 함수역할:
+    # - 범위를 벗어난 글꼴·속도와 잘못된 언어·시간 형식·알림 상세·복약 시각을 각각 400으로 거절하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_invalid_user_setting_values_are_rejected(self) -> None:
         with self.assertRaises(HTTPException) as font_context:
             self.control.saveUserSetting("user-a", 40, 1.0, "ko")
@@ -160,6 +215,13 @@ class ManageUserSettingTest(unittest.TestCase):
             )
         self.assertEqual(default_time_context.exception.status_code, 400)
 
+    # 함수이름: test_schema_upgrade_adds_missing_columns_and_deduplicates_rows
+    # 함수역할:
+    # - 구형 설정 테이블에 누락 컬럼과 기본값을 채우고 동일 사용자 중복 행을 하나로 정리하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
         legacy_engine = create_engine(
             "sqlite:///:memory:",

@@ -1,3 +1,6 @@
+# File Name: test_pharmacy_router.py
+# Role: Regression coverage for pharmacy search mode and schedule provenance in router
+#   responses.
 """Tests for the nearby-pharmacy HTTP response contract."""
 
 import os
@@ -22,7 +25,23 @@ from entities.nearby_pharmacy_entity import (  # noqa: E402
 )
 
 
+# Class Name: _FakeControl
+# Role: Pharmacy control double returning a fresh, officially designated late-night result with
+#   date-specific hours.
+# Responsibilities:
+# - Supplies an official-late-night search result carrying catalog freshness and holiday-roster
+#   provenance.
 class _FakeControl:
+    # Function Name: requestNearbyPharmacySearch
+    # Description:
+    # - Supplies an official-late-night search result carrying catalog freshness and
+    #   holiday-roster provenance.
+    # Parameters:
+    # - **_ (object): Interface argument ignored by this fixed-response double. Unused by
+    #   this double.
+    # Returns:
+    # - NearbyPharmacySearchResult: Fresh official-late-night result with holiday-roster
+    #   provenance.
     async def requestNearbyPharmacySearch(self, **_: object) -> NearbyPharmacySearchResult:
         target = datetime(2026, 8, 24, 22, 0, tzinfo=UTC)
         return NearbyPharmacySearchResult(
@@ -54,6 +73,14 @@ class _FakeControl:
         )
 
 
+# Function Name: test_response_exposes_filter_provenance_and_compatibility_flag
+# Description:
+# - Preserves official-late-night mode, the compatibility open_only flag, fresh holiday status,
+#   and date-specific schedule metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_response_exposes_filter_provenance_and_compatibility_flag() -> None:
     response = await get_nearby_pharmacies(

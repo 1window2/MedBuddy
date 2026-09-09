@@ -1,5 +1,5 @@
 # 파일명: test_pharmacy_api_boundary.py
-# 역할: 약국 공공데이터 경계의 응답 검증, 제한과 오류 변환을 확인한다.
+# 역할: 약국 공공 API의 위치 요청, XML 오류 분류 및 운영시간 추출을 검증한다.
 
 import os
 import sys
@@ -59,6 +59,13 @@ _VALID_CATALOG_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+# 함수이름: test_parse_records_extracts_only_required_pharmacy_fields
+# 함수역할:
+# - 유효 XML에서 약국 식별자·이름·거리·09시부터 24시까지의 영업시간을 추출하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_parse_records_extracts_only_required_pharmacy_fields() -> None:
     records = NationalEmergencyMedicalCenterPharmacyAPI._parse_records(
         _VALID_XML
@@ -72,6 +79,13 @@ def test_parse_records_extracts_only_required_pharmacy_fields() -> None:
     assert records[0].end_time == "2400"
 
 
+# 함수이름: test_parse_records_rejects_public_api_error_header
+# 함수역할:
+# - 공공 API 오류 헤더를 서비스 사용 불가 오류로 처리하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_parse_records_rejects_public_api_error_header() -> None:
     payload = b"<response><header><resultCode>22</resultCode></header></response>"
 
@@ -79,15 +93,36 @@ def test_parse_records_rejects_public_api_error_header() -> None:
         NationalEmergencyMedicalCenterPharmacyAPI._parse_records(payload)
 
 
+# 함수이름: test_parse_records_rejects_invalid_xml
+# 함수역할:
+# - 잘못된 XML을 약국 응답 형식 오류로 구분하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_parse_records_rejects_invalid_xml() -> None:
     with pytest.raises(PharmacyApiResponseError):
         NationalEmergencyMedicalCenterPharmacyAPI._parse_records(b"not xml")
 
 
+# 함수이름: test_search_nearby_uses_location_api_without_exposing_key
+# 함수역할:
+# - 위치 API 경로에 정밀 좌표와 결과 상한을 전달하여 약국 레코드를 얻는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 @pytest.mark.anyio
 async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     captured_request: httpx.Request | None = None
 
+    # 함수이름: respond
+    # 함수역할:
+    # - 외부 전송 없이 HTTP 요청을 기록하고 검증용 정상 약국 XML을 반환한다.
+    # 매개변수:
+    # - request (httpx.Request): 대체 응답 선택 또는 검증에 사용할 가로챈 HTTP 요청.
+    # 반환값:
+    # - httpx.Response: 해당 검증 조건의 XML이 포함된 시험용 HTTP 200 응답.
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal captured_request
         captured_request = request
@@ -112,6 +147,14 @@ async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     assert captured_request.url.params["numOfRows"] == "10"
 
 
+# Function Name: test_parse_catalog_page_preserves_weekly_and_holiday_hours
+# Description:
+# - Preserves weekday and holiday schedule slots, including a 22:00-01:00 overnight holiday
+#   range.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_parse_catalog_page_preserves_weekly_and_holiday_hours() -> None:
     records, total_count = (
         NationalEmergencyMedicalCenterPharmacyAPI._parse_catalog_page(

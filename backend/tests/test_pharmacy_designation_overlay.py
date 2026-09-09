@@ -1,3 +1,6 @@
+# File Name: test_pharmacy_designation_overlay.py
+# Role: Regression coverage for the checked-in Seoul late-night pharmacy designations and
+#   conservative catalog matching.
 """Tests for source-bound official public late-night designation overlays."""
 
 import os
@@ -18,6 +21,15 @@ from scripts.sync_pharmacy_catalog import (  # noqa: E402
 )
 
 
+# Function Name: _entry
+# Description:
+# - Builds a catalog pharmacy with a selected name and telephone for designation matching.
+# Parameters:
+# - name (str): Pharmacy name matched against the designation source.
+# - telephone (str): Pharmacy phone number used for official-designation matching.
+# Returns:
+# - PharmacyCatalogEntry: Synthetic authoritative catalog record with the requested identity and
+#   matching fields.
 def _entry(*, name: str, telephone: str) -> PharmacyCatalogEntry:
     return PharmacyCatalogEntry(
         pharmacy_id="C1234",
@@ -30,6 +42,14 @@ def _entry(*, name: str, telephone: str) -> PharmacyCatalogEntry:
     )
 
 
+# Function Name: test_current_seoul_source_contains_forty_designations
+# Description:
+# - Requires the checked-in Seoul source to contain forty designations, all attributed to the
+#   expected official source URL.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_current_seoul_source_contains_forty_designations() -> None:
     designations = _load_public_late_night_designations()
 
@@ -41,6 +61,14 @@ def test_current_seoul_source_contains_forty_designations() -> None:
     )
 
 
+# Function Name: test_overlay_requires_both_phone_and_normalized_name_match
+# Description:
+# - Attaches an official designation only when both telephone and normalized pharmacy name
+#   match.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_overlay_requires_both_phone_and_normalized_name_match() -> None:
     designations = _load_public_late_night_designations()
     matching, matching_count = _apply_designations(

@@ -1,3 +1,6 @@
+# File Name: test_identify_pill_control.py
+# Role: Regression coverage for pill ranking, confidence safeguards, stage cancellation, and
+#   shared worker capacity.
 import asyncio
 import os
 import sys
@@ -23,10 +26,36 @@ from entities.pill_identification_entity import (
 )
 
 
+# Class Name: _FakeVisionBoundary
+# Role: Vision double supplying configured visual observations without processing uploaded
+#   images.
+# Responsibilities:
+# - Returns the configured features for either image orientation without external vision work.
+# Attributes:
+# - features (PillVisualFeatures): Configured visual observations returned to the ranking
+#   control.
 class _FakeVisionBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Stores the visual feature set to return during pill identification.
+    # Parameters:
+    # - features (PillVisualFeatures): Visual observations to rank or return from the vision
+    #   double.
+    # Returns:
+    # - None.
     def __init__(self, features: PillVisualFeatures) -> None:
         self.features = features
 
+    # Function Name: extractVisualFeatures
+    # Description:
+    # - Returns the configured features for either image orientation without external vision
+    #   work.
+    # Parameters:
+    # - _front_image (bytes): Front-side pill photograph bytes. Unused by this double.
+    # - _back_image (bytes | None): Optional back-side pill photograph bytes. Unused by this
+    #   double.
+    # Returns:
+    # - PillVisualFeatures: Configured pill visual features without remote analysis.
     async def extractVisualFeatures(
         self,
         _front_image: bytes,
@@ -35,15 +64,52 @@ class _FakeVisionBoundary:
         return self.features
 
 
+# Class Name: _FakeCatalogBoundary
+# Role: Catalog double exposing a fixed authoritative candidate set.
+# Responsibilities:
+# - Returns the configured catalog entries without refreshing a remote dataset.
+# Attributes:
+# - entries (tuple[PillCatalogEntry, ...]): Catalog references supplied without an external
+#   fetch.
 class _FakeCatalogBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Stores the pill entries used by ranking tests.
+    # Parameters:
+    # - entries (tuple[PillCatalogEntry, ...]): Configured catalog records returned by the
+    #   double.
+    # Returns:
+    # - None.
     def __init__(self, entries: tuple[PillCatalogEntry, ...]) -> None:
         self.entries = entries
 
+    # Function Name: getCatalog
+    # Description:
+    # - Returns the configured catalog entries without refreshing a remote dataset.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - tuple[PillCatalogEntry, ...]: Configured pill-reference tuple, or an empty tuple if
+    #   the delayed double completes.
     async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         return self.entries
 
 
+# Class Name: _FailingVisionBoundary
+# Role: Vision double that asynchronously fails the required image-quality stage.
+# Responsibilities:
+# - Yields once and raises a retake-photo quality error to exercise sibling-stage cancellation.
 class _FailingVisionBoundary:
+    # Function Name: extractVisualFeatures
+    # Description:
+    # - Yields once and raises a retake-photo quality error to exercise sibling-stage
+    #   cancellation.
+    # Parameters:
+    # - _front_image (bytes): Front-side pill photograph bytes. Unused by this double.
+    # - _back_image (bytes | None): Optional back-side pill photograph bytes. Unused by this
+    #   double.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     async def extractVisualFeatures(
         self,
         _front_image: bytes,
@@ -53,10 +119,32 @@ class _FailingVisionBoundary:
         raise PillImageQualityError("Retake the pill photo.")
 
 
+# Class Name: _SlowCatalogBoundary
+# Role: Slow catalog double that records whether concurrent vision failure cancels its lookup.
+# Responsibilities:
+# - Waits for a slow catalog response, records cancellation when interrupted, and propagates it.
+# Attributes:
+# - was_cancelled (bool): Whether the sibling catalog task received cancellation.
 class _SlowCatalogBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Marks catalog lookup as not yet cancelled.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.was_cancelled = False
 
+    # Function Name: getCatalog
+    # Description:
+    # - Waits for a slow catalog response, records cancellation when interrupted, and
+    #   propagates it.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - tuple[PillCatalogEntry, ...]: Configured pill-reference tuple, or an empty tuple if
+    #   the delayed double completes.
     async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         try:
             await asyncio.sleep(60)
@@ -66,7 +154,26 @@ class _SlowCatalogBoundary:
         return ()
 
 
+# Class Name: _ConcurrencyTrackingIdentifyPill
+# Role: Identification control instrumented to track overlapping ranking workers under
+#   cancellation.
+# Responsibilities:
+# - Tracks active ranking workers around a delayed real ranking call and decrements the count
+#   even on failure.
+# Attributes:
+# - _worker_lock (threading.Lock): Lock protecting ranking worker counters.
+# - worker_started (threading.Event): Thread-safe signal that background work has begun.
+# - active_workers (int): Number of worker threads still processing a request.
+# - maximum_active_workers (int): Peak worker concurrency observed during the test.
 class _ConcurrencyTrackingIdentifyPill(IdentifyPill):
+    # Function Name: __init__
+    # Description:
+    # - Initializes the normal control plus synchronized worker counters and a worker-start
+    #   signal.
+    # Parameters:
+    # - **kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - None.
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self._worker_lock = threading.Lock()
@@ -74,6 +181,20 @@ class _ConcurrencyTrackingIdentifyPill(IdentifyPill):
         self.active_workers = 0
         self.maximum_active_workers = 0
 
+    # Function Name: _rank_candidates
+    # Description:
+    # - Tracks active ranking workers around a delayed real ranking call and decrements the
+    #   count even on failure.
+    # Parameters:
+    # - features (PillVisualFeatures): Visual observations to rank or return from the vision
+    #   double.
+    # - catalog (tuple[PillCatalogEntry, ...]): Authoritative pill references used for
+    #   candidate ranking.
+    # - ranking_limit (int | None): Maximum ranked candidates, or None for the default
+    #   policy.
+    # Returns:
+    # - list[PillIdentificationCandidate]: Candidates produced by the real ranking
+    #   implementation.
     def _rank_candidates(
         self,
         features: PillVisualFeatures,
@@ -95,6 +216,20 @@ class _ConcurrencyTrackingIdentifyPill(IdentifyPill):
                 self.active_workers -= 1
 
 
+# Function Name: _entry
+# Description:
+# - Builds an authoritative pill reference with configurable code, name, shape, color, and
+#   two-sided imprints.
+# Parameters:
+# - item_seq (str): Authoritative product code identifying the medication.
+# - item_name (str): Product name in the authoritative or saved medication record.
+# - shape (str): Observed or catalog pill shape used for matching.
+# - color (str): Observed or catalog pill color for the matching scenario.
+# - print_front (str): Catalog imprint on the pill's front side.
+# - print_back (str): Catalog imprint on the pill's back side.
+# Returns:
+# - PillCatalogEntry: Synthetic authoritative catalog record with the requested identity and
+#   matching fields.
 def _entry(
     item_seq: str,
     item_name: str,
@@ -118,6 +253,14 @@ def _entry(
     )
 
 
+# Function Name: _control
+# Description:
+# - Wires fixed vision features and catalog entries into the real identification control.
+# Parameters:
+# - features (PillVisualFeatures): Visual observations to rank or return from the vision double.
+# - entries (tuple[PillCatalogEntry, ...]): Configured catalog records returned by the double.
+# Returns:
+# - IdentifyPill: Identification control wired to fixed vision and catalog doubles.
 def _control(
     features: PillVisualFeatures,
     entries: tuple[PillCatalogEntry, ...],
@@ -128,6 +271,14 @@ def _control(
     )
 
 
+# Function Name: test_exact_imprints_rank_authoritative_product_first
+# Description:
+# - Ranks the exact authoritative imprint match first with score 1.0 while still requiring user
+#   confirmation.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_exact_imprints_rank_authoritative_product_first() -> None:
     features = PillVisualFeatures(
@@ -156,6 +307,13 @@ async def test_exact_imprints_rank_authoritative_product_first() -> None:
     assert result.requires_confirmation is True
 
 
+# Function Name: test_front_and_back_orientation_can_be_swapped
+# Description:
+# - Keeps a perfect match when front and back imprints are swapped.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_front_and_back_orientation_can_be_swapped() -> None:
     features = PillVisualFeatures(
@@ -173,6 +331,13 @@ async def test_front_and_back_orientation_can_be_swapped() -> None:
     assert result.candidates[0].match_score == 1.0
 
 
+# Function Name: test_one_character_imprint_error_keeps_plausible_candidate
+# Description:
+# - Retains the plausible product despite a one-character imprint recognition error.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_one_character_imprint_error_keeps_plausible_candidate() -> None:
     features = PillVisualFeatures(
@@ -195,6 +360,14 @@ async def test_one_character_imprint_error_keeps_plausible_candidate() -> None:
     assert result.candidates[0].item_seq == "200808877"
 
 
+# Function Name: test_shape_and_color_only_result_is_never_confident
+# Description:
+# - Caps shape-and-color-only scores at 0.68 and never marks them confident or exempt from
+#   confirmation.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_shape_and_color_only_result_is_never_confident() -> None:
     features = PillVisualFeatures(
@@ -211,6 +384,14 @@ async def test_shape_and_color_only_result_is_never_confident() -> None:
     assert result.requires_confirmation is True
 
 
+# Function Name: test_poor_quality_result_is_never_confident
+# Description:
+# - Retains candidates from poor-quality observations but requires confirmation and withholds
+#   confidence.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_poor_quality_result_is_never_confident() -> None:
     features = PillVisualFeatures(
@@ -230,6 +411,13 @@ async def test_poor_quality_result_is_never_confident() -> None:
     assert result.requires_confirmation is True
 
 
+# Function Name: test_uncertain_front_back_pair_is_never_confident
+# Description:
+# - Withholds confidence when the two photographed sides may not belong to the same pill.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_uncertain_front_back_pair_is_never_confident() -> None:
     features = PillVisualFeatures(
@@ -248,6 +436,13 @@ async def test_uncertain_front_back_pair_is_never_confident() -> None:
     assert result.is_confident is False
 
 
+# Function Name: test_round_observation_does_not_match_oval_catalog_shape
+# Description:
+# - Rejects an oval catalog shape for a round observation and returns no confident candidate.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_round_observation_does_not_match_oval_catalog_shape() -> None:
     features = PillVisualFeatures(
@@ -274,6 +469,13 @@ async def test_round_observation_does_not_match_oval_catalog_shape() -> None:
     assert result.is_confident is False
 
 
+# Function Name: test_single_weak_attribute_does_not_generate_candidates
+# Description:
+# - Returns no candidates when only one weak visual attribute supports a match.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_single_weak_attribute_does_not_generate_candidates() -> None:
     features = PillVisualFeatures(
@@ -290,6 +492,13 @@ async def test_single_weak_attribute_does_not_generate_candidates() -> None:
     assert result.is_confident is False
 
 
+# Function Name: test_one_character_imprint_is_never_confident
+# Description:
+# - Allows candidates from a one-character imprint without treating them as confident matches.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_one_character_imprint_is_never_confident() -> None:
     features = PillVisualFeatures(
@@ -309,6 +518,14 @@ async def test_one_character_imprint_is_never_confident() -> None:
     assert result.is_confident is False
 
 
+# Function Name: test_single_result_limit_still_checks_tied_runner_up
+# Description:
+# - Checks a tied runner-up before truncating to one result so the visible candidate remains
+#   nonconfident.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_single_result_limit_still_checks_tied_runner_up() -> None:
     features = PillVisualFeatures(
@@ -335,6 +552,13 @@ async def test_single_result_limit_still_checks_tied_runner_up() -> None:
     assert result.requires_confirmation is True
 
 
+# Function Name: test_failed_required_stage_cancels_sibling_work
+# Description:
+# - Propagates the required vision-stage quality error and cancels the sibling catalog lookup.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_failed_required_stage_cancels_sibling_work() -> None:
     catalog_boundary = _SlowCatalogBoundary()
@@ -349,6 +573,14 @@ async def test_failed_required_stage_cancels_sibling_work() -> None:
     assert catalog_boundary.was_cancelled is True
 
 
+# Function Name: test_cancelled_ranking_retains_shared_capacity_until_worker_exits
+# Description:
+# - Retains shared ranking capacity until the cancelled request's worker exits, preventing
+#   overlap and allowing a later request to recover.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_cancelled_ranking_retains_shared_capacity_until_worker_exits() -> None:
     features = PillVisualFeatures(
@@ -377,6 +609,13 @@ async def test_cancelled_ranking_retains_shared_capacity_until_worker_exits() ->
     assert control.active_workers == 0
 
 
+# Function Name: anyio_backend
+# Description:
+# - Selects asyncio as the backend for asynchronous pill-identification tests.
+# Parameters:
+# - None.
+# Returns:
+# - str: 'asyncio', the event loop backend selected for the test.
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

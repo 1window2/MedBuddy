@@ -1,5 +1,6 @@
 # File Name: test_prescription_ocr_boundary.py
-# Role: Verifies the de-identified prescription text boundary and Gemini request.
+# Role: Regression coverage for text-only prescription analysis, bounded Gemini requests, and
+#   privacy-safe failures.
 
 import asyncio
 from typing import Any
@@ -13,10 +14,37 @@ from boundaries.prescription_ocr_boundary import (
 )
 
 
+# Class Name: _RecordingPrescriptionTextClient
+# Role: Prescription text client double recording the masked text passed across the
+#   external-analysis boundary.
+# Responsibilities:
+# - Captures masked text and returns empty JSON without using the Gemini client or prompt.
+# Attributes:
+# - masked_text (str): De-identified prescription text captured at the AI boundary.
 class _RecordingPrescriptionTextClient:
+    # Function Name: __init__
+    # Description:
+    # - Initializes empty captured prescription text before delegation.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.masked_text = ""
 
+    # Function Name: generate_text_content
+    # Description:
+    # - Captures masked text and returns empty JSON without using the Gemini client or
+    #   prompt.
+    # Parameters:
+    # - client (object): Injected Gemini client; no real service is used by this double.
+    # - model_name (str): Gemini model selected for text analysis.
+    # - prompt (str): Instruction text accompanying the masked prescription input.
+    # - masked_text (str): De-identified prescription text allowed across the AI boundary.
+    # - response_schema (dict[str, Any]): JSON schema constraining prescription analysis
+    #   output.
+    # Returns:
+    # - str: '{}', the empty structured response when the simulated call completes.
     async def generate_text_content(
         self,
         *,
@@ -30,31 +58,93 @@ class _RecordingPrescriptionTextClient:
         return "{}"
 
 
+# Class Name: _SlowPrescriptionTextClient
+# Role: Slow prescription text client double used to force boundary timeouts.
+# Responsibilities:
+# - Delays an empty JSON response so a short text-analysis deadline expires.
 class _SlowPrescriptionTextClient:
+    # Function Name: generate_text_content
+    # Description:
+    # - Delays an empty JSON response so a short text-analysis deadline expires.
+    # Parameters:
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - str: '{}', the empty structured response when the simulated call completes.
     async def generate_text_content(self, **_kwargs: object) -> str:
         await asyncio.sleep(1)
         return "{}"
 
 
+# Class Name: _FakeGeminiResponse
+# Role: Gemini response double exposing an empty JSON text payload.
+# Responsibilities:
+# - Gemini response double exposing an empty JSON text payload.
+# Attributes:
+# - text (str): Text payload exposed by the Gemini-compatible response.
 class _FakeGeminiResponse:
     text = "{}"
 
 
+# Class Name: _RecordingGeminiModels
+# Role: Gemini models double recording structured text request contents and configuration.
+# Responsibilities:
+# - Records the complete Gemini request and returns an empty JSON response object.
+# Attributes:
+# - last_request (dict[str, Any] | None): Most recently captured Gemini request; initially
+#   absent.
 class _RecordingGeminiModels:
+    # Function Name: __init__
+    # Description:
+    # - Marks the last Gemini request absent until text analysis is invoked.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.last_request: dict[str, Any] | None = None
 
+    # Function Name: generate_content
+    # Description:
+    # - Records the complete Gemini request and returns an empty JSON response object.
+    # Parameters:
+    # - **kwargs (Any): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - _FakeGeminiResponse: Gemini-compatible response carrying the configured analysis
+    #   JSON.
     async def generate_content(self, **kwargs: Any) -> _FakeGeminiResponse:
         self.last_request = kwargs
         return _FakeGeminiResponse()
 
 
+# Class Name: _RecordingGeminiClient
+# Role: Gemini client double exposing one recording model through synchronous and asynchronous
+#   namespaces.
+# Responsibilities:
+# - Gemini client double exposing one recording model through synchronous and asynchronous
+#   namespaces.
+# Attributes:
+# - models (_RecordingGeminiModels): Recording Gemini-compatible model interface.
+# - aio (object): Gemini-compatible asynchronous namespace or owned async client.
 class _RecordingGeminiClient:
+    # Function Name: __init__
+    # Description:
+    # - Creates the recording models object and connects it to the async SDK access path.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.models = _RecordingGeminiModels()
         self.aio = type("FakeAio", (), {"models": self.models})()
 
 
+# Function Name: anyio_backend
+# Description:
+# - Selects asyncio for prescription text-boundary tests.
+# Parameters:
+# - None.
+# Returns:
+# - str: 'asyncio', the event loop backend selected for the test.
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
@@ -62,7 +152,10 @@ def anyio_backend() -> str:
 
 # Function Name: test_text_extraction_normalizes_input_before_delegation
 # Description:
-# - Verifies that only normalized, de-identified text reaches Gemini.
+# - Requires normalized, de-identified prescription text to reach the external client and
+#   preserves its JSON response.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 @pytest.mark.anyio
@@ -83,7 +176,9 @@ async def test_text_extraction_normalizes_input_before_delegation() -> None:
 
 # Function Name: test_text_extraction_rejects_empty_input
 # Description:
-# - Prevents empty requests from consuming the external AI quota.
+# - Rejects empty prescription text before it can consume external AI quota.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 @pytest.mark.anyio
@@ -100,7 +195,9 @@ async def test_text_extraction_rejects_empty_input() -> None:
 
 # Function Name: test_text_extraction_is_bounded_by_boundary_timeout
 # Description:
-# - Verifies that stalled Gemini text analysis cannot run indefinitely.
+# - Raises the stable text-service timeout when stalled analysis exceeds the boundary deadline.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 @pytest.mark.anyio
@@ -119,7 +216,9 @@ async def test_text_extraction_is_bounded_by_boundary_timeout() -> None:
 
 # Function Name: test_timeout_does_not_log_request_configuration
 # Description:
-# - Ensures a timeout does not expose model or prescription request details.
+# - Raises a timeout without logging request configuration or prescription details.
+# Parameters:
+# - caplog (pytest.LogCaptureFixture): Pytest log capture used to check sensitive-data exposure.
 # Returns:
 # - None.
 @pytest.mark.anyio
@@ -147,7 +246,10 @@ async def test_timeout_does_not_log_request_configuration(
 
 # Function Name: test_structured_text_request_uses_low_latency_config
 # Description:
-# - Keeps the text-only Gemini request deterministic and output-bounded.
+# - Uses only prompt and masked text as content, minimal thinking, and a 2048-token output bound
+#   for structured analysis.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 @pytest.mark.anyio
@@ -172,7 +274,10 @@ async def test_structured_text_request_uses_low_latency_config() -> None:
 
 # Function Name: test_text_prompt_preserves_the_privacy_boundary
 # Description:
-# - Verifies that the prompt forbids reconstructing images or removed identifiers.
+# - Requires the prompt to forbid reconstructing images or removed identifiers and to demand the
+#   designated JSON schema.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def test_text_prompt_preserves_the_privacy_boundary() -> None:

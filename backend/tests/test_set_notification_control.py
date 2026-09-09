@@ -1,5 +1,6 @@
 # File Name: test_set_notification_control.py
-# Role: Verifies medication alarm persistence and scoping.
+# Role: Regression coverage for patient medication alarms, read-only defaults, input validation,
+#   and legacy schema upgrades.
 
 import sys
 import unittest
@@ -22,7 +23,28 @@ from entities.medication_alarm_entity import (  # noqa: E402
 )
 
 
+# Class Name: SetNotificationTest
+# Role: Database-backed alarm tests covering each medication slot and persisted enable/disable
+#   transitions.
+# Responsibilities:
+# - Returns four disabled default slots at 08:00, 12:00, 18:00, and 22:00 without persisting a
+#   read-only request.
+# - Rejects invalid alarm slots, hours, and minutes with HTTP 400.
+# - Adds missing alarm columns, deduplicates legacy rows, and initializes the remaining row to a
+#   disabled 08:00 alarm.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - control (SetNotification): Use-case control under test, isolated from production state.
 class SetNotificationTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an isolated medication-alarm database, upgrades its schema, and prepares the
+    #   notification control.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -38,10 +60,25 @@ class SetNotificationTest(unittest.TestCase):
         self.db = session_factory()
         self.control = SetNotification(self.db)
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the alarm-test session and disposes its database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: test_default_settings_return_every_schedule_slot
+    # Description:
+    # - Returns four disabled default slots at 08:00, 12:00, 18:00, and 22:00 without
+    #   persisting a read-only request.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_default_settings_return_every_schedule_slot(self) -> None:
         response = self.control.requestMedicationAlarm("patient-a")
 
@@ -59,6 +96,14 @@ class SetNotificationTest(unittest.TestCase):
         )
         self.assertEqual(self.db.query(_MedicationAlarm).count(), 0)
 
+    # Function Name: test_set_and_disable_alarm_setting_are_persisted
+    # Description:
+    # - Persists an enabled patient-scoped morning alarm and retains its 09:30 time when
+    #   later disabled.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_set_and_disable_alarm_setting_are_persisted(self) -> None:
         save_response = self.control.saveNotificationSetting(
             "patient-a",
@@ -92,6 +137,13 @@ class SetNotificationTest(unittest.TestCase):
         self.db.refresh(row)
         self.assertFalse(row.enabled)
 
+    # Function Name: test_invalid_alarm_slot_and_time_are_rejected
+    # Description:
+    # - Rejects invalid alarm slots, hours, and minutes with HTTP 400.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_invalid_alarm_slot_and_time_are_rejected(self) -> None:
         with self.assertRaises(HTTPException) as slot_context:
             self.control.saveNotificationSetting("patient-a", "midnight", 8, 0)
@@ -105,6 +157,14 @@ class SetNotificationTest(unittest.TestCase):
             self.control.saveNotificationSetting("patient-a", "morning", 8, 60)
         self.assertEqual(minute_context.exception.status_code, 400)
 
+    # Function Name: test_schema_upgrade_adds_missing_columns_and_deduplicates_rows
+    # Description:
+    # - Adds missing alarm columns, deduplicates legacy rows, and initializes the remaining
+    #   row to a disabled 08:00 alarm.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(
         self,
     ) -> None:

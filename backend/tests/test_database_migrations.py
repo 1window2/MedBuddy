@@ -1,5 +1,5 @@
 # 파일명: test_database_migrations.py
-# 역할: 데이터베이스 마이그레이션 체인과 스키마 호환성을 검증한다.
+# 역할: 신규·기존 로컬 DB의 마이그레이션, 필수 스키마 및 데이터 보존 왕복을 검증한다.
 
 from pathlib import Path
 
@@ -12,6 +12,13 @@ from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
 
 
+# 함수이름: test_chat_deletion_upgrade_preserves_existing_content_and_round_trips
+# 함수역할:
+# - 채팅 삭제 컬럼을 추가하고 다운그레이드·재적용해도 기존 메시지 본문이 보존되는지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 격리 마이그레이션 DB를 만들 pytest 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
 def test_chat_deletion_upgrade_preserves_existing_content_and_round_trips(tmp_path: Path) -> None:
     database_url = f"sqlite:///{(tmp_path / 'chat-deletion.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -44,6 +51,14 @@ def test_chat_deletion_upgrade_preserves_existing_content_and_round_trips(tmp_pa
         engine.dispose()
 
 
+# Function Name: test_current_schema_migrates_into_an_empty_database
+# Description:
+# - Migrates an empty database to the complete schema, including medication safety metadata,
+#   deletion tombstones, caregiver aliases, and completion foreign keys.
+# Parameters:
+# - tmp_path (Path): Pytest temporary directory for the isolated migration database.
+# Returns:
+# - None.
 def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
     database_path = tmp_path / "migration.db"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -113,6 +128,13 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
     )
 
 
+# 함수이름: test_chat_migration_adopts_auto_created_local_table
+# 함수역할:
+# - 로컬에서 자동 생성한 채팅 테이블을 수용하여 최신 마이그레이션과 필수 조회 인덱스를 구성하는지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 격리 마이그레이션 DB를 만들 pytest 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
 def test_chat_migration_adopts_auto_created_local_table(tmp_path: Path) -> None:
     """로컬 자동 생성 테이블이 있어도 채팅 마이그레이션을 완료한다."""
     database_path = tmp_path / "auto-created-chat.db"
@@ -141,6 +163,13 @@ def test_chat_migration_adopts_auto_created_local_table(tmp_path: Path) -> None:
     }.issubset(index_names)
 
 
+# 함수이름: test_pharmacy_migration_adopts_auto_created_local_table
+# 함수역할:
+# - 로컬에서 자동 생성한 약국 테이블을 수용하여 이름·위도·경도 인덱스를 구성하는지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 격리 마이그레이션 DB를 만들 pytest 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
 def test_pharmacy_migration_adopts_auto_created_local_table(
     tmp_path: Path,
 ) -> None:
@@ -172,11 +201,11 @@ def test_pharmacy_migration_adopts_auto_created_local_table(
 
 # 함수이름: test_guardian_alert_migration_contains_slot_columns
 # 함수역할:
-# - 운영 환경에서 자동 생성되지 않는 보호자 시간대별 알림 컬럼이 마이그레이션에 포함됐는지 검증한다.
+# - 운영 환경에 필요한 보호자 알림 마감 시·분과 시간대 설정 컬럼이 마이그레이션에 포함되는지 검증한다.
 # 매개변수:
-# - tmp_path: 격리된 SQLite 파일을 생성할 pytest 임시 경로
+# - tmp_path (Path): 격리 마이그레이션 DB를 만들 pytest 임시 디렉터리.
 # 반환값:
-# - 없음
+# - 없음 (None).
 def test_guardian_alert_migration_contains_slot_columns(tmp_path: Path) -> None:
     database_path = tmp_path / "guardian-alert-migration.db"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -203,7 +232,11 @@ def test_guardian_alert_migration_contains_slot_columns(tmp_path: Path) -> None:
 
 # 함수이름: test_data_lifecycle_migration_supports_round_trip
 # 함수역할:
-# - 데이터 무결성 마이그레이션을 되돌린 뒤 다시 적용할 수 있는지 검증한다.
+# - 데이터 무결성 마이그레이션을 되돌리고 재적용한 뒤 계정 테이블과 약 중복 방지 키가 복구되는지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 격리 마이그레이션 DB를 만들 pytest 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
 def test_data_lifecycle_migration_supports_round_trip(tmp_path: Path) -> None:
     database_path = tmp_path / "lifecycle-round-trip.db"
     database_url = f"sqlite:///{database_path.as_posix()}"

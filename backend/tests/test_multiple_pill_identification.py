@@ -1,5 +1,6 @@
 # File Name: test_multiple_pill_identification.py
-# Role: Verifies safe one-photo multi-pill detection, ranking, and API contracts.
+# Role: Regression coverage for multi-pill observation parsing, independent ranking, and
+#   multipart response contracts.
 
 import json
 import os
@@ -36,7 +37,21 @@ from entities.pill_identification_entity import (  # noqa: E402
 from main import create_app  # noqa: E402
 
 
+# Class Name: _CompositionProcessor
+# Role: Multi-pill image processor double that supplies fixed image dimensions without altering
+#   bytes.
+# Responsibilities:
+# - Wraps the uploaded image in an 800-by-600 preprocessing result for bounding-box tests.
 class _CompositionProcessor:
+    # Function Name: preprocessMultiplePillImage
+    # Description:
+    # - Wraps the uploaded image in an 800-by-600 preprocessing result for bounding-box
+    #   tests.
+    # Parameters:
+    # - image (bytes): Encoded pill photograph passed through the test boundary.
+    # Returns:
+    # - MultiplePillImagePreprocessingResult: Original bytes with fixed 800-by-600 image
+    #   dimensions.
     def preprocessMultiplePillImage(
         self,
         image: bytes,
@@ -44,18 +59,60 @@ class _CompositionProcessor:
         return MultiplePillImagePreprocessingResult(image=image, width=800, height=600)
 
 
+# Class Name: _MultipleVisionAPI
+# Role: Multi-pill vision API double returning configurable observation JSON.
+# Responsibilities:
+# - Serializes the configured multi-pill observations without invoking a vision model.
+# Attributes:
+# - payload (dict[str, Any]): Configured vision result before JSON serialization.
 class _MultipleVisionAPI:
+    # Function Name: __init__
+    # Description:
+    # - Stores the vision payload used to test observation ordering and overlap validation.
+    # Parameters:
+    # - payload (dict[str, Any]): Configured vision-response fields to serialize as JSON.
+    # Returns:
+    # - None.
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
 
+    # Function Name: requestMultipleVisualFeatures
+    # Description:
+    # - Serializes the configured multi-pill observations without invoking a vision model.
+    # Parameters:
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - str: JSON encoding of the configured pill observations.
     async def requestMultipleVisualFeatures(self, **_kwargs: object) -> str:
         return json.dumps(self.payload)
 
 
+# Class Name: _CatalogBoundary
+# Role: Shared catalog double that counts loads and provides distinct yellow and white pill
+#   references.
+# Responsibilities:
+# - Counts catalog access and returns the yellow YH and white SJ reference pills.
+# Attributes:
+# - request_count (int): Number of upstream calls made by the scenario.
 class _CatalogBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Starts the catalog request counter at zero for per-image load assertions.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.request_count = 0
 
+    # Function Name: getCatalog
+    # Description:
+    # - Counts catalog access and returns the yellow YH and white SJ reference pills.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - tuple[PillCatalogEntry, ...]: Configured pill-reference tuple, or an empty tuple if
+    #   the delayed double completes.
     async def getCatalog(self) -> tuple[PillCatalogEntry, ...]:
         self.request_count += 1
         return (
@@ -76,6 +133,16 @@ class _CatalogBoundary:
         )
 
 
+# Function Name: _pill
+# Description:
+# - Builds a good-quality round-pill observation with the requested box, color, and imprint.
+# Parameters:
+# - box (list[int]): Vision bounding box coordinates in the source response scale.
+# - color (str): Observed or catalog pill color for the matching scenario.
+# - imprint (str): Recognized characters printed on the pill.
+# Returns:
+# - dict[str, object]: Good-quality round-pill observation with the specified box, color, and
+#   imprint.
 def _pill(
     box: list[int],
     *,
@@ -93,6 +160,14 @@ def _pill(
     }
 
 
+# Function Name: test_multiple_visual_boundary_orders_and_parses_pills
+# Description:
+# - Parses two observations into normalized bounding boxes and orders their imprints
+#   consistently by position.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_multiple_visual_boundary_orders_and_parses_pills() -> None:
     boundary = PillVisionBoundary(
@@ -117,6 +192,13 @@ async def test_multiple_visual_boundary_orders_and_parses_pills() -> None:
     assert observations[1][1].front_imprint == "SJ"
 
 
+# Function Name: test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes
+# Description:
+# - Rejects overlapping duplicate pill boxes with a vision-response error.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes() -> None:
     boundary = PillVisionBoundary(
@@ -137,6 +219,14 @@ async def test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes() ->
         await boundary.extractMultipleVisualFeatures(b"photo")
 
 
+# Function Name: test_multiple_control_loads_catalog_once_and_ranks_each_pill
+# Description:
+# - Loads the catalog once for the image, ranks each pill independently, and requires
+#   confirmation for every observation.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_multiple_control_loads_catalog_once_and_ranks_each_pill() -> None:
     vision_boundary = PillVisionBoundary(
@@ -169,10 +259,33 @@ async def test_multiple_control_loads_catalog_once_and_ranks_each_pill() -> None
     )
 
 
+# Class Name: _RecordingMultipleControl
+# Role: Multi-pill control double that records image bytes and returns one bounded observation.
+# Responsibilities:
+# - Captures the uploaded composition and returns one observation with a fixed box and visual
+#   features.
+# Attributes:
+# - image (bytes): Captured multi-pill composition bytes.
 class _RecordingMultipleControl:
+    # Function Name: __init__
+    # Description:
+    # - Initializes empty captured-image bytes before the multipart request.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.image = b""
 
+    # Function Name: requestMultiplePillIdentification
+    # Description:
+    # - Captures the uploaded composition and returns one observation with a fixed box and
+    #   visual features.
+    # Parameters:
+    # - image (bytes): Encoded pill photograph passed through the test boundary.
+    # Returns:
+    # - MultiplePillIdentificationResult: One indexed pill observation with a fixed
+    #   normalized bounding box.
     async def requestMultiplePillIdentification(
         self,
         image: bytes,
@@ -199,6 +312,14 @@ class _RecordingMultipleControl:
         )
 
 
+# Function Name: test_multiple_pill_api_accepts_one_image_and_preserves_confirmation
+# Description:
+# - Accepts one multipart image and preserves mandatory confirmation, observation index, and
+#   normalized bounding-box coordinates.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_multiple_pill_api_accepts_one_image_and_preserves_confirmation() -> None:
     control = _RecordingMultipleControl()
