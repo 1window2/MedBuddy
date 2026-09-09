@@ -1,3 +1,5 @@
+# File Name: holiday_emergency_pharmacy_api_boundary.py
+# Role: Fetches and caches exact-date holiday pharmacy schedules from the official NEMC roster.
 """Date-specific pharmacy schedules from the official NEMC holiday roster."""
 
 import asyncio
@@ -25,6 +27,15 @@ _TIME_RANGE_PATTERN = re.compile(
 _PAGE_SIZE = 20_000
 
 
+# Class Name: HolidayEmergencyPharmacyAPI
+# Role:
+# - Provides nationwide pharmacy opening hours for one holiday date.
+# Responsibilities:
+# - Page through the official roster, validate hours and retain a 12-hour per-date cache.
+# Attributes:
+# - _client (AsyncClient | None): Borrowed or lazily created HTTP client.
+# - _cache (dict): Fetch timestamps and immutable schedules indexed by date.
+# - _lock (asyncio.Lock): Serializes cache fills.
 class HolidayEmergencyPharmacyAPI:
     """Queries the nationwide, exact-date NEMC holiday pharmacy roster."""
 
@@ -34,6 +45,13 @@ class HolidayEmergencyPharmacyAPI:
         "getHolidyClnicPosblEgytInfoInqire"
     )
 
+    # Function Name: __init__
+    # Description:
+    # - Initialize an empty schedule cache, synchronization lock and HTTP-client ownership state.
+    # Parameters:
+    # - client (httpx.AsyncClient | None): Optional borrowed HTTP client; omitted to create an owned client.
+    # Returns:
+    # - None; no upstream request is made.
     def __init__(self, *, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
         self._owns_client = client is None
@@ -43,6 +61,13 @@ class HolidayEmergencyPharmacyAPI:
             tuple[datetime, tuple[PharmacyHolidaySchedule, ...]],
         ] = {}
 
+    # Function Name: fetchSchedules
+    # Description:
+    # - Load every roster page for the requested date, deduplicate pharmacy IDs and reuse fresh cached results.
+    # Parameters:
+    # - value (date): Exact holiday date to query.
+    # Returns:
+    # - Pharmacy holiday schedules; raises an availability or response error when retrieval fails.
     async def fetchSchedules(self, value: date) -> list[PharmacyHolidaySchedule]:
         """Fetches every pharmacy schedule published for one holiday date."""
 
@@ -83,11 +108,26 @@ class HolidayEmergencyPharmacyAPI:
             self._cache[value] = (datetime.now(UTC), schedules)
             return list(schedules)
 
+    # Function Name: close
+    # Description:
+    # - Close only the HTTP client created by this boundary and clear its reference.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; a borrowed client remains open.
     async def close(self) -> None:
         if self._owns_client and self._client is not None:
             await self._client.aclose()
             self._client = None
 
+    # Function Name: _fetch_page
+    # Description:
+    # - Fetch and parse one NEMC XML page, mapping transport, XML and provider-status failures to unavailability.
+    # Parameters:
+    # - value (date): Exact holiday date encoded as YYYYMMDD for the roster query.
+    # - page_no (int): One-based upstream result page number.
+    # Returns:
+    # - Validated XML document root.
     async def _fetch_page(self, value: date, *, page_no: int) -> ElementTree.Element:
         client = self._client
         if client is None:
@@ -124,6 +164,14 @@ class HolidayEmergencyPharmacyAPI:
             )
         return root
 
+    # Function Name: _parse_item
+    # Description:
+    # - Select a pharmacy's matching duty date and validate its opening-time range; ignore non-pharmacy or incomplete rows.
+    # Parameters:
+    # - item (ElementTree.Element): One NEMC institution XML element.
+    # - value (date): Holiday date whose duty-day slot should be selected.
+    # Returns:
+    # - A dated schedule, or None when the row cannot supply one.
     @classmethod
     def _parse_item(
         cls,
@@ -157,6 +205,13 @@ class HolidayEmergencyPharmacyAPI:
             )
         return None
 
+    # Function Name: _parse_time_range
+    # Description:
+    # - Parse a clock range and allow 24:00 only as a closing time.
+    # Parameters:
+    # - value (str): Roster text containing start and end times.
+    # Returns:
+    # - Zero-padded HHMM opening and closing times, or None for an invalid range.
     @staticmethod
     def _parse_time_range(value: str) -> tuple[str, str] | None:
         match = _TIME_RANGE_PATTERN.search(value)
@@ -179,6 +234,14 @@ class HolidayEmergencyPharmacyAPI:
             f"{end_hour:02d}{end_minute:02d}",
         )
 
+    # Function Name: _parse_nonnegative_int
+    # Description:
+    # - Read a nonnegative roster count, defaulting absent text to zero and rejecting malformed or negative values.
+    # Parameters:
+    # - value (str | None): Raw numeric text from the XML response, or None.
+    # - field_name (str): Response field name to include in validation errors.
+    # Returns:
+    # - Validated integer; raises PharmacyApiResponseError on invalid input.
     @staticmethod
     def _parse_nonnegative_int(value: str | None, *, field_name: str) -> int:
         try:

@@ -1,11 +1,11 @@
+# File Name: database.py
+# Role: Configures environment-specific database connections and request-scoped SQLAlchemy sessions.
 from collections.abc import Generator
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from core.config import settings
 
-# 파일명: database.py
-# 역할: 환경별 데이터베이스 연결과 요청 단위 세션 생성을 담당한다.
 
 SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
@@ -29,10 +29,15 @@ else:
 engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_options)
 
 
-# 함수명: _configure_sqlite_connection
-# 역할:
+# 함수이름: _configure_sqlite_connection
+# 함수역할:
 # - 로컬 SQLite 연결에서도 운영 PostgreSQL과 동일하게 FK와 cascade를 적용한다.
 # - 앱 시작 시 겹치는 읽기 요청이 잠깐의 쓰기 작업 때문에 실패하지 않도록 한다.
+# 매개변수:
+# - dbapi_connection (object): 연결 이벤트에서 전달받은 원시 DB-API 연결.
+# - _record (object): SQLAlchemy 연결 풀 레코드; 이 설정에서는 사용하지 않는다.
+# 반환값:
+# - 없음; SQLite가 아니면 설정 없이 종료한다.
 @event.listens_for(engine, "connect")
 def _configure_sqlite_connection(dbapi_connection: object, _record: object) -> None:
     if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
@@ -58,6 +63,8 @@ Base = declarative_base()
 # Function Name: get_db
 # Description:
 # - Yields a SQLAlchemy session and closes it after request handling.
+# Parameters:
+# - None.
 # Returns:
 # - Generator yielding one Session.
 def get_db() -> Generator[Session, None, None]:

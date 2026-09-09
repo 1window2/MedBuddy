@@ -1,5 +1,5 @@
-# 파일명: config.py
-# 역할: 백엔드 환경 변수와 외부 서비스 설정을 불러온다.
+# File Name: config.py
+# Role: Loads and validates backend environment, database, authentication and external-service settings.
 
 from pathlib import Path
 from typing import Any, Literal
@@ -20,33 +20,33 @@ _DEFAULT_API_CONTRACT_VERSION = (
 )
 
 
-# 클래스명: Settings
-# 역할: 환경 변수에서 읽은 애플리케이션 설정을 제공한다.
-# 주요 책임:
-#   - API 인증키와 외부 서비스 주소를 불러온다.
-#   - 공공 약품 데이터 API의 기본 주소를 제공한다.
-#   - 백엔드 전역에서 사용하는 단일 설정 객체를 구성한다.
-# 속성:
-#   - GEMINI_API_KEY: Gemini API 인증키
-#   - PUBLIC_DATA_API_KEY: 공공데이터포털 API 인증키
-#   - BASIC_DRUG_API_BASE_URL: e약은요 API 주소
-#   - ADVANCED_DRUG_API_BASE_URL: 의약품 허가 상세 API 주소
-#   - PILL_IMAGE_API_BASE_URL: 낱알약 식별 API 주소
-#   - PILL_IMAGE_API_ENABLED: 식약처 낱알 이미지 보강 사용 여부
-#   - PILL_IMAGE_API_TIMEOUT_SECONDS: Maximum optional image lookup duration.
-#   - PILL_IDENTIFICATION_MODEL_NAME: Visual feature extraction model.
-#   - PILL_IDENTIFICATION_TIMEOUT_SECONDS: Maximum pill image analysis duration.
-#   - PILL_IDENTIFICATION_CATALOG_TTL_HOURS: Local MFDS catalog cache lifetime.
-#   - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: Maximum full catalog
-#     refresh duration.
-#   - PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR: Dated KPIC product-count floor that
-#     a complete MFDS pill catalog must satisfy before publication.
-#   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
-#   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
-#     duration.
-#   - MEDICATION_SUMMARY_TIMEOUT_SECONDS: Maximum approval summary duration.
-#   - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS: Maximum health recommendation duration.
-#   - REDIS_URL: Optional Redis cache URL.
+# Class Name: Settings
+# Role:
+# - Provides validated application configuration from environment values.
+# Responsibilities:
+# - Load external API keys and public-drug service URLs.
+# - Build the shared backend settings instance and validate database, host and time-zone values.
+# - Reject unsafe production authentication, storage and rate-limiting combinations.
+# Attributes:
+# - GEMINI_API_KEY (str): Gemini API credential.
+# - PUBLIC_DATA_API_KEY (str): Government public-data credential.
+# - BASIC_DRUG_API_BASE_URL (str): Consumer medication-information endpoint.
+# - ADVANCED_DRUG_API_BASE_URL (str): Drug approval-detail endpoint.
+# - PILL_IMAGE_API_BASE_URL (str): MFDS pill-identification endpoint.
+# - PILL_IMAGE_API_ENABLED (bool): Enables optional MFDS image enrichment.
+# - PILL_IMAGE_API_TIMEOUT_SECONDS (float): Maximum optional image lookup duration.
+# - PILL_IDENTIFICATION_MODEL_NAME (str): Visual feature extraction model.
+# - PILL_IDENTIFICATION_TIMEOUT_SECONDS (float): Maximum pill image analysis duration.
+# - PILL_IDENTIFICATION_CATALOG_TTL_HOURS (int): Local MFDS snapshot lifetime.
+# - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS (float): Maximum full refresh duration.
+# - PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR (int): Dated KPIC product-count floor required before publication.
+# - PRESCRIPTION_OCR_TIMEOUT_SECONDS (float): Maximum structured OCR request duration.
+# - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS (float): Maximum optional AI correction duration.
+# - MEDICATION_SUMMARY_TIMEOUT_SECONDS (float): Maximum approval-summary duration.
+# - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS (float): Maximum recommendation duration.
+# - REDIS_URL (str): Redis cache and distributed-counter URL.
+# - DATABASE_URL (str): Effective SQLAlchemy database URL.
+# - APP_ENV / RUNTIME_ROLE (str): Environment and process role selecting production safeguards.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(_PROJECT_ROOT / ".env", _BACKEND_ROOT / ".env"),
@@ -224,12 +224,13 @@ class Settings(BaseSettings):
     )
     API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
 
-    # 함수이름: build_structured_database_url
-    # 함수역할:
-    # - 배포 환경이 분리된 PostgreSQL 연결 값을 제공하면 DATABASE_URL을 구성한다.
-    # - 비밀번호의 예약 문자가 주소 구분자로 해석되지 않도록 SQLAlchemy에 변환을 맡긴다.
-    # 매개변수: values - Pydantic이 수집한 원시 설정값
-    # 반환값: 안전하게 구성한 DATABASE_URL을 포함한 설정값
+    # Function Name: build_structured_database_url
+    # Description:
+    # - Build a PostgreSQL URL from complete structured fields, letting SQLAlchemy escape reserved password characters; reject mixed URL/field configuration.
+    # Parameters:
+    # - values (Any): Raw settings values collected by Pydantic before validation.
+    # Returns:
+    # - Original nonmapping or unstructured values, or a copied mapping with the rendered DATABASE_URL.
     @model_validator(mode="before")
     @classmethod
     def build_structured_database_url(cls, values: Any) -> Any:
@@ -288,7 +289,7 @@ class Settings(BaseSettings):
     # 함수역할:
     # - 공공데이터 API 주소가 암호화된 HTTPS 절대주소인지 시작 시점에 검증한다.
     # 매개변수:
-    # - value: 환경변수에서 읽은 외부 API 주소
+    # - value (str): 환경변수에서 읽은 외부 API 주소
     # 반환값:
     # - 앞뒤 공백을 제거한 HTTPS API 주소
     @field_validator(
@@ -305,12 +306,13 @@ class Settings(BaseSettings):
             raise ValueError("External public-data API URL must use HTTPS.")
         return normalized_url
 
-    # 함수이름: validate_trusted_hosts
-    # 함수역할:
-    # - 운영 ASGI에서 사용하는 쉼표 구분 Host 허용 목록을 정규화한다.
-    # - 와일드카드와 빈 설정을 거부해 Host 검증이 우회되지 않게 한다.
-    # 매개변수: value - 쉼표로 구분한 호스트 이름 또는 IP 주소
-    # 반환값: 정규화된 Host 허용 목록
+    # Function Name: validate_trusted_hosts
+    # Description:
+    # - Normalize and deduplicate the comma-separated host allowlist; reject empty lists and the unrestricted wildcard.
+    # Parameters:
+    # - value (str): Comma-separated allowed hostnames or IP addresses.
+    # Returns:
+    # - Lowercase, comma-separated explicit hosts.
     @field_validator("TRUSTED_HOSTS")
     @classmethod
     def validate_trusted_hosts(cls, value: str) -> str:
@@ -319,6 +321,13 @@ class Settings(BaseSettings):
             raise ValueError("TRUSTED_HOSTS requires an explicit host allowlist.")
         return ",".join(dict.fromkeys(hosts))
 
+    # Function Name: trusted_host_list
+    # Description:
+    # - Expose the validated host allowlist as entries suitable for host-checking middleware.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Hostnames or IP addresses split from TRUSTED_HOSTS.
     @property
     def trusted_host_list(self) -> list[str]:
         return self.TRUSTED_HOSTS.split(",")
@@ -327,7 +336,7 @@ class Settings(BaseSettings):
     # 함수역할:
     # - 복약 일정 계산에 사용할 IANA 시간대 이름이 실제로 존재하는지 검증한다.
     # 매개변수:
-    # - value: 환경변수에서 읽은 시간대 이름
+    # - value (str): 환경변수에서 읽은 시간대 이름
     # 반환값:
     # - 앞뒤 공백을 제거한 유효한 IANA 시간대 이름
     @field_validator("APPLICATION_TIME_ZONE")
@@ -340,6 +349,13 @@ class Settings(BaseSettings):
             raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
         return normalized_time_zone
 
+    # Function Name: validate_security_configuration
+    # Description:
+    # - Validate production requirements by runtime role, including credentials, authentication, Redis quotas, catalog refresh mode and PostgreSQL migrations.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - This Settings instance when accepted; raises ValueError for an unsafe production configuration.
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":
         if self.APP_ENV != "production":

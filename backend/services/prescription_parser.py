@@ -104,12 +104,26 @@ TOTAL_DAYS_KEYS = (
 )
 
 
+# Function Name: normalize_text
+# Description:
+# - Trim input, replace colon separators with spaces and collapse repeated whitespace.
+# Parameters:
+# - text (str): Raw prescription field text.
+# Returns:
+# - Normalized single-spaced text, or an empty string for empty input.
 def normalize_text(text: str) -> str:
     text = str(text or "").strip()
     text = text.replace(":", " ")
     return " ".join(text.split())
 
 
+# Function Name: normalize_date
+# Description:
+# - Locate the first year-month-day pattern and validate it as an actual calendar date.
+# Parameters:
+# - text (str): Text that may contain a date separated by periods, slashes or hyphens.
+# Returns:
+# - ISO YYYY-MM-DD text, or None when no valid date is found.
 def normalize_date(text: str) -> str | None:
     match = DATE_PATTERN.search(str(text or ""))
     if not match:
@@ -122,6 +136,13 @@ def normalize_date(text: str) -> str | None:
         return None
 
 
+# Function Name: normalize_prescription_candidates
+# Description:
+# - Read known prescription field aliases, normalize medication rows and deduplicate accepted candidates.
+# Parameters:
+# - data (dict[str, Any]): Decoded prescription-analysis JSON object.
+# Returns:
+# - Hospital name, normalized date, deduplicated candidate list and original medication-row count.
 def normalize_prescription_candidates(
     data: dict[str, Any],
 ) -> tuple[str, str, MedicationCandidateList, int]:
@@ -149,6 +170,13 @@ def normalize_prescription_candidates(
     )
 
 
+# Function Name: normalize_prescription_medication
+# Description:
+# - Normalize one medication object's aliased name and schedule fields; discard missing, unknown or overly long names.
+# Parameters:
+# - raw_item (Any): Unvalidated entry from the prescription medication list.
+# Returns:
+# - MedicationCandidate with normalized fields, or None for an unusable row.
 def normalize_prescription_medication(raw_item: Any) -> MedicationCandidate | None:
     if not isinstance(raw_item, dict):
         return None
@@ -165,6 +193,14 @@ def normalize_prescription_medication(raw_item: Any) -> MedicationCandidate | No
     )
 
 
+# Function Name: _read_first_list
+# Description:
+# - Select the first alias whose value is a list, preserving provider ordering.
+# Parameters:
+# - data (dict[str, Any]): Prescription response object containing alternative list fields.
+# - keys (tuple[str, ...]): Field aliases in priority order.
+# Returns:
+# - The first list value, or an empty list when none is present.
 def _read_first_list(data: dict[str, Any], keys: tuple[str, ...]) -> list[Any]:
     for key in keys:
         value = data.get(key)
@@ -173,6 +209,15 @@ def _read_first_list(data: dict[str, Any], keys: tuple[str, ...]) -> list[Any]:
     return []
 
 
+# Function Name: _read_first_text
+# Description:
+# - Select the first field alias that formats to known, nonempty text.
+# Parameters:
+# - data (dict[str, Any]): Prescription or medication object to inspect.
+# - keys (tuple[str, ...]): Equivalent field names in priority order.
+# - default (str): Fallback when no usable text is found.
+# Returns:
+# - Normalized field text, or default if every alias is absent or unknown.
 def _read_first_text(
     data: dict[str, Any],
     keys: tuple[str, ...],
@@ -186,6 +231,13 @@ def _read_first_text(
     return default
 
 
+# Function Name: _format_value
+# Description:
+# - Convert a structured field to normalized text, delegating floats to finite-number formatting.
+# Parameters:
+# - value (Any): Unvalidated scalar from a prescription field.
+# Returns:
+# - Normalized field text; None becomes an empty string.
 def _format_value(value: Any) -> str:
     if value is None:
         return ""
@@ -194,6 +246,13 @@ def _format_value(value: Any) -> str:
     return normalize_text(str(value))
 
 
+# Function Name: _format_numeric_text
+# Description:
+# - Format finite numbers without unnecessary decimal zeros and suppress NaN or infinity.
+# Parameters:
+# - value (Any): Prescription count or dosage value to format.
+# Returns:
+# - Compact numeric text, normalized nonnumeric fallback text, or an empty string for nonfinite numbers.
 def _format_numeric_text(value: Any) -> str:
     try:
         number = float(value)
@@ -206,6 +265,13 @@ def _format_numeric_text(value: Any) -> str:
     return str(number).rstrip("0").rstrip(".")
 
 
+# Function Name: _clean_medication_name
+# Description:
+# - Remove list markers and known Korean/English medication-name labels, then normalize remaining whitespace.
+# Parameters:
+# - name (str): Raw candidate medication-name text.
+# Returns:
+# - Cleaned medication name without wrapper labels or leading markers.
 def _clean_medication_name(name: str) -> str:
     cleaned_name = LEADING_MARKER_PATTERN.sub("", normalize_text(name))
     for label in (
@@ -219,6 +285,14 @@ def _clean_medication_name(name: str) -> str:
     return normalize_text(cleaned_name).strip(": ").strip()
 
 
+# Function Name: _remove_literal_case_insensitive
+# Description:
+# - Remove case-insensitive literal labels using original-string spans to avoid casefold index drift.
+# Parameters:
+# - text (str): Original text whose character positions must remain stable during scanning.
+# - literal (str): ASCII or Korean label to remove without regex interpretation.
+# Returns:
+# - Text with matching literal occurrences removed; unchanged when the literal is empty.
 def _remove_literal_case_insensitive(text: str, literal: str) -> str:
     """Remove ASCII/Korean labels without transformed-string index drift."""
 
@@ -238,5 +312,12 @@ def _remove_literal_case_insensitive(text: str, literal: str) -> str:
     return "".join(output)
 
 
+# Function Name: _is_unknown
+# Description:
+# - Compare normalized lowercase field text with known missing-value sentinels.
+# Parameters:
+# - value (str): Normalized or raw prescription field text.
+# Returns:
+# - True for blank or unknown markers such as null, n/a or information unavailable.
 def _is_unknown(value: str) -> bool:
     return normalize_text(value).lower() in UNKNOWN_TEXTS

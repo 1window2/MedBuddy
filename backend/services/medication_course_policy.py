@@ -17,20 +17,21 @@ MAX_DAILY_FREQUENCY = 4
 
 
 # Class Name: MedicationCoursePolicy
-# Role: Centralizes active-course and retention date calculations.
+# Role:
+# - Centralizes active-course and retention date calculations.
 # Responsibilities:
-#   - Read a saved medication start date from prescription or created date.
-#   - Extract count values from prescription-derived schedule labels.
-#   - Decide whether a medication is active on a requested date.
-#   - Decide whether a medication has passed a retention window.
+# - Read a saved medication start date from prescription or created date.
+# - Extract count values from prescription-derived schedule labels.
+# - Decide whether a medication is active on a requested date.
+# - Decide whether a medication has passed a retention window.
 class MedicationCoursePolicy:
     # Function Name: is_active_during
     # Description:
     # - Checks whether a saved medication overlaps an inclusive date window.
     # Parameters:
-    # - medication: Saved medication-like object with date and total_days fields.
-    # - window_start: First date in the requested schedule window.
-    # - window_end: Last date in the requested schedule window.
+    # - medication (Any): Saved medication-like object with date and total_days fields.
+    # - window_start (date): First date in the requested schedule window.
+    # - window_end (date): Last date in the requested schedule window.
     # Returns:
     # - True when any day of the medication course overlaps the window.
     def is_active_during(
@@ -54,8 +55,8 @@ class MedicationCoursePolicy:
     # Description:
     # - Checks whether a saved medication should be visible for a schedule date.
     # Parameters:
-    # - medication: Saved medication-like object with date and total_days fields.
-    # - target_date: Date used for active-course evaluation.
+    # - medication (Any): Saved medication-like object with date and total_days fields.
+    # - target_date (date): Date used for active-course evaluation.
     # Returns:
     # - True when the medication course includes the target date.
     def is_active_on(self, medication: Any, target_date: date) -> bool:
@@ -69,13 +70,13 @@ class MedicationCoursePolicy:
 
     # Function Name: is_expired_after
     # Description:
-    # - Checks whether a medication course ended more than retention_days ago.
+    # - Check whether a dated medication course has reached its configured post-course deletion date.
     # Parameters:
-    # - medication: Saved medication-like object with date and total_days fields.
-    # - target_date: Date used for retention evaluation.
-    # - retention_days: Number of days to keep a medication after course end.
+    # - medication (Any): Saved medication-like object with date and total_days fields.
+    # - target_date (date): Date used for retention evaluation.
+    # - retention_days (int): Number of days to keep a medication after course end.
     # Returns:
-    # - True when the medication is past the retention window.
+    # - True on or after course end plus retention_days; False when no positive duration can be read.
     def is_expired_after(
         self,
         medication: Any,
@@ -95,8 +96,8 @@ class MedicationCoursePolicy:
     # Description:
     # - Prefers prescription_date and falls back to created_date.
     # Parameters:
-    # - medication: Saved medication-like object.
-    # - fallback_date: Date used when no valid date exists.
+    # - medication (Any): Saved medication-like object.
+    # - fallback_date (date): Date used when no valid date exists.
     # Returns:
     # - Parsed medication course start date.
     def read_start_date(self, medication: Any, fallback_date: date) -> date:
@@ -117,9 +118,9 @@ class MedicationCoursePolicy:
     # Description:
     # - Extracts the first integer duration from a total_days or frequency label.
     # Parameters:
-    # - raw_total_days: Raw label such as "7 days" or "3 times".
+    # - raw_total_days (str | None): Raw label such as "7 days" or "3 times".
     # Returns:
-    # - Parsed integer, or 0 when no number is available.
+    # - Positive duration capped at MAX_MEDICATION_COURSE_DAYS, or 0 for absent or nonpositive counts.
     def read_total_days(self, raw_total_days: str | None) -> int:
         return self._read_schedule_count(
             raw_total_days,
@@ -130,9 +131,9 @@ class MedicationCoursePolicy:
     # Description:
     # - Extracts the dose count from a daily_frequency label.
     # Parameters:
-    # - raw_frequency: Raw label such as "3 times" or "1일 3회".
+    # - raw_frequency (str | None): Raw label such as "3 times" or "1일 3회".
     # Returns:
-    # - Parsed integer, or 0 when no number is available.
+    # - Positive daily frequency capped at MAX_DAILY_FREQUENCY, or 0 when no valid count is found.
     def read_frequency_count(self, raw_frequency: str | None) -> int:
         if not raw_frequency:
             return 0
@@ -148,6 +149,14 @@ class MedicationCoursePolicy:
             return 0
         return self._bounded_positive_count(matches[-1], MAX_DAILY_FREQUENCY)
 
+    # Function Name: _read_schedule_count
+    # Description:
+    # - Extract the first signed integer in a schedule label and enforce a positive upper-bounded count.
+    # Parameters:
+    # - raw_value (str | None): Prescription-derived duration or count label.
+    # - maximum (int): Largest positive schedule count permitted by the caller.
+    # Returns:
+    # - The capped positive count, or 0 for missing text, no match or a nonpositive number.
     def _read_schedule_count(
         self,
         raw_value: str | None,
@@ -161,6 +170,14 @@ class MedicationCoursePolicy:
             return 0
         return self._bounded_positive_count(match.group(0), maximum)
 
+    # Function Name: _bounded_positive_count
+    # Description:
+    # - Parse integer text, reject nonpositive values and clamp valid counts to the domain maximum.
+    # Parameters:
+    # - raw_value (str): Integer text extracted from a schedule label.
+    # - maximum (int): Largest permitted count.
+    # Returns:
+    # - A positive bounded count, or 0 if parsing fails or the value is nonpositive.
     @staticmethod
     def _bounded_positive_count(raw_value: str, maximum: int) -> int:
         try:

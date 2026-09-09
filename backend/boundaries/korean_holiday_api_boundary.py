@@ -16,6 +16,15 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
+# Class Name: KoreanHolidayAPI
+# Role:
+# - Retrieves Korean legal holiday dates with an in-process monthly cache.
+# Responsibilities:
+# - Serialize monthly cache fills, parse government XML dates and classify upstream failures.
+# Attributes:
+# - _cache (dict[tuple[int, int], frozenset[date]]): Holidays by year and month.
+# - _client (AsyncClient | None): Borrowed or owned HTTP transport.
+# - _lock (asyncio.Lock): Prevents duplicate monthly fetches.
 class KoreanHolidayAPI:
     """Month-cached boundary for Korean legal holiday dates."""
 
@@ -24,16 +33,38 @@ class KoreanHolidayAPI:
         "SpcdeInfoService/getRestDeInfo"
     )
 
+    # Function Name: __init__
+    # Description:
+    # - Set up the monthly cache and lock while recording whether this boundary owns its HTTP client.
+    # Parameters:
+    # - client (httpx.AsyncClient | None): Optional borrowed HTTP client; omitted to create an owned client.
+    # Returns:
+    # - None; the client is created lazily when not injected.
     def __init__(self, *, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
         self._owns_client = client is None
         self._lock = asyncio.Lock()
         self._cache: dict[tuple[int, int], frozenset[date]] = {}
 
+    # Function Name: isHoliday
+    # Description:
+    # - Check whether a date belongs to the holiday set for its month.
+    # Parameters:
+    # - value (date): Calendar date to check.
+    # Returns:
+    # - True when the date appears in the fetched or cached holiday set.
     async def isHoliday(self, value: date) -> bool:
         dates = await self.fetchMonth(value.year, value.month)
         return value in dates
 
+    # Function Name: fetchMonth
+    # Description:
+    # - Return the monthly holiday set, fetching it once under the cache-fill lock when absent.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # Returns:
+    # - Immutable holiday dates for the requested month.
     async def fetchMonth(self, year: int, month: int) -> frozenset[date]:
         cache_key = (year, month)
         dates = self._cache.get(cache_key)
@@ -45,11 +76,26 @@ class KoreanHolidayAPI:
                     self._cache[cache_key] = dates
         return dates
 
+    # Function Name: close
+    # Description:
+    # - Close and release an internally created HTTP client without closing a borrowed client.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def close(self) -> None:
         if self._owns_client and self._client is not None:
             await self._client.aclose()
             self._client = None
 
+    # Function Name: _fetch_month
+    # Description:
+    # - Read the government special-day XML response, reject provider failures and parse eight-digit dates.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # Returns:
+    # - Immutable holiday dates; raises PharmacyApiUnavailableError on transport or provider failure.
     async def _fetch_month(self, year: int, month: int) -> frozenset[date]:
         client = self._client
         if client is None:
@@ -92,7 +138,21 @@ class KoreanHolidayAPI:
         return frozenset(holidays)
 
 
+# Class Name: KoreanHolidayCache
+# Role:
+# - Defines persistent monthly holiday snapshot storage.
+# Responsibilities:
+# - Distinguish a cached empty month from a missing or expired snapshot and replace complete monthly data.
 class KoreanHolidayCache(Protocol):
+    # Function Name: get_cached_korean_holidays
+    # Description:
+    # - Look up a monthly holiday snapshot within the caller's allowed cache age.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
+    # Returns:
+    # - Cached dates, including an empty set for a known empty month, or None if unavailable or stale.
     def get_cached_korean_holidays(
         self,
         year: int,
@@ -101,6 +161,15 @@ class KoreanHolidayCache(Protocol):
         max_age: timedelta,
     ) -> frozenset[date] | None: ...
 
+    # Function Name: replace_korean_holidays
+    # Description:
+    # - Replace the persisted snapshot for one calendar month, including months with no holidays.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # - holidays (frozenset[date]): Complete set of legal holiday dates for the month.
+    # Returns:
+    # - None; the monthly snapshot is stored.
     def replace_korean_holidays(
         self,
         year: int,
@@ -109,12 +178,28 @@ class KoreanHolidayCache(Protocol):
     ) -> None: ...
 
 
+# Class Name: PersistentKoreanHolidayLookup
+# Role:
+# - Resolves holidays through persistent cache with bounded stale fallback.
+# Responsibilities:
+# - Prefer data at most 30 days old; refresh upstream and allow a 730-day snapshot during provider outages.
+# Attributes:
+# - _cache (KoreanHolidayCache): Persistent monthly snapshots.
+# - _upstream (KoreanHolidayAPI): Government holiday fetcher.
 class PersistentKoreanHolidayLookup:
     """Database-backed calendar lookup with a bounded stale fallback."""
 
     _FRESH_MAX_AGE = timedelta(days=30)
     _STALE_MAX_AGE = timedelta(days=730)
 
+    # Function Name: __init__
+    # Description:
+    # - Bind persistent storage and the upstream holiday boundary for cache-first lookups.
+    # Parameters:
+    # - cache (KoreanHolidayCache): Persistent monthly holiday cache.
+    # - upstream (KoreanHolidayAPI): Government holiday API used on a cache miss.
+    # Returns:
+    # - None; dependencies are retained without fetching data.
     def __init__(
         self,
         *,
@@ -124,6 +209,13 @@ class PersistentKoreanHolidayLookup:
         self._cache = cache
         self._upstream = upstream
 
+    # Function Name: isHoliday
+    # Description:
+    # - Check a fresh snapshot, refresh and persist on a miss, or use bounded stale data when the provider is unavailable.
+    # Parameters:
+    # - value (date): Calendar date whose legal-holiday status is needed.
+    # Returns:
+    # - Whether the date is a holiday; propagates unavailability when no acceptable snapshot exists.
     async def isHoliday(self, value: date) -> bool:
         cached = self._cache.get_cached_korean_holidays(
             value.year,

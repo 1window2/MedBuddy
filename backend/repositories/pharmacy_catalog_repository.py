@@ -18,26 +18,70 @@ from entities.pharmacy_catalog_entity import (
 )
 
 
+# 클래스명: PharmacyCatalogRepository
+# 역할:
+# - 전국 약국 카탈로그와 날짜별 영업·공휴일 캐시의 DB 접근을 맡는다.
+# 주요 책임:
+# - 근접 후보를 좌표 사각형으로 추리고 카탈로그 및 공식 지정 정보를 갱신한다.
+# - 공휴일 캐시는 조회 시각을 별도로 기록하여 빈 결과와 캐시 부재를 구분한다.
+# 속성:
+# - db (Session): 카탈로그 조회와 교체에 사용할 SQLAlchemy 세션.
 class PharmacyCatalogRepository:
     """Database adapter for the replaceable public pharmacy catalogue."""
 
+    # Function Name: __init__
+    # Description:
+    # - Bind the caller's database session for pharmacy catalog and holiday-cache operations.
+    # Parameters:
+    # - db (Session): Caller-provided SQLAlchemy session for persisted records.
+    # Returns:
+    # - None; session lifetime remains with the caller.
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    # Function Name: count
+    # Description:
+    # - Count all persisted nationwide pharmacy records without loading catalog entries.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Number of pharmacy catalog rows.
     def count(self) -> int:
         return self.db.query(PharmacyCatalogRecord).count()
 
+    # 함수이름: find_by_id
+    # 함수역할:
+    # - 공유 메시지에 사용할 약국 행을 기본키로 찾고 경계용 엔트리로 변환한다.
+    # 매개변수:
+    # - pharmacy_id (str): 조회할 공공 약국 식별자.
+    # 반환값:
+    # - 약국 카탈로그 엔트리 또는 ID가 없으면 None.
     def find_by_id(self, pharmacy_id: str) -> PharmacyCatalogEntry | None:
         """공유 메시지에 사용할 약국 한 건을 식별자로 조회한다."""
         row = self.db.get(PharmacyCatalogRecord, pharmacy_id)
         return self._to_entry(row) if row is not None else None
 
+    # 함수이름: latest_source_updated_at
+    # 함수역할:
+    # - 현재 카탈로그 행의 공공데이터 갱신 시각 중 최댓값을 조회한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 가장 최근 갱신 시각 또는 카탈로그가 비어 있으면 None.
     def latest_source_updated_at(self) -> datetime | None:
         """현재 카탈로그에서 가장 최근의 공공데이터 갱신 시각을 반환한다."""
         return self.db.query(
             func.max(PharmacyCatalogRecord.source_updated_at)
         ).scalar()
 
+    # Function Name: is_fresh
+    # Description:
+    # - Require the minimum catalog size and compare the newest source timestamp with the allowed age.
+    # Parameters:
+    # - minimum_rows (int): Minimum row count required for a usable nationwide snapshot.
+    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
+    # Returns:
+    # - True when enough rows exist and the newest source timestamp meets the cutoff.
     def is_fresh(self, *, minimum_rows: int, max_age: timedelta) -> bool:
         if self.count() < minimum_rows:
             return False
@@ -49,11 +93,27 @@ class PharmacyCatalogRepository:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
         return newest_update >= cutoff
 
+    # Function Name: latest_updated_at
+    # Description:
+    # - Read the maximum source-update timestamp without materializing pharmacy entries.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Newest catalog source timestamp, or None when no timestamp exists.
     def latest_updated_at(self) -> datetime | None:
         return self.db.query(
             func.max(PharmacyCatalogRecord.source_updated_at)
         ).scalar()
 
+    # Function Name: search_nearby_candidates
+    # Description:
+    # - Select a latitude/longitude bounding box covering the search radius, adjusting longitude span for latitude.
+    # Parameters:
+    # - latitude (float): WGS84 latitude of the search center.
+    # - longitude (float): WGS84 longitude of the search center.
+    # - max_distance_km (float): Radius in kilometers used to construct the bounding box.
+    # Returns:
+    # - Candidate entries in the box; exact radial distance filtering remains with the caller.
     def search_nearby_candidates(
         self,
         *,
@@ -80,6 +140,14 @@ class PharmacyCatalogRepository:
         )
         return [self._to_entry(row) for row in rows]
 
+    # Function Name: replace_all
+    # Description:
+    # - Replace the full catalog using bulk mappings; commit here or flush into the caller's transaction.
+    # Parameters:
+    # - entries (list[PharmacyCatalogEntry]): Complete normalized pharmacy snapshot to persist.
+    # - commit (bool): Whether to commit and own rollback, or only flush for the caller.
+    # Returns:
+    # - None; rolls back on failure only when this operation owns the commit.
     def replace_all(
         self,
         entries: list[PharmacyCatalogEntry],
@@ -114,6 +182,13 @@ class PharmacyCatalogRepository:
                 self.db.rollback()
             raise
 
+    # Function Name: apply_official_designations_by_phone
+    # Description:
+    # - Match designation overlays by digit-only phone and normalized name, clearing unmatched overlays without changing source timestamps.
+    # Parameters:
+    # - designations_by_phone (dict[str, dict[str, object]]): Official late-night designations keyed by normalized telephone digits.
+    # Returns:
+    # - Number of matched pharmacy designations; commits updates or rolls back on failure.
     def apply_official_designations_by_phone(
         self,
         designations_by_phone: dict[str, dict[str, object]],
@@ -161,6 +236,13 @@ class PharmacyCatalogRepository:
             raise
         return matched
 
+    # 함수이름: _to_entry
+    # 함수역할:
+    # - 저장된 영업시간 JSON을 요일별 시간 쌍으로 바꾸고 누락된 선택 필드를 안전한 기본값으로 채운다.
+    # 매개변수:
+    # - row (PharmacyCatalogRecord): 변환할 영속 약국 카탈로그 행.
+    # 반환값:
+    # - DB 행에서 구성한 PharmacyCatalogEntry.
     @staticmethod
     def _to_entry(row: PharmacyCatalogRecord) -> PharmacyCatalogEntry:
         raw_hours = row.weekly_hours if isinstance(row.weekly_hours, dict) else {}
@@ -184,6 +266,14 @@ class PharmacyCatalogRepository:
             source_updated_at=row.source_updated_at,
         )
 
+    # Function Name: get_cached_holiday_schedules
+    # Description:
+    # - Require a fresh date-fetch marker before reading the pharmacy holiday schedules for that date.
+    # Parameters:
+    # - value (date): Exact date whose pharmacy schedules are requested.
+    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
+    # Returns:
+    # - Schedules keyed by pharmacy ID, an empty dict for a known empty roster, or None for missing/stale cache.
     def get_cached_holiday_schedules(
         self,
         value: date,
@@ -212,6 +302,14 @@ class PharmacyCatalogRepository:
             for row in rows
         }
 
+    # Function Name: replace_holiday_schedules
+    # Description:
+    # - Replace one date's holiday roster and commit a fetch marker even when the schedule list is empty.
+    # Parameters:
+    # - value (date): Date whose existing schedule rows are replaced.
+    # - schedules (list[PharmacyHolidaySchedule]): Complete holiday schedule snapshot for that date.
+    # Returns:
+    # - None; rolls back and re-raises on failure.
     def replace_holiday_schedules(
         self,
         value: date,
@@ -244,6 +342,15 @@ class PharmacyCatalogRepository:
             self.db.rollback()
             raise
 
+    # Function Name: get_cached_korean_holidays
+    # Description:
+    # - Validate the monthly fetch timestamp and read legal-holiday dates within the month's exclusive upper bound.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
+    # Returns:
+    # - Immutable cached dates, including an empty set, or None for a missing or expired fetch marker.
     def get_cached_korean_holidays(
         self,
         year: int,
@@ -270,6 +377,15 @@ class PharmacyCatalogRepository:
         )
         return frozenset(row.holiday_date for row in rows)
 
+    # Function Name: replace_korean_holidays
+    # Description:
+    # - Replace one month's legal-holiday rows and update its fetch count and timestamp in one transaction.
+    # Parameters:
+    # - year (int): Calendar year of the requested holiday month.
+    # - month (int): Calendar month, from 1 through 12.
+    # - holidays (frozenset[date]): Complete set of legal holiday dates for the month.
+    # Returns:
+    # - None; commits the snapshot or rolls back and re-raises on failure.
     def replace_korean_holidays(
         self,
         year: int,

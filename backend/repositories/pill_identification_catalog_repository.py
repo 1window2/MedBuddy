@@ -13,18 +13,46 @@ from entities.pill_identification_entity import (
 )
 
 
+# Function Name: open_pill_catalog_session
+# Description:
+# - Open a session against the shared application database for pill catalog work.
+# Parameters:
+# - None.
+# Returns:
+# - A new SQLAlchemy Session that the caller must close.
 def open_pill_catalog_session() -> Session:
     """Opens the shared application-database session used by the catalog."""
 
     return SessionLocal()
 
 
+# Class Name: PillIdentificationCatalogRepository
+# Role:
+# - Persists replaceable public MFDS pill-reference snapshots.
+# Responsibilities:
+# - Read lightweight ordered entries, check snapshot age and size, expose reconciliation IDs and bulk-replace data.
+# Attributes:
+# - db (Session): Caller-managed catalog transaction session.
 class PillIdentificationCatalogRepository:
     """Database adapter for the replaceable public pill-reference catalog."""
 
+    # Function Name: __init__
+    # Description:
+    # - Retain the caller's session for reference-catalog reads and replacements.
+    # Parameters:
+    # - db (Session): Caller-provided SQLAlchemy session for persisted records.
+    # Returns:
+    # - None; no connection lifecycle or transaction is changed.
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    # Function Name: list_all
+    # Description:
+    # - Read only public reference columns in item-sequence order and normalize nullable descriptive fields to empty strings.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Ordered PillCatalogEntry list for the persisted snapshot.
     def list_all(self) -> list[PillCatalogEntry]:
         rows = (
             self.db.query(
@@ -60,6 +88,14 @@ class PillIdentificationCatalogRepository:
             for row in rows
         ]
 
+    # Function Name: is_fresh
+    # Description:
+    # - Require enough catalog rows and ensure even the oldest update timestamp lies within the allowed age.
+    # Parameters:
+    # - minimum_rows (int): Minimum reference count required before a snapshot is usable.
+    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
+    # Returns:
+    # - True for a sufficiently large snapshot whose oldest row is fresh; False when empty or stale.
     def is_fresh(self, *, minimum_rows: int, max_age: timedelta) -> bool:
         row_count = self.db.query(PillIdentificationReference).count()
         if row_count < minimum_rows:
@@ -74,12 +110,27 @@ class PillIdentificationCatalogRepository:
         cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
         return oldest_update >= cutoff
 
+    # Function Name: list_item_sequences
+    # Description:
+    # - Read the exact stored public item identifiers for upstream snapshot reconciliation.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Set of persisted item-sequence strings.
     def list_item_sequences(self) -> set[str]:
         """Returns the exact persisted public identifiers for reconciliation."""
 
         rows = self.db.query(PillIdentificationReference.item_seq).all()
         return {str(row.item_seq) for row in rows}
 
+    # Function Name: replace_all
+    # Description:
+    # - Replace all pill-reference rows using bulk mappings, committing or flushing according to transaction ownership.
+    # Parameters:
+    # - entries (list[PillCatalogEntry]): Complete normalized MFDS pill-reference snapshot.
+    # - commit (bool): Whether to commit and own rollback, or only flush for the caller's transaction.
+    # Returns:
+    # - None; rolls back on error only when commit is enabled.
     def replace_all(
         self,
         entries: list[PillCatalogEntry],
