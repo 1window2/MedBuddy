@@ -22,6 +22,21 @@ class _EmptyCheckSchedule extends CheckSchedule {
   }
 }
 
+class _RecordingCheckSchedule extends _EmptyCheckSchedule {
+  String? updatedSlotKey;
+  bool? updatedStatus;
+
+  @override
+  Future<List<MedicationSchedule>> updateMedicationSlotStatus(
+    String slotKey,
+    bool medicationStatus,
+  ) async {
+    updatedSlotKey = slotKey;
+    updatedStatus = medicationStatus;
+    return const [];
+  }
+}
+
 class _EmptySetNotification extends SetNotification {
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
@@ -65,6 +80,15 @@ class _NoopNotificationService implements NotificationService {
   Future<void> cancelAllMedicationReminders() async {}
 
   @override
+  Future<void> snoozeMedicationReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    String language = 'ko',
+    Duration delay = const Duration(minutes: 10),
+  }) async {}
+
+  @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
@@ -82,6 +106,27 @@ class _NoopNotificationService implements NotificationService {
     String? messagePreview,
     String? slotKey,
   }) async {}
+}
+
+class _RecordingNotificationService extends _NoopNotificationService {
+  int? snoozedId;
+  String? snoozedSlotKey;
+  String? snoozedSlotTitle;
+  Duration? snoozedDelay;
+
+  @override
+  Future<void> snoozeMedicationReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    String language = 'ko',
+    Duration delay = const Duration(minutes: 10),
+  }) async {
+    snoozedId = id;
+    snoozedSlotKey = slotKey;
+    snoozedSlotTitle = slotTitle;
+    snoozedDelay = delay;
+  }
 }
 
 void main() {
@@ -118,6 +163,34 @@ void main() {
     );
     expect(selections.single.slotKey, 'evening');
     expect(selections.single.patientHash, isNull);
+  });
+
+  test('schedule notification actions retain the slot and notification id', () {
+    final taken = NotificationService.selectionFromPayload(
+      'schedule:evening:29',
+      actionId: NotificationService.markSlotTakenActionId,
+      notificationId: 900,
+    );
+    final snoozed = NotificationService.selectionFromPayload(
+      'schedule:bedtime:31',
+      actionId: NotificationService.snoozeTenMinutesActionId,
+    );
+
+    expect(taken?.action, MedicationNotificationAction.markSlotTaken);
+    expect(taken?.slotKey, 'evening');
+    expect(taken?.notificationId, 900);
+    expect(snoozed?.action, MedicationNotificationAction.snoozeTenMinutes);
+    expect(snoozed?.slotKey, 'bedtime');
+    expect(snoozed?.notificationId, 31);
+  });
+
+  test('unknown notification actions retain normal open behavior', () {
+    final selection = NotificationService.selectionFromPayload(
+      'schedule:morning:17',
+      actionId: 'untrusted-action',
+    );
+
+    expect(selection?.action, MedicationNotificationAction.open);
   });
 
   test('a cold-start notification is delivered after handler registration', () {
@@ -216,6 +289,81 @@ void main() {
 
     expect(navigatorKey.currentState?.canPop(), isTrue);
     expect(find.byType(CheckScheduleUI), findsOneWidget);
+  });
+
+  testWidgets('the notification action marks the whole dose slot as taken', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final schedule = _RecordingCheckSchedule();
+    MedicationNotificationSelectionHandler? selectionHandler;
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        notificationSelectionRegistrar: (handler) {
+          selectionHandler = handler;
+        },
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: schedule,
+          setNotification: _EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: _NoopNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    selectionHandler!(
+      const MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: 'evening',
+        notificationId: 29,
+        action: MedicationNotificationAction.markSlotTaken,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(schedule.updatedSlotKey, 'evening');
+    expect(schedule.updatedStatus, isTrue);
+    expect(find.byType(CheckScheduleUI), findsNothing);
+  });
+
+  testWidgets('the notification action snoozes the same dose for ten minutes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final notifications = _RecordingNotificationService();
+    MedicationNotificationSelectionHandler? selectionHandler;
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        notificationSelectionRegistrar: (handler) {
+          selectionHandler = handler;
+        },
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: _EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: notifications,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    selectionHandler!(
+      const MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: 'bedtime',
+        notificationId: 31,
+        action: MedicationNotificationAction.snoozeTenMinutes,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(notifications.snoozedId, 31);
+    expect(notifications.snoozedSlotKey, 'bedtime');
+    expect(notifications.snoozedSlotTitle, '취침 전');
+    expect(notifications.snoozedDelay, const Duration(minutes: 10));
   });
 
   testWidgets('sign-out cancels local medication reminders first', (

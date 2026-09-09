@@ -15,6 +15,8 @@ enum MedicationNotificationDestination {
   linkedChat,
 }
 
+enum MedicationNotificationAction { open, markSlotTaken, snoozeTenMinutes }
+
 // 클래스명: MedicationNotificationSelection
 // 역할: 사용자가 누른 알림의 이동 화면과 선택 환자를 함께 전달한다.
 class MedicationNotificationSelection {
@@ -22,12 +24,16 @@ class MedicationNotificationSelection {
   final String? patientHash;
   final int? linkId;
   final String? slotKey;
+  final int? notificationId;
+  final MedicationNotificationAction action;
 
   const MedicationNotificationSelection({
     required this.destination,
     this.patientHash,
     this.linkId,
     this.slotKey,
+    this.notificationId,
+    this.action = MedicationNotificationAction.open,
   });
 }
 
@@ -47,6 +53,8 @@ class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
+  static const String markSlotTakenActionId = 'medbuddy_mark_slot_taken';
+  static const String snoozeTenMinutesActionId = 'medbuddy_snooze_10_minutes';
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
@@ -100,8 +108,10 @@ class NotificationService {
   // 반환값:
   // - 유효한 이동 대상과 환자 hash, 형식이 잘못됐으면 null
   static MedicationNotificationSelection? selectionFromPayload(
-    String? payload,
-  ) {
+    String? payload, {
+    String? actionId,
+    int? notificationId,
+  }) {
     final segments = payload?.split(':') ?? const <String>[];
     if (segments.length == 3 &&
         segments[0] == 'schedule' &&
@@ -113,6 +123,14 @@ class NotificationService {
       return MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
         slotKey: segments[1].trim(),
+        notificationId: notificationId ?? notificationID,
+        action: switch (actionId) {
+          markSlotTakenActionId =>
+            MedicationNotificationAction.markSlotTaken,
+          snoozeTenMinutesActionId =>
+            MedicationNotificationAction.snoozeTenMinutes,
+          _ => MedicationNotificationAction.open,
+        },
       );
     }
     if (segments.length == 2 &&
@@ -144,8 +162,16 @@ class NotificationService {
     return null;
   }
 
-  static void handleNotificationPayload(String? payload) {
-    final selection = selectionFromPayload(payload);
+  static void handleNotificationPayload(
+    String? payload, {
+    String? actionId,
+    int? notificationId,
+  }) {
+    final selection = selectionFromPayload(
+      payload,
+      actionId: actionId,
+      notificationId: notificationId,
+    );
     if (selection == null) {
       return;
     }
@@ -196,7 +222,12 @@ class NotificationService {
       _isInitialized = true;
 
       if (launchDetails?.didNotificationLaunchApp ?? false) {
-        handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+        final response = launchDetails?.notificationResponse;
+        handleNotificationPayload(
+          response?.payload,
+          actionId: response?.actionId,
+          notificationId: response?.id,
+        );
       }
     } catch (_) {
       _initializationFuture = null;
@@ -205,7 +236,11 @@ class NotificationService {
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
-    handleNotificationPayload(response.payload);
+    handleNotificationPayload(
+      response.payload,
+      actionId: response.actionId,
+      notificationId: response.id,
+    );
   }
 
   // 함수명: requestPermission
@@ -450,12 +485,63 @@ class NotificationService {
               : 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
           priority: Priority.high,
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              markSlotTakenActionId,
+              _isEnglish(language) ? 'Taken' : '복용했어요',
+              showsUserInterface: true,
+            ),
+            AndroidNotificationAction(
+              snoozeTenMinutesActionId,
+              _isEnglish(language) ? 'Remind in 10 min' : '10분 후 다시 알림',
+              showsUserInterface: true,
+            ),
+          ],
         ),
         iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
       payload: 'schedule:$slotKey:$id',
     );
+  }
+
+  // 함수명: snoozeMedicationReminder
+  // 역할:
+  // - 알림 액션 한 번으로 같은 시간대 복약 알림을 10분 뒤 다시 예약한다.
+  // - 약 이름은 다시 노출하지 않아 잠금 화면 개인정보 설정과 무관하게 안전한 문구를 사용한다.
+  Future<void> snoozeMedicationReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    String language = 'ko',
+    Duration delay = const Duration(minutes: 10),
+  }) async {
+    await initialize();
+    final scheduledDate = timezone.TZDateTime.now(timezone.local).add(delay);
+    final body = _isEnglish(language)
+        ? 'Please check your scheduled medication.'
+        : '예정된 복약을 확인해 주세요.';
+    try {
+      await _scheduleWithMode(
+        id: id,
+        slotKey: slotKey,
+        slotTitle: slotTitle,
+        language: language,
+        body: body,
+        scheduledDate: scheduledDate,
+        scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } on PlatformException {
+      await _scheduleWithMode(
+        id: id,
+        slotKey: slotKey,
+        slotTitle: slotTitle,
+        language: language,
+        body: body,
+        scheduledDate: scheduledDate,
+        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    }
   }
 
   // 함수명: cancelReminder

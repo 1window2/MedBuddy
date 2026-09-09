@@ -1008,6 +1008,15 @@ class _FakeNotificationService implements NotificationService {
   }
 
   @override
+  Future<void> snoozeMedicationReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    String language = 'ko',
+    Duration delay = const Duration(minutes: 10),
+  }) async {}
+
+  @override
   Future<void> showCaregiverAlert({
     required int id,
     required String title,

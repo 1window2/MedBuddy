@@ -386,6 +386,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     MedicationNotificationSelection selection,
   ) {
     if (selection.destination == MedicationNotificationDestination.schedule) {
+      if (selection.action != MedicationNotificationAction.open) {
+        _handleMedicationNotificationActionWhenReady(selection);
+        return;
+      }
       final navigator = _navigatorKey.currentState;
       if (navigator != null) {
         _openSchedule(navigator, initialSlotKey: selection.slotKey);
@@ -436,6 +440,120 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         _openCaregiverSchedule(mountedNavigator, patientHash);
       }
     });
+  }
+
+  // 함수명: _handleMedicationNotificationActionWhenReady
+  // 역할:
+  // - 잠금 화면의 복약 알림 액션을 추가 화면 조작 없이 기존 일정 API에 반영한다.
+  // - 앱이 막 시작된 경우 Provider가 준비된 다음 프레임에 한 번 다시 처리한다.
+  void _handleMedicationNotificationActionWhenReady(
+    MedicationNotificationSelection selection,
+  ) {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _handleMedicationNotificationActionWhenReady(selection);
+        }
+      });
+      return;
+    }
+    unawaited(_performMedicationNotificationAction(navigator, selection));
+  }
+
+  Future<void> _performMedicationNotificationAction(
+    NavigatorState navigator,
+    MedicationNotificationSelection selection,
+  ) async {
+    final slotKey = selection.slotKey?.trim().toLowerCase() ?? '';
+    if (slotKey.isEmpty) {
+      return;
+    }
+    final viewModel = navigator.context.read<MedBuddyViewModel>();
+    final language = viewModel.userSetting.language;
+    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    var succeeded = false;
+    var canUndo = false;
+
+    switch (selection.action) {
+      case MedicationNotificationAction.markSlotTaken:
+        succeeded = await viewModel.requestMedicationSlotStatusUpdate(
+          slotKey,
+          true,
+        );
+        canUndo = succeeded;
+        break;
+      case MedicationNotificationAction.snoozeTenMinutes:
+        final notificationId = selection.notificationId;
+        if (notificationId == null || notificationId < 0) {
+          return;
+        }
+        try {
+          await viewModel.notificationService.snoozeMedicationReminder(
+            id: notificationId,
+            slotKey: slotKey,
+            slotTitle: MedicationReminderRefreshService.slotTitle(
+              slotKey,
+              language,
+            ),
+            language: language,
+          );
+          succeeded = true;
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'MedBuddy medication notifications',
+              context: ErrorDescription('snoozing a medication reminder'),
+            ),
+          );
+        }
+        break;
+      case MedicationNotificationAction.open:
+        return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.maybeOf(navigator.context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          switch (selection.action) {
+            MedicationNotificationAction.markSlotTaken => succeeded
+                ? (isEnglish
+                      ? 'The scheduled medications were marked as taken.'
+                      : '예정된 약을 모두 복용 완료로 기록했습니다.')
+                : (isEnglish
+                      ? 'Could not save medication completion.'
+                      : '복약 완료를 저장하지 못했습니다.'),
+            MedicationNotificationAction.snoozeTenMinutes => succeeded
+                ? (isEnglish
+                      ? 'We will remind you again in 10 minutes.'
+                      : '10분 후 다시 알려드릴게요.')
+                : (isEnglish
+                      ? 'Could not schedule another reminder.'
+                      : '다시 알림을 예약하지 못했습니다.'),
+            MedicationNotificationAction.open => '',
+          },
+        ),
+        duration: Duration(seconds: canUndo ? 5 : 2),
+        persist: false,
+        action: canUndo
+            ? SnackBarAction(
+                label: isEnglish ? 'Undo' : '실행 취소',
+                onPressed: () {
+                  unawaited(
+                    viewModel.requestMedicationSlotStatusUpdate(slotKey, false),
+                  );
+                },
+              )
+            : null,
+      ),
+    );
   }
 
   void _openSchedule(NavigatorState navigator, {String? initialSlotKey}) {
