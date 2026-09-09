@@ -34,6 +34,8 @@ from entities.pill_identification_entity import (
 class IdentifyPill:
     """Identifies candidate products without treating a visual match as a diagnosis."""
 
+    _MAX_RETURNED_CANDIDATES = 100
+
     _SHAPE_ALIASES = {
         "round": ("원형", "원형정"),
         "oval": ("타원형",),
@@ -125,19 +127,7 @@ class IdentifyPill:
                     task.cancel()
             await asyncio.gather(*required_tasks, return_exceptions=True)
             raise
-        ranked_candidates = await self._rank_candidates_with_capacity(
-            features,
-            catalog,
-            max(self.candidate_limit, 2),
-        )
-        is_confident = self._is_confident(features, ranked_candidates)
-        candidates = ranked_candidates[: self.candidate_limit]
-        return PillIdentificationResult(
-            observed_features=features,
-            candidates=tuple(candidates),
-            is_confident=is_confident,
-            requires_confirmation=True,
-        )
+        return await self._build_result(features, catalog)
 
     # Function Name: requestMultiplePillIdentification
     # Description:
@@ -178,31 +168,35 @@ class IdentifyPill:
             )
         return MultiplePillIdentificationResult(observations=tuple(results))
 
-    # Function Name: _build_result
-    # Description:
-    # - Builds one confirmation-required result from a shared catalog snapshot.
-    # Parameters:
-    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
-    # - catalog (tuple[PillCatalogEntry, ...]): Immutable MFDS pill-reference catalog used for ranking.
-    # Returns:
-    # - Ranked candidate result with confidence gated by image and imprint evidence.
+    # 함수이름: _build_result
+    # 함수역할: 기본 후보 경계와 동점인 제품을 최대 100개까지 보존하고 초과 여부를 알린다.
+    # 매개변수: features는 관찰 속성, catalog는 공공 약품 목록이다.
+    # 반환값: 동점 후보와 추가 촬영 필요 여부를 포함하는 확인 필수 결과.
     async def _build_result(
         self,
         features: PillVisualFeatures,
         catalog: tuple[PillCatalogEntry, ...],
     ) -> PillIdentificationResult:
-        """Builds one confirmation-required result from a shared catalog snapshot."""
+        """동점인 정답 후보가 기본 표시 개수 때문에 누락되지 않게 한다."""
 
         ranked_candidates = await self._rank_candidates_with_capacity(
             features,
             catalog,
-            max(self.candidate_limit, 2),
+            self._MAX_RETURNED_CANDIDATES + 1,
         )
+        if ranked_candidates:
+            cutoff = ranked_candidates[
+                min(self.candidate_limit, len(ranked_candidates)) - 1
+            ].match_score
+            eligible = [c for c in ranked_candidates if c.match_score >= cutoff]
+        else:
+            eligible = []
         return PillIdentificationResult(
             observed_features=features,
-            candidates=tuple(ranked_candidates[: self.candidate_limit]),
+            candidates=tuple(eligible[: self._MAX_RETURNED_CANDIDATES]),
             is_confident=self._is_confident(features, ranked_candidates),
             requires_confirmation=True,
+            has_more_candidates=len(eligible) > self._MAX_RETURNED_CANDIDATES,
         )
 
     # Function Name: _rank_candidates_with_capacity

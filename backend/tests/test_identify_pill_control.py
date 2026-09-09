@@ -547,9 +547,56 @@ async def test_single_result_limit_still_checks_tied_runner_up() -> None:
 
     result = await control.requestPillIdentification(b"front", b"back")
 
-    assert len(result.candidates) == 1
+    # 표시 기본값이 1이어도 동점 후보는 함께 반환하여 임의 탈락을 막는다.
+    assert len(result.candidates) == 2
     assert result.is_confident is False
     assert result.requires_confirmation is True
+
+
+# 함수이름: test_tied_candidates_survive_default_limit
+# 함수역할: 6번째 정답이 5개 표시 경계 때문에 누락되지 않는지 검증한다.
+# 매개변수: 없음. 반환값: 비동기 검증 완료.
+@pytest.mark.anyio
+async def test_tied_candidates_survive_default_limit() -> None:
+    features = PillVisualFeatures(shape="round", colors=("yellow",), front_imprint="YH")
+    entries = tuple(_entry(f"{i:02}", f"후보{i}") for i in range(11))
+    result = await _control(features, entries).requestPillIdentification(b"front")
+    assert len(result.candidates) == 11
+    assert result.candidates[5].item_seq == "05"
+    assert not result.is_confident
+    assert not result.has_more_candidates
+
+
+# 함수이름: test_tie_response_cap_is_explicit
+# 함수역할: 대량 동점 응답은 100개로 제한하되 누락 후보 존재를 HTTP 계약에 알린다.
+# 매개변수: 없음. 반환값: 비동기 검증 완료.
+@pytest.mark.anyio
+async def test_tie_response_cap_is_explicit() -> None:
+    from schemas.pill_identification import PillIdentificationResponse
+
+    features = PillVisualFeatures(front_imprint="YH")
+    entries = tuple(_entry(f"{i:03}", f"후보{i}") for i in range(145))
+    result = await _control(features, entries).requestPillIdentification(b"front")
+    assert len(result.candidates) == 100
+    assert result.has_more_candidates
+    assert not result.is_confident
+    assert PillIdentificationResponse.from_domain(result).has_more_candidates
+    assert result.requires_confirmation
+
+
+# 함수이름: test_back_imprint_breaks_common_front_tie
+# 함수역할: 동일한 앞면 각인의 여러 후보 중 사용자 대응 뒷면이 정답을 분리하는지 검증한다.
+# 매개변수: 없음. 반환값: 비동기 검증 완료.
+@pytest.mark.anyio
+async def test_back_imprint_breaks_common_front_tie() -> None:
+    entries = tuple(_entry(f"{i:02}", f"후보{i}", print_back="LT" if i == 5 else "RC2")
+                    for i in range(11))
+    features = PillVisualFeatures(shape="round", colors=("yellow",),
+                                  front_imprint="YH", back_imprint="LT")
+    result = await _control(features, entries).requestPillIdentification(b"front", b"back")
+    assert result.candidates[0].item_seq == "05"
+    assert result.is_confident
+    assert result.requires_confirmation
 
 
 # Function Name: test_failed_required_stage_cancels_sibling_work

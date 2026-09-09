@@ -131,6 +131,7 @@ class PillIdentificationResponse(BaseModel):
     requires_confirmation: Literal[True] = True
     observed_features: PillVisualFeaturesResponse
     data: list[PillIdentificationCandidateResponse] = Field(default_factory=list)
+    has_more_candidates: bool = False
 
     # Function Name: from_domain
     # Description:
@@ -155,6 +156,7 @@ class PillIdentificationResponse(BaseModel):
             message=message,
             is_confident=result.is_confident and bool(result.candidates),
             requires_confirmation=True,
+            has_more_candidates=result.has_more_candidates,
             observed_features=PillVisualFeaturesResponse.from_domain(
                 result.observed_features
             ),

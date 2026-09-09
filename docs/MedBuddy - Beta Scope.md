@@ -52,7 +52,10 @@ The following implemented flows are in v0.2.0 verification:
 8. Experimental loose-pill candidate identification with explicit user
    confirmation, up to ten separately photographed pills, bounded two-request
    concurrency, bounded request-limit retry that preserves completed results,
-   per-pill partial failure, and schedule review before save.
+   per-pill partial failure, and schedule review before save. One-photo detection
+   supports tie-aware candidate expansion, per-pill original-region reanalysis,
+   user-paired back photos, and explicit uncertainty instead of probability-like
+   percentages. See [pill identification review](MedBuddy%20-%20Pill%20Identification%20Review.md).
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Laboratory nearby-pharmacy lookup using foreground location, backend-held

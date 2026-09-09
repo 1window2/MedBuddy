@@ -338,6 +338,121 @@ class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// 클래스명: _RefinementIdentifyPill
+// 역할: 번호별 자르기·뒷면·실패·동점 확장을 외부 호출 없이 검증한다.
+class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
+  bool expandCandidates = false;
+  bool failRefinement = false;
+  bool cancelPicker = false;
+  int refinementCalls = 0;
+  PillBoundingBox? croppedRegion;
+  Uint8List? submittedFront;
+  Uint8List? submittedBack;
+  final croppedBytes = Uint8List.fromList([..._FakeIdentifyPill._png, 42]);
+
+  // 함수이름: requestPillImage
+  // 함수역할: 사진 선택 취소 또는 고정 사진을 반환한다. 매개변수: source. 반환값: 사진 또는 null.
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) async =>
+      cancelPicker ? null : _FakeIdentifyPill._png;
+
+  // 함수이름: cropPillImage
+  // 함수역할: 선택 번호의 영역과 원본 대신 보낼 사진을 기록한다. 매개변수: image, region. 반환값: 구분 가능한 사진.
+  @override
+  Future<Uint8List> cropPillImage(
+    Uint8List image,
+    PillBoundingBox region,
+  ) async {
+    croppedRegion = region;
+    return croppedBytes;
+  }
+
+  // 함수이름: requestPillIdentification
+  // 함수역할: 앞뒷면 대응과 실패 복구를 기록한다. 매개변수: frontImage, backImage. 반환값: 결과 또는 실패.
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) async {
+    refinementCalls++;
+    submittedFront = frontImage;
+    submittedBack = backImage;
+    if (failRefinement) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.serviceUnavailable,
+      );
+    }
+    return super.requestPillIdentification(
+      frontImage: frontImage,
+      backImage: backImage,
+    );
+  }
+
+  // 함수이름: requestMultiplePillIdentification
+  // 함수역할: 필요하면 첫 알약에 11개 동점 후보를 생성한다. 매개변수: image. 반환값: 두 알약의 결과.
+  @override
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    final result = await super.requestMultiplePillIdentification(image: image);
+    if (!expandCandidates) return result;
+    return MultiplePillIdentificationResult(
+      requiresConfirmation: true,
+      observations: [
+        MultiplePillObservation(
+          index: 1,
+          boundingBox: result.observations.first.boundingBox,
+          identification: PillIdentificationResult(
+            isConfident: false,
+            requiresConfirmation: true,
+            observedFeatures: const PillVisualFeatures(frontImprint: 'YH'),
+            candidates: [
+              for (var i = 0; i < 11; i++)
+                PillIdentificationCandidate(
+                  itemSeq: '$i',
+                  itemName: '동점 후보 $i',
+                  matchScore: 1,
+                ),
+            ],
+          ),
+        ),
+        result.observations.last,
+      ],
+    );
+  }
+}
+
+// 함수이름: _openRefinementGroup
+// 함수역할: 좁은 화면과 큰 글씨에서 다중 분석 결과를 연다. 매개변수: tester, control. 반환값: 렌더링 완료.
+Future<void> _openRefinementGroup(
+  WidgetTester tester,
+  _RefinementIdentifyPill control,
+) async {
+  tester.view.physicalSize = const Size(320, 800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: PillIdentificationUI(
+        userSetting: const UserSetting(
+          language: 'ko',
+          fontSize: 20,
+          multiPillIdentificationLabEnabled: true,
+        ),
+        control: control,
+      ),
+    ),
+  );
+  await _tapVisible(
+    tester,
+    find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('카메라로 촬영'));
+  await tester.pumpAndSettle();
+}
+
 // 클래스명: _DuplicateIdentifyPill
 // 역할: 서로 다른 사진이 같은 품목으로 판정된 중복 검토 흐름을 재현한다.
 // 주요 책임:
@@ -413,6 +528,89 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: 동점 확장 테스트
+  // 함수역할: 숨겨진 6번째 후보를 펼치며 퍼센트가 확정처럼 표시되지 않는지 확인한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('동점 후보 더 보기와 추가 확인 상태를 표시한다', (tester) async {
+    final control = _RefinementIdentifyPill()..expandCandidates = true;
+    await _openRefinementGroup(tester, control);
+    expect(find.text('동점 후보 5'), findsNothing);
+    expect(find.textContaining('100%'), findsNothing);
+    expect(find.textContaining('추가 확인 필요'), findsWidgets);
+    await _tapVisible(tester, find.byKey(const Key('more-pill-candidates-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('동점 후보 5'), findsOneWidget);
+    await _tapVisible(tester, find.text('동점 후보 5'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 영역 재분석 테스트
+  // 함수역할: 해당 영역 바이트만 분석하고 다른 알약의 선택을 보존한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('영역 재분석은 해당 알약만 갱신한다', (tester) async {
+    final control = _RefinementIdentifyPill();
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.text('두 번째 알약'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('refine-pill-region-0')));
+    await tester.pumpAndSettle();
+    expect(control.croppedRegion?.left, 0.1);
+    expect(control.submittedFront, control.croppedBytes);
+    expect(control.submittedBack, isNull);
+    expect(find.text('두 번째 알약'), findsOneWidget);
+    await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('confirm-pill-candidate-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 뒷면 대응 테스트
+  // 함수역할: 사용자가 선택한 번호의 앞면만 새 뒷면과 함께 전송한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('번호를 확인한 뒷면을 해당 알약에만 연결한다', (tester) async {
+    final control = _RefinementIdentifyPill();
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.byKey(const Key('refine-pill-back-1')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('같은 알약을 뒤집어'), findsOneWidget);
+    await tester.tap(find.text('갤러리에서 선택'));
+    await tester.pumpAndSettle();
+    expect(control.croppedRegion?.left, 0.6);
+    expect(control.submittedFront, control.croppedBytes);
+    expect(control.submittedBack, _FakeIdentifyPill._png);
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 재분석 취소·실패 테스트
+  // 함수역할: 뒷면 선택 취소와 네트워크 실패가 기존 후보를 지우지 않게 한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('뒷면 취소와 재분석 실패는 기존 결과를 보존한다', (tester) async {
+    final control = _RefinementIdentifyPill();
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.byKey(const Key('refine-pill-back-0')));
+    await tester.pumpAndSettle();
+    control.cancelPicker = true;
+    await tester.tap(find.text('갤러리에서 선택'));
+    await tester.pumpAndSettle();
+    expect(control.refinementCalls, 0);
+    control.failRefinement = true;
+    await _tapVisible(tester, find.byKey(const Key('refine-pill-region-0')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('기존 결과는 유지했습니다'), findsOneWidget);
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(find.text('두 번째 알약'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   // Function Name: testWidgets callback
   // Description:
   // - Verify that pills detected in one photo appear as separately numbered candidate groups.

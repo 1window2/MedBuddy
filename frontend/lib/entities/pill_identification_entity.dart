@@ -173,6 +173,8 @@ class PillIdentificationResult {
   final bool requiresConfirmation;
   final PillVisualFeatures observedFeatures;
   final List<PillIdentificationCandidate> candidates;
+  // 서버 상한 밖에도 동점 후보가 있어 추가 사진이 필요한지 나타낸다.
+  final bool hasMoreCandidates;
 
   // Function Name: PillIdentificationResult
   // Description: Bundles observed features and candidate rankings with confidence and explicit user-confirmation requirements.
@@ -188,6 +190,7 @@ class PillIdentificationResult {
     required this.requiresConfirmation,
     required this.observedFeatures,
     required this.candidates,
+    this.hasMoreCandidates = false,
   });
 
   // Function Name: PillIdentificationResult.fromJson
@@ -203,6 +206,10 @@ class PillIdentificationResult {
     final rawRequiresConfirmation = json['requires_confirmation'];
     final rawFeatures = json['observed_features'];
     final rawCandidates = json['data'];
+    final rawMoreCandidates = json['has_more_candidates'] ?? false;
+    if (rawMoreCandidates is! bool) {
+      throw const FormatException('has_more_candidates must be a boolean.');
+    }
     if (rawSuccess is! bool) {
       throw const FormatException('success must be a boolean.');
     }
@@ -268,6 +275,7 @@ class PillIdentificationResult {
         Map<String, dynamic>.from(rawFeatures),
       ),
       candidates: List<PillIdentificationCandidate>.unmodifiable(candidates),
+      hasMoreCandidates: rawMoreCandidates,
     );
   }
 }
@@ -482,20 +490,26 @@ List<String> _readStrings(dynamic value) {
   }
   return List<String>.unmodifiable(
     value
-        .map(/* Function Name: map callback
+        .map(
+          /* Function Name: map callback
          * Description: Converts an optional identification-list entry into trimmed text.
          * Parameters:
          * - item (dynamic): Current response or collection entry being transformed or checked.
          * Returns:
          * - Trimmed text, or an empty string for null.
-         */(item) => item?.toString().trim() ?? '')
-        .where(/* Function Name: where callback
+         */
+          (item) => item?.toString().trim() ?? '',
+        )
+        .where(
+          /* Function Name: where callback
          * Description: Removes blank strings from the parsed identification list.
          * Parameters:
          * - item (String): Current response or collection entry being transformed or checked.
          * Returns:
          * - Whether the entry contains text.
-         */(item) => item.isNotEmpty),
+         */
+          (item) => item.isNotEmpty,
+        ),
   );
 }
 

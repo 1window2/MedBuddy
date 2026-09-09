@@ -13,6 +13,7 @@ import '../entities/pill_identification_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../services/pill_image_crop_service.dart';
 
 // 클래스명: PillIdentificationFailure
 // 역할: 알약 사진 선택·검증·식별 중 발생할 수 있는 실패 원인을 구분한다.
@@ -60,6 +61,23 @@ class PillIdentificationException implements Exception {
 // - _client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
 // - requestTimeout (Duration): Maximum wait for an identification or analysis request.
 class IdentifyPill {
+  // 함수이름: cropPillImage
+  // 함수역할: 원본의 해당 알약 영역만 추출하고 잘못된 사진 오류를 UI 계약으로 변환한다.
+  // 매개변수: image는 원본 바이트, region은 감지된 정규화 영역이다.
+  // 반환값: 잘린 사진 바이트 또는 invalidPhoto 오류.
+  Future<Uint8List> cropPillImage(
+    Uint8List image,
+    PillBoundingBox region,
+  ) async {
+    try {
+      return await const PillImageCropService().cropRegion(image, region);
+    } catch (_) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.invalidPhoto,
+      );
+    }
+  }
+
   static const int maxImageBytes = 10 * 1024 * 1024;
   static const int maxBatchImageCount = 10;
 
@@ -221,7 +239,7 @@ class IdentifyPill {
                * - None.
                * Returns:
                * - Never returns normally; throws the timed-out identification exception.
-               */() {
+               */ () {
                 if (!abortTrigger.isCompleted) {
                   abortTrigger.complete();
                 }
@@ -308,7 +326,7 @@ class IdentifyPill {
                * - None.
                * Returns:
                * - Never returns normally; throws the timed-out identification exception.
-               */() {
+               */ () {
                 if (!abortTrigger.isCompleted) {
                   abortTrigger.complete();
                 }

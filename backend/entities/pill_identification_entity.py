@@ -222,6 +222,8 @@ class PillIdentificationResult:
     candidates: tuple[PillIdentificationCandidate, ...] = field(default_factory=tuple)
     is_confident: bool = False
     requires_confirmation: Literal[True] = True
+    # 응답 상한을 넘는 동점 후보가 있으면 추가 사진으로 범위를 좁혀야 한다.
+    has_more_candidates: bool = False
 
     # Function Name: __post_init__
     # Description:

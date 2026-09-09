@@ -101,6 +101,9 @@ class _PillPhotoDraft {
   PillIdentificationResult? result;
   String? selectedItemSeq;
   String errorMessage = '';
+  PillBoundingBox? sourceRegion;
+  Uint8List? croppedFrontImage;
+  int visibleCandidateCount = 5;
 
   // 함수이름: hasFrontImage
   // 함수역할: 필수 앞면 사진 바이트가 있는지 확인한다.
@@ -121,9 +124,11 @@ class _PillPhotoDraft {
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void clearResult() {
+    croppedFrontImage = null;
     result = null;
     selectedItemSeq = null;
     errorMessage = '';
+    visibleCandidateCount = 5;
   }
 }
 
@@ -164,6 +169,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   int? _selectingDraftIndex;
   bool? _selectingFront;
   String _errorMessage = '';
+  int? _refiningDraftIndex;
 
   // 함수이름: _isBusy
   // 함수역할: 분석·사진 선택·저장 중 어느 작업이라도 진행 중인지 확인한다.
@@ -714,6 +720,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
           position < resultIndexes.length;
           position += 1
         ) ...[
+          _buildRefinementActions(resultIndexes[position], text, textScale),
           _buildResultForDraft(resultIndexes[position], text, textScale),
           if (position < resultIndexes.length - 1) const Divider(height: 34),
         ],
@@ -777,6 +784,167 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         ],
       ],
     );
+  }
+
+  // 함수이름: _buildRefinementActions
+  // 함수역할: 번호별 영역 재분석과 같은 알약의 뒷면 추가를 제공한다.
+  // 매개변수: index는 알약 위치, text는 번역, textScale은 글씨 배율이다.
+  // 반환값: 결과를 보존하는 재분석 버튼과 해당 알약의 진행·오류 표시.
+  Widget _buildRefinementActions(
+    int index,
+    _PillIdentificationText text,
+    double textScale,
+  ) {
+    final draft = _drafts[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (draft.sourceRegion != null)
+              OutlinedButton.icon(
+                key: Key('refine-pill-region-$index'),
+                icon: const Icon(Icons.center_focus_strong),
+                label: Text(
+                  text.refineRegion(index + 1),
+                  style: TextStyle(fontSize: 13 * textScale),
+                ),
+                // 함수이름: 영역 재분석 콜백
+                // 함수역할: 이 번호의 영역만 재분석한다. 매개변수: 없음. 반환값: 완료 Future.
+                onPressed: _isBusy || _isBatchSaved
+                    ? null
+                    : () => _refineDraft(index, text, addBack: false),
+              ),
+            OutlinedButton.icon(
+              key: Key('refine-pill-back-$index'),
+              icon: const Icon(Icons.cameraswitch_outlined),
+              label: Text(
+                text.addBack(index + 1),
+                style: TextStyle(fontSize: 13 * textScale),
+              ),
+              // 함수이름: 뒷면 추가 콜백
+              // 함수역할: 동일 알약 여부를 확인받고 앞·뒷면을 비교한다. 매개변수: 없음. 반환값: 완료 Future.
+              onPressed: _isBusy || _isBatchSaved
+                  ? null
+                  : () => _refineDraft(index, text, addBack: true),
+            ),
+          ],
+        ),
+        if (_refiningDraftIndex == index) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(),
+        ],
+        if (draft.errorMessage.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _ErrorNotice(message: draft.errorMessage),
+        ],
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  // 함수이름: _refineDraft
+  // 함수역할: 원본 영역 또는 사용자가 대응시킨 뒷면으로 한 알약만 다시 분석한다.
+  // 매개변수: index는 알약 위치, text는 번역, addBack은 뒷면 추가 여부이다.
+  // 반환값: 완료 Future. 취소·실패 시 기존 결과와 다른 알약의 선택을 유지한다.
+  Future<void> _refineDraft(
+    int index,
+    _PillIdentificationText text, {
+    required bool addBack,
+  }) async {
+    if (_isBusy || _isBatchSaved) return;
+    final draft = _drafts[index];
+    setState(() {
+      _isSelectingImage = true;
+      _selectingDraftIndex = index;
+      _refiningDraftIndex = index;
+      draft.errorMessage = '';
+    });
+    try {
+      final front =
+          draft.croppedFrontImage ??
+          (draft.sourceRegion == null
+              ? draft.frontImage!
+              : await _control.cropPillImage(
+                  draft.frontImage!,
+                  draft.sourceRegion!,
+                ));
+      if (!mounted) return;
+      Uint8List? back = draft.backImage;
+      if (addBack) {
+        setState(() => _refiningDraftIndex = null);
+        final source = await showDialog<ImageSource>(
+          context: context,
+          // 함수이름: 뒷면 확인 대화상자 빌더
+          // 함수역할: 선택한 번호의 앞면과 사진 출처를 표시한다. 매개변수: context. 반환값: 대화상자.
+          builder: (context) => AlertDialog(
+            title: Text(text.addBack(index + 1)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.memory(front, height: 140, fit: BoxFit.contain),
+                  const SizedBox(height: 12),
+                  Text(text.samePillBackNotice),
+                ],
+              ),
+            ),
+            actions: [
+              // 함수이름: 사진 출처 선택 콜백
+              // 함수역할: 취소 또는 카메라·갤러리 출처를 반환한다. 매개변수: 없음. 반환값: 없음.
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(text.cancel),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.pop(context, ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text(text.gallery),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.pop(context, ImageSource.camera),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: Text(text.camera),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || source == null) return;
+        back = await _control.requestPillImage(source);
+        if (!mounted || back == null) return;
+      }
+      setState(() => _refiningDraftIndex = index);
+      final result = await _control.requestPillIdentification(
+        frontImage: front,
+        backImage: back,
+      );
+      if (!mounted) return;
+      setState(() {
+        draft.croppedFrontImage = front;
+        draft.backImage = back;
+        draft.result = result;
+        draft.selectedItemSeq = null;
+        draft.visibleCandidateCount = 5;
+        draft.errorMessage = '';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          draft.errorMessage =
+              '${_stateErrorMessage(error, text.requestFailed)} ${text.previousResultKept}';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSelectingImage = false;
+          _refiningDraftIndex = null;
+          _selectingDraftIndex = null;
+        });
+      }
+    }
   }
 
   // 함수이름: _buildResultForDraft
@@ -845,6 +1013,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             ),
           ),
           if (!result.isConfident ||
+              result.hasMoreCandidates ||
               result.observedFeatures.qualityIssues.isNotEmpty) ...[
             const SizedBox(height: 12),
             _ConfidenceNotice(
@@ -855,9 +1024,22 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             ),
           ],
           const SizedBox(height: 14),
-          for (final candidate in result.candidates) ...[
+          if (result.hasMoreCandidates) ...[
+            Text(
+              text.tooManyCandidates,
+              style: TextStyle(fontSize: 13 * textScale),
+            ),
+            const SizedBox(height: 12),
+          ],
+          for (final candidate in result.candidates.take(
+            draft.visibleCandidateCount,
+          )) ...[
             _PillCandidateCard(
               candidate: candidate,
+              needsMoreEvidence:
+                  !result.isConfident ||
+                  result.hasMoreCandidates ||
+                  result.observedFeatures.qualityIssues.isNotEmpty,
               selected: candidate.itemSeq == draft.selectedItemSeq,
               duplicateCount: candidate.itemSeq == draft.selectedItemSeq
                   ? _selectedCandidateCount(candidate)
@@ -883,6 +1065,20 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             ),
             const SizedBox(height: 10),
           ],
+          if (draft.visibleCandidateCount < result.candidates.length)
+            TextButton.icon(
+              key: Key('more-pill-candidates-$index'),
+              icon: const Icon(Icons.expand_more),
+              label: Text(
+                text.moreCandidates,
+                style: TextStyle(fontSize: 14 * textScale),
+              ),
+              // 함수이름: 후보 더 보기 콜백
+              // 함수역할: 현재 알약 후보만 5개 더 펼친다. 매개변수: 없음. 반환값: 없음.
+              onPressed: _isBusy
+                  ? null
+                  : () => setState(() => draft.visibleCandidateCount += 5),
+            ),
         ],
       ),
     );
@@ -1431,6 +1627,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             for (final observation in result.observations)
               _PillPhotoDraft()
                 ..frontImage = image
+                ..sourceRegion = observation.boundingBox
                 ..result = observation.identification,
           ]);
         _analysisCompletedCount = 1;
@@ -2301,6 +2498,7 @@ class _PillImageSlot extends StatelessWidget {
 // - textScale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _PillCandidateCard extends StatelessWidget {
   final PillIdentificationCandidate candidate;
+  final bool needsMoreEvidence;
   final bool selected;
   final int duplicateCount;
   final _PillIdentificationText text;
@@ -2319,6 +2517,7 @@ class _PillCandidateCard extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _PillCandidateCard 인스턴스.
   const _PillCandidateCard({
     required this.candidate,
+    required this.needsMoreEvidence,
     required this.selected,
     required this.duplicateCount,
     required this.text,
@@ -2336,11 +2535,11 @@ class _PillCandidateCard extends StatelessWidget {
     final imprint = [
       candidate.printFront,
       candidate.printBack,
-    // Function Name: build.where callback
-    // Description: Checks the collection condition `value.isNotEmpty` for candidate medication details, selection, and duplicate-photo count.
-    // Parameters:
-    // - value (inferred by callback contract): Input to validate, normalize, display, or pass through a selection callback.
-    // Returns: Boolean predicate result for the supplied item.
+      // Function Name: build.where callback
+      // Description: Checks the collection condition `value.isNotEmpty` for candidate medication details, selection, and duplicate-photo count.
+      // Parameters:
+      // - value (inferred by callback contract): Input to validate, normalize, display, or pass through a selection callback.
+      // Returns: Boolean predicate result for the supplied item.
     ].where((value) => value.isNotEmpty).join(' / ');
     return Semantics(
       container: true,
@@ -2373,8 +2572,6 @@ class _PillCandidateCard extends StatelessWidget {
                     children: [
                       Text(
                         candidate.itemName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: MedBuddyColors.textStrong,
                           fontSize: 15 * textScale,
@@ -2419,11 +2616,8 @@ class _PillCandidateCard extends StatelessWidget {
                       ],
                       const SizedBox(height: 8),
                       Text(
-                        '${text.similarity}: '
-                        '${(candidate.matchScore * 100).round()}%'
-                        '${imprint.isEmpty ? '' : '  ·  $imprint'}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        '${needsMoreEvidence ? text.needsConfirmation : text.comparisonCandidate}'
+                        '${imprint.isEmpty ? '' : '\n${text.imprintLabel}: $imprint'}',
                         style: TextStyle(
                           color: MedBuddyColors.primaryDark,
                           fontSize: 12 * textScale,
@@ -2737,6 +2931,43 @@ class _EmptyResult extends StatelessWidget {
 // - language (String): Language code selecting visible wording.
 // - batchEnabled (bool): Whether multi-pill photo identification is enabled.
 class _PillIdentificationText {
+  // 함수이름: moreCandidates
+  // 함수역할: 후보 확장 명령을 번역한다. 매개변수: 없음. 반환값: 표시 문자열.
+  String get moreCandidates =>
+      isEnglish ? 'Show more candidates' : '비슷한 후보 더 보기';
+  // 함수이름: tooManyCandidates
+  // 함수역할: 서버 상한 밖의 동점 후보 존재를 알린다. 매개변수: 없음. 반환값: 안내.
+  String get tooManyCandidates => isEnglish
+      ? 'More matching products exist. Add the back of this pill to narrow the results.'
+      : '표시된 목록 밖에도 비슷한 약이 있습니다. 같은 알약의 뒷면을 추가해 후보를 좁혀주세요.';
+  // 함수이름: refineRegion
+  // 함수역할: 번호별 영역 재분석 명령을 번역한다. 매개변수: number는 알약 번호. 반환값: 명령.
+  String refineRegion(int number) =>
+      isEnglish ? 'Reanalyze pill $number region' : '알약 $number 영역 다시 분석';
+  // 함수이름: addBack
+  // 함수역할: 번호별 뒷면 추가 명령을 번역한다. 매개변수: number는 알약 번호. 반환값: 명령.
+  String addBack(int number) =>
+      isEnglish ? 'Add pill $number back photo' : '알약 $number 뒷면 추가';
+  // 함수이름: samePillBackNotice
+  // 함수역할: 다른 알약과 앞뒷면을 잘못 연결하지 않도록 안내한다. 매개변수: 없음. 반환값: 안내.
+  String get samePillBackNotice => isEnglish
+      ? 'Turn over this same pill and photograph its back alone. Do not use a different pill.'
+      : '위 사진의 같은 알약을 뒤집어 뒷면만 촬영해주세요. 다른 알약의 사진을 연결하지 마세요.';
+  // 함수이름: previousResultKept
+  // 함수역할: 실패 시 기존 결과 유지 상태를 알린다. 매개변수: 없음. 반환값: 안내.
+  String get previousResultKept =>
+      isEnglish ? 'Previous results were kept.' : '기존 결과는 유지했습니다.';
+  // 함수이름: needsConfirmation
+  // 함수역할: 확정 확률 대신 추가 확인 상태를 표시한다. 매개변수: 없음. 반환값: 상태.
+  String get needsConfirmation =>
+      isEnglish ? 'More evidence needed' : '추가 확인 필요';
+  // 함수이름: comparisonCandidate
+  // 함수역할: 확정되지 않은 비교 후보임을 표시한다. 매개변수: 없음. 반환값: 상태.
+  String get comparisonCandidate =>
+      isEnglish ? 'Candidate for comparison' : '비교 후보';
+  // 함수이름: imprintLabel
+  // 함수역할: 참고 각인 표시명을 번역한다. 매개변수: 없음. 반환값: 표시명.
+  String get imprintLabel => isEnglish ? 'Catalog imprint' : '제품 각인';
   final String language;
   final bool batchEnabled;
 
