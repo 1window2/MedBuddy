@@ -37,6 +37,27 @@ The production ingress is Cloudflare Tunnel only.
 - PostgreSQL and Redis remain on the private Docker network.
 - FastAPI port `8000` is bound only to host loopback for local diagnostics.
 
+Cloudflare uses a deny-by-default custom rule named
+`MedBuddy API route allowlist`. Keep the rule active and add every intentionally
+public backend prefix before enabling a new client feature. The v0.2.0 rule is:
+
+```text
+(http.host eq "api.medbuddy.pp.ua" and not (
+  starts_with(http.request.uri.path, "/api/v1/medication/") or
+  starts_with(http.request.uri.path, "/api/v1/auth/") or
+  starts_with(http.request.uri.path, "/api/v1/pharmacy/") or
+  starts_with(http.request.uri.path, "/api/v1/chat/") or
+  http.request.uri.path eq "/health" or
+  http.request.uri.path eq "/ready" or
+  starts_with(http.request.uri.path, "/cdn-cgi/")
+))
+```
+
+Its action is `Block`, so paths outside that list stop at Cloudflare. Adding a
+prefix here only permits routing to FastAPI; Firebase Authentication, optional
+App Check enforcement, active-link authorization, validation, and rate limits
+still apply at the backend.
+
 ## Local Production Configuration
 
 The following real configuration files stay outside Git:
@@ -65,7 +86,13 @@ token, API keys, database passwords, or Android signing material.
 
 The backend environment must include one public-data credential authorized for
 the configured medication services and the National Emergency Medical Center
-pharmacy service. Keep the pharmacy endpoint on the backend only:
+pharmacy services. Public Data Portal approval is service-specific: nationwide
+weekly pharmacy data and the separate
+[NEMC holiday emergency institution service](https://www.data.go.kr/data/15000480/openapi.do)
+must both list the deployed key as approved. A key authorized only for the
+weekly catalog produces `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` for exact-date
+holiday rosters; MedBuddy then labels and uses the bounded weekly-schedule
+fallback. Keep every public-data credential on the backend only:
 
 ```text
 PUBLIC_DATA_API_KEY=...
@@ -173,6 +200,16 @@ Both must return HTTP 200 with the expected API contract. `/ready` must also
 report `app_env` as `production`, `runtime_role` as `api`, and `auth_mode` as
 `firebase`. Its `firebase_project_id` must match the Android client, and its
 `app_check_required` value must match the APK being distributed.
+
+Verify the Cloudflare route boundary separately. An allowed protected route
+without credentials must reach FastAPI and return JSON HTTP 401, while an
+unknown route must remain blocked by Cloudflare with HTTP 403:
+
+```bash
+curl -i 'https://api.medbuddy.pp.ua/api/v1/pharmacy/nearby?latitude=37.5665&longitude=126.9780'
+curl -i https://api.medbuddy.pp.ua/api/v1/chat/links/test/messages
+curl -i https://api.medbuddy.pp.ua/api/v1/not-allowed
+```
 
 Verify that the database reached the latest migration, including pharmacy
 schedule provenance and structured linked-chat contexts:
