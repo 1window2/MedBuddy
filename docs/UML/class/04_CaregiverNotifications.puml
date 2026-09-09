@@ -29,6 +29,11 @@ skinparam classBackgroundColor<<External>> #FFF7E6
 skinparam classBorderColor<<External>> #D97706
 
 package "Flutter Frontend" #E8F4FF {
+  class HomeScreen <<UI>>
+  class ChatListUI <<UI>>
+  class LinkedChatUI <<UI>>
+  class ManageChatList <<Control>>
+  class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
@@ -57,6 +62,14 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+HomeScreen --> ManageChatList : active connections
+HomeScreen --> ChatListUI : conditional chat tab
+ChatListUI --> LinkedChatUI : selected conversation
+ChatListUI --> ManageChatList
+ManageChatList --> FLinkPatientCaregiver
+ManageChatList --> ManageCaregiverPatientLocalState
+ManageChatList --> ManageLinkedChat : latest messages
+LinkedChatUI --> ManageLinkedChat
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification

@@ -161,34 +161,6 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     return saveResult;
   }
 
-  // 함수이름: requestNearbyPharmacyLabSettingSave
-  // 함수역할: 근처 운영 약국 실험 기능의 노출 설정을 기기에 저장하고 홈 화면에 반영한다.
-  // 매개변수:
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> requestNearbyPharmacyLabSettingSave(bool enabled) async {
-    _userSetting = await manageUserSetting.saveNearbyPharmacyLabSetting(
-      currentSetting: _userSetting,
-      enabled: enabled,
-    );
-    _notifyViewModelListeners(MedBuddyFeature.userSetting);
-  }
-
-  // 함수이름: requestLinkedMedicationChatLabSettingSave
-  // 함수역할: 복약 맥락 채팅 실험 기능의 노출 설정을 기기에 저장하고 연동 화면에 반영한다.
-  // 매개변수:
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> requestLinkedMedicationChatLabSettingSave(bool enabled) async {
-    _userSetting = await manageUserSetting.saveLinkedMedicationChatLabSetting(
-      currentSetting: _userSetting,
-      enabled: enabled,
-    );
-    _notifyViewModelListeners(MedBuddyFeature.userSetting);
-  }
-
   // 함수이름: requestMultiPillIdentificationLabSettingSave
   // 함수역할: 다중 알약 일괄 식별 실험 기능의 노출 설정을 기기에 저장하고 입력 화면에 반영한다.
   // 매개변수:

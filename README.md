@@ -4,7 +4,7 @@
 
 > **AI-Powered Medication Management System**
 >
-> A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and experimental nearby-pharmacy and chat flows.
+> A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and nearby-pharmacy and chat flows.
 
 ## Key Features
 
@@ -33,7 +33,9 @@
 
 ### Nearby Operating Pharmacies
 
-- This v0.2.0 laboratory feature is hidden by default and appears on the home screen only after the user enables it in Settings.
+- Keep four home shortcuts: pharmacy search replaces the reminder shortcut instead of adding a fifth card. Reminder settings remain available from Schedule and Settings.
+
+- Pharmacy search is a standard v0.2.0 feature, available without enabling a laboratory switch. Existing laboratory choices do not restrict access.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
 - Results are filtered on the server before the 30-result limit is applied. The default view shows pharmacies that are open now without asking the user to enter a time. One filter button offers open-now, late-hours, exact-date weekend/holiday, and all-nearby views; the late-hours view combines officially designated public late-night pharmacies with pharmacies whose reported schedules run late. Date-based views ask only for a date. A Naver Map view appears above the filter; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. Open pharmacies are ranked before closed pharmacies and late-hours pharmacies are prioritized next, followed by user-scoped favorites and distance within the same operating group.
@@ -59,7 +61,8 @@
 - Link patients and caregivers through temporary codes backed by authenticated, server-derived ownership.
 - Let caregivers view linked medication data, unlink safely, and configure per-slot completion or missed-dose alerts.
 - Deliver transition-based FCM alerts in beta mode without exposing internal patient identifiers.
-- Support opt-in medication-context chat with server-verified schedules, medication cards, pharmacy snapshots, idempotent events, and participant-scoped unread state.
+- Support medication-context chat as a standard v0.2.0 feature with server-verified schedules, medication cards, pharmacy snapshots, idempotent events, and participant-scoped unread state.
+- Show a Chat bottom tab only when the current user has an active patient-caregiver connection. The conversation list shows peer names and recent messages, supports multiple linked patients or caregivers, and opens the existing context chat. Local link changes refresh the tab immediately; foreground checks and app resume also detect remote changes.
 - Select chat messages for private deletion at any time, or redact your own messages for both participants within 24 hours of sending. Server-side authorization and time checks apply; medication records remain unchanged.
 
 ### Health Recommendations and Reminders
@@ -69,7 +72,7 @@
 
 ## Roadmap
 
-1. **v0.2.0 beta verification:** Validate direct entry, multi-pill partial failure, schedule review, laboratory feature toggles, pharmacy location states, medication-context chat, and two-device notification behavior on supported Android devices.
+1. **v0.2.0 beta verification:** Validate direct entry, multi-pill partial failure, schedule review, the multi-pill laboratory toggle, pharmacy location states, medication-context chat, and two-device notification behavior on supported Android devices.
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

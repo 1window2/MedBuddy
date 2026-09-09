@@ -59,10 +59,6 @@ class ManageUserSettingUI extends StatefulWidget {
   final SettingPreviewSpeaker? previewSpeaker;
   final SettingPreviewStopper? previewStopper;
   final Future<void> Function(bool enabled)?
-  onNearbyPharmacyLabSettingSaveRequested;
-  final Future<void> Function(bool enabled)?
-  onLinkedMedicationChatLabSettingSaveRequested;
-  final Future<void> Function(bool enabled)?
   onMultiPillIdentificationLabSettingSaveRequested;
   final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
@@ -85,8 +81,6 @@ class ManageUserSettingUI extends StatefulWidget {
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
   // - previewSpeaker (SettingPreviewSpeaker?): 미리보기 문장을 현재 설정으로 읽는 함수.
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
-  // - onNearbyPharmacyLabSettingSaveRequested (Future<void> Function(bool enabled)?): 주변 약국 실험 기능의 활성 여부를 저장할 콜백.
-  // - onLinkedMedicationChatLabSettingSaveRequested (Future<void> Function(bool enabled)?): 연동 복약 채팅 실험 기능의 활성 여부를 저장할 콜백.
   // - onMultiPillIdentificationLabSettingSaveRequested (Future<void> Function(bool enabled)?): 여러 알약 식별 실험 기능의 활성 여부를 저장할 콜백.
   // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver?): 편집한 사용자 설정을 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
@@ -101,8 +95,6 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onDeleteAccountRequested,
     this.previewSpeaker,
     this.previewStopper,
-    this.onNearbyPharmacyLabSettingSaveRequested,
-    this.onLinkedMedicationChatLabSettingSaveRequested,
     this.onMultiPillIdentificationLabSettingSaveRequested,
     this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
@@ -134,7 +126,7 @@ enum _SettingSection {
 // 역할: 접근성·기본 복약 시각·계정 보안 설정의 화면 상태를 관리한다.
 // 주요 책임:
 // - 글씨 크기·읽기 속도·언어·시간 형식과 음성 미리보기를 배치한다.
-// - 근처 약국·복약 채팅·여러 알약 식별 실험 기능의 사용 여부를 표시한다.
+// - 여러 알약 식별 실험 기능의 사용 여부를 표시한다.
 // - 계정 요약과 지원되는 MFA·로그아웃·계정 삭제 명령을 표시한다.
 // 속성:
 // - _fontSize (String): 기준 글씨 크기 또는 선택한 크기 옵션.
@@ -155,8 +147,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _defaultLunchTime;
   late String _defaultEveningTime;
   late String _defaultBedtime;
-  late bool _nearbyPharmacyLabEnabled;
-  late bool _linkedMedicationChatLabEnabled;
   late bool _multiPillIdentificationLabEnabled;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
@@ -187,9 +177,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _defaultLunchTime = widget.initialSetting.defaultLunchTime;
     _defaultEveningTime = widget.initialSetting.defaultEveningTime;
     _defaultBedtime = widget.initialSetting.defaultBedtime;
-    _nearbyPharmacyLabEnabled = widget.initialSetting.nearbyPharmacyLabEnabled;
-    _linkedMedicationChatLabEnabled =
-        widget.initialSetting.linkedMedicationChatLabEnabled;
     _multiPillIdentificationLabEnabled =
         widget.initialSetting.multiPillIdentificationLabEnabled;
     if (widget.previewSpeaker == null) {
@@ -233,8 +220,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       defaultLunchTime: _defaultLunchTime,
       defaultEveningTime: _defaultEveningTime,
       defaultBedtime: _defaultBedtime,
-      nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
-      linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
       multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
     );
     final platformMediaQuery = MediaQueryData.fromView(View.of(context));
@@ -336,8 +321,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           languageMode: _languageMode,
         ),
         laboratorySummary: text.laboratorySummary(
-          nearbyPharmacyEnabled: _nearbyPharmacyLabEnabled,
-          medicationChatEnabled: _linkedMedicationChatLabEnabled,
           multiPillIdentificationEnabled: _multiPillIdentificationLabEnabled,
         ),
         // 함수이름: _buildSelectedSection.onSectionSelected callback
@@ -632,44 +615,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingTitle(text.laboratoryTitle),
         const SizedBox(height: 24),
         _ExperimentalFeatureToggle(
-          switchKey: const ValueKey('nearbyPharmacyLabSwitch'),
-          title: text.nearbyPharmacyLabTitle,
-          description: text.nearbyPharmacyLabDescription,
-          enabled: _nearbyPharmacyLabEnabled,
-          // 함수이름: _buildLaboratorySettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _nearbyPharmacyLabEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildLaboratorySettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_nearbyPharmacyLabEnabled = enabled`로 갱신한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _nearbyPharmacyLabEnabled = enabled),
-        ),
-        const SizedBox(height: 14),
-        _ExperimentalFeatureToggle(
-          switchKey: const ValueKey('linkedMedicationChatLabSwitch'),
-          title: text.linkedMedicationChatLabTitle,
-          description: text.linkedMedicationChatLabDescription,
-          enabled: _linkedMedicationChatLabEnabled,
-          // 함수이름: _buildLaboratorySettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _linkedMedicationChatLabEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildLaboratorySettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_linkedMedicationChatLabEnabled = enabled`로 갱신한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _linkedMedicationChatLabEnabled = enabled),
-        ),
-        const SizedBox(height: 14),
-        _ExperimentalFeatureToggle(
           switchKey: const ValueKey('multiPillIdentificationLabSwitch'),
           title: text.multiPillIdentificationLabTitle,
           description: text.multiPillIdentificationLabDescription,
@@ -879,8 +824,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     defaultLunchTime: _defaultLunchTime,
     defaultEveningTime: _defaultEveningTime,
     defaultBedtime: _defaultBedtime,
-    nearbyPharmacyLabEnabled: _nearbyPharmacyLabEnabled,
-    linkedMedicationChatLabEnabled: _linkedMedicationChatLabEnabled,
     multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
   );
 
@@ -1121,12 +1064,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               readingSpeedOption: _readingSpeed,
               language: _language,
             );
-      await widget.onNearbyPharmacyLabSettingSaveRequested?.call(
-        _nearbyPharmacyLabEnabled,
-      );
-      await widget.onLinkedMedicationChatLabSettingSaveRequested?.call(
-        _linkedMedicationChatLabEnabled,
-      );
       await widget.onMultiPillIdentificationLabSettingSaveRequested?.call(
         _multiPillIdentificationLabEnabled,
       );
@@ -2910,36 +2847,6 @@ class _SettingText {
   String get noAccountActions => isEnglish
       ? 'No additional account actions are available in this mode.'
       : '현재 실행 모드에서는 추가로 변경할 계정 설정이 없습니다.';
-  // 함수이름: nearbyPharmacyLabTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "근처 운영 약국" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacyLabTitle =>
-      isEnglish ? 'Nearby open pharmacies' : '근처 운영 약국';
-  // 함수이름: nearbyPharmacyLabDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치 주변의 운영 약국 기능을 메인 화면에 표시합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacyLabDescription => isEnglish
-      ? 'Show the experimental nearby pharmacy feature on the home screen.'
-      : '현재 위치 주변의 운영 약국 기능을 메인 화면에 표시합니다.';
-  // 함수이름: linkedMedicationChatLabTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 대화" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get linkedMedicationChatLabTitle =>
-      isEnglish ? 'Medication conversation' : '복약 대화';
-  // 함수이름: linkedMedicationChatLabDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get linkedMedicationChatLabDescription => isEnglish
-      ? 'Let linked patients and caregivers discuss an active medication.'
-      : '복용 중인 약을 선택해 환자와 보호자가 대화할 수 있게 표시합니다.';
   // 함수이름: multiPillIdentificationLabTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "다중 알약 일괄 식별" 문구를 제공한다.
   // 매개변수:
@@ -3163,11 +3070,11 @@ class _SettingText {
       medicationEnabled,
       caregiverEnabled,
       chatEnabled,
-    // 함수이름: medicationAndNotificationSummary.where callback
-    // 함수역할: 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구에 대해 `enabled` 조건으로 컬렉션 항목을 판별한다.
-    // 매개변수:
-    // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-    // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
+      // 함수이름: medicationAndNotificationSummary.where callback
+      // 함수역할: 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구에 대해 `enabled` 조건으로 컬렉션 항목을 판별한다.
+      // 매개변수:
+      // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
+      // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
     ].where((enabled) => enabled).length;
     return isEnglish
         ? '$enabledCount of 3 notification types enabled'
@@ -3207,18 +3114,10 @@ class _SettingText {
   // 함수이름: laboratorySummary
   // 함수역할: 현재 언어와 입력값에 맞춰 "사용 중인 실험 기능 없음" 문구를 제공한다.
   // 매개변수:
-  // - nearbyPharmacyEnabled (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
-  // - medicationChatEnabled (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
   // - multiPillIdentificationEnabled (bool): 여러 알약 사진 식별을 사용할지 여부.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String laboratorySummary({
-    required bool nearbyPharmacyEnabled,
-    required bool medicationChatEnabled,
-    required bool multiPillIdentificationEnabled,
-  }) {
+  String laboratorySummary({required bool multiPillIdentificationEnabled}) {
     final enabledFeatures = <String>[
-      if (nearbyPharmacyEnabled) nearbyPharmacyLabTitle,
-      if (medicationChatEnabled) linkedMedicationChatLabTitle,
       if (multiPillIdentificationEnabled) multiPillIdentificationLabTitle,
     ];
     if (enabledFeatures.isEmpty) {

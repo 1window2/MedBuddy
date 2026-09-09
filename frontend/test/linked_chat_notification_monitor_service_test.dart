@@ -316,14 +316,14 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 기대 동작: 실험실 기능을 끄면 연결과 채팅 알림을 모두 중지한다.
+  // - 기대 동작: 연동이 있으면 기본으로 채팅 알림을 연결하고 해제 시 중지한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('실험실 기능을 끄면 연결과 채팅 알림을 모두 중지한다', () async {
+  test('연동이 있으면 기본으로 채팅 알림을 연결하고 해제 시 중지한다', () async {
     final source = _FakeLinkedChatEventSource();
-    var featureEnabled = true;
+    var hasLink = true;
     var alertCount = 0;
     final monitor = LinkedChatNotificationMonitorService(
       currentUserHash: 'caregiver_test',
@@ -334,7 +334,7 @@ void main() {
       // - 없음.
       // 반환값:
       // - 지정한 활성 환자·보호자 연결 목록.
-      loadLinks: () async => [_activeLink(15)],
+      loadLinks: () async => hasLink ? [_activeLink(15)] : [],
       // 함수이름: eventSourceFactory 콜백
       // 함수역할:
       // - 주입한 이벤트 소스를 재사용해 메시지 전달을 제어한다.
@@ -372,14 +372,6 @@ void main() {
       // 반환값:
       // - true로 완료되는 Future<bool>.
       permissionRequester: () async => true,
-      // 함수이름: featureEnabledLoader 콜백
-      // 함수역할:
-      // - 알림 스트림 연결 전에 변경 가능한 채팅 실험 기능 상태를 읽는다.
-      // 매개변수:
-      // - 없음.
-      // 반환값:
-      // - 현재 실험 기능 활성 여부.
-      featureEnabledLoader: () async => featureEnabled,
       linkRefreshInterval: const Duration(hours: 1),
     );
     addTearDown(monitor.dispose);
@@ -387,13 +379,13 @@ void main() {
     await monitor.start();
     expect(source.started, isTrue);
 
-    featureEnabled = false;
     source.emit(
       _messageEvent(messageId: 61, linkId: 15, senderHash: 'patient_test'),
     );
     await _flushEvents();
-    expect(alertCount, 0);
+    expect(alertCount, 1);
 
+    hasLink = false;
     expect(await monitor.refreshNow(), isTrue);
     expect(source.disposed, isTrue);
   });

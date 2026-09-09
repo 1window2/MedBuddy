@@ -85,64 +85,38 @@ void main() {
     expect(setting.defaultBedtime, '23:20');
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 근처 운영 약국 실험 설정은 사용자별 기기에 저장된다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('근처 운영 약국 실험 설정은 사용자별 기기에 저장된다', () async {
-    SharedPreferences.setMockInitialValues({});
-    final control = ManageUserSetting(
-      userHash: 'user-a',
-      useRemotePersistence: false,
-    );
-
-    final savedSetting = await control.saveNearbyPharmacyLabSetting(
-      currentSetting: const UserSetting(),
-      enabled: true,
-    );
-    final restoredSetting = await control.requestUserSetting();
-
-    expect(savedSetting.nearbyPharmacyLabEnabled, isTrue);
-    expect(restoredSetting.nearbyPharmacyLabEnabled, isTrue);
-    final preferences = await SharedPreferences.getInstance();
-    expect(
-      preferences.getBool('user_setting_user-a_nearby_pharmacy_lab_enabled'),
-      isTrue,
-    );
-  });
-
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 복약 대화 실험 설정은 사용자별 기기에 저장된다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('복약 대화 실험 설정은 사용자별 기기에 저장된다', () async {
-    SharedPreferences.setMockInitialValues({});
-    final control = ManageUserSetting(
-      userHash: 'user-a',
-      useRemotePersistence: false,
-    );
-
-    final savedSetting = await control.saveLinkedMedicationChatLabSetting(
-      currentSetting: const UserSetting(),
-      enabled: true,
-    );
-    final restoredSetting = await control.requestUserSetting();
-
-    expect(savedSetting.linkedMedicationChatLabEnabled, isTrue);
-    expect(restoredSetting.linkedMedicationChatLabEnabled, isTrue);
-    final preferences = await SharedPreferences.getInstance();
-    expect(
-      preferences.getBool(
-        'user_setting_user-a_linked_medication_chat_lab_enabled',
-      ),
-      isTrue,
-    );
+  // 함수이름: 구형 실험실 설정 호환 테스트
+  // 함수역할: 구형 약국·채팅 스위치 값과 무관하게 현재 설정을 복원하고 알림 선호는 보존한다.
+  // 매개변수: 없음. 반환값: 검증 완료.
+  test('구형 약국·채팅 실험 설정은 현재 설정에 영향을 주지 않는다', () async {
+    for (final legacyEnabled in [false, true]) {
+      SharedPreferences.setMockInitialValues({
+        'user_setting_user-a_nearby_pharmacy_lab_enabled': legacyEnabled,
+        'user_setting_user-a_linked_medication_chat_lab_enabled': legacyEnabled,
+        'user_setting_user-a_chat_notifications_enabled': false,
+      });
+      final control = ManageUserSetting(
+        userHash: 'user-a',
+        useRemotePersistence: false,
+      );
+      addTearDown(control.dispose);
+      final restored = await control.requestUserSetting();
+      expect(restored.chatNotificationsEnabled, isFalse);
+      expect(restored.multiPillIdentificationLabEnabled, isFalse);
+      expect(
+        restored.toJson(),
+        const UserSetting(
+          userHash: 'user-a',
+          chatNotificationsEnabled: false,
+        ).toJson(),
+      );
+      final decoded = UserSetting.fromJson({
+        ...restored.toJson(),
+        'nearby_pharmacy_lab_enabled': legacyEnabled,
+        'linked_medication_chat_lab_enabled': legacyEnabled,
+      });
+      expect(decoded.toJson(), restored.toJson());
+    }
   });
 
   // 함수이름: test 콜백
@@ -297,8 +271,6 @@ void main() {
     expect(setting.defaultLunchTime, '12:10');
     expect(setting.defaultEveningTime, '19:10');
     expect(setting.defaultBedtime, '23:10');
-    expect(setting.nearbyPharmacyLabEnabled, isTrue);
-    expect(setting.linkedMedicationChatLabEnabled, isTrue);
     expect(setting.multiPillIdentificationLabEnabled, isTrue);
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getInt('user_setting_user-a_font_size'), 20);
@@ -375,8 +347,6 @@ void main() {
 
     final result = await control.saveUserSetting(
       currentSetting: const UserSetting(
-        nearbyPharmacyLabEnabled: true,
-        linkedMedicationChatLabEnabled: true,
         multiPillIdentificationLabEnabled: true,
       ),
       fontSizeOption: 'large',
@@ -403,8 +373,6 @@ void main() {
     expect(result.setting.caregiverNotificationsEnabled, isFalse);
     expect(result.setting.chatNotificationsEnabled, isFalse);
     expect(result.setting.notificationDetailMode, 'type_only');
-    expect(result.setting.nearbyPharmacyLabEnabled, isTrue);
-    expect(result.setting.linkedMedicationChatLabEnabled, isTrue);
     expect(result.setting.multiPillIdentificationLabEnabled, isTrue);
     control.dispose();
   });
@@ -416,44 +384,41 @@ void main() {
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'saveUserSetting falls back to local cache when backend fails',
-    () async {
-      SharedPreferences.setMockInitialValues({});
-      // Function Name: MockClient callback
-      // Description:
-      // - Complete the mocked HTTP request with status 500 and the fixed response body without network
-      //   access.
-      // Parameters:
-      // - request (http.Request): HTTP request intercepted instead of reaching the server. Accepted but not
-      //   consumed by this fixture.
-      // Returns:
-      // - Future<http.Response> with status 500.
-      final client = MockClient((http.Request request) async {
-        return http.Response('{"detail":"down"}', 500);
-      });
-      final control = ManageUserSetting(
-        baseUrl: 'http://localhost',
-        userHash: 'user-a',
-        client: client,
-      );
+  test('saveUserSetting falls back to local cache when backend fails', () async {
+    SharedPreferences.setMockInitialValues({});
+    // Function Name: MockClient callback
+    // Description:
+    // - Complete the mocked HTTP request with status 500 and the fixed response body without network
+    //   access.
+    // Parameters:
+    // - request (http.Request): HTTP request intercepted instead of reaching the server. Accepted but not
+    //   consumed by this fixture.
+    // Returns:
+    // - Future<http.Response> with status 500.
+    final client = MockClient((http.Request request) async {
+      return http.Response('{"detail":"down"}', 500);
+    });
+    final control = ManageUserSetting(
+      baseUrl: 'http://localhost',
+      userHash: 'user-a',
+      client: client,
+    );
 
-      final result = await control.saveUserSetting(
-        currentSetting: const UserSetting(),
-        fontSizeOption: 'small',
-        readingSpeedOption: 'slow',
-        language: 'ko',
-      );
-      final setting = result.setting;
+    final result = await control.saveUserSetting(
+      currentSetting: const UserSetting(),
+      fontSizeOption: 'small',
+      readingSpeedOption: 'slow',
+      language: 'ko',
+    );
+    final setting = result.setting;
 
-      expect(result.synchronizedWithServer, isFalse);
-      expect(setting.fontSize, 14);
-      expect(setting.readingSpeed, 0.8);
-      expect(setting.language, 'ko');
-      expect(setting.userHash, 'user-a');
-      final preferences = await SharedPreferences.getInstance();
-      expect(preferences.getInt('user_setting_user-a_font_size'), 14);
-      control.dispose();
-    },
-  );
+    expect(result.synchronizedWithServer, isFalse);
+    expect(setting.fontSize, 14);
+    expect(setting.readingSpeed, 0.8);
+    expect(setting.language, 'ko');
+    expect(setting.userHash, 'user-a');
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getInt('user_setting_user-a_font_size'), 14);
+    control.dispose();
+  });
 }

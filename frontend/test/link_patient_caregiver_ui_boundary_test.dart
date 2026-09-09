@@ -195,12 +195,12 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 복약 대화는 실험 기능이 켜지면 노출되고 활성 약이 없을 때 이유를 안내한다.
+  // - 기대 동작: 복약 대화는 기본으로 노출되고 활성 약이 없을 때 이유를 안내한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('복약 대화는 실험 기능이 켜지면 노출되고 활성 약이 없을 때 이유를 안내한다', (tester) async {
+  testWidgets('복약 대화는 기본으로 노출되고 활성 약이 없을 때 이유를 안내한다', (tester) async {
     _useLinkScreenViewport(tester);
     const link = PatientCaregiverLink(
       linkId: 1,
@@ -229,7 +229,7 @@ void main() {
     await tester.pump();
     hiddenLinkControl.linkRequests.single.complete(const [link]);
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
 
     final disabledLinkControl = _FakeLinkPatientCaregiver('caregiver-a');
     await tester.pumpWidget(
@@ -237,7 +237,6 @@ void main() {
         home: LinkPatientCaregiverUI(
           key: const ValueKey('chat-disabled-link-screen'),
           initialUserHash: 'caregiver-a',
-          chatLabEnabled: true,
           // 함수이름: controlFactory 콜백
           // 함수역할:
           // - 캡처한 연동 제어기를 재사용해 테스트가 응답 시점을 제어하게 한다.
@@ -284,7 +283,6 @@ void main() {
         home: LinkPatientCaregiverUI(
           key: const ValueKey('chat-enabled-link-screen'),
           initialUserHash: 'caregiver-a',
-          chatLabEnabled: true,
           // 함수이름: controlFactory 콜백
           // 함수역할:
           // - 캡처한 연동 제어기를 재사용해 테스트가 응답 시점을 제어하게 한다.

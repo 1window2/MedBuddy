@@ -207,13 +207,9 @@ void main() {
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: application shell separates destinations from home actions.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: 홈 기본 기능 테스트
+  // 함수역할: 실험실 설정 없이 약국을 포함한 홈 바로가기와 하단 탐색을 분리해 표시하는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
   testWidgets('application shell separates destinations from home actions', (
     tester,
   ) async {
@@ -236,11 +232,14 @@ void main() {
     expect(find.text('처방전 분석'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsOneWidget);
     expect(find.text('건강 관리 추천'), findsOneWidget);
-    expect(find.text('복약 알림 설정'), findsOneWidget);
+    expect(find.text('근처 운영 약국'), findsOneWidget);
+    expect(find.text('복약 알림 설정'), findsNothing);
     expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsOneWidget);
     expect(find.text('환자/보호자 연동'), findsNothing);
     expect(find.byKey(const ValueKey('homeSettingsButton')), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 20));
   });
 
   // Function Name: testWidgets callback

@@ -11,7 +11,7 @@ import '../services/notification_service.dart';
 // 클래스명: LinkedChatNotificationMonitorFactory
 // 역할: 채팅 감시 서비스와 구체적인 HTTP·WebSocket·알림 구현을 연결한다.
 // 주요 책임:
-// - 실험실 기능과 채팅 알림 설정을 확인하고 연동별 이벤트 소스 및 자원 정리 콜백을 제공한다.
+// - 채팅 알림 설정을 확인하고 연동별 이벤트 소스 및 자원 정리 콜백을 제공한다.
 class LinkedChatNotificationMonitorFactory {
   // 함수이름: LinkedChatNotificationMonitorFactory._
   // 함수역할: 가족 채팅 감시 조립을 정적 create 진입점으로만 제공하도록 외부 생성을 막는다.
@@ -55,7 +55,7 @@ class LinkedChatNotificationMonitorFactory {
        * - linkId (int): 조회·전송·감시 대상 연동 ID
        * 반환값:
        * - 해당 연결의 실시간 이벤트 서비스.
-       */(linkId) {
+       */ (linkId) {
         return LinkedChatRealtimeService(
           linkId: linkId,
           userHash: userHash,
@@ -97,16 +97,6 @@ class LinkedChatNotificationMonitorFactory {
             );
           },
       permissionRequester: NotificationService.instance.requestPermission,
-      featureEnabledLoader: /* 함수이름: featureEnabledLoader 콜백
-       * 함수역할: 사용자 설정에서 가족 복약 채팅 실험 기능의 활성 여부를 읽는다.
-       * 매개변수:
-       * - 없음.
-       * 반환값:
-       * - 실험 기능 활성 여부를 완료하는 Future.
-       */() async {
-        final setting = await settingControl.requestUserSetting();
-        return setting.linkedMedicationChatLabEnabled;
-      },
       linkRefreshInterval: linkRefreshInterval,
       requestPermission: requestPermission,
       onDispose: /* 함수이름: onDispose 콜백
@@ -115,7 +105,7 @@ class LinkedChatNotificationMonitorFactory {
        * - 없음.
        * 반환값:
        * - 없음.
-       */() {
+       */ () {
         linkControl.dispose();
         settingControl.dispose();
       },

@@ -22,8 +22,6 @@
 // - defaultLunchTime (String): 새 점심 알림의 HH:mm 기본 시각
 // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
 // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
-// - nearbyPharmacyLabEnabled (bool): 근처 약국 실험 기능 노출 여부
-// - linkedMedicationChatLabEnabled (bool): 복약 맥락 채팅 실험 기능 노출 여부
 // - multiPillIdentificationLabEnabled (bool): 다중 알약 식별 실험 기능 노출 여부
 class UserSetting {
   final String userHash;
@@ -40,8 +38,6 @@ class UserSetting {
   final String defaultLunchTime;
   final String defaultEveningTime;
   final String defaultBedtime;
-  final bool nearbyPharmacyLabEnabled;
-  final bool linkedMedicationChatLabEnabled;
   final bool multiPillIdentificationLabEnabled;
 
   // 함수이름: UserSetting
@@ -61,8 +57,6 @@ class UserSetting {
   // - defaultLunchTime (String): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
-  // - nearbyPharmacyLabEnabled (bool): 근처 약국 실험 기능 노출 여부
-  // - linkedMedicationChatLabEnabled (bool): 복약 맥락 채팅 실험 기능 노출 여부
   // - multiPillIdentificationLabEnabled (bool): 다중 알약 식별 실험 기능 노출 여부
   // 반환값:
   // - UserSetting: 초기화된 인스턴스.
@@ -81,8 +75,6 @@ class UserSetting {
     this.defaultLunchTime = '12:00',
     this.defaultEveningTime = '18:00',
     this.defaultBedtime = '22:00',
-    this.nearbyPharmacyLabEnabled = false,
-    this.linkedMedicationChatLabEnabled = false,
     this.multiPillIdentificationLabEnabled = false,
   });
 
@@ -142,12 +134,6 @@ class UserSetting {
         _readString(json['default_bedtime'] ?? json['defaultBedtime']),
         fallback: '22:00',
       ),
-      nearbyPharmacyLabEnabled:
-          json['nearby_pharmacy_lab_enabled'] == true ||
-          json['nearbyPharmacyLabEnabled'] == true,
-      linkedMedicationChatLabEnabled:
-          json['linked_medication_chat_lab_enabled'] == true ||
-          json['linkedMedicationChatLabEnabled'] == true,
       multiPillIdentificationLabEnabled:
           json['multi_pill_identification_lab_enabled'] == true ||
           json['multiPillIdentificationLabEnabled'] == true,
@@ -320,8 +306,6 @@ class UserSetting {
   // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
-  // - nearbyPharmacyLabEnabled (bool?): 근처 약국 실험 기능 노출 여부
-  // - linkedMedicationChatLabEnabled (bool?): 복약 맥락 채팅 실험 기능 노출 여부
   // - multiPillIdentificationLabEnabled (bool?): 다중 알약 식별 실험 기능 노출 여부
   // 반환값:
   // - 변경값이 반영된 UserSetting 인스턴스
@@ -340,8 +324,6 @@ class UserSetting {
     String? defaultLunchTime,
     String? defaultEveningTime,
     String? defaultBedtime,
-    bool? nearbyPharmacyLabEnabled,
-    bool? linkedMedicationChatLabEnabled,
     bool? multiPillIdentificationLabEnabled,
   }) {
     return UserSetting(
@@ -363,10 +345,6 @@ class UserSetting {
       defaultLunchTime: defaultLunchTime ?? this.defaultLunchTime,
       defaultEveningTime: defaultEveningTime ?? this.defaultEveningTime,
       defaultBedtime: defaultBedtime ?? this.defaultBedtime,
-      nearbyPharmacyLabEnabled:
-          nearbyPharmacyLabEnabled ?? this.nearbyPharmacyLabEnabled,
-      linkedMedicationChatLabEnabled:
-          linkedMedicationChatLabEnabled ?? this.linkedMedicationChatLabEnabled,
       multiPillIdentificationLabEnabled:
           multiPillIdentificationLabEnabled ??
           this.multiPillIdentificationLabEnabled,

@@ -38,7 +38,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final Future<void> Function(String slotKey)?
-      onNextMedicationCompleteRequested;
+  onNextMedicationCompleteRequested;
   final bool isNextMedicationCompletionLoading;
   final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onHealthRecommendationRequested;
@@ -243,17 +243,27 @@ class InputPrescriptionUI extends StatelessWidget {
                                     onTap: onHealthRecommendationRequested,
                                   ),
                                   _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homeMedicationReminderCard',
+                                    cardKey: ValueKey(
+                                      onNearbyPharmacyRequested != null
+                                          ? 'homeNearbyPharmacyCard'
+                                          : 'homeMedicationReminderCard',
                                     ),
-                                    icon: Icons.notifications_active_outlined,
-                                    title: text.medicationReminder,
-                                    subtitle: text.medicationReminderSubtitle,
+                                    icon: onNearbyPharmacyRequested != null
+                                        ? Icons.local_pharmacy_outlined
+                                        : Icons.notifications_active_outlined,
+                                    title: onNearbyPharmacyRequested != null
+                                        ? text.nearbyPharmacy
+                                        : text.medicationReminder,
+                                    subtitle: onNearbyPharmacyRequested != null
+                                        ? text.nearbyPharmacySubtitle
+                                        : text.medicationReminderSubtitle,
                                     tone: _HomeActionTone.butter,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     userSetting: userSetting,
-                                    onTap: onMedicationReminderRequested,
+                                    onTap:
+                                        onNearbyPharmacyRequested ??
+                                        onMedicationReminderRequested,
                                   ),
                                 ];
 
@@ -338,20 +348,6 @@ class InputPrescriptionUI extends StatelessWidget {
                             ),
                             SizedBox(height: useCompactDashboard ? 8 : 12),
                             _MedicationTipCard(text: text),
-                            if (onNearbyPharmacyRequested != null) ...[
-                              const SizedBox(height: 12),
-                              _HomeActionCard(
-                                cardKey: const ValueKey(
-                                  'homeNearbyPharmacyCard',
-                                ),
-                                icon: Icons.local_pharmacy_outlined,
-                                title: text.nearbyPharmacy,
-                                subtitle: text.nearbyPharmacySubtitle,
-                                tone: _HomeActionTone.mint,
-                                userSetting: userSetting,
-                                onTap: onNearbyPharmacyRequested,
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -1008,13 +1004,12 @@ class _HomeText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get nearbyPharmacy => isEnglish ? 'Nearby Pharmacy' : '근처 운영 약국';
   // 함수이름: nearbyPharmacySubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치에서 가까운 약국 찾기" 문구를 제공한다.
+  // 함수역할: 2×2 기능 카드에서 읽기 쉬운 약국 탐색 설명을 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacySubtitle => isEnglish
-      ? 'Find pharmacies near your current location'
-      : '현재 위치에서 가까운 약국 찾기';
+  String get nearbyPharmacySubtitle =>
+      isEnglish ? 'Find an open pharmacy nearby' : '가까운 운영 약국을 찾아요';
   // 함수이름: analyzingTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 인식 중..." 문구를 제공한다.
   // 매개변수:

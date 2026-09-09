@@ -52,13 +52,6 @@ typedef LinkedChatAlertSender =
 // 반환값:
 // - Future<bool>: 가족 채팅 로컬 알림의 표시 권한을 요청하고 허용 여부를 제공하는 계약이다.
 typedef LinkedChatPermissionRequester = Future<bool> Function();
-// 함수이름: LinkedChatFeatureEnabledLoader
-// 함수역할: 현재 사용자의 복약 맥락 채팅 실험 기능 활성 여부를 비동기로 조회하는 계약이다.
-// 매개변수:
-// - 없음.
-// 반환값:
-// - Future<bool>: 현재 사용자의 복약 맥락 채팅 실험 기능 활성 여부를 비동기로 조회하는 계약이다.
-typedef LinkedChatFeatureEnabledLoader = Future<bool> Function();
 
 // 클래스명: LinkedChatNotificationMonitorService
 // 역할: Firebase 푸시를 사용하지 않는 로컬 데모에서 활성 연동별 WebSocket을 유지한다. 상대가 보낸 새 메시지를 한 번만 내용 미리보기와 함께 로컬 알림으로 표시한다.
@@ -84,7 +77,6 @@ class LinkedChatNotificationMonitorService {
   final LinkedChatEventSourceFactory _eventSourceFactory;
   final LinkedChatAlertSender _sendAlert;
   final LinkedChatPermissionRequester _requestPermission;
-  final LinkedChatFeatureEnabledLoader _isFeatureEnabled;
   final Duration linkRefreshInterval;
   final bool requestPermission;
   final VoidCallback? _onDispose;
@@ -100,14 +92,13 @@ class LinkedChatNotificationMonitorService {
   Future<bool>? _permissionRequestFuture;
 
   // 함수이름: LinkedChatNotificationMonitorService
-  // 함수역할: 현재 사용자와 연동 조회·이벤트 소스·알림·권한·실험 기능 경계를 묶고 연동 갱신 주기 및 종료 콜백을 설정한다.
+  // 함수역할: 현재 사용자와 연동 조회·이벤트 소스·알림·권한 경계를 묶고 연동 갱신 주기 및 종료 콜백을 설정한다.
   // 매개변수:
   // - currentUserHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
   // - loadLinks (LinkedChatLinkLoader): 활성 환자·보호자 연동 조회 경계
   // - eventSourceFactory (LinkedChatEventSourceFactory): 연동 ID별 이벤트 소스 생성 경계
   // - sendAlert (LinkedChatAlertSender): 실제 로컬 알림 표시를 수행할 경계
   // - permissionRequester (LinkedChatPermissionRequester): 기기 알림 권한 요청 경계
-  // - featureEnabledLoader (LinkedChatFeatureEnabledLoader?): 채팅 실험 기능 활성 여부 조회 경계
   // - linkRefreshInterval (Duration): 활성 채팅 연동 목록 갱신 간격
   // - requestPermission (bool): 감시 중 운영체제 권한 요청을 수행할지 여부
   // - onDispose (VoidCallback?): 소유한 의존성 정리 콜백
@@ -119,7 +110,6 @@ class LinkedChatNotificationMonitorService {
     required LinkedChatEventSourceFactory eventSourceFactory,
     required LinkedChatAlertSender sendAlert,
     required LinkedChatPermissionRequester permissionRequester,
-    LinkedChatFeatureEnabledLoader? featureEnabledLoader,
     this.linkRefreshInterval = defaultLinkRefreshInterval,
     this.requestPermission = true,
     VoidCallback? onDispose,
@@ -127,16 +117,7 @@ class LinkedChatNotificationMonitorService {
        _eventSourceFactory = eventSourceFactory,
        _sendAlert = sendAlert,
        _requestPermission = permissionRequester,
-       _isFeatureEnabled = featureEnabledLoader ?? _alwaysEnabled,
        _onDispose = onDispose;
-
-  // 함수이름: _alwaysEnabled
-  // 함수역할: 별도 기능 허용 조회가 없을 때 채팅 감시를 활성 상태로 처리하는 기본 비동기 값을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<bool>: 별도 기능 허용 조회가 없을 때 채팅 감시를 활성 상태로 처리하는 기본 비동기 값을 제공한다.
-  static Future<bool> _alwaysEnabled() async => true;
 
   // 함수이름: start
   // 함수역할: 현재 연동을 즉시 연결하고 이후 연동 목록 변경을 주기적으로 반영한다.
@@ -159,7 +140,7 @@ class LinkedChatNotificationMonitorService {
      * - _ (Timer): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
      * 반환값:
      * - 없음.
-     */(_) {
+     */ (_) {
       unawaited(refreshNow());
     });
   }
@@ -176,10 +157,6 @@ class LinkedChatNotificationMonitorService {
     }
     _isRefreshing = true;
     try {
-      if (!await _isFeatureEnabled()) {
-        await _removeStaleWatchers(const <int>{});
-        return true;
-      }
       final links = await _loadLinks();
       if (_isDisposed) {
         return false;
@@ -222,7 +199,7 @@ class LinkedChatNotificationMonitorService {
          * - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
          * 반환값:
          * - 현재 사용자에게 속한 양의 연결 ID의 활성 연결이면 true.
-         */(link) {
+         */ (link) {
           final linkId = link.linkId;
           if (!link.linkStatus || linkId == null || linkId < 1) {
             return false;
@@ -232,13 +209,15 @@ class LinkedChatNotificationMonitorService {
               PatientHash.normalizePatientHash(link.caregiverHash) ==
                   normalizedUserHash;
         })
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 유효성 검사를 마친 가족 연결에서 연결 ID를 추출한다.
          * 매개변수:
          * - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
          * 반환값:
          * - null이 아닌 활성 연결 ID.
-         */(link) => link.linkId!)
+         */ (link) => link.linkId!,
+        )
         .toSet();
   }
 
@@ -250,13 +229,15 @@ class LinkedChatNotificationMonitorService {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _removeStaleWatchers(Set<int> activeLinkIds) async {
     final staleLinkIds = _watchers.keys
-        .where(/* 함수이름: where 콜백
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 더 이상 활성 목록에 없는 구독 연결을 찾는다.
          * 매개변수:
          * - linkId (int): 조회·전송·감시 대상 연동 ID
          * 반환값:
          * - 현재 활성 연결 집합에 없으면 true.
-         */(linkId) => !activeLinkIds.contains(linkId))
+         */ (linkId) => !activeLinkIds.contains(linkId),
+        )
         .toList(growable: false);
     for (final linkId in staleLinkIds) {
       final watcher = _watchers.remove(linkId);
@@ -293,7 +274,7 @@ class LinkedChatNotificationMonitorService {
        * - stackTrace (StackTrace): 오류 진단에 함께 기록할 호출 스택
        * 반환값:
        * - 없음.
-       */(Object error, StackTrace stackTrace) {
+       */ (Object error, StackTrace stackTrace) {
         developer.log(
           '가족 채팅 알림 이벤트 수신 중 오류가 발생했습니다.',
           name: 'LinkedChatNotificationMonitorService',
@@ -348,10 +329,6 @@ class LinkedChatNotificationMonitorService {
       if (message.linkId != watchedLinkId ||
           PatientHash.normalizePatientHash(message.senderHash) ==
               PatientHash.normalizePatientHash(currentUserHash)) {
-        return;
-      }
-      // 실험실 기능을 끈 직후 수신된 이벤트도 알림으로 노출하지 않는다.
-      if (!await _isFeatureEnabled()) {
         return;
       }
       final messageKey = '$watchedLinkId:${message.messageId}';

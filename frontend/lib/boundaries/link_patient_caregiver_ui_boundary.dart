@@ -43,33 +43,32 @@ typedef LinkedChatControlFactory = ManageLinkedChat Function(String userHash);
 // - 보호자가 환자 코드를 입력해 연동을 등록할 수 있게 한다.
 // 속성:
 // - initialUserHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
-// - chatLabEnabled (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - controlFactory (LinkPatientCaregiverFactory?): 사용자 해시별 연동 컨트롤러 생성 함수.
 class LinkPatientCaregiverUI extends StatefulWidget {
   final String initialUserHash;
-  final bool chatLabEnabled;
   final UserSetting userSetting;
   final LinkPatientCaregiverFactory? controlFactory;
   final LinkedChatControlFactory? chatControlFactory;
+  final VoidCallback? onLinksChanged;
 
   // 함수이름: LinkPatientCaregiverUI
   // 함수역할: 환자 코드 발급·등록과 연동 목록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - initialUserHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
-  // - chatLabEnabled (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - controlFactory (LinkPatientCaregiverFactory?): 사용자 해시별 연동 컨트롤러 생성 함수.
   // - chatControlFactory (LinkedChatControlFactory?): 사용자 해시별 채팅 컨트롤러 생성 함수.
+  // - onLinksChanged (VoidCallback?): 연동 조회·변경 성공을 상위 탐색 화면에 알리는 콜백.
   // 반환값: 입력 설정이 반영된 LinkPatientCaregiverUI 인스턴스.
   const LinkPatientCaregiverUI({
     super.key,
     this.initialUserHash = PatientHash.defaultPatientHash,
-    this.chatLabEnabled = false,
     this.userSetting = const UserSetting(),
     this.controlFactory,
     this.chatControlFactory,
+    this.onLinksChanged,
   });
 
   // Function Name: createState
@@ -137,11 +136,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       widget.initialUserHash,
     );
     final userChanged = nextUserHash != _committedUserHash;
-    final chatSettingChanged =
-        widget.chatLabEnabled != oldWidget.chatLabEnabled;
     final languageChanged =
         widget.userSetting.language != oldWidget.userSetting.language;
-    if (!userChanged && !chatSettingChanged && !languageChanged) {
+    if (!userChanged && !languageChanged) {
       return;
     }
     if (userChanged) {
@@ -209,7 +206,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       isEnabled: !_isLoading,
       shrinkWrap: usesScrollableList,
       patientLabels: _patientLabels,
-      showChatAction: widget.chatLabEnabled,
+      showChatAction: true,
       medicationContextsByLink: _medicationContextsByLink,
       onChatRequested: _openLinkedChat,
       onPatientMedicationRequested: _openPatientMedicationInfo,
@@ -492,16 +489,13 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // 함수이름: _loadChatMedicationContexts
-  // 함수역할: 실험 기능이 켜졌을 때 각 연동 환자의 활성 복약 목록을 병렬로 불러온다. 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 빈 목록으로 격리한다.
+  // 함수역할: 각 연동 환자의 활성 복약 목록을 병렬로 불러온다. 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 빈 목록으로 격리한다.
   // 매개변수:
   // - links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
   // 반환값: Future<Map<int, List<ChatMedicationContext>>>: 유효 연동별 약품 맥락; 조회 실패 항목은 빈 목록.
   Future<Map<int, List<ChatMedicationContext>>> _loadChatMedicationContexts(
     List<PatientCaregiverLink> links,
   ) async {
-    if (!widget.chatLabEnabled) {
-      return const {};
-    }
     final entries = await Future.wait(
       // 함수이름: _loadChatMedicationContexts.map callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록의 변환값을 `null; MapEntry(linkId, medications); MapEntry<int, List<ChatMedicationContext>>(linkId, const [])` 규칙으로 계산한다.
@@ -556,6 +550,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
     try {
       await action(request);
+      if (_isCurrentRequest(request)) widget.onLinksChanged?.call();
       return _isCurrentRequest(request) ? request : null;
     } catch (error) {
       if (_isCurrentRequest(request)) {
@@ -848,10 +843,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final medicationContexts = linkId == null
         ? const <ChatMedicationContext>[]
         : _medicationContextsByLink[linkId] ?? const [];
-    if (_isLoading ||
-        !widget.chatLabEnabled ||
-        linkId == null ||
-        !link.linkStatus) {
+    if (_isLoading || linkId == null || !link.linkStatus) {
       return;
     }
     if (medicationContexts.isEmpty) {

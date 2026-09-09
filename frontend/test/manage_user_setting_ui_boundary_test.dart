@@ -9,7 +9,6 @@ import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dar
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
-
 // 함수이름: main
 // 함수역할:
 // - 설정 탐색, 언어, 글씨 크기, 음성 미리보기와 저장 피드백 검증 사례와 테스트 대역을 등록한다.
@@ -744,43 +743,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 실험실에서 근처 운영 약국 노출 여부를 저장한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('실험실에서 근처 운영 약국 노출 여부를 저장한다', (tester) async {
-    bool? savedLabSetting;
+  // 함수이름: 실험실 항목 테스트
+  // 함수역할: 정식 약국·채팅 스위치를 제거하고 다중 알약 식별만 실험실에 남기는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  testWidgets('실험실에는 다중 알약 식별만 표시한다', (tester) async {
     final authenticationControl = AuthenticationControl.development();
     addTearDown(authenticationControl.dispose);
-
     await tester.pumpWidget(
       MaterialApp(
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          // 함수이름: onNearbyPharmacyLabSettingSaveRequested 콜백
-          // 함수역할:
-          // - 근처 약국 실험 기능의 저장 요청 값을 기록한다.
-          // 매개변수:
-          // - enabled (bool): 선택한 실험 기능 활성 여부.
-          // 반환값:
-          // - Future<void>; 선택한 활성 여부 기록 완료.
-          onNearbyPharmacyLabSettingSaveRequested: (enabled) async {
-            savedLabSetting = enabled;
-          },
+          // 함수이름: 설정 저장 대역
+          // 함수역할: 실제 저장 없이 성공 결과를 반환한다.
+          // 매개변수: 글씨 크기·읽기 속도·언어 선택값. 반환값: 저장 결과.
           onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
-              // 함수역할:
-              // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
-              // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-              // 반환값:
-              // - 서버 동기화 상태의 설정 저장 결과.
               ({
                 required fontSizeOption,
                 required readingSpeedOption,
@@ -789,76 +766,18 @@ void main() {
         ),
       ),
     );
-
     await _openLaboratory(tester);
-    await tester.ensureVisible(find.text('근처 운영 약국'));
-    await tester.tap(find.byKey(const ValueKey('nearbyPharmacyLabSwitch')));
-    await tester.pump();
-    await tester.ensureVisible(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.pumpAndSettle();
-
-    expect(savedLabSetting, isTrue);
-    expect(tester.takeException(), isNull);
-  });
-
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 실험실에서 복약 대화 노출 여부를 저장한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('실험실에서 복약 대화 노출 여부를 저장한다', (tester) async {
-    bool? savedLabSetting;
-    final authenticationControl = AuthenticationControl.development();
-    addTearDown(authenticationControl.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManageUserSettingUI(
-          initialSetting: const UserSetting(),
-          authenticationControl: authenticationControl,
-          // 함수이름: onLinkedMedicationChatLabSettingSaveRequested 콜백
-          // 함수역할:
-          // - 복약 대화 실험 기능의 저장 요청 값을 기록한다.
-          // 매개변수:
-          // - enabled (bool): 선택한 실험 기능 활성 여부.
-          // 반환값:
-          // - Future<void>; 선택한 활성 여부 기록 완료.
-          onLinkedMedicationChatLabSettingSaveRequested: (enabled) async {
-            savedLabSetting = enabled;
-          },
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
-              // 함수역할:
-              // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
-              // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-              // 반환값:
-              // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
-        ),
-      ),
-    );
-
-    await _openLaboratory(tester);
-    await tester.ensureVisible(find.text('복약 대화'));
-    await tester.tap(
+    expect(find.byKey(const ValueKey('nearbyPharmacyLabSwitch')), findsNothing);
+    expect(
       find.byKey(const ValueKey('linkedMedicationChatLabSwitch')),
+      findsNothing,
     );
-    await tester.pump();
-    await tester.ensureVisible(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.pumpAndSettle();
-
-    expect(savedLabSetting, isTrue);
+    expect(find.text('근처 운영 약국'), findsNothing);
+    expect(find.text('복약 대화'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('multiPillIdentificationLabSwitch')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

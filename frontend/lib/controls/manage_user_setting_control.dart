@@ -13,8 +13,6 @@ import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-
-
 // 클래스명: ManageUserSetting
 // 역할: 글씨 크기, 읽기 속도, 언어 설정을 SharedPreferences에 영구 저장한다.
 // 주요 책임:
@@ -83,9 +81,6 @@ class ManageUserSetting {
 
       // 실험실 설정은 기기 전용 값이므로 서버 응답에 덮어쓰이지 않게 합친다.
       final setting = _decodeUserSetting(responseBody).copyWith(
-        nearbyPharmacyLabEnabled: cachedSetting.nearbyPharmacyLabEnabled,
-        linkedMedicationChatLabEnabled:
-            cachedSetting.linkedMedicationChatLabEnabled,
         multiPillIdentificationLabEnabled:
             cachedSetting.multiPillIdentificationLabEnabled,
       );
@@ -185,9 +180,6 @@ class ManageUserSetting {
 
       // 서버에는 접근성 설정만 저장하고 실험실 설정은 기기 값을 유지한다.
       final savedSetting = _decodeUserSetting(responseBody).copyWith(
-        nearbyPharmacyLabEnabled: nextSetting.nearbyPharmacyLabEnabled,
-        linkedMedicationChatLabEnabled:
-            nextSetting.linkedMedicationChatLabEnabled,
         multiPillIdentificationLabEnabled:
             nextSetting.multiPillIdentificationLabEnabled,
       );
@@ -208,44 +200,6 @@ class ManageUserSetting {
         synchronizedWithServer: false,
       );
     }
-  }
-
-  // 함수이름: saveNearbyPharmacyLabSetting
-  // 함수역할: 근처 운영 약국 실험 기능의 노출 여부를 사용자별 기기에 저장한다. 베타 기능이 서버 설정 스키마에 영향을 주지 않도록 원격 전송은 하지 않는다.
-  // 매개변수:
-  // - currentSetting (UserSetting): 변경하지 않은 값을 보존할 현재 사용자 설정
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - 실험실 설정이 반영된 사용자 설정
-  Future<UserSetting> saveNearbyPharmacyLabSetting({
-    required UserSetting currentSetting,
-    required bool enabled,
-  }) async {
-    final nextSetting = currentSetting.copyWith(
-      userHash: _normalizedUserHash,
-      nearbyPharmacyLabEnabled: enabled,
-    );
-    await _cacheUserSetting(nextSetting);
-    return nextSetting;
-  }
-
-  // 함수이름: saveLinkedMedicationChatLabSetting
-  // 함수역할: 복약 맥락 채팅의 노출 여부를 사용자별 기기에 저장한다. 실험 기능 값은 서버의 정식 사용자 설정 스키마로 전송하지 않는다.
-  // 매개변수:
-  // - currentSetting (UserSetting): 변경하지 않은 값을 보존할 현재 사용자 설정
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - 복약 맥락 채팅 설정이 반영된 사용자 설정
-  Future<UserSetting> saveLinkedMedicationChatLabSetting({
-    required UserSetting currentSetting,
-    required bool enabled,
-  }) async {
-    final nextSetting = currentSetting.copyWith(
-      userHash: _normalizedUserHash,
-      linkedMedicationChatLabEnabled: enabled,
-    );
-    await _cacheUserSetting(nextSetting);
-    return nextSetting;
   }
 
   // 함수이름: saveMultiPillIdentificationLabSetting
@@ -321,10 +275,6 @@ class ManageUserSetting {
       defaultBedtime:
           preferences.getString(_defaultBedtimeKey) ??
           fallbackSetting.defaultBedtime,
-      nearbyPharmacyLabEnabled:
-          preferences.getBool(_nearbyPharmacyLabEnabledKey) ?? false,
-      linkedMedicationChatLabEnabled:
-          preferences.getBool(_linkedMedicationChatLabEnabledKey) ?? false,
       multiPillIdentificationLabEnabled:
           preferences.getBool(_multiPillIdentificationLabEnabledKey) ?? false,
     );
@@ -369,14 +319,6 @@ class ManageUserSetting {
       setting.defaultEveningTime,
     );
     await preferences.setString(_defaultBedtimeKey, setting.defaultBedtime);
-    await preferences.setBool(
-      _nearbyPharmacyLabEnabledKey,
-      setting.nearbyPharmacyLabEnabled,
-    );
-    await preferences.setBool(
-      _linkedMedicationChatLabEnabledKey,
-      setting.linkedMedicationChatLabEnabled,
-    );
     await preferences.setBool(
       _multiPillIdentificationLabEnabledKey,
       setting.multiPillIdentificationLabEnabled,
@@ -532,24 +474,6 @@ class ManageUserSetting {
   // - String: 새 취침 전 복약 알림의 기본 시간을 저장할 사용자별 키를 만든다.
   String get _defaultBedtimeKey =>
       'user_setting_${_normalizedUserHash}_default_bedtime';
-
-  // 함수이름: _nearbyPharmacyLabEnabledKey
-  // 함수역할: 근처 약국 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 근처 약국 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  String get _nearbyPharmacyLabEnabledKey =>
-      'user_setting_${_normalizedUserHash}_nearby_pharmacy_lab_enabled';
-
-  // 함수이름: _linkedMedicationChatLabEnabledKey
-  // 함수역할: 복약 맥락 채팅 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 복약 맥락 채팅 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  String get _linkedMedicationChatLabEnabledKey =>
-      'user_setting_${_normalizedUserHash}_linked_medication_chat_lab_enabled';
 
   // 함수이름: _multiPillIdentificationLabEnabledKey
   // 함수역할: 다중 알약 식별 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
