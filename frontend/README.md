@@ -122,6 +122,12 @@ and pharmacy shares as typed snapshots. Caregiver check-request notifications
 open the corresponding schedule slot, and repeated completion processing does
 not create duplicate completion messages.
 
+Chat supports selected-message deletion with confirmation. Users can delete
+messages only for themselves, or delete their own messages for both participants
+within 24 hours. The backend enforces this policy, while medication records stay
+unchanged. Delivered notification previews cannot be recalled.
+See [chat deletion policy](../docs/Chat%20Message%20Deletion.md).
+
 Medication detail and today's schedule share one full-screen image viewer. A
 validated public medication image can be tapped to inspect it with pan and zoom
 without duplicating image-loading policy in each screen.

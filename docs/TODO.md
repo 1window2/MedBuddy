@@ -78,10 +78,11 @@ silently inferred from weak evidence.
       cooldowns, acknowledgement, and deduplication. Do not implement literal
       notification flooding: it increases alarm fatigue and can hide urgent
       events.
-- [ ] Define chat-deletion semantics before implementation. Prefer a
-      participant-specific `Clear my history` cutoff unless both participants
-      explicitly agree to shared deletion; document retention and export
-      behavior before deleting health-related communication from the server.
+- [x] Define and implement selected-message deletion: private deletion at any
+      age; sender-only shared redaction before 24 hours, with server validation,
+      confirmation, and retention/export semantics in [Chat Message Deletion.md](Chat%20Message%20Deletion.md).
+- [ ] Verify selected-message deletion on two physical devices, including
+      reconnect, offline failure, delivered previews and the 24-hour deadline.
 - [ ] Add a remotely controlled maintenance notice with a clear start/end time
       and retry guidance before the next planned service interruption.
 - [ ] Run a short task-count usability study with older adults or proxy users:

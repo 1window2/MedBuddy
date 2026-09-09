@@ -287,6 +287,7 @@ package "Flutter Frontend" {
         class "ManageLinkedChat" as FManageLinkedChat <<Controller: 연결 사용자 채팅>> {
             + userHash: String
             + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
+            + deleteMessages(linkId, messageIds, scope): Future<void>
             + requestMedicationContexts(linkId): Future<List<ChatMedicationContext>>
             + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
             + sendMessage(linkId, body, clientMessageId, medicationIds?): Future<ChatMessage>
@@ -726,6 +727,8 @@ package "Flutter Frontend" {
             + courseEndDate: DateTime?
             + showSafetyGuidance: bool
             + readAt: DateTime?
+            + hiddenForMe: bool
+            + deletedForEveryone: bool
         }
 
         class "HealthRecommendation" as FHealthRecommendation <<Entity: 건강 추천>> {
@@ -822,6 +825,7 @@ package "FastAPI Backend" {
         class "ManageLinkedChat" as BManageLinkedChat <<Control: 연결 채팅 권한·메시지 관리>> {
             - db: Session
             + request_history(user_hash, link_id, before_id): list<ChatMessage>
+            + delete_messages(link_id, user_hash, message_ids, scope): dict
             + request_medication_contexts(user_hash, link_id): list<dict>
             + request_schedule_contexts(user_hash, link_id): list<dict>
             + request_medication_detail(user_hash, link_id, medication_id): dict
@@ -1021,6 +1025,7 @@ package "FastAPI Backend" {
         class "ChatMessageRepository" as ChatMessageRepository <<Repository: 연결 채팅 저장·읽음 관리>> {
             - db: Session
             + list_recent(link_id, before_id, limit): list<_ChatMessage>
+            + find_selected_for_update(link_id, message_ids): list<_ChatMessage>
             + find_client_request(link_id, sender_hash, client_message_id): _ChatMessage?
             + add(message): void
             + mark_incoming_read(link_id, reader_hash, through_message_id): int
@@ -1031,7 +1036,7 @@ package "FastAPI Backend" {
             + connect(link_id, user_hash, socket): void
             + disconnect(link_id, user_hash, socket): void
             + is_user_connected(link_id, user_hash): bool
-            + broadcast(link_id, event): void
+            + broadcast(link_id, event, recipient_hash?): void
         }
 
         class "CaregiverAlertOutboxWorker" as CaregiverAlertOutboxWorker <<Service: 알림 아웃박스 작업자>> {
@@ -1271,6 +1276,8 @@ package "FastAPI Backend" {
             + medication_contexts: list<dict>
             + created_at: datetime
             + read_at: datetime?
+            + hidden_for_me: bool
+            + deleted_for_everyone: bool
         }
     }
 
@@ -1426,6 +1433,9 @@ package "FastAPI Backend" {
             + medication_dosage: String?
             + created_at: DateTime
             + read_at: DateTime?
+            + patient_deleted_at: DateTime?
+            + caregiver_deleted_at: DateTime?
+            + deleted_for_everyone_at: DateTime?
         }
     }
 }

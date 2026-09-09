@@ -60,6 +60,7 @@
 - Let caregivers view linked medication data, unlink safely, and configure per-slot completion or missed-dose alerts.
 - Deliver transition-based FCM alerts in beta mode without exposing internal patient identifiers.
 - Support opt-in medication-context chat with server-verified schedules, medication cards, pharmacy snapshots, idempotent events, and participant-scoped unread state.
+- Select chat messages for private deletion at any time, or redact your own messages for both participants within 24 hours of sending. Server-side authorization and time checks apply; medication records remain unchanged.
 
 ### Health Recommendations and Reminders
 
