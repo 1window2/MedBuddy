@@ -21,19 +21,28 @@ from boundaries.holiday_emergency_pharmacy_api_boundary import (  # noqa: E402
 
 
 @pytest.mark.anyio
-async def test_exact_date_schedule_is_parsed_and_query_is_pharmacy_only() -> None:
+async def test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored() -> None:
     def respond(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["QD"] == "H"
+        # The upstream service currently returns no rows for QD=H even though
+        # the unfiltered payload contains dutyDiv=H pharmacy records. Fetch the
+        # date roster and enforce the pharmacy classification locally.
+        assert "QD" not in request.url.params
         assert request.url.params["QT"] == "20260925"
         return httpx.Response(
             200,
             content=b"""
             <response><header><resultCode>00</resultCode></header><body>
-              <totalCount>1</totalCount><items><item>
+              <totalCount>2</totalCount><items><item>
                 <hpid>C1234</hpid>
+                <dutyDiv>H</dutyDiv>
                 <dutyDay1>2026-09-25</dutyDay1>
                 <dutyDaytime1>09:00~17:30</dutyDaytime1>
                 <dutyDayEtc>Call before visiting</dutyDayEtc>
+              </item><item>
+                <hpid>A5678</hpid>
+                <dutyDiv>A</dutyDiv>
+                <dutyDay1>2026-09-25</dutyDay1>
+                <dutyDaytime1>09:00~18:00</dutyDaytime1>
               </item></items>
             </body></response>
             """,

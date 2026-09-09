@@ -100,7 +100,6 @@ class HolidayEmergencyPharmacyAPI:
                 self._BASE_URL,
                 params={
                     "serviceKey": settings.PUBLIC_DATA_API_KEY,
-                    "QD": "H",
                     "QT": value.strftime("%Y%m%d"),
                     "pageNo": page_no,
                     "numOfRows": 1000,
