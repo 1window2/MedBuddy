@@ -69,8 +69,20 @@ by UML continue to use `snake_case`.
 
 ## 4. Documentation Standards
 
-This is the most important rule of our project. All major functions and methods must have a block comment at the top following the specified format. 
-We support both Korean and English documentation for our global collaborators. Please use the language you are most comfortable with.
+All source files, classes, functions and methods must follow the documentation
+formats below. Include simple accessors, constructors, test fixtures and
+individual test cases. Keep explanations concise and describe actual behavior,
+inputs, outputs and relevant failure conditions instead of merely repeating names.
+
+### 주석 언어와 적용 범위
+
+- `tmdgusdl9647`이 작성하거나 실질적으로 수정한 코드는 한글로 설명한다.
+- `1window2`가 작성하거나 실질적으로 수정한 코드는 영어로 설명한다.
+- 공동 작업 파일은 파일의 마지막 커밋이 아니라 함수·클래스 단위의 실제 코드
+  수정 이력을 기준으로 구분한다. 주석·공백만 바꾼 커밋은 작성자 판단에서 제외한다.
+- 다른 기여자의 기존 설명은 사용 중인 언어를 유지하며, 코드 식별자는 번역하지 않는다.
+- 자동 생성 코드·외부 라이브러리·바이너리 자산에는 주석을 억지로 추가하지 않는다.
+- 주석 정비만 하는 변경에서는 실행 코드와 테스트의 입력·기대 결과를 바꾸지 않는다.
 
 ### English Comment Template
 
