@@ -42,3 +42,53 @@ Check enabled.
       outage recovery on a physical device.
 - [ ] Remove any release documentation that still describes the off-Play
       exception as active.
+
+## Patient burden reduction track
+
+**Product rule:** Prefer removing a repeated patient action over adding another
+feature. A one-time setup step is acceptable when it eliminates recurring
+typing, navigation, or confirmation. Medication completion must never be
+silently inferred from weak evidence.
+
+### Implemented on `beta/v0.2.0`
+
+- [x] Keep the existing atomic whole-slot completion endpoint as the only batch
+      writer, so one action records every active medication in a time slot.
+- [x] Add a large home-screen `복용했어요` / `Taken` action for the next pending
+      medication slot, with duplicate-request protection and undo.
+- [x] Add Android medication-notification actions for `복용했어요` / `Taken`
+      and `10분 후 다시 알림` / `Remind in 10 min`. Completion uses the same
+      authenticated atomic endpoint; snoozed text does not disclose medication
+      names on the lock screen.
+- [x] Use the MedBuddy nurse mascot for every Android launcher density.
+- [x] Retain per-slot caregiver completion and missed-deadline settings, FCM
+      completion delivery, local/background missed-dose monitoring, and chat
+      medication context instead of creating a second caregiver workflow.
+
+### Required follow-up
+
+- [ ] Verify both notification actions on a physical Android device while the
+      app is foregrounded, backgrounded, and terminated; also test a locked
+      screen, reboot, battery saver, offline completion failure, retry, snooze,
+      and accidental-completion undo.
+- [ ] Move missed-deadline detection to a server-scheduled, idempotent delivery
+      path. The Android polling fallback is not sufficient when a patient or
+      caregiver force-stops the app.
+- [ ] Add caregiver escalation levels with explicit consent, quiet hours,
+      cooldowns, acknowledgement, and deduplication. Do not implement literal
+      notification flooding: it increases alarm fatigue and can hide urgent
+      events.
+- [ ] Define chat-deletion semantics before implementation. Prefer a
+      participant-specific `Clear my history` cutoff unless both participants
+      explicitly agree to shared deletion; document retention and export
+      behavior before deleting health-related communication from the server.
+- [ ] Add a remotely controlled maintenance notice with a clear start/end time
+      and retry guidance before the next planned service interruption.
+- [ ] Run a short task-count usability study with older adults or proxy users:
+      record taps, text entry, completion time, error recovery, large-text
+      layout, TalkBack labels, and one-handed reachability for the medication,
+      caregiver, and chat flows.
+- [ ] Continue the evidence-gated intake automation stages in
+      `MedBuddy - Medication Intake Automation Roadmap.md`. A camera or model
+      may preselect a dose, but ambiguous identity, count, or timing must still
+      require one clear confirmation and must never write a completion record.
