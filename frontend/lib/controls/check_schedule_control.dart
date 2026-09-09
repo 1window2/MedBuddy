@@ -9,21 +9,31 @@ import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-// 파일명: check_schedule_control.dart
-// 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 API를 담당한다.
+// File Name: check_schedule_control.dart
+// Role: Loads patient medication schedules and persists individual or whole-slot completion changes.
 
-// 클래스명: CheckSchedule
-// 역할: 저장된 복약 정보를 오늘 기준 일정으로 조회하고 상태 변경을 서버에 반영한다.
-// 주요 책임:
-// - 환자 해시와 역할 정보를 포함해 일정 API를 호출한다.
-// - 서버 응답을 MedicationSchedule 목록으로 변환한다.
-// - 복약 완료 여부를 업데이트한다.
+// Class Name: CheckSchedule
+// Role: Retrieves medication courses in the patient's schedule and persists completion changes.
+// Responsibilities:
+// - Scope API requests by patient hash, decode schedule entities, and update individual or entire-slot completion states.
+// Attributes:
+// - baseUrl (String): Base URL of the medication API.
+// - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
+// - _client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
 class CheckSchedule {
   final String baseUrl;
   final String patientHash;
   final http.Client _client;
   final bool _ownsClient;
 
+  // Function Name: CheckSchedule
+  // Description: Normalizes patient ownership and binds schedule reads and completion updates to an injected or owned authenticated client.
+  // Parameters:
+  // - baseUrl (String): Base URL of the medication API.
+  // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
+  // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
+  // Returns:
+  // - CheckSchedule: the initialized instance.
   CheckSchedule({
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
@@ -33,8 +43,9 @@ class CheckSchedule {
        _ownsClient = client == null;
 
   // Function Name: requestTodayMedicationSchedule
-  // Description:
-  // - Requests today's medication schedule scoped to this patient hash.
+  // Description: Requests today's medication schedule scoped to this patient hash.
+  // Parameters:
+  // - None.
   // Returns:
   // - Today's medication schedule list.
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
@@ -67,10 +78,9 @@ class CheckSchedule {
   }
 
   // Function Name: requestMedicationScheduleWindow
-  // Description:
-  // - Requests courses overlapping the rolling reminder window.
+  // Description: Requests courses overlapping the rolling reminder window.
   // Parameters:
-  // - days: Inclusive window length beginning today, up to 14 days.
+  // - days (int): Inclusive window length beginning today, up to 14 days.
   // Returns:
   // - Medication courses needed to replenish notifications before they start.
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
@@ -106,11 +116,11 @@ class CheckSchedule {
   }
 
   // Function Name: updateMedicationStatus
-  // Description:
-  // - Persists one medication completion status.
+  // Description: Persists one medication completion status.
   // Parameters:
-  // - medicationId: Saved medication identifier.
-  // - medicationStatus: New completion status.
+  // - medicationId (String): Saved medication identifier.
+  // - medicationStatus (bool): New completion status.
+  // - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
   // Returns:
   // - Updated MedicationSchedule.
   Future<MedicationSchedule> updateMedicationStatus(
@@ -161,12 +171,10 @@ class CheckSchedule {
   }
 
   // Function Name: updateMedicationSlotStatus
-  // Description:
-  // - Atomically applies one completion state to every medication in a time
-  //   slot through the backend bulk-update endpoint.
+  // Description: Atomically applies one completion state to every medication in a time slot through the backend bulk-update endpoint.
   // Parameters:
-  // - slotKey: Morning, lunch, evening, or bedtime schedule key.
-  // - medicationStatus: Completion state applied to the whole slot.
+  // - slotKey (String): Morning, lunch, evening, or bedtime schedule key.
+  // - medicationStatus (bool): Completion state applied to the whole slot.
   // Returns:
   // - Updated schedules returned by the backend.
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
@@ -209,10 +217,23 @@ class CheckSchedule {
     }
   }
 
+  // Function Name: _decodeMedicationScheduleList
+  // Description: Delegates schedule-list decoding and normalization to the shared MedicationSchedule entity parser.
+  // Parameters:
+  // - rawItems (dynamic): Raw server item or list before model conversion.
+  // Returns:
+  // - List<MedicationSchedule>: Delegates schedule-list decoding and normalization to the shared MedicationSchedule entity parser.
   List<MedicationSchedule> _decodeMedicationScheduleList(dynamic rawItems) {
     return MedicationSchedule.fromScheduleJsonList(rawItems);
   }
 
+  // Function Name: _buildScheduleUri
+  // Description: Builds a schedule endpoint URI with patient ownership and optional window query parameters.
+  // Parameters:
+  // - path (String): Relative path appended to the configured API resource.
+  // - additionalQueryParameters (Map<String, String>): Additional HTTP query fields beyond the ownership scope.
+  // Returns:
+  // - Uri: Builds a schedule endpoint URI with patient ownership and optional window query parameters.
   Uri _buildScheduleUri(
     String path, [
     Map<String, String> additionalQueryParameters = const {},
@@ -225,6 +246,12 @@ class CheckSchedule {
     );
   }
 
+  // Function Name: dispose
+  // Description: Closes the HTTP client only when this control created it; injected clients remain owned by the caller.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
   void dispose() {
     if (_ownsClient) {
       _client.close();

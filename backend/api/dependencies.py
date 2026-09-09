@@ -1,5 +1,5 @@
-# 파일명: dependencies.py
-# 역할: 백엔드 사용 사례 협력 객체를 생성하는 FastAPI 의존성 팩토리를 제공한다.
+# File Name: dependencies.py
+# Role: Builds request controls and shared external clients while composing authentication, account registration and quota dependencies.
 
 import asyncio
 from collections.abc import AsyncGenerator
@@ -113,6 +113,13 @@ _SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
+# Function Name: get_oidc_token_verifier
+# Description:
+# - Lazily creates the shared Firebase ID-token verifier under a lock, including the configured revocation policy.
+# Parameters:
+# - None.
+# Returns:
+# - Process-shared OIDC token verifier.
 def get_oidc_token_verifier() -> OIDCTokenVerifier:
     global _oidc_token_verifier
     with _oidc_token_verifier_lock:
@@ -124,6 +131,13 @@ def get_oidc_token_verifier() -> OIDCTokenVerifier:
         return _oidc_token_verifier
 
 
+# Function Name: get_app_check_token_verifier
+# Description:
+# - Lazily creates the shared Firebase App Check verifier for the configured project under a lock.
+# Parameters:
+# - None.
+# Returns:
+# - Process-shared application-attestation verifier.
 def get_app_check_token_verifier() -> AppCheckTokenVerifier:
     global _app_check_token_verifier
     with _app_check_token_verifier_lock:
@@ -134,6 +148,13 @@ def get_app_check_token_verifier() -> AppCheckTokenVerifier:
         return _app_check_token_verifier
 
 
+# Function Name: verify_app_check_token
+# Description:
+# - Enforces App Check when enabled, mapping invalid tokens to HTTP 403 and verifier outages to retryable HTTP 503.
+# Parameters:
+# - x_firebase_appcheck (str | None): Firebase application-attestation token from the request header.
+# Returns:
+# - None.
 def verify_app_check_token(
     x_firebase_appcheck: str | None = Header(default=None),
 ) -> None:
@@ -159,6 +180,13 @@ def verify_app_check_token(
         ) from exc
 
 
+# Function Name: get_authenticated_principal
+# Description:
+# - Verifies the bearer token and enforces configured provider and verified-email policies, or returns the explicit development identity.
+# Parameters:
+# - credentials (HTTPAuthorizationCredentials | None): Optional HTTP bearer credentials from the request.
+# Returns:
+# - Trusted principal; HTTP 401/403 for rejected authentication and 503 for verifier outages.
 def get_authenticated_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AuthenticatedPrincipal:
@@ -217,14 +245,13 @@ def get_authenticated_principal(
         )
     return principal
 
-# 함수이름: get_recently_authenticated_principal
-# 함수역할:
-# - 되돌릴 수 없는 계정 삭제 전에 최근 Firebase 인증 여부를 확인한다.
-# - 서버에서 검증한 사용자를 유지하고 추가 인증 수단이 없는 익명 사용자는 예외 처리한다.
-# 매개변수:
-# - principal: Firebase 인증으로 검증된 요청 사용자
-# 반환값:
-# - 최근 인증 정책을 만족한 동일 사용자
+# Function Name: get_recently_authenticated_principal
+# Description:
+# - Requires recent verified Firebase authentication for irreversible account deletion; anonymous and authentication-disabled identities are exempt.
+# Parameters:
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# Returns:
+# - Same principal when its authentication time meets policy, or HTTP 401 requesting a new sign-in.
 def get_recently_authenticated_principal(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
 ) -> AuthenticatedPrincipal:
@@ -255,16 +282,13 @@ def get_recently_authenticated_principal(
 # Function Name: _lock_account_operation
 # Description:
 # - Serializes each authenticated account request with account deletion.
-# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and
-#   a short SQLite write transaction while registering the account scope.
-# - SQLite request-lifetime serialization is provided by the per-account lock
-#   retained by get_registered_principal because endpoint controls commit.
+# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and a short SQLite write transaction while registering the account scope.
+# - SQLite request-lifetime serialization is provided by the per-account lock retained by get_registered_principal because endpoint controls commit.
 # Parameters:
-# - db: Request-scoped SQLAlchemy session shared by endpoint controls.
-# - user_hash: Server-derived account scope used only as a lock namespace.
+# - db (Session): Request-scoped SQLAlchemy session shared by endpoint controls.
+# - user_hash (str): Server-derived account scope used only as a lock namespace.
 # Returns:
-# - None. PostgreSQL holds the lock for its transaction; SQLite holds it until
-#   account registration commits inside _register_account_scope.
+# - None. PostgreSQL holds the lock for its transaction; SQLite holds it until account registration commits inside _register_account_scope.
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
@@ -290,6 +314,14 @@ def _lock_account_operation(db: Session, user_hash: str) -> None:
     )
 
 
+# 함수이름: _register_account_scope
+# 함수역할:
+# - 계정 작업 잠금을 획득하고 삭제 표식을 검사해 사용자를 등록하며 SQLite의 짧은 쓰기 트랜잭션은 즉시 커밋한다.
+# 매개변수:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 없음.
 def _register_account_scope(db: Session, user_hash: str) -> None:
     """Acquires the account lock and rejects deleted account tombstones."""
 
@@ -305,10 +337,9 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
 # Function Name: _retain_sqlite_account_lock
 # Description:
 # - Returns one process-local lock per authenticated account for SQLite mode.
-# - Reference counting removes idle locks so anonymous account churn cannot grow
-#   the registry without bound.
+# - Reference counting removes idle locks so anonymous account churn cannot grow the registry without bound.
 # Parameters:
-# - user_hash: Server-derived account scope used as the serialization key.
+# - user_hash (str): Server-derived account scope used as the serialization key.
 # Returns:
 # - The retained per-account lock.
 def _retain_sqlite_account_lock(user_hash: str) -> asyncio.Lock:
@@ -324,8 +355,8 @@ def _retain_sqlite_account_lock(user_hash: str) -> asyncio.Lock:
 # Description:
 # - Releases one registry reference and removes an idle per-account lock.
 # Parameters:
-# - user_hash: Server-derived account scope used as the serialization key.
-# - account_lock: Exact lock instance retained for the current request.
+# - user_hash (str): Server-derived account scope used as the serialization key.
+# - account_lock (asyncio.Lock): Exact lock instance retained for the current request.
 # Returns:
 # - None.
 def _drop_sqlite_account_lock_reference(
@@ -345,18 +376,23 @@ def _drop_sqlite_account_lock_reference(
 # Description:
 # - Releases request ownership before dropping its registry reference.
 # Parameters:
-# - user_hash: Server-derived account scope used as the serialization key.
-# - account_lock: Lock held for the completed request.
+# - user_hash (str): Server-derived account scope used as the serialization key.
+# - account_lock (asyncio.Lock): Lock held for the completed request.
 # Returns:
 # - None.
 def _release_sqlite_account_lock(user_hash: str, account_lock: asyncio.Lock) -> None:
     account_lock.release()
     _drop_sqlite_account_lock_reference(user_hash, account_lock)
 
-# 함수명: get_registered_principal
-# 역할:
-# - 검증된 인증 주체를 내부 user_accounts 범위에 등록하고 반환한다.
-# - 보호된 모든 API에서 FK 기준 사용자가 먼저 존재하도록 보장한다.
+# Function Name: get_registered_principal
+# Description:
+# - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
+# Parameters:
+# - request (Request): Incoming FastAPI request used to access application state.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Yields the registered principal once; releases the SQLite lock during dependency teardown.
 async def get_registered_principal(
     request: Request,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -466,10 +502,14 @@ async def get_registered_principal(
             )
 
 
-# 함수명: get_authenticated_app_principal
-# 역할:
-# - App Check와 사용자 인증·계정 등록·호출 제한을 하나의 의존성으로 묶는다.
-# - 라우터 공통 의존성을 사용하지 않는 채팅 REST API의 보호 정책을 통일한다.
+# 함수이름: get_authenticated_app_principal
+# 함수역할:
+# - App Check·사용자 인증·계정 등록·호출 제한을 채팅 REST 요청의 공통 보호 의존성으로 묶는다.
+# 매개변수:
+# - _app_check (None): App Check 선행 검증 완료 표식.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# 반환값:
+# - 선행 검증과 등록을 통과한 동일 사용자 주체.
 async def get_authenticated_app_principal(
     _app_check: None = Depends(verify_app_check_token),
     principal: AuthenticatedPrincipal = Depends(get_registered_principal),
@@ -477,6 +517,13 @@ async def get_authenticated_app_principal(
     return principal
 
 
+# Function Name: get_request_rate_limit_store
+# Description:
+# - Reads the application's initialized quota store and rejects missing or invalid shared state.
+# Parameters:
+# - request (Request): Incoming FastAPI request used to access application state.
+# Returns:
+# - Application-wide RequestRateLimitStore.
 def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
     rate_limit_store = getattr(request.app.state, "request_rate_limit_store", None)
     if not isinstance(rate_limit_store, RequestRateLimitStore):
@@ -484,9 +531,11 @@ def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
     return rate_limit_store
 
 
-# 함수명: get_push_notification_boundary
-# 역할:
+# 함수이름: get_push_notification_boundary
+# 함수역할:
 # - 인증 모드에 맞는 푸시 전송 경계를 애플리케이션 단위로 생성하고 재사용한다.
+# 매개변수:
+# - 없음.
 # 반환값:
 # - Firebase 또는 비활성 푸시 전송 경계
 def get_push_notification_boundary() -> PushNotificationBoundary:
@@ -502,12 +551,26 @@ def get_push_notification_boundary() -> PushNotificationBoundary:
         return _push_notification_boundary
 
 
+# Function Name: get_authorization_control
+# Description:
+# - Binds patient/guardian scope resolution to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - AuthorizationControl for the current request.
 def get_authorization_control(
     db: Session = Depends(get_db),
 ) -> AuthorizationControl:
     return AuthorizationControl(db=db)
 
 
+# Function Name: get_manage_account
+# Description:
+# - Binds account export/deletion to the request session and enables external identity deletion only in Firebase mode.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - ManageAccount with the authentication-mode-appropriate deletion boundary.
 def get_manage_account(
     db: Session = Depends(get_db),
 ) -> ManageAccount:
@@ -522,6 +585,13 @@ def get_manage_account(
     )
 
 
+# Function Name: get_medication_detail_cache
+# Description:
+# - Lazily reuses a process-wide Redis medication-detail cache.
+# Parameters:
+# - None.
+# Returns:
+# - Shared medication-detail cache instance.
 async def get_medication_detail_cache() -> _MedicationDetailCache:
     global _medication_detail_cache
     if _medication_detail_cache is None:
@@ -529,6 +599,13 @@ async def get_medication_detail_cache() -> _MedicationDetailCache:
     return _medication_detail_cache
 
 
+# Function Name: close_medication_detail_cache
+# Description:
+# - Clears the shared cache reference and closes its client, logging shutdown failures without interrupting other cleanup.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 async def close_medication_detail_cache() -> None:
     global _medication_detail_cache
     medication_detail_cache = _medication_detail_cache
@@ -544,9 +621,13 @@ async def close_medication_detail_cache() -> None:
         )
 
 
-# 함수명: close_public_drug_boundaries
-# 역할:
+# 함수이름: close_public_drug_boundaries
+# 함수역할:
 # - 공공데이터 API가 공유하는 HTTP 연결 풀을 서버 종료 시 정리한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 async def close_public_drug_boundaries() -> None:
     try:
         await _public_drug_transport.close()
@@ -557,9 +638,13 @@ async def close_public_drug_boundaries() -> None:
         )
 
 
-# 함수명: close_pharmacy_boundary
-# 역할:
+# 함수이름: close_pharmacy_boundary
+# 함수역할:
 # - 약국 공공데이터 API가 재사용한 HTTP 연결 풀을 서버 종료 시 정리한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 async def close_pharmacy_boundary() -> None:
     for boundary in (
         _pharmacy_api,
@@ -576,15 +661,26 @@ async def close_pharmacy_boundary() -> None:
             )
 
 
-# 함수이름: get_input_prescription
-# 함수역할: 처방전 분석 Control을 생성한다.
-# 반환값: InputPrescription 인스턴스
+# Function Name: get_input_prescription
+# Description:
+# - Binds OCR prescription parsing and local catalog verification to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped InputPrescription control.
 def get_input_prescription(
     db: Session = Depends(get_db),
 ) -> InputPrescription:
     return InputPrescription(db=db)
 
 
+# Function Name: _get_pill_identification_boundaries
+# Description:
+# - Creates and reuses visual-analysis and MFDS catalog boundaries under a shared initialization lock.
+# Parameters:
+# - None.
+# Returns:
+# - Shared vision and catalog boundary pair.
 def _get_pill_identification_boundaries() -> tuple[
     PillVisionBoundary,
     MFDSPillCatalogBoundary,
@@ -598,6 +694,13 @@ def _get_pill_identification_boundaries() -> tuple[
         return _pill_vision_boundary, _pill_catalog_boundary
 
 
+# Function Name: close_pill_identification_boundaries
+# Description:
+# - Releases reusable external clients and invalidates in-memory catalog data.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 async def close_pill_identification_boundaries() -> None:
     """Releases reusable external clients and invalidates in-memory catalog data."""
 
@@ -620,6 +723,13 @@ async def close_pill_identification_boundaries() -> None:
         )
 
 
+# Function Name: get_identify_pill
+# Description:
+# - Builds pill identification from shared visual/catalog boundaries and the process-wide ranking semaphore.
+# Parameters:
+# - None.
+# Returns:
+# - IdentifyPill control with bounded concurrent ranking.
 def get_identify_pill() -> IdentifyPill:
     """Builds the experimental loose-pill identification control."""
 
@@ -631,10 +741,14 @@ def get_identify_pill() -> IdentifyPill:
     )
 
 
-# 함수이름: get_check_medication_detail
-# 함수역할: 로컬 DB 조회를 포함하는 약품 상세정보 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: CheckMedicationDetail 인스턴스
+# Function Name: get_check_medication_detail
+# Description:
+# - Binds local drug lookup to the request session while reusing Redis and public drug/image clients.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# - medication_cache (_MedicationDetailCache): Shared Redis cache of medication detail results.
+# Returns:
+# - Request-scoped CheckMedicationDetail control.
 def get_check_medication_detail(
     db: Session = Depends(get_db),
     medication_cache: _MedicationDetailCache = Depends(
@@ -650,9 +764,13 @@ def get_check_medication_detail(
     )
 
 
-# 함수명: get_check_nearby_pharmacy
-# 역할:
-# - 공유 약국 API Boundary를 사용하는 위치 기반 약국 조회 Control을 생성한다.
+# 함수이름: get_check_nearby_pharmacy
+# 함수역할:
+# - 공유 약국 API와 DB 카탈로그·공휴일 캐시를 연결해 위치 기반 조회를 구성한다.
+# 매개변수:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# 반환값:
+# - 요청 세션을 사용하는 CheckNearbyPharmacy.
 def get_check_nearby_pharmacy(
     db: Session = Depends(get_db),
 ) -> CheckNearbyPharmacy:
@@ -672,7 +790,7 @@ def get_check_nearby_pharmacy(
 # 함수역할:
 # - 요청 단위 DB 세션을 포함한 처방 변화 비교 Control을 생성한다.
 # 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
+# - db (Session): FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
 # 반환값:
 # - CheckPrescriptionChange 인스턴스
 def get_check_prescription_change(
@@ -681,10 +799,13 @@ def get_check_prescription_change(
     return CheckPrescriptionChange(db=db)
 
 
-# 함수이름: get_check_saved_medication
-# 함수역할: 요청 범위 DB 세션을 사용하는 저장 복약정보 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: CheckSavedMedication 인스턴스
+# Function Name: get_check_saved_medication
+# Description:
+# - Binds pillbox persistence and retrieval to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped CheckSavedMedication control.
 def get_check_saved_medication(
     db: Session = Depends(get_db),
 ) -> CheckSavedMedication:
@@ -692,20 +813,23 @@ def get_check_saved_medication(
 
 
 # 함수이름: get_check_schedule
-# 함수역할: 요청 범위 DB 세션을 사용하는 복약 일정 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: CheckSchedule 인스턴스
+# 함수역할:
+# - 요청 범위 DB 세션을 사용하는 복약 일정 Control을 생성한다.
+# 매개변수:
+# - db (Session): FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
+# 반환값:
+# - CheckSchedule 인스턴스
 def get_check_schedule(
     db: Session = Depends(get_db),
 ) -> CheckSchedule:
     return CheckSchedule(db=db)
 
 
-# 함수명: get_manage_push_token
-# 역할:
+# 함수이름: get_manage_push_token
+# 함수역할:
 # - 요청 단위 DB 세션을 사용하는 기기 푸시 토큰 관리 Control을 생성한다.
 # 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
+# - db (Session): FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
 # 반환값:
 # - ManagePushToken 인스턴스
 def get_manage_push_token(
@@ -714,50 +838,65 @@ def get_manage_push_token(
     return ManagePushToken(db=db)
 
 
-# 함수이름: get_check_today_medication_info
-# 함수역할: 요청 범위 DB 세션을 사용하는 오늘의 복약 요약 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: CheckTodayMedicationInfo 인스턴스
+# Function Name: get_check_today_medication_info
+# Description:
+# - Binds daily dose totals and completion summaries to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped CheckTodayMedicationInfo control.
 def get_check_today_medication_info(
     db: Session = Depends(get_db),
 ) -> CheckTodayMedicationInfo:
     return CheckTodayMedicationInfo(db=db)
 
 
-# 함수이름: get_check_health_recommendation
-# 함수역할:
-# - 요청 단위 DB 세션을 포함한 건강 관리 추천 control 서비스를 생성한다.
-# 매개변수:
-# - db: FastAPI 의존성 주입으로 전달된 SQLAlchemy 세션
-# 반환값:
-# - CheckHealthRecommendation instance.
+# Function Name: get_check_health_recommendation
+# Description:
+# - Binds medication-based health guidance and its persisted cache to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped CheckHealthRecommendation control.
 def get_check_health_recommendation(
     db: Session = Depends(get_db),
 ) -> CheckHealthRecommendation:
     return CheckHealthRecommendation(db=db)
 
 
-# 함수이름: get_link_patient_caregiver_control
-# 함수역할: 요청 범위 DB 세션을 사용하는 환자·보호자 연동 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: LinkPatientCaregiver 인스턴스
+# Function Name: get_link_patient_caregiver_control
+# Description:
+# - Binds temporary patient-code and caregiver-link operations to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped LinkPatientCaregiver control.
 def get_link_patient_caregiver_control(
     db: Session = Depends(get_db),
 ) -> LinkPatientCaregiver:
     return LinkPatientCaregiver(db=db)
 
 
-# 함수명: get_manage_linked_chat
-# 역할:
-# - 요청 단위 DB 세션을 사용하는 연동 채팅 Control을 생성한다.
+# 함수이름: get_manage_linked_chat
+# 함수역할:
+# - 요청 세션을 사용해 활성 환자·보호자 연동 채팅 Control을 구성한다.
+# 매개변수:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# 반환값:
+# - 요청 범위 ManageLinkedChat.
 def get_manage_linked_chat(
     db: Session = Depends(get_db),
 ) -> ManageLinkedChat:
     return ManageLinkedChat(db=db)
 
 
-# 함수이름: get_check_caregiver_medication
-# 함수역할: 한 요청에서 사용하는 보호자용 읽기 전용 복약 Control을 생성한다.
+# Function Name: get_check_caregiver_medication
+# Description:
+# - Binds read-only linked-patient medication lookup to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped CheckCaregiverMedication control.
 def get_check_caregiver_medication(
     db: Session = Depends(get_db),
 ) -> CheckCaregiverMedication:
@@ -765,45 +904,63 @@ def get_check_caregiver_medication(
 
 
 # 함수이름: get_check_caregiver_monitoring
-# 함수역할: 여러 연동 환자의 알림 감시 자료를 통합 조회하는 Control을 생성한다.
+# 함수역할:
+# - 연동 환자들의 알림 설정과 오늘 복약 감시 정보를 조회할 Control을 구성한다.
+# 매개변수:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# 반환값:
+# - 요청 범위 CheckCaregiverMonitoring.
 def get_check_caregiver_monitoring(
     db: Session = Depends(get_db),
 ) -> CheckCaregiverMonitoring:
     return CheckCaregiverMonitoring(db=db)
 
 
-# 함수이름: get_set_notification
-# 함수역할: 요청 범위 DB 세션을 사용하는 복약 알림 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: SetNotification 인스턴스
+# Function Name: get_set_notification
+# Description:
+# - Binds patient medication-alarm preferences to the request database session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped SetNotification control.
 def get_set_notification(
     db: Session = Depends(get_db),
 ) -> SetNotification:
     return SetNotification(db=db)
 
 
-# 함수이름: get_set_caregiver_notification
-# 함수역할: 요청 범위 DB 세션을 사용하는 보호자 알림 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: SetCaregiverNotification 인스턴스
+# Function Name: get_set_caregiver_notification
+# Description:
+# - Binds linked-patient caregiver notification preferences to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped SetCaregiverNotification control.
 def get_set_caregiver_notification(
     db: Session = Depends(get_db),
 ) -> SetCaregiverNotification:
     return SetCaregiverNotification(db=db)
 
 
-# 함수이름: get_manage_user_setting
-# 함수역할: 요청 범위 DB 세션을 사용하는 사용자 설정 Control을 생성한다.
-# 매개변수: db - FastAPI 의존성 주입으로 받은 SQLAlchemy 세션
-# 반환값: ManageUserSetting 인스턴스
+# Function Name: get_manage_user_setting
+# Description:
+# - Binds accessibility, language and notification preferences to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped ManageUserSetting control.
 def get_manage_user_setting(
     db: Session = Depends(get_db),
 ) -> ManageUserSetting:
     return ManageUserSetting(db=db)
 
 
-# 함수이름: get_request_voice_guide
-# 함수역할: 복약 음성 안내 문구 Control을 생성한다.
-# 반환값: RequestVoiceGuide 인스턴스
+# Function Name: get_request_voice_guide
+# Description:
+# - Creates the stateless adapter that prepares speech text from medication details.
+# Parameters:
+# - None.
+# Returns:
+# - RequestVoiceGuide control.
 def get_request_voice_guide() -> RequestVoiceGuide:
     return RequestVoiceGuide()

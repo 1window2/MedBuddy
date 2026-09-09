@@ -1,3 +1,5 @@
+# 파일명: check_caregiver_monitoring_control.py
+# 역할: 보호자가 관리하는 모든 환자의 알림 감시 자료를 한 번에 조회한다.
 """보호자가 관리하는 모든 환자의 알림 감시 자료를 한 번에 조회한다."""
 
 from sqlalchemy.orm import Session
@@ -16,12 +18,27 @@ from repositories.patient_caregiver_link_repository import (
 
 
 # 클래스명: CheckCaregiverMonitoring
-# 역할: 보호자 알림 감시에 필요한 연동, 별칭, 설정, 오늘 일정을 통합한다.
+# 역할:
+# - 보호자 알림 감시에 필요한 연동, 별칭, 설정, 오늘 일정을 통합한다.
 # 주요 책임:
 # - 보호자의 활성 환자 연결을 한 번만 조회한다.
 # - 환자별 네 시간대 알림 설정을 일괄 조회한다.
 # - 알림이 활성화된 환자의 오늘 일정만 응답에 포함한다.
+# 속성:
+# - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
+# - notification_control (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
+# - today_medication_control (CheckTodayMedicationInfo): 오늘 복용 횟수와 진행률 조회 Control.
 class CheckCaregiverMonitoring:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 연동 저장소와 알림·오늘 복약 조회 Control을 같은 요청 세션에 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - link_repository (PatientCaregiverLinkRepository | None): 활성 환자·보호자 연동 저장소.
+    # - notification_control (SetCaregiverNotification | None): 연동 환자별 보호자 알림 설정 Control.
+    # - today_medication_control (CheckTodayMedicationInfo | None): 오늘 복용 횟수와 진행률 조회 Control.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -39,9 +56,13 @@ class CheckCaregiverMonitoring:
             CheckTodayMedicationInfo(db)
         )
 
-    # 함수명: requestMonitoringSnapshot
-    # 역할:
+    # 함수이름: requestMonitoringSnapshot
+    # 함수역할:
     # - 보호자 한 명이 관리하는 모든 환자의 현재 알림 감시 자료를 반환한다.
+    # 매개변수:
+    # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
+    # 반환값:
+    # - 연동 환자별 별칭·알림 설정·오늘 복약 정보를 담은 성공 응답.
     def requestMonitoringSnapshot(
         self,
         caregiver_hash: str,
@@ -75,6 +96,14 @@ class CheckCaregiverMonitoring:
             },
         }
 
+    # 함수이름: _build_patient_snapshot
+    # 함수역할:
+    # - 환자 연동과 알림 설정을 묶고 활성 알림이 있을 때만 오늘 복약 정보를 조회한다.
+    # 매개변수:
+    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - notification_settings (list[dict[str, object]]): 연동 환자의 시간대별 알림 설정.
+    # 반환값:
+    # - 연동 정보, 환자 별칭, 시간대별 알림과 오늘 복약 정보.
     def _build_patient_snapshot(
         self,
         link: _PatientCaregiverLink,

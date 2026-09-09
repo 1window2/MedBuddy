@@ -232,8 +232,9 @@ The reported head must be `c2a7e4d9f610`. The v0.2.0 tail adds the shared
 pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
 (`b4e7c2d9a160`), then merges the catalog/chat migration branches
-(`9c4e7b2a6d10`) and generalizes the caregiver alert outbox
-(`c2a7e4d9f610`). Cloudflare Tunnel must also permit WebSocket upgrades for
+(`9c4e7b2a6d10`), adds linked-chat deletion markers (`c2e4a6b8d901`), and
+generalizes the caregiver alert outbox (`c2a7e4d9f610`). Cloudflare Tunnel must
+also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.
 

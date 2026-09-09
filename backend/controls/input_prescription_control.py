@@ -1,5 +1,5 @@
 # File Name: input_prescription_control.py
-# Role: Control class for de-identified prescription text analysis.
+# Role: Structures de-identified prescription text and verifies OCR medication names against bounded local catalog choices.
 
 import asyncio
 import json
@@ -34,10 +34,24 @@ from services.prescription_parser import (
 logger = logging.getLogger(__name__)
 
 
+# Class Name: PrescriptionAnalysisTimeoutError
+# Role:
+# - Raised when the required external OCR stage exceeds its deadline.
+# Responsibilities:
+# - Distinguish a required OCR deadline failure from optional name-correction fallback failures.
 class PrescriptionAnalysisTimeoutError(RuntimeError):
     """Raised when the required external OCR stage exceeds its deadline."""
 
 
+# Class Name: _MedicationNameVariant
+# Role:
+# - Carries one normalized OCR name variant with its derivation source and confidence cap.
+# Responsibilities:
+# - Retain transformation provenance and confidence as the normalized name enters catalog matching.
+# Attributes:
+# - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+# - source (str): Provenance of the medication value or verification result.
+# - confidence (float): Confidence retained with the catalog-name verification evidence.
 @dataclass(frozen=True)
 class _MedicationNameVariant:
     normalized_name: str
@@ -45,6 +59,16 @@ class _MedicationNameVariant:
     confidence: float
 
 
+# Class Name: _MedicationNameVerification
+# Role:
+# - Records the raw and canonical drug name together with verification evidence and confidence.
+# Responsibilities:
+# - Preserve the original OCR value when no supported correction is available.
+# Attributes:
+# - raw_name (str): Original medication name extracted from OCR.
+# - canonical_name (str): Catalog-confirmed product display name.
+# - confidence (float): Confidence retained with the catalog-name verification evidence.
+# - source (str): Provenance of the medication value or verification result.
 @dataclass(frozen=True)
 class _MedicationNameVerification:
     raw_name: str
@@ -53,12 +77,27 @@ class _MedicationNameVerification:
     source: str
 
 
+# Class Name: _CatalogMedicationName
+# Role:
+# - Pairs a public catalog display name with its normalized lookup key.
+# Responsibilities:
+# - Keep canonical display spelling separate from whitespace/case-normalized matching.
+# Attributes:
+# - item_name (str): Public medication product name.
+# - normalized_name (str): Whitespace-free lowercase catalog comparison key.
 @dataclass(frozen=True)
 class _CatalogMedicationName:
     item_name: str
     normalized_name: str
 
 
+# Class Name: _MedicationNameFallbackRequest
+# Role:
+# - Associates an unresolved OCR row index with a bounded set of catalog choices for AI selection.
+# Responsibilities:
+# - Restrict AI corrections to the catalog names permitted for a specific OCR row.
+# Attributes:
+# - raw_name (str): Original medication name extracted from OCR.
 @dataclass(frozen=True)
 class _MedicationNameFallbackRequest:
     index: int
@@ -69,13 +108,14 @@ class _MedicationNameFallbackRequest:
 _MedicationNameFallbackCacheKey = tuple[str, str, tuple[tuple[str, str], ...]]
 
 
-# Class Name: _PrescriptionMedicationNameVerifier
-# Role: Internal collaborator for prescription medication name canonicalization.
-# Responsibilities:
-#   - Verify extracted medication names against the local medication catalog.
-#   - Generate bounded Korean OCR vowel variants before AI fallback.
-#   - Ask Gemini to choose only from local catalog candidates when needed.
-#   - Return conservative correction metadata for downstream UI decisions.
+# 클래스명: _PrescriptionMedicationNameVerifier
+# 역할:
+# - 로컬 카탈로그와 OCR 변형으로 약품명을 검증하고 제한된 후보 내에서만 AI 보정을 허용한다.
+# 주요 책임:
+# - DB 세션 제약을 지키며 일치·접두어·유사 후보를 검증하고 AI 선택의 목록 포함 여부와 신뢰도 상한을 확인한다.
+# 속성:
+# - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
+# - ai_timeout_seconds (float): 카탈로그 후보 내 AI 보정의 최대 허용 시간(초).
 class _PrescriptionMedicationNameVerifier:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
@@ -110,6 +150,14 @@ class _PrescriptionMedicationNameVerifier:
         ("㎎", "밀리그람"),
     )
 
+    # Function Name: __init__
+    # Description:
+    # - Validates the AI fallback timeout and prepares a bounded least-recently-used correction cache.
+    # Parameters:
+    # - db (Session | None): SQLAlchemy session for this unit of work.
+    # - ai_timeout_seconds (float): Maximum duration of the catalog-constrained AI fallback.
+    # Returns:
+    # - None.
     def __init__(
         self,
         db: Session | None = None,
@@ -124,6 +172,15 @@ class _PrescriptionMedicationNameVerifier:
             tuple[_CatalogMedicationName, float] | None,
         ] = OrderedDict()
 
+    # 함수이름: verify_many
+    # 함수역할:
+    # - 로컬 검증 후 미확정 이름만 캐시·AI 후보 선택으로 보완하며 원래 항목 순서를 유지한다.
+    # 매개변수:
+    # - raw_names (list[str]): 처방 순서대로 나열한 원본 OCR 약품명.
+    # - ai_client (genai.Client): 제한 시간 내 외부 텍스트 생성에 사용할 Gemini 클라이언트.
+    # - model_name (str): 사용할 AI 모델 식별자.
+    # 반환값:
+    # - 입력 약품명 순서의 검증 결과 목록.
     async def verify_many(
         self,
         raw_names: list[str],
@@ -179,7 +236,7 @@ class _PrescriptionMedicationNameVerifier:
     # - 동기 SQLAlchemy 카탈로그 조회와 AI 보완 후보 생성을 한 작업 스레드에서 처리한다.
     # - FastAPI 이벤트 루프가 로컬 DB 조회 동안 다른 요청을 계속 처리할 수 있게 한다.
     # 매개변수:
-    # - raw_names: OCR에서 추출한 원본 약명 목록
+    # - raw_names (list[str]): OCR에서 추출한 원본 약명 목록
     # 반환값:
     # - 로컬 검증 결과와 AI 보완이 필요한 후보 요청 목록
     def _prepare_verifications(
@@ -199,6 +256,10 @@ class _PrescriptionMedicationNameVerifier:
     # 함수역할:
     # - 별도 연결에서 데이터가 사라지는 인메모리 SQLite 테스트인지 확인한다.
     # - 실제 파일 DB와 PostgreSQL은 독립 작업 세션을 사용하게 한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - DB 세션이 없거나 별도 스레드 연결로 옮길 수 없는 인메모리 SQLite 세션이면 True.
     def _requires_current_thread_session(self) -> bool:
         if self.db is None:
             return True
@@ -213,7 +274,7 @@ class _PrescriptionMedicationNameVerifier:
     # 함수역할:
     # - 작업 스레드 안에서 새 SQLAlchemy 세션을 생성하여 스레드 간 세션 공유를 막는다.
     # 매개변수:
-    # - raw_names: OCR에서 추출한 원본 약명 목록
+    # - raw_names (list[str]): OCR에서 추출한 원본 약명 목록
     # 반환값:
     # - 로컬 검증 결과와 AI 보완 후보 요청 목록
     def _prepare_verifications_with_isolated_session(
@@ -236,6 +297,14 @@ class _PrescriptionMedicationNameVerifier:
         finally:
             worker_db.close()
 
+    # Function Name: _resolve_cached_fallbacks
+    # Description:
+    # - Reuses positive and negative AI choices and promotes accessed entries in the LRU cache.
+    # Parameters:
+    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
+    # - model_name (str): Configured AI model identifier.
+    # Returns:
+    # - Cached corrections by row index and requests that still need AI lookup.
     def _resolve_cached_fallbacks(
         self,
         fallback_requests: list[_MedicationNameFallbackRequest],
@@ -261,6 +330,15 @@ class _PrescriptionMedicationNameVerifier:
 
         return corrections, uncached_fallback_requests
 
+    # Function Name: _cache_ai_fallback_results
+    # Description:
+    # - Caches catalog corrections or negative choices and evicts the oldest entries beyond the configured bound.
+    # Parameters:
+    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
+    # - corrections (dict[int, tuple[_CatalogMedicationName, float]]): Verified catalog choices and confidence keyed by OCR row index.
+    # - model_name (str): Configured AI model identifier.
+    # Returns:
+    # - None.
     def _cache_ai_fallback_results(
         self,
         fallback_requests: list[_MedicationNameFallbackRequest],
@@ -276,6 +354,14 @@ class _PrescriptionMedicationNameVerifier:
         while len(cache) > self._MAX_AI_FALLBACK_CACHE_ENTRIES:
             cache.popitem(last=False)
 
+    # Function Name: _ai_fallback_cache_key
+    # Description:
+    # - Includes model, normalized OCR name and ordered catalog choices in the fallback cache identity.
+    # Parameters:
+    # - request (_MedicationNameFallbackRequest): Unresolved OCR row and its permitted catalog choices.
+    # - model_name (str): Configured AI model identifier.
+    # Returns:
+    # - Immutable key that invalidates when either the model or candidate set changes.
     def _ai_fallback_cache_key(
         self,
         request: _MedicationNameFallbackRequest,
@@ -290,6 +376,13 @@ class _PrescriptionMedicationNameVerifier:
             ),
         )
 
+    # Function Name: verify
+    # Description:
+    # - Resolves an OCR name through bounded local variants, retaining the original when no catalog match is found.
+    # Parameters:
+    # - raw_name (str): Original medication name extracted from OCR.
+    # Returns:
+    # - Name verification with canonical name, confidence and source.
     def verify(self, raw_name: str) -> _MedicationNameVerification:
         normalized_raw_name = self._normalize_name(raw_name)
         if self.db is None or not normalized_raw_name:
@@ -318,6 +411,14 @@ class _PrescriptionMedicationNameVerifier:
             source=candidate.source,
         )
 
+    # Function Name: _build_fallback_requests
+    # Description:
+    # - Selects unverified nonblank OCR names that have local fuzzy catalog choices for bounded AI review.
+    # Parameters:
+    # - raw_names (list[str]): Original OCR medication names in prescription order.
+    # - verifications (list[_MedicationNameVerification]): Local name-verification results in OCR row order.
+    # Returns:
+    # - Indexed fallback requests, or an empty list without a database or usable candidates.
     def _build_fallback_requests(
         self,
         raw_names: list[str],
@@ -345,6 +446,15 @@ class _PrescriptionMedicationNameVerifier:
             )
         return fallback_requests
 
+    # Function Name: _request_ai_catalog_choices
+    # Description:
+    # - Requests deterministic JSON choices limited to supplied catalog names and treats timeout, decoding or response-shape failures as unavailable fallback.
+    # Parameters:
+    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
+    # - ai_client (genai.Client): Gemini client for bounded external text generation.
+    # - model_name (str): Configured AI model identifier.
+    # Returns:
+    # - Verified corrections by OCR index, or None when the AI fallback fails.
     async def _request_ai_catalog_choices(
         self,
         fallback_requests: list[_MedicationNameFallbackRequest],
@@ -405,6 +515,14 @@ class _PrescriptionMedicationNameVerifier:
             fallback_requests,
         )
 
+    # Function Name: _select_ai_verified_corrections
+    # Description:
+    # - Rejects unknown row indexes, low confidence and names outside the supplied candidates, then caps accepted confidence.
+    # Parameters:
+    # - response_data (dict[str, Any]): Decoded AI corrections object awaiting catalog membership checks.
+    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
+    # Returns:
+    # - Catalog-backed corrections at confidence 0.86 or above, capped at 0.89.
     def _select_ai_verified_corrections(
         self,
         response_data: dict[str, Any],
@@ -444,6 +562,13 @@ class _PrescriptionMedicationNameVerifier:
             )
         return corrections
 
+    # Function Name: _build_candidates
+    # Description:
+    # - Generates exact, OCR-vowel and strength-unit variants, preserving priority while limiting unique names.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - Ordered unique name variants up to the configured candidate bound.
     def _build_candidates(
         self,
         normalized_name: str,
@@ -476,6 +601,13 @@ class _PrescriptionMedicationNameVerifier:
                 break
         return deduplicated_candidates
 
+    # Function Name: _find_catalog_match
+    # Description:
+    # - Checks exact variants across basic and approval catalogs before considering a unique name prefix.
+    # Parameters:
+    # - candidates (list[_MedicationNameVariant]): Normalized OCR name variant with source and confidence.
+    # Returns:
+    # - Matched variant and canonical name, or None for missing or ambiguous matches.
     def _find_catalog_match(
         self,
         candidates: list[_MedicationNameVariant],
@@ -522,6 +654,13 @@ class _PrescriptionMedicationNameVerifier:
                 return self._prefix_match_candidate(candidate), item_name
         return None
 
+    # Function Name: _find_unique_catalog_prefix_match
+    # Description:
+    # - Uses an indexed prefix range and rejects prefixes mapping to more than one distinct product name.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - Sole matching catalog name, or None when absent or ambiguous.
     def _find_unique_catalog_prefix_match(self, normalized_name: str) -> str | None:
         if not normalized_name:
             return None
@@ -549,6 +688,13 @@ class _PrescriptionMedicationNameVerifier:
             return None
         return next(iter(matching_item_names))
 
+    # Function Name: _prefix_match_candidate
+    # Description:
+    # - Caps prefix-based confidence and marks exact-derived variants as prefix evidence.
+    # Parameters:
+    # - candidate (_MedicationNameVariant): Normalized OCR name variant with source and confidence.
+    # Returns:
+    # - Name variant with prefix-appropriate source and confidence.
     def _prefix_match_candidate(
         self,
         candidate: _MedicationNameVariant,
@@ -565,6 +711,13 @@ class _PrescriptionMedicationNameVerifier:
             confidence=min(candidate.confidence, self._PREFIX_CONFIDENCE_CAP),
         )
 
+    # Function Name: _find_similar_catalog_names
+    # Description:
+    # - Searches bounded name fragments in both catalogs and ranks distinct names by string similarity.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - Highest-scoring catalog choices for the AI fallback prompt.
     def _find_similar_catalog_names(
         self,
         normalized_name: str,
@@ -615,6 +768,13 @@ class _PrescriptionMedicationNameVerifier:
             for _, candidate in scored_candidates[: self._MAX_AI_CATALOG_CANDIDATES]
         ]
 
+    # Function Name: _candidate_fragments
+    # Description:
+    # - Builds unique sliding name fragments and evenly samples them when the query bound is exceeded.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - Bounded three-character fragments, or shorter fragments for short names.
     def _candidate_fragments(self, normalized_name: str) -> list[str]:
         if not normalized_name:
             return []
@@ -641,12 +801,26 @@ class _PrescriptionMedicationNameVerifier:
             for index in range(self._MAX_CANDIDATE_FRAGMENTS)
         ]
 
+    # Function Name: _like_pattern
+    # Description:
+    # - Escapes SQL LIKE metacharacters before surrounding a name fragment with substring wildcards.
+    # Parameters:
+    # - fragment (str): Literal catalog-name substring to match.
+    # Returns:
+    # - Literal-fragment substring pattern.
     def _like_pattern(self, fragment: str) -> str:
         escaped_fragment = (
             fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         )
         return f"%{escaped_fragment}%"
 
+    # Function Name: _prefix_upper_bound
+    # Description:
+    # - Increments the last incrementable Unicode code point to bound a catalog prefix range.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - Exclusive upper bound, or ValueError when no bound can be formed.
     def _prefix_upper_bound(self, normalized_name: str) -> str:
         for index in range(len(normalized_name) - 1, -1, -1):
             code_point = ord(normalized_name[index])
@@ -654,9 +828,25 @@ class _PrescriptionMedicationNameVerifier:
                 return normalized_name[:index] + chr(code_point + 1)
         raise ValueError("Medication name cannot define a prefix range.")
 
+    # Function Name: _name_similarity
+    # Description:
+    # - Compares normalized medication names with SequenceMatcher.
+    # Parameters:
+    # - left (str): First normalized string in the similarity comparison.
+    # - right (str): Second normalized string in the similarity comparison.
+    # Returns:
+    # - Name similarity ratio from 0.0 to 1.0.
     def _name_similarity(self, left: str, right: str) -> float:
         return SequenceMatcher(None, left, right).ratio()
 
+    # Function Name: _find_selected_candidate
+    # Description:
+    # - Restricts an AI-selected name to an exact or normalized match in the supplied catalog choices.
+    # Parameters:
+    # - selected_name (str): Product name returned by the catalog-constrained AI choice.
+    # - candidates (list[_CatalogMedicationName]): Canonical catalog name and normalized comparison key.
+    # Returns:
+    # - Existing catalog candidate, or None for an unrecognized selection.
     def _find_selected_candidate(
         self,
         selected_name: str,
@@ -675,6 +865,13 @@ class _PrescriptionMedicationNameVerifier:
                 return candidate
         return None
 
+    # Function Name: _hangul_vowel_variants
+    # Description:
+    # - Substitutes commonly confused Hangul medial vowels while preserving the remaining name characters.
+    # Parameters:
+    # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
+    # Returns:
+    # - OCR-vowel alternatives for catalog matching.
     def _hangul_vowel_variants(self, normalized_name: str) -> list[str]:
         variants: list[str] = []
         for index, character in enumerate(normalized_name):
@@ -698,6 +895,13 @@ class _PrescriptionMedicationNameVerifier:
                     )
         return variants
 
+    # Function Name: _strength_unit_variants
+    # Description:
+    # - Expands milligram spellings and caps the confidence of converted strength-unit variants.
+    # Parameters:
+    # - candidates (list[_MedicationNameVariant]): Normalized OCR name variant with source and confidence.
+    # Returns:
+    # - Additional name variants with source evidence retained.
     def _strength_unit_variants(
         self,
         candidates: list[_MedicationNameVariant],
@@ -726,6 +930,13 @@ class _PrescriptionMedicationNameVerifier:
                 )
         return variants
 
+    # Function Name: _hangul_medial_index
+    # Description:
+    # - Decodes the medial-vowel index of a precomposed Hangul syllable.
+    # Parameters:
+    # - character (str): Single source character used for Hangul syllable decomposition.
+    # Returns:
+    # - Medial index, or None for a non-Hangul-syllable character.
     def _hangul_medial_index(self, character: str) -> int | None:
         code_point = ord(character)
         if code_point < self._HANGUL_BASE or code_point > self._HANGUL_LAST:
@@ -734,6 +945,14 @@ class _PrescriptionMedicationNameVerifier:
         syllable_index = code_point - self._HANGUL_BASE
         return (syllable_index % self._HANGUL_BLOCK_SIZE) // self._HANGUL_FINAL_COUNT
 
+    # Function Name: _replace_hangul_medial
+    # Description:
+    # - Rebuilds a Hangul syllable with a new medial vowel while retaining its initial and final consonants.
+    # Parameters:
+    # - character (str): Single source character used for Hangul syllable decomposition.
+    # - replacement_medial_index (int): Hangul medial-vowel index to substitute.
+    # Returns:
+    # - Reconstructed Hangul character.
     def _replace_hangul_medial(
         self,
         character: str,
@@ -752,9 +971,23 @@ class _PrescriptionMedicationNameVerifier:
             + final_index
         )
 
+    # Function Name: _normalize_name
+    # Description:
+    # - Removes whitespace and lowercases OCR/catalog names for stable matching.
+    # Parameters:
+    # - name (str): Medication name before catalog-key normalization.
+    # Returns:
+    # - Normalized medication name, or an empty string for missing input.
     def _normalize_name(self, name: str) -> str:
         return self._WHITESPACE_PATTERN.sub("", name or "").strip().lower()
 
+    # Function Name: _clean_json_response
+    # Description:
+    # - Removes optional Markdown JSON fences from an AI correction response.
+    # Parameters:
+    # - response_text (str): Raw AI response text before JSON fence removal and decoding.
+    # Returns:
+    # - Trimmed JSON text ready for decoding.
     def _clean_json_response(self, response_text: str) -> str:
         cleaned_text = response_text.strip()
         if cleaned_text.startswith("```json"):
@@ -765,6 +998,13 @@ class _PrescriptionMedicationNameVerifier:
             cleaned_text = cleaned_text[:-3]
         return cleaned_text.strip()
 
+    # Function Name: _safe_float
+    # Description:
+    # - Coerces numeric confidence while rejecting non-finite or unparseable values.
+    # Parameters:
+    # - value (Any): Untrusted numeric confidence from the AI response.
+    # Returns:
+    # - Finite float, or 0.0 for invalid input.
     def _safe_float(self, value: Any) -> float:
         try:
             number = float(value)
@@ -772,12 +1012,26 @@ class _PrescriptionMedicationNameVerifier:
             return 0.0
         return number if math.isfinite(number) else 0.0
 
+    # Function Name: _safe_int
+    # Description:
+    # - Coerces an AI row index while keeping invalid values outside the valid zero-based range.
+    # Parameters:
+    # - value (Any): Untrusted row-index value from the AI response.
+    # Returns:
+    # - Parsed integer, or -1 when conversion fails.
     def _safe_int(self, value: Any) -> int:
         try:
             return int(value)
         except (TypeError, ValueError):
             return -1
 
+    # Function Name: _ai_correction_response_schema
+    # Description:
+    # - Constrains AI output to indexed corrected names and numeric confidence values.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - JSON response schema requiring a corrections array.
     def _ai_correction_response_schema(self) -> dict[str, Any]:
         return {
             "type": "OBJECT",
@@ -800,14 +1054,15 @@ class _PrescriptionMedicationNameVerifier:
 
 
 # Class Name: InputPrescription
-# Role: Coordinates de-identified prescription text structuring and validation.
+# Role:
+# - Coordinates de-identified prescription text structuring and validation.
 # Responsibilities:
-#   - Accept only prescription text already de-identified on the user's device.
-#   - Request structured prescription extraction from Gemini.
-#   - Clean, decode, mask, and validate extracted prescription data.
+# - Accept only prescription text already de-identified on the user's device.
+# - Request structured prescription extraction from Gemini.
+# - Clean, decode, mask, and validate extracted prescription data.
 # Attributes:
-#   - client: Gemini client used for prescription text analysis.
-#   - model_name: Gemini model name.
+# - client (genai.Client): Gemini client used for prescription text analysis.
+# - model_name (str): Gemini model name.
 class InputPrescription:
     _PRESCRIPTION_RESPONSE_SCHEMA = {
         "type": "OBJECT",
@@ -859,6 +1114,17 @@ class InputPrescription:
         },
     }
 
+    # Function Name: __init__
+    # Description:
+    # - Binds the Gemini client, bounded OCR analysis boundary and catalog-backed name verifier.
+    # Parameters:
+    # - client (genai.Client | None): Gemini client shared by prescription OCR and name verification.
+    # - model_name (str): Configured AI model identifier.
+    # - db (Session | None): SQLAlchemy session for this unit of work.
+    # - medication_name_verifier (_PrescriptionMedicationNameVerifier | None): Catalog-constrained OCR medication-name verifier.
+    # - ocr_service_boundary (OCRServiceBoundary | None): Bounded external OCR-text analysis boundary.
+    # Returns:
+    # - None.
     def __init__(
         self,
         client: genai.Client | None = None,
@@ -888,12 +1154,12 @@ class InputPrescription:
             )
         )
 
-    # 함수명: requestPrescriptionText
-    # 역할:
+    # 함수이름: requestPrescriptionText
+    # 함수역할:
     # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화 처방 정보로 변환한다.
     # - 개인정보 보호 경계상 원본 처방전 이미지는 백엔드에서 받지 않는다.
     # 매개변수:
-    # - masked_text: 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
+    # - masked_text (str): 기기 내 OCR과 민감정보 제거가 끝난 처방전 텍스트
     # 반환값:
     # - API 호환 복약 일정 분석 결과
     async def requestPrescriptionText(
@@ -915,13 +1181,13 @@ class InputPrescription:
             ) from exc
         return await self._build_prescription_response(response_text)
 
-    # 함수명: _build_prescription_response
-    # 역할:
-    # - 비식별 텍스트 분석 응답을 복약 일정 응답으로 변환한다.
-    # 매개변수:
-    # - response_text: Gemini가 반환한 구조화 JSON 문자열
-    # 반환값:
-    # - 검증된 복약 일정과 인식 통계를 포함한 API 응답
+    # Function Name: _build_prescription_response
+    # Description:
+    # - Parses AI JSON, applies secondary privacy masking and normalization, then verifies medication names and assigns a new prescription batch.
+    # Parameters:
+    # - response_text (str): Raw AI response text before JSON fence removal and decoding.
+    # Returns:
+    # - Safe prescription metadata, verified medication rows and parsing counts.
     async def _build_prescription_response(
         self,
         response_text: str,
@@ -976,10 +1242,11 @@ class InputPrescription:
 
     # Function Name: buildAnalysisResult
     # Description:
-    # - Class diagram compatible operation for promoting candidates into a
-    #   prescription analysis result entity.
+    # - Class diagram compatible operation for promoting candidates into a prescription analysis result entity.
     # Parameters:
-    # - candidates: MedicationCandidateList extracted from a prescription.
+    # - candidates (MedicationCandidateList): MedicationCandidateList extracted from a prescription.
+    # - hospital_name (str): Hospital name retained in the normalized prescription.
+    # - prescription_date (str): Prescription dispensing date, if available.
     # Returns:
     # - PrescriptionAnalysisResult entity.
     def buildAnalysisResult(
@@ -1001,7 +1268,7 @@ class InputPrescription:
     # Description:
     # - Removes markdown fences and surrounding whitespace from model output.
     # Parameters:
-    # - response_text: Raw Gemini response text.
+    # - response_text (str): Raw Gemini response text.
     # Returns:
     # - JSON-only string.
     def _clean_response_text(self, response_text: str) -> str:
@@ -1018,7 +1285,7 @@ class InputPrescription:
     # Description:
     # - Applies regex-based secondary masking to structured prescription data.
     # Parameters:
-    # - data: Decoded prescription dictionary.
+    # - data (dict[str, Any]): Decoded prescription dictionary.
     # Returns:
     # - Masked prescription dictionary.
     def _apply_secondary_masking(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -1029,12 +1296,19 @@ class InputPrescription:
     # Description:
     # - Class diagram compatible operation for removing sensitive identifiers.
     # Parameters:
-    # - rawText: Raw prescription text or serialized extraction payload.
+    # - rawText (str): Raw prescription text or serialized extraction payload.
     # Returns:
     # - Text with sensitive identifiers masked.
     def maskSensitiveInfo(self, rawText: str) -> str:
         return PrescriptionText(raw_text=rawText).removeSensitiveInfoByRegex()
 
+    # Function Name: _to_verified_medication_schedules
+    # Description:
+    # - Verifies candidate names in one batch and copies schedules only when their canonical names change.
+    # Parameters:
+    # - items (list[dict[str, Any]]): Normalized prescription medication dictionaries.
+    # Returns:
+    # - Ordered pairs of schedule entities and name-verification evidence.
     async def _to_verified_medication_schedules(
         self,
         items: list[dict[str, Any]],
@@ -1065,10 +1339,11 @@ class InputPrescription:
 
     # Function Name: _to_prescription_medication_payload
     # Description:
-    # - Converts a MedicationSchedule entity into the API payload expected by
-    #   the current Flutter analysis-result flow.
+    # - Converts a MedicationSchedule entity into the API payload expected by the current Flutter analysis-result flow.
     # Parameters:
-    # - medication_schedule: Validated MedicationSchedule entity.
+    # - medication_schedule (MedicationSchedule): Validated MedicationSchedule entity.
+    # - verification (_MedicationNameVerification): Canonical name, source and confidence for one OCR medication.
+    # - prescription_date (str): Prescription dispensing date, if available.
     # Returns:
     # - Dictionary containing only prescription-analysis response fields.
     def _to_prescription_medication_payload(

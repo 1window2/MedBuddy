@@ -489,9 +489,10 @@ The current ordered Alembic chain records the beta data boundary:
 | `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
 | `ae4c7d19f2b0` | Add prescription-batch identifiers used for course grouping, duplicate control, and history comparison. |
 | `7d2e4f1a8c63` | Add the durable caregiver-alert outbox used for retryable transition delivery. |
-| `c2a7e4d9f610` | Generalize the caregiver-alert outbox for idempotent server-scheduled missed-dose delivery. |
 | `3a9f5c7d2e10` | Add linked patient-caregiver chat messages, idempotent client message identifiers, and participant read timestamps. |
 | `6e1b4a9c2d80` | Bind each chat message to a validated active saved-medication context and preserve its display snapshot. |
+| `c2e4a6b8d901` | Add participant-specific and shared linked-chat deletion markers. |
+| `c2a7e4d9f610` | Generalize the caregiver-alert outbox for idempotent server-scheduled missed-dose delivery. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still

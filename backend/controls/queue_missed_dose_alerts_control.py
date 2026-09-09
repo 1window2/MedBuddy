@@ -1,4 +1,5 @@
-"""Queue bounded, idempotent caregiver alerts after configured dose deadlines."""
+# File Name: queue_missed_dose_alerts_control.py
+# Role: Queues bounded, idempotent caregiver alerts after configured dose deadlines.
 
 import hashlib
 from datetime import datetime, time
@@ -22,8 +23,16 @@ from entities.caregiver_notification_entity import (
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
 
+# Class Name: QueueMissedDoseAlerts
+# Role: Finds due caregiver deadlines and persists durable delivery work.
+# Responsibilities:
+# - Check explicit missed-deadline preferences only for active caregiver links.
+# - Reuse schedule-course and completion rules to detect genuinely incomplete slots.
+# - Insert at most one event for each caregiver, patient, date, and slot.
+# Attributes:
+# - db: SQLAlchemy session used for settings, schedule, and outbox access.
+# - check_schedule: Schedule control used to evaluate the current completion state.
 class QueueMissedDoseAlerts:
-    """Finds due caregiver deadlines and records at most one event per day/slot."""
 
     def __init__(
         self,
@@ -33,6 +42,14 @@ class QueueMissedDoseAlerts:
         self.db = db
         self.check_schedule = check_schedule or CheckSchedule(db)
 
+    # Function Name: queueDue
+    # Description:
+    # - Scans active caregiver settings and queues overdue incomplete slots.
+    # Parameters:
+    # - now: Optional application-time override for deterministic execution.
+    # - limit: Maximum number of newly queued events for this scan.
+    # Returns:
+    # - Number of new outbox events inserted; existing idempotency keys are excluded.
     def queueDue(
         self,
         *,
@@ -109,6 +126,13 @@ class QueueMissedDoseAlerts:
         self.db.commit()
         return queued_count
 
+    # Function Name: _deadline
+    # Description: Combines a slot's configured hour and minute with today's date.
+    # Parameters:
+    # - current_time: Timezone-aware application time defining the date and zone.
+    # - slot_setting: Decoded per-slot caregiver preference.
+    # Returns:
+    # - A timezone-aware deadline, or None when the stored values are invalid.
     @staticmethod
     def _deadline(
         current_time: datetime,
@@ -126,6 +150,12 @@ class QueueMissedDoseAlerts:
             tzinfo=current_time.tzinfo,
         )
 
+    # Function Name: _insert_event
+    # Description: Inserts an outbox event without failing on an existing event key.
+    # Parameters:
+    # - values: Validated outbox column values for one missed-dose event.
+    # Returns:
+    # - True only when this call created a new row.
     def _insert_event(self, values: dict[str, object]) -> bool:
         dialect_name = self.db.get_bind().dialect.name
         if dialect_name == "postgresql":

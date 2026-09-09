@@ -1,5 +1,5 @@
-# 파일명: main.py
-# 역할: MedBuddy FastAPI 애플리케이션을 생성하고 구성한다.
+# File Name: main.py
+# Role: Assembles FastAPI routes, application resource lifetimes, security middleware and liveness/readiness probes.
 
 import asyncio
 import logging
@@ -82,25 +82,34 @@ _READINESS_EXCEPTIONS = (
 )
 
 
-# 클래스명: _ReadinessProbeCache
-# 역할: 운영 의존성에 대한 반복 준비 상태 검사를 제한한다.
-# 주요 책임:
-#   - 동시에 들어온 준비 상태 요청을 한 번의 의존성 검사로 합친다.
-#   - 준비 여부만 짧은 시간 동안 저장한다.
-#   - 예외 상세와 외부 서비스 응답 데이터는 보관하지 않는다.
-# 속성:
-#   - ttl_seconds: 저장된 결과가 만료되기까지의 초 단위 시간
+# Class Name: _ReadinessProbeCache
+# Role:
+# - Coalesces dependency readiness probes and briefly caches both success and failure to bound health-check load.
+# Responsibilities:
+# - Use a single-flight lock and monotonic expiration to prevent concurrent probes from overloading dependencies.
+# Attributes:
+# - ttl_seconds (float): Lifetime of a cached readiness result in seconds.
 class _ReadinessProbeCache:
+    # Function Name: __init__
+    # Description:
+    # - Sets the readiness TTL, async single-flight lock and initial expired/not-ready state.
+    # Parameters:
+    # - ttl_seconds (float): Lifetime of a cached readiness result in seconds.
+    # Returns:
+    # - None.
     def __init__(self, ttl_seconds: float) -> None:
         self.ttl_seconds = ttl_seconds
         self._lock = asyncio.Lock()
         self._expires_at = 0.0
         self._is_ready = False
 
-    # 함수이름: request_readiness
-    # 함수역할: 짧게 저장된 준비 상태를 반환하고 만료 시 의존성을 한 번만 검사한다.
-    # 매개변수: check - 사용할 수 없는 서비스에서 예외를 발생시키는 비동기 검사
-    # 반환값: 모든 의존성이 준비됐으면 true, 아니면 false
+    # Function Name: request_readiness
+    # Description:
+    # - Rechecks expired readiness under a lock and caches recognized dependency failures as not ready.
+    # Parameters:
+    # - check (Callable[[], Awaitable[None]]): Awaitable dependency probe that raises when a requirement is unavailable.
+    # Returns:
+    # - Cached or freshly determined readiness flag.
     async def request_readiness(
         self,
         check: Callable[[], Awaitable[None]],
@@ -121,14 +130,25 @@ class _ReadinessProbeCache:
             self._expires_at = time.monotonic() + self.ttl_seconds
             return self._is_ready
 
-    # 함수이름: reset
-    # 함수역할: 애플리케이션 수명 주기가 시작될 때 저장된 준비 상태를 무효화한다.
-    # 반환값: 없음
+    # Function Name: reset
+    # Description:
+    # - Expires the cached result and restores not-ready state for a new application lifespan.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def reset(self) -> None:
         self._expires_at = 0.0
         self._is_ready = False
 
 
+# Function Name: _verify_database_revision
+# Description:
+# - Requires the database's current Alembic revision set to match every configured migration head.
+# Parameters:
+# - connection (object): SQLAlchemy connection used for readiness checks.
+# Returns:
+# - None.
 def _verify_database_revision(connection: object) -> None:
     alembic_config = Config(str(_BACKEND_ROOT / "alembic.ini"))
     script = ScriptDirectory.from_config(alembic_config)
@@ -138,6 +158,13 @@ def _verify_database_revision(connection: object) -> None:
         raise RuntimeError("Database migration revision does not match Alembic head.")
 
 
+# Function Name: _verify_catalog_seed
+# Description:
+# - Requires at least one row in the basic drug, approval, pill-identification and pharmacy catalogs.
+# Parameters:
+# - connection (object): SQLAlchemy connection used for readiness checks.
+# Returns:
+# - None.
 def _verify_catalog_seed(connection: object) -> None:
     required_tables = (
         "drug_basic_infos",
@@ -153,6 +180,13 @@ def _verify_catalog_seed(connection: object) -> None:
             raise RuntimeError("The shared medication catalog is not seeded.")
 
 
+# Function Name: _verify_database_dependencies
+# Description:
+# - Checks database connectivity and, in production, migration revision and catalog seed readiness.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def _verify_database_dependencies() -> None:
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
@@ -161,6 +195,13 @@ def _verify_database_dependencies() -> None:
             _verify_catalog_seed(connection)
 
 
+# Function Name: _ping_required_redis
+# Description:
+# - Performs a tightly bounded Redis ping and always closes the temporary connection.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 async def _ping_required_redis() -> None:
     redis = Redis.from_url(
         settings.REDIS_URL,
@@ -174,9 +215,13 @@ async def _ping_required_redis() -> None:
         await redis.aclose()
 
 
-# 함수이름: _verify_runtime_dependencies
-# 함수역할: 데이터베이스, Firebase, App Check와 Redis의 준비 상태를 검사한다.
-# 반환값: 모든 설정된 의존성이 준비되면 없음
+# Function Name: _verify_runtime_dependencies
+# Description:
+# - Checks the database and any required Firebase, App Check and Redis dependencies without blocking the event loop on database work.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 async def _verify_runtime_dependencies() -> None:
     await run_in_threadpool(_verify_database_dependencies)
     if settings.AUTH_MODE == "firebase":
@@ -191,9 +236,13 @@ async def _verify_runtime_dependencies() -> None:
         await _ping_required_redis()
 
 
-# 함수이름: configure_logging
-# 함수역할: 애플리케이션 시작 계층에서 로그 형식과 수준을 구성한다.
-# 반환값: 없음
+# Function Name: configure_logging
+# Description:
+# - Configures application logging and suppresses routine HTTP and access logs that could expose request details.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -204,6 +253,13 @@ def configure_logging() -> None:
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
+# 함수이름: application_lifespan
+# 함수역할:
+# - 알림 아웃박스와 선택적 정리 작업을 시작하고 종료 시 작업자·호출 제한·외부 연결을 정리한다.
+# 매개변수:
+# - app (FastAPI): 공유 자원의 수명을 관리할 FastAPI 애플리케이션.
+# 반환값:
+# - 애플리케이션 실행 구간에 None을 한 번 yield한다.
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     maintenance_runner: PeriodicDataMaintenanceRunner | None = None
@@ -232,11 +288,13 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await close_pharmacy_boundary()
 
 
-# 함수이름: create_app
-# 함수역할:
-# - 환경 설정을 적용하고 필요한 로컬 스키마를 확인한다.
-# - 복약, 연동 채팅과 근처 약국 API 라우터를 등록한다.
-# 반환값: 구성된 FastAPI 애플리케이션
+# Function Name: create_app
+# Description:
+# - Wires routers, payload and rate limits, contract metadata, trusted hosts and shared state, with optional local schema compatibility setup.
+# Parameters:
+# - None.
+# Returns:
+# - Configured FastAPI application.
 def create_app() -> FastAPI:
     configure_logging()
     if settings.AUTO_CREATE_SCHEMA:
@@ -314,6 +372,13 @@ def create_app() -> FastAPI:
     )
     app.include_router(auth_router)
 
+    # Function Name: health_check
+    # Description:
+    # - Reports process liveness independently of database and external dependency availability.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Status ok and the API contract version.
     @app.get("/health", include_in_schema=False)
     def health_check() -> dict[str, str]:
         return {
@@ -321,6 +386,13 @@ def create_app() -> FastAPI:
             "api_contract": settings.API_CONTRACT_VERSION,
         }
 
+    # Function Name: readiness_check
+    # Description:
+    # - Uses the cached dependency probe before exposing deployment readiness and authentication configuration.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Readiness metadata, or HTTP 503 while required dependencies are unavailable.
     @app.get("/ready", include_in_schema=False)
     async def readiness_check() -> dict[str, str | bool]:
         is_ready = await app.state.readiness_probe_cache.request_readiness(

@@ -1,5 +1,5 @@
 # File Name: sync_pharmacy_catalog.py
-# Role: Synchronizes nationwide pharmacy schedules into the shared database.
+# Role: Publishes a validated national pharmacy catalog and refreshes curated official late-night designation evidence.
 
 import argparse
 import asyncio
@@ -35,6 +35,13 @@ _SEOUL_DESIGNATION_PATH = (
 )
 
 
+# Function Name: _load_public_late_night_designations
+# Description:
+# - Loads the curated Seoul designation file and indexes valid entries by digit-only telephone number with shared provenance.
+# Parameters:
+# - None.
+# Returns:
+# - Designation metadata keyed by normalized phone number.
 def _load_public_late_night_designations() -> dict[str, dict[str, object]]:
     raw_data = json.loads(_SEOUL_DESIGNATION_PATH.read_text(encoding="utf-8"))
     shared_fields = {
@@ -62,6 +69,14 @@ def _load_public_late_night_designations() -> dict[str, dict[str, object]]:
     return result
 
 
+# Function Name: _apply_designations
+# Description:
+# - Enriches pharmacies only when both normalized telephone number and normalized name match the curated designation.
+# Parameters:
+# - entries (list[PharmacyCatalogEntry]): Pharmacy catalog entries awaiting designation enrichment.
+# - designations_by_phone (dict[str, dict[str, object]]): Verified late-night designations keyed by normalized telephone number.
+# Returns:
+# - Updated catalog entries and the number of matched official designations.
 def _apply_designations(
     entries: list[PharmacyCatalogEntry],
     designations_by_phone: dict[str, dict[str, object]],
@@ -97,6 +112,16 @@ def _apply_designations(
     return enriched, matched
 
 
+# Function Name: synchronize
+# Description:
+# - Downloads the complete pharmacy catalog with retries, checks volume before replacement and enriches official night designations; seeded bootstrap refreshes designations only.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# - page_size (int): Maximum number of upstream rows requested per page.
+# - max_retries (int): Retry bound for transient upstream failures.
+# - only_if_empty (bool): Skip synchronization when the local catalog already has records.
+# Returns:
+# - Published row count, or zero when full bootstrap is skipped.
 async def synchronize(
     db: Session,
     *,
@@ -190,6 +215,13 @@ async def synchronize(
         await boundary.close()
 
 
+# Function Name: parse_args
+# Description:
+# - Reads the pharmacy page-size, retry-count and bootstrap-only command-line options.
+# Parameters:
+# - None.
+# Returns:
+# - Argument namespace for the pharmacy synchronization run.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Synchronize the nationwide public pharmacy catalogue."
@@ -200,6 +232,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# Function Name: main
+# Description:
+# - Configures synchronization logging, runs the async pharmacy refresh and closes the database session even on failure.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,

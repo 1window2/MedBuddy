@@ -1,5 +1,5 @@
-# 파일명: prescription_ocr_boundary.py
-# 역할: 기기에서 비식별 처리한 처방전 텍스트의 Gemini 구조화 경계를 정의한다.
+# File Name: prescription_ocr_boundary.py
+# Role: Structures device-de-identified prescription text through Gemini without accepting source images.
 
 import asyncio
 import logging
@@ -11,21 +11,22 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-# 클래스명: GeminiPrescriptionTextClient
-# 역할: 비식별 처방전 OCR 텍스트를 Gemini에 전달한다.
-# 주요 책임:
-# - 텍스트 구조화 요청 형식과 응답 스키마를 구성한다.
-# - 비어 있는 응답을 오류로 변환한다.
+# Class Name: GeminiPrescriptionTextClient
+# Role:
+# - Sends de-identified prescription OCR text to Gemini.
+# Responsibilities:
+# - Build the structured request and JSON schema configuration.
+# - Reject an empty provider response.
 class GeminiPrescriptionTextClient:
-    # 함수명: generate_text_content
-    # 역할:
+    # 함수이름: generate_text_content
+    # 함수역할:
     # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 변환한다.
     # 매개변수:
-    # - client: Gemini API 클라이언트
-    # - model_name: 구조화 분석에 사용할 Gemini 모델명
-    # - prompt: 처방전 추출 지시문
-    # - masked_text: 기기에서 민감정보를 제거한 OCR 텍스트
-    # - response_schema: 구조화 응답 JSON 스키마
+    # - client (genai.Client): Gemini API 클라이언트
+    # - model_name (str): 구조화 분석에 사용할 Gemini 모델명
+    # - prompt (str): 처방전 추출 지시문
+    # - masked_text (str): 기기에서 민감정보를 제거한 OCR 텍스트
+    # - response_schema (dict[str, Any]): 구조화 응답 JSON 스키마
     # 반환값:
     # - Gemini가 반환한 JSON 문자열
     async def generate_text_content(
@@ -56,12 +57,30 @@ class GeminiPrescriptionTextClient:
         return response_text
 
 
-# 클래스명: OCRServiceBoundary
-# 역할: 비식별 처방전 텍스트의 Gemini 구조화 흐름을 조정한다.
-# 주요 책임:
-# - 원본 이미지가 이 경계를 통과하지 않도록 텍스트 입력만 허용한다.
-# - 구조화 요청 시간 제한과 처리 시간을 관리한다.
+# Class Name: OCRServiceBoundary
+# Role:
+# - Coordinates Gemini structuring of de-identified prescription text.
+# Responsibilities:
+# - Accept text only so source images do not cross this boundary.
+# - Bound request duration and record processing time without logging prescription content.
+# Attributes:
+# - client (genai.Client): Gemini transport.
+# - model_name (str): Structuring model.
+# - response_schema (dict): Required JSON response schema.
+# - request_timeout_seconds (float): Positive timeout.
+# - gemini_text_client (GeminiPrescriptionTextClient): Structured-text request adapter.
 class OCRServiceBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Bind the Gemini text adapter, schema and model, rejecting a nonpositive OCR request timeout.
+    # Parameters:
+    # - client (genai.Client): Gemini API client used for prescription structuring.
+    # - model_name (str): Gemini model identifier used for generation.
+    # - response_schema (dict[str, Any]): JSON schema constraining the structured prescription response.
+    # - gemini_text_client (GeminiPrescriptionTextClient | None): Optional adapter for text-only Gemini requests.
+    # - request_timeout_seconds (float): Maximum structured-text request duration in seconds; must be positive.
+    # Returns:
+    # - None; no OCR request is made during construction.
     def __init__(
         self,
         *,
@@ -81,13 +100,13 @@ class OCRServiceBoundary:
             gemini_text_client or GeminiPrescriptionTextClient()
         )
 
-    # 함수명: extractPrescriptionTextData
-    # 역할:
-    # - 기기에서 비식별 처리한 OCR 텍스트만 Gemini 구조화 분석에 전달한다.
-    # 매개변수:
-    # - masked_text: 환자 식별정보가 제거된 처방전 OCR 텍스트
-    # 반환값:
-    # - 구조화된 처방 정보 JSON 문자열
+    # Function Name: extractPrescriptionTextData
+    # Description:
+    # - Validate nonblank de-identified OCR text, request structured JSON within the timeout and log only length and elapsed time.
+    # Parameters:
+    # - masked_text (str): Prescription OCR text with patient-identifying information already removed on device.
+    # Returns:
+    # - Structured prescription JSON text; raises ValueError for blank input or TimeoutError on timeout.
     async def extractPrescriptionTextData(self, masked_text: str) -> str:
         normalized_text = masked_text.strip()
         if not normalized_text:
@@ -114,6 +133,13 @@ class OCRServiceBoundary:
         )
         return response
 
+    # Function Name: _masked_text_extraction_prompt
+    # Description:
+    # - Provide extraction rules that retain visible medication details without reconstructing removed personal information.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Korean prompt for schema-constrained date, medication-name and dosage extraction.
     @staticmethod
     def _masked_text_extraction_prompt() -> str:
         return """

@@ -8,23 +8,41 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import 'set_notification_ui_boundary.dart';
 
-// 파일명: medication_reminder_settings_ui_boundary.dart
-// 역할: 홈의 빠른 기능에서 모든 시간대별 복약 알림을 한 화면에서 관리한다.
+// File Name: medication_reminder_settings_ui_boundary.dart
+// Role: UI boundaries and helpers for per-slot reminder retrieval, time changes, and disabling.
 
-// 클래스명: MedicationReminderSettingsUI
-// 역할: 아침, 점심, 저녁, 취침 전 알림의 현재 상태와 시간을 표시하고 변경한다.
-// 주요 책임:
-// - 최신 복약 일정과 알림 설정을 불러온다.
-// - 시간대별 알림 설정 팝업을 열어 기존 ViewModel 저장 흐름을 재사용한다.
-// - 알림 설정과 해제 결과를 사용자에게 즉시 안내한다.
+// Class Name: MedicationReminderSettingsUI
+// Role: Represents current per-slot reminder state, configuration, and disabling.
+// Responsibilities:
+// - Loads current schedules and reminder settings.
+// - Reuses the existing view-model save flow from slot dialogs.
+// - Immediately reports reminder enable and disable outcomes.
 class MedicationReminderSettingsUI extends StatefulWidget {
+  // Function Name: MedicationReminderSettingsUI
+  // Description: Initializes current per-slot reminder state, configuration, and disabling with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // Returns: Initialized MedicationReminderSettingsUI instance.
   const MedicationReminderSettingsUI({super.key});
 
+  // Function Name: createState
+  // Description: Creates the state object that coordinates current per-slot reminder state, configuration, and disabling.
+  // Parameters:
+  // - None.
+  // Returns: A new _MedicationReminderSettingsUIState instance.
   @override
   State<MedicationReminderSettingsUI> createState() =>
       _MedicationReminderSettingsUIState();
 }
 
+// Class Name: _MedicationReminderSettingsUIState
+// Role: Manages state for current per-slot reminder state, configuration, and disabling.
+// Responsibilities:
+// - Builds retrieval state and each slot's medication count, reminder time, and enable controls.
+// - Selects medications assigned to the requested slot using the view model's rules.
+// - Opens reminder editing at the current time and saves the selected hour and minute with the slot's medications.
+// Attributes:
+// - _slots (List<_ReminderSlotDefinition>): List combining per-slot medications and presentation definitions.
 class _MedicationReminderSettingsUIState
     extends State<MedicationReminderSettingsUI> {
   static const List<_ReminderSlotDefinition> _slots = [
@@ -54,9 +72,19 @@ class _MedicationReminderSettingsUIState
     ),
   ];
 
+  // Function Name: initState
+  // Description: Requests current schedules and reminder settings after the first frame.
+  // Parameters:
+  // - None.
+  // Returns: None; updates state or performs the documented action.
   @override
   void initState() {
     super.initState();
+    // Function Name: initState.addPostFrameCallback callback
+    // Description: Connects current per-slot reminder state, configuration, and disabling to the captured operation `context.read<MedBuddyViewModel>().refreshMedicationSchedule(); context.read<MedBuddyViewModel>()`.
+    // Parameters:
+    // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
+    // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<MedBuddyViewModel>().refreshMedicationSchedule();
@@ -64,6 +92,11 @@ class _MedicationReminderSettingsUIState
     });
   }
 
+  // Function Name: build
+  // Description: Renders current per-slot reminder state, configuration, and disabling from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for current per-slot reminder state, configuration, and disabling.
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MedBuddyViewModel>();
@@ -73,10 +106,22 @@ class _MedicationReminderSettingsUIState
         viewModel.updatesFor(MedBuddyFeature.reminder),
         viewModel.updatesFor(MedBuddyFeature.userSetting),
       ]),
+      // Function Name: build.builder callback
+      // Description: Composes current per-slot reminder state, configuration, and disabling with the current parent constraints for the active layout.
+      // Parameters:
+      // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+      // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
+      // Returns: Widget subtree for the described layout or fallback.
       builder: (context, _) => _buildScreen(context, viewModel),
     );
   }
 
+  // Function Name: _buildScreen
+  // Description: Builds retrieval state and each slot's medication count, reminder time, and enable controls.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
+  // Returns: Widget tree for current per-slot reminder state, configuration, and disabling.
   Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
     final text = _ReminderSettingsText(viewModel.userSetting.language);
     final isLoading = viewModel.isTodayScheduleLoading;
@@ -98,6 +143,11 @@ class _MedicationReminderSettingsUIState
                     children: [
                       IconButton(
                         tooltip: text.back,
+                        // Function Name: _buildScreen.onPressed callback
+                        // Description: Closes this route with the selection or cancellation encoded by `Navigator.maybePop(context)`.
+                        // Parameters:
+                        // - None.
+                        // Returns: No callback payload; any selection is delivered through the route result.
                         onPressed: () => Navigator.maybePop(context),
                         icon: const Icon(Icons.arrow_back_rounded),
                       ),
@@ -143,8 +193,20 @@ class _MedicationReminderSettingsUIState
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                           itemCount: _slots.length,
+                          // Function Name: _buildScreen.separatorBuilder callback
+                          // Description: Separates adjacent entries in current per-slot reminder state, configuration, and disabling using the declared spacing or divider.
+                          // Parameters:
+                          // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
+                          // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
+                          // Returns: Widget subtree for the described layout or fallback.
                           separatorBuilder: (_, _) =>
                               const SizedBox(height: 12),
+                          // Function Name: _buildScreen.itemBuilder callback
+                          // Description: Composes current per-slot reminder state, configuration, and disabling with the current parent constraints for the active layout.
+                          // Parameters:
+                          // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+                          // - index (int): Zero-based position of the target medication, photo, or row.
+                          // Returns: Widget subtree for the described layout or fallback.
                           itemBuilder: (context, index) {
                             final slot = _slots[index];
                             final setting =
@@ -162,6 +224,11 @@ class _MedicationReminderSettingsUIState
                               text: text,
                               onTimeRequested: schedules.isEmpty
                                   ? null
+                                  // Function Name: _buildScreen.onTimeRequested callback
+                                  // Description: Opens reminder editing at the current time and saves the selected hour and minute with the slot's medications.
+                                  // Parameters:
+                                  // - None.
+                                  // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                                   : () => _requestReminderTime(
                                       viewModel,
                                       slot,
@@ -171,6 +238,11 @@ class _MedicationReminderSettingsUIState
                                     ),
                               onEnabledChanged: schedules.isEmpty
                                   ? null
+                                  // Function Name: _buildScreen.onEnabledChanged callback
+                                  // Description: Opens time editing when enabling a reminder and cancels the slot reminder when disabling it.
+                                  // Parameters:
+                                  // - enabled (bool): Whether the choice, action, or feature is enabled.
+                                  // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                                   : (enabled) => _changeReminderEnabled(
                                       viewModel,
                                       slot,
@@ -191,29 +263,38 @@ class _MedicationReminderSettingsUIState
     );
   }
 
+  // Function Name: _schedulesForSlot
+  // Description: Selects medications assigned to the requested slot using the view model's rules.
+  // Parameters:
+  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
+  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+  // Returns: List<MedicationSchedule>: Medication schedules matching the requested slot.
   List<MedicationSchedule> _schedulesForSlot(
     MedBuddyViewModel viewModel,
     String slotKey,
   ) {
     return viewModel.todayMedicationScheduleList
         .where(
+          // Function Name: _schedulesForSlot.where callback
+          // Description: Checks the collection condition `viewModel.slotKeysForSchedule(schedule).contains(slotKey)` for current per-slot reminder state, configuration, and disabling.
+          // Parameters:
+          // - schedule (inferred by callback contract): Medication schedule containing name, dosage, days, slots, and completion state.
+          // Returns: Boolean predicate result for the supplied item.
           (schedule) =>
               viewModel.slotKeysForSchedule(schedule).contains(slotKey),
         )
         .toList(growable: false);
   }
 
-  // 함수이름: _requestReminderTime
-  // 함수역할:
-  // - 선택한 시간대의 알림 시간 팝업을 열고 기존 알림 저장 흐름을 호출한다.
-  // 매개변수:
-  // - viewModel: 일정과 알림 저장 요청을 제공하는 ViewModel
-  // - slot: 사용자가 선택한 시간대 정의
-  // - schedules: 해당 시간대에 복용할 약 목록
-  // - setting: 현재 알림 설정
-  // - text: 현재 언어의 화면 문구
-  // 반환값:
-  // - 없음
+  // Function Name: _requestReminderTime
+  // Description: Opens reminder editing at the current time and saves the selected hour and minute with the slot's medications.
+  // Parameters:
+  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
+  // - slot (_ReminderSlotDefinition): Dose-slot identity, time, and presentation data.
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - setting (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+  // - text (_ReminderSettingsText): Localized labels used by this section.
+  // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _requestReminderTime(
     MedBuddyViewModel viewModel,
     _ReminderSlotDefinition slot,
@@ -243,18 +324,16 @@ class _MedicationReminderSettingsUIState
     }
   }
 
-  // 함수이름: _changeReminderEnabled
-  // 함수역할:
-  // - 꺼진 알림은 시간 선택으로 연결하고 켜진 알림은 기존 취소 흐름으로 해제한다.
-  // 매개변수:
-  // - viewModel: 알림 저장 및 해제 요청을 제공하는 ViewModel
-  // - slot: 사용자가 선택한 시간대 정의
-  // - schedules: 해당 시간대에 복용할 약 목록
-  // - setting: 현재 알림 설정
-  // - enabled: 사용자가 요청한 새 활성 상태
-  // - text: 현재 언어의 화면 문구
-  // 반환값:
-  // - 없음
+  // Function Name: _changeReminderEnabled
+  // Description: Opens time editing when enabling a reminder and cancels the slot reminder when disabling it.
+  // Parameters:
+  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
+  // - slot (_ReminderSlotDefinition): Dose-slot identity, time, and presentation data.
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - setting (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+  // - enabled (bool): Whether the choice, action, or feature is enabled.
+  // - text (_ReminderSettingsText): Localized labels used by this section.
+  // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _changeReminderEnabled(
     MedBuddyViewModel viewModel,
     _ReminderSlotDefinition slot,
@@ -276,6 +355,12 @@ class _MedicationReminderSettingsUIState
     }
   }
 
+  // Function Name: _showResult
+  // Description: Replaces the previous snackbar with the reminder save or cancellation result using outcome colors.
+  // Parameters:
+  // - message (String): Visible wording for the current result, error, or state.
+  // - succeeded (bool): Whether the preceding save, retrieval, or update succeeded.
+  // Returns: None; updates state or performs the documented action.
   void _showResult(String message, bool succeeded) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -290,6 +375,15 @@ class _MedicationReminderSettingsUIState
   }
 }
 
+// Class Name: _ReminderSlotCard
+// Role: Represents a dose slot's label, reminder time, enabled state, and edit action.
+// Responsibilities:
+// - Composes a dose slot's label, reminder time, enabled state, and edit action using the display values and actions supplied by its parent.
+// Attributes:
+// - slot (_ReminderSlotDefinition): Dose-slot identity, time, and presentation data.
+// - setting (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+// - medicationCount (int): Number of medications included in the slot or summary.
+// - onTimeRequested (VoidCallback?): Callback opening time selection for the dose slot to edit.
 class _ReminderSlotCard extends StatelessWidget {
   final _ReminderSlotDefinition slot;
   final MedicationAlarm setting;
@@ -298,6 +392,16 @@ class _ReminderSlotCard extends StatelessWidget {
   final VoidCallback? onTimeRequested;
   final ValueChanged<bool>? onEnabledChanged;
 
+  // Function Name: _ReminderSlotCard
+  // Description: Initializes a dose slot's label, reminder time, enabled state, and edit action with the supplied configuration.
+  // Parameters:
+  // - slot (_ReminderSlotDefinition): Dose-slot identity, time, and presentation data.
+  // - setting (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+  // - medicationCount (int): Number of medications included in the slot or summary.
+  // - text (_ReminderSettingsText): Localized labels used by this section.
+  // - onTimeRequested (VoidCallback?): Callback opening time selection for the dose slot to edit.
+  // - onEnabledChanged (ValueChanged<bool>?): Callback reporting the changed value or selection state to the owning screen.
+  // Returns: Initialized _ReminderSlotCard instance.
   const _ReminderSlotCard({
     required this.slot,
     required this.setting,
@@ -307,6 +411,11 @@ class _ReminderSlotCard extends StatelessWidget {
     required this.onEnabledChanged,
   });
 
+  // Function Name: build
+  // Description: Renders a dose slot's label, reminder time, enabled state, and edit action from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for a dose slot's label, reminder time, enabled state, and edit action.
   @override
   Widget build(BuildContext context) {
     final isAvailable = medicationCount > 0;
@@ -390,12 +499,29 @@ class _ReminderSlotCard extends StatelessWidget {
   }
 }
 
+// Class Name: _ReminderSlotDefinition
+// Role: Represents a reminder slot's key, labels, color, and icon.
+// Responsibilities:
+// - Selects the slot label for the requested language.
+// Attributes:
+// - key (String): String key identifying the dose slot.
+// - koreanLabel (String): Wording identifying a field, choice, or action.
+// - englishLabel (String): Wording identifying a field, choice, or action.
+// - icon (IconData): Icon shown in normal or selected state.
 class _ReminderSlotDefinition {
   final String key;
   final String koreanLabel;
   final String englishLabel;
   final IconData icon;
 
+  // Function Name: _ReminderSlotDefinition
+  // Description: Combines the supplied values for a reminder slot's key, labels, color, and icon in a _ReminderSlotDefinition instance.
+  // Parameters:
+  // - key (String): String key identifying the dose slot.
+  // - koreanLabel (String): Wording identifying a field, choice, or action.
+  // - englishLabel (String): Wording identifying a field, choice, or action.
+  // - icon (IconData): Icon shown in normal or selected state.
+  // Returns: Initialized _ReminderSlotDefinition instance.
   const _ReminderSlotDefinition({
     required this.key,
     required this.koreanLabel,
@@ -403,18 +529,40 @@ class _ReminderSlotDefinition {
     required this.icon,
   });
 
+  // Function Name: label
+  // Description: Selects the slot label for the requested language.
+  // Parameters:
+  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
+  // Returns: The formatted display text or identifier described above.
   String label(bool isEnglish) => isEnglish ? englishLabel : koreanLabel;
 }
 
+// Class Name: _ReminderScheduleLoadError
+// Role: Represents schedule-load failure and retry on the reminders screen.
+// Responsibilities:
+// - Composes schedule-load failure and retry on the reminders screen using the display values and actions supplied by its parent.
+// Attributes:
+// - onRetryRequested (Future<void> Function()): Callback reloading failed or stale screen data.
 class _ReminderScheduleLoadError extends StatelessWidget {
   final _ReminderSettingsText text;
   final Future<void> Function() onRetryRequested;
 
+  // Function Name: _ReminderScheduleLoadError
+  // Description: Initializes schedule-load failure and retry on the reminders screen with the supplied configuration.
+  // Parameters:
+  // - text (_ReminderSettingsText): Localized labels used by this section.
+  // - onRetryRequested (Future<void> Function()): Callback reloading failed or stale screen data.
+  // Returns: Initialized _ReminderScheduleLoadError instance.
   const _ReminderScheduleLoadError({
     required this.text,
     required this.onRetryRequested,
   });
 
+  // Function Name: build
+  // Description: Renders schedule-load failure and retry on the reminders screen from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for schedule-load failure and retry on the reminders screen.
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -462,27 +610,84 @@ class _ReminderScheduleLoadError extends StatelessWidget {
   }
 }
 
+// Class Name: _ReminderSettingsText
+// Role: Represents localized wording for per-slot reminder retrieval, time changes, and disabling.
+// Responsibilities:
+// - Selects Korean or English labels and interpolates message values for localized wording for per-slot reminder retrieval, time changes, and disabling.
+// Attributes:
+// - language (String): Language code selecting visible wording.
 class _ReminderSettingsText {
   final String language;
 
+  // Function Name: _ReminderSettingsText
+  // Description: Stores the language used to select localized wording for per-slot reminder retrieval, time changes, and disabling.
+  // Parameters:
+  // - language (String): Language code selecting visible wording.
+  // Returns: Initialized _ReminderSettingsText instance.
   const _ReminderSettingsText(this.language);
 
+  // Function Name: isEnglish
+  // Description: Recognizes English locale prefixes after trimming and lowercasing the language code.
+  // Parameters:
+  // - None.
+  // Returns: True when the documented condition holds; false otherwise.
   bool get isEnglish => language.trim().toLowerCase().startsWith('en');
 
+  // Function Name: title
+  // Description: Provides localized wording for "Medication Reminder Settings" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get title => isEnglish ? 'Medication Reminder Settings' : '복약 알림 설정';
+  // Function Name: description
+  // Description: Provides localized wording for "Choose a time slot to edit its reminder. Reminders without medication stay unavailable." using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get description => isEnglish
       ? 'Choose a time slot to edit its reminder. Reminders without medication stay unavailable.'
       : '시간대를 눌러 알림 시간을 변경하세요. 등록된 약이 없는 시간대는 사용할 수 없습니다.';
+  // Function Name: back
+  // Description: Provides localized wording for "Back" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get back => isEnglish ? 'Back' : '뒤로';
+  // Function Name: noMedication
+  // Description: Provides localized wording for "No medication in this time slot" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get noMedication =>
       isEnglish ? 'No medication in this time slot' : '이 시간대에 등록된 약이 없습니다';
+  // Function Name: scheduleLoadFailed
+  // Description: Provides localized wording for "Could not load your medication schedule." using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get scheduleLoadFailed => isEnglish
       ? 'Could not load your medication schedule.'
       : '복약 일정을 불러오지 못했습니다.';
+  // Function Name: retry
+  // Description: Provides localized wording for "Retry" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get retry => isEnglish ? 'Retry' : '다시 시도';
+  // Function Name: enabledAt
+  // Description: Provides localized wording for "$time · $count medication${count == 1 ?" using the current language and message inputs.
+  // Parameters:
+  // - time (String): Hour and minute to display in the picker or save.
+  // - count (int): Item count or ordinal number used in wording or a list.
+  // Returns: The formatted display text or identifier described above.
   String enabledAt(String time, int count) => isEnglish
       ? '$time · $count medication${count == 1 ? '' : 's'}'
       : '$time · 약 $count개';
+  // Function Name: disabled
+  // Description: Provides localized wording for "Off · $count medication${count == 1 ?" using the current language and message inputs.
+  // Parameters:
+  // - count (int): Item count or ordinal number used in wording or a list.
+  // Returns: The formatted display text or identifier described above.
   String disabled(int count) => isEnglish
       ? 'Off · $count medication${count == 1 ? '' : 's'}'
       : '꺼짐 · 약 $count개';

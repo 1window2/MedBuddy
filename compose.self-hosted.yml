@@ -1,3 +1,6 @@
+# File Name: compose.self-hosted.yml
+# Role: Connects the self-hosted API, databases, catalog jobs and runtime secret mounts.
+
 name: medbuddy-beta
 
 services:

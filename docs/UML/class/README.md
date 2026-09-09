@@ -17,11 +17,19 @@
 - `03_MedicationManagement.puml` / `03_MedicationManagement.png`
   - 약 상세정보, 저장된 복약 정보, 오늘의 복약 일정과 알림 구조를 보여준다.
 - `04_CaregiverNotifications.puml` / `04_CaregiverNotifications.png`
-  - 환자·보호자 연동과 복약 완료 알림 전달 구조를 보여준다.
+  - 환자·보호자 연동, 조건부 채팅 탭과 대화 목록, 복약 완료 알림 전달 구조를 보여준다.
 - `05_AuthenticationSettingsAccessibility.puml` / `05_AuthenticationSettingsAccessibility.png`
   - 인증, 사용자 설정 저장, 언어 및 음성 안내 구조를 보여준다.
 
 ## Usage
+
+홈은 네 개의 빠른 기능을 유지하며, 알림 설정 칸을 기본 기능인 약국 찾기로
+교체한다. 알림 설정은 일정 및 환경설정에서 계속 사용할 수 있다.
+채팅도 기본 기능이며, 활성 연동이 하나 이상일 때만 하단 채팅 탭을 표시한다.
+구형 실험실 선택은 두 기능을 제한하지 않으며, 실험실에는 다중 알약 식별만 남긴다.
+`ManageChatList`는 계정별 활성 연동·별칭·최근 메시지를 조회하고, `ChatListUI`는
+여러 상대 중 선택한 연동을 기존 `LinkedChatUI`로 연결한다. 백엔드의 참여자 권한
+검증과 메시지·복약 데이터 계약은 변경하지 않는다.
 
 발표에서는 `00`부터 필요한 기능 다이어그램까지 순서대로 사용하고,
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을

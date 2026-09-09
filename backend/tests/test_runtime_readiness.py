@@ -1,3 +1,6 @@
+# File Name: test_runtime_readiness.py
+# Role: Regression coverage for liveness, cached readiness checks, and production dependency
+#   requirements.
 """Tests for process liveness and production dependency readiness."""
 
 from unittest.mock import AsyncMock, patch
@@ -9,6 +12,14 @@ from sqlalchemy.exc import OperationalError
 from main import app
 
 
+# Function Name: test_liveness_does_not_depend_on_external_services
+# Description:
+# - Returns a successful liveness and API-contract response without depending on external
+#   services.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_liveness_does_not_depend_on_external_services() -> None:
     with TestClient(app) as client:
         response = client.get("/health")
@@ -20,6 +31,14 @@ def test_liveness_does_not_depend_on_external_services() -> None:
     }
 
 
+# Function Name: test_readiness_checks_database_connectivity
+# Description:
+# - Checks database connectivity and returns the expected development runtime and authentication
+#   readiness metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_checks_database_connectivity() -> None:
     with TestClient(app) as client:
         response = client.get("/ready")
@@ -36,6 +55,14 @@ def test_readiness_checks_database_connectivity() -> None:
     }
 
 
+# Function Name: test_readiness_coalesces_repeated_public_dependency_checks
+# Description:
+# - Coalesces repeated readiness calls into one database dependency check while returning
+#   success to both callers.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_coalesces_repeated_public_dependency_checks() -> None:
     with (
         patch("main._verify_database_dependencies") as verify_database,
@@ -49,6 +76,14 @@ def test_readiness_coalesces_repeated_public_dependency_checks() -> None:
     verify_database.assert_called_once_with()
 
 
+# Function Name: test_readiness_fails_when_database_is_unavailable
+# Description:
+# - Returns HTTP 503 with a generic dependency-not-ready message when the database is
+#   unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_database_is_unavailable() -> None:
     database_error = OperationalError(
         "SELECT 1",
@@ -68,6 +103,14 @@ def test_readiness_fails_when_database_is_unavailable() -> None:
     }
 
 
+# Function Name: test_production_readiness_checks_schema_firebase_and_redis
+# Description:
+# - Checks production schema, catalog seed, Firebase credentials/verifiers, and Redis while
+#   returning the configured production readiness metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     with (
         patch("main.settings.APP_ENV", "production"),
@@ -101,6 +144,13 @@ def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     ping_redis.assert_awaited_once_with()
 
 
+# Function Name: test_readiness_fails_when_schema_revision_is_stale
+# Description:
+# - Returns HTTP 503 when the database schema revision is stale.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_schema_revision_is_stale() -> None:
     with (
         patch("main.settings.APP_ENV", "production"),
@@ -115,6 +165,13 @@ def test_readiness_fails_when_schema_revision_is_stale() -> None:
     assert response.status_code == 503
 
 
+# Function Name: test_readiness_fails_when_required_redis_is_unavailable
+# Description:
+# - Returns HTTP 503 when mandatory Redis storage is unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_required_redis_is_unavailable() -> None:
     with (
         patch("main.settings.RATE_LIMIT_REQUIRE_REDIS", True),

@@ -14,11 +14,31 @@ import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 
+// 클래스명: _FakeLocationBoundary
+// 역할: 위치 성공과 지정된 위치 오류를 선택할 수 있는 경계 대역.
+// 주요 책임:
+// - 오류가 주입되면 위치 예외를 발생시키고 아니면 고정 서울 좌표를 제공한다.
+// - 앱 권한 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
+// - 기기 위치 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
 class _FakeLocationBoundary implements DeviceLocationBoundary {
   final DeviceLocationFailure? failure;
 
+  // 함수이름: _FakeLocationBoundary
+  // 함수역할:
+  // - 재현할 위치 오류를 보관하며 미지정 시 고정 좌표를 사용한다.
+  // 매개변수:
+  // - failure (DeviceLocationFailure?): 재현할 선택적 위치 실패 유형.
+  // 반환값:
+  // - 지정 실패 조건의 위치 대역.
   const _FakeLocationBoundary({this.failure});
 
+  // 함수이름: requestCurrentCoordinate
+  // 함수역할:
+  // - 오류가 주입되면 위치 예외를 발생시키고 아니면 고정 서울 좌표를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 성공 시 고정 기기 좌표; 실패 시 DeviceLocationException.
   @override
   Future<DeviceCoordinate> requestCurrentCoordinate() async {
     if (failure != null) {
@@ -27,13 +47,40 @@ class _FakeLocationBoundary implements DeviceLocationBoundary {
     return const DeviceCoordinate(latitude: 37.5665, longitude: 126.9780);
   }
 
+  // 함수이름: openApplicationSettings
+  // 함수역할:
+  // - 앱 권한 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - true로 완료되는 Future<bool>.
   @override
   Future<bool> openApplicationSettings() async => true;
 
+  // 함수이름: openDeviceLocationSettings
+  // 함수역할:
+  // - 기기 위치 설정 화면을 실제로 열지 않고 이동 성공을 재현한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - true로 완료되는 Future<bool>.
   @override
   Future<bool> openDeviceLocationSettings() async => true;
 }
 
+// 함수이름: _buildControl
+// 함수역할:
+// - 검색 모드별 응답·위치 오류·외부 앱·클립보드 동작을 주입한 약국 제어기를 구성한다.
+// 매개변수:
+// - failure (DeviceLocationFailure?): 재현할 선택적 위치 실패 유형.
+// - onRequest (VoidCallback?): 가로챈 약국 요청을 감시할 선택적 콜백.
+// - requestedModes (List<String?>?): 수신한 약국 검색 모드를 기록할 선택적 목록.
+// - emptyModes (Set<String>): 약국 없음 응답을 제공할 검색 모드 집합.
+// - customPharmacies (List<Map<String, Object?>>?): 기본 대역 대신 반환할 선택적 약국 데이터 행.
+// - uriLauncher (Future<bool> Function(Uri uri)?): 전화·길찾기 앱 실행을 대신할 선택적 함수.
+// - clipboardWriter (Future<void> Function(String text)?): 시스템 클립보드 쓰기를 대신할 선택적 콜백.
+// 반환값:
+// - 네트워크 없이 필터와 사용자 명령을 검사할 제어기.
 CheckNearbyPharmacy _buildControl({
   DeviceLocationFailure? failure,
   VoidCallback? onRequest,
@@ -45,6 +92,13 @@ CheckNearbyPharmacy _buildControl({
 }) {
   return CheckNearbyPharmacy(
     locationBoundary: _FakeLocationBoundary(failure: failure),
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 요청 모드를 기록하고 빈 결과·사용자 지정 결과·영업 필터별 기본 약국 목록을 선택한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - 선택한 약국 목록을 담은 HTTP 200 응답.
     client: MockClient((request) async {
       onRequest?.call();
       final requestedMode = request.url.queryParameters['search_mode'];
@@ -89,11 +143,25 @@ CheckNearbyPharmacy _buildControl({
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }),
+    // 함수이름: callback 콜백
+    // 함수역할:
+    // - 실제 외부 앱을 열지 않고 기본 URI 실행 성공을 제공한다.
+    // 매개변수:
+    // - _ (Uri): 콜백 계약을 유지하기 위해 받지만 사용하지 않는 인자.
+    // 반환값:
+    // - true로 완료되는 Future<bool>.
     uriLauncher: uriLauncher ?? (_) async => true,
     clipboardWriter: clipboardWriter,
   );
 }
 
+// 함수이름: _testApp
+// 함수역할:
+// - 작은 화면과 1.6배 글씨, 테스트 지도 경계로 약국 화면을 감싼다.
+// 매개변수:
+// - control (CheckNearbyPharmacy): 테스트가 주입하고 수명을 관리하는 제어기.
+// 반환값:
+// - 약국 목록과 가짜 지도가 있는 MaterialApp.
 Widget _testApp(CheckNearbyPharmacy control) {
   return MaterialApp(
     home: MediaQuery(
@@ -110,6 +178,22 @@ Widget _testApp(CheckNearbyPharmacy control) {
   );
 }
 
+// 함수이름: _buildTestMap
+// 함수역할:
+// - 외부 지도 대신 상태 문구와 가로로 나열한 약국 선택 버튼을 표시한다.
+// 매개변수:
+// - pharmacies (List<NearbyPharmacy>): 가짜 지도 마커로 표시할 약국 목록.
+// - selectedPharmacyId (String?): 현재 지도에서 초점을 맞춘 약국 식별자. 이 대역에서는 직접 사용하지 않는다.
+// - onPharmacySelected (ValueChanged<NearbyPharmacy>): 지도에서 고른 약국을 전달받을 처리기.
+// - onAttributionRequested (VoidCallback): 지도 출처 표시 요청 콜백. 이 대역에서는 직접 사용하지 않는다.
+// - statusText (String?): 대체 지도 위젯에 표시할 선택적 상태 문구.
+// - selectMarkerHint (String): 약국 마커 선택에 대한 접근성 힌트. 이 대역에서는 직접 사용하지 않는다.
+// - zoomInTooltip (String): 지도 생성 계약의 번역된 확대 안내 문구. 이 대역에서는 직접 사용하지 않는다.
+// - zoomOutTooltip (String): 지도 생성 계약의 번역된 축소 안내 문구. 이 대역에서는 직접 사용하지 않는다.
+// - configurationUnavailableText (String): 지도 계약이 전달하는 설정 누락 안내 문구. 이 대역에서는 직접 사용하지 않는다.
+// - unavailableText (String): 지도 데이터를 사용할 수 없을 때의 대체 문구. 이 대역에서는 직접 사용하지 않는다.
+// 반환값:
+// - 높이 80의 지도 대체 위젯.
 Widget _buildTestMap({
   required List<NearbyPharmacy> pharmacies,
   required String? selectedPharmacyId,
@@ -133,8 +217,22 @@ Widget _buildTestMap({
             scrollDirection: Axis.horizontal,
             children: pharmacies
                 .map(
+                  // 함수이름: map 콜백
+                  // 함수역할:
+                  // - 각 약국에 안정된 키와 선택 콜백을 가진 가짜 지도 마커 버튼을 만든다.
+                  // 매개변수:
+                  // - pharmacy (NearbyPharmacy): 선택 마커에 대응하는 약국.
+                  // 반환값:
+                  // - 약국명을 표시하는 TextButton.
                   (pharmacy) => TextButton(
                     key: ValueKey('test-map-marker-${pharmacy.pharmacyId}'),
+                    // 함수이름: onPressed 콜백
+                    // 함수역할:
+                    // - 가짜 지도 마커를 누르면 해당 약국을 선택 처리기에 전달한다.
+                    // 매개변수:
+                    // - 없음.
+                    // 반환값:
+                    // - 없음; 선택 콜백이 실행된다.
                     onPressed: () => onPharmacySelected(pharmacy),
                     child: Text('map:${pharmacy.name}'),
                   ),
@@ -147,7 +245,21 @@ Widget _buildTestMap({
   );
 }
 
+// 함수이름: main
+// 함수역할:
+// - 약국 필터, 지도 선택, 위치 오류와 새로고침 제한 검증 사례와 테스트 대역을 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다', (tester) async {
     const pharmacy = NearbyPharmacy(
       pharmacyId: 'configured-location',
@@ -169,7 +281,21 @@ void main() {
           body: NearbyPharmacyMap(
             pharmacies: const [pharmacy],
             selectedPharmacyId: null,
+            // 함수이름: onPharmacySelected 콜백
+            // 함수역할:
+            // - 약국 선택 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - _ (NearbyPharmacy): 콜백 계약을 유지하기 위해 받지만 사용하지 않는 인자.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onPharmacySelected: (_) {},
+            // 함수이름: onAttributionRequested 콜백
+            // 함수역할:
+            // - 지도 출처 표시 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onAttributionRequested: () {},
             statusText: null,
             selectMarkerHint: '약국 선택',
@@ -187,6 +313,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 영업 중 약국을 우선 표시하고 필터에 따라 영업 종료 약국을 제외하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,
   ) async {
@@ -195,6 +328,13 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         _buildControl(
+          // Function Name: onRequest callback
+          // Description:
+          // - Count pharmacy refresh requests to detect repeated requests during the cooldown.
+          // Parameters:
+          // - None.
+          // Returns:
+          // - No value; the callback completes after its recorded side effects.
           onRequest: () => requestCount += 1,
           requestedModes: requestedModes,
         ),
@@ -234,6 +374,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 영업 중 약국에서 늦게까지 운영하는 결과를 먼저 표시한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('영업 중 약국에서 늦게까지 운영하는 결과를 먼저 표시한다', (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -284,6 +431,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 약국 카드 선택이 지도 선택 표시와 일치하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('selecting a pharmacy card updates the map focus state', (
     tester,
   ) async {
@@ -302,11 +456,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 길찾기는 실행 방법을 묻고 주소 복사를 지원한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('길찾기는 실행 방법을 묻고 주소 복사를 지원한다', (tester) async {
     String? copiedAddress;
     await tester.pumpWidget(
       _testApp(
         _buildControl(
+          // 함수이름: clipboardWriter 콜백
+          // 함수역할:
+          // - 클립보드에 복사할 약국 주소를 실제 시스템 쓰기 없이 기록한다.
+          // 매개변수:
+          // - value (String): 클립보드 쓰기 함수에 전달한 약국 주소.
+          // 반환값:
+          // - Future<void>; 주소 기록 완료.
           clipboardWriter: (value) async {
             copiedAddress = value;
           },
@@ -346,6 +514,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 필터 검색 결과가 없어도 전체 보기로 바꾸면 데이터를 다시 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('show all reloads data after an empty filtered search', (
     tester,
   ) async {
@@ -383,6 +558,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 위치 서비스가 꺼졌을 때 위치 설정으로 이동하는 명확한 명령을 표시하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('shows a clear action when location service is disabled', (
     tester,
   ) async {
@@ -396,11 +578,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 대기시간 안의 반복 새로고침이 추가 조회를 만들지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('limits repeated refresh requests during the cooldown', (
     tester,
   ) async {
     var requestCount = 0;
     await tester.pumpWidget(
+      // 함수이름: onRequest 콜백
+      // 함수역할:
+      // - 약국 조회 횟수를 기록해 대기시간 내 중복 요청을 검사한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값:
+      // - 없음; 기록 또는 상태 변경을 마친다.
       _testApp(_buildControl(onRequest: () => requestCount += 1)),
     );
     await tester.pumpAndSettle();

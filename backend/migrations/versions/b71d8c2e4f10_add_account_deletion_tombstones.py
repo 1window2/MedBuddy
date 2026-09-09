@@ -1,3 +1,5 @@
+# File Name: b71d8c2e4f10_add_account_deletion_tombstones.py
+# Role: Adds durable markers for an account deletion request and external identity deletion completion without rewriting existing user records.
 """Add retry-safe account deletion tombstones.
 
 Revision ID: b71d8c2e4f10
@@ -18,8 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 # Function Name: upgrade
 # Description:
-# - Adds durable markers for an account deletion request and external identity
-#   deletion completion without rewriting existing user records.
+# - Adds durable markers for an account deletion request and external identity deletion completion without rewriting existing user records.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def upgrade() -> None:
@@ -35,6 +38,8 @@ def upgrade() -> None:
 # Function Name: downgrade
 # Description:
 # - Removes the retry-safe account deletion markers.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def downgrade() -> None:

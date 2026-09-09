@@ -1,5 +1,6 @@
-# 파일명: test_data_lifecycle_controls.py
-# 역할: 자동 정리, 계정 삭제, 호출 제한의 핵심 수명주기 정책을 검증한다.
+# File Name: test_data_lifecycle_controls.py
+# Role: Regression coverage for retention, account-deletion retries, and memory/Redis
+#   request-rate enforcement.
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -35,6 +36,13 @@ from services.chat_message_retention import ChatMessageRetentionPolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 
+# 함수이름: db_session
+# 함수역할:
+# - 격리된 인메모리 SQLite 세션을 제공하고 테스트 종료 시 세션과 엔진을 닫는다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 격리 Session을 제공하며 fixture 정리 시 세션과 엔진을 닫음.
 @pytest.fixture
 def db_session():
     engine = create_engine(
@@ -51,9 +59,14 @@ def db_session():
         engine.dispose()
 
 
-# 함수명: test_data_maintenance_removes_expired_and_orphaned_rows
-# 역할:
-# - 정기 작업이 만료 약, 완료 기록, 연동 코드, AI 캐시를 함께 정리하는지 검증한다.
+# Function Name: test_data_maintenance_removes_expired_and_orphaned_rows
+# Description:
+# - Requires maintenance to remove expired medication, orphaned completions, link codes, and
+#   health-recommendation cache rows together.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
     patient_hash = "patient-maintenance"
     db_session.add(_UserAccount(user_hash=patient_hash))
@@ -110,9 +123,13 @@ def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
     assert db_session.query(_HealthRecommendationCache).count() == 0
 
 
-# 함수명: test_manage_account_exports_and_deletes_owned_data
-# 역할:
-# - 계정 관리 Control이 데이터를 직렬화하고 사용자 범위를 완전히 삭제하는지 검증한다.
+# 함수이름: test_manage_account_exports_and_deletes_owned_data
+# 함수역할:
+# - 계정 내보내기가 요청 사용자 범위를 표시하고 삭제 후 해당 계정과 건강 추천 캐시가 남지 않는지 검증한다.
+# 매개변수:
+# - db_session (Session): 테스트 fixture가 제공한 격리 SQLAlchemy 세션.
+# 반환값:
+# - 없음 (None).
 def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
     control = ManageAccount(db_session)
     user_hash = control.ensureAccount("patient-delete", commit=True)
@@ -134,16 +151,47 @@ def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
     assert db_session.query(_HealthRecommendationCache).count() == 0
 
 
+# Class Name: _FailOnceIdentityDeletionBoundary
+# Role: Identity-deletion double that fails once and records subjects across the subsequent
+#   retry.
+# Responsibilities:
+# - Records the subject, raises a provider-unavailable error on the first attempt, and allows
+#   subsequent retries.
+# Attributes:
+# - subjects (list[str]): External Firebase subjects recorded across deletion attempts.
 class _FailOnceIdentityDeletionBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Starts an empty external-subject history for the fail-once deletion sequence.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.subjects: list[str] = []
 
+    # Function Name: deleteIdentity
+    # Description:
+    # - Records the subject, raises a provider-unavailable error on the first attempt, and
+    #   allows subsequent retries.
+    # Parameters:
+    # - subject (str): Verified external Firebase user identifier.
+    # Returns:
+    # - None.
     def deleteIdentity(self, subject: str) -> None:
         self.subjects.append(subject)
         if len(self.subjects) == 1:
             raise IdentityDeletionUnavailableError("provider unavailable")
 
 
+# Function Name: test_firebase_account_deletion_tombstone_allows_safe_retry
+# Description:
+# - Persists a deletion tombstone after provider failure, blocks account reuse, and permits a
+#   retry that marks the identity deleted without restoring medical data.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> None:
     identity_boundary = _FailOnceIdentityDeletionBoundary()
     control = ManageAccount(
@@ -182,6 +230,14 @@ def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> No
     assert identity_boundary.subjects == ["firebase-uid", "firebase-uid"]
 
 
+# Function Name: test_zero_day_retention_preserves_ended_medication_history
+# Description:
+# - Treats zero-day retention as history preservation rather than immediate deletion of ended
+#   medication courses.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 def test_zero_day_retention_preserves_ended_medication_history(db_session) -> None:
     patient_hash = "patient-history"
     db_session.add(_UserAccount(user_hash=patient_hash))
@@ -209,8 +265,13 @@ def test_zero_day_retention_preserves_ended_medication_history(db_session) -> No
     assert db_session.get(_SavedMedication, medication.id) is medication
 
 
-# 함수명: test_data_maintenance_removes_only_expired_chat_messages
-# 역할: 정기 작업이 채팅 보관 기한을 넘긴 메시지만 삭제하는지 검증한다.
+# 함수이름: test_data_maintenance_removes_only_expired_chat_messages
+# 함수역할:
+# - 보관 기한을 넘은 채팅 메시지만 한 건 삭제하고 최근 메시지는 유지하는지 검증한다.
+# 매개변수:
+# - db_session (Session): 테스트 fixture가 제공한 격리 SQLAlchemy 세션.
+# 반환값:
+# - 없음 (None).
 def test_data_maintenance_removes_only_expired_chat_messages(db_session) -> None:
     now = datetime.now(UTC).replace(tzinfo=None)
     patient_hash = "patient-chat-retention"
@@ -259,15 +320,51 @@ def test_data_maintenance_removes_only_expired_chat_messages(db_session) -> None
         "recent-message"
     ]
 
+# 함수이름: _empty_asgi_app
+# 함수역할:
+# - 호출 제한 미들웨어 테스트에서 추가 응답이나 부작용 없이 종료하는 ASGI 대체 앱이다.
+# 매개변수:
+# - scope (Scope): 하위 대체 앱에서 사용하지 않는 ASGI 연결·요청 범위.
+# - receive (Receive): 요청 본문 이벤트를 제공할 ASGI 수신 함수.
+# - send (Send): 응답 이벤트를 받을 ASGI 전송 함수.
+# 반환값:
+# - 없음 (None).
 async def _empty_asgi_app(scope, receive, send) -> None:
     return None
 
 
+# Class Name: _AtomicRedisStub
+# Role: Redis double that records atomic Lua invocations and client closure.
+# Responsibilities:
+# - Records the Lua script, key count, and arguments and returns the first incremented counter
+#   value.
+# - Marks the Redis double closed for owned-client cleanup checks.
+# Attributes:
+# - calls (list[tuple[str, int, tuple[object, ...]]]): Ordered requests captured for later
+#   assertions.
+# - closed (bool): Whether the simulated client has been closed.
 class _AtomicRedisStub:
+    # Function Name: __init__
+    # Description:
+    # - Starts an empty Lua-call history and marks the Redis double as open.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, tuple[object, ...]]] = []
         self.closed = False
 
+    # Function Name: eval
+    # Description:
+    # - Records the Lua script, key count, and arguments and returns the first incremented
+    #   counter value.
+    # Parameters:
+    # - script (str): Lua script combining quota increment and expiry.
+    # - number_of_keys (int): Number of Redis keys preceding the Lua arguments.
+    # - *keys_and_args (object): Redis keys and Lua arguments captured in call order.
+    # Returns:
+    # - int: 1, the simulated first value of the atomic quota counter.
     async def eval(
         self,
         script: str,
@@ -277,13 +374,25 @@ class _AtomicRedisStub:
         self.calls.append((script, number_of_keys, keys_and_args))
         return 1
 
+    # Function Name: aclose
+    # Description:
+    # - Marks the Redis double closed for owned-client cleanup checks.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def aclose(self) -> None:
         self.closed = True
 
 
-# 함수명: test_rate_limiter_blocks_after_memory_limit
-# 역할:
-# - Redis를 사용할 수 없는 로컬 환경에서도 호출 제한이 동일하게 적용되는지 검증한다.
+# Function Name: test_rate_limiter_blocks_after_memory_limit
+# Description:
+# - Allows the first two requests in a memory-backed quota window and rejects the third when
+#   Redis is unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_blocks_after_memory_limit() -> None:
     rule = RateLimitRule(max_requests=2, window_seconds=60)
@@ -317,6 +426,14 @@ async def test_rate_limiter_blocks_after_memory_limit() -> None:
         await store.close()
 
 
+# Function Name: test_rate_limiter_fails_closed_when_redis_is_required
+# Description:
+# - Fails closed with an explicit distributed-storage error when Redis is mandatory but
+#   unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_fails_closed_when_redis_is_required() -> None:
     store = RequestRateLimitStore(
@@ -335,10 +452,26 @@ async def test_rate_limiter_fails_closed_when_redis_is_required() -> None:
         await store.close()
 
 
+# Function Name: test_rate_limiter_keeps_failing_closed_during_redis_retry_delay
+# Description:
+# - Requires successive requests during Redis retry backoff to remain 503 responses with
+#   five-second retry hints.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_keeps_failing_closed_during_redis_retry_delay() -> None:
     responses: list[dict[str, object]] = []
 
+    # Function Name: send
+    # Description:
+    # - Collects ASGI response messages so status and retry headers can be inspected.
+    # Parameters:
+    # - message (dict[str, object]): ASGI response event captured for status and header
+    #   assertions.
+    # Returns:
+    # - None.
     async def send(message: dict[str, object]) -> None:
         responses.append(message)
 
@@ -366,6 +499,13 @@ async def test_rate_limiter_keeps_failing_closed_during_redis_retry_delay() -> N
         "headers": [],
     }
 
+    # Function Name: receive
+    # Description:
+    # - Supplies one empty completed ASGI request body to the rate-limit middleware.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - dict[str, object]: Empty final ASGI request-body event.
     async def receive() -> dict[str, object]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
@@ -387,6 +527,13 @@ async def test_rate_limiter_keeps_failing_closed_during_redis_retry_delay() -> N
     )
 
 
+# Function Name: test_rate_limiter_uses_ip_identity_and_route_specific_scope
+# Description:
+# - Builds the quota identity from the request IP and its scope from the HTTP method and route.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_rate_limiter_uses_ip_identity_and_route_specific_scope() -> None:
     scope = {
         "client": ("203.0.113.5", 12345),
@@ -405,8 +552,13 @@ def test_rate_limiter_uses_ip_identity_and_route_specific_scope() -> None:
     )
 
 
-# 함수명: test_pill_identification_limit_accepts_a_full_client_batch
-# 역할: 프론트 최대 일괄 등록 수가 정상 요청만으로 서버 제한에 막히지 않는지 검증한다.
+# 함수이름: test_pill_identification_limit_accepts_a_full_client_batch
+# 함수역할:
+# - 알약 단건 식별 제한이 정상 클라이언트 최대 일괄 등록인 10회를 허용하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_pill_identification_limit_accepts_a_full_client_batch() -> None:
     rule = DEFAULT_RATE_LIMIT_RULES[
         ("POST", "/api/v1/medication/pill-identification/candidates")
@@ -415,6 +567,13 @@ def test_pill_identification_limit_accepts_a_full_client_batch() -> None:
     assert rule.max_requests >= 10
 
 
+# Function Name: test_multiple_pill_identification_has_a_dedicated_cost_limit
+# Description:
+# - Requires multi-pill identification to have its own bounded one-to-ten-request cost quota.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_multiple_pill_identification_has_a_dedicated_cost_limit() -> None:
     rule = DEFAULT_RATE_LIMIT_RULES[
         ("POST", "/api/v1/medication/pill-identification/multiple-candidates")
@@ -423,8 +582,13 @@ def test_multiple_pill_identification_has_a_dedicated_cost_limit() -> None:
     assert 1 <= rule.max_requests <= 10
 
 
-# 함수명: test_rate_limit_resolver_matches_dynamic_chat_route
-# 역할: 숫자 식별자가 포함된 채팅 요청도 정규 경로 제한에 연결되는지 검증한다.
+# 함수이름: test_rate_limit_resolver_matches_dynamic_chat_route
+# 함수역할:
+# - 숫자 연동 ID가 있는 채팅 경로를 정규 경로와 분당 20회 규칙에 연결하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_rate_limit_resolver_matches_dynamic_chat_route() -> None:
     resolved = resolve_rate_limit_rule(
         "POST",
@@ -437,8 +601,13 @@ def test_rate_limit_resolver_matches_dynamic_chat_route() -> None:
     assert canonical_path == "/api/v1/chat/links/{link_id}/messages"
 
 
-# 함수명: test_rate_limit_resolver_applies_default_to_unlisted_api
-# 역할: 별도 규칙이 없는 API도 메서드별 기본 제한에서 빠지지 않는지 검증한다.
+# 함수이름: test_rate_limit_resolver_applies_default_to_unlisted_api
+# 함수역할:
+# - 별도 규칙이 없는 약 항목 경로도 정규화하여 분당 60회 기본 제한을 적용하는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_rate_limit_resolver_applies_default_to_unlisted_api() -> None:
     resolved = resolve_rate_limit_rule(
         "PATCH",
@@ -451,6 +620,13 @@ def test_rate_limit_resolver_applies_default_to_unlisted_api() -> None:
     assert canonical_path == "/api/v1/medication/items/{id}"
 
 
+# Function Name: test_rate_limiter_separates_endpoint_buckets
+# Description:
+# - Keeps two endpoint quota buckets independent for the same identity.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_separates_endpoint_buckets() -> None:
     rule = RateLimitRule(max_requests=1, window_seconds=60)
@@ -474,6 +650,14 @@ async def test_rate_limiter_separates_endpoint_buckets() -> None:
     assert second_route[0] is True
 
 
+# Function Name: test_rate_limiter_sets_counter_and_expiry_atomically
+# Description:
+# - Uses one Redis Lua call to increment and set expiry atomically, passes the expected TTL, and
+#   closes the owned client.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_sets_counter_and_expiry_atomically() -> None:
     redis = _AtomicRedisStub()
@@ -499,6 +683,14 @@ async def test_rate_limiter_sets_counter_and_expiry_atomically() -> None:
     assert redis.closed is True
 
 
+# Function Name: test_rate_limiter_recreates_owned_redis_after_repeated_close
+# Description:
+# - Allows repeated cleanup and recreates the owned Redis client for later requests, closing
+#   both client generations.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_rate_limiter_recreates_owned_redis_after_repeated_close() -> None:
     first_redis = _AtomicRedisStub()

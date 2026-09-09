@@ -38,9 +38,12 @@ _CHAT_MESSAGE_INDEXES = {
 
 
 # 함수이름: upgrade
-# 함수역할: 채팅 저장, 읽음 상태와 재전송 중복 방지 구조를 추가한다.
-# 매개변수: 없음
-# 반환값: 없음
+# 함수역할:
+# - 채팅 저장, 읽음 상태와 재전송 중복 방지 구조를 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음
 def upgrade() -> None:
     """채팅 저장, 읽음 상태, 재전송 중복 방지에 필요한 구조를 만든다."""
     connection = op.get_bind()
@@ -94,9 +97,12 @@ def upgrade() -> None:
 
 
 # 함수이름: downgrade
-# 함수역할: 채팅 메시지 테이블과 관련 인덱스를 제거한다.
-# 매개변수: 없음
-# 반환값: 없음
+# 함수역할:
+# - 채팅 메시지 테이블과 관련 인덱스를 제거한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음
 def downgrade() -> None:
     """채팅 메시지 테이블과 관련 인덱스를 제거한다."""
     op.drop_index("ix_chat_messages_created_at", table_name="chat_messages")
@@ -106,6 +112,13 @@ def downgrade() -> None:
     op.drop_table("chat_messages")
 
 
+# 함수이름: _validate_existing_chat_table
+# 함수역할:
+# - 자동 생성된 기존 테이블이 이번 마이그레이션과 호환되는지 확인한다.
+# 매개변수:
+# - inspector (sa.Inspector): 기존 테이블 호환성을 확인할 SQLAlchemy 스키마 검사기.
+# 반환값:
+# - 없음.
 def _validate_existing_chat_table(inspector: sa.Inspector) -> None:
     """자동 생성된 기존 테이블이 이번 마이그레이션과 호환되는지 확인한다."""
     column_names = {

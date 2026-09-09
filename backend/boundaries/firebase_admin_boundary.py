@@ -1,3 +1,5 @@
+# File Name: firebase_admin_boundary.py
+# Role: Shares one locked, project-scoped Firebase Admin application and probes its credentials.
 """Shared Firebase Admin application boundary."""
 
 from threading import Lock
@@ -10,6 +12,13 @@ _FIREBASE_APP_NAME = "medbuddy-backend"
 _firebase_app_lock = Lock()
 
 
+# Function Name: get_firebase_admin_app
+# Description:
+# - Reuse or initialize the named Admin app under a lock; reject a blank or conflicting project ID.
+# Parameters:
+# - project_id (str): Firebase project ID used by the shared Admin app.
+# Returns:
+# - The shared App for the requested project.
 def get_firebase_admin_app(project_id: str) -> App:
     """Return the process-wide Firebase Admin app for the configured project."""
     normalized_project_id = project_id.strip()
@@ -33,12 +42,10 @@ def get_firebase_admin_app(project_id: str) -> App:
 
 # Function Name: verify_firebase_admin_credentials
 # Description:
-# - Forces Firebase Admin's lazy application-default credential loader to read
-#   and parse the configured credential during the production readiness probe.
-# - Prevents the API from reporting ready when its runtime user cannot read the
-#   mounted Firebase credential.
+# - Forces Firebase Admin's lazy application-default credential loader to read and parse the configured credential during the production readiness probe.
+# - Prevents the API from reporting ready when its runtime user cannot read the mounted Firebase credential.
 # Parameters:
-# - project_id: Firebase project identifier expected by the backend.
+# - project_id (str): Firebase project identifier expected by the backend.
 # Returns:
 # - None when the configured credential can be loaded.
 def verify_firebase_admin_credentials(project_id: str) -> None:

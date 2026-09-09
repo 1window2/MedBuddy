@@ -1,3 +1,5 @@
+# 파일명: f93ac76b2e11_strengthen_data_lifecycle_integrity.py
+# 역할: 내부 사용자 기준 테이블과 환자·보호자 FK를 추가한다. 저장 약의 결정적 중복 키와 유니크 제약을 추가한다. 복용 완료 기록을 저장 약 삭제 cascade에 연결한다.
 """데이터 수명주기와 관계 무결성을 강화한다.
 
 Revision ID: f93ac76b2e11
@@ -36,11 +38,15 @@ _USER_HASH_COLUMNS = (
 )
 
 
-# 함수명: upgrade
-# 역할:
+# 함수이름: upgrade
+# 함수역할:
 # - 내부 사용자 기준 테이블과 환자·보호자 FK를 추가한다.
 # - 저장 약의 결정적 중복 키와 유니크 제약을 추가한다.
 # - 복용 완료 기록을 저장 약 삭제 cascade에 연결한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     op.create_table(
         "user_accounts",
@@ -94,9 +100,13 @@ def upgrade() -> None:
         )
 
 
-# 함수명: downgrade
-# 역할:
+# 함수이름: downgrade
+# 함수역할:
 # - 이번 revision이 추가한 FK, 중복 제약, 사용자 기준 테이블을 제거한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     with op.batch_alter_table(
         "medication_completions",
@@ -121,6 +131,13 @@ def downgrade() -> None:
     op.drop_table("user_accounts")
 
 
+# 함수이름: _backfill_user_accounts
+# 함수역할:
+# - 기존 소유 범위 열의 고유 사용자 식별자와 기본 로컬 사용자를 모아 계정 기준 테이블에 채운다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def _backfill_user_accounts() -> None:
     connection = op.get_bind()
     inspector = sa.inspect(connection)
@@ -157,6 +174,13 @@ def _backfill_user_accounts() -> None:
     )
 
 
+# 함수이름: _backfill_deduplication_keys
+# 함수역할:
+# - 기존 저장 약의 생성일과 중복 키를 채우고 같은 키가 충돌하면 행 식별자로 구분해 기록을 보존한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def _backfill_deduplication_keys() -> None:
     connection = op.get_bind()
     rows = connection.execute(
@@ -200,6 +224,13 @@ def _backfill_deduplication_keys() -> None:
         )
 
 
+# 함수이름: _build_deduplication_key
+# 함수역할:
+# - 기존 약품명·조제일·복용량·횟수·기간·시간대를 정규화해 마이그레이션용 중복 키를 계산한다.
+# 매개변수:
+# - row (RowMapping): 기존 약품명·조제일·복용량·시간대 열이 담긴 저장 약 행.
+# 반환값:
+# - 정규화 필드를 NUL로 결합한 값의 SHA-256 해시.
 def _build_deduplication_key(row: RowMapping) -> str:
     signature = "\0".join(
         (
@@ -214,10 +245,24 @@ def _build_deduplication_key(row: RowMapping) -> str:
     return hashlib.sha256(signature.encode("utf-8")).hexdigest()
 
 
+# 함수이름: _normalize_text
+# 함수역할:
+# - 기존 열 값을 소문자 문자열로 바꾸고 연속 공백을 정리한다.
+# 매개변수:
+# - value (object): 기존 행에서 중복 키를 구성할 원본 열 값.
+# 반환값:
+# - 중복 키 비교용 문자열; 값이 없으면 빈 문자열.
 def _normalize_text(value: object) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
+# 함수이름: _normalize_slots
+# 함수역할:
+# - 기존 시간대 JSON에서 지원 목록만 골라 고정 순서의 압축 JSON으로 바꾼다.
+# 매개변수:
+# - value (object): 기존 행의 복용 시간대 JSON 또는 목록 값.
+# 반환값:
+# - 결정적인 시간대 JSON; 잘못된 값은 빈 목록 JSON.
 def _normalize_slots(value: object) -> str:
     try:
         decoded = json.loads(str(value or "[]"))
@@ -234,6 +279,13 @@ def _normalize_slots(value: object) -> str:
     return json.dumps(ordered, separators=(",", ":"))
 
 
+# 함수이름: _add_user_foreign_keys
+# 함수역할:
+# - 복약·알림·연동·설정 표에 계정 외래키를 추가하며 코드 사용 보호자는 SET NULL, 나머지는 CASCADE로 연결한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def _add_user_foreign_keys() -> None:
     definitions = (
         (
@@ -314,6 +366,13 @@ def _add_user_foreign_keys() -> None:
             )
 
 
+# 함수이름: _drop_user_foreign_keys
+# 함수역할:
+# - 이번 버전이 추가한 사용자 계정 외래키를 역순으로 제거해 계정 기준 테이블 삭제를 준비한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def _drop_user_foreign_keys() -> None:
     definitions = (
         (

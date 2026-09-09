@@ -887,6 +887,23 @@ FrontControl -> ApiClient : POST /chat/links/{linkId}/read
 ApiClient -> Router : 읽음 범위 갱신
 Router -> Database : 상대 메시지 read_at 일괄 갱신
 
+opt 사용자가 메시지를 선택하고 삭제 범위를 확인
+    UI -> FrontControl : deleteMessages(linkId, messageIds, scope)
+    FrontControl -> ApiClient : POST /chat/links/{linkId}/messages/delete
+    ApiClient -> Router : 인증된 메시지 선택과 범위
+    Router -> BackControl : delete_messages()
+    BackControl -> Database : 활성 연결 검증, 선택 Row 잠금
+    alt 모두에게서 삭제: 본인 전송 + 서버 기준 24시간 이내
+        BackControl -> Database : 본문/복약/약국 Snapshot 제거, Tombstone 저장
+        BackControl -> BackService : 양쪽 참여자에게 삭제 Event
+    else 나에게서만 삭제
+        BackControl -> Database : 요청 참여자 삭제 시각만 저장
+        BackControl -> BackService : 요청 참여자 기기에만 삭제 Event
+    else 권한/시간/선택 검증 실패
+        BackControl --> UI : 전체 요청 거절, 기존 메시지 유지
+    end
+end
+
 == 14. 운영 Catalog 주기 갱신 ==
 
 loop 설정된 주기마다 catalog-refresh 실행

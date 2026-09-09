@@ -20,6 +20,13 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# 함수이름: upgrade
+# 함수역할:
+# - 기존 연동을 유지하면서 선택형 환자 별칭 열을 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     """기존 연동을 유지하면서 선택형 환자 별칭 열을 추가한다."""
     inspector = sa.inspect(op.get_bind())
@@ -38,6 +45,13 @@ def upgrade() -> None:
         )
 
 
+# 함수이름: downgrade
+# 함수역할:
+# - 환자 별칭 열만 제거하고 연동 관계는 유지한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     """환자 별칭 열만 제거하고 연동 관계는 유지한다."""
     inspector = sa.inspect(op.get_bind())

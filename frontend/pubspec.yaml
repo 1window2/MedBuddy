@@ -1,3 +1,6 @@
+# File Name: pubspec.yaml
+# Role: Declares the Flutter application version, SDK constraints, dependencies and assets.
+
 name: medbuddy_frontend
 description: A Flutter medication management client for MedBuddy.
 publish_to: 'none'

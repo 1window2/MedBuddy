@@ -44,15 +44,26 @@ _ENGLISH_SLOT_NAMES = {
 
 
 # 클래스명: DispatchCaregiverAlert
-# 역할: 복약 상태 변경을 보호자 설정에 맞는 원격 알림으로 전달한다.
+# 역할:
+# - 복약 상태 변경을 보호자 설정에 맞는 원격 알림으로 전달한다.
 # 주요 책임:
-#   - 활성 환자·보호자 연결과 시간대별 알림 설정을 확인한다.
-#   - 알림을 원하는 보호자의 활성 FCM 토큰만 선택한다.
-#   - Firebase가 거부한 만료 토큰을 비활성화한다.
+# - 활성 환자·보호자 연결과 시간대별 알림 설정을 확인한다.
+# - 알림을 원하는 보호자의 활성 FCM 토큰만 선택한다.
+# - Firebase가 거부한 만료 토큰을 비활성화한다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+# - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
 class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
-    # 함수명: __init__
-    # 역할:
+    # 함수이름: __init__
+    # 함수역할:
     # - 보호자 연결 조회용 DB 세션과 푸시 전송 경계를 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+    # - link_repository (PatientCaregiverLinkRepository | None): 활성 환자·보호자 연동 저장소.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -65,12 +76,12 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             link_repository or PatientCaregiverLinkRepository(db)
         )
 
-    # 함수명: notifySlotCompleted
-    # 역할:
+    # 함수이름: notifySlotCompleted
+    # 함수역할:
     # - 모든 약이 새로 완료된 복약 시간대를 구독한 보호자 기기에 알린다.
     # 매개변수:
-    # - patient_hash: 복약을 완료한 환자의 식별 hash
-    # - slot_key: 완료된 복약 시간대
+    # - patient_hash (str): 복약을 완료한 환자의 식별 hash
+    # - slot_key (str): 완료된 복약 시간대
     # 반환값:
     # - 전체 보호자 기기의 성공, 영구 실패 토큰, 재시도 가능한 실패 집계
     def notifySlotCompleted(
@@ -146,10 +157,17 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             retryable_failure_count=retryable_failure_count,
         )
 
-    # 함수명: notifySlotMissed
-    # 역할:
+    # 함수이름: notifySlotMissed
+    # 함수역할:
     # - 보호자가 명시적으로 선택한 마감 시각 이후에도 미완료인 복약 시간대를 알린다.
     # - 전송 직전에 연결, 설정, 날짜와 실제 완료 상태를 다시 확인해 오래된 알림을 막는다.
+    # 매개변수:
+    # - caregiver_hash (str): 알림 수신 보호자 식별자.
+    # - patient_hash (str): 확인할 연결 환자 식별자.
+    # - slot_key (str): 확인할 복약 시간대 키.
+    # - schedule_date (date): 알림 이벤트의 복약 날짜.
+    # 반환값:
+    # - 유효 대상별 FCM 성공·실패·무효 토큰 집계.
     def notifySlotMissed(
         self,
         *,
@@ -244,6 +262,13 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             self._disable_invalid_tokens(result.invalid_tokens)
         return result
 
+    # 함수이름: _deadline_has_passed
+    # 함수역할: 저장된 시·분을 현재 날짜의 마감 시각으로 조합해 경과 여부를 검사한다.
+    # 매개변수:
+    # - current_time (datetime): 애플리케이션 시간대가 적용된 현재 시각.
+    # - slot_setting (dict[str, object]): 마감 시·분을 포함한 시간대별 설정.
+    # 반환값:
+    # - 유효한 마감 시각을 지났으면 True, 값이 잘못됐거나 아직 전이면 False.
     @staticmethod
     def _deadline_has_passed(
         current_time: datetime,
@@ -263,9 +288,12 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         )
         return current_time >= deadline
 
-    # 함수명: _caregivers_for_completed_slot
-    # 역할:
+    # 함수이름: _caregivers_for_completed_slot
+    # 함수역할:
     # - 환자와 연결됐으며 해당 시간대 즉시 알림을 선택한 보호자만 찾는다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # 반환값:
     # - 알림을 받을 보호자 hash 목록
     def _caregivers_for_completed_slot(
@@ -295,8 +323,13 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                 caregiver_hashes.append(str(link.caregiver_hash))
         return caregiver_hashes
 
-    # 함수명: _user_setting
-    # 역할: 보호자의 전역 알림 및 잠금 화면 개인정보 설정을 조회한다.
+    # 함수이름: _user_setting
+    # 함수역할:
+    # - 보호자의 전역 알림 및 잠금 화면 개인정보 설정을 조회한다.
+    # 매개변수:
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 저장된 사용자 알림 설정 행 또는 설정이 없을 때 None.
     def _user_setting(self, user_hash: str) -> _UserSetting | None:
         return (
             self.db.query(_UserSetting)
@@ -304,11 +337,11 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             .first()
         )
 
-    # 함수명: _disable_invalid_tokens
-    # 역할:
+    # 함수이름: _disable_invalid_tokens
+    # 함수역할:
     # - Firebase가 만료 또는 불일치로 거부한 토큰을 재사용하지 않도록 비활성화한다.
     # 매개변수:
-    # - invalid_tokens: Firebase가 거부한 토큰 목록
+    # - invalid_tokens (tuple[str, ...]): Firebase가 거부한 토큰 목록
     # 반환값:
     # - 없음
     def _disable_invalid_tokens(self, invalid_tokens: tuple[str, ...]) -> None:

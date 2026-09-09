@@ -10,6 +10,15 @@ from datetime import date, datetime
 # 클래스명: PharmacyLocationRecord
 # 역할:
 # - 공공데이터 약국 API 응답에서 필요한 위치·영업 정보만 보관한다.
+# 주요 책임:
+# - 오늘·전날 운영 시간과 좌표·공식 지정 근거를 보존해 영업 상태 계산에 제공한다.
+# 속성:
+# - pharmacy_id (str): 공공 약국 식별자.
+# - name (str): 공공 약국 표시 이름.
+# - address (str): 약국 도로명·소재지 주소.
+# - telephone (str): 약국 문의 전화번호.
+# - latitude (float): 약국 위치의 위도(도).
+# - longitude (float): 약국 위치의 경도(도).
 @dataclass(frozen=True, slots=True)
 class PharmacyLocationRecord:
     pharmacy_id: str
@@ -33,6 +42,15 @@ class PharmacyLocationRecord:
 # 클래스명: NearbyPharmacy
 # 역할:
 # - 사용자에게 보여줄 거리와 현재 영업 상태가 계산된 약국 정보를 표현한다.
+# 주요 책임:
+# - 거리·영업 여부·야간 지정과 운영 자료의 출처·최신성을 화면에 전달한다.
+# 속성:
+# - pharmacy_id (str): 공공 약국 식별자.
+# - name (str): 공공 약국 표시 이름.
+# - address (str): 약국 도로명·소재지 주소.
+# - telephone (str): 약국 문의 전화번호.
+# - latitude (float): 약국 위치의 위도(도).
+# - longitude (float): 약국 위치의 경도(도).
 @dataclass(frozen=True, slots=True)
 class NearbyPharmacy:
     pharmacy_id: str
@@ -63,6 +81,14 @@ class NearbyPharmacy:
     source_name: str = "National Emergency Medical Center"
 
 
+# Class Name: NearbyPharmacySearchResult
+# Role:
+# - Pharmacy matches plus the freshness and fallback state used to build them.
+# Responsibilities:
+# - Keep matched pharmacies together with effective search time and catalog/holiday fallback evidence.
+# Attributes:
+# - search_mode (str): Requested pharmacy opening-hours or official-designation filter.
+# - target_datetime (datetime): Resolved opening-hours reference time in the application time zone.
 @dataclass(frozen=True, slots=True)
 class NearbyPharmacySearchResult:
     """Pharmacy matches plus the freshness and fallback state used to build them."""

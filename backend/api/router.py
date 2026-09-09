@@ -1,5 +1,5 @@
 # File Name: router.py
-# Role: Defines medication-related HTTP endpoints for the MedBuddy backend.
+# Role: Adapts authenticated medication, account, reminder, caregiver-link and pill-identification HTTP requests to domain controls.
 
 import asyncio
 import logging
@@ -117,12 +117,21 @@ logger = logging.getLogger(__name__)
 # 클래스명: OCRParseRequest
 # 역할:
 # - 기기에서 개인정보를 제거한 처방전 OCR 텍스트를 전달받는다.
+# 주요 책임:
+# - 원본 이미지 대신 기기에서 비식별 처리한 텍스트만 분석 경계에 전달한다.
 # 속성:
-# - text: 프론트엔드에서 정제한 비식별 OCR 텍스트
+# - text (str): 프론트엔드에서 정제한 비식별 OCR 텍스트
 class OCRParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
 
 
+# Function Name: get_auth_session
+# Description:
+# - Exposes the verified session identity and authentication metadata without trusting client-supplied ownership hashes.
+# Parameters:
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# Returns:
+# - Authentication session response for the current principal.
 @auth_router.get("/session")
 def get_auth_session(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -138,9 +147,14 @@ def get_auth_session(
     }
 
 
-# 함수명: export_account_data
-# 역할:
-# - 현재 로그인 사용자의 MedBuddy 저장 데이터를 JSON으로 반환한다.
+# 함수이름: export_account_data
+# 함수역할:
+# - 현재 인증 사용자가 소유한 MedBuddy 데이터를 JSON 내보내기로 반환한다.
+# 매개변수:
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - manage_account (ManageAccount): 계정 내보내기와 재시도 가능한 삭제 Control.
+# 반환값:
+# - 데이터 종류별 계정 내보내기 응답.
 @auth_router.get("/account-data")
 def export_account_data(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -149,9 +163,14 @@ def export_account_data(
     return manage_account.exportAccountData(principal.user_hash)
 
 
-# 함수명: delete_account_data
-# 역할:
-# - 현재 로그인 사용자의 복약정보, 연결, 알림, 캐시를 모두 삭제한다.
+# Function Name: delete_account_data
+# Description:
+# - Deletes the recently authenticated user's local data and configured external identity, translating external deletion failures to API errors.
+# Parameters:
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - manage_account (ManageAccount): Account export and retry-safe deletion control.
+# Returns:
+# - Per-category deletion counts and external identity completion status.
 @auth_router.delete("/account-data")
 def delete_account_data(
     principal: AuthenticatedPrincipal = Depends(
@@ -174,9 +193,13 @@ def delete_account_data(
         ) from exc
 
 
-# 함수명: register_push_token
-# 역할:
+# 함수이름: register_push_token
+# 함수역할:
 # - 현재 인증 사용자의 FCM 기기 토큰을 등록하거나 갱신한다.
+# 매개변수:
+# - request (PushTokenRegistration): 기기 FCM 토큰과 플랫폼 등록 요청.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - manage_push_token (ManagePushToken): 기기 푸시 토큰 등록·해제 Control.
 # 반환값:
 # - 토큰 등록 결과
 @auth_router.post("/push-token")
@@ -192,9 +215,13 @@ def register_push_token(
     )
 
 
-# 함수명: unregister_push_token
-# 역할:
+# 함수이름: unregister_push_token
+# 함수역할:
 # - 로그아웃하는 현재 기기의 FCM 토큰을 비활성화한다.
+# 매개변수:
+# - request (PushTokenRegistration): 기기 FCM 토큰과 플랫폼 등록 요청.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - manage_push_token (ManagePushToken): 기기 푸시 토큰 등록·해제 Control.
 # 반환값:
 # - 토큰 해제 결과
 @auth_router.delete("/push-token")
@@ -213,8 +240,8 @@ def unregister_push_token(
 # Description:
 # - Receives raw medication text and returns public drug information with AI guide.
 # Parameters:
-# - request: MedicationRequest containing extracted text.
-# - check_medication_detail: CheckMedicationDetail injected by FastAPI.
+# - request (MedicationRequest): MedicationRequest containing extracted text.
+# - check_medication_detail (CheckMedicationDetail): CheckMedicationDetail injected by FastAPI.
 # Returns:
 # - MedicationResponse DTO.
 @router.post("/identify", response_model=MedicationResponse)
@@ -240,15 +267,16 @@ async def identify_medication(
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
 
 
-# 함수이름: check_prescription_change
-# 함수역할:
-# - 현재 분석한 처방과 환자의 가장 최근 이전 처방을 비교한다.
-# - 의료 판단 없이 약품 구성과 복약 일정 필드의 객관적 차이만 반환한다.
-# 매개변수:
-# - request: 현재 처방 조제일자와 약품 목록
-# - check_prescription_change_control: 처방 변화 비교 Control
-# 반환값:
-# - 처방 변화 요약과 약품별 변화 목록
+# Function Name: check_prescription_change
+# Description:
+# - Resolves the patient's authorized scope and compares the current prescription with its latest prior prescription without making medical judgments.
+# Parameters:
+# - request (PrescriptionChangeRequest): Current prescription date and medications to compare.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_prescription_change_control (CheckPrescriptionChange): Objective medication/course comparison control.
+# Returns:
+# - Objective medication/course differences and comparison summary.
 @router.post(
     "/prescription/change-radar",
     response_model=PrescriptionChangeResponse,
@@ -288,8 +316,10 @@ def check_prescription_change(
 # Description:
 # - Saves selected medication information into the user's pillbox.
 # Parameters:
-# - medication: SavedMedicationCreate request DTO.
-# - check_saved_medication: CheckSavedMedication injected by FastAPI.
+# - medication (SavedMedicationCreate): SavedMedicationCreate request DTO.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_saved_medication (CheckSavedMedication): CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible success dictionary.
 @router.post("/save")
@@ -313,8 +343,10 @@ def save_medication(
 # Description:
 # - Returns saved medication rows owned by one patient.
 # Parameters:
-# - patient_hash: Patient ownership key used to scope saved medication lookup.
-# - check_saved_medication: CheckSavedMedication injected by FastAPI.
+# - patient_hash (str | None): Patient ownership key used to scope saved medication lookup.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_saved_medication (CheckSavedMedication): CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible list dictionary.
 @router.get("/list")
@@ -347,8 +379,10 @@ def get_saved_medications(
 # Description:
 # - Returns today's active medication schedule for one patient.
 # Parameters:
-# - patient_hash: Patient ownership key used to scope schedule lookup.
-# - check_schedule: CheckSchedule injected by FastAPI.
+# - patient_hash (str | None): Patient ownership key used to scope schedule lookup.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_schedule (CheckSchedule): CheckSchedule injected by FastAPI.
 # Returns:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/today")
@@ -382,8 +416,11 @@ def get_today_medication_schedule(
 # Description:
 # - Returns medication courses overlapping a bounded rolling reminder window.
 # Parameters:
-# - patient_hash: Patient ownership key used to scope schedule lookup.
-# - days: Inclusive number of days beginning today, capped at 14.
+# - patient_hash (str | None): Patient ownership key used to scope schedule lookup.
+# - days (int): Inclusive number of days beginning today, capped at 14.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_schedule (CheckSchedule): Control for medication courses and per-dose completion.
 # Returns:
 # - API-compatible schedule list dictionary.
 @router.get("/schedule/window")
@@ -421,8 +458,10 @@ def get_medication_schedule_window(
 # Description:
 # - Returns today's medication summary for one patient.
 # Parameters:
-# - patient_hash: Patient ownership key used to scope summary lookup.
-# - check_today_medication_info: CheckTodayMedicationInfo injected by FastAPI.
+# - patient_hash (str | None): Patient ownership key used to scope summary lookup.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_today_medication_info (CheckTodayMedicationInfo): CheckTodayMedicationInfo injected by FastAPI.
 # Returns:
 # - API-compatible today medication summary dictionary.
 @router.get("/schedule/today/info")
@@ -456,10 +495,14 @@ def get_today_medication_info(
         ) from exc
 
 
-# 함수명: _process_caregiver_completion_alert
-# 역할:
+# 함수이름: _process_caregiver_completion_alert
+# 함수역할:
 # - 복약 체크와 함께 저장된 아웃박스 요청을 별도 DB 세션에서 즉시 처리한다.
 # - 실패한 요청은 아웃박스 작업자가 다시 처리하므로 여기서는 예외를 격리한다.
+# 매개변수:
+# - outbox_id (int): 보호자 알림 아웃박스의 영속 기록 식별자.
+# 반환값:
+# - 없음.
 def _process_caregiver_completion_alert(
     outbox_id: int,
 ) -> None:
@@ -481,12 +524,15 @@ def _process_caregiver_completion_alert(
 # Function Name: update_medication_slot_status
 # Description:
 # - Atomically checks or unchecks every active medication in one time slot.
-# - Queues the same caregiver completion outbox processing used by individual
-#   medication updates when the slot becomes fully complete.
+# - Queues the same caregiver completion outbox processing used by individual medication updates when the slot becomes fully complete.
 # Parameters:
-# - slot_key: Morning, lunch, evening, or bedtime schedule key.
-# - request: Requested completion state.
-# - patient_hash: Optional patient selector resolved through authorization.
+# - slot_key (str): Morning, lunch, evening, or bedtime schedule key.
+# - request (MedicationStatusUpdate): Requested completion state.
+# - background_tasks (BackgroundTasks): Response-afterward task queue for notification delivery.
+# - patient_hash (str | None): Optional patient selector resolved through authorization.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_schedule (CheckSchedule): Control for medication courses and per-dose completion.
 # Returns:
 # - Updated schedules belonging to the selected slot.
 @router.patch("/schedule/slot/{slot_key}/status")
@@ -516,9 +562,19 @@ def update_medication_slot_status(
     return response
 
 
-# 함수명: update_medication_status
-# 역할:
-# - 오늘의 복약 완료 상태를 저장하고 보호자 알림은 응답 이후 작업으로 예약한다.
+# 함수이름: update_medication_status
+# 함수역할:
+# - 오늘 복약 상태를 저장하고 새 시간대 완료 아웃박스 처리를 응답 이후로 예약한다.
+# 매개변수:
+# - medication_id (int): 선택할 저장 약의 식별자.
+# - request (MedicationStatusUpdate): 원하는 복용 완료 여부와 선택적 시간대.
+# - background_tasks (BackgroundTasks): 응답 이후 알림 전송을 예약할 작업 큐.
+# - patient_hash (str | None): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - check_schedule (CheckSchedule): 복약 일정과 시간대별 완료 상태 Control.
+# 반환값:
+# - 갱신된 약의 오늘 복용 일정과 완료 상태.
 @router.patch("/schedule/{medication_id}/status")
 def update_medication_status(
     medication_id: int,
@@ -551,8 +607,10 @@ def update_medication_status(
 # Description:
 # - Returns all medication alarm settings for one patient.
 # Parameters:
-# - patient_hash: Patient ownership key used to scope alarm setting lookup.
-# - set_notification: SetNotification injected by FastAPI.
+# - patient_hash (str | None): Patient ownership key used to scope alarm setting lookup.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - set_notification (SetNotification): SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm list dictionary.
 @router.get("/notification/settings")
@@ -573,9 +631,11 @@ def get_medication_alarms(
 # Description:
 # - Returns one medication alarm status for a schedule slot.
 # Parameters:
-# - slot_key: Medication schedule time slot from the route path.
-# - patient_hash: Patient ownership key used to scope alarm setting lookup.
-# - set_notification: SetNotification injected by FastAPI.
+# - slot_key (str): Medication schedule time slot from the route path.
+# - patient_hash (str | None): Patient ownership key used to scope alarm setting lookup.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - set_notification (SetNotification): SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.get("/notification/settings/{slot_key}")
@@ -597,10 +657,12 @@ def get_medication_alarm(
 # Description:
 # - Enables or updates one medication alarm setting for a schedule slot.
 # Parameters:
-# - slot_key: Medication schedule time slot from the route path.
-# - request: MedicationAlarmUpdate request DTO.
-# - patient_hash: Patient ownership key used to scope alarm setting update.
-# - set_notification: SetNotification injected by FastAPI.
+# - slot_key (str): Medication schedule time slot from the route path.
+# - request (MedicationAlarmUpdate): MedicationAlarmUpdate request DTO.
+# - patient_hash (str | None): Patient ownership key used to scope alarm setting update.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - set_notification (SetNotification): SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.put("/notification/settings/{slot_key}")
@@ -628,9 +690,11 @@ def save_medication_alarm(
 # Description:
 # - Disables one medication alarm setting for a schedule slot.
 # Parameters:
-# - slot_key: Medication schedule time slot from the route path.
-# - patient_hash: Patient ownership key used to scope alarm setting update.
-# - set_notification: SetNotification injected by FastAPI.
+# - slot_key (str): Medication schedule time slot from the route path.
+# - patient_hash (str | None): Patient ownership key used to scope alarm setting update.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - set_notification (SetNotification): SetNotification injected by FastAPI.
 # Returns:
 # - API-compatible medication alarm dictionary.
 @router.patch("/notification/settings/{slot_key}/disable")
@@ -652,8 +716,10 @@ def disable_medication_alarm(
 # Description:
 # - Returns user display and reading settings.
 # Parameters:
-# - user_hash: User ownership key used to scope settings.
-# - manage_user_setting: ManageUserSetting injected by FastAPI.
+# - user_hash (str): User ownership key used to scope settings.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - manage_user_setting (ManageUserSetting): ManageUserSetting injected by FastAPI.
 # Returns:
 # - API-compatible user setting dictionary.
 @router.get("/settings/user")
@@ -667,15 +733,17 @@ def get_user_setting(
     return manage_user_setting.requestUserSetting(authorized_user_hash)
 
 
-# Function Name: save_user_setting
-# Description:
-# - Saves user display and reading settings.
-# Parameters:
-# - request: UserSettingUpdate request DTO.
-# - user_hash: User ownership key used to scope settings.
-# - manage_user_setting: ManageUserSetting injected by FastAPI.
-# Returns:
-# - API-compatible user setting dictionary.
+# 함수이름: save_user_setting
+# 함수역할:
+# - 인증된 본인의 접근성·언어·알림·기본 복약 시각 설정을 저장한다.
+# 매개변수:
+# - request (UserSettingUpdate): 검증된 접근성·언어·알림·기본 복약 시각 설정.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - manage_user_setting (ManageUserSetting): 계정 접근성·알림 설정 관리 Control.
+# 반환값:
+# - 저장된 사용자 설정 응답.
 @router.put("/settings/user")
 def save_user_setting(
     request: UserSettingUpdate,
@@ -707,8 +775,8 @@ def save_user_setting(
 # Description:
 # - Builds voice guide text from medication detail information.
 # Parameters:
-# - request: VoiceGuideRequest containing medication guide source data.
-# - request_voice_guide_control: RequestVoiceGuide injected by FastAPI.
+# - request (VoiceGuideRequest): VoiceGuideRequest containing medication guide source data.
+# - request_voice_guide_control (RequestVoiceGuide): RequestVoiceGuide injected by FastAPI.
 # Returns:
 # - API-compatible voice guide dictionary.
 @router.post("/voice-guide")
@@ -722,15 +790,17 @@ def request_voice_guide(
     )
 
 
-# 함수명: get_health_recommendation
-# 함수역할:
-# - 현재 복용 중인 약 조합을 바탕으로 AI 건강 관리 추천을 반환한다.
-# 매개변수:
-# - patient_hash: 추천 조회 범위를 구분하는 환자 해시
-# - language: 추천 응답 언어
-# - check_health_recommendation: CheckHealthRecommendation injected by FastAPI.
-# 반환값:
-# - API-compatible health recommendation dictionary.
+# Function Name: get_health_recommendation
+# Description:
+# - Resolves patient or authorized caregiver scope and returns guidance based on currently active medications.
+# Parameters:
+# - patient_hash (str | None): Patient ownership scope for the operation.
+# - language (str): Requested Korean or English content language.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_health_recommendation (CheckHealthRecommendation): CheckHealthRecommendation injected by FastAPI.
+# Returns:
+# - Health recommendation response for the requested language.
 @router.get("/health/recommendation")
 async def get_health_recommendation(
     patient_hash: str | None = None,
@@ -761,9 +831,18 @@ async def get_health_recommendation(
         ) from exc
 
 
-# 함수명: get_caregiver_notification_settings
-# 역할:
-# - 연동된 보호자-환자의 모든 시간대별 알림 설정을 한 번에 반환한다.
+# 함수이름: get_caregiver_notification_settings
+# 함수역할:
+# - 연동 권한을 확인하고 보호자·환자의 모든 시간대 알림 설정을 조회한다.
+# 매개변수:
+# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
+# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
+# 반환값:
+# - 시간대별 보호자 알림 설정 목록 응답.
 @router.get("/caregiver-notification/settings/{patient_hash}/slots")
 def get_caregiver_notification_settings(
     patient_hash: str,
@@ -790,9 +869,19 @@ def get_caregiver_notification_settings(
     )
 
 
-# 함수명: get_caregiver_notification_setting
-# 역할:
-# - 연동된 보호자-환자의 지정 시간대 알림 설정을 반환한다.
+# 함수이름: get_caregiver_notification_setting
+# 함수역할:
+# - 연동 권한을 확인하고 선택 시간대의 보호자 알림 설정을 조회한다.
+# 매개변수:
+# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
+# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
+# 반환값:
+# - 선택 시간대 알림 설정 응답.
 @router.get("/caregiver-notification/settings/{patient_hash}")
 @router.get(
     "/guardian-alert/settings/{patient_hash}",
@@ -825,9 +914,20 @@ def get_caregiver_notification_setting(
     )
 
 
-# 함수명: save_caregiver_notification_setting
-# 역할:
-# - 연동된 보호자-환자의 지정 시간대 알림 설정만 저장한다.
+# 함수이름: save_caregiver_notification_setting
+# 함수역할:
+# - 연동 권한을 확인한 뒤 선택 시간대의 알림 모드와 마감 시각을 저장한다.
+# 매개변수:
+# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - request (CaregiverNotificationUpdate): 알림 모드·활성 상태와 선택적 미복용 마감 시각.
+# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
+# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
+# 반환값:
+# - 저장된 시간대 알림 설정 응답.
 @router.put("/caregiver-notification/settings/{patient_hash}")
 @router.put(
     "/guardian-alert/settings/{patient_hash}",
@@ -869,8 +969,10 @@ def save_caregiver_notification_setting(
 # Description:
 # - Returns active patient-caregiver links for a patient or caregiver hash.
 # Parameters:
-# - user_hash: Patient or caregiver ownership key.
-# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
+# - user_hash (str): Patient or caregiver ownership key.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - link_patient_caregiver_control (LinkPatientCaregiver): LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible link list dictionary.
 @router.get("/link/list")
@@ -888,7 +990,15 @@ def get_patient_caregiver_links(
 
 # 함수이름: get_caregiver_monitoring_snapshot
 # 함수역할:
-# - 보호자가 관리하는 모든 환자의 알림 설정과 오늘 일정을 한 요청으로 반환한다.
+# - 인증된 보호자의 연동 환자별 알림 설정과 오늘 복약 정보를 일괄 조회한다.
+# 매개변수:
+# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
+# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - monitoring_control (CheckCaregiverMonitoring): 연동 환자 감시 정보를 일괄 조회하는 Control.
+# 반환값:
+# - 환자별 연동·알림·오늘 복약 정보 묶음.
 @router.get("/caregiver/monitoring")
 @router.get("/guardian/monitoring", include_in_schema=False)
 def get_caregiver_monitoring_snapshot(
@@ -912,7 +1022,16 @@ def get_caregiver_monitoring_snapshot(
 
 # Function Name: get_caregiver_patient_medication_info
 # Description:
-# - Returns read-only medication information for one explicitly selected linked patient.
+# - Requires an active caregiver link before returning the selected patient's read-only pillbox and daily summary.
+# Parameters:
+# - patient_hash (str): Patient ownership scope for the operation.
+# - caregiver_hash (str | None): Caregiver account participating in the patient link.
+# - guardian_hash (str | None): Compatibility alias for the requested caregiver scope.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_caregiver_medication (CheckCaregiverMedication): Read-only linked-patient medication control.
+# Returns:
+# - Saved medications and today's medication information for the linked patient.
 @router.get("/caregiver/medications/{patient_hash}")
 @router.get(
     "/guardian/medications/{patient_hash}",
@@ -947,8 +1066,10 @@ def get_caregiver_patient_medication_info(
 # Description:
 # - Creates a temporary patient code for UC-6 caregiver registration.
 # Parameters:
-# - request: PatientCodeCreate request DTO.
-# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
+# - request (PatientCodeCreate): PatientCodeCreate request DTO.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - link_patient_caregiver_control (LinkPatientCaregiver): LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible patient code dictionary.
 @router.post("/link/code")
@@ -968,8 +1089,10 @@ def create_patient_link_code(
 # Description:
 # - Registers a caregiver with a valid temporary patient code.
 # Parameters:
-# - request: PatientCodeRegister request DTO.
-# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
+# - request (PatientCodeRegister): PatientCodeRegister request DTO.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - link_patient_caregiver_control (LinkPatientCaregiver): LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible link dictionary.
 @router.post("/link/register")
@@ -994,6 +1117,15 @@ def register_patient_link_code(
 # 함수이름: update_patient_alias
 # 함수역할:
 # - 현재 보호자가 소유한 연동 관계에 환자 표시 이름을 저장한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - request (PatientAliasUpdate): 보호자에게 표시할 새 환자 별칭; 빈 값은 해제.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - link_patient_caregiver_control (LinkPatientCaregiver): 임시 코드와 활성 환자·보호자 연동 Control.
+# 반환값:
+# - 별칭이 갱신된 연동 정보 응답.
 @router.patch("/link/{link_id}/patient-alias")
 def update_patient_alias(
     link_id: int,
@@ -1020,9 +1152,11 @@ def update_patient_alias(
 # Description:
 # - Removes one active patient-caregiver link for a participating user hash.
 # Parameters:
-# - link_id: Patient-caregiver link primary key from route path.
-# - user_hash: Patient or caregiver ownership key allowed to unlink.
-# - link_patient_caregiver_control: LinkPatientCaregiver injected by FastAPI.
+# - link_id (int): Patient-caregiver link primary key from route path.
+# - user_hash (str): Patient or caregiver ownership key allowed to unlink.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - link_patient_caregiver_control (LinkPatientCaregiver): LinkPatientCaregiver injected by FastAPI.
 # Returns:
 # - API-compatible unlink dictionary.
 @router.delete("/link/{link_id}")
@@ -1046,9 +1180,11 @@ def unlink_patient_caregiver(
 # Description:
 # - Deletes a saved medication by id.
 # Parameters:
-# - drug_id: Saved medication primary key from route path.
-# - patient_hash: Patient ownership key used to scope deletion.
-# - check_saved_medication: CheckSavedMedication injected by FastAPI.
+# - drug_id (int): Saved medication primary key from route path.
+# - patient_hash (str): Patient ownership key used to scope deletion.
+# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
+# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - check_saved_medication (CheckSavedMedication): CheckSavedMedication injected by FastAPI.
 # Returns:
 # - API-compatible delete success dictionary.
 @router.delete("/delete/{drug_id}")
@@ -1066,9 +1202,12 @@ def delete_medication(
     return check_saved_medication.requestDelete(drug_id, authorized_patient_hash)
 
 
-# 함수명: analyze_masked_prescription_text
-# 역할:
+# 함수이름: analyze_masked_prescription_text
+# 함수역할:
 # - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 분석한다.
+# 매개변수:
+# - request (OCRParseRequest): 기기에서 개인정보를 제거한 OCR 텍스트 요청.
+# - input_prescription (InputPrescription): 비식별 처방 텍스트를 분석하는 Control.
 # 반환값:
 # - API 호환 처방 분석 결과
 @router.post(
@@ -1101,9 +1240,9 @@ async def analyze_masked_prescription_text(
 # Description:
 # - Receives front and optional back photos and returns ranked MFDS candidates.
 # Parameters:
-# - front: Required front-side pill image.
-# - back: Optional reverse-side pill image.
-# - identify_pill: IdentifyPill injected by FastAPI.
+# - front (UploadFile): Required front-side pill image.
+# - back (UploadFile | None): Optional reverse-side pill image.
+# - identify_pill (IdentifyPill): IdentifyPill injected by FastAPI.
 # Returns:
 # - PillIdentificationResponse with mandatory user confirmation.
 @router.post(
@@ -1117,6 +1256,13 @@ async def identify_loose_pill(
 ) -> PillIdentificationResponse:
     """Returns MFDS candidates for one pill; user confirmation remains mandatory."""
 
+    # Function Name: read_bounded
+    # Description:
+    # - Reads at most one byte beyond the pill-image limit so oversized uploads are rejected before analysis.
+    # Parameters:
+    # - upload (UploadFile): Uploaded pill image read under the per-image byte limit.
+    # Returns:
+    # - Image bytes, or HTTP 413 when the upload exceeds the limit.
     async def read_bounded(upload: UploadFile) -> bytes:
         content = await upload.read(MAX_PILL_IMAGE_BYTES + 1)
         if len(content) > MAX_PILL_IMAGE_BYTES:
@@ -1169,8 +1315,8 @@ async def identify_loose_pill(
 # Description:
 # - Detects and independently ranks every visible pill in one bounded photo.
 # Parameters:
-# - image: One photo containing between one and ten distinct pills.
-# - identify_pill: Shared identification control injected by FastAPI.
+# - image (UploadFile): One photo containing between one and ten distinct pills.
+# - identify_pill (IdentifyPill): Shared identification control injected by FastAPI.
 # Returns:
 # - Numbered observations with normalized boxes and confirmation-required candidates.
 @router.post(

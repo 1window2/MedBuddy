@@ -1,5 +1,6 @@
 # File Name: test_repository_security_configuration.py
-# Role: Guards security-sensitive repository and development defaults.
+# Role: Regression coverage for repository secret hygiene, protected release signing, and
+#   self-hosted deployment safeguards.
 
 from pathlib import Path
 
@@ -13,6 +14,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 #   environment variants, signing material, and Flutter plugin registrants from
 #   appearing in commits.
 # - Keeps shareable example environment files explicitly available to Git.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when repository hygiene rules regress.
 def test_local_generated_and_secret_files_are_ignored() -> None:
@@ -37,6 +40,8 @@ def test_local_generated_and_secret_files_are_ignored() -> None:
 # Description:
 # - Prevents the convenience Python entrypoint from exposing the alpha API on
 #   every network interface by default.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when the safe default regresses.
 def test_direct_backend_entrypoint_binds_to_loopback() -> None:
@@ -51,6 +56,8 @@ def test_direct_backend_entrypoint_binds_to_loopback() -> None:
 # Description:
 # - Ensures pull-request-controlled code receives deterministic fake keys, not
 #   repository API secrets.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when a secret expression is reintroduced.
 def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
@@ -68,6 +75,8 @@ def test_pull_request_ci_does_not_inject_repository_api_secrets() -> None:
 # - Restricts signing secrets to main and the exact active beta branch.
 # - Prevents wildcard beta branches, version-like tags, or main builds from
 #   overriding the repository-controlled production API endpoint.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when broad signing refs are reintroduced.
 def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
@@ -92,6 +101,8 @@ def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
 #   output, unsigned AAB content, and malformed fingerprints to fail the build.
 # - Allows the expected self-signed Android upload certificate while still
 #   requiring its exact protected SHA-256 fingerprint.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when artifact verification is weakened.
 def test_android_artifact_signature_checks_are_fail_closed() -> None:
@@ -119,6 +130,8 @@ def test_android_artifact_signature_checks_are_fail_closed() -> None:
 # - Prevents anonymous Firebase identities from reaching cost-bearing routes in
 #   a future public Cloud Run deployment while leaving self-hosted guest policy
 #   under its separate runtime configuration.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when anonymous Cloud Run access returns.
 def test_dormant_cloud_deploy_rejects_anonymous_identities() -> None:
@@ -135,6 +148,8 @@ def test_dormant_cloud_deploy_rejects_anonymous_identities() -> None:
 # Description:
 # - Keeps public bug intake from soliciting prescription images, personal
 #   medical text, identifiers, credentials, or raw logs.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when the privacy warning is absent.
 def test_issue_templates_forbid_real_medical_data() -> None:
@@ -150,6 +165,8 @@ def test_issue_templates_forbid_real_medical_data() -> None:
 # - Ensures production keeps refreshing MFDS catalogs after the first seed.
 # - Guards the periodic writer against accidentally inheriting the
 #   bootstrap-only empty-catalog shortcut.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when the maintenance service regresses.
 def test_self_hosted_catalog_has_periodic_atomic_refresh() -> None:
@@ -172,6 +189,8 @@ def test_self_hosted_catalog_has_periodic_atomic_refresh() -> None:
 #   directly into a SQLAlchemy URL.
 # - Ensures every application service uses the same structured connection
 #   fields while PostgreSQL receives the original raw password.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when raw URL interpolation returns.
 def test_self_hosted_database_url_uses_structured_credentials() -> None:
@@ -191,6 +210,8 @@ def test_self_hosted_database_url_uses_structured_credentials() -> None:
 #   directory before the API starts as the unprivileged image user.
 # - Prevents a bind-mounted mode-0600 secret from becoming unreadable after the
 #   container switches from the host UID to the medbuddy UID.
+# Parameters:
+# - None.
 # Returns:
 # - None; pytest reports a failure when secret handling or privilege dropping
 #   regresses.

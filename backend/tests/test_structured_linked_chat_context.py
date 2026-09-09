@@ -1,5 +1,5 @@
 # 파일명: test_structured_linked_chat_context.py
-# 역할: 시간대 복약 확인, 약 부족 안내와 약국 공유 채팅의 서버 검증을 확인한다.
+# 역할: 구조화 채팅의 서버 복약·약국 스냅샷, 역할별 권한 및 완료 이벤트 멱등성을 검증한다.
 
 """구조화 채팅 문맥의 권한, 신뢰 경계와 중복 방지를 검증한다."""
 
@@ -33,9 +33,28 @@ from entities.pharmacy_catalog_entity import PharmacyCatalogRecord  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 
 
+# 클래스명: StructuredLinkedChatContextTest
+# 역할: 연동 환자의 실제 일정·약·약국 정보만 구조화 채팅으로 노출되는지 검증하는 테스트 모음이다.
+# 주요 책임:
+# - 양측에 같은 아침 완료 건수를 제공하지만 복약 확인 요청 권한은 보호자에게만 허용하는지 검증한다.
+# - 약 부족 메시지에 실제 남은 7일과 종료일을 붙이고 불편 메시지에는 안전 안내 표시를 포함하는지 검증한다.
+# - 현재부터 7일간 하루 세 번 복용하는 환자 약을 저장하고 갱신된 행을 반환한다.
+# 속성:
+# - engine (Engine): 격리 인메모리 SQLite 엔진.
+# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
+# - link_id (int): 시험용 환자와 보호자가 공유하는 활성 연동 ID.
+# - medication (_SavedMedication): 현재 테스트 조건에서 공유할 저장된 활성 약.
+# - chat (ManageLinkedChat): 격리 테스트 세션에 연결한 채팅 control.
 class StructuredLinkedChatContextTest(unittest.TestCase):
     """구조화 채팅이 연동 환자의 실제 데이터만 노출하는지 확인한다."""
 
+    # 함수이름: setUp
+    # 함수역할:
+    # - 격리 DB에 환자·보호자 연동과 현재 약을 저장하고 구조화 채팅 control을 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -58,10 +77,24 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.medication = self._save_medication()
         self.chat = ManageLinkedChat(self.db)
 
+    # 함수이름: tearDown
+    # 함수역할:
+    # - 구조화 채팅 테스트의 DB 세션과 엔진을 닫는다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # 함수이름: test_schedule_context_exposes_progress_and_caregiver_action_only
+    # 함수역할:
+    # - 양측에 같은 아침 완료 건수를 제공하지만 복약 확인 요청 권한은 보호자에게만 허용하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_schedule_context_exposes_progress_and_caregiver_action_only(self) -> None:
         """같은 일정에서 완료 수는 같고 확인 요청 권한만 보호자에게 주는지 본다."""
         self.db.add(
@@ -92,6 +125,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertFalse(patient_morning["can_request_check"])
         self.assertTrue(caregiver_morning["can_request_check"])
 
+    # 함수이름: test_only_caregiver_can_send_slot_check_request
+    # 함수역할:
+    # - 보호자의 시간대 확인 메시지에 서버 일정 스냅샷을 붙이고 환자의 동일 요청은 403으로 거절하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_only_caregiver_can_send_slot_check_request(self) -> None:
         """시간대 확인 요청은 보호자만 보내고 서버 일정 스냅샷을 쓰는지 본다."""
         sent = self.chat.send_message(
@@ -118,6 +158,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
             )
         self.assertEqual(patient_request.exception.status_code, 403)
 
+    # 함수이름: test_slot_completion_is_server_only_and_idempotent
+    # 함수역할:
+    # - 클라이언트의 완료 메시지 위조를 403으로 거절하고 서버 완료 사건은 재시도해도 한 건만 저장하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_slot_completion_is_server_only_and_idempotent(self) -> None:
         """완료 메시지는 클라이언트가 위조할 수 없고 사건별 한 번만 저장되는지 본다."""
         with self.assertRaises(HTTPException) as client_request:
@@ -149,6 +196,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
             1,
         )
 
+    # 함수이름: test_medication_quick_replies_use_server_course_information
+    # 함수역할:
+    # - 약 부족 메시지에 실제 남은 7일과 종료일을 붙이고 불편 메시지에는 안전 안내 표시를 포함하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_medication_quick_replies_use_server_course_information(self) -> None:
         """약 부족·불편 메시지에 실제 복용 기간과 안전 안내 표시를 붙이는지 본다."""
         shortage = self.chat.send_message(
@@ -177,6 +231,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         )
         self.assertTrue(discomfort_context["show_safety_guidance"])
 
+    # 함수이름: test_pharmacy_share_uses_catalog_snapshot
+    # 함수역할:
+    # - 약국 공유가 클라이언트 주장 대신 서버 카탈로그의 약국명·전화·당일 운영시간을 사용하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_pharmacy_share_uses_catalog_snapshot(self) -> None:
         """약국 공유 메시지가 요청 본문이 아닌 서버 카탈로그를 기준으로 생성되는지 본다."""
         self.db.add(
@@ -209,6 +270,13 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(pharmacy["today_hours"], "09:00 - 21:00")
         self.assertEqual(pharmacy["telephone"], "02-1234-5678")
 
+    # 함수이름: _save_medication
+    # 함수역할:
+    # - 현재부터 7일간 하루 세 번 복용하는 환자 약을 저장하고 갱신된 행을 반환한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - _SavedMedication: 생성된 ID를 포함하여 저장·갱신한 약 행.
     def _save_medication(self) -> _SavedMedication:
         """구조화 채팅 테스트에 사용할 현재 복용 약을 저장한다."""
         medication = _SavedMedication(

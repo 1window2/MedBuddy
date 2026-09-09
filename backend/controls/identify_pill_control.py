@@ -1,5 +1,5 @@
 # File Name: identify_pill_control.py
-# Role: Coordinates visual feature extraction and deterministic MFDS candidate ranking.
+# Role: Ranks MFDS pill candidates from bounded visual observations while preserving mandatory user confirmation.
 
 import asyncio
 import heapq
@@ -21,6 +21,16 @@ from entities.pill_identification_entity import (
 )
 
 
+# Class Name: IdentifyPill
+# Role:
+# - Identifies candidate products without treating a visual match as a diagnosis.
+# Responsibilities:
+# - Bound image-analysis and ranking work, score catalog evidence deterministically and require confirmation even for confident candidates.
+# Attributes:
+# - vision_boundary (PillVisionBoundary): External pill-appearance extraction boundary.
+# - catalog_boundary (MFDSPillCatalogBoundary): Shared MFDS pill-reference catalog provider.
+# - candidate_limit (int): Maximum pill matches exposed to the user.
+# - _ranking_semaphore (asyncio.Semaphore): Shared concurrency gate for CPU-heavy catalog ranking.
 class IdentifyPill:
     """Identifies candidate products without treating a visual match as a diagnosis."""
 
@@ -62,6 +72,16 @@ class IdentifyPill:
         "other": ("기타",),
     }
 
+    # Function Name: __init__
+    # Description:
+    # - Validates the candidate limit and binds visual extraction, the shared MFDS catalog and bounded ranking concurrency.
+    # Parameters:
+    # - vision_boundary (PillVisionBoundary): External pill-appearance extraction boundary.
+    # - catalog_boundary (MFDSPillCatalogBoundary): Shared MFDS pill-reference catalog provider.
+    # - candidate_limit (int): Maximum pill matches exposed to the user.
+    # - ranking_semaphore (asyncio.Semaphore | None): Shared concurrency gate for CPU-heavy catalog ranking.
+    # Returns:
+    # - None.
     def __init__(
         self,
         *,
@@ -77,6 +97,14 @@ class IdentifyPill:
         self.candidate_limit = candidate_limit
         self._ranking_semaphore = ranking_semaphore or asyncio.Semaphore(1)
 
+    # Function Name: requestPillIdentification
+    # Description:
+    # - Returns ranked candidates while keeping confirmation mandatory.
+    # Parameters:
+    # - front_image (bytes): Required front-side pill image bytes.
+    # - back_image (bytes | None): Optional back-side image bytes for the same pill.
+    # Returns:
+    # - Single-pill candidates and observed features with user confirmation always required.
     async def requestPillIdentification(
         self,
         front_image: bytes,
@@ -111,6 +139,13 @@ class IdentifyPill:
             requires_confirmation=True,
         )
 
+    # Function Name: requestMultiplePillIdentification
+    # Description:
+    # - Detects and independently ranks every pill visible in one photo.
+    # Parameters:
+    # - image (bytes): Image bytes containing one to ten separate pills.
+    # Returns:
+    # - One to ten numbered observations with independent candidates and mandatory confirmation.
     async def requestMultiplePillIdentification(
         self,
         image: bytes,
@@ -143,6 +178,14 @@ class IdentifyPill:
             )
         return MultiplePillIdentificationResult(observations=tuple(results))
 
+    # Function Name: _build_result
+    # Description:
+    # - Builds one confirmation-required result from a shared catalog snapshot.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - catalog (tuple[PillCatalogEntry, ...]): Immutable MFDS pill-reference catalog used for ranking.
+    # Returns:
+    # - Ranked candidate result with confidence gated by image and imprint evidence.
     async def _build_result(
         self,
         features: PillVisualFeatures,
@@ -162,6 +205,15 @@ class IdentifyPill:
             requires_confirmation=True,
         )
 
+    # Function Name: _rank_candidates_with_capacity
+    # Description:
+    # - Keeps shared CPU capacity reserved until a detached worker exits.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - catalog (tuple[PillCatalogEntry, ...]): Immutable MFDS pill-reference catalog used for ranking.
+    # - ranking_limit (int): Maximum matches retained by this ranking operation.
+    # Returns:
+    # - Ranked candidates after acquiring the shared capacity permit; caller cancellation retains the permit until the worker completes.
     async def _rank_candidates_with_capacity(
         self,
         features: PillVisualFeatures,
@@ -191,6 +243,13 @@ class IdentifyPill:
             if release_on_exit:
                 self._ranking_semaphore.release()
 
+    # Function Name: _release_ranking_capacity
+    # Description:
+    # - Consumes a detached ranking result and releases its shared slot.
+    # Parameters:
+    # - worker (asyncio.Task[list[PillIdentificationCandidate]]): Background ranking task that retains the concurrency permit until completion.
+    # Returns:
+    # - None.
     def _release_ranking_capacity(
         self,
         worker: asyncio.Task[list[PillIdentificationCandidate]],
@@ -203,6 +262,15 @@ class IdentifyPill:
             pass
         self._ranking_semaphore.release()
 
+    # Function Name: _rank_candidates
+    # Description:
+    # - Maintains a bounded heap of plausible visual matches and caps imprint-free scores at 0.68.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - catalog (tuple[PillCatalogEntry, ...]): Immutable MFDS pill-reference catalog used for ranking.
+    # - ranking_limit (int | None): Optional ranking bound overriding the default candidate limit.
+    # Returns:
+    # - Candidates ordered by score, image availability and product ID.
     def _rank_candidates(
         self,
         features: PillVisualFeatures,
@@ -262,6 +330,14 @@ class IdentifyPill:
             for ranking_key, entry, matched_attributes in top_matches
         ]
 
+    # Function Name: _is_plausible_candidate
+    # Description:
+    # - Prunes unrelated imprints, requiring both shape and color when usable imprint evidence is unavailable.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - entry (PillCatalogEntry): MFDS reference product and its registered visual attributes.
+    # Returns:
+    # - True when the catalog entry has sufficient evidence for detailed scoring.
     @classmethod
     def _is_plausible_candidate(
         cls,
@@ -304,6 +380,14 @@ class IdentifyPill:
             return has_related_imprint
         return has_shape_match and has_color_match
 
+    # Function Name: _imprints_are_plausibly_related
+    # Description:
+    # - Accepts equal or contained imprints, then permits limited length differences when characters overlap.
+    # Parameters:
+    # - observed (str): Normalized imprint extracted from the image.
+    # - catalog (str): Normalized imprint registered for the catalog product.
+    # Returns:
+    # - True when the normalized imprints can enter similarity scoring.
     @staticmethod
     def _imprints_are_plausibly_related(observed: str, catalog: str) -> bool:
         if observed == catalog or observed in catalog or catalog in observed:
@@ -312,6 +396,14 @@ class IdentifyPill:
             return False
         return not set(observed).isdisjoint(catalog)
 
+    # Function Name: _score_entry
+    # Description:
+    # - Combines available shape, color, imprint and score-line evidence using normalized weights.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - entry (PillCatalogEntry): MFDS reference product and its registered visual attributes.
+    # Returns:
+    # - Weighted score and the names of sufficiently matched visual attributes.
     def _score_entry(
         self,
         features: PillVisualFeatures,
@@ -358,12 +450,28 @@ class IdentifyPill:
         weighted_score = sum(weight * score for weight, score in components)
         return weighted_score / weight_sum, matched_attributes
 
+    # Function Name: _shape_score
+    # Description:
+    # - Compares the catalog shape against aliases for the observed shape.
+    # Parameters:
+    # - observed (str): Normalized shape label extracted from the image.
+    # - catalog_shape (str): Registered MFDS pill shape label.
+    # Returns:
+    # - 1.0 for an alias match; otherwise 0.0.
     @classmethod
     def _shape_score(cls, observed: str, catalog_shape: str) -> float:
         normalized_catalog = cls._normalize_label(catalog_shape)
         aliases = cls._SHAPE_ALIASES.get(observed, ())
         return 1.0 if normalized_catalog in aliases else 0.0
 
+    # Function Name: _color_score
+    # Description:
+    # - Matches each observed color against normalized catalog color aliases.
+    # Parameters:
+    # - observed_colors (tuple[str, ...]): Color labels extracted from the pill image.
+    # - catalog_colors (tuple[str, str]): Catalog primary and secondary color labels.
+    # Returns:
+    # - Fraction of observed colors matched, or 0.0 without color evidence.
     @classmethod
     def _color_score(
         cls,
@@ -378,6 +486,16 @@ class IdentifyPill:
                 matched += 1
         return matched / len(observed_colors) if observed_colors else 0.0
 
+    # Function Name: _oriented_text_score
+    # Description:
+    # - Compares pill imprints in direct and swapped orientations, allowing a single observed side.
+    # Parameters:
+    # - observed_front (str): Observed front-side imprint.
+    # - observed_back (str): Observed back-side imprint.
+    # - catalog_front (str): Catalog front-side imprint.
+    # - catalog_back (str): Catalog back-side imprint.
+    # Returns:
+    # - Highest orientation-aware imprint similarity.
     @classmethod
     def _oriented_text_score(
         cls,
@@ -409,6 +527,14 @@ class IdentifyPill:
         swapped = cls._mean_available_similarity(observed, catalog[::-1])
         return max(direct, swapped)
 
+    # Function Name: _oriented_line_score
+    # Description:
+    # - Scores pill division lines in direct and reversed front/back orientations.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - entry (PillCatalogEntry): MFDS reference product and its registered visual attributes.
+    # Returns:
+    # - Highest mean score-line agreement for the available observations.
     @classmethod
     def _oriented_line_score(
         cls,
@@ -421,6 +547,13 @@ class IdentifyPill:
         swapped = cls._mean_available_line_score(observed, catalog[::-1])
         return max(direct, swapped)
 
+    # Function Name: _has_line_observation
+    # Description:
+    # - Checks for at least one observed division-line value beyond blank or unknown.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # Returns:
+    # - True when line evidence can contribute to ranking.
     @staticmethod
     def _has_line_observation(features: PillVisualFeatures) -> bool:
         return any(
@@ -428,6 +561,14 @@ class IdentifyPill:
             for line in (features.front_line, features.back_line)
         )
 
+    # Function Name: _mean_available_similarity
+    # Description:
+    # - Averages paired imprint similarities only for sides with observed text.
+    # Parameters:
+    # - observed (tuple[str, str]): Observed front/back values; unavailable sides do not contribute.
+    # - catalog (tuple[str, str]): Catalog front/back values in the orientation being tested.
+    # Returns:
+    # - Mean similarity, or 0.0 when no side has text.
     @classmethod
     def _mean_available_similarity(
         cls,
@@ -441,6 +582,14 @@ class IdentifyPill:
         ]
         return sum(scores) / len(scores) if scores else 0.0
 
+    # Function Name: _mean_available_line_score
+    # Description:
+    # - Averages paired division-line matches only for known observed sides.
+    # Parameters:
+    # - observed (tuple[str, str]): Observed front/back values; unavailable sides do not contribute.
+    # - catalog (tuple[str, str]): Catalog front/back values in the orientation being tested.
+    # Returns:
+    # - Mean line score, or 0.0 without observations.
     @classmethod
     def _mean_available_line_score(
         cls,
@@ -454,6 +603,14 @@ class IdentifyPill:
         ]
         return sum(scores) / len(scores) if scores else 0.0
 
+    # Function Name: _line_score
+    # Description:
+    # - Matches division-line aliases and treats blank catalog lines as a possible no-line observation.
+    # Parameters:
+    # - observed (str): Observed division-line label, including explicit none.
+    # - catalog_value (str): Registered pill division-line label.
+    # Returns:
+    # - 1.0 for a supported match; otherwise 0.0.
     @classmethod
     def _line_score(cls, observed: str, catalog_value: str) -> float:
         normalized_catalog = cls._normalize_label(catalog_value)
@@ -462,6 +619,14 @@ class IdentifyPill:
             return 1.0 if not normalized_catalog or normalized_catalog in aliases else 0.0
         return 1.0 if any(alias in normalized_catalog for alias in aliases) else 0.0
 
+    # Function Name: _text_similarity
+    # Description:
+    # - Scores exact and contained imprints before applying bounded SequenceMatcher comparison.
+    # Parameters:
+    # - left (str): First normalized string in the similarity comparison.
+    # - right (str): Second normalized string in the similarity comparison.
+    # Returns:
+    # - Similarity from 0.0 to 1.0; containment receives 0.9.
     @staticmethod
     def _text_similarity(left: str, right: str) -> float:
         if not left or not right:
@@ -472,17 +637,39 @@ class IdentifyPill:
             return 0.9
         return SequenceMatcher(None, left[:64], right[:64], autojunk=False).ratio()
 
+    # Function Name: _normalize_imprint
+    # Description:
+    # - Applies NFKC normalization and uppercase, retaining at most 64 alphanumeric imprint characters.
+    # Parameters:
+    # - value (str): Raw pill imprint text, possibly blank.
+    # Returns:
+    # - Bounded imprint comparison key.
     @staticmethod
     @lru_cache(maxsize=131_072)
     def _normalize_imprint(value: str) -> str:
         normalized = unicodedata.normalize("NFKC", value or "").upper()
         return "".join(character for character in normalized if character.isalnum())[:64]
 
+    # Function Name: _normalize_label
+    # Description:
+    # - Applies NFKC normalization, trimming and lowercase to bounded visual labels.
+    # Parameters:
+    # - value (str): Raw shape, color or division-line label.
+    # Returns:
+    # - Normalized label limited to 128 characters.
     @staticmethod
     @lru_cache(maxsize=16_384)
     def _normalize_label(value: str) -> str:
         return unicodedata.normalize("NFKC", value or "").strip().lower()[:128]
 
+    # Function Name: _is_confident
+    # Description:
+    # - Requires usable same-pill evidence, at least two imprint characters and a sufficiently strong, separated top candidate.
+    # Parameters:
+    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
+    # - candidates (list[PillIdentificationCandidate]): Ranked MFDS product match and its visual evidence.
+    # Returns:
+    # - True only when side confidence is at least 0.7, top score at least 0.84 and margin at least 0.06.
     @staticmethod
     def _is_confident(
         features: PillVisualFeatures,

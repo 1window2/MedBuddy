@@ -83,6 +83,13 @@ _SETTING_COLUMNS = {
 }
 
 
+# 함수이름: upgrade
+# 함수역할:
+# - 기존 사용자 설정을 보존하면서 새 설정 열을 기본값으로 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     """기존 사용자 설정을 보존하면서 새 설정 열을 기본값으로 추가한다."""
     inspector = sa.inspect(op.get_bind())
@@ -97,6 +104,13 @@ def upgrade() -> None:
             op.add_column("user_settings", column)
 
 
+# 함수이름: downgrade
+# 함수역할:
+# - 새 설정 열만 제거하고 기존 접근성 설정은 유지한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     """새 설정 열만 제거하고 기존 접근성 설정은 유지한다."""
     inspector = sa.inspect(op.get_bind())

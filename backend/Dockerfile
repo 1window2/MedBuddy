@@ -1,3 +1,6 @@
+# File Name: Dockerfile
+# Role: Packages backend dependencies and application code for an unprivileged API container.
+
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -1,3 +1,6 @@
+# File Name: test_holiday_emergency_pharmacy_api_boundary.py
+# Role: Regression coverage for date-specific emergency pharmacy roster parsing and request
+#   filters.
 """Tests for the exact-date NEMC holiday pharmacy roster boundary."""
 
 import os
@@ -20,8 +23,24 @@ from boundaries.holiday_emergency_pharmacy_api_boundary import (  # noqa: E402
 )
 
 
+# Function Name: test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored
+# Description:
+# - Parses only the pharmacy entry for the exact date and retains its 09:00-17:30 opening range.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored() -> None:
+    # Function Name: respond
+    # Description:
+    # - Checks the exact-date and 20,000-row query without a weekday filter, then serves a
+    #   roster containing pharmacy and non-pharmacy entries.
+    # Parameters:
+    # - request (httpx.Request): Intercepted HTTP request used to select or validate the
+    #   mock response.
+    # Returns:
+    # - httpx.Response: Synthetic HTTP 200 response containing the scenario XML.
     def respond(request: httpx.Request) -> httpx.Response:
         # The upstream service currently returns no rows for QD=H even though
         # the unfiltered payload contains dutyDiv=H pharmacy records. Fetch the
@@ -62,6 +81,13 @@ async def test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored() ->
     assert result[0].end_time == "1730"
 
 
+# Function Name: test_invalid_time_range_is_not_claimed_as_date_specific
+# Description:
+# - Discards an invalid time range instead of claiming it as a date-specific pharmacy schedule.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_invalid_time_range_is_not_claimed_as_date_specific() -> None:
     import xml.etree.ElementTree as ElementTree
 

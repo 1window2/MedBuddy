@@ -1,4 +1,5 @@
-"""Tests server-owned missed-dose queueing and caregiver push delivery."""
+# File Name: test_missed_dose_alerts.py
+# Role: Verifies server-owned missed-dose queueing and caregiver push delivery.
 
 import sys
 import unittest
@@ -41,10 +42,27 @@ from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.user_account_entity import _UserAccount  # noqa: E402
 
 
+# Class Name: _RecordingPushBoundary
+# Role: Captures push requests without contacting Firebase.
+# Attributes:
+# - calls: Ordered push request payloads observed by the test.
 class _RecordingPushBoundary:
+    # Function Name: __init__
+    # Description: Initializes an empty push-call ledger.
+    # Parameters: None.
+    # Returns: None.
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
+    # Function Name: send_notification
+    # Description: Records one push request and reports every token as successful.
+    # Parameters:
+    # - tokens: Destination device tokens.
+    # - title: Notification title.
+    # - body: Notification body.
+    # - data: Routing metadata.
+    # Returns:
+    # - A successful delivery result for all supplied tokens.
     def send_notification(
         self,
         *,
@@ -59,7 +77,13 @@ class _RecordingPushBoundary:
         return PushDeliveryResult(success_count=len(tokens))
 
 
+# Class Name: MissedDoseAlertTest
+# Role: Exercises queue idempotency and delivery-time state revalidation.
 class MissedDoseAlertTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description: Creates an active caregiver link, deadline, token, and medication.
+    # Parameters: None.
+    # Returns: None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -123,10 +147,18 @@ class MissedDoseAlertTest(unittest.TestCase):
         self.db.add(self.medication)
         self.db.commit()
 
+    # Function Name: tearDown
+    # Description: Closes the isolated database session and engine.
+    # Parameters: None.
+    # Returns: None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: test_due_missed_slot_is_queued_once_and_delivered
+    # Description: Verifies one due event and one correctly routed caregiver push.
+    # Parameters: None.
+    # Returns: None; assertions fail the test when behavior differs.
     def test_due_missed_slot_is_queued_once_and_delivered(self) -> None:
         queue = QueueMissedDoseAlerts(self.db)
 
@@ -159,6 +191,10 @@ class MissedDoseAlertTest(unittest.TestCase):
             },
         )
 
+    # Function Name: test_completion_after_queue_suppresses_stale_delivery
+    # Description: Verifies a late completion prevents an already queued stale push.
+    # Parameters: None.
+    # Returns: None; assertions fail the test when behavior differs.
     def test_completion_after_queue_suppresses_stale_delivery(self) -> None:
         QueueMissedDoseAlerts(self.db).queueDue(now=self.current_time)
         row = self.db.query(_CaregiverAlertOutbox).one()

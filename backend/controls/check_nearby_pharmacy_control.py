@@ -1,5 +1,5 @@
-# 파일명: check_nearby_pharmacy_control.py
-# 역할: 현재 위치를 기준으로 가까운 운영 약국을 계산한다.
+# File Name: check_nearby_pharmacy_control.py
+# Role: Ranks nearby pharmacies using distance, operating hours, holiday rosters, official designations and source freshness.
 
 """현재 위치를 기준으로 가까운 약국을 조회하는 사용 사례."""
 
@@ -35,6 +35,11 @@ _HOLIDAY_STALE_FALLBACK_MAX_AGE = timedelta(days=45)
 logger = logging.getLogger(__name__)
 
 
+# Class Name: PharmacySearchMode
+# Role:
+# - Enumerates unrestricted, open-at-time, late-hours, designated-night and weekend/holiday pharmacy searches.
+# Responsibilities:
+# - Keep public search-mode values stable across the API and pharmacy filtering logic.
 class PharmacySearchMode(StrEnum):
     ALL = "all"
     OPEN_AT_TIME = "open_at_time"
@@ -43,9 +48,30 @@ class PharmacySearchMode(StrEnum):
     WEEKEND_HOLIDAY = "weekend_holiday"
 
 
+# Class Name: PharmacyCatalogLookup
+# Role:
+# - Defines persisted pharmacy lookup and date-specific holiday-roster caching required by nearby search.
+# Responsibilities:
+# - Supply geographic candidates and catalog timestamps and manage dated holiday-roster replacement and cache age.
 class PharmacyCatalogLookup(Protocol):
+    # Function Name: count
+    # Description:
+    # - Reports whether the persisted pharmacy catalog has usable seed rows.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Number of catalog entries.
     def count(self) -> int: ...
 
+    # Function Name: search_nearby_candidates
+    # Description:
+    # - Selects catalog entries near the search coordinates for exact distance and hours filtering.
+    # Parameters:
+    # - latitude (float): Search-origin latitude in degrees.
+    # - longitude (float): Search-origin longitude in degrees.
+    # - max_distance_km (float): Maximum accepted search radius in kilometers.
+    # Returns:
+    # - Candidate pharmacy catalog entries within the repository's geographic search bounds.
     def search_nearby_candidates(
         self,
         *,
@@ -54,8 +80,23 @@ class PharmacyCatalogLookup(Protocol):
         max_distance_km: float,
     ) -> list[PharmacyCatalogEntry]: ...
 
+    # Function Name: latest_updated_at
+    # Description:
+    # - Exposes the newest catalog update for search-result freshness reporting.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Latest catalog timestamp, or None when no update is available.
     def latest_updated_at(self) -> datetime | None: ...
 
+    # Function Name: get_cached_holiday_schedules
+    # Description:
+    # - Retrieves one date's pharmacy roster only within the accepted cache age.
+    # Parameters:
+    # - value (date): Calendar date for the requested schedule or validation.
+    # - max_age (timedelta): Maximum acceptable age of the cached holiday roster.
+    # Returns:
+    # - Roster keyed by pharmacy ID, or None for an absent or expired cache.
     def get_cached_holiday_schedules(
         self,
         value: date,
@@ -63,6 +104,14 @@ class PharmacyCatalogLookup(Protocol):
         max_age: timedelta,
     ) -> dict[str, PharmacyHolidaySchedule] | None: ...
 
+    # Function Name: replace_holiday_schedules
+    # Description:
+    # - Replaces the persisted holiday pharmacy roster for one calendar date.
+    # Parameters:
+    # - value (date): Calendar date for the requested schedule or validation.
+    # - schedules (list[PharmacyHolidaySchedule]): Complete date-specific pharmacy roster replacing the cached entries.
+    # Returns:
+    # - None.
     def replace_holiday_schedules(
         self,
         value: date,
@@ -70,11 +119,35 @@ class PharmacyCatalogLookup(Protocol):
     ) -> None: ...
 
 
+# Class Name: HolidayLookupBoundary
+# Role:
+# - Defines asynchronous public-holiday classification for pharmacy schedule selection.
+# Responsibilities:
+# - Let nearby search select holiday hours without depending on a particular calendar provider.
 class HolidayLookupBoundary(Protocol):
+    # Function Name: isHoliday
+    # Description:
+    # - Checks whether the requested date is an official public holiday.
+    # Parameters:
+    # - value (date): Calendar date for the requested schedule or validation.
+    # Returns:
+    # - True for a recognized public holiday.
     async def isHoliday(self, value: date) -> bool: ...
 
 
+# Class Name: HolidayEmergencyPharmacyBoundary
+# Role:
+# - Defines date-specific emergency pharmacy roster retrieval independently of weekly hours.
+# Responsibilities:
+# - Supply dated opening intervals that take precedence over regular weekly hours.
 class HolidayEmergencyPharmacyBoundary(Protocol):
+    # Function Name: fetchSchedules
+    # Description:
+    # - Retrieves the official emergency pharmacy opening roster for one date.
+    # Parameters:
+    # - value (date): Calendar date for the requested schedule or validation.
+    # Returns:
+    # - Date-specific pharmacy schedules.
     async def fetchSchedules(self, value: date) -> list[PharmacyHolidaySchedule]: ...
 
 
@@ -85,7 +158,24 @@ class HolidayEmergencyPharmacyBoundary(Protocol):
 # - 좌표와 검색 옵션을 검증한다.
 # - API 거리 누락 시 두 좌표의 직선거리를 계산한다.
 # - 현재 시각 기준 영업 중 여부를 계산하고 가까운 순으로 정렬한다.
+# 속성:
+# - _pharmacy_boundary (PharmacyLookupBoundary | None): 선택적 실시간 약국 위치·운영 시간 제공 경계.
+# - _pharmacy_repository (PharmacyCatalogLookup | None): 약국 카탈로그와 공휴일 당번표 저장소.
+# - _holiday_boundary (HolidayLookupBoundary | None): 선택적 법정 공휴일 판정 경계.
+# - _holiday_emergency_boundary (HolidayEmergencyPharmacyBoundary | None): 선택적 날짜별 당번 약국 명단 제공 경계.
+# - _now_provider (Callable[[], datetime]): 검색 기준 시각을 제공하는 주입 가능한 시계 함수.
 class CheckNearbyPharmacy:
+    # Function Name: __init__
+    # Description:
+    # - Requires at least one pharmacy data source and binds optional holiday lookups and the application-zone clock.
+    # Parameters:
+    # - pharmacy_boundary (PharmacyLookupBoundary | None): Optional live pharmacy location and hours provider.
+    # - pharmacy_repository (PharmacyCatalogLookup | None): Repository for pharmacy catalog entries and holiday rosters.
+    # - holiday_boundary (HolidayLookupBoundary | None): Optional official public-holiday classifier.
+    # - holiday_emergency_boundary (HolidayEmergencyPharmacyBoundary | None): Optional date-specific emergency pharmacy roster provider.
+    # - now_provider (Callable[[], datetime] | None): Injectable clock returning the search reference time.
+    # Returns:
+    # - None.
     def __init__(
         self,
         pharmacy_boundary: PharmacyLookupBoundary | None = None,
@@ -105,16 +195,17 @@ class CheckNearbyPharmacy:
             lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE))
         )
 
-    # 함수명: requestNearbyPharmacies
-    # 역할:
-    # - 위치 주변 약국을 조회하고 화면에 필요한 형태로 반환한다.
-    # 매개변수:
-    # - latitude, longitude: 사용자의 WGS84 좌표
-    # - open_only: 현재 영업 중인 약국만 반환할지 여부
-    # - limit: 반환할 최대 약국 수
-    # - max_distance_km: 결과에 포함할 최대 직선거리
-    # 반환값:
-    # - 영업 상태와 거리가 계산된 NearbyPharmacy 목록
+    # Function Name: requestNearbyPharmacies
+    # Description:
+    # - Adapts the legacy open-only flag to the richer pharmacy search modes.
+    # Parameters:
+    # - latitude (float): Search-origin latitude in degrees.
+    # - longitude (float): Search-origin longitude in degrees.
+    # - open_only (bool): Whether results must be open at the reference time.
+    # - limit (int): Maximum number of results to return.
+    # - max_distance_km (float): Maximum accepted search radius in kilometers.
+    # Returns:
+    # - Ranked nearby pharmacies without the search metadata envelope.
     async def requestNearbyPharmacies(
         self,
         *,
@@ -137,6 +228,18 @@ class CheckNearbyPharmacy:
         )
         return result.data
 
+    # 함수이름: requestNearbyPharmacySearch
+    # 함수역할:
+    # - 좌표·시간을 검증하고 카탈로그 또는 실시간 API에서 영업·거리 조건에 맞는 약국과 자료 최신성을 조회한다.
+    # 매개변수:
+    # - latitude (float): 검색 기준 위치의 위도(도).
+    # - longitude (float): 검색 기준 위치의 경도(도).
+    # - search_mode (PharmacySearchMode): 요청한 약국 영업 시간·공식 지정 필터.
+    # - target_datetime (datetime | None): 선택적 약국 영업 여부 조회 기준 시각.
+    # - limit (int): 반환할 최대 결과 수.
+    # - max_distance_km (float): 허용할 최대 검색 반경(km).
+    # 반환값:
+    # - 필터링된 약국 목록, 기준 시각과 카탈로그·공휴일 자료 상태.
     async def requestNearbyPharmacySearch(
         self,
         *,
@@ -293,6 +396,19 @@ class CheckNearbyPharmacy:
             holiday_schedule_status=holiday_schedule_status,
         )
 
+    # 함수이름: _catalog_entry_to_location_record
+    # 함수역할:
+    # - 오늘·전날의 주간 운영 시간에 날짜별 공휴일 당번표를 우선 적용한다.
+    # 매개변수:
+    # - entry (PharmacyCatalogEntry): 저장된 약국 식별·위치·운영 시간 정보.
+    # - day_of_week (int): 월요일 1부터 일요일 7까지의 ISO 요일.
+    # - is_public_holiday (bool): 조회 날짜가 법정 공휴일인지 여부.
+    # - previous_day_of_week (int): 이전 날짜의 ISO 요일.
+    # - was_public_holiday (bool): 이전 날짜가 법정 공휴일이었는지 여부.
+    # - holiday_schedule (PharmacyHolidaySchedule | None): 오늘 주간 운영 시간보다 우선할 날짜별 당번표.
+    # - previous_holiday_schedule (PharmacyHolidaySchedule | None): 전날 야간 이월 판정에 사용할 날짜별 당번표.
+    # 반환값:
+    # - 야간 이월 판정과 운영 근거를 포함한 약국 위치 레코드.
     @staticmethod
     def _catalog_entry_to_location_record(
         entry: PharmacyCatalogEntry,
@@ -341,6 +457,16 @@ class CheckNearbyPharmacy:
             source_updated_at=entry.source_updated_at,
         )
 
+    # 함수이름: _validate_request
+    # 함수역할:
+    # - 좌표가 유한한 지리 범위인지 확인하고 결과 수와 반경을 지원 한도 내로 제한한다.
+    # 매개변수:
+    # - latitude (float): 검색 기준 위치의 위도(도).
+    # - longitude (float): 검색 기준 위치의 경도(도).
+    # - limit (int): 반환할 최대 결과 수.
+    # - max_distance_km (float): 허용할 최대 검색 반경(km).
+    # 반환값:
+    # - 없음.
     @staticmethod
     def _validate_request(
         *,
@@ -363,6 +489,13 @@ class CheckNearbyPharmacy:
                 "Maximum distance must be between 0.1 and 50 kilometers."
             )
 
+    # Function Name: _normalize_target_datetime
+    # Description:
+    # - Applies the application time zone and rejects dates outside the seven-day past and 366-day future window.
+    # Parameters:
+    # - value (datetime | None): Requested search time; naive values use APPLICATION_TIME_ZONE, and None selects the current application time.
+    # Returns:
+    # - Aware target datetime, or the current application time when omitted.
     def _normalize_target_datetime(self, value: datetime | None) -> datetime:
         timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
         current = self._now_provider().astimezone(timezone)
@@ -379,6 +512,14 @@ class CheckNearbyPharmacy:
             raise ValueError("Target date cannot be more than 366 days in the future.")
         return normalized
 
+    # Function Name: _resolve_holiday_schedules
+    # Description:
+    # - Uses a fresh holiday roster, fetches a replacement, or falls back to stale cache and weekly hours on service errors.
+    # Parameters:
+    # - value (date): Calendar date for the requested schedule or validation.
+    # - is_public_holiday (bool): Whether the target date is an official public holiday.
+    # Returns:
+    # - Pharmacy-ID roster and its freshness/fallback status.
     async def _resolve_holiday_schedules(
         self,
         value: date,
@@ -413,6 +554,14 @@ class CheckNearbyPharmacy:
                 return stale, "stale_fallback"
             return {}, "weekly_fallback"
 
+    # Function Name: _weaker_schedule_status
+    # Description:
+    # - Reports the less reliable of two roster sources so an overnight fallback remains visible.
+    # Parameters:
+    # - first (str): First roster freshness/fallback status.
+    # - second (str): Second roster freshness/fallback status.
+    # Returns:
+    # - Status with the higher fallback severity.
     @staticmethod
     def _weaker_schedule_status(first: str, second: str) -> str:
         rank = {
@@ -423,6 +572,13 @@ class CheckNearbyPharmacy:
         }
         return max((first, second), key=lambda value: rank.get(value, 3))
 
+    # Function Name: _is_catalog_stale
+    # Description:
+    # - Compares the catalog timestamp in UTC with the configured freshness interval.
+    # Parameters:
+    # - updated_at (datetime | None): Most recent source update timestamp, if known.
+    # Returns:
+    # - True when the timestamp is absent or older than the allowed age.
     @staticmethod
     def _is_catalog_stale(updated_at: datetime | None) -> bool:
         if updated_at is None:
@@ -434,6 +590,15 @@ class CheckNearbyPharmacy:
         )
         return aware_updated_at < datetime.now(UTC) - _CATALOG_STALE_AFTER
 
+    # 함수이름: _matches_search_mode
+    # 함수역할:
+    # - 영업 여부·심야 지정·주말과 공휴일 조건에 따라 약국의 검색 모드 적합성을 판정한다.
+    # 매개변수:
+    # - pharmacy (NearbyPharmacy): 계산된 거리와 영업 상태를 포함한 약국 결과.
+    # - search_mode (PharmacySearchMode): 요청한 약국 영업 시간·공식 지정 필터.
+    # - target_datetime (datetime): 선택적 약국 영업 여부 조회 기준 시각.
+    # 반환값:
+    # - 해당 검색 모드에 포함할 약국이면 True.
     @staticmethod
     def _matches_search_mode(
         pharmacy: NearbyPharmacy,
@@ -458,6 +623,18 @@ class CheckNearbyPharmacy:
             or pharmacy.is_public_holiday
         ) and pharmacy.today_open_time is not None
 
+    # 함수이름: _to_nearby_pharmacy
+    # 함수역할:
+    # - 운영 시각과 전날 야간 이월을 해석하고 거리·심야 지정·마감 및 다음 개점 정보를 계산한다.
+    # 매개변수:
+    # - record (PharmacyLocationRecord): 약국 좌표와 오늘·전날 신고 운영 시간.
+    # - latitude (float): 검색 기준 위치의 위도(도).
+    # - longitude (float): 검색 기준 위치의 경도(도).
+    # - now (datetime): 상태·만료 판정에 사용할 기준 시각.
+    # - is_public_holiday (bool): 조회 날짜가 법정 공휴일인지 여부.
+    # - has_weekend_or_holiday_hours (bool): 주말 또는 공휴일 개점 시간이 등록되어 있는지 여부.
+    # 반환값:
+    # - 영업 상태와 자료 출처·최신성을 담은 주변 약국 엔티티.
     @classmethod
     def _to_nearby_pharmacy(
         cls,
@@ -575,6 +752,18 @@ class CheckNearbyPharmacy:
             ),
         )
 
+    # 함수이름: _minutes_until_close
+    # 함수역할:
+    # - 현재 영업 중일 때 폐점까지 남은 분을 계산한다.
+    # 매개변수:
+    # - now (datetime): 상태·만료 판정에 사용할 기준 시각.
+    # - is_open_now (bool | None): 알려진 영업 여부; 운영 시간이 없으면 None.
+    # - start_minutes (int | None): 확인된 경우 자정 이후 분 단위의 오늘 개점 시각.
+    # - end_minutes (int | None): 확인된 경우 자정 이후 분 단위의 오늘 폐점 시각.
+    # - previous_start_minutes (int | None): 야간 이월 판정에 사용할 전날 개점 시각(분).
+    # - previous_end_minutes (int | None): 야간 이월 판정에 사용할 전날 폐점 시각(분).
+    # 반환값:
+    # - 현재 영업 구간이 끝날 때까지의 분 수; 24시간 영업이거나 영업 중이 아니거나 시각을 계산할 수 없으면 None.
     @staticmethod
     def _minutes_until_close(
         *,
@@ -606,6 +795,16 @@ class CheckNearbyPharmacy:
             return 24 * 60 - current_minutes + end_minutes
         return None
 
+    # 함수이름: _next_open_at
+    # 함수역할:
+    # - 문을 닫은 약국의 다음 정규 영업 시작 시각을 최대 일주일 탐색한다.
+    # 매개변수:
+    # - now (datetime): 상태·만료 판정에 사용할 기준 시각.
+    # - is_open_now (bool | None): 알려진 영업 여부; 운영 시간이 없으면 None.
+    # - weekly_hours (dict[str, tuple[str, str]] | None): ISO 요일별 개점·폐점 문자열; 8은 공휴일.
+    # - is_public_holiday (bool): 조회 날짜가 법정 공휴일인지 여부.
+    # 반환값:
+    # - 주간 운영표에서 찾은 다음 개점 ISO 시각; 이미 영업 중이거나 찾을 수 없으면 None.
     @classmethod
     def _next_open_at(
         cls,
@@ -646,6 +845,14 @@ class CheckNearbyPharmacy:
             return next_open.isoformat()
         return None
 
+    # 함수이름: _source_updated_at_iso
+    # 함수역할:
+    # - 카탈로그 갱신 시각을 현재 화면 시간대로 안전하게 변환한다.
+    # 매개변수:
+    # - value (datetime | None): 카탈로그 갱신 시각. 시간대 정보가 없으면 UTC로 간주하고, None은 그대로 반환한다.
+    # - target_timezone (tzinfo | None): 자료 갱신 시각 표시에 사용할 시간대.
+    # 반환값:
+    # - 조회 시간대로 표시한 자료 갱신 ISO 시각 또는 값이 없을 때 None.
     @staticmethod
     def _source_updated_at_iso(
         value: datetime | None,
@@ -660,6 +867,14 @@ class CheckNearbyPharmacy:
             return utc_value.isoformat()
         return utc_value.astimezone(target_timezone).isoformat()
 
+    # Function Name: _is_late_schedule
+    # Description:
+    # - Recognizes overnight hours, midnight-to-midnight operation and closing times at or after 22:00.
+    # Parameters:
+    # - start_minutes (int | None): Today's opening time as minutes since midnight, if known.
+    # - end_minutes (int | None): Today's closing time as minutes since midnight, if known.
+    # Returns:
+    # - True for a known late-night or all-day schedule; False for missing hours.
     @staticmethod
     def _is_late_schedule(
         *,
@@ -674,6 +889,14 @@ class CheckNearbyPharmacy:
             return start_minutes == 0
         return end_minutes >= 22 * 60
 
+    # 함수이름: _parse_minutes
+    # 함수역할:
+    # - 시각에서 숫자를 추출해 시·분 범위를 확인하고 허용된 경우 24:00도 처리한다.
+    # 매개변수:
+    # - value (str): 공공 약국 API의 시·분 문자열.
+    # - allow_24 (bool): 폐점 시각으로 정확히 24:00을 허용할지 여부.
+    # 반환값:
+    # - 자정 이후 분 수; 잘못된 시각은 None.
     @staticmethod
     def _parse_minutes(value: str, *, allow_24: bool = False) -> int | None:
         normalized = "".join(character for character in value if character.isdigit())
@@ -688,6 +911,17 @@ class CheckNearbyPharmacy:
             return None
         return hour * 60 + minute
 
+    # Function Name: _is_open_now
+    # Description:
+    # - Checks today's interval and yesterday's overnight carryover, treating midnight-to-midnight as all-day operation.
+    # Parameters:
+    # - now (datetime): Reference datetime for time-sensitive status or expiration checks.
+    # - start_minutes (int | None): Today's opening time as minutes since midnight, if known.
+    # - end_minutes (int | None): Today's closing time as minutes since midnight, if known.
+    # - previous_start_minutes (int | None): Previous day's opening time for overnight checks.
+    # - previous_end_minutes (int | None): Previous day's closing time for overnight checks.
+    # Returns:
+    # - True when open, False when closed with known hours, or None when today's hours are unknown.
     @staticmethod
     def _is_open_now(
         *,
@@ -719,6 +953,13 @@ class CheckNearbyPharmacy:
             return None
         return False
 
+    # 함수이름: _format_time
+    # 함수역할:
+    # - 자정 이후 분 수를 HH:MM 표시로 변환하고 1440분은 24:00으로 보존한다.
+    # 매개변수:
+    # - minutes (int | None): 시각 표시로 변환할 자정 이후 분 수.
+    # 반환값:
+    # - 표시용 시각 또는 입력이 없을 때 None.
     @staticmethod
     def _format_time(minutes: int | None) -> str | None:
         if minutes is None:
@@ -727,6 +968,16 @@ class CheckNearbyPharmacy:
             return "24:00"
         return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
+    # 함수이름: _haversine_distance
+    # 함수역할:
+    # - 두 위도·경도의 대권 거리를 평균 지구 반지름으로 계산한다.
+    # 매개변수:
+    # - start_latitude (float): 출발 위치의 위도(도).
+    # - start_longitude (float): 출발 위치의 경도(도).
+    # - end_latitude (float): 도착 위치의 위도(도).
+    # - end_longitude (float): 도착 위치의 경도(도).
+    # 반환값:
+    # - 두 위치 사이의 거리(km).
     @staticmethod
     def _haversine_distance(
         start_latitude: float,

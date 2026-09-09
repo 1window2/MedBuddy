@@ -1,3 +1,5 @@
+# File Name: 9c4e7b2a6d10_merge_v020_and_safety_heads.py
+# Role: Joins the completed v0.1.1 safety migration and the v0.2 feature migration chain without changing either published schema history.
 """Merge the v0.2 feature schema with saved-medication safety fields.
 
 Revision ID: 9c4e7b2a6d10
@@ -16,8 +18,9 @@ depends_on: str | Sequence[str] | None = None
 
 # Function Name: upgrade
 # Description:
-# - Joins the completed v0.1.1 safety migration and the v0.2 feature migration
-#   chain without changing either published schema history.
+# - Joins the completed v0.1.1 safety migration and the v0.2 feature migration chain without changing either published schema history.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def upgrade() -> None:
@@ -26,8 +29,9 @@ def upgrade() -> None:
 
 # Function Name: downgrade
 # Description:
-# - Splits the merged migration history back into its two parent heads without
-#   reverting either parent's schema changes.
+# - Splits the merged migration history back into its two parent heads without reverting either parent's schema changes.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def downgrade() -> None:

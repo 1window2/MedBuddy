@@ -1,5 +1,5 @@
 // 파일명: accessibility_layout_regression_test.dart
-// 역할: 작은 화면과 큰 글씨에서 주요 화면의 접근성 레이아웃 회귀를 검증한다.
+// 역할: 작은 화면과 큰 글씨에서 주요 화면의 접근성 레이아웃 회귀를 검증한다. 베타 핵심 화면의 작은 화면, 큰 글씨, 접근성, 생명주기 회귀를 검증한다.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,12 +30,19 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// 파일명: accessibility_layout_regression_test.dart
-// 역할: 베타 핵심 화면의 작은 화면, 큰 글씨, 접근성, 생명주기 회귀를 검증한다.
 
 // 클래스명: _AccessibilityScheduleControl
 // 역할: 접근성 레이아웃 검증에 사용할 긴 약 이름의 복약 일정을 제공한다.
+// 주요 책임:
+// - 줄바꿈과 카드 높이를 검사하도록 긴 약명을 가진 두 복약 일정을 제공한다.
 class _AccessibilityScheduleControl extends CheckSchedule {
+  // 함수이름: requestTodayMedicationSchedule
+  // 함수역할:
+  // - 줄바꿈과 카드 높이를 검사하도록 긴 약명을 가진 두 복약 일정을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 긴 약명과 하루 세 번 복용 정보를 가진 일정 목록.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [
@@ -59,7 +66,16 @@ class _AccessibilityScheduleControl extends CheckSchedule {
 
 // 클래스명: _EmptyNotificationControl
 // 역할: 외부 통신 없이 알림 미설정 상태를 제공한다.
+// 주요 책임:
+// - 알림이 설정되지 않은 접근성 화면을 외부 조회 없이 구성한다.
 class _EmptyNotificationControl extends SetNotification {
+  // 함수이름: requestMedicationAlarm
+  // 함수역할:
+  // - 알림이 설정되지 않은 접근성 화면을 외부 조회 없이 구성한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 빈 복약 알림 목록.
   @override
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
     return const [];
@@ -68,8 +84,17 @@ class _EmptyNotificationControl extends SetNotification {
 
 // 클래스명: _AccessibilityHealthRecommendationControl
 // 역할: 외부 통신 없이 큰 글씨 건강 추천 화면에 긴 안내 문구를 제공한다.
+// 주요 책임:
+// - 큰 글씨에서 건강 추천 영역이 늘어나는지 검사할 긴 식사·운동·주의 문구를 제공한다.
 class _AccessibilityHealthRecommendationControl
     extends CheckHealthRecommendation {
+  // 함수이름: requestHealthRecommendation
+  // 함수역할:
+  // - 큰 글씨에서 건강 추천 영역이 늘어나는지 검사할 긴 식사·운동·주의 문구를 제공한다.
+  // 매개변수:
+  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+  // 반환값:
+  // - 고정된 건강 추천과 두 주의 항목.
   @override
   Future<HealthRecommendation> requestHealthRecommendation({
     String language = 'ko',
@@ -86,7 +111,23 @@ class _AccessibilityHealthRecommendationControl
   }
 }
 
+// Function Name: main
+// Description:
+// - Register regression cases for compact-screen layout, large text, scrolling, and semantic-label
+//   regressions.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: group callback
+  // Description:
+  // - Group the regression cases for compact-screen layout, large text, scrolling, and semantic-label
+  //   regressions.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; registers the grouped cases.
   group('베타 접근성 레이아웃 회귀', () {
     const viewportCases = [
       (size: Size(320, 568), textScale: 1.6),
@@ -95,6 +136,13 @@ void main() {
     ];
 
     for (final viewportCase in viewportCases) {
+      // 함수이름: testWidgets 콜백
+      // 함수역할:
+      // - 각 화면 너비와 글씨 배율 조합에서도 환경설정 저장 버튼이 남아 있는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+      // 반환값:
+      // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
       testWidgets('환경설정은 ${viewportCase.size.width.toInt()} 너비와 '
           '${viewportCase.textScale}배 글씨에서도 저장 버튼을 유지한다', (tester) async {
         await _setViewport(tester, viewportCase.size);
@@ -108,6 +156,15 @@ void main() {
               initialSetting: const UserSetting(fontSize: 20),
               authenticationControl: authenticationControl,
               onSettingSaveRequested:
+                  // 함수이름: onSettingSaveRequested 콜백
+                  // 함수역할:
+                  // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
+                  // 매개변수:
+                  // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
+                  // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
+                  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                  // 반환값:
+                  // - 서버 동기화 상태의 설정 저장 결과.
                   ({
                     required fontSizeOption,
                     required readingSpeedOption,
@@ -129,6 +186,13 @@ void main() {
       });
     }
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 핵심 명령은 TalkBack이 읽을 수 있는 의미 라벨을 제공한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('핵심 명령은 TalkBack이 읽을 수 있는 의미 라벨을 제공한다', (tester) async {
       await _setViewport(tester, const Size(360, 640));
       final semantics = tester.ensureSemantics();
@@ -142,6 +206,15 @@ void main() {
             initialSetting: const UserSetting(),
             authenticationControl: authenticationControl,
             onSettingSaveRequested:
+                // 함수이름: onSettingSaveRequested 콜백
+                // 함수역할:
+                // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
+                // 매개변수:
+                // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
+                // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
+                // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                // 반환값:
+                // - 서버 동기화 상태의 설정 저장 결과.
                 ({
                   required fontSizeOption,
                   required readingSpeedOption,
@@ -160,6 +233,13 @@ void main() {
       semantics.dispose();
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 환경설정 선택값은 앱 일시중지와 재개 후에도 유지된다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('환경설정 선택값은 앱 일시중지와 재개 후에도 유지된다', (tester) async {
       await _setViewport(tester, const Size(360, 640));
       final authenticationControl = AuthenticationControl.development();
@@ -172,6 +252,15 @@ void main() {
             initialSetting: const UserSetting(),
             authenticationControl: authenticationControl,
             onSettingSaveRequested:
+                // 함수이름: onSettingSaveRequested 콜백
+                // 함수역할:
+                // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
+                // 매개변수:
+                // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
+                // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
+                // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                // 반환값:
+                // - 서버 동기화 상태의 설정 저장 결과.
                 ({
                   required fontSizeOption,
                   required readingSpeedOption,
@@ -196,6 +285,13 @@ void main() {
     });
 
     for (final viewportSize in const [Size(360, 640), Size(412, 915)]) {
+      // Function Name: testWidgets callback
+      // Description:
+      // - Verify that the home dashboard fits key information at every standard-text viewport size.
+      // Parameters:
+      // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+      // Returns:
+      // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
       testWidgets(
         '홈 화면은 ${viewportSize.width.toInt()}x${viewportSize.height.toInt()} '
         '기본 글씨에서 화면 높이에 맞게 핵심 정보를 표시한다',
@@ -227,13 +323,69 @@ void main() {
                 },
                 todayMedicationCompletedCount: 0,
                 todayMedicationTotalCount: 4,
+                // Function Name: nowProvider callback
+                // Description:
+                // - Supply a controllable clock so dose deadlines and reminder windows do not depend on wall time.
+                // Parameters:
+                // - None.
+                // Returns:
+                // - DateTime from DateTime(2026, 8, 30, 7).
                 nowProvider: () => DateTime(2026, 8, 30, 7),
+                // 함수이름: onPrescriptionScanRequested 콜백
+                // 함수역할:
+                // - 처방전 카메라 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onPrescriptionScanRequested: () {},
+                // 함수이름: onPrescriptionGalleryRequested 콜백
+                // 함수역할:
+                // - 처방전 갤러리 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onPrescriptionGalleryRequested: () {},
+                // 함수이름: onPillIdentificationRequested 콜백
+                // 함수역할:
+                // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onPillIdentificationRequested: () {},
+                // 함수이름: onTodayScheduleRequested 콜백
+                // 함수역할:
+                // - 오늘 일정 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onTodayScheduleRequested: () {},
+                // Function Name: onHealthRecommendationRequested callback
+                // Description:
+                // - Keep health-recommendation navigation available in the fixture without performing the action.
+                // Parameters:
+                // - None.
+                // Returns:
+                // - No value; the action is intentionally inert.
                 onHealthRecommendationRequested: () {},
+                // Function Name: onMedicationReminderRequested callback
+                // Description:
+                // - Keep reminder-settings navigation available in the fixture without performing the action.
+                // Parameters:
+                // - None.
+                // Returns:
+                // - No value; the action is intentionally inert.
                 onMedicationReminderRequested: () {},
+                // 함수이름: onUserSettingRequested 콜백
+                // 함수역할:
+                // - 사용자 설정 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onUserSettingRequested: () {},
               ),
             ),
@@ -279,6 +431,10 @@ void main() {
       (size: Size(320, 568), textScale: 1.3),
       (size: Size(360, 640), textScale: 2.0),
     ]) {
+      // 함수이름: 큰 글씨 홈 화면 스크롤 테스트
+      // 함수역할: 강제 줄바꿈 없이 표시된 기능 제목과 설명을 스크롤로 확인할 수 있는지 검사한다.
+      // 매개변수: tester (WidgetTester): 화면 배치와 상호작용을 검증하는 도구.
+      // 반환값: 모든 기능에 접근할 수 있는지 검증하는 Future<void>.
       testWidgets('홈 화면은 ${viewportCase.size.width.toInt()} 너비와 '
           '${viewportCase.textScale}배 글씨에서도 모든 기능을 스크롤해 표시한다', (tester) async {
         await _setViewport(tester, viewportCase.size);
@@ -289,12 +445,61 @@ void main() {
             home: InputPrescriptionUI(
               statusMessage: '',
               userSetting: const UserSetting(fontSize: 20),
+              // 함수이름: onPrescriptionScanRequested 콜백
+              // 함수역할:
+              // - 처방전 카메라 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값:
+              // - 없음; 외부 동작을 수행하지 않는다.
               onPrescriptionScanRequested: () {},
+              // 함수이름: onPrescriptionGalleryRequested 콜백
+              // 함수역할:
+              // - 처방전 갤러리 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값:
+              // - 없음; 외부 동작을 수행하지 않는다.
               onPrescriptionGalleryRequested: () {},
+              // 함수이름: onPillIdentificationRequested 콜백
+              // 함수역할:
+              // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값:
+              // - 없음; 외부 동작을 수행하지 않는다.
               onPillIdentificationRequested: () {},
+              // 함수이름: onTodayScheduleRequested 콜백
+              // 함수역할:
+              // - 오늘 일정 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값:
+              // - 없음; 외부 동작을 수행하지 않는다.
               onTodayScheduleRequested: () {},
+              // Function Name: onHealthRecommendationRequested callback
+              // Description:
+              // - Keep health-recommendation navigation available in the fixture without performing the action.
+              // Parameters:
+              // - None.
+              // Returns:
+              // - No value; the action is intentionally inert.
               onHealthRecommendationRequested: () {},
+              // Function Name: onMedicationReminderRequested callback
+              // Description:
+              // - Keep reminder-settings navigation available in the fixture without performing the action.
+              // Parameters:
+              // - None.
+              // Returns:
+              // - No value; the action is intentionally inert.
               onMedicationReminderRequested: () {},
+              // 함수이름: onUserSettingRequested 콜백
+              // 함수역할:
+              // - 사용자 설정 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값:
+              // - 없음; 외부 동작을 수행하지 않는다.
               onUserSettingRequested: () {},
             ),
           ),
@@ -303,11 +508,11 @@ void main() {
 
         expect(find.text('MedBuddy'), findsOneWidget);
         expect(
-          find.text(viewportCase.size.width >= 350 ? '처방전\n분석' : '처방전 분석'),
+          find.text('처방전 분석'),
           findsOneWidget,
         );
         expect(
-          find.text(viewportCase.size.width >= 350 ? '낱알약\n식별' : '낱알약 식별'),
+          find.text('낱알약 식별'),
           findsOneWidget,
         );
         await tester.drag(
@@ -316,13 +521,20 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          find.text(viewportCase.size.width >= 350 ? '복약 알림\n설정' : '복약 알림 설정'),
+          find.text('복약 알림 설정'),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);
       });
     }
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: OCR 검토 화면은 작은 화면과 2배 글씨에서 수정·분석 명령을 유지한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('OCR 검토 화면은 작은 화면과 2배 글씨에서 수정·분석 명령을 유지한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
 
@@ -347,8 +559,30 @@ void main() {
               ),
             ],
             userSetting: const UserSetting(fontSize: 20),
+            // 함수이름: onBackRequested 콜백
+            // 함수역할:
+            // - 뒤로가기 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onBackRequested: () {},
+            // 함수이름: onAnalysisRequested 콜백
+            // 함수역할:
+            // - 약 상세 분석 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onAnalysisRequested: () {},
+            // 함수이름: onMedicationScheduleChanged 콜백
+            // 함수역할:
+            // - OCR 일정 수정 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - _ [1] (int): 사용하지 않는 수정 행 인덱스.
+            // - _ [2] (MedicationSchedule): 사용하지 않는 수정 일정.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onMedicationScheduleChanged: (_, _) {},
           ),
         ),
@@ -378,6 +612,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 오늘 복약 일정은 작은 화면과 2배 글씨에서도 스크롤할 수 있다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('오늘 복약 일정은 작은 화면과 2배 글씨에서도 스크롤할 수 있다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       SharedPreferences.setMockInitialValues({});
@@ -404,6 +645,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verify that quick reminder settings expose every dose slot on a small screen with enlarged text.
+    // Parameters:
+    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
     testWidgets('복약 알림 빠른 설정은 작은 화면과 큰 글씨에서도 모든 시간대를 제공한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       SharedPreferences.setMockInitialValues({});
@@ -434,6 +682,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 홈 일정 요약은 긴 약 이름과 2배 글씨에서도 카드 높이를 늘린다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('홈 일정 요약은 긴 약 이름과 2배 글씨에서도 카드 높이를 늘린다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
 
@@ -456,6 +711,13 @@ void main() {
                 completedCount: 1,
                 totalCount: 6,
                 isLoading: false,
+                // 함수이름: onTap 콜백
+                // 함수역할:
+                // - 표시된 복약 카드 명령 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 없음; 외부 동작을 수행하지 않는다.
                 onTap: () {},
               ),
             ),
@@ -468,6 +730,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 약 상세정보는 작은 화면과 2배 글씨에서도 끝까지 스크롤된다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('약 상세정보는 작은 화면과 2배 글씨에서도 끝까지 스크롤된다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
 
@@ -496,6 +765,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 약 상세정보의 사진을 누르면 확대 화면을 열고 닫는다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('약 상세정보의 사진을 누르면 확대 화면을 열고 닫는다', (tester) async {
       await tester.pumpWidget(
         _scaledMaterialApp(
@@ -525,6 +801,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verify that medication details display noun-phrase summaries while retaining the original TTS
+    //   text.
+    // Parameters:
+    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
     testWidgets('약 상세정보는 명사형 요약을 표시하고 TTS 원문은 보존한다', (tester) async {
       const medicationDetail = MedicationDetail(
         itemName: '테스트정',
@@ -560,6 +844,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verify that separate efficacy sentences become independent noun-phrase summaries.
+    // Parameters:
+    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
     testWidgets('약 상세정보는 다중 문장 효능을 독립된 명사형으로 정리한다', (tester) async {
       const medicationDetail = MedicationDetail(
         itemName: '테스트정',
@@ -588,6 +879,14 @@ void main() {
       expect(medicationDetail.efficacy, contains('우울 증상을 완화합니다'));
       expect(tester.takeException(), isNull);
     });
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verify that analysis results keep save actions reachable with long drug names and double-size
+    //   text.
+    // Parameters:
+    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
     testWidgets('처방 분석 결과는 긴 약 이름과 2배 글씨에서도 저장 명령을 유지한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       const schedule = MedicationSchedule(
@@ -613,12 +912,41 @@ void main() {
               ),
             ],
             userSetting: const UserSetting(),
+            // 함수이름: statusMessageProvider 콜백
+            // 함수역할:
+            // - 분석 결과 검사에 불필요한 상태 문구가 표시되지 않게 한다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - 빈 문자열.
             statusMessageProvider: () => '',
             savingMedicationIndex: null,
             completedMedicationSaveIndexes: const {},
             isAllMedicationSaving: false,
+            // 함수이름: onCloseRequested 콜백
+            // 함수역할:
+            // - 분석 흐름 닫기 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - 없음; 외부 동작을 수행하지 않는다.
             onCloseRequested: () {},
+            // 함수이름: onAllMedicationSaveRequested 콜백
+            // 함수역할:
+            // - 저장 성공을 제공해 결과 화면의 저장 후 이동 명령을 검사한다.
+            // 매개변수:
+            // - 없음.
+            // 반환값:
+            // - true로 완료되는 Future<bool>.
             onAllMedicationSaveRequested: () async => true,
+            // 함수이름: onMedicationSaveRequested 콜백
+            // 함수역할:
+            // - 저장 성공을 제공해 결과 화면의 저장 후 이동 명령을 검사한다.
+            // 매개변수:
+            // - _ [1] (AnalyzedMedication): 실제 저장 없이 성공 처리할 분석 약.
+            // - _ [2] (int): 성공 대역이 사용하지 않는 저장 행 인덱스.
+            // 반환값:
+            // - true로 완료되는 Future<bool>.
             onMedicationSaveRequested: (_, _) async => true,
           ),
         ),
@@ -632,6 +960,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 건강 관리 추천은 작은 화면과 2배 글씨에서도 모든 카드를 표시한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('건강 관리 추천은 작은 화면과 2배 글씨에서도 모든 카드를 표시한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       final viewModel = MedBuddyViewModel(
@@ -661,6 +996,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 건강 관리 추천의 마지막 카드는 하단 안전영역 위에서 끝난다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('건강 관리 추천의 마지막 카드는 하단 안전영역 위에서 끝난다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       final viewModel = MedBuddyViewModel(
@@ -698,6 +1040,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Function Name: testWidgets callback
+    // Description:
+    // - Verify that every authentication option remains scrollable on a compact screen with double-size
+    //   text.
+    // Parameters:
+    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
     testWidgets('로그인 화면은 작은 화면과 2배 글씨에서도 모든 인증 수단을 스크롤한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
       final authenticationControl = AuthenticationControl.development();
@@ -719,6 +1069,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 촬영 작업 선택지는 작은 화면과 2배 글씨에서도 스크롤된다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('촬영 작업 선택지는 작은 화면과 2배 글씨에서도 스크롤된다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
 
@@ -726,8 +1083,22 @@ void main() {
         _scaledMaterialApp(
           textScale: 2,
           home: Builder(
+            // 함수이름: builder 콜백
+            // 함수역할:
+            // - 약 입력 방식 선택 화면이나 실행 버튼을 주어진 컨텍스트 아래에 구성한다.
+            // 매개변수:
+            // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+            // 반환값:
+            // - 테스트 경로 위젯 또는 대화상자 실행 버튼.
             builder: (context) => Scaffold(
               body: FilledButton(
+                // 함수이름: onPressed 콜백
+                // 함수역할:
+                // - 약 입력 방식 선택 화면을 열고 표시된 경로와 상호작용할 수 있게 한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 화면 이동 또는 대화상자 결과 Future.
                 onPressed: () => showMedicationCaptureTaskOptions(
                   context: context,
                   userSetting: const UserSetting(),
@@ -747,6 +1118,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 보호자 알림 설정은 작은 화면과 2배 글씨에서도 저장 버튼에 접근한다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
     testWidgets('보호자 알림 설정은 작은 화면과 2배 글씨에서도 저장 버튼에 접근한다', (tester) async {
       await _setViewport(tester, const Size(320, 568));
 
@@ -754,8 +1132,22 @@ void main() {
         _scaledMaterialApp(
           textScale: 2,
           home: Builder(
+            // 함수이름: builder 콜백
+            // 함수역할:
+            // - 보호자 미복용 알림 설정 화면이나 실행 버튼을 주어진 컨텍스트 아래에 구성한다.
+            // 매개변수:
+            // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+            // 반환값:
+            // - 테스트 경로 위젯 또는 대화상자 실행 버튼.
             builder: (context) => Scaffold(
               body: FilledButton(
+                // 함수이름: onPressed 콜백
+                // 함수역할:
+                // - 보호자 미복용 알림 설정 화면을 열고 표시된 경로와 상호작용할 수 있게 한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 화면 이동 또는 대화상자 결과 Future.
                 onPressed: () =>
                     SetCaregiverNotificationUI.showNotificationPopup(
                       context,
@@ -784,6 +1176,13 @@ void main() {
   });
 }
 
+// 함수이름: _openDisplayAndVoiceSettings
+// 함수역할:
+// - 화면 및 음성 설정 메뉴가 보이도록 스크롤한 뒤 열고 전환을 기다린다.
+// 매개변수:
+// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+// 반환값:
+// - 설정 화면 전환 완료.
 Future<void> _openDisplayAndVoiceSettings(WidgetTester tester) async {
   final menu = find.byKey(const ValueKey('settingsDisplayAndVoiceMenu'));
   await tester.ensureVisible(menu);
@@ -791,11 +1190,14 @@ Future<void> _openDisplayAndVoiceSettings(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-// 함수명: _setViewport
+// 함수이름: _setViewport
 // 함수역할:
-// - 각 테스트에 실제 소형·일반 휴대폰과 비슷한 논리 화면 크기를 적용한다.
+// - 테스트의 논리 화면 크기를 지정하고 픽셀 비율과 크기의 사후 복원을 등록한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+// - size (Size): 레이아웃 검사에 사용할 논리 화면 크기.
 // 반환값:
-// - 비동기 화면 크기 설정 완료 상태
+// - 화면 크기 설정 완료.
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -803,13 +1205,24 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetPhysicalSize);
 }
 
-// 함수명: _scaledMaterialApp
+// 함수이름: _scaledMaterialApp
 // 함수역할:
-// - 운영체제 접근성 글자 배율을 적용한 테스트용 앱을 구성한다.
+// - 지정한 화면에 접근성 글씨 배율을 주입하는 테스트 앱을 구성한다.
+// 매개변수:
+// - textScale (double): 하위 위젯에 적용할 접근성 글씨 배율.
+// - home (Widget): 테스트 앱의 첫 화면으로 배치할 위젯.
 // 반환값:
-// - 지정한 화면을 포함하는 MaterialApp
+// - 지정 배율의 MediaQuery로 감싼 MaterialApp.
 Widget _scaledMaterialApp({required double textScale, required Widget home}) {
   return MaterialApp(
+    // 함수이름: builder 콜백
+    // 함수역할:
+    // - 기존 하위 화면에 textScale배 글씨를 적용해 접근성 배치를 검사한다.
+    // 매개변수:
+    // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
+    // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
+    // 반환값:
+    // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(
         context,
@@ -820,6 +1233,13 @@ Widget _scaledMaterialApp({required double textScale, required Widget home}) {
   );
 }
 
+// 함수이름: _synchronizedSettingResult
+// 함수역할:
+// - 서버 동기화가 성공한 기본 설정 저장 결과를 제공한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - synchronizedWithServer가 true인 기본 설정 결과.
 UserSettingSaveResult _synchronizedSettingResult() {
   return const UserSettingSaveResult(
     setting: UserSetting(),
