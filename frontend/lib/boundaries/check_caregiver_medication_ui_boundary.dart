@@ -1,5 +1,5 @@
 // 파일명: check_caregiver_medication_ui_boundary.dart
-// 역할: 보호자가 연동 환자의 시간대별 복약 상태와 알림을 확인하는 화면을 제공한다.
+// 역할: 연동 환자의 오늘 복약 상태와 보호자 알림 설정을 제공한다.
 
 import 'dart:async';
 
@@ -21,6 +21,15 @@ import 'set_caregiver_notification_ui_boundary.dart';
 // 파일명: check_caregiver_medication_ui_boundary.dart
 // 역할: 연동 환자의 오늘 복약 일정과 시간대별 보호자 알림을 제공한다.
 
+// 클래스명: CheckCaregiverMedicationUI
+// 역할: 환자별 복약 완료 상태와 시간대별 보호자 알림을 담당한다.
+// 주요 책임:
+// - 환자별 복약 완료 상태와 시간대별 보호자 알림의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
+// 속성:
+// - caregiverHash (String): 환자 연결과 알림 조회의 보호자 해시.
+// - patientHash (String): 연동된 환자의 계정 해시.
+// - patientLabel (String?): 환자 식별에 사용할 별칭.
+// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 class CheckCaregiverMedicationUI extends StatefulWidget {
   final String caregiverHash;
   final String patientHash;
@@ -29,6 +38,17 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
   final CheckCaregiverMedication? control;
   final SetCaregiverNotification? notificationControl;
 
+  // 함수이름: CheckCaregiverMedicationUI
+  // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
+  // - caregiverHash (String): 환자 연결과 알림 조회의 보호자 해시.
+  // - patientHash (String): 연동된 환자의 계정 해시.
+  // - patientLabel (String?): 환자 식별에 사용할 별칭.
+  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - control (CheckCaregiverMedication?): 화면의 조회·변경 요청을 처리할 컨트롤러.
+  // - notificationControl (SetCaregiverNotification?): 보호자 알림 조회·저장을 처리할 컨트롤러.
+  // 반환값: 입력 설정이 반영된 CheckCaregiverMedicationUI 인스턴스.
   const CheckCaregiverMedicationUI({
     super.key,
     required this.caregiverHash,
@@ -39,11 +59,27 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
     this.notificationControl,
   });
 
+  // Function Name: createState
+  // Description: Creates the state object that coordinates a patient's dose completion and per-slot caregiver reminder controls.
+  // Parameters:
+  // - None.
+  // Returns: A new _CheckCaregiverMedicationUIState instance.
   @override
   State<CheckCaregiverMedicationUI> createState() =>
       _CheckCaregiverMedicationUIState();
 }
 
+// 클래스명: _CheckCaregiverMedicationUIState
+// 역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 화면 상태를 관리한다.
+// 주요 책임:
+// - 초기 로딩·오류·일정 부재를 구분하고 시간대별 환자 약 목록을 표시한다.
+// - 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+// - 로컬에 저장된 환자 별칭을 읽고 표시 값이 달라진 경우 반영한다.
+// 속성:
+// - _slots (List<_CaregiverScheduleSlot>): 시간대별 약품과 표시 정의를 묶은 목록.
+// - _control (CheckCaregiverMedication): 화면의 조회·변경 요청을 처리할 컨트롤러.
+// - _notificationControl (SetCaregiverNotification): 보호자 알림 조회·저장을 처리할 컨트롤러.
+// - _lastSynchronizedAt (DateTime?): 마지막으로 환자 상태를 성공적으로 갱신한 시각.
 class _CheckCaregiverMedicationUIState
     extends State<CheckCaregiverMedicationUI> {
   static const Duration _refreshInterval = Duration(seconds: 15);
@@ -92,10 +128,20 @@ class _CheckCaregiverMedicationUIState
   bool _isNotificationRefreshInFlight = false;
   late String _patientLabel;
 
+  // 함수이름: _isEnglish
+  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get _isEnglish {
     return widget.userSetting.language.trim().toLowerCase().startsWith('en');
   }
 
+  // 함수이름: initState
+  // 함수역할: 환자 별칭·조회 컨트롤러를 준비하고 복약·알림 초기 조회와 15초 주기 갱신을 시작한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void initState() {
     super.initState();
@@ -115,10 +161,20 @@ class _CheckCaregiverMedicationUIState
     unawaited(_loadPatientLabel());
     _refreshTimer = Timer.periodic(
       _refreshInterval,
+      // 함수이름: initState.periodic callback
+      // 함수역할: 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+      // 매개변수:
+      // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
       (_) => unawaited(_refreshCaregiverData()),
     );
   }
 
+  // 함수이름: dispose
+  // 함수역할: _refreshTimer, _control, _notificationControl 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
     _refreshTimer?.cancel();
@@ -131,6 +187,11 @@ class _CheckCaregiverMedicationUIState
     super.dispose();
   }
 
+  // 함수이름: build
+  // 함수역할: 현재 입력값과 상태를 반영해 환자별 복약 완료 상태와 시간대별 보호자 알림 화면을 구성한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 환자별 복약 완료 상태와 시간대별 보호자 알림에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     final schedules =
@@ -147,6 +208,11 @@ class _CheckCaregiverMedicationUIState
             patientLabel: _patientLabel,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
+            // 함수이름: build.onBack callback
+            // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+            // 매개변수:
+            // - 없음.
+            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
             onBack: () => Navigator.pop(context),
           ),
           _CaregiverSynchronizationBanner(
@@ -168,6 +234,11 @@ class _CheckCaregiverMedicationUIState
     );
   }
 
+  // 함수이름: _buildBody
+  // 함수역할: 초기 로딩·오류·일정 부재를 구분하고 시간대별 환자 약 목록을 표시한다.
+  // 매개변수:
+  // - schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
+  // 반환값: 환자별 복약 완료 상태와 시간대별 보호자 알림에 쓰는 위젯 트리.
   Widget _buildBody(List<MedicationSchedule> schedules) {
     if (_isLoading && _medicationInfo == null) {
       return const Center(
@@ -236,12 +307,22 @@ class _CheckCaregiverMedicationUIState
             isEnglish: _isEnglish,
             userSetting: widget.userSetting,
             medications: schedules
+                // 함수이름: _buildBody.where callback
+                // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 대해 `schedule.slotKeys.contains(slot.key)` 조건으로 컬렉션 항목을 판별한다.
+                // 매개변수:
+                // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+                // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
                 .where((schedule) => schedule.slotKeys.contains(slot.key))
                 .toList(growable: false),
             notificationSetting: _notificationSettings[slot.key],
             isNotificationLoading:
                 _isNotificationLoading ||
                 _notificationSavingSlotKey == slot.key,
+            // 함수이름: _buildBody.onNotification callback
+            // 함수역할: 알림 설정을 확보한 뒤 선택 시간대의 편집 창을 열고 실제 변경만 저장한다.
+            // 매개변수:
+            // - 없음.
+            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
             onNotification: () => _showCaregiverNotificationPopup(slot),
             onMedicationTap: _openMedicationDetail,
           ),
@@ -252,10 +333,10 @@ class _CheckCaregiverMedicationUIState
   }
 
   // 함수이름: _refreshCaregiverData
-  // 함수역할:
-  // - 선택 환자의 복약 일정과 보호자 알림 설정을 같은 주기로 갱신한다.
-  // 반환값:
-  // - 없음
+  // 함수역할: 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _refreshCaregiverData() async {
     await Future.wait([
       _requestPatientMedicationInfo(silent: true),
@@ -264,10 +345,10 @@ class _CheckCaregiverMedicationUIState
   }
 
   // 함수이름: _loadPatientLabel
-  // 함수역할:
-  // - 현재 보호자가 지정한 환자 표시 이름을 로컬 저장소에서 읽어 헤더에 반영한다.
-  // 반환값:
-  // - 없음
+  // 함수역할: 로컬에 저장된 환자 별칭을 읽고 표시 값이 달라진 경우 반영한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _loadPatientLabel() async {
     final label = await _localStateControl.loadLabel(
       caregiverHash: widget.caregiverHash,
@@ -276,15 +357,30 @@ class _CheckCaregiverMedicationUIState
     if (!mounted || label == _patientLabel) {
       return;
     }
+    // 함수이름: _loadPatientLabel.setState callback
+    // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_patientLabel = label`로 갱신한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() => _patientLabel = label);
   }
 
+  // 함수이름: _requestPatientMedicationInfo
+  // 함수역할: 중복 조회를 막으며 환자의 오늘 일정·동기화 시각·오류 상태를 갱신한다.
+  // 매개변수:
+  // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _requestPatientMedicationInfo({bool silent = false}) async {
     if (_isRefreshInFlight) {
       return;
     }
     _isRefreshInFlight = true;
     if (mounted && !silent) {
+      // Function Name: _requestPatientMedicationInfo.setState callback
+      // Description: Updates the local input or request state for a patient's dose completion and per-slot caregiver reminder controls: `_isLoading = true; _errorMessage = null`.
+      // Parameters:
+      // - None.
+      // Returns: No payload; applies the captured state changes.
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -295,6 +391,11 @@ class _CheckCaregiverMedicationUIState
         patientHash: widget.patientHash,
       );
       if (mounted) {
+        // 함수이름: _requestPatientMedicationInfo.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_medicationInfo = info; _errorMessage = null; _lastSynchronizedAt = DateTime.now()`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
           _medicationInfo = info;
           _errorMessage = null;
@@ -303,6 +404,11 @@ class _CheckCaregiverMedicationUIState
       }
     } catch (error) {
       if (mounted) {
+        // 함수이름: _requestPatientMedicationInfo.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_errorMessage = UserFacingErrorMessage.resolve(error, isEnglish: _isEnglish)`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
           _errorMessage = UserFacingErrorMessage.resolve(
             error,
@@ -313,11 +419,22 @@ class _CheckCaregiverMedicationUIState
     } finally {
       _isRefreshInFlight = false;
       if (mounted && !silent) {
+        // Function Name: _requestPatientMedicationInfo.setState callback
+        // Description: Updates the local input or request state for a patient's dose completion and per-slot caregiver reminder controls: `_isLoading = false`.
+        // Parameters:
+        // - None.
+        // Returns: No payload; applies the captured state changes.
         setState(() => _isLoading = false);
       }
     }
   }
 
+  // 함수이름: _requestCaregiverNotificationSettings
+  // 함수역할: 중복 요청을 막고 환자별 알림 설정을 조회하며 요청 시 오류를 안내한다.
+  // 매개변수:
+  // - showError (bool): 조회 실패를 사용자에게 바로 안내할지 여부.
+  // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
+  // 반환값: 성공하면 true, 실패하거나 요청을 수행하지 못하면 false로 완료되는 Future.
   Future<bool> _requestCaregiverNotificationSettings({
     bool showError = false,
     bool silent = false,
@@ -327,6 +444,11 @@ class _CheckCaregiverMedicationUIState
     }
     _isNotificationRefreshInFlight = true;
     if (mounted && !silent) {
+      // 함수이름: _requestCaregiverNotificationSettings.setState callback
+      // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_isNotificationLoading = true`로 갱신한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _isNotificationLoading = true);
     }
     try {
@@ -335,6 +457,11 @@ class _CheckCaregiverMedicationUIState
             patientHash: widget.patientHash,
           );
       if (mounted) {
+        // 함수이름: _requestCaregiverNotificationSettings.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSettings = settings`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() => _notificationSettings = settings);
       }
       return true;
@@ -348,11 +475,21 @@ class _CheckCaregiverMedicationUIState
     } finally {
       _isNotificationRefreshInFlight = false;
       if (mounted && !silent) {
+        // Function Name: _requestCaregiverNotificationSettings.setState callback
+        // Description: Updates the local input or request state for a patient's dose completion and per-slot caregiver reminder controls: `_isNotificationLoading = false`.
+        // Parameters:
+        // - None.
+        // Returns: No payload; applies the captured state changes.
         setState(() => _isNotificationLoading = false);
       }
     }
   }
 
+  // 함수이름: _showCaregiverNotificationPopup
+  // 함수역할: 알림 설정을 확보한 뒤 선택 시간대의 편집 창을 열고 실제 변경만 저장한다.
+  // 매개변수:
+  // - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showCaregiverNotificationPopup(
     _CaregiverScheduleSlot slot,
   ) async {
@@ -396,10 +533,21 @@ class _CheckCaregiverMedicationUIState
     await _saveCaregiverNotificationSetting(slot, selectedSetting);
   }
 
+  // 함수이름: _saveCaregiverNotificationSetting
+  // 함수역할: 시간대별 알림 조건·마감 시각을 저장하고 진행·성공·실패 상태를 반영한다.
+  // 매개변수:
+  // - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
+  // - selectedSetting (CaregiverNotification): 표시하거나 편집할 복약 시간대의 알림 설정.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _saveCaregiverNotificationSetting(
     _CaregiverScheduleSlot slot,
     CaregiverNotification selectedSetting,
   ) async {
+    // 함수이름: _saveCaregiverNotificationSetting.setState callback
+    // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSavingSlotKey = slot.key`로 갱신한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() => _notificationSavingSlotKey = slot.key);
     try {
       final savedSetting = await _notificationControl
@@ -411,6 +559,11 @@ class _CheckCaregiverMedicationUIState
             deadlineMinute: selectedSetting.deadlineMinute,
           );
       if (mounted) {
+        // 함수이름: _saveCaregiverNotificationSetting.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSettings = {..._notificationSettings, slot.key : savedSetting}`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
           _notificationSettings = {
             ..._notificationSettings,
@@ -431,21 +584,41 @@ class _CheckCaregiverMedicationUIState
       }
     } finally {
       if (mounted) {
+        // 함수이름: _saveCaregiverNotificationSetting.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSavingSlotKey = null`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() => _notificationSavingSlotKey = null);
       }
     }
   }
 
+  // Function Name: _showMessage
+  // Description: Replaces the current snackbar with the operation result.
+  // Parameters:
+  // - message (String): Visible wording for the current result, error, or state.
+  // Returns: None; updates state or performs the documented action.
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // 함수이름: _openMedicationDetail
+  // 함수역할: 복약 일정에서 상세 모델을 구성해 약 상세 화면을 연다.
+  // 매개변수:
+  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _openMedicationDetail(MedicationSchedule schedule) {
     Navigator.push(
       context,
       MaterialPageRoute(
+        // 함수이름: _openMedicationDetail.builder callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
+        // 매개변수:
+        // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+        // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
         builder: (context) => CheckMedicationDetailUI(
           medicationDetail: MedicationDetail.fromMedicationSchedule(schedule),
           userSetting: widget.userSetting,
@@ -454,6 +627,11 @@ class _CheckCaregiverMedicationUIState
     );
   }
 
+  // 함수이름: _calculateProgress
+  // 함수역할: 약품별 시간대 완료 상태를 합산해 완료 수와 전체 복약 횟수를 계산한다.
+  // 매개변수:
+  // - schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
+  // 반환값: ({int completedCount, int totalCount}): 완료 수와 전체 복약 시간대 수.
   static ({int completedCount, int totalCount}) _calculateProgress(
     List<MedicationSchedule> schedules,
   ) {
@@ -472,7 +650,14 @@ class _CheckCaregiverMedicationUIState
 }
 
 // 클래스명: _CaregiverSynchronizationBanner
-// 역할: 보호자가 보고 있는 복약 상태의 동기화 시점과 지연 여부를 명확히 안내한다.
+// 역할: 최근 동기화 시점·지연 안내와 수동 새로고침을 담당한다.
+// 주요 책임:
+// - 부모가 전달한 표시값과 동작을 반영해 최근 동기화 시점·지연 안내와 수동 새로고침 위젯을 구성한다.
+// 속성:
+// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// - lastSynchronizedAt (DateTime?): 마지막으로 환자 상태를 성공적으로 갱신한 시각.
+// - hasSynchronizationError (bool): 이전 환자 상태 갱신이 실패했는지 여부.
+// - isRefreshing (bool): 진행 중 표시를 보여줄지 여부.
 class _CaregiverSynchronizationBanner extends StatelessWidget {
   final bool isEnglish;
   final DateTime? lastSynchronizedAt;
@@ -480,6 +665,15 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
   final bool isRefreshing;
   final VoidCallback onRefresh;
 
+  // 함수이름: _CaregiverSynchronizationBanner
+  // 함수역할: 최근 동기화 시점·지연 안내와 수동 새로고침에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // - lastSynchronizedAt (DateTime?): 마지막으로 환자 상태를 성공적으로 갱신한 시각.
+  // - hasSynchronizationError (bool): 이전 환자 상태 갱신이 실패했는지 여부.
+  // - isRefreshing (bool): 진행 중 표시를 보여줄지 여부.
+  // - onRefresh (VoidCallback): 실패하거나 오래된 화면 데이터를 다시 조회할 콜백.
+  // 반환값: 입력 설정이 반영된 _CaregiverSynchronizationBanner 인스턴스.
   const _CaregiverSynchronizationBanner({
     required this.isEnglish,
     required this.lastSynchronizedAt,
@@ -488,6 +682,11 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
     required this.onRefresh,
   });
 
+  // 함수이름: build
+  // 함수역할: 현재 입력값과 상태를 반영해 최근 동기화 시점·지연 안내와 수동 새로고침 화면을 구성한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 최근 동기화 시점·지연 안내와 수동 새로고침에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     final isDelayed = hasSynchronizationError && lastSynchronizedAt != null;
@@ -545,6 +744,11 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
     );
   }
 
+  // 함수이름: _message
+  // 함수역할: 동기화 여부와 마지막 갱신 이후 경과 시간을 조합해 상태 문구를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String _message() {
     if (lastSynchronizedAt == null) {
       return isEnglish
@@ -564,6 +768,11 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
         : '환자가 체크한 복약 상태 · $elapsedLabel 업데이트';
   }
 
+  // 함수이름: _elapsedLabel
+  // 함수역할: 10초 미만은 방금으로, 그 외에는 초·분·시간 단위로 경과 시간을 표시한다.
+  // 매개변수:
+  // - elapsed (Duration): 마지막 동기화 이후 경과 시간.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String _elapsedLabel(Duration elapsed) {
     if (elapsed.inSeconds < 10) {
       return isEnglish ? 'just now' : '방금';
@@ -582,6 +791,15 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
   }
 }
 
+// 클래스명: _CaregiverScheduleHeader
+// 역할: 연동 환자 이름과 복약 완료 수·진행률을 담당한다.
+// 주요 책임:
+// - 부모가 전달한 표시값과 동작을 반영해 연동 환자 이름과 복약 완료 수·진행률 위젯을 구성한다.
+// 속성:
+// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// - patientLabel (String): 환자 식별에 사용할 별칭.
+// - completedCount (int): 완료한 복약 횟수.
+// - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
 class _CaregiverScheduleHeader extends StatelessWidget {
   final bool isEnglish;
   final String patientLabel;
@@ -589,6 +807,15 @@ class _CaregiverScheduleHeader extends StatelessWidget {
   final int totalCount;
   final VoidCallback onBack;
 
+  // 함수이름: _CaregiverScheduleHeader
+  // 함수역할: 연동 환자 이름과 복약 완료 수·진행률에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // - patientLabel (String): 환자 식별에 사용할 별칭.
+  // - completedCount (int): 완료한 복약 횟수.
+  // - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
+  // - onBack (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
+  // 반환값: 입력 설정이 반영된 _CaregiverScheduleHeader 인스턴스.
   const _CaregiverScheduleHeader({
     required this.isEnglish,
     required this.patientLabel,
@@ -597,6 +824,11 @@ class _CaregiverScheduleHeader extends StatelessWidget {
     required this.onBack,
   });
 
+  // 함수이름: build
+  // 함수역할: 현재 입력값과 상태를 반영해 연동 환자 이름과 복약 완료 수·진행률 화면을 구성한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 연동 환자 이름과 복약 완료 수·진행률에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
@@ -695,6 +927,15 @@ class _CaregiverScheduleHeader extends StatelessWidget {
   }
 }
 
+// 클래스명: _CaregiverTimeSlotCard
+// 역할: 시간대별 환자 약 목록과 보호자 알림 설정을 담당한다.
+// 주요 책임:
+// - 부모가 전달한 표시값과 동작을 반영해 시간대별 환자 약 목록과 보호자 알림 설정 위젯을 구성한다.
+// 속성:
+// - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
+// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+// - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
 class _CaregiverTimeSlotCard extends StatelessWidget {
   final _CaregiverScheduleSlot slot;
   final bool isEnglish;
@@ -705,6 +946,18 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   final VoidCallback onNotification;
   final ValueChanged<MedicationSchedule> onMedicationTap;
 
+  // 함수이름: _CaregiverTimeSlotCard
+  // 함수역할: 시간대별 환자 약 목록과 보호자 알림 설정에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
+  // - notificationSetting (CaregiverNotification?): 현재 또는 사용자가 선택한 시간대 알림 설정.
+  // - isNotificationLoading (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
+  // - onNotification (VoidCallback): 해당 시간대의 알림 설정을 여는 콜백.
+  // - onMedicationTap (ValueChanged<MedicationSchedule>): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
+  // 반환값: 입력 설정이 반영된 _CaregiverTimeSlotCard 인스턴스.
   const _CaregiverTimeSlotCard({
     required this.slot,
     required this.isEnglish,
@@ -716,6 +969,11 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
     required this.onMedicationTap,
   });
 
+  // 함수이름: build
+  // 함수역할: 현재 입력값과 상태를 반영해 시간대별 환자 약 목록과 보호자 알림 설정 화면을 구성한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 시간대별 환자 약 목록과 보호자 알림 설정에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -817,6 +1075,11 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                 schedule: medications[index],
                 slotKey: slot.key,
                 isEnglish: isEnglish,
+                // 함수이름: build.onTap callback
+                // 함수역할: 시간대별 환자 약 목록과 보호자 알림 설정에서 캡처된 작업 `onMedicationTap(medications[index])`을 실행한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                 onTap: () => onMedicationTap(medications[index]),
               ),
               if (index < medications.length - 1)
@@ -828,12 +1091,29 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   }
 }
 
+// 클래스명: _CaregiverMedicationRow
+// 역할: 환자 약 한 건의 복용량·체크 상태와 상세 진입을 담당한다.
+// 주요 책임:
+// - 부모가 전달한 표시값과 동작을 반영해 환자 약 한 건의 복용량·체크 상태와 상세 진입 위젯을 구성한다.
+// 속성:
+// - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+// - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _CaregiverMedicationRow extends StatelessWidget {
   final MedicationSchedule schedule;
   final String slotKey;
   final bool isEnglish;
   final VoidCallback onTap;
 
+  // 함수이름: _CaregiverMedicationRow
+  // 함수역할: 환자 약 한 건의 복용량·체크 상태와 상세 진입에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
+  // 반환값: 입력 설정이 반영된 _CaregiverMedicationRow 인스턴스.
   const _CaregiverMedicationRow({
     required this.schedule,
     required this.slotKey,
@@ -841,6 +1121,11 @@ class _CaregiverMedicationRow extends StatelessWidget {
     required this.onTap,
   });
 
+  // 함수이름: build
+  // 함수역할: 현재 입력값과 상태를 반영해 환자 약 한 건의 복용량·체크 상태와 상세 진입 화면을 구성한다.
+  // 매개변수:
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 환자 약 한 건의 복용량·체크 상태와 상세 진입에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     final isCompleted = schedule.isSlotCompleted(slotKey);
@@ -898,16 +1183,38 @@ class _CaregiverMedicationRow extends StatelessWidget {
     );
   }
 
+  // 함수이름: _dosageLabel
+  // 함수역할: 일정 모델이 제공하는 언어별 1회 복용량 표기를 사용한다.
+  // 매개변수:
+  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   static String _dosageLabel(MedicationSchedule schedule, bool isEnglish) {
     return schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko');
   }
 }
 
+// Class Name: _MedicationThumbnail
+// Role: Represents a medication thumbnail with missing-image and loading-failure fallbacks.
+// Responsibilities:
+// - Composes a medication thumbnail with missing-image and loading-failure fallbacks using the display values and actions supplied by its parent.
+// Attributes:
+// - schedule (MedicationSchedule): Medication schedule containing name, dosage, days, slots, and completion state.
 class _MedicationThumbnail extends StatelessWidget {
   final MedicationSchedule schedule;
 
+  // 함수이름: _MedicationThumbnail
+  // 함수역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+  // 반환값: 입력 설정이 반영된 _MedicationThumbnail 인스턴스.
   const _MedicationThumbnail({required this.schedule});
 
+  // Function Name: build
+  // Description: Renders a medication thumbnail with missing-image and loading-failure fallbacks from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for a medication thumbnail with missing-image and loading-failure fallbacks.
   @override
   Widget build(BuildContext context) {
     final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
@@ -928,6 +1235,13 @@ class _MedicationThumbnail extends StatelessWidget {
           : Image.network(
               imageUrl,
               fit: BoxFit.contain,
+              // 함수이름: build.errorBuilder callback
+              // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
+              // 매개변수:
+              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+              // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
               errorBuilder: (_, _, _) => const Icon(
                 Icons.image_not_supported_outlined,
                 color: MedBuddyColors.textLight,
@@ -937,12 +1251,30 @@ class _MedicationThumbnail extends StatelessWidget {
   }
 }
 
+// 클래스명: _CaregiverScheduleSlot
+// 역할: 복약 시간대 키·기본 시각·색상·아이콘을 담당한다.
+// 주요 책임:
+// - 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
+// - 시간대 키를 언어별 이름으로 변환하고 알 수 없는 키에는 일정 제목을 사용한다.
+// 속성:
+// - key (String): 복약 시간대를 구분하는 식별 문자열.
+// - hour (int): 24시간제 시 값.
+// - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
+// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
 class _CaregiverScheduleSlot {
   final String key;
   final int hour;
   final Color color;
   final IconData icon;
 
+  // 함수이름: _CaregiverScheduleSlot
+  // 함수역할: 복약 시간대 키·기본 시각·색상·아이콘 관련 값을 _CaregiverScheduleSlot 인스턴스에 담는다.
+  // 매개변수:
+  // - key (String): 복약 시간대를 구분하는 식별 문자열.
+  // - hour (int): 24시간제 시 값.
+  // - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
+  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
+  // 반환값: 입력 설정이 반영된 _CaregiverScheduleSlot 인스턴스.
   const _CaregiverScheduleSlot({
     required this.key,
     required this.hour,
@@ -950,8 +1282,18 @@ class _CaregiverScheduleSlot {
     required this.icon,
   });
 
+  // 함수이름: timeLabel
+  // 함수역할: 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get timeLabel => '${hour.toString().padLeft(2, '0')}:00';
 
+  // 함수이름: title
+  // 함수역할: 시간대 키를 언어별 이름으로 변환하고 알 수 없는 키에는 일정 제목을 사용한다.
+  // 매개변수:
+  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String title(bool isEnglish) {
     return switch (key) {
       'morning' => isEnglish ? 'Morning' : '아침',

@@ -6,14 +6,19 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: check_today_medication_info_ui_boundary.dart
-// 역할: 홈 화면에서 오늘 복약 일정의 다음 행동을 요약해 보여준다.
+// 역할: 홈의 다음 복약 시간과 오늘 완료 진행률 요약을 제공한다.
 
-// 클래스명: CheckTodayMedicationInfoUI
-// 역할: 다음 복약 시간과 남은 약 개수, 오늘의 완료 진행률을 한 카드에 표시한다.
-// 주요 책임:
-// - 복약 완료 상태와 알림 시간을 조합해 사용자가 다음에 확인할 시간대를 찾는다.
-// - 일정이 없거나 모두 완료된 상태를 사용자 설정 언어와 글자 크기에 맞게 안내한다.
-// - 카드를 누르면 오늘의 복약 일정 화면으로 이동하도록 요청한다.
+// Class Name: CheckTodayMedicationInfoUI
+// Role: Represents the next dose, remaining medications, and today's progress summary.
+// Responsibilities:
+// - Combines completion status and reminder times to find the next dose slot.
+// - Adapts no-schedule and all-complete messages to language and text size.
+// - Requests today's schedule when the card is tapped.
+// Attributes:
+// - title (String): Heading shown for the screen, section, or item.
+// - noMedicationLabel (String): Fallback wording when a value or medication information is unavailable.
+// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
 class CheckTodayMedicationInfoUI extends StatelessWidget {
   static const List<String> _slotOrder = [
     'morning',
@@ -36,6 +41,24 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
   final VoidCallback? onTap;
   final DateTime Function()? nowProvider;
 
+  // 함수이름: CheckTodayMedicationInfoUI
+  // 함수역할: 다음 복약 시간·남은 약·오늘 진행률 요약에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
+  // - title (String): 화면·구역·항목에 표시할 제목.
+  // - noMedicationLabel (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
+  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
+  // - reminderSettings (Map<String, MedicationAlarm>): 시간대 키별 알림 설정.
+  // - completedCount (int): 완료한 복약 횟수.
+  // - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
+  // - isLoading (bool): 진행 중 표시를 보여줄지 여부.
+  // - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
+  // - nowProvider (DateTime Function()?): 현재 시각을 공급하는 함수; 생략하면 기기 현재 시각 사용.
+  // - compact (bool): 공간을 줄인 카드·상단 배치를 사용할지 여부.
+  // - largeTextGridLayout (bool): 큰 글씨 전용 격자 배치를 사용할지 여부.
+  // - largeGridTitle (String?): 화면·구역·항목에 표시할 제목.
+  // 반환값: 입력 설정이 반영된 CheckTodayMedicationInfoUI 인스턴스.
   const CheckTodayMedicationInfoUI({
     super.key,
     required this.title,
@@ -53,6 +76,11 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     this.largeGridTitle,
   });
 
+  // Function Name: build
+  // Description: Renders the next dose, remaining medications, and today's progress summary from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the next dose, remaining medications, and today's progress summary.
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
@@ -263,14 +291,19 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     );
   }
 
+  // 함수이름: _isEnglish
+  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get _isEnglish =>
       userSetting.language.trim().toLowerCase().startsWith('en');
 
-  // 함수명: _buildScheduleSummary
-  // 역할:
-  // - 완료되지 않은 복약 시간대 중 현재 시각과 가장 가까운 다음 행동을 계산한다.
-  // 반환값:
-  // - 홈 카드에 표시할 주 문구와 보조 문구
+  // 함수이름: _buildScheduleSummary
+  // 함수역할: 완료되지 않은 복약 시간대 중 현재 시각과 가장 가까운 다음 행동을 계산한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: _TodayScheduleSummary: 다음 복약·미복용·완료 상태의 홈 요약 문구.
   _TodayScheduleSummary _buildScheduleSummary() {
     if (isLoading) {
       return _TodayScheduleSummary(
@@ -295,6 +328,11 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     final pendingSlots = <_PendingMedicationSlot>[];
     for (final slotKey in _slotOrder) {
       final pendingSchedules = schedules
+          // 함수이름: _buildScheduleSummary.where callback
+          // 함수역할: 다음 복약 시간·남은 약·오늘 진행률 요약에 대해 `schedule.slotKeys.contains(slotKey) && !schedule.isSlotCompleted(slotKey)` 조건으로 컬렉션 항목을 판별한다.
+          // 매개변수:
+          // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+          // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
           .where((schedule) {
             return schedule.slotKeys.contains(slotKey) &&
                 !schedule.isSlotCompleted(slotKey);
@@ -333,7 +371,17 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
 
     final nextSlot =
         pendingSlots.cast<_PendingMedicationSlot?>().firstWhere(
+          // 함수이름: _buildScheduleSummary.firstWhere callback
+          // 함수역할: 다음 복약 시간·남은 약·오늘 진행률 요약에 대해 `!slot!.scheduledAt.isBefore(now)` 조건으로 컬렉션 항목을 판별한다.
+          // 매개변수:
+          // - slot (콜백 계약에서 추론): 복약 시간대의 식별·시각·표시 정보.
+          // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
           (slot) => !slot!.scheduledAt.isBefore(now),
+          // 함수이름: _buildScheduleSummary.orElse callback
+          // 함수역할: 다음 복약 시간·남은 약·오늘 진행률 요약의 캡처된 상태에서 `null` 값을 제공한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값: `null`의 값.
           orElse: () => null,
         ) ??
         pendingSlots.first;
@@ -360,6 +408,11 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
     );
   }
 
+  // 함수이름: _slotLabel
+  // 함수역할: 복약 시간대 키를 한국어·영어 이름으로 변환하고 알 수 없는 키는 그대로 표시한다.
+  // 매개변수:
+  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String _slotLabel(String slotKey) {
     if (_isEnglish) {
       return switch (slotKey) {
@@ -380,11 +433,26 @@ class CheckTodayMedicationInfoUI extends StatelessWidget {
   }
 }
 
+// 클래스명: _PendingMedicationSlot
+// 역할: 미완료 시간대의 예정 시각과 남은 약 개수를 담당한다.
+// 주요 책임:
+// - 미완료 시간대의 예정 시각과 남은 약 개수 관련 필드 값을 하나의 객체로 묶어 전달한다.
+// 속성:
+// - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+// - scheduledAt (DateTime): 해당 시간대의 실제 예정 날짜·시각.
+// - medicationCount (int): 해당 시간대 또는 요약에 포함된 약품 수.
 class _PendingMedicationSlot {
   final String slotKey;
   final DateTime scheduledAt;
   final int medicationCount;
 
+  // 함수이름: _PendingMedicationSlot
+  // 함수역할: 미완료 시간대의 예정 시각과 남은 약 개수 관련 값을 _PendingMedicationSlot 인스턴스에 담는다.
+  // 매개변수:
+  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
+  // - scheduledAt (DateTime): 해당 시간대의 실제 예정 날짜·시각.
+  // - medicationCount (int): 해당 시간대 또는 요약에 포함된 약품 수.
+  // 반환값: 입력 설정이 반영된 _PendingMedicationSlot 인스턴스.
   const _PendingMedicationSlot({
     required this.slotKey,
     required this.scheduledAt,
@@ -392,11 +460,26 @@ class _PendingMedicationSlot {
   });
 }
 
+// 클래스명: _TodayScheduleSummary
+// 역할: 홈 카드의 주 문구·보조 문구·행동 필요 여부를 담당한다.
+// 주요 책임:
+// - 홈 카드의 주 문구·보조 문구·행동 필요 여부 관련 필드 값을 하나의 객체로 묶어 전달한다.
+// 속성:
+// - primaryText (String): 요약의 주된 안내 문구.
+// - secondaryText (String): 요약의 보조 진행·약품 안내.
+// - isActionable (bool): 사용자 확인이나 복약 처리가 필요한 요약 상태.
 class _TodayScheduleSummary {
   final String primaryText;
   final String secondaryText;
   final bool isActionable;
 
+  // 함수이름: _TodayScheduleSummary
+  // 함수역할: 홈 카드의 주 문구·보조 문구·행동 필요 여부 관련 값을 _TodayScheduleSummary 인스턴스에 담는다.
+  // 매개변수:
+  // - primaryText (String): 요약의 주된 안내 문구.
+  // - secondaryText (String): 요약의 보조 진행·약품 안내.
+  // - isActionable (bool): 사용자 확인이나 복약 처리가 필요한 요약 상태.
+  // 반환값: 입력 설정이 반영된 _TodayScheduleSummary 인스턴스.
   const _TodayScheduleSummary({
     required this.primaryText,
     this.secondaryText = '',

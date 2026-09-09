@@ -1,5 +1,5 @@
-// 파일명: input_prescription_ui_boundary.dart
-// 역할: 처방전, 낱알약과 직접 등록 중 입력 방법을 선택하는 화면을 제공한다.
+// File Name: input_prescription_ui_boundary.dart
+// Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
 
 import 'package:flutter/material.dart';
 
@@ -12,12 +12,17 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// 클래스명: InputPrescriptionUI
-// 역할: 오늘의 복약 요약과 중복되지 않는 네 가지 빠른 기능을 제공하는 홈 화면이다.
-// 주요 책임:
-// - 사용자 설정에 맞춘 홈 화면 문구와 글자 크기를 보여준다.
-// - 카메라/갤러리 처방전 입력 방식을 선택할 수 있게 한다.
-// - OCR 진행 중에는 입력 화면 대신 진행 상태를 보여준다.
+// Class Name: InputPrescriptionUI
+// Role: Represents medication status and quick medication input or lookup actions.
+// Responsibilities:
+// - Applies the user's home wording and text size.
+// - Offers camera and gallery prescription input.
+// - Replaces input with progress while OCR is running.
+// Attributes:
+// - statusMessage (String): Visible wording for the current result, error, or state.
+// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+// - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
 class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
@@ -41,6 +46,30 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onUserSettingRequested;
   final bool isAnalyzing;
 
+  // Function Name: InputPrescriptionUI
+  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - todayMedicationCompletedCount (int): Number of completed doses.
+  // - todayMedicationTotalCount (int): Total scheduled doses or operation items.
+  // - isTodayScheduleLoading (bool): Whether to show the in-progress state.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // - onPrescriptionScanRequested (VoidCallback?): Callback requesting prescription capture or recapture through the guided camera.
+  // - onPrescriptionGalleryRequested (VoidCallback?): Callback selecting a prescription photo from the gallery.
+  // - onPillIdentificationRequested (VoidCallback?): Callback opening pill-photo identification.
+  // - onManualMedicationRequested (VoidCallback?): Callback opening manual medication and schedule entry.
+  // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
+  // - onNextMedicationCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
+  // - onNearbyPharmacyRequested (VoidCallback?): Callback opening nearby-pharmacy search.
+  // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
+  // - onMedicationReminderRequested (VoidCallback?): Callback opening the associated slot's reminder settings.
+  // - onUserSettingRequested (VoidCallback?): Callback opening user settings.
+  // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI({
     super.key,
     required this.statusMessage,
@@ -64,6 +93,12 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onUserSettingRequested,
   }) : isAnalyzing = false;
 
+  // Function Name: InputPrescriptionUI.analyzing
+  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
     : userSetting = const UserSetting(),
       todayMedicationScheduleList = const [],
@@ -85,6 +120,11 @@ class InputPrescriptionUI extends StatelessWidget {
       onUserSettingRequested = null,
       isAnalyzing = true;
 
+  // Function Name: build
+  // Description: Renders medication status and quick medication input or lookup actions from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for medication status and quick medication input or lookup actions.
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
@@ -102,6 +142,12 @@ class InputPrescriptionUI extends StatelessWidget {
             _HomeHeader(text: text, onSettingPressed: onUserSettingRequested),
             Expanded(
               child: LayoutBuilder(
+                // Function Name: build.builder callback
+                // Description: Composes medication status and quick medication input or lookup actions with ValueKey, BoxConstraints, SizedBox for the active layout.
+                // Parameters:
+                // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+                // - viewportConstraints (BoxConstraints): Size limits provided by the scrolling viewport.
+                // Returns: Widget subtree for the described layout or fallback.
                 builder: (context, viewportConstraints) {
                   final textScale =
                       MediaQuery.textScalerOf(context).scale(16) / 16;
@@ -145,6 +191,12 @@ class InputPrescriptionUI extends StatelessWidget {
                             ),
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
+                              // Function Name: build.builder callback
+                              // Description: Composes medication status and quick medication input or lookup actions with ValueKey, SizedBox, NeverScrollableScrollPhysics for the active layout.
+                              // Parameters:
+                              // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+                              // - constraints (BoxConstraints): Width and height constraints supplied by the parent layout.
+                              // Returns: Widget subtree for the described layout or fallback.
                               builder: (context, constraints) {
                                 final useGrid =
                                     MediaQuery.sizeOf(context).width >= 350;
@@ -163,6 +215,11 @@ class InputPrescriptionUI extends StatelessWidget {
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     largeGridTitle:
                                         text.largePrescriptionAnalysis,
+                                    // Function Name: build.onTap callback
+                                    // Description: Connects medication status and quick medication input or lookup actions to the captured operation `_showAnalysisTaskOptions(context)`.
+                                    // Parameters:
+                                    // - None.
+                                    // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                                     onTap: () =>
                                         _showAnalysisTaskOptions(context),
                                   ),
@@ -286,13 +343,10 @@ class InputPrescriptionUI extends StatelessWidget {
   }
 
   // 함수이름: _showAnalysisTaskOptions
-  // 함수역할:
-  // - 공통 선택 화면에서 처방전 분석, 낱알약 식별, 직접 등록 작업을 선택하게 한다.
-  // - 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
+  // 함수역할: 공통 선택 화면에서 처방전 분석, 낱알약 식별, 직접 등록 작업을 선택하게 한다. 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
   // 매개변수:
-  // - context: 선택 화면 표시와 화면 활성 상태 확인에 사용할 BuildContext
-  // 반환값:
-  // - 없음
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showAnalysisTaskOptions(BuildContext context) async {
     final task = await showMedicationCaptureTaskOptions(
       context: context,
@@ -324,13 +378,11 @@ class InputPrescriptionUI extends StatelessWidget {
     onPrescriptionGalleryRequested?.call();
   }
 
-  // 함수명: _buildAnalyzingScreen
-  // 함수역할:
-  // - 처방전 이미지가 선택된 뒤 OCR 요청이 진행되는 동안 보여줄 화면을 만든다.
-  // 매개변수:
-  // - text: 현재 언어에 맞는 홈 화면 문구 묶음
-  // 반환값:
-  // - 분석 진행 상태 Widget
+  // Function Name: _buildAnalyzingScreen
+  // Description: Replaces home input with OCR progress guidance and indicators.
+  // Parameters:
+  // - text (_HomeText): Localized labels used by this section.
+  // Returns: Widget tree for medication status and quick medication input or lookup actions.
   Widget _buildAnalyzingScreen(_HomeText text) {
     return Scaffold(
       body: Container(
@@ -409,12 +461,29 @@ class InputPrescriptionUI extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeHeader
+// Role: Represents the home heading and supporting top-bar content.
+// Responsibilities:
+// - Composes the home heading and supporting top-bar content using the display values and actions supplied by its parent.
+// Attributes:
+// - onSettingPressed (VoidCallback?): Callback opening user settings.
 class _HomeHeader extends StatelessWidget {
   final _HomeText text;
   final VoidCallback? onSettingPressed;
 
+  // 함수이름: _HomeHeader
+  // 함수역할: 홈 제목과 앱 버전·설정 관련 상단 콘텐츠에 필요한 입력값과 표시 설정을 초기화한다.
+  // 매개변수:
+  // - text (_HomeText): 해당 화면 구역의 언어별 표시 문구.
+  // - onSettingPressed (VoidCallback?): 사용자 환경설정 화면을 여는 콜백.
+  // 반환값: 입력 설정이 반영된 _HomeHeader 인스턴스.
   const _HomeHeader({required this.text, required this.onSettingPressed});
 
+  // Function Name: build
+  // Description: Renders the home heading and supporting top-bar content from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the home heading and supporting top-bar content.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -498,8 +567,21 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeActionTone
+// Role: Represents background and icon color combinations for home quick actions.
+// Responsibilities:
+// - Enumerates and distinguishes the supported options for background and icon color combinations for home quick actions: primary, mint, lavender, butter.
 enum _HomeActionTone { primary, mint, lavender, butter }
 
+// Class Name: _HomeActionCard
+// Role: Represents a home quick action with its icon and title.
+// Responsibilities:
+// - Composes a home quick action with its icon and title using the display values and actions supplied by its parent.
+// Attributes:
+// - cardKey (Key?): Widget identity used to distinguish elements and preserve state.
+// - icon (IconData): Icon shown in normal or selected state.
+// - title (String): Heading shown for the screen, section, or item.
+// - subtitle (String): Supporting explanation or account detail below the primary label.
 class _HomeActionCard extends StatelessWidget {
   final Key? cardKey;
   final IconData icon;
@@ -512,6 +594,20 @@ class _HomeActionCard extends StatelessWidget {
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
+  // Function Name: _HomeActionCard
+  // Description: Initializes a home quick action with its icon and title with the supplied configuration.
+  // Parameters:
+  // - cardKey (Key?): Widget identity used to distinguish elements and preserve state.
+  // - icon (IconData): Icon shown in normal or selected state.
+  // - title (String): Heading shown for the screen, section, or item.
+  // - subtitle (String): Supporting explanation or account detail below the primary label.
+  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - compact (bool): Whether compact card or header layout is used.
+  // - largeTextGridLayout (bool): Whether the dedicated large-text grid layout is used.
+  // - largeGridTitle (String?): Heading shown for the screen, section, or item.
+  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - onTap (VoidCallback?): Callback executing the item's documented primary action.
+  // Returns: Initialized _HomeActionCard instance.
   const _HomeActionCard({
     this.cardKey,
     required this.icon,
@@ -525,6 +621,11 @@ class _HomeActionCard extends StatelessWidget {
     required this.onTap,
   });
 
+  // Function Name: build
+  // Description: Renders a home quick action with its icon and title from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for a home quick action with its icon and title.
   @override
   Widget build(BuildContext context) {
     final background = switch (tone) {
@@ -586,6 +687,15 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
+  // Function Name: _buildCompactContent
+  // Description: Builds home-action icons, titles, and descriptions for large-text grids or compact cards.
+  // Parameters:
+  // - displayedTitle (String): Heading shown for the screen, section, or item.
+  // - foreground (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - secondary (Color): Foreground color for supporting text.
+  // - accent (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - scale (double): Content text scale reflecting user accessibility settings.
+  // Returns: Widget tree for a home quick action with its icon and title.
   Widget _buildCompactContent(
     String displayedTitle,
     Color foreground,
@@ -652,6 +762,14 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
+  // Function Name: _buildListContent
+  // Description: Lays out a list-style home action with icon, title, description, and navigation arrow.
+  // Parameters:
+  // - foreground (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - secondary (Color): Foreground color for supporting text.
+  // - accent (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - scale (double): Content text scale reflecting user accessibility settings.
+  // Returns: Widget tree for a home quick action with its icon and title.
   Widget _buildListContent(
     Color foreground,
     Color secondary,
@@ -699,12 +817,29 @@ class _HomeActionCard extends StatelessWidget {
   }
 }
 
+// Class Name: _ActionIcon
+// Role: Represents the color-coded icon for a home quick action.
+// Responsibilities:
+// - Composes the color-coded icon for a home quick action using the display values and actions supplied by its parent.
+// Attributes:
+// - icon (IconData): Icon shown in normal or selected state.
+// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+// - size (double): Display dimensions of the widget or canvas.
 class _ActionIcon extends StatelessWidget {
   final IconData icon;
   final _HomeActionTone tone;
   final Color color;
   final double size;
 
+  // Function Name: _ActionIcon
+  // Description: Initializes the color-coded icon for a home quick action with the supplied configuration.
+  // Parameters:
+  // - icon (IconData): Icon shown in normal or selected state.
+  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - size (double): Display dimensions of the widget or canvas.
+  // Returns: Initialized _ActionIcon instance.
   const _ActionIcon({
     required this.icon,
     required this.tone,
@@ -712,6 +847,11 @@ class _ActionIcon extends StatelessWidget {
     required this.size,
   });
 
+  // Function Name: build
+  // Description: Renders the color-coded icon for a home quick action from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the color-coded icon for a home quick action.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -728,12 +868,30 @@ class _ActionIcon extends StatelessWidget {
   }
 }
 
+// Class Name: _ActionArrow
+// Role: Represents the navigation arrow on a home quick action.
+// Responsibilities:
+// - Composes the navigation arrow on a home quick action using the display values and actions supplied by its parent.
+// Attributes:
+// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - color (Color): Foreground or accent color applied to text, icons, or state guidance.
 class _ActionArrow extends StatelessWidget {
   final _HomeActionTone tone;
   final Color color;
 
+  // Function Name: _ActionArrow
+  // Description: Initializes the navigation arrow on a home quick action with the supplied configuration.
+  // Parameters:
+  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // Returns: Initialized _ActionArrow instance.
   const _ActionArrow({required this.tone, required this.color});
 
+  // Function Name: build
+  // Description: Renders the navigation arrow on a home quick action from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the navigation arrow on a home quick action.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -750,61 +908,180 @@ class _ActionArrow extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeText
+// Role: Represents localized wording for the home medication dashboard and medication input entry points.
+// Responsibilities:
+// - Selects Korean or English labels and interpolates message values for localized wording for the home medication dashboard and medication input entry points.
+// Attributes:
+// - language (String): Language code selecting visible wording.
 class _HomeText {
   final String language;
 
+  // 함수이름: _HomeText
+  // 함수역할: 홈 대시보드의 복약 요약과 약 정보 입력 진입에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 매개변수:
+  // - language (String): 화면 문구를 선택할 언어 코드.
+  // 반환값: 입력 설정이 반영된 _HomeText 인스턴스.
   const _HomeText(this.language);
 
+  // 함수이름: isEnglish
+  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => language == 'en';
 
+  // 함수이름: brandSubtitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "건강한 복약 관리 도우미" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get brandSubtitle =>
       isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
+  // Function Name: prescriptionAnalysis
+  // Description: Provides localized wording for "Prescription Analysis" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get prescriptionAnalysis =>
       isEnglish ? 'Prescription Analysis' : '처방전 분석';
+  // Function Name: largePrescriptionAnalysis
+  // Description: Provides localized wording for "Prescription\nAnalysis" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get largePrescriptionAnalysis =>
       isEnglish ? 'Prescription\nAnalysis' : '처방전\n분석';
+  // Function Name: prescriptionAnalysisSubtitle
+  // Description: Provides localized wording for "Scan a prescription or choose a saved image" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get prescriptionAnalysisSubtitle => isEnglish
       ? 'Scan a prescription or choose a saved image'
       : '처방전을 촬영하거나 사진에서 불러와요';
+  // Function Name: pillIdentification
+  // Description: Provides localized wording for "Loose-pill Identification" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get pillIdentification =>
       isEnglish ? 'Loose-pill Identification' : '낱알약 식별';
+  // Function Name: largePillIdentification
+  // Description: Provides localized wording for "Loose-pill\nIdentification" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get largePillIdentification =>
       isEnglish ? 'Loose-pill\nIdentification' : '낱알약\n식별';
+  // Function Name: pillIdentificationSubtitle
+  // Description: Provides localized wording for "Photograph both sides to find likely matches" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get pillIdentificationSubtitle => isEnglish
       ? 'Photograph both sides to find likely matches'
       : '앞·뒷면을 촬영해 가능성 높은 약을 찾아요';
+  // Function Name: healthRecommendation
+  // Description: Provides localized wording for "Health Recommendations" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get healthRecommendation =>
       isEnglish ? 'Health Recommendations' : '건강 관리 추천';
+  // Function Name: largeHealthRecommendation
+  // Description: Provides localized wording for "Health\nRecommendations" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get largeHealthRecommendation =>
       isEnglish ? 'Health\nRecommendations' : '건강 관리\n추천';
+  // Function Name: healthRecommendationSubtitle
+  // Description: Provides localized wording for "Review food and activity guidance for your medications" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get healthRecommendationSubtitle => isEnglish
       ? 'Review food and activity guidance for your medications'
       : '복용 중인 약에 맞는 식사와 활동 팁을 확인해요';
+  // Function Name: medicationReminder
+  // Description: Provides localized wording for "Medication Reminders" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationReminder =>
       isEnglish ? 'Medication Reminders' : '복약 알림 설정';
+  // Function Name: largeMedicationReminder
+  // Description: Provides localized wording for "Medication\nReminders" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get largeMedicationReminder =>
       isEnglish ? 'Medication\nReminders' : '복약 알림\n설정';
+  // Function Name: medicationReminderSubtitle
+  // Description: Provides localized wording for "Adjust reminder times to fit your routine" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationReminderSubtitle => isEnglish
       ? 'Adjust reminder times to fit your routine'
       : '복약 알림 시간을 내 생활에 맞게 조정해요';
+  // Function Name: medicationTipTitle
+  // Description: Provides localized wording for "Medication tip" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationTipTitle => isEnglish ? 'Medication tip' : '복약 팁';
+  // Function Name: medicationTipBody
+  // Description: Provides localized wording for "Take medicine with water and follow your care instructions." using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationTipBody => isEnglish
       ? 'Take medicine with water and follow your care instructions.'
       : '약은 충분한 물과 함께, 처방·복약지도에 맞춰 복용하세요.';
+  // 함수이름: nearbyPharmacy
+  // 함수역할: 현재 언어와 입력값에 맞춰 "근처 운영 약국" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get nearbyPharmacy => isEnglish ? 'Nearby Pharmacy' : '근처 운영 약국';
+  // 함수이름: nearbyPharmacySubtitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치에서 가까운 약국 찾기" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get nearbyPharmacySubtitle => isEnglish
       ? 'Find pharmacies near your current location'
       : '현재 위치에서 가까운 약국 찾기';
+  // 함수이름: analyzingTitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 인식 중..." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
 
-// 홈 하단의 남는 공간에 짧은 안전 복약 안내를 제공한다.
+// Class Name: _MedicationTipCard
+// Role: Represents the safe-medication tip at the bottom of the home screen.
+// Responsibilities:
+// - Composes the safe-medication tip at the bottom of the home screen using the display values and actions supplied by its parent.
 class _MedicationTipCard extends StatelessWidget {
   final _HomeText text;
 
+  // Function Name: _MedicationTipCard
+  // Description: Initializes the safe-medication tip at the bottom of the home screen with the supplied configuration.
+  // Parameters:
+  // - text (_HomeText): Localized labels used by this section.
+  // Returns: Initialized _MedicationTipCard instance.
   const _MedicationTipCard({required this.text});
 
+  // Function Name: build
+  // Description: Renders the safe-medication tip at the bottom of the home screen from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the safe-medication tip at the bottom of the home screen.
   @override
   Widget build(BuildContext context) {
     final useCompactText =
@@ -871,7 +1148,15 @@ class _MedicationTipCard extends StatelessWidget {
   }
 }
 
-// 대시보드 첫 줄을 가로지르는 복약 현황 정보 영역이다.
+// Class Name: _HomeEncouragementPanel
+// Role: Represents the home dashboard's medication status and completion encouragement.
+// Responsibilities:
+// - Composes the home dashboard's medication status and completion encouragement using the display values and actions supplied by its parent.
+// Attributes:
+// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+// - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+// - completedCount (int): Number of completed doses.
 class _HomeEncouragementPanel extends StatelessWidget {
   final UserSetting userSetting;
   final List<MedicationSchedule> schedules;
@@ -885,6 +1170,21 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final Future<void> Function(String slotKey)? onCompleteRequested;
   final bool isCompletionLoading;
 
+  // Function Name: _HomeEncouragementPanel
+  // Description: Initializes the home dashboard's medication status and completion encouragement with the supplied configuration.
+  // Parameters:
+  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - completedCount (int): Number of completed doses.
+  // - totalCount (int): Total scheduled doses or operation items.
+  // - isLoading (bool): Whether to show the in-progress state.
+  // - compact (bool): Whether compact card or header layout is used.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // - onTap (VoidCallback?): Callback executing the item's documented primary action.
+  // - onCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - isCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
+  // Returns: Initialized _HomeEncouragementPanel instance.
   const _HomeEncouragementPanel({
     required this.userSetting,
     required this.schedules,
@@ -899,6 +1199,11 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.isCompletionLoading = false,
   });
 
+  // Function Name: build
+  // Description: Renders the home dashboard's medication status and completion encouragement from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the home dashboard's medication status and completion encouragement.
   @override
   Widget build(BuildContext context) {
     final isEnglish = userSetting.language.trim().toLowerCase().startsWith(
@@ -1103,6 +1408,11 @@ class _HomeEncouragementPanel extends StatelessWidget {
                     key: const ValueKey('homeNextSlotCompletionButton'),
                     onPressed: isCompletionLoading
                         ? null
+                        // Function Name: build.onPressed callback
+                        // Description: Supplies `onCompleteRequested!(dashboard.nextSlotKey!)` from the captured state of the home dashboard's medication status and completion encouragement.
+                        // Parameters:
+                        // - None.
+                        // Returns: The value of `onCompleteRequested!(dashboard.nextSlotKey!)`.
                         : () => onCompleteRequested!(dashboard.nextSlotKey!),
                     icon: isCompletionLoading
                         ? const SizedBox(
@@ -1143,6 +1453,15 @@ class _HomeEncouragementPanel extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeDashboardSummary
+// Role: Represents home summary text, the next dose slot, and batch completion state.
+// Responsibilities:
+// - Maps a dose-slot key to its Korean or English name, preserving unknown keys.
+// Attributes:
+// - progress (double): Completion fraction from zero to one.
+// - progressLabel (String): Text showing completed and total counts.
+// - statusMessage (String): Visible wording for the current result, error, or state.
+// - hasNextMedication (bool): Whether the summary requires user attention or dose action.
 class _HomeDashboardSummary {
   static const _slotOrder = ['morning', 'lunch', 'evening', 'bedtime'];
 
@@ -1154,6 +1473,17 @@ class _HomeDashboardSummary {
   final String nextMedicationLabel;
   final String nextMedicationGuide;
 
+  // Function Name: _HomeDashboardSummary
+  // Description: Combines the supplied values for home summary text, the next dose slot, and batch completion state in a _HomeDashboardSummary instance.
+  // Parameters:
+  // - progress (double): Completion fraction from zero to one.
+  // - progressLabel (String): Text showing completed and total counts.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // - hasNextMedication (bool): Whether the summary requires user attention or dose action.
+  // - nextSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
+  // - nextMedicationLabel (String): Heading for the next-dose or missed-dose state.
+  // - nextMedicationGuide (String): Medication, time, and safety guidance for the next dose.
+  // Returns: Initialized _HomeDashboardSummary instance.
   const _HomeDashboardSummary({
     required this.progress,
     required this.progressLabel,
@@ -1164,6 +1494,17 @@ class _HomeDashboardSummary {
     required this.nextMedicationGuide,
   });
 
+  // Function Name: _HomeDashboardSummary.from
+  // Description: Clamps completed doses to the total and summarizes the next upcoming slot or latest overdue slot.
+  // Parameters:
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - completedCount (int): Number of completed doses.
+  // - totalCount (int): Total scheduled doses or operation items.
+  // - isLoading (bool): Whether to show the in-progress state.
+  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // Returns: Initialized _HomeDashboardSummary instance.
   factory _HomeDashboardSummary.from({
     required List<MedicationSchedule> schedules,
     required Map<String, MedicationAlarm> reminderSettings,
@@ -1203,6 +1544,11 @@ class _HomeDashboardSummary {
     for (final slotKey in _slotOrder) {
       final pendingSchedules = schedules
           .where(
+            // 함수이름: initializer.where callback
+            // 함수역할: 홈 요약 문구·다음 시간대·일괄 완료 상태에 대해 `schedule.slotKeys.contains(slotKey) && !schedule.isSlotCompleted(slotKey)` 조건으로 컬렉션 항목을 판별한다.
+            // 매개변수:
+            // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+            // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
             (schedule) =>
                 schedule.slotKeys.contains(slotKey) &&
                 !schedule.isSlotCompleted(slotKey),
@@ -1252,9 +1598,20 @@ class _HomeDashboardSummary {
     }
 
     pendingSlots.sort(
+      // Function Name: initializer.sort callback
+      // Description: Computes the ordering comparison for home summary text, the next dose slot, and batch completion state with `left.scheduledAt.compareTo(right.scheduledAt)`.
+      // Parameters:
+      // - left (inferred by callback contract): One of the two items being compared for ordering.
+      // - right (inferred by callback contract): One of the two items being compared for ordering.
+      // Returns: The ordering comparison passed back to the collection operation.
       (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
     );
     final upcomingSlots = pendingSlots
+        // Function Name: initializer.where callback
+        // Description: Checks the collection condition `!slot.scheduledAt.isBefore(now)` for home summary text, the next dose slot, and batch completion state.
+        // Parameters:
+        // - slot (inferred by callback contract): Dose-slot identity, time, and presentation data.
+        // Returns: Boolean predicate result for the supplied item.
         .where((slot) => !slot.scheduledAt.isBefore(now))
         .toList(growable: false);
     final nextSlot = upcomingSlots.isNotEmpty
@@ -1300,6 +1657,12 @@ class _HomeDashboardSummary {
     );
   }
 
+  // Function Name: _slotLabel
+  // Description: Maps a dose-slot key to its Korean or English name, preserving unknown keys.
+  // Parameters:
+  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
+  // Returns: The formatted display text or identifier described above.
   static String _slotLabel(String slotKey, {required bool isEnglish}) {
     if (isEnglish) {
       return switch (slotKey) {
@@ -1320,12 +1683,29 @@ class _HomeDashboardSummary {
   }
 }
 
+// Class Name: _DashboardPendingSlot
+// Role: Represents a pending dashboard slot and its medication count.
+// Responsibilities:
+// - Groups the supplied field values for a pending dashboard slot and its medication count in a single object.
+// Attributes:
+// - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+// - scheduledAt (DateTime): Scheduled date and time for the dose slot.
+// - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+// - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
 class _DashboardPendingSlot {
   final String slotKey;
   final DateTime scheduledAt;
   final MedicationAlarm alarm;
   final List<MedicationSchedule> medications;
 
+  // Function Name: _DashboardPendingSlot
+  // Description: Combines the supplied values for a pending dashboard slot and its medication count in a _DashboardPendingSlot instance.
+  // Parameters:
+  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+  // - scheduledAt (DateTime): Scheduled date and time for the dose slot.
+  // - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+  // - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
+  // Returns: Initialized _DashboardPendingSlot instance.
   const _DashboardPendingSlot({
     required this.slotKey,
     required this.scheduledAt,

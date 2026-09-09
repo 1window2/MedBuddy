@@ -2,24 +2,38 @@ import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
 
-// 파일명: medbuddy_bottom_navigation_ui_boundary.dart
-// 역할: MedBuddy의 주요 목적지 사이를 이동하는 공통 하단 탐색 UI를 구성한다.
+// File Name: medbuddy_bottom_navigation_ui_boundary.dart
+// Role: UI boundaries and helpers for bottom navigation between Home, Schedule, Pillbox, and My Info.
 
-// 열거형명: MedBuddyDestination
-// 역할: 하단 탐색 막대에서 선택할 수 있는 앱의 최상위 목적지를 구분한다.
+// Class Name: MedBuddyDestination
+// Role: Represents the application's Home, Schedule, Pillbox, and My Info destinations.
+// Responsibilities:
+// - Enumerates and distinguishes the supported options for the application's Home, Schedule, Pillbox, and My Info destinations: home, schedule, medicationCabinet, profile.
 enum MedBuddyDestination { home, schedule, medicationCabinet, profile }
 
-// 클래스명: MedBuddyBottomNavigationUI
-// 역할: 홈, 일정, 복약함, 내 정보 목적지를 접근 가능한 고정 탐색 막대로 표시한다.
-// 주요 책임:
-// - 선택한 목적지를 색상과 배경 형태로 함께 구분한다.
-// - 모든 목적지에 아이콘과 텍스트 라벨을 함께 제공한다.
-// - Android 하단 안전 영역과 최소 터치 영역을 보장한다.
+// Class Name: MedBuddyBottomNavigationUI
+// Role: Represents fixed bottom navigation with selected-state and accessibility cues.
+// Responsibilities:
+// - Distinguishes the selected destination by color and background.
+// - Provides an icon and label for each destination.
+// - Respects the Android bottom safe area and minimum touch targets.
+// Attributes:
+// - selectedDestination (MedBuddyDestination): Top-level navigation destination to display or select.
+// - language (String): Language code selecting visible wording.
+// - onDestinationSelected (ValueChanged<MedBuddyDestination>): Callback reporting the selected top-level destination.
 class MedBuddyBottomNavigationUI extends StatelessWidget {
   final MedBuddyDestination selectedDestination;
   final String language;
   final ValueChanged<MedBuddyDestination> onDestinationSelected;
 
+  // Function Name: MedBuddyBottomNavigationUI
+  // Description: Initializes fixed bottom navigation with selected-state and accessibility cues with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // - selectedDestination (MedBuddyDestination): Top-level navigation destination to display or select.
+  // - language (String): Language code selecting visible wording.
+  // - onDestinationSelected (ValueChanged<MedBuddyDestination>): Callback reporting the selected top-level destination.
+  // Returns: Initialized MedBuddyBottomNavigationUI instance.
   const MedBuddyBottomNavigationUI({
     super.key,
     required this.selectedDestination,
@@ -27,6 +41,11 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
     required this.onDestinationSelected,
   });
 
+  // Function Name: build
+  // Description: Renders fixed bottom navigation with selected-state and accessibility cues from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for fixed bottom navigation with selected-state and accessibility cues.
   @override
   Widget build(BuildContext context) {
     final text = _BottomNavigationText(language);
@@ -80,6 +99,11 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
                   child: _BottomNavigationButton(
                     item: item,
                     selected: item.destination == selectedDestination,
+                    // Function Name: build.onPressed callback
+                    // Description: Connects fixed bottom navigation with selected-state and accessibility cues to the captured operation `onDestinationSelected(item.destination)`.
+                    // Parameters:
+                    // - None.
+                    // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                     onPressed: () => onDestinationSelected(item.destination),
                   ),
                 ),
@@ -91,17 +115,37 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
   }
 }
 
+// Class Name: _BottomNavigationButton
+// Role: Represents a navigation destination with icon, label, and selected state.
+// Responsibilities:
+// - Composes a navigation destination with icon, label, and selected state using the display values and actions supplied by its parent.
+// Attributes:
+// - item (_BottomNavigationItem): Destination, icon, and label definition for this navigation button.
+// - selected (bool): Whether the item belongs to the current selection.
+// - onPressed (VoidCallback): Callback executing the item's documented primary action.
 class _BottomNavigationButton extends StatelessWidget {
   final _BottomNavigationItem item;
   final bool selected;
   final VoidCallback onPressed;
 
+  // Function Name: _BottomNavigationButton
+  // Description: Initializes a navigation destination with icon, label, and selected state with the supplied configuration.
+  // Parameters:
+  // - item (_BottomNavigationItem): Destination, icon, and label definition for this navigation button.
+  // - selected (bool): Whether the item belongs to the current selection.
+  // - onPressed (VoidCallback): Callback executing the item's documented primary action.
+  // Returns: Initialized _BottomNavigationButton instance.
   const _BottomNavigationButton({
     required this.item,
     required this.selected,
     required this.onPressed,
   });
 
+  // Function Name: build
+  // Description: Renders a navigation destination with icon, label, and selected state from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for a navigation destination with icon, label, and selected state.
   @override
   Widget build(BuildContext context) {
     final foreground = selected
@@ -159,12 +203,29 @@ class _BottomNavigationButton extends StatelessWidget {
   }
 }
 
+// Class Name: _BottomNavigationItem
+// Role: Represents a navigation destination's icon and label definition.
+// Responsibilities:
+// - Groups the supplied field values for a navigation destination's icon and label definition in a single object.
+// Attributes:
+// - destination (MedBuddyDestination): Top-level navigation destination to display or select.
+// - icon (IconData): Icon shown in normal or selected state.
+// - selectedIcon (IconData): Icon shown in normal or selected state.
+// - label (String): Wording identifying a field, choice, or action.
 class _BottomNavigationItem {
   final MedBuddyDestination destination;
   final IconData icon;
   final IconData selectedIcon;
   final String label;
 
+  // Function Name: _BottomNavigationItem
+  // Description: Combines the supplied values for a navigation destination's icon and label definition in a _BottomNavigationItem instance.
+  // Parameters:
+  // - destination (MedBuddyDestination): Top-level navigation destination to display or select.
+  // - icon (IconData): Icon shown in normal or selected state.
+  // - selectedIcon (IconData): Icon shown in normal or selected state.
+  // - label (String): Wording identifying a field, choice, or action.
+  // Returns: Initialized _BottomNavigationItem instance.
   const _BottomNavigationItem({
     required this.destination,
     required this.icon,
@@ -173,15 +234,51 @@ class _BottomNavigationItem {
   });
 }
 
+// Class Name: _BottomNavigationText
+// Role: Represents localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+// Responsibilities:
+// - Selects Korean or English labels and interpolates message values for localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+// Attributes:
+// - language (String): Language code selecting visible wording.
 class _BottomNavigationText {
   final String language;
 
+  // Function Name: _BottomNavigationText
+  // Description: Stores the language used to select localized wording for bottom navigation between Home, Schedule, Pillbox, and My Info.
+  // Parameters:
+  // - language (String): Language code selecting visible wording.
+  // Returns: Initialized _BottomNavigationText instance.
   const _BottomNavigationText(this.language);
 
+  // Function Name: isEnglish
+  // Description: Recognizes English locale prefixes after trimming and lowercasing the language code.
+  // Parameters:
+  // - None.
+  // Returns: True when the documented condition holds; false otherwise.
   bool get isEnglish => language.trim().toLowerCase().startsWith('en');
 
+  // Function Name: home
+  // Description: Provides localized wording for "Home" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get home => isEnglish ? 'Home' : '홈';
+  // Function Name: schedule
+  // Description: Provides localized wording for "Schedule" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get schedule => isEnglish ? 'Schedule' : '일정';
+  // Function Name: medicationCabinet
+  // Description: Provides localized wording for "Medications" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationCabinet => isEnglish ? 'Medications' : '복약함';
+  // Function Name: profile
+  // Description: Provides localized wording for "My Info" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get profile => isEnglish ? 'My Info' : '내 정보';
 }
