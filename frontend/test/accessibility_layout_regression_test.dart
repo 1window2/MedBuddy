@@ -2,6 +2,7 @@
 // 역할: 작은 화면과 큰 글씨에서 주요 화면의 접근성 레이아웃 회귀를 검증한다. 베타 핵심 화면의 작은 화면, 큰 글씨, 접근성, 생명주기 회귀를 검증한다.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/authentication_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
@@ -29,7 +30,6 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 // 클래스명: _AccessibilityScheduleControl
 // 역할: 접근성 레이아웃 검증에 사용할 긴 약 이름의 복약 일정을 제공한다.
@@ -285,16 +285,13 @@ void main() {
     });
 
     for (final viewportSize in const [Size(360, 640), Size(412, 915)]) {
-      // Function Name: testWidgets callback
-      // Description:
-      // - Verify that the home dashboard fits key information at every standard-text viewport size.
-      // Parameters:
-      // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-      // Returns:
-      // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+      // 함수이름: 기본 글씨 홈 안내 접근성 테스트
+      // 함수역할: 복약 안내를 생략 없이 표시하고 작은 화면에서는 스크롤로 모든 정보에 접근할 수 있는지 확인한다.
+      // 매개변수: tester (WidgetTester): 화면 배치와 상호작용 검증 도구.
+      // 반환값: 화면 크기별 안내 표시와 스크롤 접근성 검증 완료.
       testWidgets(
         '홈 화면은 ${viewportSize.width.toInt()}x${viewportSize.height.toInt()} '
-        '기본 글씨에서 화면 높이에 맞게 핵심 정보를 표시한다',
+        '기본 글씨에서 안내를 생략하지 않고 모든 정보에 접근할 수 있다',
         (tester) async {
           await _setViewport(tester, viewportSize);
 
@@ -397,10 +394,10 @@ void main() {
             matching: find.byType(Scrollable),
           );
           expect(dashboardScrollable, findsAtLeastNWidgets(1));
-          final scrollableState = tester.state<ScrollableState>(
-            dashboardScrollable.first,
+          final guidance = tester.renderObject<RenderParagraph>(
+            find.textContaining('시간에 맞춰 챙겨드세요.'),
           );
-          expect(scrollableState.position.maxScrollExtent, 0);
+          expect(guidance.didExceedMaxLines, isFalse);
           final dashboardRect = tester.getRect(
             find.byKey(const ValueKey('homeEncouragementPanel')),
           );
@@ -422,6 +419,10 @@ void main() {
             find.byKey(const ValueKey('homeMedicationTipCard')),
             findsOneWidget,
           );
+          final tip = find.byKey(const ValueKey('homeMedicationTipCard'));
+          await tester.ensureVisible(tip);
+          await tester.pumpAndSettle();
+          expect(tip.hitTestable(), findsOneWidget);
           expect(tester.takeException(), isNull);
         },
       );
@@ -507,23 +508,14 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('MedBuddy'), findsOneWidget);
-        expect(
-          find.text('처방전 분석'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('낱알약 식별'),
-          findsOneWidget,
-        );
+        expect(find.text('약 등록·식별'), findsOneWidget);
+        expect(find.text('근처 운영 약국'), findsOneWidget);
         await tester.drag(
           find.byType(SingleChildScrollView),
           const Offset(0, -300),
         );
         await tester.pumpAndSettle();
-        expect(
-          find.text('복약 알림 설정'),
-          findsOneWidget,
-        );
+        expect(find.text('복약 알림 설정'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

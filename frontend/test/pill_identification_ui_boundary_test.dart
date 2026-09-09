@@ -435,11 +435,7 @@ Future<void> _openRefinementGroup(
   await tester.pumpWidget(
     MaterialApp(
       home: PillIdentificationUI(
-        userSetting: const UserSetting(
-          language: 'ko',
-          fontSize: 20,
-          multiPillIdentificationLabEnabled: true,
-        ),
+        userSetting: const UserSetting(language: 'ko', fontSize: 20),
         control: control,
       ),
     ),
@@ -626,10 +622,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
-          userSetting: const UserSetting(
-            language: 'ko',
-            multiPillIdentificationLabEnabled: true,
-          ),
+          userSetting: const UserSetting(language: 'ko'),
           control: _OnePhotoMultipleIdentifyPill(),
         ),
       ),
@@ -654,31 +647,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 다중 알약 실험 기능을 끄면 단일 사진 입력만 표시한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('다중 알약 실험 기능을 끄면 단일 사진 입력만 표시한다', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: PillIdentificationUI(
-          userSetting: const UserSetting(language: 'ko'),
-          control: _FakeIdentifyPill(),
+  for (final legacyEnabled in [null, false, true]) {
+    // 함수이름: 기본 다중 알약 진입 테스트
+    // 함수역할: 신규 설정과 이전 실험실 설정 유무에 관계없이 단일·다중 알약 입력을 제공한다.
+    // 매개변수: tester: 위젯 도구. 반환값: 입력 명령 표시 검증 완료.
+    testWidgets('다중 알약은 이전 설정과 무관하게 기본 제공된다 $legacyEnabled', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PillIdentificationUI(
+            userSetting: UserSetting.fromJson({
+              'language': 'ko',
+              'multi_pill_identification_lab_enabled': ?legacyEnabled,
+            }),
+            control: _FakeIdentifyPill(),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('알약 사진을 추가해주세요'), findsOneWidget);
-    expect(find.byKey(const Key('add-pill-photo-set-button')), findsNothing);
-    expect(
-      find.byKey(const Key('add-multiple-pill-images-button')),
-      findsNothing,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('알약을 한 개 이상 촬영해주세요'), findsOneWidget);
+      expect(find.byKey(const Key('pill-front-image-slot')), findsOneWidget);
+      expect(
+        find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('add-pill-photo-set-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('add-multiple-pill-images-button')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -822,10 +824,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
-          userSetting: const UserSetting(
-            language: 'ko',
-            multiPillIdentificationLabEnabled: true,
-          ),
+          userSetting: const UserSetting(language: 'ko'),
           control: _MultipleIdentifyPill(),
           // 함수이름: onBatchSaveRequested 콜백
           // 함수역할:
@@ -912,10 +911,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PillIdentificationUI(
-          userSetting: const UserSetting(
-            language: 'ko',
-            multiPillIdentificationLabEnabled: true,
-          ),
+          userSetting: const UserSetting(language: 'ko'),
           control: _DuplicateIdentifyPill(),
           // 함수이름: onBatchSaveRequested 콜백
           // 함수역할:

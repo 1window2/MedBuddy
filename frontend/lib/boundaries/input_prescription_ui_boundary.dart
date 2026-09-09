@@ -218,16 +218,16 @@ class InputPrescriptionUI extends StatelessWidget {
                                   ),
                                   _HomeActionCard(
                                     cardKey: const ValueKey(
-                                      'homePillIdentificationCard',
+                                      'homeMedicationReminderCard',
                                     ),
-                                    icon: Icons.medication_liquid_outlined,
-                                    title: text.pillIdentification,
-                                    subtitle: text.pillIdentificationSubtitle,
+                                    icon: Icons.notifications_active_outlined,
+                                    title: text.medicationReminder,
+                                    subtitle: text.medicationReminderSubtitle,
                                     tone: _HomeActionTone.mint,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     userSetting: userSetting,
-                                    onTap: onPillIdentificationRequested,
+                                    onTap: onMedicationReminderRequested,
                                   ),
                                   _HomeActionCard(
                                     cardKey: const ValueKey(
@@ -243,27 +243,17 @@ class InputPrescriptionUI extends StatelessWidget {
                                     onTap: onHealthRecommendationRequested,
                                   ),
                                   _HomeActionCard(
-                                    cardKey: ValueKey(
-                                      onNearbyPharmacyRequested != null
-                                          ? 'homeNearbyPharmacyCard'
-                                          : 'homeMedicationReminderCard',
+                                    cardKey: const ValueKey(
+                                      'homeNearbyPharmacyCard',
                                     ),
-                                    icon: onNearbyPharmacyRequested != null
-                                        ? Icons.local_pharmacy_outlined
-                                        : Icons.notifications_active_outlined,
-                                    title: onNearbyPharmacyRequested != null
-                                        ? text.nearbyPharmacy
-                                        : text.medicationReminder,
-                                    subtitle: onNearbyPharmacyRequested != null
-                                        ? text.nearbyPharmacySubtitle
-                                        : text.medicationReminderSubtitle,
+                                    icon: Icons.local_pharmacy_outlined,
+                                    title: text.nearbyPharmacy,
+                                    subtitle: text.nearbyPharmacySubtitle,
                                     tone: _HomeActionTone.butter,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
                                     userSetting: userSetting,
-                                    onTap:
-                                        onNearbyPharmacyRequested ??
-                                        onMedicationReminderRequested,
+                                    onTap: onNearbyPharmacyRequested,
                                   ),
                                 ];
 
@@ -923,36 +913,17 @@ class _HomeText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get brandSubtitle =>
       isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
-  // Function Name: prescriptionAnalysis
-  // Description: Provides localized wording for "Prescription Analysis" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
+  // 함수이름: prescriptionAnalysis
+  // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
   String get prescriptionAnalysis =>
-      isEnglish ? 'Prescription Analysis' : '처방전 분석';
-  // Function Name: prescriptionAnalysisSubtitle
-  // Description: Provides localized wording for "Scan a prescription or choose a saved image" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
+      isEnglish ? 'Add or Identify Medication' : '약 등록·식별';
+  // 함수이름: prescriptionAnalysisSubtitle
+  // 함수역할: 약 정보 입력과 식별 방법을 카드 설명으로 안내한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 카드 설명.
   String get prescriptionAnalysisSubtitle => isEnglish
-      ? 'Scan a prescription or choose a saved image'
-      : '처방전을 촬영하거나 사진에서 불러와요';
-  // Function Name: pillIdentification
-  // Description: Provides localized wording for "Loose-pill Identification" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get pillIdentification =>
-      isEnglish ? 'Loose-pill Identification' : '낱알약 식별';
-  // Function Name: pillIdentificationSubtitle
-  // Description: Provides localized wording for "Photograph both sides to find likely matches" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get pillIdentificationSubtitle => isEnglish
-      ? 'Photograph both sides to find likely matches'
-      : '앞·뒷면을 촬영해 가능성 높은 약을 찾아요';
+      ? 'Use a prescription, pill photo, or manual entry'
+      : '처방전·알약 사진 또는 직접 입력으로 등록해요';
   // Function Name: healthRecommendation
   // Description: Provides localized wording for "Health Recommendations" using the current language and message inputs.
   // Parameters:
@@ -1156,7 +1127,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 복약 현황과 다음 일정을 표시하고 진행률 제목만 필요한 경우 줄바꿈한다.
+  // 함수역할: 복약 현황과 다음 일정을 표시하고 안내 문구를 생략 없이 줄바꿈해 보여준다.
   // 매개변수: context (BuildContext): 접근성 배율과 화면 테마를 제공하는 문맥.
   // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
   @override
@@ -1308,8 +1279,6 @@ class _HomeEncouragementPanel extends StatelessWidget {
                           SizedBox(height: compact ? 2 : 3),
                           Text(
                             dashboard.nextMedicationGuide,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: MedBuddyColors.textMuted,
                               fontSize: compact ? 11 : 12,

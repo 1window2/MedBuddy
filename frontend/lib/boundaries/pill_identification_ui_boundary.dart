@@ -141,7 +141,7 @@ enum _DuplicatePillResolution { mergeMatchingSchedules, keepSeparate }
 // Class Name: _PillIdentificationUIState
 // Role: Manages state for front and back pill photos, candidate selection, and medication saving.
 // Responsibilities:
-// - Builds photo-set and gallery batch-add controls based on experiment availability, busy state, and capacity.
+// - Builds photo-set and gallery batch-add controls based on busy state and capacity.
 // - Displays completed per-photo results together with the confirm-all action.
 // - Builds a photo's empty, low-confidence, candidate-selection, and retry states.
 // Attributes:
@@ -177,14 +177,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get _isBusy => _isAnalyzing || _isSelectingImage || _isSaving;
-
-  // 함수이름: _batchEnabled
-  // 함수역할: 현재 사용자 설정에서 여러 알약 식별 실험 기능이 켜져 있는지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _batchEnabled =>
-      widget.userSetting.multiPillIdentificationLabEnabled;
 
   // 함수이름: _allDraftsReady
   // 함수역할: 작업이 하나 이상 있고 모든 작업에 필수 앞면 사진이 있는지 확인한다.
@@ -265,10 +257,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // Returns: Widget tree for front and back pill photos, candidate selection, and medication saving.
   @override
   Widget build(BuildContext context) {
-    final text = _PillIdentificationText(
-      widget.userSetting.language,
-      batchEnabled: _batchEnabled,
-    );
+    final text = _PillIdentificationText(widget.userSetting.language);
     final textScale = widget.userSetting.contentTextScale;
     final pendingCount = _pendingDraftIndexes.length;
     // 함수이름: build.any callback
@@ -581,16 +570,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     );
   }
 
-  // Function Name: _buildAddPhotoActions
-  // Description: Builds photo-set and gallery batch-add controls based on experiment availability, busy state, and capacity.
-  // Parameters:
-  // - text (_PillIdentificationText): Localized labels used by this section.
-  // - textScale (double): Content text scale reflecting user accessibility settings.
-  // Returns: Widget tree for front and back pill photos, candidate selection, and medication saving.
+  // 함수이름: _buildAddPhotoActions
+  // 함수역할: 모든 사용자에게 다중 알약·사진 추가 명령을 제공하고 처리 중 상태와 최대 개수를 반영한다.
+  // 매개변수: text는 번역 문구, textScale은 접근성 글씨 배율이다.
+  // 반환값: 한 장 또는 알약별 사진을 선택하는 명령 영역.
   Widget _buildAddPhotoActions(_PillIdentificationText text, double textScale) {
-    if (!_batchEnabled) {
-      return const SizedBox.shrink();
-    }
     // 함수이름: _buildAddPhotoActions.where callback
     // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasFrontImage` 조건으로 컬렉션 항목을 판별한다.
     // 매개변수:
@@ -1211,13 +1195,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
   }
 
-  // Function Name: _selectMultipleFrontImages
-  // Description: Loads gallery photos up to remaining batch capacity, filling empty drafts first.
-  // Parameters:
-  // - text (_PillIdentificationText): Localized labels used by this section.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _selectMultipleFrontImages
+  // 함수역할: 처리 중이 아니면 남은 개수만큼 사진을 불러와 비어 있는 알약 입력부터 채운다.
+  // 매개변수: text는 현재 언어의 안내 문구이다. 반환값: 사진 선택·적용 완료.
   Future<void> _selectMultipleFrontImages(_PillIdentificationText text) async {
-    if (!_batchEnabled || _isBusy) {
+    if (_isBusy) {
       return;
     }
     final replacingMultiplePhoto = _multiplePillSourceImage != null;
@@ -1318,14 +1300,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
   }
 
-  // Function Name: _addPhotoDraft
-  // Description: Adds a photo draft within batch feature and capacity limits, clearing prior multi-pill-photo state.
-  // Parameters:
-  // - None.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: _addPhotoDraft
+  // 함수역할: 처리 상태와 최대 개수를 확인하고 한 장 식별 상태를 비운 뒤 개별 알약 입력을 추가한다.
+  // 매개변수: 없음. 반환값: 없음.
   void _addPhotoDraft() {
-    if (!_batchEnabled ||
-        _isBusy ||
+    if (_isBusy ||
         (_multiplePillSourceImage == null &&
             _drafts.length >= IdentifyPillBatch.maxBatchSize)) {
       return;
@@ -1379,10 +1358,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (!_allDraftsReady || pendingIndexes.isEmpty) {
       return;
     }
-    final text = _PillIdentificationText(
-      widget.userSetting.language,
-      batchEnabled: _batchEnabled,
-    );
+    final text = _PillIdentificationText(widget.userSetting.language);
     // 함수이름: _requestIdentification.setState callback
     // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장의 입력·요청 상태를 `_isAnalyzing = true; _isBatchSaved = false; _errorMessage = ''`로 갱신한다.
     // 매개변수:
@@ -1486,13 +1462,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     }
   }
 
-  // Function Name: _selectMultiplePillPhoto
-  // Description: Selects a photo containing multiple pills and sends it to multi-observation analysis.
-  // Parameters:
-  // - text (_PillIdentificationText): Localized labels used by this section.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _selectMultiplePillPhoto
+  // 함수역할: 처리 중이 아니면 여러 알약이 담긴 사진을 선택하고 번호별 식별을 요청한다.
+  // 매개변수: text는 현재 언어의 안내 문구이다. 반환값: 사진 선택·분석 완료.
   Future<void> _selectMultiplePillPhoto(_PillIdentificationText text) async {
-    if (!_batchEnabled || _isBusy) {
+    if (_isBusy) {
       return;
     }
     final source = await showModalBottomSheet<ImageSource>(
@@ -1698,10 +1672,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   void _prepareRetry(int index) {
     final multipleImage = _multiplePillSourceImage;
     if (multipleImage != null) {
-      final text = _PillIdentificationText(
-        widget.userSetting.language,
-        batchEnabled: _batchEnabled,
-      );
+      final text = _PillIdentificationText(widget.userSetting.language);
       _analyzeMultiplePillPhoto(multipleImage, text);
       return;
     }
@@ -2091,10 +2062,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (error is! PillIdentificationException) {
       return fallback;
     }
-    final text = _PillIdentificationText(
-      widget.userSetting.language,
-      batchEnabled: _batchEnabled,
-    );
+    final text = _PillIdentificationText(widget.userSetting.language);
     return switch (error.failure) {
       PillIdentificationFailure.emptyImage => text.emptyImage,
       PillIdentificationFailure.oversizedImage => text.oversizedImage,
@@ -2929,7 +2897,6 @@ class _EmptyResult extends StatelessWidget {
 // - Selects Korean or English labels and interpolates message values for localized wording for pill-photo identification, candidate comparison, duplicate resolution, and schedule saving.
 // Attributes:
 // - language (String): Language code selecting visible wording.
-// - batchEnabled (bool): Whether multi-pill photo identification is enabled.
 class _PillIdentificationText {
   // 함수이름: moreCandidates
   // 함수역할: 후보 확장 명령을 번역한다. 매개변수: 없음. 반환값: 표시 문자열.
@@ -2969,15 +2936,13 @@ class _PillIdentificationText {
   // 함수역할: 참고 각인 표시명을 번역한다. 매개변수: 없음. 반환값: 표시명.
   String get imprintLabel => isEnglish ? 'Catalog imprint' : '제품 각인';
   final String language;
-  final bool batchEnabled;
 
   // 함수이름: _PillIdentificationText
   // 함수역할: 알약 사진 식별, 후보 비교 및 중복 조정 후 일정 저장에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
-  // - batchEnabled (bool): 여러 알약 사진 식별을 사용할지 여부.
   // 반환값: 입력 설정이 반영된 _PillIdentificationText 인스턴스.
-  const _PillIdentificationText(this.language, {required this.batchEnabled});
+  const _PillIdentificationText(this.language);
 
   // Function Name: isEnglish
   // Description: Checks whether the language code is exactly en.
@@ -2999,33 +2964,18 @@ class _PillIdentificationText {
   String get safetyNotice => isEnglish
       ? 'Photos are analyzed by an external AI and are not stored by MedBuddy. Matching only suggests candidates; verify the package or ask a pharmacist.'
       : '사진은 외부 AI로 분석되며 MedBuddy에 저장되지 않습니다. 비교 결과는 후보일 뿐이므로 포장 정보 또는 약사에게 확인하세요.';
-  // Function Name: photoSectionTitle
-  // Description: Provides localized wording for "Photograph one or more pills" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get photoSectionTitle {
-    if (batchEnabled) {
-      return isEnglish ? 'Photograph one or more pills' : '알약을 한 개 이상 촬영해주세요';
-    }
-    return isEnglish ? 'Add a pill photo' : '알약 사진을 추가해주세요';
-  }
+  // 함수이름: photoSectionTitle
+  // 함수역할: 기본 제공되는 단일·다중 알약 입력 구역의 제목을 번역한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 제목.
+  String get photoSectionTitle =>
+      isEnglish ? 'Photograph one or more pills' : '알약을 한 개 이상 촬영해주세요';
 
-  // Function Name: photoSectionDescription
-  // Description: Provides localized wording for "For the fastest review, place up to 10 separated pills in one clear photo. You can still add separate front and back photos whe..." using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get photoSectionDescription {
-    if (batchEnabled) {
-      return isEnglish
-          ? 'For the fastest review, place up to 10 separated pills in one clear photo. You can still add separate front and back photos when closer inspection is needed.'
-          : '가장 빠르게 확인하려면 서로 겹치지 않은 알약을 최대 10개까지 한 장에 선명하게 촬영하세요. 자세한 비교가 필요하면 알약별 앞뒷면 사진도 추가할 수 있습니다.';
-    }
-    return isEnglish
-        ? 'Keep one pill in focus with its outline visible. Adding its reverse side improves matching.'
-        : '알약 한 알의 윤곽이 보이도록 선명하게 촬영하세요. 뒷면 사진을 추가하면 정확도가 높아집니다.';
-  }
+  // 함수이름: photoSectionDescription
+  // 함수역할: 다중 촬영의 개수 제한과 개별 앞뒷면 사진 입력 방법을 안내한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 입력 안내.
+  String get photoSectionDescription => isEnglish
+      ? 'Place up to 10 separated pills in one clear photo. You can also add separate front and back photos for each pill.'
+      : '서로 겹치지 않은 알약을 최대 10개까지 한 장에 선명하게 촬영하세요. 알약별 앞뒷면 사진을 따로 추가할 수도 있습니다.';
 
   // 함수이름: pillPhotoTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "알약 $number 사진" 문구를 제공한다.
@@ -3110,16 +3060,9 @@ class _PillIdentificationText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get frontPhotoRequiredForEveryPill {
-    if (batchEnabled) {
-      return isEnglish
-          ? 'Add a front photo for every pill before starting the comparison.'
-          : '비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요.';
-    }
-    return isEnglish
-        ? 'Add a front photo before starting the comparison.'
-        : '비교를 시작하려면 알약 앞면 사진을 추가해주세요.';
-  }
+  String get frontPhotoRequiredForEveryPill => isEnglish
+      ? 'Add a front photo for every pill before starting the comparison.'
+      : '비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요.';
 
   // Function Name: frontPhoto
   // Description: Provides localized wording for "Front" using the current language and message inputs.

@@ -28,11 +28,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
   required BuildContext context,
   required UserSetting userSetting,
 }) {
-  final text = _MedicationCaptureText(
-    userSetting.language,
-    multiPillIdentificationEnabled:
-        userSetting.multiPillIdentificationLabEnabled,
-  );
+  final text = _MedicationCaptureText(userSetting.language);
 
   return showModalBottomSheet<MedicationCaptureTask>(
     context: context,
@@ -109,11 +105,7 @@ Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
   required BuildContext context,
   required UserSetting userSetting,
 }) {
-  final text = _MedicationCaptureText(
-    userSetting.language,
-    multiPillIdentificationEnabled:
-        userSetting.multiPillIdentificationLabEnabled,
-  );
+  final text = _MedicationCaptureText(userSetting.language);
 
   return showModalBottomSheet<PrescriptionImageSource>(
     context: context,
@@ -318,21 +310,15 @@ class _MedicationCaptureOption extends StatelessWidget {
 // - 약 정보 분석 작업과 처방전 이미지 출처 선택에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
 // 속성:
 // - language (String): 화면 문구를 선택할 언어 코드.
-// - multiPillIdentificationEnabled (bool): 여러 알약 사진 식별을 사용할지 여부.
 class _MedicationCaptureText {
   final String language;
-  final bool multiPillIdentificationEnabled;
 
   // 함수이름: _MedicationCaptureText
   // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
-  // - multiPillIdentificationEnabled (bool): 여러 알약 사진 식별을 사용할지 여부.
   // 반환값: 입력 설정이 반영된 _MedicationCaptureText 인스턴스.
-  const _MedicationCaptureText(
-    this.language, {
-    required this.multiPillIdentificationEnabled,
-  });
+  const _MedicationCaptureText(this.language);
 
   // 함수이름: isEnglish
   // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
@@ -363,20 +349,13 @@ class _MedicationCaptureText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get pillTask => isEnglish ? 'Identify a loose pill' : '낱알약 식별';
   // 함수이름: pillTaskSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "한 알을 식별하거나 알약별 사진을 추가해 실험실 일괄 검토를 합니다." 문구를 제공한다.
+  // 함수역할: 한 알 또는 여러 알약의 후보를 비교하는 기본 식별 기능을 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get pillTaskSubtitle {
-    if (multiPillIdentificationEnabled) {
-      return isEnglish
-          ? 'Identify one pill or add separate photos for a Labs batch review.'
-          : '한 알을 식별하거나 알약별 사진을 추가해 실험실 일괄 검토를 합니다.';
-    }
-    return isEnglish
-        ? 'Compare a photographed pill with MFDS candidates.'
-        : '촬영한 알약 한 개를 식약처 제품 후보와 비교합니다.';
-  }
+  String get pillTaskSubtitle => isEnglish
+      ? 'Compare one or more photographed pills with MFDS product candidates.'
+      : '알약을 한 개 또는 여러 개 촬영해 식약처 제품 후보와 비교합니다.';
 
   // 함수이름: manualTask
   // 함수역할: 현재 언어와 입력값에 맞춰 "직접 등록" 문구를 제공한다.

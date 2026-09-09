@@ -86,13 +86,15 @@ void main() {
   });
 
   // 함수이름: 구형 실험실 설정 호환 테스트
-  // 함수역할: 구형 약국·채팅 스위치 값과 무관하게 현재 설정을 복원하고 알림 선호는 보존한다.
+  // 함수역할: 구형 약국·채팅·다중 알약 스위치 값은 무시하고 알림 선호는 보존한다.
   // 매개변수: 없음. 반환값: 검증 완료.
-  test('구형 약국·채팅 실험 설정은 현재 설정에 영향을 주지 않는다', () async {
+  test('구형 실험실 설정은 현재 설정에 영향을 주지 않는다', () async {
     for (final legacyEnabled in [false, true]) {
       SharedPreferences.setMockInitialValues({
         'user_setting_user-a_nearby_pharmacy_lab_enabled': legacyEnabled,
         'user_setting_user-a_linked_medication_chat_lab_enabled': legacyEnabled,
+        'user_setting_user-a_multi_pill_identification_lab_enabled':
+            legacyEnabled,
         'user_setting_user-a_chat_notifications_enabled': false,
       });
       final control = ManageUserSetting(
@@ -102,7 +104,6 @@ void main() {
       addTearDown(control.dispose);
       final restored = await control.requestUserSetting();
       expect(restored.chatNotificationsEnabled, isFalse);
-      expect(restored.multiPillIdentificationLabEnabled, isFalse);
       expect(
         restored.toJson(),
         const UserSetting(
@@ -114,39 +115,41 @@ void main() {
         ...restored.toJson(),
         'nearby_pharmacy_lab_enabled': legacyEnabled,
         'linked_medication_chat_lab_enabled': legacyEnabled,
+        'multi_pill_identification_lab_enabled': legacyEnabled,
+        'multiPillIdentificationLabEnabled': legacyEnabled,
       });
       expect(decoded.toJson(), restored.toJson());
     }
   });
 
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 기대 동작: 다중 알약 식별 실험 설정은 사용자별 기기에 저장된다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('다중 알약 식별 실험 설정은 사용자별 기기에 저장된다', () async {
+  // 함수이름: 폐기된 설정 저장 방지 테스트
+  // 함수역할: 일반 설정 저장·복원이 실험실 키를 다시 생성하지 않는지 확인한다.
+  // 매개변수: 없음. 반환값: 저장 및 재조회 검증 완료.
+  test('설정 저장은 폐기된 다중 알약 실험 키를 생성하지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
     final control = ManageUserSetting(
       userHash: 'user-a',
       useRemotePersistence: false,
     );
 
-    final savedSetting = await control.saveMultiPillIdentificationLabSetting(
+    addTearDown(control.dispose);
+    final saved = await control.saveUserSetting(
       currentSetting: const UserSetting(),
-      enabled: true,
+      fontSizeOption: 'large',
+      readingSpeedOption: 'slow',
+      language: 'en',
     );
     final restoredSetting = await control.requestUserSetting();
 
-    expect(savedSetting.multiPillIdentificationLabEnabled, isTrue);
-    expect(restoredSetting.multiPillIdentificationLabEnabled, isTrue);
+    expect(restoredSetting.toJson(), saved.setting.toJson());
+    expect(restoredSetting.fontSize, 20);
+    expect(restoredSetting.language, 'en');
     final preferences = await SharedPreferences.getInstance();
     expect(
-      preferences.getBool(
+      preferences.containsKey(
         'user_setting_user-a_multi_pill_identification_lab_enabled',
       ),
-      isTrue,
+      isFalse,
     );
   });
 
@@ -271,7 +274,6 @@ void main() {
     expect(setting.defaultLunchTime, '12:10');
     expect(setting.defaultEveningTime, '19:10');
     expect(setting.defaultBedtime, '23:10');
-    expect(setting.multiPillIdentificationLabEnabled, isTrue);
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getInt('user_setting_user-a_font_size'), 20);
     control.dispose();
@@ -346,9 +348,7 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(
-        multiPillIdentificationLabEnabled: true,
-      ),
+      currentSetting: const UserSetting(),
       fontSizeOption: 'large',
       readingSpeedOption: 'fast',
       language: 'ko',
@@ -373,7 +373,6 @@ void main() {
     expect(result.setting.caregiverNotificationsEnabled, isFalse);
     expect(result.setting.chatNotificationsEnabled, isFalse);
     expect(result.setting.notificationDetailMode, 'type_only');
-    expect(result.setting.multiPillIdentificationLabEnabled, isTrue);
     control.dispose();
   });
 

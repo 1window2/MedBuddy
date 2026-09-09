@@ -447,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildDestination(
               MedBuddyDestination.profile,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // Description: Opens patient-caregiver links with the current user hash and chat experiment setting.
+              // 함수역할: 현재 사용자 정보로 환자·보호자 연동 관리 화면을 연다.
               // Parameters:
               // - None.
               // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -455,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 userSetting: viewModel.userSetting,
                 authenticationControl: context.read<AuthenticationControl>(),
                 // Function Name: _buildApplicationShell.onPatientCaregiverLinkRequested callback
-                // Description: Opens patient-caregiver links with the current user hash and chat experiment setting.
+                // 함수역할: 현재 사용자 정보로 환자·보호자 연동 관리 화면을 연다.
                 // Parameters:
                 // - None.
                 // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -815,8 +815,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (context) => ManageUserSettingUI(
           initialSetting: viewModel.userSetting,
           authenticationControl: authenticationControl,
-          onMultiPillIdentificationLabSettingSaveRequested:
-              viewModel.requestMultiPillIdentificationLabSettingSave,
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
           // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => const CheckScheduleUI())); MaterialPageRoute(builder: (context) => const CheckScheduleUI())`을 실행한다.
           // 매개변수:

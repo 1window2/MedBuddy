@@ -22,7 +22,6 @@
 // - defaultLunchTime (String): 새 점심 알림의 HH:mm 기본 시각
 // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
 // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
-// - multiPillIdentificationLabEnabled (bool): 다중 알약 식별 실험 기능 노출 여부
 class UserSetting {
   final String userHash;
   final int fontSize;
@@ -38,10 +37,9 @@ class UserSetting {
   final String defaultLunchTime;
   final String defaultEveningTime;
   final String defaultBedtime;
-  final bool multiPillIdentificationLabEnabled;
 
   // 함수이름: UserSetting
-  // 함수역할: 사용자별 글씨·음성·언어·시간제·알림·기본 복약 시간과 기기 전용 실험실 선택을 보존한다.
+  // 함수역할: 사용자별 글씨·음성·언어·시간제·알림·기본 복약 시간을 보존한다.
   // 매개변수:
   // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
   // - fontSize (int): 사용자 기본 글씨 크기
@@ -57,7 +55,6 @@ class UserSetting {
   // - defaultLunchTime (String): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
-  // - multiPillIdentificationLabEnabled (bool): 다중 알약 식별 실험 기능 노출 여부
   // 반환값:
   // - UserSetting: 초기화된 인스턴스.
   const UserSetting({
@@ -75,7 +72,6 @@ class UserSetting {
     this.defaultLunchTime = '12:00',
     this.defaultEveningTime = '18:00',
     this.defaultBedtime = '22:00',
-    this.multiPillIdentificationLabEnabled = false,
   });
 
   // 함수이름: UserSetting.fromJson
@@ -134,9 +130,6 @@ class UserSetting {
         _readString(json['default_bedtime'] ?? json['defaultBedtime']),
         fallback: '22:00',
       ),
-      multiPillIdentificationLabEnabled:
-          json['multi_pill_identification_lab_enabled'] == true ||
-          json['multiPillIdentificationLabEnabled'] == true,
     );
   }
 
@@ -306,7 +299,6 @@ class UserSetting {
   // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
   // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
   // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
-  // - multiPillIdentificationLabEnabled (bool?): 다중 알약 식별 실험 기능 노출 여부
   // 반환값:
   // - 변경값이 반영된 UserSetting 인스턴스
   UserSetting copyWith({
@@ -324,7 +316,6 @@ class UserSetting {
     String? defaultLunchTime,
     String? defaultEveningTime,
     String? defaultBedtime,
-    bool? multiPillIdentificationLabEnabled,
   }) {
     return UserSetting(
       userHash: userHash ?? this.userHash,
@@ -345,9 +336,6 @@ class UserSetting {
       defaultLunchTime: defaultLunchTime ?? this.defaultLunchTime,
       defaultEveningTime: defaultEveningTime ?? this.defaultEveningTime,
       defaultBedtime: defaultBedtime ?? this.defaultBedtime,
-      multiPillIdentificationLabEnabled:
-          multiPillIdentificationLabEnabled ??
-          this.multiPillIdentificationLabEnabled,
     );
   }
 
@@ -372,11 +360,11 @@ class UserSetting {
   }
 
   // 함수이름: toJson
-  // 함수역할: 사용자 접근성·언어·알림·기본 시간을 서버 필드명으로 직렬화하고 기기 전용 실험실 설정은 제외한다.
+  // 함수역할: 사용자 접근성·언어·알림·기본 시간을 서버 필드명으로 직렬화한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Map<String, dynamic>: 사용자 접근성·언어·알림·기본 시간을 서버 필드명으로 직렬화하고 기기 전용 실험실 설정은 제외한다.
+  // - Map<String, dynamic>: 서버와 공유할 사용자 설정 필드.
   Map<String, dynamic> toJson() {
     return {
       'user_hash': userHash,

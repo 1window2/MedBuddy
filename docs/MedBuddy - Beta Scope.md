@@ -38,7 +38,7 @@ The following implemented flows are in v0.2.0 verification:
    cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
-5. User notification, display, language, reading-speed, and laboratory feature
+5. User notification, display, language, and reading-speed
    settings, including independent medication/caregiver/chat notification
    switches, Android notification settings access, defaults for newly created
    schedule slots, lock-screen detail policy, device/Korean/English language,
@@ -49,7 +49,7 @@ The following implemented flows are in v0.2.0 verification:
    dose-completion delivery, and idempotent server-scheduled missed-deadline
    delivery with a local/demo Android fallback.
 7. Patient-scoped health recommendations.
-8. Experimental loose-pill candidate identification with explicit user
+8. Default single- and multi-pill candidate identification with explicit user
    confirmation, up to ten separately photographed pills, bounded two-request
    concurrency, bounded request-limit retry that preserves completed results,
    per-pill partial failure, and schedule review before save. One-photo detection
@@ -58,15 +58,15 @@ The following implemented flows are in v0.2.0 verification:
    percentages. See [pill identification review](MedBuddy%20-%20Pill%20Identification%20Review.md).
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
-10. Laboratory nearby-pharmacy lookup using foreground location, backend-held
+10. Nearby-pharmacy lookup using foreground location, backend-held
     public-data credentials, one explained filter selector, an attributed in-app
     Naver Map view with synchronized card/marker selection, device-scoped
     favorites, closing-soon and next-opening status, source-freshness metadata,
     refresh cooldown, validated phone launch, user-selected installed-map or
     Google directions, address-copy fallback, and authorized pharmacy sharing
     into linked chat.
-11. Laboratory linked medication chat for active patient-caregiver links and
-    active patient medications, with multi-selection through a schedule-style
+11. Linked medication chat for active patient-caregiver links, with
+    active-medication multi-selection through a schedule-style
     medication picker, individually removable medication contexts,
     authorized medication-detail navigation, authenticated REST history,
     WebSocket updates, idempotent retries, read state, bounded recipient
@@ -74,6 +74,10 @@ The following implemented flows are in v0.2.0 verification:
     requests, automatic slot-completion events, medication shortage/discomfort
     context, pharmacy snapshots, participant-specific quick replies, and patient
     navigation from a schedule card to the matching slot in today's schedule.
+
+다중 알약 식별·근처 약국·채팅은 별도 실험실 설정 없이 제공하며, 환경설정에서
+실험실 메뉴를 제거한다. 채팅 탭은 활성 연동이 있을 때만 표시한다. 구형 실험실
+저장값은 무시하되 글씨 크기·언어·알림 등 기존 사용자 설정은 유지한다.
 
 ## Required Beta Hardening
 

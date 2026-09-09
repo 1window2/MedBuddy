@@ -55,7 +55,7 @@ class ManageUserSetting {
        _ownsClient = client == null;
 
   // 함수이름: requestUserSetting
-  // 함수역할: 사용자별 캐시를 먼저 읽고 원격 설정을 조회하되 기기 전용 실험실 설정은 유지하며 서버 실패 시 캐시로 대체한다.
+  // 함수역할: 사용자별 캐시를 먼저 읽고 원격 설정을 조회하며 서버 실패 시 캐시로 대체한다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -79,11 +79,7 @@ class ManageUserSetting {
         );
       }
 
-      // 실험실 설정은 기기 전용 값이므로 서버 응답에 덮어쓰이지 않게 합친다.
-      final setting = _decodeUserSetting(responseBody).copyWith(
-        multiPillIdentificationLabEnabled:
-            cachedSetting.multiPillIdentificationLabEnabled,
-      );
+      final setting = _decodeUserSetting(responseBody);
       await _cacheUserSetting(setting);
       return setting;
     } catch (error, stackTrace) {
@@ -178,11 +174,7 @@ class ManageUserSetting {
         );
       }
 
-      // 서버에는 접근성 설정만 저장하고 실험실 설정은 기기 값을 유지한다.
-      final savedSetting = _decodeUserSetting(responseBody).copyWith(
-        multiPillIdentificationLabEnabled:
-            nextSetting.multiPillIdentificationLabEnabled,
-      );
+      final savedSetting = _decodeUserSetting(responseBody);
       await _cacheUserSetting(savedSetting);
       return UserSettingSaveResult(
         setting: savedSetting,
@@ -202,31 +194,12 @@ class ManageUserSetting {
     }
   }
 
-  // 함수이름: saveMultiPillIdentificationLabSetting
-  // 함수역할: 여러 알약 사진을 한 번에 식별하는 실험 기능의 노출 여부를 기기에 저장한다. 검증 중인 기능이 서버의 정식 사용자 설정 스키마에 포함되지 않게 한다.
-  // 매개변수:
-  // - currentSetting (UserSetting): 변경하지 않은 값을 보존할 현재 사용자 설정
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - 다중 알약 식별 설정이 반영된 사용자 설정
-  Future<UserSetting> saveMultiPillIdentificationLabSetting({
-    required UserSetting currentSetting,
-    required bool enabled,
-  }) async {
-    final nextSetting = currentSetting.copyWith(
-      userHash: _normalizedUserHash,
-      multiPillIdentificationLabEnabled: enabled,
-    );
-    await _cacheUserSetting(nextSetting);
-    return nextSetting;
-  }
-
   // 함수이름: _requestCachedUserSetting
-  // 함수역할: 사용자별 저장값을 읽고 글씨·음성·언어의 구형 키와 기본값으로 누락을 보완하며 기기 전용 실험실 설정을 복원한다.
+  // 함수역할: 사용자별 설정을 읽고 구형 접근성 키와 기본값으로 누락을 보완한다. 폐기된 실험실 키는 읽지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<UserSetting>: 사용자별 저장값을 읽고 글씨·음성·언어의 구형 키와 기본값으로 누락을 보완하며 기기 전용 실험실 설정을 복원한다.
+  // - Future<UserSetting>: 현재 사용자 설정 또는 누락 값을 보완한 기본 설정.
   Future<UserSetting> _requestCachedUserSetting() async {
     final preferences = await SharedPreferences.getInstance();
     final fallbackSetting = UserSetting(userHash: _normalizedUserHash);
@@ -275,13 +248,11 @@ class ManageUserSetting {
       defaultBedtime:
           preferences.getString(_defaultBedtimeKey) ??
           fallbackSetting.defaultBedtime,
-      multiPillIdentificationLabEnabled:
-          preferences.getBool(_multiPillIdentificationLabEnabledKey) ?? false,
     );
   }
 
   // 함수이름: _cacheUserSetting
-  // 함수역할: 글씨·음성·언어·알림·기본 복약 시간과 실험실 선택값을 현재 사용자 전용 키로 기기에 저장한다.
+  // 함수역할: 글씨·음성·언어·알림·기본 복약 시간을 현재 사용자 전용 키로 기기에 저장한다.
   // 매개변수:
   // - setting (UserSetting): 복원·저장·적용할 사용자 환경 설정
   // 반환값:
@@ -319,10 +290,6 @@ class ManageUserSetting {
       setting.defaultEveningTime,
     );
     await preferences.setString(_defaultBedtimeKey, setting.defaultBedtime);
-    await preferences.setBool(
-      _multiPillIdentificationLabEnabledKey,
-      setting.multiPillIdentificationLabEnabled,
-    );
   }
 
   // Function Name: _decodeUserSetting
@@ -474,15 +441,6 @@ class ManageUserSetting {
   // - String: 새 취침 전 복약 알림의 기본 시간을 저장할 사용자별 키를 만든다.
   String get _defaultBedtimeKey =>
       'user_setting_${_normalizedUserHash}_default_bedtime';
-
-  // 함수이름: _multiPillIdentificationLabEnabledKey
-  // 함수역할: 다중 알약 식별 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 다중 알약 식별 실험 기능 노출 여부를 저장할 사용자별 키를 만든다.
-  String get _multiPillIdentificationLabEnabledKey =>
-      'user_setting_${_normalizedUserHash}_multi_pill_identification_lab_enabled';
 
   // Function Name: dispose
   // Description: Closes the HTTP client only when this control created it; injected clients remain owned by the caller.

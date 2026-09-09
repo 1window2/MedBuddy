@@ -1,5 +1,5 @@
 // 파일명: manage_user_setting_ui_boundary.dart
-// 역할: 접근성·알림·실험 기능·계정 보안 설정을 제공한다.
+// 역할: 접근성·알림·계정 보안 설정을 제공한다.
 
 import 'dart:async';
 
@@ -58,8 +58,6 @@ class ManageUserSettingUI extends StatefulWidget {
   final Future<void> Function()? onDeleteAccountRequested;
   final SettingPreviewSpeaker? previewSpeaker;
   final SettingPreviewStopper? previewStopper;
-  final Future<void> Function(bool enabled)?
-  onMultiPillIdentificationLabSettingSaveRequested;
   final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
@@ -81,7 +79,6 @@ class ManageUserSettingUI extends StatefulWidget {
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
   // - previewSpeaker (SettingPreviewSpeaker?): 미리보기 문장을 현재 설정으로 읽는 함수.
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
-  // - onMultiPillIdentificationLabSettingSaveRequested (Future<void> Function(bool enabled)?): 여러 알약 식별 실험 기능의 활성 여부를 저장할 콜백.
   // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver?): 편집한 사용자 설정을 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - onDeviceNotificationSettingsRequested (Future<void> Function()?): 운영체제의 앱 알림 설정을 여는 콜백.
@@ -95,7 +92,6 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onDeleteAccountRequested,
     this.previewSpeaker,
     this.previewStopper,
-    this.onMultiPillIdentificationLabSettingSaveRequested,
     this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
@@ -113,12 +109,11 @@ class ManageUserSettingUI extends StatefulWidget {
 // 클래스명: _SettingSection
 // 역할: 설정 하위 화면의 현재 분류를 담당한다.
 // 주요 책임:
-// - 설정 하위 화면의 현재 분류에서 지원하는 선택지를 열거하고 구분한다: overview, medicationAndNotifications, displayAndVoice, laboratory, account.
+// - 설정 홈, 복약 및 알림, 화면 및 음성, 계정 분류를 구분한다.
 enum _SettingSection {
   overview,
   medicationAndNotifications,
   displayAndVoice,
-  laboratory,
   account,
 }
 
@@ -126,7 +121,6 @@ enum _SettingSection {
 // 역할: 접근성·기본 복약 시각·계정 보안 설정의 화면 상태를 관리한다.
 // 주요 책임:
 // - 글씨 크기·읽기 속도·언어·시간 형식과 음성 미리보기를 배치한다.
-// - 여러 알약 식별 실험 기능의 사용 여부를 표시한다.
 // - 계정 요약과 지원되는 MFA·로그아웃·계정 삭제 명령을 표시한다.
 // 속성:
 // - _fontSize (String): 기준 글씨 크기 또는 선택한 크기 옵션.
@@ -147,7 +141,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _defaultLunchTime;
   late String _defaultEveningTime;
   late String _defaultBedtime;
-  late bool _multiPillIdentificationLabEnabled;
   bool _isSaving = false;
   bool _isPreviewSpeaking = false;
   int _voicePreviewRequestId = 0;
@@ -177,8 +170,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _defaultLunchTime = widget.initialSetting.defaultLunchTime;
     _defaultEveningTime = widget.initialSetting.defaultEveningTime;
     _defaultBedtime = widget.initialSetting.defaultBedtime;
-    _multiPillIdentificationLabEnabled =
-        widget.initialSetting.multiPillIdentificationLabEnabled;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -220,7 +211,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       defaultLunchTime: _defaultLunchTime,
       defaultEveningTime: _defaultEveningTime,
       defaultBedtime: _defaultBedtime,
-      multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
     );
     final platformMediaQuery = MediaQueryData.fromView(View.of(context));
     final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
@@ -277,8 +267,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                     ),
                     if (_selectedSection ==
                             _SettingSection.medicationAndNotifications ||
-                        _selectedSection == _SettingSection.displayAndVoice ||
-                        _selectedSection == _SettingSection.laboratory)
+                        _selectedSection == _SettingSection.displayAndVoice)
                       _SettingSaveFooter(
                         text: text,
                         isSaving: _isSaving,
@@ -320,9 +309,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           readingSpeed: _readingSpeed,
           languageMode: _languageMode,
         ),
-        laboratorySummary: text.laboratorySummary(
-          multiPillIdentificationEnabled: _multiPillIdentificationLabEnabled,
-        ),
         // 함수이름: _buildSelectedSection.onSectionSelected callback
         // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
         // 매개변수:
@@ -343,7 +329,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         text,
         contentScale,
       ),
-      _SettingSection.laboratory => _buildLaboratorySettings(text),
       _SettingSection.account => _buildAccountSettings(
         text,
         accountPresentation,
@@ -603,39 +588,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
   }
 
-  // 함수이름: _buildLaboratorySettings
-  // 함수역할: 근처 약국·복약 채팅·여러 알약 식별 실험 기능의 사용 여부를 표시한다.
-  // 매개변수:
-  // - text (_SettingText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 접근성·기본 복약 시각·계정 보안 설정에 쓰는 위젯 트리.
-  Widget _buildLaboratorySettings(_SettingText text) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SettingTitle(text.laboratoryTitle),
-        const SizedBox(height: 24),
-        _ExperimentalFeatureToggle(
-          switchKey: const ValueKey('multiPillIdentificationLabSwitch'),
-          title: text.multiPillIdentificationLabTitle,
-          description: text.multiPillIdentificationLabDescription,
-          enabled: _multiPillIdentificationLabEnabled,
-          // 함수이름: _buildLaboratorySettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _multiPillIdentificationLabEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildLaboratorySettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_multiPillIdentificationLabEnabled = enabled`로 갱신한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _multiPillIdentificationLabEnabled = enabled),
-        ),
-      ],
-    );
-  }
-
   // 함수이름: _buildAccountSettings
   // 함수역할: 계정 요약과 지원되는 MFA·로그아웃·계정 삭제 명령을 표시한다.
   // 매개변수:
@@ -824,7 +776,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     defaultLunchTime: _defaultLunchTime,
     defaultEveningTime: _defaultEveningTime,
     defaultBedtime: _defaultBedtime,
-    multiPillIdentificationLabEnabled: _multiPillIdentificationLabEnabled,
   );
 
   // 함수이름: _selectLanguageMode
@@ -1064,9 +1015,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               readingSpeedOption: _readingSpeed,
               language: _language,
             );
-      await widget.onMultiPillIdentificationLabSettingSaveRequested?.call(
-        _multiPillIdentificationLabEnabled,
-      );
       if (!mounted) {
         return;
       }
@@ -1324,13 +1272,11 @@ class _AccountPresentation {
 // - accountPresentation (_AccountPresentation): 현재 계정 또는 변화 유형의 표시 모델.
 // - medicationAndNotificationSummary (String): 설정 분류에 표시할 현재 선택값 요약.
 // - displayAndVoiceSummary (String): 설정 분류에 표시할 현재 선택값 요약.
-// - laboratorySummary (String): 설정 분류에 표시할 현재 선택값 요약.
 class _SettingsOverview extends StatelessWidget {
   final _SettingText text;
   final _AccountPresentation accountPresentation;
   final String medicationAndNotificationSummary;
   final String displayAndVoiceSummary;
-  final String laboratorySummary;
   final ValueChanged<_SettingSection> onSectionSelected;
 
   // 함수이름: _SettingsOverview
@@ -1340,7 +1286,6 @@ class _SettingsOverview extends StatelessWidget {
   // - accountPresentation (_AccountPresentation): 현재 계정 또는 변화 유형의 표시 모델.
   // - medicationAndNotificationSummary (String): 설정 분류에 표시할 현재 선택값 요약.
   // - displayAndVoiceSummary (String): 설정 분류에 표시할 현재 선택값 요약.
-  // - laboratorySummary (String): 설정 분류에 표시할 현재 선택값 요약.
   // - onSectionSelected (ValueChanged<_SettingSection>): 선택한 설정 분류를 전달할 콜백.
   // 반환값: 입력 설정이 반영된 _SettingsOverview 인스턴스.
   const _SettingsOverview({
@@ -1348,7 +1293,6 @@ class _SettingsOverview extends StatelessWidget {
     required this.accountPresentation,
     required this.medicationAndNotificationSummary,
     required this.displayAndVoiceSummary,
-    required this.laboratorySummary,
     required this.onSectionSelected,
   });
 
@@ -1391,19 +1335,6 @@ class _SettingsOverview extends StatelessWidget {
           // - 없음.
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
           onTap: () => onSectionSelected(_SettingSection.displayAndVoice),
-        ),
-        const SizedBox(height: 14),
-        _SettingsMenuTile(
-          tileKey: const ValueKey('settingsLaboratoryMenu'),
-          icon: Icons.science_outlined,
-          title: text.laboratoryTitle,
-          summary: laboratorySummary,
-          // 함수이름: build.onTap callback
-          // 함수역할: 계정 환영 영역과 설정 분류 목록에서 캡처된 작업 `onSectionSelected(_SettingSection.laboratory)`을 실행한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onTap: () => onSectionSelected(_SettingSection.laboratory),
         ),
         const SizedBox(height: 14),
         _SettingsMenuTile(
@@ -1998,86 +1929,6 @@ class _SettingFieldTitle extends StatelessWidget {
         fontWeight: FontWeight.w800,
         height: 1.2,
         letterSpacing: 0,
-      ),
-    );
-  }
-}
-
-// 클래스명: _ExperimentalFeatureToggle
-// 역할: 실험 기능 설명과 사용 여부 선택을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 실험 기능 설명과 사용 여부 선택 위젯을 구성한다.
-// 속성:
-// - switchKey (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-// - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-class _ExperimentalFeatureToggle extends StatelessWidget {
-  final Key switchKey;
-  final String title;
-  final String description;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  // 함수이름: _ExperimentalFeatureToggle
-  // 함수역할: 실험 기능 설명과 사용 여부 선택에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - switchKey (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-  // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-  // - onChanged (ValueChanged<bool>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _ExperimentalFeatureToggle 인스턴스.
-  const _ExperimentalFeatureToggle({
-    required this.switchKey,
-    required this.title,
-    required this.description,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 실험 기능 설명과 사용 여부 선택 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 실험 기능 설명과 사용 여부 선택에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: MedBuddyRadii.card,
-        side: const BorderSide(color: MedBuddyColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
-        key: switchKey,
-        value: enabled,
-        onChanged: onChanged,
-        activeThumbColor: MedBuddyColors.primary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: MedBuddyColors.textStrong,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            description,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 14,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -2723,16 +2574,16 @@ class _SettingOption {
 }
 
 // 클래스명: _SettingText
-// 역할: 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구를 담당한다.
+// 역할: 접근성·알림·계정 보안 설정에 쓰는 한국어·영어 문구를 담당한다.
 // 주요 책임:
-// - 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
+// - 접근성·알림·계정 보안 설정 문구의 언어를 선택하고 안내에 필요한 값을 반영한다.
 // 속성:
 // - language (String): 화면 문구를 선택할 언어 코드.
 class _SettingText {
   final String language;
 
   // 함수이름: _SettingText
-  // 함수역할: 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 함수역할: 접근성·알림·계정 보안 설정에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _SettingText 인스턴스.
@@ -2788,12 +2639,6 @@ class _SettingText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get languageTitle => isEnglish ? 'Language' : '언어';
-  // 함수이름: laboratoryTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "실험실" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get laboratoryTitle => isEnglish ? 'Labs' : '실험실';
   // 함수이름: accountTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "Account" 문구를 제공한다.
   // 매개변수:
@@ -2847,21 +2692,6 @@ class _SettingText {
   String get noAccountActions => isEnglish
       ? 'No additional account actions are available in this mode.'
       : '현재 실행 모드에서는 추가로 변경할 계정 설정이 없습니다.';
-  // 함수이름: multiPillIdentificationLabTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "다중 알약 일괄 식별" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get multiPillIdentificationLabTitle =>
-      isEnglish ? 'Multi-pill batch identification' : '다중 알약 일괄 식별';
-  // 함수이름: multiPillIdentificationLabDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알약마다 사진을 한 장씩 추가해 여러 식별 결과를 한 번에 검토합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get multiPillIdentificationLabDescription => isEnglish
-      ? 'Add one photo per pill and review several identification results together.'
-      : '알약마다 사진을 한 장씩 추가해 여러 식별 결과를 한 번에 검토합니다.';
   // 함수이름: medicationNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "내 복약 알림" 문구를 제공한다.
   // 매개변수:
@@ -3071,7 +2901,7 @@ class _SettingText {
       caregiverEnabled,
       chatEnabled,
       // 함수이름: medicationAndNotificationSummary.where callback
-      // 함수역할: 접근성·알림·실험 기능·계정 보안 설정에 쓰는 한국어·영어 문구에 대해 `enabled` 조건으로 컬렉션 항목을 판별한다.
+      // 함수역할: 활성화된 알림 설정 항목만 요약에 포함한다.
       // 매개변수:
       // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
       // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
@@ -3109,21 +2939,6 @@ class _SettingText {
       _ => '한국어',
     };
     return '$fontSizeLabel · $readingSpeedLabel · $languageLabel';
-  }
-
-  // 함수이름: laboratorySummary
-  // 함수역할: 현재 언어와 입력값에 맞춰 "사용 중인 실험 기능 없음" 문구를 제공한다.
-  // 매개변수:
-  // - multiPillIdentificationEnabled (bool): 여러 알약 사진 식별을 사용할지 여부.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String laboratorySummary({required bool multiPillIdentificationEnabled}) {
-    final enabledFeatures = <String>[
-      if (multiPillIdentificationEnabled) multiPillIdentificationLabTitle,
-    ];
-    if (enabledFeatures.isEmpty) {
-      return isEnglish ? 'No experimental features enabled' : '사용 중인 실험 기능 없음';
-    }
-    return enabledFeatures.join(' · ');
   }
 
   // 함수이름: small

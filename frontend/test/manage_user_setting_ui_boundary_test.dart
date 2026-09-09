@@ -75,13 +75,14 @@ void main() {
       find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('settingsLaboratoryMenu')), findsNothing);
     expect(
-      find.byKey(const ValueKey('settingsLaboratoryMenu')),
+      find.byKey(const ValueKey('settingsMedicationAndNotificationsMenu')),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('settingsAccountMenu')), findsOneWidget);
     expect(find.text('중간 · 중간 · 한국어'), findsOneWidget);
-    expect(find.text('사용 중인 실험 기능 없음'), findsOneWidget);
+    expect(find.text('사용 중인 실험 기능 없음'), findsNothing);
     expect(find.widgetWithText(FilledButton, '저장하기'), findsNothing);
 
     await _openDisplayAndVoice(tester);
@@ -743,103 +744,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: 실험실 항목 테스트
-  // 함수역할: 정식 약국·채팅 스위치를 제거하고 다중 알약 식별만 실험실에 남기는지 확인한다.
-  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
-  testWidgets('실험실에는 다중 알약 식별만 표시한다', (tester) async {
-    final authenticationControl = AuthenticationControl.development();
-    addTearDown(authenticationControl.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManageUserSettingUI(
-          initialSetting: const UserSetting(),
-          authenticationControl: authenticationControl,
-          // 함수이름: 설정 저장 대역
-          // 함수역할: 실제 저장 없이 성공 결과를 반환한다.
-          // 매개변수: 글씨 크기·읽기 속도·언어 선택값. 반환값: 저장 결과.
-          onSettingSaveRequested:
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 실험실 제거 회귀 테스트
+    // 함수역할: 큰 글씨와 두 언어에서 실험실 메뉴 없이 세 설정 분류를 제공한다.
+    // 매개변수: tester: 위젯 도구. 반환값: 표시 및 메뉴 접근 검증 완료.
+    testWidgets('설정에는 실험실 메뉴와 실험 스위치가 없다 $language', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final authenticationControl = AuthenticationControl.development();
+      addTearDown(authenticationControl.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManageUserSettingUI(
+            initialSetting: UserSetting.fromJson({
+              'language': language,
+              'font_size': 20,
+              'multi_pill_identification_lab_enabled': false,
+            }),
+            authenticationControl: authenticationControl,
+            // 함수이름: 설정 저장 대역
+            // 함수역할: 실제 저장 없이 성공 결과를 반환한다.
+            // 매개변수: 글씨 크기·읽기 속도·언어. 반환값: 저장 결과.
+            onSettingSaveRequested:
+                ({
+                  required fontSizeOption,
+                  required readingSpeedOption,
+                  required language,
+                }) async => _saveResult(),
+          ),
         ),
-      ),
-    );
-    await _openLaboratory(tester);
-    expect(find.byKey(const ValueKey('nearbyPharmacyLabSwitch')), findsNothing);
-    expect(
-      find.byKey(const ValueKey('linkedMedicationChatLabSwitch')),
-      findsNothing,
-    );
-    expect(find.text('근처 운영 약국'), findsNothing);
-    expect(find.text('복약 대화'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('multiPillIdentificationLabSwitch')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 실험실에서 다중 알약 일괄 식별 노출 여부를 저장한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('실험실에서 다중 알약 일괄 식별 노출 여부를 저장한다', (tester) async {
-    bool? savedLabSetting;
-    final authenticationControl = AuthenticationControl.development();
-    addTearDown(authenticationControl.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManageUserSettingUI(
-          initialSetting: const UserSetting(),
-          authenticationControl: authenticationControl,
-          // 함수이름: onMultiPillIdentificationLabSettingSaveRequested 콜백
-          // 함수역할:
-          // - 다중 알약 식별 실험 기능의 저장 요청 값을 기록한다.
-          // 매개변수:
-          // - enabled (bool): 선택한 실험 기능 활성 여부.
-          // 반환값:
-          // - Future<void>; 선택한 활성 여부 기록 완료.
-          onMultiPillIdentificationLabSettingSaveRequested: (enabled) async {
-            savedLabSetting = enabled;
-          },
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
-              // 함수역할:
-              // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
-              // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-              // 반환값:
-              // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
-        ),
-      ),
-    );
-
-    await _openLaboratory(tester);
-    await tester.ensureVisible(find.text('다중 알약 일괄 식별'));
-    await tester.tap(
-      find.byKey(const ValueKey('multiPillIdentificationLabSwitch')),
-    );
-    await tester.pump();
-    await tester.ensureVisible(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
-    await tester.pumpAndSettle();
-
-    expect(savedLabSetting, isTrue);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      expect(
+        find.byKey(const ValueKey('settingsLaboratoryMenu')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('multiPillIdentificationLabSwitch')),
+        findsNothing,
+      );
+      expect(find.byIcon(Icons.science_outlined), findsNothing);
+      expect(find.text('실험실'), findsNothing);
+      expect(find.text('Labs'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('settingsMedicationAndNotificationsMenu')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')),
+        findsOneWidget,
+      );
+      final account = find.byKey(const ValueKey('settingsAccountMenu'));
+      await tester.ensureVisible(account);
+      await tester.pumpAndSettle();
+      expect(account.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -944,18 +906,6 @@ void main() {
 // - 메뉴 전환 완료.
 Future<void> _openDisplayAndVoice(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')));
-  await tester.pumpAndSettle();
-}
-
-// 함수이름: _openLaboratory
-// 함수역할:
-// - 실험실 설정 메뉴를 열고 화면 전환을 기다린다.
-// 매개변수:
-// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-// 반환값:
-// - 실험실 화면 전환 완료.
-Future<void> _openLaboratory(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('settingsLaboratoryMenu')));
   await tester.pumpAndSettle();
 }
 

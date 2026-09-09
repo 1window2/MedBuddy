@@ -4,7 +4,7 @@ part of 'medbuddy_view_model.dart';
 // 역할: 사용자 설정, 초기 화면 데이터와 계정 데이터 삭제 흐름을 관리한다.
 
 // 클래스명: MedBuddyUserSettingViewModel
-// 역할: 사용자 설정·초기 일정·실험실 선택 및 계정 삭제 흐름을 확장한다.
+// 역할: 사용자 설정·초기 일정 및 계정 삭제 흐름을 확장한다.
 // 주요 책임:
 // - 알림 개인정보 정책을 설정 변경과 동기화하고 새로고침과 분석 상태 초기화 및 세션 데이터 정리를 조정한다.
 extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
@@ -159,23 +159,6 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     }
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;
-  }
-
-  // 함수이름: requestMultiPillIdentificationLabSettingSave
-  // 함수역할: 다중 알약 일괄 식별 실험 기능의 노출 설정을 기기에 저장하고 입력 화면에 반영한다.
-  // 매개변수:
-  // - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> requestMultiPillIdentificationLabSettingSave(
-    bool enabled,
-  ) async {
-    _userSetting = await manageUserSetting
-        .saveMultiPillIdentificationLabSetting(
-          currentSetting: _userSetting,
-          enabled: enabled,
-        );
-    _notifyViewModelListeners(MedBuddyFeature.userSetting);
   }
 
   // Function Name: requestAccountDataDeletion

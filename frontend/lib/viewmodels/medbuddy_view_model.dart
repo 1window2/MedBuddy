@@ -409,7 +409,7 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   UserSetting _userSetting = const UserSetting();
   // Function Name: userSetting
-  // Description: Exposes the current patient-scoped accessibility, language, notification, and laboratory settings.
+  // 함수역할: 현재 환자 범위의 접근성·언어·알림 설정을 제공한다.
   // Parameters:
   // - None.
   // Returns:
