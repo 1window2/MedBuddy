@@ -49,6 +49,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   MedBuddyDestination _selectedDestination = MedBuddyDestination.home;
+  String? _updatingHomeMedicationSlotKey;
   final Set<MedBuddyDestination> _visitedDestinations = {
     MedBuddyDestination.home,
   };
@@ -321,6 +322,10 @@ class _HomeScreenState extends State<HomeScreen> {
       onTodayScheduleRequested: () {
         _selectDestination(MedBuddyDestination.schedule);
       },
+      onNextMedicationCompleteRequested: (slotKey) =>
+          _completeHomeMedicationSlot(viewModel, slotKey),
+      isNextMedicationCompletionLoading:
+          _updatingHomeMedicationSlotKey != null,
       onHealthRecommendationRequested: () {
         Navigator.push(
           context,
@@ -349,6 +354,60 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           : null,
       onUserSettingRequested: () => _openUserSettings(context, viewModel),
+    );
+  }
+
+  // 함수명: _completeHomeMedicationSlot
+  // 역할:
+  // - 홈 화면에서 다음 시간대의 모든 약을 한 번에 복용 완료 처리한다.
+  // - 중복 요청을 막고, 성공 직후에는 실수로 누른 상태를 실행 취소할 수 있게 한다.
+  Future<void> _completeHomeMedicationSlot(
+    MedBuddyViewModel viewModel,
+    String slotKey,
+  ) async {
+    if (_updatingHomeMedicationSlotKey != null) {
+      return;
+    }
+    setState(() => _updatingHomeMedicationSlotKey = slotKey);
+    final success = await viewModel.requestMedicationSlotStatusUpdate(
+      slotKey,
+      true,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _updatingHomeMedicationSlotKey = null);
+    final isEnglish = viewModel.userSetting.language
+        .trim()
+        .toLowerCase()
+        .startsWith('en');
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? (isEnglish
+                    ? 'The scheduled medications were marked as taken.'
+                    : '예정된 약을 모두 복용 완료로 기록했습니다.')
+              : (isEnglish
+                    ? 'Could not save medication completion.'
+                    : '복약 완료를 저장하지 못했습니다.'),
+        ),
+        duration: Duration(seconds: success ? 5 : 2),
+        persist: false,
+        action: success
+            ? SnackBarAction(
+                label: isEnglish ? 'Undo' : '실행 취소',
+                onPressed: () async {
+                  await viewModel.requestMedicationSlotStatusUpdate(
+                    slotKey,
+                    false,
+                  );
+                },
+              )
+            : null,
+      ),
     );
   }
 

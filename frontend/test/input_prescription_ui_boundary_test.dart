@@ -521,6 +521,55 @@ void main() {
     expect(find.text('오늘도 복약을 꾸준히 이어가고 있어요'), findsNothing);
   });
 
+  testWidgets('dashboard marks the next medication slot from one large action', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 1000));
+    String? completedSlotKey;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _home(
+          schedules: const [
+            MedicationSchedule(
+              medicationName: '점심약A',
+              scheduleSlotKeys: ['lunch'],
+            ),
+            MedicationSchedule(
+              medicationName: '점심약B',
+              scheduleSlotKeys: ['lunch'],
+            ),
+          ],
+          alarms: const {
+            'lunch': MedicationAlarm(
+              slotKey: 'lunch',
+              hour: 12,
+              minute: 30,
+              enabled: true,
+            ),
+          },
+          totalCount: 2,
+          nowProvider: () => DateTime(2026, 1, 1, 10),
+          onNextMedicationCompleteRequested: (slotKey) async {
+            completedSlotKey = slotKey;
+          },
+        ),
+      ),
+    );
+
+    final completionButton = find.byKey(
+      const ValueKey('homeNextSlotCompletionButton'),
+    );
+    expect(completionButton, findsOneWidget);
+    expect(find.text('복용했어요'), findsOneWidget);
+
+    await tester.tap(completionButton);
+    await tester.pump();
+
+    expect(completedSlotKey, 'lunch');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('dashboard prioritizes a future dose over an overdue dose', (
     tester,
   ) async {
@@ -580,6 +629,8 @@ InputPrescriptionUI _home({
   int completedCount = 0,
   int totalCount = 0,
   DateTime Function()? nowProvider,
+  Future<void> Function(String slotKey)?
+      onNextMedicationCompleteRequested,
 }) {
   return InputPrescriptionUI(
     statusMessage: '',
@@ -589,6 +640,8 @@ InputPrescriptionUI _home({
     todayMedicationCompletedCount: completedCount,
     todayMedicationTotalCount: totalCount,
     nowProvider: nowProvider,
+    onNextMedicationCompleteRequested:
+        onNextMedicationCompleteRequested,
     onPrescriptionScanRequested: () {},
     onPrescriptionGalleryRequested: () {},
     onPillIdentificationRequested: () {},

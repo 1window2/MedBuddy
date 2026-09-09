@@ -32,6 +32,9 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
+  final Future<void> Function(String slotKey)?
+      onNextMedicationCompleteRequested;
+  final bool isNextMedicationCompletionLoading;
   final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onHealthRecommendationRequested;
   final VoidCallback? onMedicationReminderRequested;
@@ -53,6 +56,8 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPillIdentificationRequested,
     this.onManualMedicationRequested,
     required this.onTodayScheduleRequested,
+    this.onNextMedicationCompleteRequested,
+    this.isNextMedicationCompletionLoading = false,
     this.onNearbyPharmacyRequested,
     required this.onHealthRecommendationRequested,
     required this.onMedicationReminderRequested,
@@ -72,6 +77,8 @@ class InputPrescriptionUI extends StatelessWidget {
       onPillIdentificationRequested = null,
       onManualMedicationRequested = null,
       onTodayScheduleRequested = null,
+      onNextMedicationCompleteRequested = null,
+      isNextMedicationCompletionLoading = false,
       onNearbyPharmacyRequested = null,
       onHealthRecommendationRequested = null,
       onMedicationReminderRequested = null,
@@ -131,6 +138,10 @@ class InputPrescriptionUI extends StatelessWidget {
                               nowProvider: nowProvider,
                               compact: useCompactDashboard,
                               onTap: onTodayScheduleRequested,
+                              onCompleteRequested:
+                                  onNextMedicationCompleteRequested,
+                              isCompletionLoading:
+                                  isNextMedicationCompletionLoading,
                             ),
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
@@ -871,6 +882,8 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final bool compact;
   final DateTime Function()? nowProvider;
   final VoidCallback? onTap;
+  final Future<void> Function(String slotKey)? onCompleteRequested;
+  final bool isCompletionLoading;
 
   const _HomeEncouragementPanel({
     required this.userSetting,
@@ -882,6 +895,8 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.compact = false,
     this.nowProvider,
     this.onTap,
+    this.onCompleteRequested,
+    this.isCompletionLoading = false,
   });
 
   @override
@@ -1078,6 +1093,48 @@ class _HomeEncouragementPanel extends StatelessWidget {
                   ],
                 ),
               ),
+              if (dashboard.nextSlotKey != null &&
+                  onCompleteRequested != null) ...[
+                SizedBox(height: compact ? 10 : 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    key: const ValueKey('homeNextSlotCompletionButton'),
+                    onPressed: isCompletionLoading
+                        ? null
+                        : () => onCompleteRequested!(dashboard.nextSlotKey!),
+                    icon: isCompletionLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.done_all_rounded),
+                    label: Text(
+                      isCompletionLoading
+                          ? (isEnglish ? 'Saving...' : '저장 중...')
+                          : (isEnglish ? 'Taken' : '복용했어요'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: MedBuddyColors.primary
+                          .withValues(alpha: 0.45),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: MedBuddyRadii.pill,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1093,6 +1150,7 @@ class _HomeDashboardSummary {
   final String progressLabel;
   final String statusMessage;
   final bool hasNextMedication;
+  final String? nextSlotKey;
   final String nextMedicationLabel;
   final String nextMedicationGuide;
 
@@ -1101,6 +1159,7 @@ class _HomeDashboardSummary {
     required this.progressLabel,
     required this.statusMessage,
     required this.hasNextMedication,
+    required this.nextSlotKey,
     required this.nextMedicationLabel,
     required this.nextMedicationGuide,
   });
@@ -1122,6 +1181,7 @@ class _HomeDashboardSummary {
             ? 'Preparing your medication plan'
             : '복약 일정을 준비하고 있어요',
         hasNextMedication: false,
+        nextSlotKey: null,
         nextMedicationLabel: isEnglish ? 'Next medication' : '다음 복약',
         nextMedicationGuide: isEnglish
             ? 'Please wait a moment.'
@@ -1181,6 +1241,7 @@ class _HomeDashboardSummary {
                   ? 'You have completed today\'s medication'
                   : '오늘의 복약을 모두 완료했어요'),
         hasNextMedication: false,
+        nextSlotKey: null,
         nextMedicationLabel: isEnglish
             ? 'No upcoming medication'
             : '다음 복약 일정이 없어요',
@@ -1231,6 +1292,7 @@ class _HomeDashboardSummary {
       progressLabel: progressLabel,
       statusMessage: statusMessage,
       hasNextMedication: true,
+      nextSlotKey: nextSlot.slotKey,
       nextMedicationLabel: nextMedicationLabel,
       nextMedicationGuide: isEnglish
           ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Check your prescription guidance before taking a missed dose.' : 'Take it on time.'}'
