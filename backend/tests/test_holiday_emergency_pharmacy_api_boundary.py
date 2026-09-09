@@ -28,6 +28,7 @@ async def test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored() ->
         # date roster and enforce the pharmacy classification locally.
         assert "QD" not in request.url.params
         assert request.url.params["QT"] == "20260925"
+        assert request.url.params["numOfRows"] == "20000"
         return httpx.Response(
             200,
             content=b"""

@@ -22,6 +22,7 @@ _TIME_RANGE_PATTERN = re.compile(
     r"\s*[~\-–]\s*"
     r"(?P<end>\d{1,2})\s*:\s*(?P<end_minute>\d{2})"
 )
+_PAGE_SIZE = 20_000
 
 
 class HolidayEmergencyPharmacyAPI:
@@ -75,7 +76,7 @@ class HolidayEmergencyPharmacyAPI:
                     schedule = self._parse_item(item, value)
                     if schedule is not None:
                         schedules_by_id[schedule.pharmacy_id] = schedule
-                if page_no * 1000 >= total_count or not items:
+                if page_no * _PAGE_SIZE >= total_count or not items:
                     break
                 page_no += 1
             schedules = tuple(schedules_by_id.values())
@@ -102,7 +103,7 @@ class HolidayEmergencyPharmacyAPI:
                     "serviceKey": settings.PUBLIC_DATA_API_KEY,
                     "QT": value.strftime("%Y%m%d"),
                     "pageNo": page_no,
-                    "numOfRows": 1000,
+                    "numOfRows": _PAGE_SIZE,
                 },
             )
             response.raise_for_status()
