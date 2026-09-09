@@ -1,3 +1,6 @@
+# File Name: release-android.yml
+# Role: Validates production configuration and builds verified, signed Android artifacts.
+
 name: Build Signed Android Release
 
 on:

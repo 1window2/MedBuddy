@@ -1,3 +1,6 @@
+# File Name: deploy-backend.yml
+# Role: Defines the guarded backend migration, candidate verification and deployment workflow.
+
 name: Deploy Backend
 
 on:

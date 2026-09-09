@@ -1,3 +1,6 @@
+# File Name: frontend-ci.yml
+# Role: Validates Flutter source, tests and the compile-only Android release build.
+
 name: Flutter CI
 
 on:

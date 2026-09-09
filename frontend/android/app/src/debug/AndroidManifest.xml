@@ -1,3 +1,5 @@
+<!-- 파일명: AndroidManifest.xml (debug)
+     역할: 디버그 실행에서 개발 도구 연결과 로컬 통신에 필요한 설정을 적용한다. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!-- The INTERNET permission is required for development. Specifically,

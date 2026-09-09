@@ -1,3 +1,6 @@
+# 파일명: data-maintenance.yml
+# 역할: 만료 데이터 정리 작업의 예약·수동 실행 경로를 정의하며 현재 자체 서버 운영에서는 비활성 상태를 유지한다.
+
 name: Data Maintenance
 
 on:
