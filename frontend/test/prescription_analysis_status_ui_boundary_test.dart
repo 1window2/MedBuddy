@@ -191,7 +191,12 @@ void main() {
                   medicationName: 'test-tablet',
                   medicationTime: 3,
                 ),
-                detail: MedicationDetail(itemName: 'test-tablet'),
+                detail: MedicationDetail(
+                  itemName: 'test-tablet',
+                  efficacy: 'effect',
+                  usageMethod: 'usage',
+                  warning: 'warning',
+                ),
               ),
             ],
             userSetting: UserSetting(language: language, fontSize: 20),
