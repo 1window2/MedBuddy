@@ -30,9 +30,20 @@ router = APIRouter(
 )
 
 
-# 함수명: get_nearby_pharmacies
-# 역할:
-# - 사용자 좌표 주변 약국을 조회해 영업 상태와 거리순 목록을 반환한다.
+# Function Name: get_nearby_pharmacies
+# Description:
+# - Adapts validated coordinates and legacy open-only selection to pharmacy search, exposing freshness and mapping upstream failures to HTTP errors.
+# Parameters:
+# - latitude (float): Search-origin latitude in degrees.
+# - longitude (float): Search-origin longitude in degrees.
+# - search_mode (PharmacySearchMode | None): Requested pharmacy opening-hours or official-designation filter.
+# - target_datetime (datetime | None): Optional requested opening-hours reference time.
+# - open_only (bool | None): Whether results must be open at the reference time.
+# - limit (int): Maximum number of results to return.
+# - max_distance_km (float): Maximum accepted search radius in kilometers.
+# - control (CheckNearbyPharmacy): Nearby-pharmacy search control with catalog and holiday sources.
+# Returns:
+# - NearbyPharmacyResponse with ranked results and effective search metadata.
 @router.get("/nearby", response_model=NearbyPharmacyResponse)
 async def get_nearby_pharmacies(
     latitude: float = Query(ge=-90, le=90),

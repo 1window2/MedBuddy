@@ -28,19 +28,34 @@ _MAX_DELIVERY_ATTEMPTS = 8
 
 
 # 클래스명: _RetryablePushDeliveryError
-# 역할: 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
+# 역할:
+# - 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
+# 주요 책임:
+# - 일부 유효 기기 전송 실패를 아웃박스 재시도 상태로 전달한다.
 class _RetryablePushDeliveryError(RuntimeError):
     pass
 
 
 # 클래스명: ProcessCaregiverAlertOutbox
-# 역할: 보호자 알림 아웃박스를 한 건씩 선점하여 푸시 전송 결과를 기록한다.
+# 역할:
+# - 보호자 알림 아웃박스를 한 건씩 선점하여 푸시 전송 결과를 기록한다.
 # 주요 책임:
 # - 여러 서버가 같은 요청을 동시에 처리하지 않도록 원자적으로 선점한다.
 # - 실패한 요청을 지수 간격으로 다시 시도할 수 있게 만든다.
 # - 재시도 한도를 넘긴 요청을 종료 상태로 전환한다.
 # - 전송 완료 요청을 다시 보내지 않는다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
 class ProcessCaregiverAlertOutbox:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 완료 알림 아웃박스를 처리할 DB 세션과 푸시 전송 경계를 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -49,11 +64,11 @@ class ProcessCaregiverAlertOutbox:
         self.db = db
         self.push_boundary = push_boundary
 
-    # 함수명: processDue
-    # 역할:
+    # 함수이름: processDue
+    # 함수역할:
     # - 지금 처리 가능한 알림 요청을 제한된 개수만큼 전송한다.
     # 매개변수:
-    # - limit: 한 번에 처리할 최대 요청 수
+    # - limit (int): 한 번에 처리할 최대 요청 수
     # 반환값:
     # - 처리 결과별 요청 개수
     def processDue(self, limit: int = 50) -> dict[str, int]:
@@ -95,13 +110,13 @@ class ProcessCaregiverAlertOutbox:
             results[outcome] += 1
         return results
 
-    # 함수명: processOne
-    # 역할:
+    # 함수이름: processOne
+    # 함수역할:
     # - 한 알림 요청을 선점한 뒤 보호자 알림 전송을 시도한다.
     # 매개변수:
-    # - outbox_id: 처리할 아웃박스 기본키
+    # - outbox_id (int): 처리할 아웃박스 기본키
     # 반환값:
-    # - sent, failed, skipped 중 하나
+    # - 전송 결과를 나타내는 sent, failed 또는 skipped 문자열.
     def processOne(self, outbox_id: int) -> str:
         now = utc_now()
         stale_before = now - _PROCESSING_TIMEOUT

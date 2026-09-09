@@ -1,3 +1,5 @@
+# File Name: b6d14f8c2a70_add_pharmacy_schedule_provenance.py
+# Role: Adds official pharmacy designations and dated pharmacy/holiday fetch caches while accommodating existing local tables.
 """Add pharmacy schedule provenance and persistent holiday caches.
 
 Revision ID: b6d14f8c2a70
@@ -17,6 +19,13 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# 함수이름: upgrade
+# 함수역할:
+# - 앱이 먼저 만든 로컬 테이블도 유지하며 약국 운영 근거를 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     """앱이 먼저 만든 로컬 테이블도 유지하며 약국 운영 근거를 추가한다."""
     inspector = sa.inspect(op.get_bind())
@@ -96,6 +105,13 @@ def upgrade() -> None:
         )
 
 
+# 함수이름: downgrade
+# 함수역할:
+# - 이번 버전에서 관리하는 표와 열이 있을 때만 제거한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     """이번 버전에서 관리하는 표와 열이 있을 때만 제거한다."""
     inspector = sa.inspect(op.get_bind())

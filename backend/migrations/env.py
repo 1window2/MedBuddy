@@ -1,5 +1,5 @@
-# 파일명: env.py
-# 역할: Alembic 마이그레이션 실행 환경과 데이터베이스 연결을 구성한다.
+# File Name: env.py
+# Role: Configures Alembic metadata and database connectivity for offline SQL generation or online schema migration.
 
 from logging.config import fileConfig
 
@@ -31,6 +31,13 @@ config.set_main_option("sqlalchemy.url", str(database_url).replace("%", "%%"))
 target_metadata = Base.metadata
 
 
+# Function Name: run_migrations_offline
+# Description:
+# - Configures Alembic to emit migration SQL with literal binds without opening a database connection.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def run_migrations_offline() -> None:
     context.configure(
         url=str(database_url),
@@ -43,6 +50,13 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Function Name: run_migrations_online
+# Description:
+# - Opens an unpooled database connection and runs Alembic migrations in its transaction with type comparison enabled.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def run_migrations_online() -> None:
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),

@@ -45,9 +45,12 @@ logger = logging.getLogger(__name__)
 
 
 # 함수이름: get_chat_connection_manager
-# 함수역할: 애플리케이션에 등록된 채팅 실시간 연결 관리자를 반환한다.
-# 매개변수: request - 현재 FastAPI 요청
-# 반환값: 초기화된 ChatConnectionManager
+# 함수역할:
+# - 애플리케이션에 등록된 채팅 실시간 연결 관리자를 반환한다.
+# 매개변수:
+# - request (Request): 현재 FastAPI 요청
+# 반환값:
+# - 초기화된 ChatConnectionManager
 def get_chat_connection_manager(request: Request) -> ChatConnectionManager:
     """애플리케이션 단위 실시간 연결 관리자를 반환한다."""
     manager = getattr(request.app.state, "chat_connection_manager", None)
@@ -57,9 +60,18 @@ def get_chat_connection_manager(request: Request) -> ChatConnectionManager:
 
 
 # 함수이름: get_chat_messages
-# 함수역할: 인증된 연동 참여자에게 채팅 기록 한 페이지를 반환한다.
-# 매개변수: link_id, user_hash, 페이지 기준과 인증·인가 의존성
-# 반환값: 메시지 목록과 페이지 정보
+# 함수역할:
+# - 인증된 연동 참여자에게 채팅 기록 한 페이지를 반환한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - before_message_id (int | None): 이전 기록 조회의 제외 상한 메시지 식별자.
+# - limit (int): 반환할 최대 결과 수.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 메시지 목록과 페이지 정보
 @router.get("/links/{link_id}/messages")
 def get_chat_messages(
     link_id: int,
@@ -80,10 +92,19 @@ def get_chat_messages(
     )
 
 
-# Function Name: delete_chat_messages
-# Description: Adapts an authenticated selection to the deletion use case.
-# Parameters: link_id, payload, request and authentication/control dependencies.
-# Returns: Deleted IDs and scope, broadcast privately or to both participants.
+# 함수이름: delete_chat_messages
+# 함수역할:
+# - 인증된 연동 참여자의 메시지 삭제를 처리하고 범위에 따라 본인 또는 양쪽 참여자에게 변경을 방송한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - payload (ChatMessageDelete): 명시적인 삭제 메시지 선택과 삭제 범위.
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 삭제 메시지 식별자와 삭제 범위.
 @router.post("/links/{link_id}/messages/delete")
 async def delete_chat_messages(
     link_id: int,
@@ -108,9 +129,16 @@ async def delete_chat_messages(
 
 
 # 함수이름: get_chat_medications
-# 함수역할: 현재 연동 환자의 복용 중인 약을 채팅 선택 목록으로 반환한다.
-# 매개변수: link_id, user_hash와 인증·인가 의존성
-# 반환값: 선택 가능한 복약 정보 목록
+# 함수역할:
+# - 현재 연동 환자의 복용 중인 약을 채팅 선택 목록으로 반환한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 선택 가능한 복약 정보 목록
 @router.get("/links/{link_id}/medications")
 def get_chat_medications(
     link_id: int,
@@ -128,9 +156,16 @@ def get_chat_medications(
 
 
 # 함수이름: get_chat_schedule_contexts
-# 함수역할: 연동 환자의 오늘 복약 상태를 시간대별 채팅 카드 형식으로 반환한다.
-# 매개변수: link_id, user_hash와 인증·인가 의존성
-# 반환값: 시간대별 복약 상태 목록
+# 함수역할:
+# - 연동 환자의 오늘 복약 상태를 시간대별 채팅 카드 형식으로 반환한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 시간대별 복약 상태 목록
 @router.get("/links/{link_id}/schedule-contexts")
 def get_chat_schedule_contexts(
     link_id: int,
@@ -148,9 +183,17 @@ def get_chat_schedule_contexts(
 
 
 # 함수이름: get_chat_medication_detail
-# 함수역할: 채팅 참여자에게 메시지에 연결된 약의 상세정보를 반환한다.
-# 매개변수: link_id, medication_id, user_hash와 인증·인가 의존성
-# 반환값: 권한이 확인된 저장 복약 상세정보
+# 함수역할:
+# - 활성 연동 참여자에게 연동 환자 소유의 저장 약 상세정보를 반환한다. 메시지 첨부 여부나 현재 복용 기간으로 제한하지 않는다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - medication_id (int): 선택할 저장 약의 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 권한이 확인된 저장 복약 상세정보
 @router.get("/links/{link_id}/medications/{medication_id}")
 def get_chat_medication_detail(
     link_id: int,
@@ -170,9 +213,19 @@ def get_chat_medication_detail(
 
 
 # 함수이름: post_chat_message
-# 함수역할: 일반 또는 복약 맥락 메시지를 한 번만 저장하고 실시간 전송과 푸시를 연결한다.
-# 매개변수: link_id, 메시지 DTO, 사용자 식별값과 요청 의존성
-# 반환값: 생성 여부와 저장된 메시지
+# 함수역할:
+# - 일반 또는 복약 맥락 메시지를 한 번만 저장하고 실시간 전송과 푸시를 연결한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - payload (ChatMessageCreate): 검증된 텍스트·구조화 문맥 메시지 전송 요청.
+# - background_tasks (BackgroundTasks): 응답 이후 알림 전송을 예약할 작업 큐.
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 생성 여부와 저장된 메시지
 @router.post("/links/{link_id}/messages")
 async def post_chat_message(
     link_id: int,
@@ -234,9 +287,18 @@ async def post_chat_message(
 
 
 # 함수이름: mark_chat_read
-# 함수역할: 상대 메시지를 읽음 처리하고 연결된 기기에 변경을 방송한다.
-# 매개변수: link_id, 마지막 확인 메시지, 사용자 식별값과 요청 의존성
-# 반환값: 읽음 처리 개수와 마지막 메시지 정보
+# 함수역할:
+# - 상대 메시지를 읽음 처리하고 연결된 기기에 변경을 방송한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - payload (ChatReadUpdate): 읽음 처리 상한으로 사용할 마지막 확인 메시지.
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 읽음 처리 개수와 마지막 메시지 정보
 @router.post("/links/{link_id}/read")
 async def mark_chat_read(
     link_id: int,
@@ -268,9 +330,16 @@ async def mark_chat_read(
 
 
 # 함수이름: get_chat_unread_count
-# 함수역할: 현재 사용자가 읽지 않은 상대 메시지 수를 반환한다.
-# 매개변수: link_id, user_hash와 인증·인가 의존성
-# 반환값: 읽지 않은 메시지 수
+# 함수역할:
+# - 현재 사용자가 읽지 않은 상대 메시지 수를 반환한다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# 반환값:
+# - 읽지 않은 메시지 수
 @router.get("/links/{link_id}/unread-count")
 def get_chat_unread_count(
     link_id: int,
@@ -288,9 +357,14 @@ def get_chat_unread_count(
 
 
 # 함수이름: stream_chat_events
-# 함수역할: 인증된 연동 참여자에게 메시지와 읽음 이벤트를 실시간 전달한다.
-# 매개변수: websocket, link_id, user_hash
-# 반환값: 없음
+# 함수역할:
+# - 인증된 연동 참여자에게 메시지와 읽음 이벤트를 실시간 전달한다.
+# 매개변수:
+# - websocket (WebSocket): 연결 대기 중이거나 활성 상태인 실시간 채팅 연결.
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 없음
 @router.websocket("/links/{link_id}/stream")
 async def stream_chat_events(
     websocket: WebSocket,
@@ -387,9 +461,13 @@ async def stream_chat_events(
 
 
 # 함수이름: _enforce_chat_daily_quota
-# 함수역할: 한 사용자가 하루 동안 저장할 수 있는 채팅 메시지 수를 제한한다.
-# 매개변수: request, user_hash
-# 반환값: 없음. 제한 초과 시 HTTP 오류를 발생시킨다.
+# 함수역할:
+# - 한도 검사에 도달한 사용자의 채팅 전송 시도 횟수를 일일 한도로 제한한다. 중복 전송과 이후 검증·저장에 실패한 시도도 한도를 소비한다.
+# 매개변수:
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 없음. 제한 초과 시 HTTP 오류를 발생시킨다.
 async def _enforce_chat_daily_quota(
     *,
     request: Request,
@@ -421,9 +499,14 @@ async def _enforce_chat_daily_quota(
 
 
 # 함수이름: _reserve_chat_push_notification
-# 함수역할: 짧은 시간에 같은 상대에게 푸시가 반복 전송되지 않도록 예약한다.
-# 매개변수: request, recipient_hash, link_id
-# 반환값: 이번 메시지에 푸시를 전송할지 여부
+# 함수역할:
+# - 짧은 시간에 같은 상대에게 푸시가 반복 전송되지 않도록 예약한다.
+# 매개변수:
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - recipient_hash (str): 알림을 받을 계정 식별자.
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# 반환값:
+# - 이번 메시지에 푸시를 전송할지 여부
 async def _reserve_chat_push_notification(
     *,
     request: Request,
@@ -449,9 +532,13 @@ async def _reserve_chat_push_notification(
 
 
 # 함수이름: _reserve_websocket_connection
-# 함수역할: 반복적인 실시간 연결 시도로 서버 자원이 고갈되지 않게 제한한다.
-# 매개변수: websocket, user_hash
-# 반환값: 연결 허용 여부와 재시도 대기 초
+# 함수역할:
+# - 반복적인 실시간 연결 시도로 서버 자원이 고갈되지 않게 제한한다.
+# 매개변수:
+# - websocket (WebSocket): 연결 대기 중이거나 활성 상태인 실시간 채팅 연결.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 연결 허용 여부와 재시도 대기 초
 async def _reserve_websocket_connection(
     *,
     websocket: WebSocket,
@@ -473,9 +560,12 @@ async def _reserve_websocket_connection(
 
 
 # 함수이름: _authenticate_websocket
-# 함수역할: WebSocket 요청을 HTTP API와 같은 인증 정책으로 검증한다.
-# 매개변수: websocket - 연결 요청
-# 반환값: 검증된 사용자 주체
+# 함수역할:
+# - WebSocket 요청을 HTTP API와 같은 인증 정책으로 검증한다.
+# 매개변수:
+# - websocket (WebSocket): 연결 요청
+# 반환값:
+# - 검증된 사용자 주체
 def _authenticate_websocket(websocket: WebSocket) -> AuthenticatedPrincipal:
     """HTTP API와 같은 Firebase 및 App Check 규칙으로 WebSocket을 인증한다."""
     contract_version = websocket.headers.get("x-medbuddy-api-contract", "").strip()
@@ -496,9 +586,12 @@ def _authenticate_websocket(websocket: WebSocket) -> AuthenticatedPrincipal:
 
 
 # 함수이름: _websocket_close_code
-# 함수역할: HTTP 오류 상태를 WebSocket 종료 코드로 변환한다.
-# 매개변수: status_code - HTTP 상태 코드
-# 반환값: WebSocket 종료 코드
+# 함수역할:
+# - HTTP 오류 상태를 WebSocket 종료 코드로 변환한다.
+# 매개변수:
+# - status_code (int): HTTP 상태 코드
+# 반환값:
+# - WebSocket 종료 코드
 def _websocket_close_code(status_code: int) -> int:
     """HTTP 인증 오류를 브라우저 호환 WebSocket 종료 코드로 변환한다."""
     if status_code == 401:
@@ -513,9 +606,17 @@ def _websocket_close_code(status_code: int) -> int:
 
 
 # 함수이름: _dispatch_chat_notification
-# 함수역할: 채팅방에 접속하지 않은 상대에게 새 메시지 알림을 전달한다.
-# 매개변수: recipient_hash, link_id, message_body
-# 반환값: 없음
+# 함수역할:
+# - 채팅방에 접속하지 않은 상대에게 새 메시지 알림을 전달한다.
+# 매개변수:
+# - recipient_hash (str): 알림을 받을 계정 식별자.
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - message_body (str): 메시지 또는 푸시 미리보기에 사용할 사용자 입력 본문.
+# - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
+# - context_payload (dict[str, object] | None): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
+# - message_id (int): 저장된 채팅 메시지 식별자.
+# 반환값:
+# - 없음
 def _dispatch_chat_notification(
     *,
     recipient_hash: str,
@@ -543,6 +644,13 @@ def _dispatch_chat_notification(
         db.close()
 
 
+# 함수이름: _notification_slot_key
+# 함수역할:
+# - 구조화 메시지에서 알림 이동에 사용할 시간대 식별자를 꺼낸다.
+# 매개변수:
+# - context_payload (dict[str, object] | None): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
+# 반환값:
+# - 문맥의 시간대 키 또는 사용할 값이 없을 때 None.
 def _notification_slot_key(
     context_payload: dict[str, object] | None,
 ) -> str | None:

@@ -8,15 +8,25 @@ from sqlalchemy import Column, DateTime, String
 from core.database import Base
 
 
+# 함수이름: utc_now
+# 함수역할:
+# - DB 시각 저장에 사용할 시간대 정보 없는 현재 UTC를 구한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 시간대 정보가 없는 현재 UTC datetime.
 def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# 클래스명: _UserAccount
-# 역할: 환자·보호자 데이터가 참조할 내부 사용자 식별자를 보관한다.
-# 주요 책임:
-# - Firebase 또는 로컬 데모 사용자를 동일한 user_hash 기준으로 표현한다.
-# - 사용자 데이터 삭제 시 종속 데이터의 cascade 기준점으로 사용한다.
+# Class Name: _UserAccount
+# Role:
+# - Stores internal account scopes and durable local-deletion and external-identity completion markers.
+# Responsibilities:
+# - Anchor user-owned foreign keys and distinguish deletion requested from external identity deletion completed.
+# Attributes:
+# - user_hash (String): Account ownership scope for the operation.
+# - updated_at (DateTime): Timestamp of the most recent account-row update.
 class _UserAccount(Base):
     __tablename__ = "user_accounts"
 

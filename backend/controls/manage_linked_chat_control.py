@@ -43,14 +43,24 @@ from services.medication_course_policy import MedicationCoursePolicy
 
 
 # 함수이름: utc_now
-# 함수역할: 데이터베이스에 기록할 시간대 정보 없는 UTC 현재 시각을 만든다.
-# 매개변수: 없음
-# 반환값: UTC 기준 datetime
+# 함수역할:
+# - 데이터베이스에 기록할 시간대 정보 없는 UTC 현재 시각을 만든다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 시간대 정보가 없는 현재 UTC datetime.
 def utc_now() -> datetime:
     """DB에 기록할 시간대 정보 없는 UTC 현재 시각을 반환한다."""
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+# 함수이름: utc_iso
+# 함수역할:
+# - 시간대 유무와 관계없이 날짜 시각을 UTC ISO 문자열로 변환한다.
+# 매개변수:
+# - value (datetime | None): UTC ISO 문자열로 변환할 시각. 시간대 정보가 없으면 UTC로 간주하고, None은 그대로 반환한다.
+# 반환값:
+# - UTC 오프셋을 포함한 ISO 시각 문자열 또는 입력이 없을 때 None.
 def utc_iso(value: datetime | None) -> str | None:
     """시간대 유무와 관계없이 날짜 시각을 UTC ISO 문자열로 변환한다."""
     if value is None:
@@ -60,8 +70,14 @@ def utc_iso(value: datetime | None) -> str | None:
 
 
 # 클래스명: ChatSendResult
-# 역할: 저장된 메시지, 수신자와 신규 저장 여부를 함께 전달한다.
-# 주요 책임: 중복 전송 결과를 API 계층에서 구분할 수 있게 한다.
+# 역할:
+# - 저장된 메시지, 수신자와 신규 저장 여부를 함께 전달한다.
+# 주요 책임:
+# - 중복 전송 결과를 API 계층에서 구분할 수 있게 한다.
+# 속성:
+# - message (ChatMessage): 저장되었거나 재전송으로 재사용한 채팅 메시지 엔티티.
+# - recipient_hash (str): 알림을 받을 계정 식별자.
+# - created (bool): 새 메시지를 저장했으면 True. 중복 전송으로 기존 메시지를 재사용하면 False이며 새 메시지 알림을 보내지 않는다.
 @dataclass(frozen=True)
 class ChatSendResult:
     """메시지 응답과 신규 저장 여부 및 수신자를 함께 전달한다."""
@@ -72,11 +88,32 @@ class ChatSendResult:
 
 
 # 클래스명: ManageLinkedChat
-# 역할: 활성 환자·보호자 연동 안에서 채팅 사용 사례를 수행한다.
-# 주요 책임: 권한 검증, 기록 조회, 복약 맥락 검증, 저장과 읽음 처리를 조율한다.
+# 역할:
+# - 활성 환자·보호자 연동 안에서 채팅 사용 사례를 수행한다.
+# 주요 책임:
+# - 권한 검증, 기록 조회, 복약 맥락 검증, 저장과 읽음 처리를 조율한다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
+# - message_repository (ChatMessageRepository): 범위별 채팅 기록·읽음·삭제 상태 저장소.
+# - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
+# - pharmacy_repository (PharmacyCatalogRepository): 약국 카탈로그와 공휴일 당번표 저장소.
+# - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
 class ManageLinkedChat:
     """채팅 접근 권한, 저장, 기록 조회, 읽음 처리를 조율한다."""
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 연동·메시지·저장 약·약국 저장소와 복용 기간 정책을 채팅 요청 세션에 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - link_repository (PatientCaregiverLinkRepository | None): 활성 환자·보호자 연동 저장소.
+    # - message_repository (ChatMessageRepository | None): 범위별 채팅 기록·읽음·삭제 상태 저장소.
+    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
+    # - pharmacy_repository (PharmacyCatalogRepository | None): 약국 카탈로그와 공휴일 당번표 저장소.
+    # - course_policy (MedicationCoursePolicy | None): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -97,9 +134,15 @@ class ManageLinkedChat:
         self.course_policy = course_policy or MedicationCoursePolicy()
 
     # 함수이름: request_history
-    # 함수역할: 참여자에게 연동별 채팅 기록 한 페이지를 반환한다.
-    # 매개변수: link_id, user_hash, before_message_id, limit
-    # 반환값: 채팅 기록과 다음 페이지 존재 여부
+    # 함수역할:
+    # - 참여자에게 연동별 채팅 기록 한 페이지를 반환한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # - before_message_id (int | None): 이전 기록 조회의 제외 상한 메시지 식별자.
+    # - limit (int): 반환할 최대 결과 수.
+    # 반환값:
+    # - 채팅 기록과 다음 페이지 존재 여부
     def request_history(
         self,
         *,
@@ -122,11 +165,16 @@ class ManageLinkedChat:
             "has_more": has_more,
         }
 
-    # Function Name: delete_messages
-    # Description: Deletes a selection privately, or redacts the sender's own
-    # messages for everyone within 24 hours. The entire selection succeeds or fails.
-    # Parameters: link_id, user_hash, message_ids, scope (me/everyone).
-    # Returns: IDs and scope only; medication records and links are unchanged.
+    # 함수이름: delete_messages
+    # 함수역할:
+    # - 활성 연동과 최대 50개 선택을 검증하고 개인 숨김 또는 발신 후 24시간 이내 모두 삭제를 일괄 저장한다. 약품과 연동 행은 변경하지 않는다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # - message_ids (list[int]): 삭제 대상으로 명시한 메시지 식별자 목록.
+    # - scope (str): 삭제 범위: me는 개인 숨김, everyone은 양쪽 참여자에서 내용 제거.
+    # 반환값:
+    # - 삭제한 메시지 식별자와 범위; 모두 삭제는 본문·복약 문맥을 지워 복원할 수 없다.
     def delete_messages(
         self, *, link_id: int, user_hash: str,
         message_ids: list[int], scope: str,
@@ -173,10 +221,15 @@ class ManageLinkedChat:
             raise
         return {"success": True, "data": {"message_ids": ids, "scope": scope}}
 
-    # Function Name: _message_for_user
-    # Description: Produces a private tombstone instead of returning hidden text.
-    # Parameters: row, link, user_hash - stored message and authorized participant.
-    # Returns: Audience-specific response model.
+    # 함수이름: _message_for_user
+    # 함수역할:
+    # - 현재 참여자의 숨김 시각을 확인해 메시지 엔티티에 개인 삭제 상태를 반영한다.
+    # 매개변수:
+    # - row (_ChatMessage): 발신자·문맥·삭제 표식을 포함한 저장 채팅 행.
+    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 현재 사용자의 숨김 상태를 포함한 ChatMessage.
     @staticmethod
     def _message_for_user(
         row: _ChatMessage, link: _PatientCaregiverLink, user_hash: str,
@@ -186,9 +239,13 @@ class ManageLinkedChat:
         return ChatMessage.from_row(row, hidden_for_me=hidden_at is not None)
 
     # 함수이름: request_medication_contexts
-    # 함수역할: 연동 환자가 오늘 복용 중인 약을 채팅 선택 목록으로 반환한다.
-    # 매개변수: link_id, user_hash
-    # 반환값: 선택 가능한 복약 정보 목록
+    # 함수역할:
+    # - 연동 환자가 오늘 복용 중인 약을 채팅 선택 목록으로 반환한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 선택 가능한 복약 정보 목록
     def request_medication_contexts(
         self,
         *,
@@ -205,9 +262,13 @@ class ManageLinkedChat:
         }
 
     # 함수이름: request_schedule_contexts
-    # 함수역할: 연동 환자의 오늘 복약을 시간대별 채팅 카드 정보로 묶어 반환한다.
-    # 매개변수: link_id, user_hash
-    # 반환값: 시간대별 알림 시각, 완료 수와 약 목록
+    # 함수역할:
+    # - 연동 환자의 오늘 복약을 시간대별 채팅 카드 정보로 묶어 반환한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 시간대별 알림 시각, 완료 수와 약 목록
     def request_schedule_contexts(
         self,
         *,
@@ -226,9 +287,14 @@ class ManageLinkedChat:
         }
 
     # 함수이름: request_medication_detail
-    # 함수역할: 채팅 참여자에게 연동 환자가 저장한 약의 상세정보를 반환한다.
-    # 매개변수: link_id, user_hash, medication_id
-    # 반환값: 권한이 확인된 저장 복약 상세정보
+    # 함수역할:
+    # - 활성 연동과 환자 소유권을 확인해 저장 약 상세정보를 반환한다. 메시지 첨부 여부나 현재 복용 기간은 요구하지 않는다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # - medication_id (int): 선택할 저장 약의 식별자.
+    # 반환값:
+    # - 권한이 확인된 저장 복약 상세정보
     def request_medication_detail(
         self,
         *,
@@ -253,9 +319,21 @@ class ManageLinkedChat:
         }
 
     # 함수이름: send_message
-    # 함수역할: 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
-    # 매개변수: link_id, sender_hash, client_message_id, body, medication_id, medication_ids
-    # 반환값: ChatSendResult
+    # 함수역할:
+    # - 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
+    # - client_message_id (str): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
+    # - body (str): 호출자가 정리·검증한 본문. HTTP 경로는 ChatMessageCreate.normalize_body를 거치며, 이 함수는 전달받은 값을 그대로 저장한다.
+    # - medication_id (int | None): 선택할 저장 약의 식별자.
+    # - medication_ids (list[int] | None): 구조화 채팅 카드에 담을 선택적 저장 약 식별자 목록.
+    # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
+    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - pharmacy_id (str | None): 공공 약국 식별자.
+    # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
+    # 반환값:
+    # - 저장 메시지, 상대 수신자와 이번 요청의 신규 생성 여부를 담은 ChatSendResult.
     def send_message(
         self,
         *,
@@ -363,9 +441,13 @@ class ManageLinkedChat:
         )
 
     # 함수이름: publish_slot_completion
-    # 함수역할: 한 시간대의 약을 모두 복용하면 모든 활성 보호자 채팅에 완료 기록을 남긴다.
-    # 매개변수: patient_hash, slot_key
-    # 반환값: 새로 저장된 완료 메시지 수
+    # 함수역할:
+    # - 한 시간대의 약을 모두 복용하면 모든 활성 보호자 채팅에 완료 기록을 남긴다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # 반환값:
+    # - 새로 저장된 완료 메시지 수
     def publish_slot_completion(self, *, patient_hash: str, slot_key: str) -> int:
         """기존 알림 아웃박스와 같은 완료 사건을 채팅에도 멱등하게 기록한다."""
         if slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
@@ -395,9 +477,14 @@ class ManageLinkedChat:
         return created_count
 
     # 함수이름: mark_read
-    # 함수역할: 상대 메시지를 지정한 범위까지 읽음 처리한다.
-    # 매개변수: link_id, reader_hash, through_message_id
-    # 반환값: 변경 개수와 마지막 읽음 메시지 정보
+    # 함수역할:
+    # - 상대 메시지를 지정한 범위까지 읽음 처리한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - reader_hash (str): 수신 메시지를 읽음 처리하는 참여자 식별자.
+    # - through_message_id (int | None): 읽음 처리에 포함할 선택적 마지막 메시지 식별자.
+    # 반환값:
+    # - 변경 개수와 마지막 읽음 메시지 정보
     def mark_read(
         self,
         *,
@@ -426,9 +513,13 @@ class ManageLinkedChat:
         }
 
     # 함수이름: request_unread_count
-    # 함수역할: 현재 사용자가 읽지 않은 상대 메시지 수를 반환한다.
-    # 매개변수: link_id, user_hash
-    # 반환값: 읽지 않은 메시지 수
+    # 함수역할:
+    # - 현재 사용자가 읽지 않은 상대 메시지 수를 반환한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 읽지 않은 메시지 수
     def request_unread_count(
         self,
         *,
@@ -449,9 +540,13 @@ class ManageLinkedChat:
         }
 
     # 함수이름: require_active_link
-    # 함수역할: 사용자가 참여한 활성 연동을 반환하거나 접근을 거부한다.
-    # 매개변수: link_id, user_hash
-    # 반환값: 활성 환자·보호자 연동
+    # 함수역할:
+    # - 사용자가 참여한 활성 연동을 반환하거나 접근을 거부한다.
+    # 매개변수:
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 활성 환자·보호자 연동
     def require_active_link(
         self,
         *,
@@ -467,6 +562,14 @@ class ManageLinkedChat:
             )
         return link
 
+    # 함수이름: _resolve_active_medication
+    # 함수역할:
+    # - 선택한 약이 연동 환자의 현재 복용 약인지 검증한다.
+    # 매개변수:
+    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - medication_id (int): 선택할 저장 약의 식별자.
+    # 반환값:
+    # - 연동 환자가 현재 복용 중인 약 행; 잘못된 선택은 HTTP 오류.
     def _resolve_active_medication(
         self,
         link: _PatientCaregiverLink,
@@ -492,6 +595,14 @@ class ManageLinkedChat:
             )
         return medication
 
+    # 함수이름: _active_medications
+    # 함수역할:
+    # - 환자의 지정일 활성 약을 이름이 있는 항목으로 제한해 반환한다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - target_date (date): 약 복용 기간이 유효해야 하는 날짜.
+    # 반환값:
+    # - 지정일에 복용 중이며 표시 이름이 있는 저장 약 행 목록.
     def _active_medications(
         self,
         patient_hash: str,
@@ -505,6 +616,13 @@ class ManageLinkedChat:
             and (medication.item_name or "").strip()
         ]
 
+    # 함수이름: _schedule_contexts_for_patient
+    # 함수역할:
+    # - 활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 시간대별 약 목록, 완료 수, 전체 수와 알람 시각·활성 상태.
     def _schedule_contexts_for_patient(
         self,
         patient_hash: str,
@@ -577,6 +695,19 @@ class ManageLinkedChat:
             )
         return response
 
+    # 함수이름: _build_message_context
+    # 함수역할:
+    # - 메시지 유형별 입력을 검증하고 서버가 신뢰할 스냅샷만 생성한다.
+    # 매개변수:
+    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
+    # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
+    # - medication (_SavedMedication | None): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
+    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - pharmacy_id (str | None): 공공 약국 식별자.
+    # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
+    # 반환값:
+    # - 검증된 일정·복용 기간·약국 스냅샷; 일반 텍스트 메시지는 None.
     def _build_message_context(
         self,
         *,
@@ -646,6 +777,13 @@ class ManageLinkedChat:
             }
         raise HTTPException(status_code=400, detail="Unsupported chat message kind.")
 
+    # 함수이름: _pharmacy_today_hours
+    # 함수역할:
+    # - 약국 카탈로그의 오늘 정규 운영시간을 채팅 표시 형식으로 바꾼다.
+    # 매개변수:
+    # - pharmacy (object): 주간 운영 시간이 담긴 약국 카탈로그 객체.
+    # 반환값:
+    # - 오늘 정규 개점·폐점 표시 문자열; 운영 정보를 읽을 수 없으면 빈 문자열.
     @staticmethod
     def _pharmacy_today_hours(pharmacy: object) -> str:
         """약국 카탈로그의 오늘 정규 운영시간을 채팅 표시 형식으로 바꾼다."""
@@ -661,6 +799,13 @@ class ManageLinkedChat:
             return ""
         return f"{open_time} - {close_time}"
 
+    # 함수이름: _format_pharmacy_time
+    # 함수역할:
+    # - 공공데이터의 HHMM 운영시간을 읽기 쉬운 HH:MM으로 정규화한다.
+    # 매개변수:
+    # - value (object): 약국 운영 시간의 원본 값.
+    # 반환값:
+    # - HH:MM 형식 시각; 잘못된 시각이면 빈 문자열.
     @staticmethod
     def _format_pharmacy_time(value: object) -> str:
         """공공데이터의 HHMM 운영시간을 읽기 쉬운 HH:MM으로 정규화한다."""
@@ -678,6 +823,14 @@ class ManageLinkedChat:
             return ""
         return f"{hour:02d}:{minute:02d}"
 
+    # 함수이름: _find_slot_context
+    # 함수역할:
+    # - 현재 복약 일정에 실제로 존재하는 시간대 맥락을 반환한다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # 반환값:
+    # - 실제 활성 약이 있는 시간대 문맥; 잘못되거나 비어 있는 시간대는 HTTP 400.
     def _find_slot_context(
         self,
         *,
@@ -695,6 +848,13 @@ class ManageLinkedChat:
             detail="The selected schedule slot has no active medication.",
         )
 
+    # 함수이름: _medication_course_context
+    # 함수역할:
+    # - 약 부족 메시지에서 사용할 남은 복용 기간을 계산한다.
+    # 매개변수:
+    # - medication (_SavedMedication): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
+    # 반환값:
+    # - 남은 복용 일수와 종료일; 복용 기간을 모르면 각 값이 None.
     def _medication_course_context(
         self,
         medication: _SavedMedication,
@@ -711,6 +871,13 @@ class ManageLinkedChat:
             "course_end_date": end_date.isoformat(),
         }
 
+    # 함수이름: _medication_context_response
+    # 함수역할:
+    # - 복약 목록 행을 오늘 일정형 채팅 선택기에 필요한 정보로 변환한다.
+    # 매개변수:
+    # - medication (_SavedMedication): 환자 소유로 저장된 약품 스냅샷과 복용 기간 정보.
+    # 반환값:
+    # - 약 식별자·표시 이름·안전한 이미지·1회 용량·복용 시간대 사전.
     def _medication_context_response(
         self,
         medication: _SavedMedication,
@@ -735,9 +902,12 @@ class ManageLinkedChat:
         }
 
     # 함수이름: _medication_detail_response
-    # 함수역할: 저장 복약정보를 공통 약 상세 화면용 응답으로 변환한다.
-    # 매개변수: medication - 권한이 확인된 환자 소유 약 정보
-    # 반환값: 이미지 URL이 안전하게 보정된 상세정보 응답
+    # 함수역할:
+    # - 저장 복약정보를 공통 약 상세 화면용 응답으로 변환한다.
+    # 매개변수:
+    # - medication (_SavedMedication): 권한이 확인된 환자 소유 약 정보
+    # 반환값:
+    # - 이미지 URL이 안전하게 보정된 상세정보 응답
     @staticmethod
     def _medication_detail_response(
         medication: _SavedMedication,
@@ -768,6 +938,14 @@ class ManageLinkedChat:
             "ai_guide": medication.ai_guide or "",
         }
 
+    # 함수이름: _other_participant
+    # 함수역할:
+    # - 연동에서 현재 사용자 반대편 참여자의 hash를 반환한다.
+    # 매개변수:
+    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 현재 사용자가 환자이면 보호자, 그 외에는 환자의 계정 식별자.
     @staticmethod
     def _other_participant(link: _PatientCaregiverLink, user_hash: str) -> str:
         """연동에서 현재 사용자 반대편 참여자의 hash를 반환한다."""

@@ -30,17 +30,38 @@ from repositories.saved_medication_repository import SavedMedicationRepository
 logger = logging.getLogger(__name__)
 
 
+# Class Name: AccountDeletionPendingError
+# Role:
+# - Raised when a deleted identity tries to recreate its data scope.
+# Responsibilities:
+# - Prevent a durable deletion marker from being mistaken for an account that can be recreated.
 class AccountDeletionPendingError(RuntimeError):
     """Raised when a deleted identity tries to recreate its data scope."""
 
 
 # 클래스명: ManageAccount
-# 역할: 인증 사용자와 연결된 MedBuddy 데이터의 수명주기를 한곳에서 관리한다.
+# 역할:
+# - 인증 사용자와 연결된 MedBuddy 데이터의 수명주기를 한곳에서 관리한다.
 # 주요 책임:
 # - 인증 또는 로컬 사용자의 내부 계정 범위를 보장한다.
 # - 사용자가 보유한 데이터를 기계 판독 가능한 형태로 내보낸다.
 # - 환자 데이터, 보호자 연결, 알림, 캐시를 하나의 트랜잭션으로 삭제한다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
+# - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
+# - identity_deletion_boundary (IdentityDeletionBoundary | None): 외부 인증 계정을 제거하는 선택적 서비스.
 class ManageAccount:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 계정 내보내기·삭제에 사용할 저장소와 선택적 외부 인증 계정 삭제 경계를 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
+    # - link_repository (PatientCaregiverLinkRepository | None): 활성 환자·보호자 연동 저장소.
+    # - identity_deletion_boundary (IdentityDeletionBoundary | None): 외부 인증 계정을 제거하는 선택적 서비스.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -57,9 +78,14 @@ class ManageAccount:
         )
         self.identity_deletion_boundary = identity_deletion_boundary
 
-    # 함수명: ensureAccount
-    # 역할:
-    # - FK로 참조할 내부 사용자 row가 없으면 생성한다.
+    # Function Name: ensureAccount
+    # Description:
+    # - Creates the normalized account scope when absent and rejects durable deletion tombstones.
+    # Parameters:
+    # - user_hash (str): Account ownership scope for the operation.
+    # - commit (bool): Whether this operation owns the transaction commit.
+    # Returns:
+    # - Normalized user hash, or AccountDeletionPendingError for a deleted account.
     def ensureAccount(self, user_hash: str, *, commit: bool = False) -> str:
         normalized_user_hash = normalize_patient_hash(user_hash)
         account = self.db.get(_UserAccount, normalized_user_hash)
@@ -75,9 +101,13 @@ class ManageAccount:
                 self.db.flush()
         return normalized_user_hash
 
-    # 함수명: exportAccountData
-    # 역할:
+    # 함수이름: exportAccountData
+    # 함수역할:
     # - 사용자가 소유하거나 보호자로 참여한 데이터를 JSON 응답용으로 묶는다.
+    # 매개변수:
+    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 사용자 범위에 속한 복약·연동·채팅·알림·설정의 JSON 호환 내보내기 응답.
     def exportAccountData(self, user_hash: str) -> dict[str, object]:
         normalized_user_hash = self.ensureAccount(user_hash)
         saved_medications = self.medication_repository.list_by_patient(
@@ -147,14 +177,14 @@ class ManageAccount:
             },
         }
 
-    # 함수이름: deleteAccountData
-    # 함수역할:
-    # - 인증된 사용자의 MedBuddy 데이터를 하나의 DB 트랜잭션에서 삭제한다.
-    # - Firebase 모드에서는 외부 계정 삭제 전 삭제 표식을 남겨 재시도 시 복구를 막는다.
-    # 매개변수:
-    # - user_hash: 서버에서 확인한 MedBuddy 소유권 식별값
-    # - external_subject: 서버에서 검증한 Firebase UID
-    # 반환값: 항목별 삭제 개수와 외부 계정 삭제 여부
+    # Function Name: deleteAccountData
+    # Description:
+    # - Purges local data and, when configured, deletes the verified external identity using retry-safe tombstone markers.
+    # Parameters:
+    # - user_hash (str): Account ownership scope for the operation.
+    # - external_subject (str | None): Verified Firebase subject whose external identity is deleted.
+    # Returns:
+    # - Per-table deletion counts and whether external identity deletion completed.
     def deleteAccountData(
         self,
         user_hash: str,
@@ -177,6 +207,13 @@ class ManageAccount:
         self._mark_identity_deleted(normalized_user_hash)
         return self._deletion_result(deleted_counts, identity_deleted=True)
 
+    # Function Name: _prepare_firebase_account_deletion
+    # Description:
+    # - Commits the deletion-request tombstone and purges user data while retaining the account marker for retries.
+    # Parameters:
+    # - normalized_user_hash (str): Already-normalized account scope to purge or mark.
+    # Returns:
+    # - Counts of locally deleted records by data category.
     def _prepare_firebase_account_deletion(
         self,
         normalized_user_hash: str,
@@ -198,6 +235,13 @@ class ManageAccount:
             self.db.rollback()
             raise
 
+    # Function Name: _purge_local_account
+    # Description:
+    # - Commits a complete local account purge, rolling back the transaction on failure.
+    # Parameters:
+    # - normalized_user_hash (str): Already-normalized account scope to purge or mark.
+    # Returns:
+    # - Counts of deleted data, including the local account row.
     def _purge_local_account(self, normalized_user_hash: str) -> dict[str, int]:
         try:
             deleted_counts = self._purge_user_data(
@@ -210,6 +254,14 @@ class ManageAccount:
             self.db.rollback()
             raise
 
+    # 함수이름: _purge_user_data
+    # 함수역할:
+    # - 연결 채팅과 복약·알림·설정 데이터를 삭제하고 요청에 따라 계정 기준 행도 제거한다.
+    # 매개변수:
+    # - normalized_user_hash (str): 삭제 또는 표식 갱신 대상인 정규화된 계정 식별자.
+    # - delete_account (bool): 계정 행을 제거할지 삭제 표식을 남길지 여부.
+    # 반환값:
+    # - 데이터 종류별 삭제 행 수; 커밋은 호출자가 담당한다.
     def _purge_user_data(
         self,
         normalized_user_hash: str,
@@ -291,6 +343,13 @@ class ManageAccount:
         )
         return deleted_counts
 
+    # Function Name: _mark_identity_deleted
+    # Description:
+    # - Records external identity deletion completion and logs marker failures without undoing the completed identity deletion.
+    # Parameters:
+    # - normalized_user_hash (str): Already-normalized account scope to purge or mark.
+    # Returns:
+    # - None.
     def _mark_identity_deleted(self, normalized_user_hash: str) -> None:
         try:
             account = self.db.get(_UserAccount, normalized_user_hash)
@@ -304,6 +363,14 @@ class ManageAccount:
                 type(exc).__name__,
             )
 
+    # Function Name: _deletion_result
+    # Description:
+    # - Packages local purge counts and external identity completion into the account-deletion response.
+    # Parameters:
+    # - deleted_counts (dict[str, int]): Number of purged records grouped by data category.
+    # - identity_deleted (bool): Whether external identity deletion completed.
+    # Returns:
+    # - Successful deletion envelope with counts and identity_deleted flag.
     @staticmethod
     def _deletion_result(
         deleted_counts: dict[str, int],
@@ -316,6 +383,14 @@ class ManageAccount:
             "deleted": deleted_counts,
             "identity_deleted": identity_deleted,
         }
+    # 함수이름: _delete
+    # 함수역할:
+    # - 지정 ORM 모델에서 조건에 일치하는 행을 현재 트랜잭션으로 삭제한다.
+    # 매개변수:
+    # - model (type[object]): 계정 소유 행을 삭제할 ORM 모델.
+    # - criterion (object): 삭제 범위를 제한하는 SQLAlchemy 조건식.
+    # 반환값:
+    # - 삭제된 행 수.
     def _delete(self, model: type[object], criterion: object) -> int:
         return (
             self.db.query(model)
@@ -323,6 +398,13 @@ class ManageAccount:
             .delete(synchronize_session=False)
         )
 
+    # 함수이름: _row_to_dict
+    # 함수역할:
+    # - ORM 열 이름을 기준으로 계정 내보내기 값을 수집하고 날짜를 ISO 문자열로 변환한다.
+    # 매개변수:
+    # - row (object): 내보낼 SQLAlchemy 매핑 행 객체.
+    # 반환값:
+    # - JSON 직렬화에 사용할 열 이름·값 사전.
     @staticmethod
     def _row_to_dict(row: object) -> dict[str, object]:
         result: dict[str, object] = {}

@@ -16,21 +16,42 @@ from entities.user_setting_entity import _UserSetting
 
 
 # 클래스명: DispatchChatMessageAlert
-# 역할: 채팅 알림의 토큰 조회, 전송과 만료 토큰 정리를 조율한다.
-# 주요 책임: 제한된 길이의 메시지 미리보기를 보내고 유효하지 않은 토큰을 비활성화한다.
+# 역할:
+# - 채팅 알림의 토큰 조회, 전송과 만료 토큰 정리를 조율한다.
+# 주요 책임:
+# - 제한된 길이의 메시지 미리보기를 보내고 유효하지 않은 토큰을 비활성화한다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
 class DispatchChatMessageAlert:
     """채팅 알림의 토큰 조회, 전송, 만료 토큰 정리를 담당한다."""
 
     _MAXIMUM_PREVIEW_LENGTH = 120
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 채팅 수신자 설정 조회 세션과 기기 푸시 전송 경계를 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+    # 반환값:
+    # - 없음.
     def __init__(self, db: Session, push_boundary: PushNotificationBoundary) -> None:
         self.db = db
         self.push_boundary = push_boundary
 
     # 함수이름: notify_new_message
-    # 함수역할: 채팅방에 접속하지 않은 상대 기기에 새 메시지 도착을 알린다.
-    # 매개변수: recipient_hash, link_id, message_body
-    # 반환값: 푸시 전송 결과
+    # 함수역할:
+    # - 채팅방에 접속하지 않은 상대 기기에 새 메시지 도착을 알린다.
+    # 매개변수:
+    # - recipient_hash (str): 알림을 받을 계정 식별자.
+    # - link_id (int): 저장된 환자·보호자 연동 식별자.
+    # - message_body (str): 메시지 또는 푸시 미리보기에 사용할 사용자 입력 본문.
+    # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
+    # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - message_id (int | None): 저장된 채팅 메시지 식별자.
+    # 반환값:
+    # - 푸시 전송 결과
     def notify_new_message(
         self,
         *,
@@ -104,9 +125,12 @@ class DispatchChatMessageAlert:
         return result
 
     # 함수이름: _message_preview
-    # 함수역할: 알림에 표시할 메시지를 한 줄로 정리하고 최대 길이를 제한한다.
-    # 매개변수: message_body - 사용자가 전송한 원문
-    # 반환값: 알림 표시용 메시지 미리보기
+    # 함수역할:
+    # - 알림에 표시할 메시지를 한 줄로 정리하고 최대 길이를 제한한다.
+    # 매개변수:
+    # - message_body (str): 사용자가 전송한 원문
+    # 반환값:
+    # - 알림 표시용 메시지 미리보기
     @classmethod
     def _message_preview(cls, message_body: str) -> str:
         """공백을 정리한 뒤 긴 메시지 끝에 말줄임표를 붙인다."""
@@ -116,9 +140,12 @@ class DispatchChatMessageAlert:
         return f"{normalized[: cls._MAXIMUM_PREVIEW_LENGTH - 1].rstrip()}…"
 
     # 함수이름: _recipient_setting
-    # 함수역할: 수신자의 채팅 알림과 개인정보 표시 설정을 조회한다.
-    # 매개변수: recipient_hash - 알림을 받을 사용자 식별값
-    # 반환값: 사용자 설정 DB 행 또는 설정이 없으면 None
+    # 함수역할:
+    # - 수신자의 채팅 알림과 개인정보 표시 설정을 조회한다.
+    # 매개변수:
+    # - recipient_hash (str): 알림을 받을 사용자 식별값
+    # 반환값:
+    # - 사용자 설정 DB 행 또는 설정이 없으면 None
     def _recipient_setting(self, recipient_hash: str) -> _UserSetting | None:
         """설정이 없는 기존 사용자는 이전처럼 알림을 받도록 None을 반환한다."""
         return (
@@ -128,9 +155,12 @@ class DispatchChatMessageAlert:
         )
 
     # 함수이름: _recipient_language
-    # 함수역할: 저장된 언어를 읽고 지원하지 않는 값은 한국어로 보정한다.
-    # 매개변수: setting - 수신자의 사용자 설정 DB 행
-    # 반환값: ko 또는 en 언어 코드
+    # 함수역할:
+    # - 저장된 언어를 읽고 지원하지 않는 값은 한국어로 보정한다.
+    # 매개변수:
+    # - setting (_UserSetting | None): 수신자의 사용자 설정 DB 행
+    # 반환값:
+    # - ko 또는 en 언어 코드
     def _recipient_language(self, setting: _UserSetting | None) -> str:
         """수신자 설정이 없거나 잘못된 경우 한국어를 기본값으로 사용한다."""
         if setting is None:

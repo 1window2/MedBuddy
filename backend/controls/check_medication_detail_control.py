@@ -1,5 +1,5 @@
 # File Name: check_medication_detail_control.py
-# Role: Control class for requesting medication detail information.
+# Role: Normalizes OCR drug queries and combines local catalogs, Redis and public APIs with image and approval-summary enrichment.
 
 import asyncio
 import json
@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 _CandidateT = TypeVar("_CandidateT")
 
 
+# 함수이름: _read_text
+# 함수역할:
+# - 값을 문자열로 정리하고 None 또는 공백뿐인 값에는 표시용 기본 문구를 적용한다.
+# 매개변수:
+# - value (Any): 공공 약품 필드의 원본 값.
+# - default (str): 값이 없거나 비었을 때 표시할 대체 문구.
+# 반환값:
+# - 공백을 제거한 문자열 또는 default.
 def _read_text(value: Any, default: str = "정보 없음") -> str:
     if value is None:
         return default
@@ -44,10 +52,11 @@ def _read_text(value: Any, default: str = "정보 없음") -> str:
 
 
 # Class Name: _MedicationTextNormalizer
-# Role: Internal helper for medication search keyword normalization.
+# Role:
+# - Internal helper for medication search keyword normalization.
 # Responsibilities:
-#   - Normalize OCR or UI-provided medication text.
-#   - Strip dosage and dosage-form suffixes from search keywords.
+# - Normalize OCR or UI-provided medication text.
+# - Strip dosage and dosage-form suffixes from search keywords.
 class _MedicationTextNormalizer:
     MAX_SEARCH_KEYWORDS = 24
     _DOSAGE_PATTERN = re.compile(
@@ -102,13 +111,13 @@ class _MedicationTextNormalizer:
         ("케", "캐"),
     )
 
-    # Function Name: normalize_raw_text
-    # Description:
-    # - Collapses raw OCR text into a single searchable line.
-    # Parameters:
-    # - raw_text: Raw medication text from the frontend.
-    # Returns:
-    # - Whitespace-normalized text.
+    # 함수이름: normalize_raw_text
+    # 함수역할:
+    # - OCR 텍스트의 줄바꿈·연속 공백과 전각·대괄호 표기를 통일한다.
+    # 매개변수:
+    # - raw_text (str): 약품명 정규화 전의 원본 OCR 텍스트.
+    # 반환값:
+    # - 검색 후보 생성에 사용할 정리된 약품 텍스트.
     def normalize_raw_text(self, raw_text: str) -> str:
         normalized_text = (
             raw_text.replace("\n", " ")
@@ -119,14 +128,13 @@ class _MedicationTextNormalizer:
         )
         return " ".join(normalized_text.split()).strip()
 
-    # 함수명: build_search_keywords
-    # 함수역할:
-    # - 공공 의약품 API 조회 실패에 대비한 대체 검색어들을 만든다.
-    # - 제품명, 원문, 괄호 안 성분명, OCR 보정 후보를 순서대로 생성한다.
-    # 매개변수:
-    # - raw_text: 정규화 전후의 약품명 텍스트
-    # 반환값:
-    # - 중복을 제거한 검색어 후보 목록
+    # Function Name: build_search_keywords
+    # Description:
+    # - Expands the outside text and parenthesized names into bounded, deduplicated OCR search variants.
+    # Parameters:
+    # - raw_text (str): Source OCR text before medication-name normalization.
+    # Returns:
+    # - Ordered search keywords up to MAX_SEARCH_KEYWORDS; empty for blank input.
     def build_search_keywords(self, raw_text: str) -> list[str]:
         normalized_text = self.normalize_raw_text(raw_text)
         if not normalized_text:
@@ -146,6 +154,13 @@ class _MedicationTextNormalizer:
             : self.MAX_SEARCH_KEYWORDS
         ]
 
+    # Function Name: _split_parenthesized_text
+    # Description:
+    # - Separates balanced parenthesized names while retaining unmatched parentheses in the outside text.
+    # Parameters:
+    # - normalized_text (str): OCR text with whitespace and bracket notation already normalized.
+    # Returns:
+    # - Normalized outside text and inner candidates of 1-80 characters.
     def _split_parenthesized_text(self, normalized_text: str) -> tuple[str, list[str]]:
         outside_chars: list[str] = []
         parenthesized_candidates: list[str] = []
@@ -181,11 +196,11 @@ class _MedicationTextNormalizer:
 
         return self.normalize_raw_text("".join(outside_chars)), parenthesized_candidates
 
-    # 함수명: _candidate_variants
+    # 함수이름: _candidate_variants
     # 함수역할:
     # - 한 약품명 후보에서 용량 제거, 제형 제거, 제조사 제거, OCR 보정 후보를 만든다.
     # 매개변수:
-    # - candidate: 원본에서 추출한 약품명 후보
+    # - candidate (str): 원본에서 추출한 약품명 후보
     # 반환값:
     # - 검색 시도 순서를 보존한 약품명 후보 목록
     def _candidate_variants(self, candidate: str) -> list[str]:
@@ -205,11 +220,11 @@ class _MedicationTextNormalizer:
 
         return self._deduplicate_keywords([*structural_keywords, *ocr_keywords])
 
-    # 함수명: _structural_variants
+    # 함수이름: _structural_variants
     # 함수역할:
     # - 공백 제거, 제형 제거, 제조사 접두어 제거를 적용한 구조적 검색 후보를 만든다.
     # 매개변수:
-    # - keyword: 보정 전 검색어
+    # - keyword (str): 보정 전 검색어
     # 반환값:
     # - 구조적으로 단순화된 검색어 후보 목록
     def _structural_variants(self, keyword: str) -> list[str]:
@@ -230,21 +245,21 @@ class _MedicationTextNormalizer:
 
         return self._deduplicate_keywords(structural_keywords)
 
-    # 함수명: _strip_dosage_form
+    # 함수이름: _strip_dosage_form
     # 함수역할:
     # - 검색 폭을 넓히기 위해 약품명 끝의 정/캡슐 같은 제형 표기를 제거한다.
     # 매개변수:
-    # - keyword: 제형 표기가 포함될 수 있는 검색어
+    # - keyword (str): 제형 표기가 포함될 수 있는 검색어
     # 반환값:
     # - 제형 표기를 제거한 검색어
     def _strip_dosage_form(self, keyword: str) -> str:
         return self._DOSAGE_FORM_SUFFIX_PATTERN.sub("", keyword).strip()
 
-    # 함수명: _strip_manufacturer_prefix
+    # 함수이름: _strip_manufacturer_prefix
     # 함수역할:
     # - 제조사명이 앞에 붙은 제품명에서 성분명 중심 후보를 만든다.
     # 매개변수:
-    # - keyword: 제조사 접두어가 포함될 수 있는 검색어
+    # - keyword (str): 제조사 접두어가 포함될 수 있는 검색어
     # 반환값:
     # - 알려진 제조사 접두어를 제거한 검색어
     def _strip_manufacturer_prefix(self, keyword: str) -> str:
@@ -253,11 +268,11 @@ class _MedicationTextNormalizer:
                 return keyword[len(prefix) :].strip()
         return keyword
 
-    # 함수명: _hangul_ocr_variants
+    # 함수이름: _hangul_ocr_variants
     # 함수역할:
     # - 에/애, 레/래처럼 OCR에서 자주 뒤바뀌는 한글 모음 후보를 추가한다.
     # 매개변수:
-    # - keyword: 원본 검색어 후보
+    # - keyword (str): 원본 검색어 후보
     # 반환값:
     # - 한글 OCR 보정 검색어 후보 목록
     def _hangul_ocr_variants(self, keyword: str) -> list[str]:
@@ -269,11 +284,11 @@ class _MedicationTextNormalizer:
                 variants.append(keyword.replace(target, source))
         return variants
 
-    # 함수명: _deduplicate_keywords
+    # 함수이름: _deduplicate_keywords
     # 함수역할:
     # - 검색어 후보의 순서를 유지하면서 중복과 빈 문자열을 제거한다.
     # 매개변수:
-    # - keywords: 정리 전 검색어 후보 목록
+    # - keywords (list[str]): 정리 전 검색어 후보 목록
     # 반환값:
     # - 중복이 제거된 검색어 후보 목록
     def _deduplicate_keywords(self, keywords: list[str]) -> list[str]:
@@ -289,11 +304,14 @@ class _MedicationTextNormalizer:
 
 
 # 클래스명: _MedicationNameMatcher
-# 역할: OCR 검색어와 약품 후보 이름의 유사도를 계산하고 신뢰 가능한 후보를 선별한다.
+# 역할:
+# - OCR 검색어와 약품 후보 이름의 유사도를 계산하고 신뢰 가능한 후보를 선별한다.
 # 주요 책임:
 # - 기존 검색어 정규화 결과를 비교 가능한 문자열 키로 변환한다.
 # - 완전 일치, 포함 관계, 문자열 유사도를 조합해 이름 점수를 계산한다.
 # - 짧은 약 이름에는 더 엄격한 임계값을 적용해 오탐을 줄인다.
+# 속성:
+# - text_normalizer (_MedicationTextNormalizer): OCR 특성을 반영한 약품명 정규화·변형 생성기.
 class _MedicationNameMatcher:
     _NON_NAME_CHARACTER_PATTERN = re.compile(r"[^0-9a-z가-힣]+", re.IGNORECASE)
     _DOSAGE_VALUE_PATTERN = re.compile(
@@ -304,6 +322,13 @@ class _MedicationNameMatcher:
     _MEDIUM_NAME_MIN_SCORE = 0.84
     _SHORT_NAME_MIN_SCORE = 0.96
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 비교 키 생성에 사용할 약품명 정규화기를 주입하거나 기본 생성한다.
+    # 매개변수:
+    # - text_normalizer (_MedicationTextNormalizer | None): OCR 특성을 반영한 약품명 정규화·변형 생성기.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         text_normalizer: _MedicationTextNormalizer | None = None,
@@ -314,8 +339,8 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - OCR 검색어와 공공데이터 약품명의 가장 높은 이름 유사도를 계산한다.
     # 매개변수:
-    # - search_text: OCR 보정 과정을 거친 검색어
-    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # - search_text (str): OCR 보정 과정을 거친 검색어
+    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
     # 반환값:
     # - 0.0 이상 1.0 이하의 이름 유사도 점수
     def calculate_score(self, search_text: str, candidate_name: str) -> float:
@@ -346,8 +371,8 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 검색어 길이에 따른 최소 점수를 적용해 후보를 사용할 수 있는지 판정한다.
     # 매개변수:
-    # - search_text: OCR 보정 과정을 거친 검색어
-    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # - search_text (str): OCR 보정 과정을 거친 검색어
+    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
     # 반환값:
     # - 신뢰 가능한 이름 후보이면 True, 아니면 False
     def is_confident_match(self, search_text: str, candidate_name: str) -> bool:
@@ -358,10 +383,10 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 여러 약품 후보 중 최소 유사도를 통과한 항목만 점수순으로 정렬한다.
     # 매개변수:
-    # - search_text: OCR 보정 과정을 거친 검색어
-    # - candidates: DB 또는 API에서 조회한 원본 후보 목록
-    # - name_reader: 후보 객체에서 약품명을 읽는 함수
-    # - limit: 반환할 최대 후보 수
+    # - search_text (str): OCR 보정 과정을 거친 검색어
+    # - candidates (list[_CandidateT]): DB 또는 API에서 조회한 원본 후보 목록
+    # - name_reader (Callable[[_CandidateT], str]): 후보 객체에서 약품명을 읽는 함수
+    # - limit (int): 반환할 최대 후보 수
     # 반환값:
     # - 신뢰도 점수가 높은 순서로 정렬된 후보 목록
     def rank_candidates(
@@ -386,7 +411,7 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 괄호, 용량, 제형, 제조사와 OCR 변형을 반영한 비교 키를 생성한다.
     # 매개변수:
-    # - value: 비교할 원본 약품명
+    # - value (str): 비교할 원본 약품명
     # 반환값:
     # - 중복과 기호가 제거된 이름 비교 키 목록
     def _build_match_keys(self, value: str) -> list[str]:
@@ -400,7 +425,7 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 약품명에서 공백과 기호를 제거하고 영문 대소문자를 통일한다.
     # 매개변수:
-    # - value: 정규화할 약품명
+    # - value (str): 정규화할 약품명
     # 반환값:
     # - 숫자, 영문, 한글만 남긴 비교 문자열
     @classmethod
@@ -411,8 +436,8 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 두 비교 키의 완전 일치, 포함 관계, 문자열 배열 유사도를 계산한다.
     # 매개변수:
-    # - left: 첫 번째 이름 비교 키
-    # - right: 두 번째 이름 비교 키
+    # - left (str): 첫 번째 이름 비교 키
+    # - right (str): 두 번째 이름 비교 키
     # 반환값:
     # - 0.0 이상 1.0 이하의 두 문자열 유사도
     @staticmethod
@@ -440,7 +465,7 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 짧은 약품명의 오탐을 줄이기 위해 검색어 길이별 최소 점수를 선택한다.
     # 매개변수:
-    # - search_text: OCR 보정 과정을 거친 검색어
+    # - search_text (str): OCR 보정 과정을 거친 검색어
     # 반환값:
     # - 해당 검색어에 적용할 최소 유사도 점수
     def _required_score(self, search_text: str) -> float:
@@ -455,9 +480,9 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 이름이 비슷한 다른 함량 제품보다 OCR 함량과 같은 후보를 우선한다.
     # 매개변수:
-    # - name_score: 약품명 문자열만으로 계산한 유사도
-    # - search_text: OCR 보정 과정을 거친 검색어
-    # - candidate_name: DB 또는 공공데이터 API가 반환한 약품명
+    # - name_score (float): 약품명 문자열만으로 계산한 유사도
+    # - search_text (str): OCR 보정 과정을 거친 검색어
+    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
     # 반환값:
     # - 함량 일치 여부를 반영해 0.0 이상 1.0 이하로 보정한 점수
     def _adjust_dosage_score(
@@ -478,7 +503,7 @@ class _MedicationNameMatcher:
     # 함수역할:
     # - 영문과 한글 함량 단위를 공통 형식으로 바꿔 비교 가능한 값으로 추출한다.
     # 매개변수:
-    # - value: 함량 표기가 포함될 수 있는 약품명
+    # - value (str): 함량 표기가 포함될 수 있는 약품명
     # 반환값:
     # - 숫자와 표준화된 단위를 결합한 함량 값 집합
     def _extract_dosage_values(self, value: str) -> set[str]:
@@ -497,15 +522,23 @@ class _MedicationNameMatcher:
 
 
 # Class Name: _MedicationDetailCache
-# Role: Internal Redis cache boundary for medication detail lookup.
+# Role:
+# - Internal Redis cache boundary for medication detail lookup.
 # Responsibilities:
-#   - Read cached MedicationDetail lists.
-#   - Save MedicationDetail lists without failing the main use case on Redis errors.
+# - Read cached MedicationDetail lists.
+# - Save MedicationDetail lists without failing the main use case on Redis errors.
 # Attributes:
-#   - redis_client: Async Redis client used as optional cache storage.
+# - redis_client (redis.Redis): Async Redis client used as optional cache storage.
 class _MedicationDetailCache:
     CACHE_TTL_SECONDS = 604800
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - Redis 약품 상세 캐시 연결을 준비하고 사용 가능 상태로 시작한다.
+    # 매개변수:
+    # - redis_client (redis.Redis | None): 직렬화된 약품 상세를 저장·조회할 Redis 연결.
+    # 반환값:
+    # - 없음.
     def __init__(self, redis_client: redis.Redis | None = None) -> None:
         self.redis_client = redis_client or redis.from_url(
             settings.REDIS_URL,
@@ -518,7 +551,7 @@ class _MedicationDetailCache:
     # - Attempts to load MedicationDetail values from Redis.
     # - Cache failures are treated as misses to preserve service availability.
     # Parameters:
-    # - drug_name: Search keyword used as cache key suffix.
+    # - drug_name (str): Search keyword used as cache key suffix.
     # Returns:
     # - Cached MedicationDetail list, or None when missing/unavailable.
     async def get(self, drug_name: str) -> list[MedicationDetail] | None:
@@ -554,8 +587,8 @@ class _MedicationDetailCache:
     # - Stores MedicationDetail values in Redis.
     # - Cache failures are logged but do not fail the use case.
     # Parameters:
-    # - drug_name: Search keyword used as cache key suffix.
-    # - medication_details: MedicationDetail list to cache.
+    # - drug_name (str): Search keyword used as cache key suffix.
+    # - medication_details (list[MedicationDetail]): MedicationDetail list to cache.
     # Returns:
     # - None.
     async def set(
@@ -580,12 +613,34 @@ class _MedicationDetailCache:
         except Exception as exc:
             self._disable_cache("save", exc)
 
+    # Function Name: close
+    # Description:
+    # - Closes the Redis client and its reusable connections.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def close(self) -> None:
         await self.redis_client.aclose()
 
+    # Function Name: _cache_key
+    # Description:
+    # - Places a medication query in the drug_info Redis namespace.
+    # Parameters:
+    # - drug_name (str): Medication name to search or serialize.
+    # Returns:
+    # - Redis key for the supplied drug name.
     def _cache_key(self, drug_name: str) -> str:
         return f"drug_info:{drug_name}"
 
+    # Function Name: _disable_cache
+    # Description:
+    # - Disables Redis use for this process after an operation failure and logs only the exception type.
+    # Parameters:
+    # - operation (str): Cache operation name included in the failure log.
+    # - exc (Exception): Caught failure whose type is logged without its payload.
+    # Returns:
+    # - None.
     def _disable_cache(self, operation: str, exc: Exception) -> None:
         self._is_available = False
         logger.warning(
@@ -595,14 +650,24 @@ class _MedicationDetailCache:
         )
 
 
-# 클래스명: _MedicationSummaryGenerator
-# 역할: 내부 AI boundary for public approval document summarization이다.
-# 주요 책임:
-#   - Summarize advanced approval documents into MedicationDetail fields.
-# 속성:
-#   - ai_client: 허가 문서 요약에 사용하는 Gemini 클라이언트
-#   - model_name: Gemini 모델명
+# Class Name: _MedicationSummaryGenerator
+# Role:
+# - Produces patient-facing summaries from detailed drug-approval documents through a bounded AI request.
+# Responsibilities:
+# - Summarize advanced approval documents into MedicationDetail fields.
+# Attributes:
+# - ai_client (genai.Client): Gemini client for bounded external text generation.
+# - model_name (str): Configured AI model identifier.
 class _MedicationSummaryGenerator:
+    # Function Name: __init__
+    # Description:
+    # - Validates a finite positive summary timeout and binds the AI client and model.
+    # Parameters:
+    # - ai_client (genai.Client | None): Gemini client for bounded external text generation.
+    # - model_name (str): Configured AI model identifier.
+    # - timeout_seconds (float | None): Maximum allowed external operation duration in seconds.
+    # Returns:
+    # - None.
     def __init__(
         self,
         ai_client: genai.Client | None = None,
@@ -626,8 +691,8 @@ class _MedicationSummaryGenerator:
     # Description:
     # - Converts advanced approval API raw documents into patient-facing MedicationDetail.
     # Parameters:
-    # - drug_name: Original search keyword.
-    # - advanced_item: Raw item from the advanced public API or local approval DB.
+    # - drug_name (str): Original search keyword.
+    # - advanced_item (dict[str, Any]): Raw item from the advanced public API or local approval DB.
     # Returns:
     # - MedicationDetail generated from Gemini summary output.
     async def summarize_advanced_item(
@@ -689,20 +754,28 @@ class _MedicationSummaryGenerator:
         )
 
 
-# Class Name: _LocalMedicationCatalog
-# Role: Internal local SQLite lookup helper for mirrored public medication data.
-# Responsibilities:
-#   - Search locally mirrored e약은요 rows before approval rows.
-#   - Convert local records into MedicationDetail DTOs.
-#   - Persist AI summaries generated on first local DB use.
-# Attributes:
-#   - db: Optional SQLAlchemy session. None disables local DB lookup.
-#   - guide_generator: AI guide generator for missing local summaries.
+# 클래스명: _LocalMedicationCatalog
+# 역할:
+# - 로컬 약품 카탈로그에서 이름이 일치하는 기본 정보와 허가 정보 요약을 조회한다.
+# 주요 책임:
+# - 기본·허가 카탈로그 후보의 이름 신뢰도를 비교하고 저장 요약을 재사용하거나 새 요약을 보관한다.
+# 속성:
+# - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
+# - summary_generator (_MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
 class _LocalMedicationCatalog:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _FUZZY_ANCHOR_LENGTH = 3
     _FUZZY_CANDIDATE_LIMIT = 30
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 약품 조회 세션, 이름 일치 판정기와 허가 문서 요약기를 연결한다.
+    # 매개변수:
+    # - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - summary_generator (_MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
+    # - name_matcher (_MedicationNameMatcher | None): 약품명 유사도 점수 계산과 신뢰도 필터.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session | None,
@@ -713,13 +786,13 @@ class _LocalMedicationCatalog:
         self.summary_generator = summary_generator
         self.name_matcher = name_matcher or _MedicationNameMatcher()
 
-    # Function Name: fetch_drug_info
-    # Description:
-    # - Searches local e약은요 rows first, then local approval rows.
-    # Parameters:
-    # - drug_name: Normalized medication search keyword.
-    # Returns:
-    # - List of MedicationDetail DTOs, or an empty list when local DB has no match.
+    # 함수이름: fetch_drug_info
+    # 함수역할:
+    # - 로컬 기본 정보를 우선 반환하고, 없으면 가장 가까운 허가 정보의 요약을 사용한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # 반환값:
+    # - 약품 상세 목록; DB나 일치 결과가 없으면 빈 목록.
     async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
         if self.db is None:
             return []
@@ -742,6 +815,10 @@ class _LocalMedicationCatalog:
     # 함수역할:
     # - 로컬 카탈로그 조회를 이벤트 루프 밖의 독립 DB 세션에서 처리한다.
     # - 연결별 DB가 분리되는 인메모리 SQLite에서는 현재 테스트 세션을 사용한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # 반환값:
+    # - 이름 신뢰도 기준을 통과한 기본 카탈로그 행과 허가 카탈로그 행의 쌍.
     async def _search_catalog(
         self,
         drug_name: str,
@@ -765,6 +842,10 @@ class _LocalMedicationCatalog:
     # 함수이름: _search_catalog_with_isolated_session
     # 함수역할:
     # - 작업 스레드 안에서 별도 세션을 만들고 기본·허가 카탈로그를 순서대로 조회한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # 반환값:
+    # - 독립 세션에서 읽은 기본·허가 카탈로그 후보 목록의 쌍.
     def _search_catalog_with_isolated_session(
         self,
         drug_name: str,
@@ -788,8 +869,8 @@ class _LocalMedicationCatalog:
     # 함수역할:
     # - 로컬 e약은요 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
     # 매개변수:
-    # - drug_name: OCR 보정 검색어
-    # - limit: 반환할 최대 후보 수
+    # - drug_name (str): OCR 보정 검색어
+    # - limit (int): 반환할 최대 후보 수
     # 반환값:
     # - 이름 유사도 임계값을 통과한 e약은요 후보 목록
     def _search_basic(self, drug_name: str, limit: int = 3) -> list[_DrugBasicInfo]:
@@ -823,8 +904,8 @@ class _LocalMedicationCatalog:
     # 함수역할:
     # - 로컬 허가정보 DB에서 완전 일치를 우선 조회하고 유사 후보를 점수화한다.
     # 매개변수:
-    # - drug_name: OCR 보정 검색어
-    # - limit: 반환할 최대 후보 수
+    # - drug_name (str): OCR 보정 검색어
+    # - limit (int): 반환할 최대 후보 수
     # 반환값:
     # - 이름 유사도 임계값을 통과한 허가정보 후보 목록
     def _search_approval(
@@ -862,8 +943,8 @@ class _LocalMedicationCatalog:
     # 함수역할:
     # - 전체 검색어와 부분 앵커 중 하나를 포함하는 로컬 DB 조회 조건을 만든다.
     # 매개변수:
-    # - model: 조회할 로컬 약품 SQLAlchemy 모델
-    # - keyword: 공백을 제거한 검색어
+    # - model (type[_DrugBasicInfo] | type[_DrugApprovalInfo]): 조회할 로컬 약품 SQLAlchemy 모델
+    # - keyword (str): 공백을 제거한 검색어
     # 반환값:
     # - SQLAlchemy OR 검색 조건
     def _build_fuzzy_filter(
@@ -886,7 +967,7 @@ class _LocalMedicationCatalog:
     # 함수역할:
     # - 한두 글자 OCR 오류가 있어도 후보를 찾도록 검색어 앞·중간·뒤 조각을 만든다.
     # 매개변수:
-    # - keyword: 공백을 제거한 검색어
+    # - keyword (str): 공백을 제거한 검색어
     # 반환값:
     # - 중복이 제거된 세 글자 검색 조각 목록
     def _build_fuzzy_anchors(self, keyword: str) -> list[str]:
@@ -902,6 +983,13 @@ class _LocalMedicationCatalog:
         ]
         return list(dict.fromkeys(anchor for anchor in anchors if anchor))
 
+    # Function Name: _build_basic_details
+    # Description:
+    # - Maps stored basic drug records to patient-facing details while preserving safety guidance and image provenance.
+    # Parameters:
+    # - basic_items (list[_DrugBasicInfo]): Basic drug records with public product and guidance fields.
+    # Returns:
+    # - MedicationDetail objects in the input record order.
     async def _build_basic_details(
         self,
         basic_items: list[_DrugBasicInfo],
@@ -925,6 +1013,14 @@ class _LocalMedicationCatalog:
 
         return enriched_details
 
+    # 함수이름: _build_approval_detail
+    # 함수역할:
+    # - 저장된 허가 요약을 재사용하거나 원문을 AI로 요약한 뒤 결과를 캐시에 저장한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # - approval_item (_DrugApprovalInfo): 원문 문서와 선택적 생성 요약을 가진 저장된 허가 정보 행.
+    # 반환값:
+    # - 로컬 허가 자료 출처를 표시한 약품 상세 정보.
     async def _build_approval_detail(
         self,
         drug_name: str,
@@ -945,6 +1041,13 @@ class _LocalMedicationCatalog:
         self._save_approval_summary(approval_item, medication_detail)
         return medication_detail
 
+    # Function Name: _build_cached_approval_summary
+    # Description:
+    # - Reuses an approval summary only when efficacy, usage and warning fields are all populated.
+    # Parameters:
+    # - approval_item (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
+    # Returns:
+    # - MedicationDetail with stored guidance, or None when the summary is incomplete.
     def _build_cached_approval_summary(
         self,
         approval_item: _DrugApprovalInfo,
@@ -969,6 +1072,13 @@ class _LocalMedicationCatalog:
             ai_guide=approval_item.ai_guide,
         )
 
+    # Function Name: _load_raw_approval_item
+    # Description:
+    # - Decodes the stored approval payload and falls back to database columns when JSON or document fields are unusable.
+    # Parameters:
+    # - approval_item (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
+    # Returns:
+    # - Approval document dictionary suitable for summarization.
     def _load_raw_approval_item(
         self,
         approval_item: _DrugApprovalInfo,
@@ -987,6 +1097,14 @@ class _LocalMedicationCatalog:
 
         return self._approval_columns_to_raw_item(approval_item)
 
+    # Function Name: _normalize_raw_approval_item
+    # Description:
+    # - Harmonizes basic/approval API field aliases and fills missing identifiers or documents from the stored row.
+    # Parameters:
+    # - raw_item (dict[str, Any]): Original approval API payload used for field-alias lookup.
+    # - approval_item (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
+    # Returns:
+    # - Canonical approval fields, or None if every guidance document is empty.
     def _normalize_raw_approval_item(
         self,
         raw_item: dict[str, Any],
@@ -1021,6 +1139,13 @@ class _LocalMedicationCatalog:
             return normalized_item
         return None
 
+    # Function Name: _approval_columns_to_raw_item
+    # Description:
+    # - Reconstructs an approval API-shaped payload from persisted document columns.
+    # Parameters:
+    # - approval_item (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
+    # Returns:
+    # - Product identifiers and efficacy, usage and warning documents with display fallbacks.
     def _approval_columns_to_raw_item(
         self,
         approval_item: _DrugApprovalInfo,
@@ -1033,6 +1158,14 @@ class _LocalMedicationCatalog:
             "NB_DOC_DATA": approval_item.warning_doc or "정보 없음",
         }
 
+    # Function Name: _read_first_raw_text
+    # Description:
+    # - Searches field aliases in order, including case-insensitive keys, and skips blank values.
+    # Parameters:
+    # - raw_item (dict[str, Any]): Original approval API payload used for field-alias lookup.
+    # - keys (list[str]): Field aliases searched in priority order.
+    # Returns:
+    # - First nonblank trimmed field value, or an empty string.
     def _read_first_raw_text(
         self,
         raw_item: dict[str, Any],
@@ -1050,6 +1183,13 @@ class _LocalMedicationCatalog:
                 return str(value).strip()
         return ""
 
+    # Function Name: _read_basic_image_url
+    # Description:
+    # - Reads a public medication image from stored basic-catalog JSON.
+    # Parameters:
+    # - basic_info (_DrugBasicInfo): Stored basic public-drug record including its raw payload.
+    # Returns:
+    # - Accepted image URL, or an empty string for invalid JSON or absent images.
     def _read_basic_image_url(self, basic_info: _DrugBasicInfo) -> str:
         try:
             raw_item = json.loads(basic_info.raw_json)
@@ -1061,6 +1201,14 @@ class _LocalMedicationCatalog:
 
         return read_public_image_url(raw_item)
 
+    # Function Name: _save_approval_summary
+    # Description:
+    # - Commits generated guidance onto the approval row; rolls back and logs persistence failures.
+    # Parameters:
+    # - approval_info (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
+    # - medication_detail (MedicationDetail): Patient-facing medication guidance and product metadata.
+    # Returns:
+    # - None.
     def _save_approval_summary(
         self,
         approval_info: _DrugApprovalInfo,
@@ -1079,10 +1227,26 @@ class _LocalMedicationCatalog:
                 type(exc).__name__,
             )
 
+    # Function Name: _normalize_name
+    # Description:
+    # - Removes all whitespace and lowercases medication names for indexed local lookup.
+    # Parameters:
+    # - name (str): Medication name before catalog-key normalization.
+    # Returns:
+    # - Normalized catalog name.
     @classmethod
     def _normalize_name(cls, name: str) -> str:
         return cls._WHITESPACE_PATTERN.sub("", name).strip().lower()
 
+    # Function Name: _like_pattern
+    # Description:
+    # - Escapes client wildcard characters before adding caller-selected SQL LIKE prefixes and suffixes.
+    # Parameters:
+    # - keyword (str): Literal medication-name fragment for a database search.
+    # - prefix (str): Caller-selected SQL LIKE prefix wildcard.
+    # - suffix (str): Caller-selected SQL LIKE suffix wildcard.
+    # Returns:
+    # - Escaped LIKE pattern for literal medication-name matching.
     def _like_pattern(
         self,
         keyword: str,
@@ -1095,24 +1259,37 @@ class _LocalMedicationCatalog:
         return f"{prefix}{escaped_keyword}{suffix}"
 
 
-# Class Name: CheckMedicationDetail
-# Role: Coordinates medication keyword normalization and detail lookup.
-# Responsibilities:
-#   - Validate medication lookup text.
-#   - Query the local medication catalog before Redis or runtime public APIs.
-#   - Coordinate cache, public data fallback, and patient-facing guide generation.
-#   - Build the API response DTO.
-# Attributes:
-#   - text_normalizer: Internal helper for search keyword generation.
-#   - medication_cache: Internal cache helper.
-#   - public_drug_small_api: eDrug catalog boundary from the UML model.
-#   - public_drug_large_api: Approval catalog boundary from the UML model.
-#   - pill_image_api: Exact-match image lookup extension.
-#   - guide_generator: Internal AI guide generator.
-#   - local_medication_catalog: Internal local SQLite lookup helper.
+# 클래스명: CheckMedicationDetail
+# 역할:
+# - 약품명 후보를 정규화해 로컬·캐시·공공 API를 조회하고 부족한 이미지와 허가 요약을 보완한다.
+# 주요 책임:
+# - 검색어 길이와 이름 신뢰도를 검증하고 로컬·Redis·기본 API·허가 API 순서로 상세 정보를 보완한다.
+# 속성:
+# - text_normalizer (_MedicationTextNormalizer): OCR 특성을 반영한 약품명 정규화·변형 생성기.
+# - medication_cache (_MedicationDetailCache): 약품 상세 결과를 보관하는 공유 Redis 캐시.
+# - public_drug_small_api (PublicDrugSmallAPI): 기본 공공 약품 정보 API 경계.
+# - public_drug_large_api (PublicDrugLargeAPI): 상세 약품 허가 문서 API 경계.
+# - pill_image_api (PillImageAPI): 공공 약품 이미지 조회 API 경계.
+# - summary_generator (_MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
+# - local_medication_catalog (_LocalMedicationCatalog): 문서 요약 캐시를 포함한 로컬 기본·허가 정보 조회기.
 class CheckMedicationDetail:
     MAX_KEYWORD_LENGTH = 100
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 이름 보정·유사도 비교, Redis 캐시, 공공 약품·이미지 API와 로컬 카탈로그를 연결한다.
+    # 매개변수:
+    # - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - text_normalizer (_MedicationTextNormalizer | None): OCR 특성을 반영한 약품명 정규화·변형 생성기.
+    # - medication_cache (_MedicationDetailCache | None): 약품 상세 결과를 보관하는 공유 Redis 캐시.
+    # - public_drug_small_api (PublicDrugSmallAPI | None): 기본 공공 약품 정보 API 경계.
+    # - public_drug_large_api (PublicDrugLargeAPI | None): 상세 약품 허가 문서 API 경계.
+    # - pill_image_api (PillImageAPI | None): 공공 약품 이미지 조회 API 경계.
+    # - summary_generator (_MedicationSummaryGenerator | None): 상세 허가 문서의 AI 요약 생성기.
+    # - local_medication_catalog (_LocalMedicationCatalog | None): 문서 요약 캐시를 포함한 로컬 기본·허가 정보 조회기.
+    # - name_matcher (_MedicationNameMatcher | None): 약품명 유사도 점수 계산과 신뢰도 필터.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session | None = None,
@@ -1144,7 +1321,7 @@ class CheckMedicationDetail:
     # Description:
     # - Normalizes medication text and fetches detailed drug information.
     # Parameters:
-    # - raw_text: Raw medication text supplied by the frontend.
+    # - raw_text (str): Raw medication text supplied by the frontend.
     # Returns:
     # - MedicationResponse with success flag and MedicationDetail list.
     async def requestMedicationDetail(self, raw_text: str) -> MedicationResponse:
@@ -1176,12 +1353,26 @@ class CheckMedicationDetail:
             data=medication_details,
         )
 
+    # Function Name: _validate_lookup_text
+    # Description:
+    # - Rejects blank medication queries and queries exceeding the 100-character lookup limit.
+    # Parameters:
+    # - text (str): Extracted medication query to validate before lookup.
+    # Returns:
+    # - None.
     def _validate_lookup_text(self, text: str) -> None:
         if not text:
             raise ValueError("Extracted medication text is empty.")
         if len(text) > self.MAX_KEYWORD_LENGTH:
             raise ValueError("Medication lookup text is too long.")
 
+    # 함수이름: _fetch_drug_info
+    # 함수역할:
+    # - 로컬 조회를 우선하고 신뢰 가능한 캐시 후보를 확인한 뒤 공공 API 결과를 캐시에 저장한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # 반환값:
+    # - 이미지가 보완된 약품 상세 목록; 일치 약품이 없으면 빈 목록.
     async def _fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
         local_drugs = await self.local_medication_catalog.fetch_drug_info(drug_name)
         if local_drugs:
@@ -1202,10 +1393,24 @@ class CheckMedicationDetail:
         await self.medication_cache.set(drug_name, medication_details)
         return medication_details
 
+    # 함수이름: _enrich_missing_image_urls
+    # 함수역할:
+    # - 기존 이미지는 유지하고 이미지가 없는 약품만 공공 이미지 API로 병렬 보완한다.
+    # 매개변수:
+    # - medication_details (list[MedicationDetail]): 누락 이미지를 보완할 약품 상세 객체 목록.
+    # 반환값:
+    # - 입력 순서를 유지한 약품 상세 목록.
     async def _enrich_missing_image_urls(
         self,
         medication_details: list[MedicationDetail],
     ) -> list[MedicationDetail]:
+        # 함수이름: enrich_detail
+        # 함수역할:
+        # - 이미지가 없는 약품에 한해 품목 식별자·이름으로 이미지를 찾아 복사본에 추가한다.
+        # 매개변수:
+        # - medication_detail (MedicationDetail): 환자에게 표시할 약품 안내와 품목 정보.
+        # 반환값:
+        # - 이미지가 추가된 상세 복사본 또는 변경 없는 원본.
         async def enrich_detail(
             medication_detail: MedicationDetail,
         ) -> MedicationDetail:
@@ -1229,6 +1434,13 @@ class CheckMedicationDetail:
             )
         )
 
+    # 함수이름: _fetch_public_drug_info
+    # 함수역할:
+    # - 기본 API의 상위 후보를 우선 사용하고 없으면 허가 API 최상위 후보를 요약한다.
+    # 매개변수:
+    # - drug_name (str): 검색 또는 직렬화할 약품명.
+    # 반환값:
+    # - 신뢰도 기준을 통과한 상세 목록; 두 API 모두 일치하지 않으면 빈 목록.
     async def _fetch_public_drug_info(
         self,
         drug_name: str,
@@ -1275,6 +1487,13 @@ class CheckMedicationDetail:
         )
         return [advanced_drug]
 
+    # 함수이름: _build_basic_drug_infos
+    # 함수역할:
+    # - 기본 API 응답의 효능·복용법·주의사항과 이미지를 상세 엔티티로 변환한다.
+    # 매개변수:
+    # - basic_items (list[dict[str, Any]]): 공공 품목·안내 필드를 포함한 기본 약품 기록 목록.
+    # 반환값:
+    # - 응답 순서의 약품 상세 목록.
     async def _build_basic_drug_infos(
         self,
         basic_items: list[dict[str, Any]],

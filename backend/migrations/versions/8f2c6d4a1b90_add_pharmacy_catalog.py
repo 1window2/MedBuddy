@@ -37,6 +37,13 @@ _PHARMACY_CATALOG_INDEXES = {
 }
 
 
+# 함수이름: upgrade
+# 함수역할:
+# - 약국 위치·주간 운영 시간 카탈로그 테이블을 만들거나 호환되는 기존 표를 검증하고 누락된 검색 인덱스를 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     """테이블을 만들거나 호환되는 자동 생성 테이블을 마이그레이션에 편입한다."""
     inspector = sa.inspect(op.get_bind())
@@ -78,6 +85,13 @@ def upgrade() -> None:
             )
 
 
+# Function Name: downgrade
+# Description:
+# - Removes the pharmacy name/coordinate indexes and the persisted national pharmacy catalog table.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def downgrade() -> None:
     op.drop_index(
         "ix_pharmacy_catalog_records_longitude",
@@ -94,6 +108,13 @@ def downgrade() -> None:
     op.drop_table("pharmacy_catalog_records")
 
 
+# 함수이름: _validate_existing_pharmacy_catalog_table
+# 함수역할:
+# - 자동 생성된 약국 테이블이 마이그레이션 스키마와 호환되는지 확인한다.
+# 매개변수:
+# - inspector (sa.Inspector): 기존 테이블 호환성을 확인할 SQLAlchemy 스키마 검사기.
+# 반환값:
+# - 없음.
 def _validate_existing_pharmacy_catalog_table(inspector: sa.Inspector) -> None:
     """자동 생성된 약국 테이블이 마이그레이션 스키마와 호환되는지 확인한다."""
     column_names = {

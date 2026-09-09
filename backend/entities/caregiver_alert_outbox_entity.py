@@ -23,19 +23,28 @@ CAREGIVER_ALERT_STATUS_FAILED = "failed"
 CAREGIVER_ALERT_STATUS_DEAD_LETTER = "dead_letter"
 
 
-# 함수명: utc_now
-# 역할:
+# 함수이름: utc_now
+# 함수역할:
 # - DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 시간대 정보가 없는 현재 UTC datetime.
 def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _CaregiverAlertOutbox
-# 역할: 복약 완료와 같은 트랜잭션에서 생성되는 보호자 알림 전송 요청이다.
+# 역할:
+# - 복약 완료와 같은 트랜잭션에서 생성되는 보호자 알림 전송 요청이다.
 # 주요 책임:
 # - 서버 재시작이나 일시적인 푸시 장애에도 전송 요청을 보존한다.
 # - 같은 환자·날짜·시간대 이벤트가 중복 전송되지 않게 식별한다.
 # - 재시도 횟수와 다음 시도 시각, 종료 상태를 기록한다.
+# 속성:
+# - event_key (String(64)): 환자·날짜·시간대 완료 이벤트의 중복 방지 키.
+# - patient_hash (String): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - slot_key (String(32)): morning, lunch, evening, bedtime 중 복용 시간대 키.
 class _CaregiverAlertOutbox(Base):
     __tablename__ = "caregiver_alert_outbox"
     __table_args__ = (

@@ -30,6 +30,13 @@ _STRUCTURED_CHAT_COLUMNS = {
 }
 
 
+# 함수이름: upgrade
+# 함수역할:
+# - 기존 텍스트 메시지를 유지하면서 구조화 문맥 열을 추가한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     """기존 텍스트 메시지를 유지하면서 구조화 문맥 열을 추가한다."""
     inspector = sa.inspect(op.get_bind())
@@ -44,6 +51,13 @@ def upgrade() -> None:
             op.add_column("chat_messages", column)
 
 
+# 함수이름: downgrade
+# 함수역할:
+# - 구조화 문맥 열만 제거하고 기존 채팅 데이터는 유지한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     """구조화 문맥 열만 제거하고 기존 채팅 데이터는 유지한다."""
     inspector = sa.inspect(op.get_bind())

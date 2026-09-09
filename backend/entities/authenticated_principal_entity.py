@@ -1,3 +1,5 @@
+# File Name: authenticated_principal_entity.py
+# Role: Maps verified external authentication claims to immutable internal ownership and provider metadata.
 """Authenticated request identity used by backend authorization controls."""
 
 import hashlib
@@ -8,6 +10,13 @@ from pydantic import BaseModel, ConfigDict
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 
 
+# Class Name: AuthenticatedPrincipal
+# Role:
+# - Represents a verified external identity mapped to a MedBuddy user key.
+# Responsibilities:
+# - Derive ownership only from verified issuer/subject claims and retain provider and recent-authentication evidence.
+# Attributes:
+# - user_hash (str): Account ownership scope for the operation.
 class AuthenticatedPrincipal(BaseModel):
     """Represents a verified external identity mapped to a MedBuddy user key."""
 
@@ -24,6 +33,13 @@ class AuthenticatedPrincipal(BaseModel):
     authentication_disabled: bool = False
     authenticated_at: datetime | None = None
 
+    # Function Name: from_verified_claims
+    # Description:
+    # - Derives an internal user hash from verified issuer/subject claims and records provider, contact and authentication-time metadata.
+    # Parameters:
+    # - claims (dict[str, object]): Token claims already verified by the authentication boundary.
+    # Returns:
+    # - Immutable principal; ValueError when required identity or authentication-time claims are invalid.
     @classmethod
     def from_verified_claims(
         cls,
@@ -76,6 +92,13 @@ class AuthenticatedPrincipal(BaseModel):
             authenticated_at=authenticated_at,
         )
 
+    # Function Name: development_principal
+    # Description:
+    # - Builds the explicit authentication-disabled identity used by local development.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Development principal with the default patient scope and bypass flag.
     @classmethod
     def development_principal(cls) -> "AuthenticatedPrincipal":
         return cls(

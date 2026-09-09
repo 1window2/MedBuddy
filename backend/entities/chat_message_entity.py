@@ -43,17 +43,29 @@ CHAT_MESSAGE_KINDS = (
 
 
 # 함수이름: utc_now
-# 함수역할: 데이터베이스에 저장할 시간대 정보 없는 UTC 현재 시각을 만든다.
-# 매개변수: 없음
-# 반환값: UTC 기준 datetime
+# 함수역할:
+# - 데이터베이스에 저장할 시간대 정보 없는 UTC 현재 시각을 만든다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 시간대 정보가 없는 현재 UTC datetime.
 def utc_now() -> datetime:
     """DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다."""
     return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _ChatMessage
-# 역할: 연동별 채팅 메시지와 복약 스냅샷을 영속화한다.
-# 주요 책임: 중복 전송 방지 키, 본문, 복약 맥락과 읽음 시각을 저장한다.
+# 역할:
+# - 연동별 채팅 메시지와 복약 스냅샷을 영속화한다.
+# 주요 책임:
+# - 중복 전송 방지 키, 본문, 복약 맥락과 읽음 시각을 저장한다.
+# 속성:
+# - link_id (Integer): 저장된 환자·보호자 연동 식별자.
+# - sender_hash (String): 채팅 메시지를 작성한 계정 식별자.
+# - client_message_id (String(length=64)): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
+# - body (Text): 서버 검증을 거쳐 저장된 채팅 본문; 전체 삭제 시 비운다.
+# - message_kind (String(length=40)): 텍스트 또는 구조화 문맥 메시지 유형.
+# - context_payload (JSON): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
 class _ChatMessage(Base):
     """하나의 활성 환자·보호자 연동에서 주고받은 메시지를 저장한다."""
 
@@ -101,8 +113,17 @@ class _ChatMessage(Base):
 
 
 # 클래스명: ChatMessage
-# 역할: 서버 내부와 API 응답에서 사용하는 불변 채팅 메시지를 표현한다.
-# 주요 책임: DB 행 변환, 복약 스냅샷 정리와 UTC 응답 직렬화를 담당한다.
+# 역할:
+# - 서버 내부와 API 응답에서 사용하는 불변 채팅 메시지를 표현한다.
+# 주요 책임:
+# - DB 행 변환, 복약 스냅샷 정리와 UTC 응답 직렬화를 담당한다.
+# 속성:
+# - message_id (int): 저장된 채팅 메시지 식별자.
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
+# - client_message_id (str): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
+# - body (str): 응답할 채팅 본문; 전체 삭제한 메시지는 빈 문자열.
+# - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
 class ChatMessage(BaseModel):
     """서버 내부와 API 응답에서 사용하는 불변 채팅 메시지 모델이다."""
 
@@ -125,9 +146,13 @@ class ChatMessage(BaseModel):
     deleted_for_everyone: bool = False
 
     # 함수이름: from_row
-    # 함수역할: SQLAlchemy 채팅 행을 불변 응답 모델로 변환한다.
-    # 매개변수: row - 저장된 채팅 메시지 행
-    # 반환값: ChatMessage
+    # 함수역할:
+    # - SQLAlchemy 채팅 행을 불변 응답 모델로 변환한다.
+    # 매개변수:
+    # - row (_ChatMessage): 저장된 채팅 메시지 행
+    # - hidden_for_me (bool): 현재 참여자가 이 메시지를 개인 삭제했는지 여부.
+    # 반환값:
+    # - 저장 행의 문맥과 삭제 상태를 반영한 메시지 엔티티.
     @classmethod
     def from_row(
         cls, row: _ChatMessage, *, hidden_for_me: bool = False,
@@ -158,9 +183,12 @@ class ChatMessage(BaseModel):
         )
 
     # 함수이름: to_response_dict
-    # 함수역할: 채팅 메시지를 모바일 앱 응답 필드 형식으로 변환한다.
-    # 매개변수: 없음
-    # 반환값: JSON 직렬화 가능한 메시지 사전
+    # 함수역할:
+    # - 채팅 메시지를 모바일 앱 응답 필드 형식으로 변환한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - JSON 직렬화 가능한 메시지 사전
     def to_response_dict(self) -> dict[str, object]:
         """모바일 앱이 사용하는 JSON 필드 형식으로 변환한다."""
         medication_context = self._medication_context_response()
@@ -192,6 +220,13 @@ class ChatMessage(BaseModel):
             })
         return response
 
+    # 함수이름: _medication_context_response
+    # 함수역할:
+    # - 전송 당시 보존한 약 정보를 클라이언트 표시 형식으로 반환한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 기존 약품 열에서 만든 단일 약품 문맥 또는 연결 약이 없을 때 None.
     def _medication_context_response(self) -> dict[str, object] | None:
         """전송 당시 보존한 약 정보를 클라이언트 표시 형식으로 반환한다."""
         medication_name = (self.medication_name or "").strip()
@@ -204,6 +239,13 @@ class ChatMessage(BaseModel):
             "dosage_per_time": (self.medication_dosage or "").strip(),
         }
 
+    # 함수이름: _medication_contexts_response
+    # 함수역할:
+    # - 다중 약 스냅샷을 정리하고 이전 단일 약 메시지도 목록으로 보완한다.
+    # 매개변수:
+    # - fallback (dict[str, object] | None): 구조화 목록이 없을 때 사용할 기존 단일 약품 문맥.
+    # 반환값:
+    # - 유효한 약품 문맥 목록; 구조화 목록이 없거나 유효한 항목이 없으면 기존 단일 약품 문맥을 사용한다.
     def _medication_contexts_response(
         self,
         *,
@@ -244,9 +286,12 @@ class ChatMessage(BaseModel):
 
 
 # 함수이름: _as_utc_isoformat
-# 함수역할: 데이터베이스 시각을 명시적인 UTC ISO 문자열로 변환한다.
-# 매개변수: value - 변환할 시각
-# 반환값: UTC ISO 8601 문자열
+# 함수역할:
+# - 데이터베이스 시각을 명시적인 UTC ISO 문자열로 변환한다.
+# 매개변수:
+# - value (datetime): 변환할 시각
+# 반환값:
+# - UTC ISO 8601 문자열
 def _as_utc_isoformat(value: datetime) -> str:
     """DB의 시간대 없는 UTC 값을 명시적인 UTC ISO 문자열로 바꾼다."""
     if value.tzinfo is None:
