@@ -145,6 +145,21 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       widget.patientHash.isNotEmpty &&
       widget.currentUserHash == widget.patientHash;
 
+  // 함수이름: _requestableScheduleContexts
+  // 함수역할: 환자에게는 요청 도구를 숨기고 서버가 확인 요청을 허용한 시간대만 제공한다.
+  // 매개변수: 없음. 반환값: 보호자가 요청할 수 있는 시간대 목록.
+  List<ChatScheduleContext> get _requestableScheduleContexts {
+    if (_isPatient) return const [];
+    return _scheduleContexts
+        .where(
+          // 함수이름: 요청 가능 시간대 필터
+          // 함수역할: 서버 응답의 요청 가능 여부를 표시 조건으로 사용한다.
+          // 매개변수: schedule: 시간대 맥락. 반환값: 요청 도구에 표시할지 여부.
+          (schedule) => schedule.canRequestCheck,
+        )
+        .toList(growable: false);
+  }
+
   // 함수이름: _peerName
   // 함수역할: 영어 화면에서 기본 가족 이름만 번역하고 지정된 상대 이름은 유지한다.
   // 매개변수:
@@ -784,19 +799,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   // 함수이름: _showScheduleSelector
-  // 함수역할: 시간대 선택 후 확인 요청 권한을 확인해 복약 체크 요청 메시지를 보낸다.
+  // 함수역할: 요청 가능한 보호자에게만 시간대 선택창을 열고 복약 확인 요청 메시지를 보낸다.
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showScheduleSelector() async {
-    if (_scheduleContexts.isEmpty || _isSending) {
-      if (_scheduleContexts.isEmpty && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_text.noScheduleContext)));
-      }
-      return;
-    }
+    final requestableContexts = _requestableScheduleContexts;
+    if (requestableContexts.isEmpty || _isSending) return;
     final selected = await showModalBottomSheet<ChatScheduleContext>(
       context: context,
       isScrollControlled: true,
@@ -807,7 +816,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) =>
-          _ScheduleContextSelector(contexts: _scheduleContexts, text: _text),
+          _ScheduleContextSelector(contexts: requestableContexts, text: _text),
     );
     if (selected == null || !mounted) {
       return;
@@ -1734,19 +1743,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                   ),
                   icon: const Icon(Icons.medication_outlined),
                 ),
-                const SizedBox(width: 6),
-                IconButton.outlined(
-                  key: const ValueKey('chatScheduleSelector'),
-                  tooltip: _text.selectScheduleSlot,
-                  onPressed: _scheduleContexts.isEmpty || _isSending
-                      ? null
-                      : _showScheduleSelector,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
+                if (_requestableScheduleContexts.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  IconButton.outlined(
+                    key: const ValueKey('chatScheduleSelector'),
+                    tooltip: _text.selectScheduleSlot,
+                    onPressed: _isSending ? null : _showScheduleSelector,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 48,
+                      height: 48,
+                    ),
+                    icon: const Icon(Icons.schedule_rounded),
                   ),
-                  icon: const Icon(Icons.schedule_rounded),
-                ),
+                ],
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
@@ -3279,20 +3288,12 @@ class _LinkedChatText {
   }
 
   // 함수이름: selectScheduleSlot
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 시간대 공유" 문구를 제공한다.
+  // 함수역할: 보호자 전용 시간대 선택 버튼의 복약 확인 요청 목적을 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get selectScheduleSlot =>
-      isEnglish ? 'Share a medication time' : '복약 시간대 공유';
-  // 함수이름: noScheduleContext
-  // 함수역할: 현재 언어와 입력값에 맞춰 "오늘 확인할 복약 일정이 없습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get noScheduleContext => isEnglish
-      ? 'There is no active medication schedule today.'
-      : '오늘 확인할 복약 일정이 없습니다.';
+      isEnglish ? 'Request a medication check' : '복약 확인 요청';
   // 함수이름: onlyCaregiverCanRequest
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 확인 요청은 연결된 보호자만 보낼 수 있습니다." 문구를 제공한다.
   // 매개변수:

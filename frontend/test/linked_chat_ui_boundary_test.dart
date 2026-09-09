@@ -817,6 +817,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byTooltip('복약 확인 요청'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('chatScheduleSelector')));
     await tester.pumpAndSettle();
     expect(find.text('오늘의 복약 시간대'), findsOneWidget);
@@ -835,6 +836,76 @@ void main() {
     await realtimeService.dispose();
     control.dispose();
   });
+
+  for (final language in ['ko', 'en']) {
+    for (final scenario in [
+      (user: 'patient-a', canRequest: false),
+      (user: 'patient-a', canRequest: true),
+      (user: 'caregiver-a', canRequest: false),
+    ]) {
+      // 함수이름: 확인 요청 도구 숨김 테스트
+      // 함수역할: 환자 또는 요청 권한 없는 사용자는 시계 버튼 없이 약 첨부와 입력을 사용할 수 있는지 확인한다.
+      // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+      testWidgets('확인 요청 숨김 $language $scenario', (tester) async {
+        tester.view.physicalSize = const Size(360, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final control = _RetryChatControl(
+          failFirstSend: false,
+          scheduleContexts: [
+            ChatScheduleContext(
+              slotKey: 'morning',
+              alarmTime: '08:00',
+              alarmEnabled: true,
+              completedCount: 0,
+              totalCount: 1,
+              canRequestCheck: scenario.canRequest,
+              medications: const [],
+            ),
+          ],
+        );
+        final realtimeService = _FakeRealtimeService();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(360, 740),
+                textScaler: TextScaler.linear(1.3),
+              ),
+              child: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: scenario.user,
+                patientHash: 'patient-a',
+                userSetting: UserSetting(language: language),
+                control: control,
+                realtimeService: realtimeService,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('chatScheduleSelector')),
+          findsNothing,
+        );
+        final medication = find.byKey(const ValueKey('chatMedicationSelector'));
+        expect(tester.widget<IconButton>(medication).onPressed, isNotNull);
+        expect(find.byType(TextField), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byType(TextField)).dx -
+              tester.getTopRight(medication).dx,
+          8,
+        );
+        expect(control.sendAttempts, 0);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await realtimeService.dispose();
+        control.dispose();
+      });
+    }
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
