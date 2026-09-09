@@ -171,6 +171,8 @@ class ChatPharmacyContext {
   }
 }
 
+enum ChatDeletionScope { me, everyone }
+
 class ChatMessage {
   final int messageId;
   final int linkId;
@@ -187,6 +189,8 @@ class ChatMessage {
   final DateTime? courseEndDate;
   final bool showSafetyGuidance;
   final DateTime? readAt;
+  final bool hiddenForMe;
+  final bool deletedForEveryone;
 
   const ChatMessage({
     required this.messageId,
@@ -204,6 +208,8 @@ class ChatMessage {
     this.courseEndDate,
     this.showSafetyGuidance = false,
     this.readAt,
+    this.hiddenForMe = false,
+    this.deletedForEveryone = false,
   });
 
   // 함수명: fromJson
@@ -220,7 +226,9 @@ class ChatMessage {
         linkId == null ||
         senderHash.isEmpty ||
         clientMessageId.isEmpty ||
-        body.isEmpty ||
+        (body.isEmpty &&
+            json['hidden_for_me'] != true &&
+            json['deleted_for_everyone'] != true) ||
         createdAt == null) {
       throw const FormatException('채팅 메시지 응답에 필수 정보가 없습니다.');
     }
@@ -272,26 +280,50 @@ class ChatMessage {
       courseEndDate: DateTime.tryParse(_readString(context['course_end_date'])),
       showSafetyGuidance: context['show_safety_guidance'] == true,
       readAt: readAtText.isEmpty ? null : DateTime.tryParse(readAtText),
+      hiddenForMe: json['hidden_for_me'] == true,
+      deletedForEveryone: json['deleted_for_everyone'] == true,
     );
   }
 
-  ChatMessage copyWith({DateTime? readAt}) {
+  // Function Name: canDeleteForEveryone
+  // Description: Offers the shared-delete option; the server enforces the deadline.
+  // Parameters: userHash, now - current participant and display-time clock.
+  // Returns: Whether this is the sender's undeleted message under 24 hours old.
+  bool canDeleteForEveryone(String userHash, DateTime now) {
+    final age = now.toUtc().difference(createdAt.toUtc());
+    return senderHash == userHash &&
+        !deletedForEveryone &&
+        !hiddenForMe &&
+        !age.isNegative &&
+        age < const Duration(hours: 24);
+  }
+
+  ChatMessage copyWith({
+    DateTime? readAt,
+    bool? hiddenForMe,
+    bool? deletedForEveryone,
+  }) {
+    final hidden = hiddenForMe ?? this.hiddenForMe;
+    final deleted = deletedForEveryone ?? this.deletedForEveryone;
+    final redact = hidden || deleted;
     return ChatMessage(
       messageId: messageId,
       linkId: linkId,
       senderHash: senderHash,
       clientMessageId: clientMessageId,
-      body: body,
+      body: redact ? '' : body,
       createdAt: createdAt,
-      messageKind: messageKind,
-      medicationContext: medicationContext,
-      medicationContexts: medicationContexts,
-      scheduleContext: scheduleContext,
-      pharmacyContext: pharmacyContext,
-      remainingDays: remainingDays,
-      courseEndDate: courseEndDate,
-      showSafetyGuidance: showSafetyGuidance,
+      messageKind: redact ? ChatMessageKind.text : messageKind,
+      medicationContext: redact ? null : medicationContext,
+      medicationContexts: redact ? const [] : medicationContexts,
+      scheduleContext: redact ? null : scheduleContext,
+      pharmacyContext: redact ? null : pharmacyContext,
+      remainingDays: redact ? null : remainingDays,
+      courseEndDate: redact ? null : courseEndDate,
+      showSafetyGuidance: !redact && showSafetyGuidance,
       readAt: readAt ?? this.readAt,
+      hiddenForMe: hidden,
+      deletedForEveryone: deleted,
     );
   }
 

@@ -16,6 +16,7 @@ import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
@@ -204,7 +205,190 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
   }
 }
 
+class _DeleteChatControl extends _RetryChatControl {
+  final bool failDeletion;
+  final List<List<int>> deletionIds = [];
+  final List<ChatDeletionScope> deletionScopes = [];
+
+  _DeleteChatControl({
+    required super.historyMessages,
+    this.failDeletion = false,
+  }) : super(failFirstSend: false);
+
+  @override
+  Future<void> deleteMessages({
+    required int linkId,
+    required List<int> messageIds,
+    required ChatDeletionScope scope,
+  }) async {
+    deletionIds.add(messageIds);
+    deletionScopes.add(scope);
+    if (failDeletion) throw StateError('offline');
+  }
+}
+
+ChatMessage _deletionMessage({
+  int id = 1,
+  String sender = 'patient-a',
+  int hours = 1,
+}) => ChatMessage(
+  messageId: id,
+  linkId: 17,
+  senderHash: sender,
+  clientMessageId: 'delete_message_$id',
+  body: 'Message $id',
+  createdAt: DateTime.now().toUtc().subtract(Duration(hours: hours)),
+);
+
 void main() {
+  testWidgets(
+    'selected private deletion survives stale polling and preserves new messages',
+    (tester) async {
+      final control = _DeleteChatControl(
+        historyMessages: [_deletionMessage(), _deletionMessage(id: 2)],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            userSetting: const UserSetting(language: 'en'),
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('selectChatMessage-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete for everyone'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(control.deletionIds, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirmChatDeletion')));
+      await tester.pumpAndSettle();
+      expect(control.deletionScopes, [ChatDeletionScope.me]);
+      expect(control.deletionIds.single, [1]);
+      expect(find.text('Message 1'), findsNothing);
+      expect(find.text('Message 2'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 12));
+      await tester.pumpAndSettle();
+      expect(find.text('Message 1'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  testWidgets(
+    'shared deletion removes body and prevents delayed events restoring it',
+    (tester) async {
+      final control = _DeleteChatControl(historyMessages: [_deletionMessage()]);
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            userSetting: const UserSetting(language: 'en'),
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('Message 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete for everyone'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirmChatDeletion')));
+      await tester.pumpAndSettle();
+      expect(control.deletionScopes, [ChatDeletionScope.everyone]);
+      expect(find.text('This message was deleted.'), findsOneWidget);
+      expect(find.text('Message 1'), findsNothing);
+      realtime._events.add({
+        'type': 'chat_message',
+        'message': {
+          'message_id': 1,
+          'link_id': 17,
+          'sender_hash': 'patient-a',
+          'client_message_id': 'delete_message_1',
+          'body': 'Message 1',
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Message 1'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  for (final sender in ['patient-a', 'caregiver-a']) {
+    testWidgets(
+      'old or incoming selection offers private deletion only: $sender',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 740);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final control = _DeleteChatControl(
+          historyMessages: [
+            _deletionMessage(
+              sender: sender,
+              hours: sender == 'patient-a' ? 25 : 1,
+            ),
+          ],
+          failDeletion: true,
+        );
+        final realtime = _FakeRealtimeService();
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.longPress(find.text('Message 1'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+        await tester.pumpAndSettle();
+        expect(find.text('모두에게서 삭제'), findsNothing);
+        expect(find.text('나에게서만 삭제'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('confirmChatDeletion')));
+        await tester.pumpAndSettle();
+        expect(find.text('Message 1'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      },
+    );
+  }
+
   testWidgets('안내는 자동으로 사라지고 약 선택 없이 일반 메시지를 보낸다', (tester) async {
     final control = _RetryChatControl(failFirstSend: false);
     final realtimeService = _FakeRealtimeService();

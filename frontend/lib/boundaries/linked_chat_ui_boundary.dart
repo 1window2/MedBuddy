@@ -75,6 +75,11 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   String? _sendErrorMessage;
   bool _isLoading = true;
   bool _isSending = false;
+  bool _isSelectingMessages = false;
+  bool _isDeletingMessages = false;
+  final Set<int> _selectedMessageIds = {};
+  final Set<int> _hiddenMessageIds = {};
+  final Set<int> _deletedMessageIds = {};
   String? _pendingClientMessageId;
   String? _pendingMessageBody;
   String? _pendingMedicationIdsSignature;
@@ -277,6 +282,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       return;
     }
     final type = event['type']?.toString();
+    if (type == 'chat_messages_deleted') {
+      final ids = event['message_ids'];
+      if (ids is List &&
+          (event['scope'] == 'me' || event['scope'] == 'everyone')) {
+        _applyMessageDeletion(
+          ids.whereType<int>().toList(),
+          event['scope'] == 'me'
+              ? ChatDeletionScope.me
+              : ChatDeletionScope.everyone,
+        );
+      }
+      return;
+    }
     if (type == 'chat_message') {
       final rawMessage = event['message'];
       if (rawMessage is! Map) {
@@ -366,7 +384,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     bool clearMedicationSelection = false,
   }) async {
     final normalizedBody = body.trim();
-    if (_isSending || normalizedBody.isEmpty) {
+    if (_isSending ||
+        _isDeletingMessages ||
+        _isSelectingMessages ||
+        normalizedBody.isEmpty) {
       return null;
     }
     FocusScope.of(context).unfocus();
@@ -702,9 +723,136 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       for (final message in current) message.messageId: message,
       for (final message in incoming) message.messageId: message,
     };
-    final merged = byId.values.toList(growable: false)
-      ..sort((left, right) => left.messageId.compareTo(right.messageId));
+    for (final message in incoming) {
+      if (message.hiddenForMe) _hiddenMessageIds.add(message.messageId);
+      if (message.deletedForEveryone) _deletedMessageIds.add(message.messageId);
+    }
+    final merged =
+        byId.values
+            .where((message) => !_hiddenMessageIds.contains(message.messageId))
+            .map(
+              (message) => _deletedMessageIds.contains(message.messageId)
+                  ? message.copyWith(deletedForEveryone: true)
+                  : message,
+            )
+            .toList(growable: false)
+          ..sort((left, right) => left.messageId.compareTo(right.messageId));
     return merged;
+  }
+
+  // Function Name: _applyMessageDeletion
+  // Description: Applies monotonic deletion markers so delayed responses cannot
+  // restore removed text or medication cards.
+  // Parameters: ids, scope - server-confirmed selection and visibility.
+  // Returns: None.
+  void _applyMessageDeletion(List<int> ids, ChatDeletionScope scope) {
+    if (!mounted) return;
+    setState(() {
+      (scope == ChatDeletionScope.me ? _hiddenMessageIds : _deletedMessageIds)
+          .addAll(ids);
+      _messages = _mergeMessages(_messages, const []);
+      _selectedMessageIds.removeAll(ids);
+    });
+  }
+
+  void _toggleMessageSelection(int id) {
+    if (_isSending || _isDeletingMessages) return;
+    setState(() {
+      _isSelectingMessages = true;
+      if (!_selectedMessageIds.remove(id) && _selectedMessageIds.length < 50) {
+        _selectedMessageIds.add(id);
+      }
+    });
+  }
+
+  // Function Name: _confirmMessageDeletion
+  // Description: Confirms private/shared deletion; failures preserve the selection.
+  // Parameters: None; uses the explicitly selected message IDs.
+  // Returns: Completes after confirmation, server validation and feedback.
+  Future<void> _confirmMessageDeletion() async {
+    if (_isDeletingMessages || _selectedMessageIds.isEmpty) return;
+    final ids = _selectedMessageIds.toList(growable: false);
+    final selected = _messages
+        .where((message) => ids.contains(message.messageId))
+        .toList();
+    final canDeleteForEveryone =
+        selected.isNotEmpty &&
+        selected.every(
+          (message) => message.canDeleteForEveryone(
+            widget.currentUserHash,
+            DateTime.now(),
+          ),
+        );
+    var scope = ChatDeletionScope.me;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          scrollable: true,
+          title: Text(_text.deleteMessages),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_text.deleteWarning),
+              RadioGroup<ChatDeletionScope>(
+                groupValue: scope,
+                onChanged: (value) => setDialogState(() => scope = value!),
+                child: Column(
+                  children: [
+                    RadioListTile<ChatDeletionScope>(
+                      contentPadding: EdgeInsets.zero,
+                      value: ChatDeletionScope.me,
+                      title: Text(_text.deleteForMe),
+                    ),
+                    if (canDeleteForEveryone)
+                      RadioListTile<ChatDeletionScope>(
+                        contentPadding: EdgeInsets.zero,
+                        value: ChatDeletionScope.everyone,
+                        title: Text(_text.deleteForEveryone),
+                      ),
+                  ],
+                ),
+              ),
+              if (!canDeleteForEveryone) Text(_text.privateDeletionOnly),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_text.cancel),
+            ),
+            TextButton(
+              key: const ValueKey('confirmChatDeletion'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(_text.deleteMessages),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => _isDeletingMessages = true);
+    try {
+      await _control.deleteMessages(
+        linkId: widget.linkId,
+        messageIds: ids,
+        scope: scope,
+      );
+      if (!mounted) return;
+      _applyMessageDeletion(ids, scope);
+      setState(() {
+        _selectedMessageIds.clear();
+        _isSelectingMessages = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text.deleteFailed), persist: false),
+      );
+    } finally {
+      if (mounted) setState(() => _isDeletingMessages = false);
+    }
   }
 
   void _scrollToLatest() {
@@ -728,11 +876,52 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         backgroundColor: MedBuddyColors.primary,
         foregroundColor: Colors.white,
         titleSpacing: 0,
+        leading: _isSelectingMessages
+            ? IconButton(
+                tooltip: _text.cancel,
+                icon: const Icon(Icons.close),
+                onPressed: _isDeletingMessages
+                    ? null
+                    : () => setState(() {
+                        _isSelectingMessages = false;
+                        _selectedMessageIds.clear();
+                      }),
+              )
+            : null,
+        actions: [
+          IconButton(
+            key: const ValueKey('deleteChatMessages'),
+            tooltip: _text.deleteMessages,
+            onPressed:
+                _isLoading ||
+                    _isSending ||
+                    _isDeletingMessages ||
+                    (_isSelectingMessages
+                        ? _selectedMessageIds.isEmpty
+                        : _messages.isEmpty)
+                ? null
+                : () {
+                    if (_isSelectingMessages) {
+                      unawaited(_confirmMessageDeletion());
+                    } else {
+                      setState(() => _isSelectingMessages = true);
+                    }
+                  },
+            icon: _isDeletingMessages
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.delete_outline),
+          ),
+        ],
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _peerName,
+              _isSelectingMessages
+                  ? _text.selectedCount(_selectedMessageIds.length)
+                  : _peerName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -778,7 +967,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                 ),
               ),
             Expanded(child: _buildMessageArea()),
-            _buildComposer(),
+            if (!_isSelectingMessages) _buildComposer(),
           ],
         ),
       ),
@@ -847,19 +1036,55 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
       itemCount: _messages.length,
-      itemBuilder: (context, index) => _MessageBubble(
-        message: _messages[index],
-        isMine: _messages[index].senderHash == widget.currentUserHash,
-        text: _text,
-        userSetting: widget.userSetting,
-        loadingMedicationId: _loadingMedicationId,
-        onMedicationPressed: _openMedicationDetail,
-        onSchedulePressed: _isPatient ? _openPatientSchedule : null,
-        onPharmacyCallRequested: _callPharmacy,
-        onPharmacyDirectionsRequested: _openPharmacyDirections,
-        onFindPharmacyRequested: (medication) {
-          unawaited(_showPharmacySelector(medications: [medication]));
-        },
+      itemBuilder: (context, index) => GestureDetector(
+        onLongPress: () => _toggleMessageSelection(_messages[index].messageId),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_isSelectingMessages)
+              Checkbox(
+                key: ValueKey(
+                  'selectChatMessage-${_messages[index].messageId}',
+                ),
+                semanticLabel: _text.selectMessage,
+                value: _selectedMessageIds.contains(_messages[index].messageId),
+                onChanged: _isDeletingMessages
+                    ? null
+                    : (_) =>
+                          _toggleMessageSelection(_messages[index].messageId),
+              ),
+            Expanded(
+              child: _messages[index].deletedForEveryone
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(_text.deletedMessage),
+                    )
+                  : IgnorePointer(
+                      ignoring: _isSelectingMessages,
+                      child: _MessageBubble(
+                        message: _messages[index],
+                        isMine:
+                            _messages[index].senderHash ==
+                            widget.currentUserHash,
+                        text: _text,
+                        userSetting: widget.userSetting,
+                        loadingMedicationId: _loadingMedicationId,
+                        onMedicationPressed: _openMedicationDetail,
+                        onSchedulePressed: _isPatient
+                            ? _openPatientSchedule
+                            : null,
+                        onPharmacyCallRequested: _callPharmacy,
+                        onPharmacyDirectionsRequested: _openPharmacyDirections,
+                        onFindPharmacyRequested: (medication) {
+                          unawaited(
+                            _showPharmacySelector(medications: [medication]),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1859,6 +2084,27 @@ class _LinkedChatText {
   bool get isEnglish => language.trim().toLowerCase().startsWith('en');
 
   String get family => isEnglish ? 'Family' : '가족';
+  String get deleteMessages => isEnglish ? 'Delete messages' : '메시지 삭제';
+  String get cancel => isEnglish ? 'Cancel' : '취소';
+  String get selectMessage => isEnglish ? 'Select message' : '메시지 선택';
+  String selectedCount(int count) =>
+      isEnglish ? '$count selected' : '$count개 선택';
+  String get deleteForMe => isEnglish ? 'Delete for me' : '나에게서만 삭제';
+  String get deleteForEveryone =>
+      isEnglish ? 'Delete for everyone' : '모두에게서 삭제';
+  String get deletedMessage =>
+      isEnglish ? 'This message was deleted.' : '삭제된 메시지입니다.';
+  String get deleteWarning => isEnglish
+      ? 'This cannot be undone. Delete for me keeps the other person\'s copy. '
+            'Delete for everyone removes the content for both people, but cannot recall previews already delivered.'
+      : '삭제한 메시지는 복구할 수 없어요. 나에게서만 삭제하면 상대방 기록은 유지돼요. '
+            '모두에게서 삭제해도 이미 전달된 알림 미리보기는 회수할 수 없어요.';
+  String get privateDeletionOnly => isEnglish
+      ? 'Only your own messages sent less than 24 hours ago can be deleted for everyone.'
+      : '내가 보낸 지 24시간이 지나지 않은 메시지만 모두에게서 삭제할 수 있어요.';
+  String get deleteFailed => isEnglish
+      ? 'Could not delete messages. Check your connection and the 24-hour limit, then try again.'
+      : '삭제하지 못했어요. 연결 상태와 전송 후 24시간 제한을 확인한 뒤 다시 시도해 주세요.';
   String get medicationLoadFailed => isEnglish
       ? 'Could not load active medication information.'
       : '복용 중인 약 정보를 불러오지 못했습니다.';

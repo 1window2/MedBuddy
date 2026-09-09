@@ -177,6 +177,36 @@ class ManageLinkedChat {
     return ChatMessage.fromJson(Map<String, dynamic>.from(rawMessage));
   }
 
+  // Function Name: deleteMessages
+  // Description: Deletes an explicit selection using the authenticated server policy.
+  // Parameters: linkId, messageIds, scope - bounded IDs and private/shared deletion.
+  // Returns: Completes only after the server has confirmed the entire selection.
+  Future<void> deleteMessages({
+    required int linkId,
+    required List<int> messageIds,
+    required ChatDeletionScope scope,
+  }) async {
+    if (messageIds.isEmpty ||
+        messageIds.length > 50 ||
+        messageIds.any((id) => id < 1)) {
+      throw ArgumentError('Select between 1 and 50 messages.');
+    }
+    final response = await _client
+        .post(
+          _buildUri('/links/$linkId/messages/delete'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'message_ids': messageIds.toSet().toList(),
+            'scope': scope.name,
+          }),
+        )
+        .timeout(_requestTimeout);
+    final decoded = _decodeSuccessfulResponse(response, '메시지를 삭제하지 못했습니다.');
+    if (decoded['success'] != true) {
+      throw StateError('Message deletion was not confirmed.');
+    }
+  }
+
   // 함수명: markRead
   // 역할:
   // - 화면에서 확인한 마지막 상대 메시지까지 읽음 상태로 갱신한다.

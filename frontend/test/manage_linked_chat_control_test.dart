@@ -20,6 +20,83 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  test(
+    'deletion sends explicit IDs and scope and surfaces server refusal',
+    () async {
+      var refuse = false;
+      final control = ManageLinkedChat(
+        userHash: 'patient-a',
+        chatUrlBuilder: (path) => '$baseUrl$path',
+        client: MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.path, '/api/v1/chat/links/17/messages/delete');
+          expect(jsonDecode(request.body), {
+            'message_ids': [1, 2],
+            'scope': 'everyone',
+          });
+          return _jsonResponse(
+            refuse ? {'detail': 'expired'} : {'success': true},
+            refuse ? 409 : 200,
+          );
+        }),
+      );
+      await control.deleteMessages(
+        linkId: 17,
+        messageIds: [1, 2],
+        scope: ChatDeletionScope.everyone,
+      );
+      refuse = true;
+      await expectLater(
+        control.deleteMessages(
+          linkId: 17,
+          messageIds: [1, 2],
+          scope: ChatDeletionScope.everyone,
+        ),
+        throwsStateError,
+      );
+      control.dispose();
+    },
+  );
+
+  test('redacted messages allow empty text and discard medication context', () {
+    final message = ChatMessage.fromJson({
+      'message_id': 1,
+      'link_id': 17,
+      'sender_hash': 'patient-a',
+      'client_message_id': 'deleted_001',
+      'body': '',
+      'created_at': '2026-09-09T00:00:00Z',
+      'deleted_for_everyone': true,
+    });
+    expect(message.deletedForEveryone, isTrue);
+    expect(
+      message.canDeleteForEveryone('patient-a', DateTime.utc(2026, 9, 9, 1)),
+      isFalse,
+    );
+    final original = ChatMessage(
+      messageId: 1,
+      linkId: 17,
+      senderHash: 'patient-a',
+      clientMessageId: 'test_001',
+      body: 'secret',
+      createdAt: DateTime.utc(2026, 9, 9),
+      medicationContext: const ChatMedicationContext(
+        medicationId: 1,
+        medicationName: 'secret pill',
+        dosagePerTime: '1',
+      ),
+    );
+    expect(
+      original.canDeleteForEveryone('patient-a', DateTime.utc(2026, 9, 10)),
+      isFalse,
+    );
+    expect(
+      original.copyWith(deletedForEveryone: true).attachedMedicationContexts,
+      isEmpty,
+    );
+    expect(original.copyWith(deletedForEveryone: true).body, isEmpty);
+  });
+
   test('최근 채팅 기록을 사용자와 연동 범위로 조회한다', () async {
     final client = MockClient((request) async {
       expect(request.method, 'GET');
