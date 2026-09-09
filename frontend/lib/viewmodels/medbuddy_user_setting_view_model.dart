@@ -62,6 +62,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
   // - 없음.
   void clearAnalysisResult() {
     _cancelPrescriptionOperation();
+    inputPrescription.cancelPendingRequests();
     unawaited(inputPrescription.clearSelectedImage());
     _recognizedMedicationScheduleList = [];
     _recognizedTextRegionList = [];

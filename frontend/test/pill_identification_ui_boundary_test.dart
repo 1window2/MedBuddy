@@ -342,6 +342,7 @@ class _OnePhotoMultipleIdentifyPill extends _FakeIdentifyPill {
 // 역할: 번호별 자르기·뒷면·실패·동점 확장을 외부 호출 없이 검증한다.
 class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
   bool expandCandidates = false;
+  bool incompleteCandidateList = false;
   bool failRefinement = false;
   bool cancelPicker = false;
   int refinementCalls = 0;
@@ -395,7 +396,10 @@ class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
     required Uint8List image,
   }) async {
     final result = await super.requestMultiplePillIdentification(image: image);
-    if (!expandCandidates) return result;
+    if (!expandCandidates && !incompleteCandidateList) return result;
+    final candidateCount = incompleteCandidateList
+        ? PillIdentificationResult.maxCandidateCount
+        : 11;
     return MultiplePillIdentificationResult(
       requiresConfirmation: true,
       observations: [
@@ -407,13 +411,14 @@ class _RefinementIdentifyPill extends _OnePhotoMultipleIdentifyPill {
             requiresConfirmation: true,
             observedFeatures: const PillVisualFeatures(frontImprint: 'YH'),
             candidates: [
-              for (var i = 0; i < 11; i++)
+              for (var i = 0; i < candidateCount; i++)
                 PillIdentificationCandidate(
                   itemSeq: '$i',
                   itemName: '동점 후보 $i',
                   matchScore: 1,
                 ),
             ],
+            hasMoreCandidates: incompleteCandidateList,
           ),
         ),
         result.observations.last,
@@ -538,6 +543,26 @@ void main() {
     expect(find.text('동점 후보 5'), findsOneWidget);
     await _tapVisible(tester, find.text('동점 후보 5'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('응답 상한 밖 후보가 있으면 저장을 차단한다', (tester) async {
+    final control = _RefinementIdentifyPill()..incompleteCandidateList = true;
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.text('동점 후보 0'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('두 번째 알약'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('표시된 목록 밖에도'), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('confirm-pill-candidate-button')),
+          )
+          .onPressed,
+      isNull,
+    );
     expect(tester.takeException(), isNull);
   });
 

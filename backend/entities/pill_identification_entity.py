@@ -7,6 +7,7 @@ from typing import Literal
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
 from core.database import Base
 
+MAX_RETURNED_PILL_CANDIDATES = 100
 
 
 # Class Name: PillVisualFeatures
@@ -237,6 +238,15 @@ class PillIdentificationResult:
             raise ValueError("Pill identification always requires confirmation.")
         if self.is_confident and not self.candidates:
             raise ValueError("An empty pill result cannot be confident.")
+        if len(self.candidates) > MAX_RETURNED_PILL_CANDIDATES:
+            raise ValueError("A pill result cannot exceed the candidate response limit.")
+        if (
+            self.has_more_candidates
+            and len(self.candidates) != MAX_RETURNED_PILL_CANDIDATES
+        ):
+            raise ValueError(
+                "A truncated pill result must fill the candidate response limit."
+            )
 
 
 # Class Name: PillBoundingBox

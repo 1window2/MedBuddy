@@ -169,6 +169,8 @@ class PillIdentificationCandidate {
 // - observedFeatures (PillVisualFeatures): Pill appearance and quality observed in the photo.
 // - candidates (List<PillIdentificationCandidate>): Candidates to inspect for a match.
 class PillIdentificationResult {
+  static const int maxCandidateCount = 100;
+
   final bool isConfident;
   final bool requiresConfirmation;
   final PillVisualFeatures observedFeatures;
@@ -232,6 +234,14 @@ class PillIdentificationResult {
     }
     if (rawCandidates is! List) {
       throw const FormatException('data must be an array.');
+    }
+    if (rawCandidates.length > maxCandidateCount) {
+      throw const FormatException('data exceeds the candidate response limit.');
+    }
+    if (rawMoreCandidates && rawCandidates.length != maxCandidateCount) {
+      throw const FormatException(
+        'A truncated candidate list must fill the response limit.',
+      );
     }
 
     final candidates = <PillIdentificationCandidate>[];

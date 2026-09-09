@@ -218,6 +218,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     return _drafts.every((draft) {
       final result = draft.result;
       return result != null &&
+          !result.hasMoreCandidates &&
           result.candidates.isNotEmpty &&
           draft.selectedItemSeq != null;
     });

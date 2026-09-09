@@ -560,6 +560,26 @@ void main() {
           'requires_confirmation': true,
           'observed_features': validFeatures,
           'data': [
+            for (var index = 0; index < 101; index++)
+              {...validCandidate, 'item_seq': '$index'},
+          ],
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [validCandidate],
+          'has_more_candidates': true,
+        },
+        {
+          'success': true,
+          'message': 'Candidates found.',
+          'is_confident': true,
+          'requires_confirmation': true,
+          'observed_features': validFeatures,
+          'data': [
             {
               'item_seq': '',
               'item_name': 'Missing identifier',

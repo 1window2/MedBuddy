@@ -61,118 +61,144 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
               colors: [MedBuddyColors.analysisBackground, Colors.white],
             ),
           ),
-          child: Center(
-            child: Container(
-              width: 328,
-              padding: const EdgeInsets.fromLTRB(42, 34, 42, 32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: MedBuddyShadows.card,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    text.successTitle,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 28 * scale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 36),
-                  Container(
-                    width: 168,
-                    height: 168,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF0FDF4),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 98,
-                        height: 98,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF00B875),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check_circle_outline,
-                          color: Colors.white,
-                          size: 62,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 34),
-                  Text(
-                    text.successMessage,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 18 * scale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 13),
-                  Text(
-                    text.successDescription,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: MedBuddyColors.textLight,
-                      fontSize: 14 * scale,
-                      height: 1.55,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SuccessMetric(
-                          value: '${analyzedMedicationList.length}',
-                          label: text.recognizedMedication,
-                          scale: scale,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _SuccessMetric(
-                          value: maxMedicationDays <= 0
-                              ? '-'
-                              : text.days(maxMedicationDays),
-                          label: text.medicationPeriod,
-                          scale: scale,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 48).clamp(
+                    0.0,
+                    double.infinity,
+                  ).toDouble(),
+                ),
+                child: Center(
+                  child: Container(
                     width: double.infinity,
-                    height: 63,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: MedBuddyColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: MedBuddyRadii.card,
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: MedBuddyShadows.card,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          text.successTitle,
+                          style: TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontSize: 28 * scale,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                          ),
                         ),
-                        textStyle: TextStyle(
-                          fontSize: 18 * scale,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
+                        const SizedBox(height: 36),
+                        Container(
+                          width: 168,
+                          height: 168,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF0FDF4),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 98,
+                              height: 98,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF00B875),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.check_circle_outline,
+                                color: Colors.white,
+                                size: 62,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      onPressed: onResultRequested,
-                      child: Text(text.checkResult),
+                        const SizedBox(height: 34),
+                        Text(
+                          text.successMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontSize: 18 * scale,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: 13),
+                        Text(
+                          text.successDescription,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: MedBuddyColors.textLight,
+                            fontSize: 14 * scale,
+                            height: 1.55,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _SuccessMetric(
+                                value: '${analyzedMedicationList.length}',
+                                label: text.recognizedMedication,
+                                scale: scale,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _SuccessMetric(
+                                value: maxMedicationDays <= 0
+                                    ? '-'
+                                    : text.days(maxMedicationDays),
+                                label: text.medicationPeriod,
+                                scale: scale,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: double.infinity,
+                            minHeight: 56,
+                          ),
+                          child: FilledButton(
+                            key: const Key(
+                              'prescription-analysis-result-button',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: MedBuddyColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: MedBuddyRadii.card,
+                              ),
+                              textStyle: TextStyle(
+                                fontSize: 18 * scale,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                            onPressed: onResultRequested,
+                            child: Text(
+                              text.checkResult,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),

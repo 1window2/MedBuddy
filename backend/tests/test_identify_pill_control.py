@@ -20,8 +20,10 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from boundaries.pill_identification_boundary import PillImageQualityError
 from controls.identify_pill_control import IdentifyPill
 from entities.pill_identification_entity import (
+    MAX_RETURNED_PILL_CANDIDATES,
     PillCatalogEntry,
     PillIdentificationCandidate,
+    PillIdentificationResult,
     PillVisualFeatures,
 )
 
@@ -654,6 +656,33 @@ async def test_cancelled_ranking_retains_shared_capacity_until_worker_exits() ->
     assert recovered.candidates
     assert control.maximum_active_workers == 1
     assert control.active_workers == 0
+
+
+def test_result_rejects_invalid_candidate_truncation_contract() -> None:
+    candidate = PillIdentificationCandidate(
+        item_seq="1",
+        item_name="candidate",
+        entp_name="",
+        image_url="",
+        shape="round",
+        colors=("white",),
+        print_front="",
+        print_back="",
+        match_score=0.5,
+    )
+
+    with pytest.raises(ValueError, match="candidate response limit"):
+        PillIdentificationResult(
+            observed_features=PillVisualFeatures(),
+            candidates=(candidate,) * (MAX_RETURNED_PILL_CANDIDATES + 1),
+        )
+
+    with pytest.raises(ValueError, match="must fill"):
+        PillIdentificationResult(
+            observed_features=PillVisualFeatures(),
+            candidates=(candidate,),
+            has_more_candidates=True,
+        )
 
 
 # Function Name: anyio_backend

@@ -687,6 +687,21 @@ class InputPrescription {
     return value.toLowerCase().replaceAll(RegExp(r'[^0-9a-z가-힣]'), '');
   }
 
+  // Function Name: cancelPendingRequests
+  // Description: Aborts every in-flight prescription analysis request without disposing reusable dependencies.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
+  void cancelPendingRequests() {
+    for (final abortTrigger in _abortTriggers.toList(growable: false)) {
+      if (!abortTrigger.isCompleted) {
+        abortTrigger.complete();
+      }
+    }
+    _abortTriggers.clear();
+  }
+
   // Function Name: dispose
   // Description: Starts app-owned preview cleanup, aborts pending analysis requests, closes an owned HTTP client, and asynchronously releases an owned local OCR service.
   // Parameters:
@@ -695,12 +710,7 @@ class InputPrescription {
   // - No return value.
   void dispose() {
     unawaited(clearSelectedImage());
-    for (final abortTrigger in _abortTriggers.toList(growable: false)) {
-      if (!abortTrigger.isCompleted) {
-        abortTrigger.complete();
-      }
-    }
-    _abortTriggers.clear();
+    cancelPendingRequests();
     if (_ownsClient) {
       _client.close();
     }

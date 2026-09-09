@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import (
+    MAX_RETURNED_PILL_CANDIDATES,
     MultiplePillIdentificationResult,
     MultiplePillObservation,
     PillBoundingBox,
@@ -130,7 +131,10 @@ class PillIdentificationResponse(BaseModel):
     is_confident: bool = False
     requires_confirmation: Literal[True] = True
     observed_features: PillVisualFeaturesResponse
-    data: list[PillIdentificationCandidateResponse] = Field(default_factory=list)
+    data: list[PillIdentificationCandidateResponse] = Field(
+        default_factory=list,
+        max_length=MAX_RETURNED_PILL_CANDIDATES,
+    )
     has_more_candidates: bool = False
 
     # Function Name: from_domain

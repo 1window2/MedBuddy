@@ -11,6 +11,7 @@ import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart'
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
@@ -166,6 +167,51 @@ class _EmptySchedule extends CheckSchedule {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    testWidgets('success content remains usable at large text in $language', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var resultRequests = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: PrescriptionAnalysisSuccessUI(
+            analyzedMedicationList: const [
+              AnalyzedMedication(
+                schedule: MedicationSchedule(
+                  medicationName: 'test-tablet',
+                  medicationTime: 3,
+                ),
+                detail: MedicationDetail(itemName: 'test-tablet'),
+              ),
+            ],
+            userSetting: UserSetting(language: language, fontSize: 20),
+            onResultRequested: () => resultRequests++,
+          ),
+        ),
+      );
+
+      final button = find.byKey(
+        const Key('prescription-analysis-result-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      expect(button, findsOneWidget);
+      await tester.tap(button);
+      expect(resultRequests, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final language in ['ko', 'en']) {
     for (final size in [
       const Size(390, 844),

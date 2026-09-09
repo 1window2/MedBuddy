@@ -1114,6 +1114,34 @@ void main() {
     expect(client.wasAborted, isTrue);
   });
 
+  test('cancelPendingRequests aborts analysis without disposing control', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-cancel-test-',
+    );
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    addTearDown(() => _disposeControl(control));
+
+    final request = control.requestPrescriptionImageFromGallery();
+    await client.started.future;
+    control.cancelPendingRequests();
+
+    await expectLater(request, throwsA(isA<StateError>()));
+    await Future<void>.delayed(Duration.zero);
+    expect(client.wasAborted, isTrue);
+  });
+
   // Function Name: test callback
   // Description:
   // - Expected behavior: request timeout must be positive.

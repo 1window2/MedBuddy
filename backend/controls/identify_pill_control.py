@@ -12,6 +12,7 @@ from boundaries.pill_identification_boundary import (
     PillVisionBoundary,
 )
 from entities.pill_identification_entity import (
+    MAX_RETURNED_PILL_CANDIDATES,
     MultiplePillIdentificationResult,
     MultiplePillObservation,
     PillCatalogEntry,
@@ -33,8 +34,6 @@ from entities.pill_identification_entity import (
 # - _ranking_semaphore (asyncio.Semaphore): Shared concurrency gate for CPU-heavy catalog ranking.
 class IdentifyPill:
     """Identifies candidate products without treating a visual match as a diagnosis."""
-
-    _MAX_RETURNED_CANDIDATES = 100
 
     _SHAPE_ALIASES = {
         "round": ("원형", "원형정"),
@@ -182,7 +181,7 @@ class IdentifyPill:
         ranked_candidates = await self._rank_candidates_with_capacity(
             features,
             catalog,
-            self._MAX_RETURNED_CANDIDATES + 1,
+            MAX_RETURNED_PILL_CANDIDATES + 1,
         )
         if ranked_candidates:
             cutoff = ranked_candidates[
@@ -193,10 +192,10 @@ class IdentifyPill:
             eligible = []
         return PillIdentificationResult(
             observed_features=features,
-            candidates=tuple(eligible[: self._MAX_RETURNED_CANDIDATES]),
+            candidates=tuple(eligible[:MAX_RETURNED_PILL_CANDIDATES]),
             is_confident=self._is_confident(features, ranked_candidates),
             requires_confirmation=True,
-            has_more_candidates=len(eligible) > self._MAX_RETURNED_CANDIDATES,
+            has_more_candidates=len(eligible) > MAX_RETURNED_PILL_CANDIDATES,
         )
 
     # Function Name: _rank_candidates_with_capacity
