@@ -64,6 +64,10 @@ silently inferred from weak evidence.
 - [x] Retain per-slot caregiver completion and missed-deadline settings, FCM
       completion delivery, local/background missed-dose monitoring, and chat
       medication context instead of creating a second caregiver workflow.
+- [x] Move Firebase-mode missed-deadline detection to the backend maintenance
+      worker and durable outbox. Each caregiver receives at most one event per
+      patient, date, and slot; delivery revalidates consent, the active link,
+      the deadline, and the live incomplete state immediately before FCM send.
 
 ### Required follow-up
 
@@ -71,9 +75,10 @@ silently inferred from weak evidence.
       app is foregrounded, backgrounded, and terminated; also test a locked
       screen, reboot, battery saver, offline completion failure, retry, snooze,
       and accidental-completion undo.
-- [ ] Move missed-deadline detection to a server-scheduled, idempotent delivery
-      path. The Android polling fallback is not sufficient when a patient or
-      caregiver force-stops the app.
+- [ ] Deploy and smoke-test the server-scheduled missed-deadline path with two
+      linked physical devices, including patient/caregiver force-stop and
+      transient FCM failure. The Android polling path is retained only for
+      local/demo authentication mode.
 - [ ] Add caregiver escalation levels with explicit consent, quiet hours,
       cooldowns, acknowledgement, and deduplication. Do not implement literal
       notification flooding: it increases alarm fatigue and can hide urgent

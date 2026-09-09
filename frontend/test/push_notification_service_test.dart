@@ -9,6 +9,26 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/services/push_notification_service.dart';
 
 void main() {
+  test('missed-dose push uses the caregiver schedule copy', () {
+    final korean =
+        PushNotificationService.caregiverNotificationTextForTesting(
+          type: 'caregiver_slot_missed',
+          slotKey: 'evening',
+          language: 'ko',
+        );
+    final english =
+        PushNotificationService.caregiverNotificationTextForTesting(
+          type: 'caregiver_slot_missed',
+          slotKey: 'morning',
+          language: 'en',
+        );
+
+    expect(korean.title, '미복용 일정 확인');
+    expect(korean.body, contains('저녁'));
+    expect(english.title, 'Medication not checked');
+    expect(english.body, contains('morning'));
+  });
+
   test('strict stop retries a push token after server rejection', () async {
     var requestCount = 0;
     final client = MockClient((request) async {

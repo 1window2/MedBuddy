@@ -189,13 +189,17 @@ exhausted. Push startup and token registration are tracked as lifecycle
 operations, so signing out waits for any in-flight registration before it
 requests deactivation of the current token.
 
-Missed-deadline evaluation currently remains in the Android Workmanager
-monitor. Its background isolate initializes Firebase before making
-authenticated API requests. In local demo mode,
-`DisabledPushNotificationBoundary` prevents remote delivery and the same
-monitor polls for both completion and missed-deadline changes. A production
-beta still requires server-scheduled missed-deadline delivery and two-device
-FCM smoke testing.
+In Firebase mode, the backend maintenance worker evaluates configured
+missed-dose deadlines and inserts a durable outbox event with a unique
+caregiver/patient/date/slot key. Immediately before FCM delivery it revalidates
+the active link, explicit per-slot consent, current deadline, global caregiver
+notification preference, and live incomplete schedule state. This suppresses
+stale alerts after a late completion and bounds delivery to one event per
+caregiver, patient, date, and slot. Transient failures use the same retry and
+dead-letter policy as dose-completion delivery. In local demo mode,
+`DisabledPushNotificationBoundary` prevents remote delivery and the Android
+monitor retains its local missed-deadline polling fallback. Production still
+requires deployment of the latest migration and two-device FCM smoke testing.
 
 ## Patient Reminder Privacy and Continuity
 
@@ -485,6 +489,7 @@ The current ordered Alembic chain records the beta data boundary:
 | `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
 | `ae4c7d19f2b0` | Add prescription-batch identifiers used for course grouping, duplicate control, and history comparison. |
 | `7d2e4f1a8c63` | Add the durable caregiver-alert outbox used for retryable transition delivery. |
+| `c2a7e4d9f610` | Generalize the caregiver-alert outbox for idempotent server-scheduled missed-dose delivery. |
 | `3a9f5c7d2e10` | Add linked patient-caregiver chat messages, idempotent client message identifiers, and participant read timestamps. |
 | `6e1b4a9c2d80` | Bind each chat message to a validated active saved-medication context and preserve its display snapshot. |
 

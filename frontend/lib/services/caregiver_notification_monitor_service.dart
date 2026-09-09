@@ -58,6 +58,7 @@ class CaregiverNotificationMonitorService {
   final Duration idlePollingInterval;
   final bool requestPermission;
   final bool monitorCompletionTransitions;
+  final bool monitorMissedDeadlines;
   final ValueChanged<bool>? _onCaregiverStatusChanged;
   final VoidCallback? _onDispose;
 
@@ -87,6 +88,7 @@ class CaregiverNotificationMonitorService {
     this.idlePollingInterval = defaultIdlePollingInterval,
     this.requestPermission = true,
     this.monitorCompletionTransitions = true,
+    this.monitorMissedDeadlines = true,
     ValueChanged<bool>? onCaregiverStatusChanged,
     VoidCallback? onDispose,
   }) : _loadMonitoringSnapshots = loadMonitoringSnapshots,
@@ -446,7 +448,8 @@ class CaregiverNotificationMonitorService {
         dateKey: dateKey,
       );
     }
-    if (setting.mode == CaregiverNotificationMode.missedDeadline) {
+    if (monitorMissedDeadlines &&
+        setting.mode == CaregiverNotificationMode.missedDeadline) {
       await _notifyMissedDeadline(
         preferences: preferences,
         scope: scope,

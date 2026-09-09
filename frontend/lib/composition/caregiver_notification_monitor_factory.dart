@@ -30,6 +30,7 @@ class CaregiverNotificationMonitorFactory {
         CaregiverNotificationMonitorService.defaultIdlePollingInterval,
     bool requestPermission = true,
     bool monitorCompletionTransitions = true,
+    bool monitorMissedDeadlines = true,
     String Function()? languageProvider,
     ValueChanged<bool>? onCaregiverStatusChanged,
   }) {
@@ -97,6 +98,7 @@ class CaregiverNotificationMonitorFactory {
       idlePollingInterval: idlePollingInterval,
       requestPermission: requestPermission,
       monitorCompletionTransitions: monitorCompletionTransitions,
+      monitorMissedDeadlines: monitorMissedDeadlines,
       languageProvider: languageProvider,
       onCaregiverStatusChanged: onCaregiverStatusChanged,
       onDispose: () {

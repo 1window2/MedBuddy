@@ -8,6 +8,7 @@ from sqlalchemy import inspect as sqlalchemy_inspect, or_
 from sqlalchemy.orm import Session
 
 from entities.caregiver_notification_entity import _CaregiverNotification
+from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox
 from entities.chat_message_entity import _ChatMessage
 from entities.device_push_token_entity import _DevicePushToken
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
@@ -229,6 +230,13 @@ class ManageAccount:
             )
             if linked_ids
             else 0
+        )
+        deleted_counts["caregiver_alerts"] = self._delete(
+            _CaregiverAlertOutbox,
+            or_(
+                _CaregiverAlertOutbox.patient_hash == normalized_user_hash,
+                _CaregiverAlertOutbox.caregiver_hash == normalized_user_hash,
+            ),
         )
         deleted_counts["medication_completions"] = self._delete(
             _MedicationCompletion,

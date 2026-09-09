@@ -121,6 +121,24 @@ void main() {
     expect(alerts.single.body, contains('1건'));
   });
 
+  test('서버 전달 모드에서는 기기 미복약 감시가 중복 알림을 만들지 않는다', () async {
+    final alerts = <_AlertRecord>[];
+    final monitor = _buildMonitor(
+      mode: CaregiverNotificationMode.missedDeadline,
+      deadlineHour: 20,
+      deadlineMinute: 0,
+      schedules: [_schedule(morningCompleted: false)],
+      now: () => DateTime(2026, 7, 29, 20, 5),
+      monitorMissedDeadlines: false,
+      alerts: alerts,
+    );
+    addTearDown(monitor.dispose);
+
+    await monitor.checkNow();
+
+    expect(alerts, isEmpty);
+  });
+
   test('영어 설정은 보호자 알림 제목과 본문에 함께 반영된다', () async {
     final alerts = <_AlertRecord>[];
     final monitor = _buildMonitor(
@@ -448,6 +466,7 @@ CaregiverNotificationMonitorService _buildMonitor({
   int? deadlineMinute,
   DateTime Function()? now,
   String language = 'ko',
+  bool monitorMissedDeadlines = true,
   required List<_AlertRecord> alerts,
 }) {
   return CaregiverNotificationMonitorService(
@@ -493,6 +512,7 @@ CaregiverNotificationMonitorService _buildMonitor({
         },
     permissionRequester: () async => true,
     languageProvider: () => language,
+    monitorMissedDeadlines: monitorMissedDeadlines,
     now: now,
   );
 }

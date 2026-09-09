@@ -510,6 +510,38 @@ class CheckSchedule:
         self._pending_completion_events.clear()
         return completion_events
 
+    # 함수명: isMedicationSlotIncomplete
+    # 역할:
+    # - 지정 날짜에 실제 복약 대상이 하나 이상 있으면서 전체 완료되지 않은 시간대인지 확인한다.
+    # - 서버 주도 미복약 알림이 화면 DTO를 다시 해석하지 않고 일정 규칙을 재사용하게 한다.
+    def isMedicationSlotIncomplete(
+        self,
+        *,
+        patient_hash: str,
+        schedule_date: date,
+        slot_key: str,
+    ) -> bool:
+        normalized_patient_hash = normalize_patient_hash(patient_hash)
+        normalized_slot_key = slot_key.strip().lower()
+        if normalized_slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
+            return False
+        medications = self.medication_repository.list_by_patient(
+            normalized_patient_hash
+        )
+        has_active_slot = any(
+            self._is_active_today(medication, schedule_date)
+            and normalized_slot_key in self._slot_keys_for_medication(medication)
+            for medication in medications
+        )
+        if not has_active_slot:
+            return False
+        completion_state = self._slot_completion_states_for_patient(
+            normalized_patient_hash,
+            schedule_date,
+            [normalized_slot_key],
+        )
+        return not completion_state.get(normalized_slot_key, False)
+
     # 함수명: _slot_completion_states_for_patient
     # 역할:
     # - 환자의 오늘 활성 약을 기준으로 각 시간대가 모두 완료되었는지 계산한다.

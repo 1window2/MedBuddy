@@ -46,7 +46,8 @@ The following implemented flows are in v0.2.0 verification:
    control that remains available while settings content scrolls.
 6. Patient-caregiver code linking, linked-patient per-slot schedule views,
    unlinking, per-slot caregiver notification preferences, Firebase
-   dose-completion delivery, and background missed-deadline checks.
+   dose-completion delivery, and idempotent server-scheduled missed-deadline
+   delivery with a local/demo Android fallback.
 7. Patient-scoped health recommendations.
 8. Experimental loose-pill candidate identification with explicit user
    confirmation, up to ten separately photographed pills, bounded two-request
@@ -73,7 +74,7 @@ The following implemented flows are in v0.2.0 verification:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-09-01: P0 controls and release configuration
+Implementation status as of 2026-09-09: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
@@ -85,9 +86,10 @@ nearby-pharmacy lookup, structured medication-context chat, and idempotent
 adoption of compatible pre-existing pharmacy tables. The two new
 network features remain disabled by default through laboratory settings.
 The self-hosted FastAPI/PostgreSQL/Redis stack, public HTTPS ingress, protected
-host secrets, scheduled server-side missed-deadline delivery, signed
-physical-device testing, backup/restore, and operational abuse-control
-validation remain release gates. Historical Google Cloud workflows are disabled.
+host secrets, and scheduled server-side missed-deadline delivery are present in
+source. Deployment of the latest revision, signed physical-device testing,
+backup/restore, and operational abuse-control validation remain release gates.
+Historical Google Cloud workflows are disabled.
 
 ### P0: Identity and Transport Security
 
@@ -116,9 +118,10 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Seed and validate the shared PostgreSQL medication and pill-reference catalog
   before routing traffic to a new API revision.
 - Verify backup and restore procedures before accepting real user data.
-- Complete scheduled server-side delivery for missed-deadline alerts and
-  validate dose-completion FCM delivery on two physical devices. Local Android
-  background checks remain a beta fallback, not proof of remote delivery.
+- Deploy and validate scheduled server-side missed-deadline alerts plus
+  dose-completion FCM delivery on two physical devices. Local Android
+  background checks are restricted to local/demo authentication mode and are
+  not proof of remote delivery.
 - Verify chat history retention, unread/read transitions, WebSocket reconnect,
   idempotent send retries, revoked-link denial, structured-context server
   reconstruction for every selected medication, one completion event per

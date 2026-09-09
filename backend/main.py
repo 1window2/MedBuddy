@@ -57,6 +57,9 @@ from entities import pharmacy_catalog_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401
+from entities.caregiver_alert_outbox_entity import (
+    ensure_caregiver_alert_outbox_schema,
+)
 from entities.caregiver_notification_entity import ensure_caregiver_notification_schema
 from entities.medication_completion_entity import ensure_medication_completion_schema
 from entities.medication_alarm_entity import ensure_medication_alarm_schema
@@ -243,6 +246,7 @@ def create_app() -> FastAPI:
             ensure_medication_completion_schema(engine)
             ensure_medication_alarm_schema(engine)
             ensure_caregiver_notification_schema(engine)
+            ensure_caregiver_alert_outbox_schema(engine)
             ensure_user_setting_schema(engine)
     app = FastAPI(
         title="MedBuddy API",

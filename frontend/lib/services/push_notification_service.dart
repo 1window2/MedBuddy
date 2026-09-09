@@ -265,17 +265,19 @@ class PushNotificationService {
     const supportedTypes = {
       'caregiver_slot_completed',
       'caregiver_dose_completed',
+      'caregiver_slot_missed',
     };
     if (!supportedTypes.contains(message.data['type'])) {
       return;
     }
     final patientHash = message.data['patient_hash']?.trim() ?? '';
-    final isEnglish = language.trim().toLowerCase() == 'en';
-    final slotName = _slotName(message.data['slot_key'], language);
-    final title = isEnglish ? 'Patient medication completed' : '환자 복약 완료';
-    final body = isEnglish
-        ? 'The linked patient completed all $slotName medications.'
-        : '연동된 환자의 $slotName 복약이 모두 완료되었습니다.';
+    final text = caregiverNotificationTextForTesting(
+      type: message.data['type'],
+      slotKey: message.data['slot_key'],
+      language: language,
+    );
+    final title = text.title;
+    final body = text.body;
     final source = message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       id: source.hashCode & 0x7fffffff,
@@ -318,7 +320,30 @@ class PushNotificationService {
     );
   }
 
-  String _slotName(String? slotKey, String language) {
+  @visibleForTesting
+  static ({String title, String body}) caregiverNotificationTextForTesting({
+    required String? type,
+    required String? slotKey,
+    required String language,
+  }) {
+    final isEnglish = language.trim().toLowerCase() == 'en';
+    final slotName = _slotName(slotKey, language);
+    final isMissed = type == 'caregiver_slot_missed';
+    return (
+      title: isMissed
+          ? (isEnglish ? 'Medication not checked' : '미복용 일정 확인')
+          : (isEnglish ? 'Patient medication completed' : '환자 복약 완료'),
+      body: isMissed
+          ? (isEnglish
+                ? "The linked patient's $slotName medication is not checked yet."
+                : '연동된 환자의 $slotName 복약이 아직 확인되지 않았습니다.')
+          : (isEnglish
+                ? 'The linked patient completed all $slotName medications.'
+                : '연동된 환자의 $slotName 복약이 모두 완료되었습니다.'),
+    );
+  }
+
+  static String _slotName(String? slotKey, String language) {
     final isEnglish = language.trim().toLowerCase() == 'en';
     return switch (slotKey) {
       'morning' => isEnglish ? 'morning' : '아침',

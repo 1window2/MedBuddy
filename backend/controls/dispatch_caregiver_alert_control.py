@@ -2,6 +2,7 @@
 # 역할: 환자의 복약 완료 이벤트를 연결된 보호자 푸시 알림으로 변환한다.
 
 import logging
+from datetime import date, datetime, time
 
 from sqlalchemy.orm import Session
 
@@ -12,8 +13,11 @@ from boundaries.push_notification_boundary import (
     PushDeliveryResult,
     PushNotificationBoundary,
 )
+from controls.check_schedule_control import CheckSchedule
+from core.application_clock import application_now
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+    CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
     _CaregiverNotification,
     decode_slot_settings,
 )
@@ -141,6 +145,123 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             invalid_tokens=tuple(dict.fromkeys(invalid_tokens)),
             retryable_failure_count=retryable_failure_count,
         )
+
+    # 함수명: notifySlotMissed
+    # 역할:
+    # - 보호자가 명시적으로 선택한 마감 시각 이후에도 미완료인 복약 시간대를 알린다.
+    # - 전송 직전에 연결, 설정, 날짜와 실제 완료 상태를 다시 확인해 오래된 알림을 막는다.
+    def notifySlotMissed(
+        self,
+        *,
+        caregiver_hash: str,
+        patient_hash: str,
+        slot_key: str,
+        schedule_date: date,
+    ) -> PushDeliveryResult:
+        current_time = application_now()
+        if schedule_date != current_time.date():
+            return PushDeliveryResult(success_count=0)
+        if not self.link_repository.has_active_pair(caregiver_hash, patient_hash):
+            return PushDeliveryResult(success_count=0)
+        setting = (
+            self.db.query(_CaregiverNotification)
+            .filter(
+                _CaregiverNotification.patient_hash == patient_hash,
+                _CaregiverNotification.caregiver_hash == caregiver_hash,
+                _CaregiverNotification.enabled.is_(True),
+            )
+            .first()
+        )
+        if setting is None:
+            return PushDeliveryResult(success_count=0)
+        slot_setting = decode_slot_settings(setting.slot_settings).get(slot_key)
+        if (
+            slot_setting is None
+            or slot_setting.get("notification_type")
+            != CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE
+            or not self._deadline_has_passed(current_time, slot_setting)
+        ):
+            return PushDeliveryResult(success_count=0)
+        if not CheckSchedule(self.db).isMedicationSlotIncomplete(
+            patient_hash=patient_hash,
+            schedule_date=schedule_date,
+            slot_key=slot_key,
+        ):
+            return PushDeliveryResult(success_count=0)
+
+        user_setting = self._user_setting(caregiver_hash)
+        if user_setting is not None and not bool(
+            user_setting.caregiver_notifications_enabled
+        ):
+            return PushDeliveryResult(success_count=0)
+        token_rows = (
+            self.db.query(_DevicePushToken)
+            .filter(
+                _DevicePushToken.user_hash == caregiver_hash,
+                _DevicePushToken.enabled.is_(True),
+            )
+            .all()
+        )
+        if not token_rows:
+            return PushDeliveryResult(success_count=0)
+        is_english = (
+            user_setting is not None
+            and str(user_setting.language or "").strip().lower() == "en"
+        )
+        show_details = (
+            user_setting is None
+            or user_setting.notification_detail_mode != "type_only"
+        )
+        slot_name = (
+            _ENGLISH_SLOT_NAMES.get(slot_key, "scheduled")
+            if is_english
+            else _SLOT_NAMES.get(slot_key, "복약")
+        )
+        title = "Medication not checked" if is_english else "미복용 일정 확인"
+        if show_details:
+            body = (
+                f"The linked patient's {slot_name} medication is not checked yet. Please contact them if needed."
+                if is_english
+                else f"연동된 환자의 {slot_name} 복약이 아직 확인되지 않았습니다. 필요하면 연락해 주세요."
+            )
+        else:
+            body = (
+                "A linked patient has a medication update."
+                if is_english
+                else "연동된 환자의 복약 상태를 확인해 주세요."
+            )
+        result = self.push_boundary.send_notification(
+            tokens=[str(row.token) for row in token_rows],
+            title=title,
+            body=body,
+            data={
+                "type": "caregiver_slot_missed",
+                "patient_hash": patient_hash,
+                "slot_key": slot_key,
+            },
+        )
+        if result.invalid_tokens:
+            self._disable_invalid_tokens(result.invalid_tokens)
+        return result
+
+    @staticmethod
+    def _deadline_has_passed(
+        current_time: datetime,
+        slot_setting: dict[str, object],
+    ) -> bool:
+        try:
+            deadline_time = time(
+                hour=int(slot_setting.get("deadline_hour")),
+                minute=int(slot_setting.get("deadline_minute")),
+            )
+        except (TypeError, ValueError):
+            return False
+        deadline = datetime.combine(
+            current_time.date(),
+            deadline_time,
+            tzinfo=current_time.tzinfo,
+        )
+        return current_time >= deadline
 
     # 함수명: _caregivers_for_completed_slot
     # 역할:

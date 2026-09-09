@@ -178,6 +178,15 @@ configured retention period. The tracked production template uses 90 days:
 CHAT_MESSAGE_RETENTION_DAYS=90
 ```
 
+The same runner scans explicit caregiver missed-dose deadlines and queues
+durable delivery events. `CAREGIVER_ALERT_OUTBOX_POLL_SECONDS` controls the
+scan/retry interval, and `CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS` controls how
+long terminal rows remain. Keep the worker enabled in exactly one backend
+runtime per deployment unless the outbox processor is deliberately separated;
+the database uniqueness key still prevents duplicate events across concurrent
+scans. Delivery rechecks the active relationship, consent settings, deadline,
+and current schedule state before contacting FCM.
+
 Self-hosted production keeps Redis on the private Docker network and requires
 it for shared request quotas. This makes API and chat limits consistent across
 all backend workers instead of maintaining a separate counter per process.
@@ -219,10 +228,12 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `b4e7c2d9a160`. The v0.2.0 tail adds the shared
+The reported head must be `c2a7e4d9f610`. The v0.2.0 tail adds the shared
 pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
-(`b4e7c2d9a160`). Cloudflare Tunnel must also permit WebSocket upgrades for
+(`b4e7c2d9a160`), then merges the catalog/chat migration branches
+(`9c4e7b2a6d10`) and generalizes the caregiver alert outbox
+(`c2a7e4d9f610`). Cloudflare Tunnel must also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.
 

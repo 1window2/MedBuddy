@@ -11,6 +11,7 @@ from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.process_caregiver_alert_outbox_control import (
     ProcessCaregiverAlertOutbox,
 )
+from controls.queue_missed_dose_alerts_control import QueueMissedDoseAlerts
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +55,17 @@ class CaregiverAlertOutboxWorker:
     def _run_once(self) -> None:
         db = self.session_factory()
         try:
+            queued_count = QueueMissedDoseAlerts(db).queueDue()
             result = ProcessCaregiverAlertOutbox(
                 db=db,
                 push_boundary=self.push_boundary_factory(),
             ).processDue()
-            if result["sent"] or result["failed"]:
-                logger.info("Caregiver alert outbox processed: %s", result)
+            if queued_count or result["sent"] or result["failed"]:
+                logger.info(
+                    "Caregiver alert outbox processed: queued=%s result=%s",
+                    queued_count,
+                    result,
+                )
         except Exception:
             db.rollback()
             logger.exception("Caregiver alert outbox worker failed.")

@@ -313,6 +313,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
           : CaregiverNotificationMonitorService.defaultPollingInterval,
       monitorCompletionTransitions:
           AuthConfig.mode != AuthenticationMode.firebase,
+      monitorMissedDeadlines: AuthConfig.mode != AuthenticationMode.firebase,
       onCaregiverStatusChanged: (hasCaregiverLinks) {
         unawaited(
           _synchronizeBackgroundCaregiverMonitoring(
@@ -358,7 +359,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       return;
     }
     try {
-      if (hasCaregiverLinks) {
+      if (hasCaregiverLinks &&
+          AuthConfig.mode != AuthenticationMode.firebase) {
         await CaregiverNotificationBackgroundScheduler.register(userHash);
       } else {
         await CaregiverNotificationBackgroundScheduler.cancel();

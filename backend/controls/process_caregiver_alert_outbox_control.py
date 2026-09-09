@@ -11,6 +11,8 @@ from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from controls.manage_linked_chat_control import ManageLinkedChat
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
+    CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
     CAREGIVER_ALERT_STATUS_PENDING,
@@ -143,18 +145,34 @@ class ProcessCaregiverAlertOutbox:
         if row is None:
             return "skipped"
         try:
-            # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
-            ManageLinkedChat(self.db).publish_slot_completion(
-                patient_hash=str(row.patient_hash),
-                slot_key=str(row.slot_key),
-            )
-            delivery_result = DispatchCaregiverAlert(
+            dispatcher = DispatchCaregiverAlert(
                 db=self.db,
                 push_boundary=self.push_boundary,
-            ).notifySlotCompleted(
-                patient_hash=str(row.patient_hash),
-                slot_key=str(row.slot_key),
             )
+            event_type = str(
+                row.event_type or CAREGIVER_ALERT_EVENT_DOSE_COMPLETED
+            )
+            if event_type == CAREGIVER_ALERT_EVENT_DOSE_COMPLETED:
+                # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
+                ManageLinkedChat(self.db).publish_slot_completion(
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                )
+                delivery_result = dispatcher.notifySlotCompleted(
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                )
+            elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
+                if row.caregiver_hash is None or row.schedule_date is None:
+                    raise ValueError("Missed-dose outbox event is incomplete.")
+                delivery_result = dispatcher.notifySlotMissed(
+                    caregiver_hash=str(row.caregiver_hash),
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                    schedule_date=row.schedule_date,
+                )
+            else:
+                raise ValueError("Unsupported caregiver outbox event type.")
             if not delivery_result.all_valid_targets_succeeded:
                 raise _RetryablePushDeliveryError(
                     "Some valid caregiver devices did not receive the notification."
