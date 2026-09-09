@@ -194,8 +194,7 @@ class CheckSchedule {
             headers: const {'Content-Type': 'application/json'},
             body: jsonEncode({
               'medication_status': medicationStatus,
-              if (expectedScheduleDate != null)
-                'expected_schedule_date': expectedScheduleDate,
+              'expected_schedule_date': ?expectedScheduleDate,
             }),
           )
           .timeout(const Duration(seconds: 30));
