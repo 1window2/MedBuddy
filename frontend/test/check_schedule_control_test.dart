@@ -311,9 +311,12 @@ void main() {
       final updatedSchedules = await control.updateMedicationSlotStatus(
         'Morning',
         true,
+        expectedScheduleDate: '2026-09-10',
       );
-
-      expect(requestBody, {'medication_status': true});
+      expect(requestBody, {
+        'medication_status': true,
+        'expected_schedule_date': '2026-09-10',
+      });
       // Function Name: map callback
       // Description:
       // - Extract the schedule medication ID for the collection assertion.

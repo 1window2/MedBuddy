@@ -36,6 +36,7 @@ enum MedicationNotificationAction { open, markSlotTaken, snoozeTenMinutes }
 // - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
 // - notificationId (int?): Platform notification or server setting identifier.
 // - action (MedicationNotificationAction): Selected open, completion, or snooze action.
+// - scheduleDate (DateTime?): Original dose day; absent on legacy notifications.
 class MedicationNotificationSelection {
   final MedicationNotificationDestination destination;
   final String? patientHash;
@@ -43,6 +44,7 @@ class MedicationNotificationSelection {
   final String? slotKey;
   final int? notificationId;
   final MedicationNotificationAction action;
+  final DateTime? scheduleDate;
 
   // Function Name: MedicationNotificationSelection
   // Description: Captures a parsed notification destination with optional patient, link, slot, and notification identifiers plus the selected action.
@@ -53,6 +55,7 @@ class MedicationNotificationSelection {
   // - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
   // - notificationId (int?): Platform notification or server setting identifier.
   // - action (MedicationNotificationAction): Selected open, completion, or snooze action.
+  // - scheduleDate (DateTime?): Original dose day, preserved across snoozes.
   // Returns:
   // - MedicationNotificationSelection: the initialized instance.
   const MedicationNotificationSelection({
@@ -62,7 +65,18 @@ class MedicationNotificationSelection {
     this.slotKey,
     this.notificationId,
     this.action = MedicationNotificationAction.open,
+    this.scheduleDate,
   });
+
+  // Function Name: isForDate
+  // Description: Rejects undated legacy actions and actions for a different dose day.
+  // Parameters: date (DateTime): Current local calendar date.
+  // Returns: Whether a quick action belongs to the supplied day.
+  bool isForDate(DateTime date) =>
+      scheduleDate != null &&
+      scheduleDate!.year == date.year &&
+      scheduleDate!.month == date.month &&
+      scheduleDate!.day == date.day;
 }
 
 // 함수이름: MedicationNotificationSelectionHandler
@@ -173,17 +187,28 @@ class NotificationService {
     int? notificationId,
   }) {
     final segments = payload?.split(':') ?? const <String>[];
-    if (segments.length == 3 &&
+    if ((segments.length == 3 || segments.length == 4) &&
         segments[0] == 'schedule' &&
         segments[1].trim().isNotEmpty) {
       final notificationID = int.tryParse(segments[2]);
       if (notificationID == null || notificationID < 0) {
         return null;
       }
+      DateTime? scheduleDate;
+      if (segments.length == 4) {
+        final rawDate = segments[3];
+        scheduleDate = DateTime.tryParse(rawDate);
+        if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawDate) ||
+            scheduleDate == null ||
+            scheduleDate.toIso8601String().split('T').first != rawDate) {
+          return null;
+        }
+      }
       return MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
         slotKey: segments[1].trim(),
         notificationId: notificationId ?? notificationID,
+        scheduleDate: scheduleDate,
         action: switch (actionId) {
           markSlotTakenActionId =>
             MedicationNotificationAction.markSlotTaken,
@@ -575,6 +600,7 @@ class NotificationService {
   // - body (String): Message or notification body to send or display.
   // - scheduledDate (timezone.TZDateTime): Zoned timestamp at which the notification is scheduled.
   // - scheduleMode (AndroidScheduleMode): Exact or inexact Android scheduling mode.
+  // - scheduleDate (DateTime?): Original dose day when rescheduling a snooze.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _scheduleWithMode({
@@ -585,6 +611,7 @@ class NotificationService {
     required String body,
     required timezone.TZDateTime scheduledDate,
     required AndroidScheduleMode scheduleMode,
+    DateTime? scheduleDate,
   }) async {
     final title = _isEnglish(language)
         ? '$slotTitle medication time'
@@ -620,7 +647,7 @@ class NotificationService {
         iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
-      payload: 'schedule:$slotKey:$id',
+      payload: 'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
     );
   }
 
@@ -632,6 +659,7 @@ class NotificationService {
   // - slotTitle (String): Localized medication slot name.
   // - language (String): Language code used for display or speech guidance.
   // - delay (Duration): Delay before displaying the snoozed reminder.
+  // - scheduleDate (DateTime?): Original dose day; defaults to today's date.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> snoozeMedicationReminder({
@@ -640,9 +668,12 @@ class NotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {
     await initialize();
-    final scheduledDate = timezone.TZDateTime.now(timezone.local).add(delay);
+    final now = timezone.TZDateTime.now(timezone.local);
+    final scheduledDate = now.add(delay);
+    final originalDate = scheduleDate ?? now;
     final body = _isEnglish(language)
         ? 'Please check your scheduled medication.'
         : '예정된 복약을 확인해 주세요.';
@@ -655,6 +686,7 @@ class NotificationService {
         body: body,
         scheduledDate: scheduledDate,
         scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        scheduleDate: originalDate,
       );
     } on PlatformException {
       await _scheduleWithMode(
@@ -665,6 +697,7 @@ class NotificationService {
         body: body,
         scheduledDate: scheduledDate,
         scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        scheduleDate: originalDate,
       );
     }
   }

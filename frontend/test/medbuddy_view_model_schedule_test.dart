@@ -1468,6 +1468,7 @@ class _FakeNotificationService implements NotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {}
 
   // 함수이름: showCaregiverAlert

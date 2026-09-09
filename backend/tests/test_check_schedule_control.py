@@ -348,6 +348,19 @@ class CheckScheduleTest(unittest.TestCase):
     # - None.
     # Returns:
     # - None.
+    def test_stale_notification_cannot_complete_today(self) -> None:
+        """Reject a mismatched reminder day before writing completion or outbox rows."""
+        self._saved_medication(patient_hash="patient-a", item_name="tablet")
+        for delta in (-1, 1):
+            with self.assertRaises(HTTPException) as raised:
+                self.control.updateMedicationSlotStatus(
+                    "morning", True, "patient-a",
+                    expected_schedule_date=application_today() + timedelta(days=delta),
+                )
+            self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
+
     def test_whole_slot_update_is_atomic_scoped_and_reversible(self) -> None:
         first_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -373,6 +386,7 @@ class CheckScheduleTest(unittest.TestCase):
             "morning",
             True,
             "patient-a",
+            expected_schedule_date=application_today(),
         )
 
         self.assertTrue(completed_response["success"])

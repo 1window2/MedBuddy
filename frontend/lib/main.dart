@@ -605,11 +605,24 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     var succeeded = false;
     var canUndo = false;
 
+    if (!selection.isForDate(DateTime.now())) {
+      ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
+        SnackBar(
+          content: Text(isEnglish
+              ? 'This reminder is out of date. Please check today’s schedule.'
+              : '지난 날짜의 알림입니다. 오늘의 복약 일정을 확인해 주세요.'),
+        ),
+      );
+      return;
+    }
+    final scheduleDate = selection.scheduleDate!.toIso8601String().split('T').first;
+
     switch (selection.action) {
       case MedicationNotificationAction.markSlotTaken:
         succeeded = await viewModel.requestMedicationSlotStatusUpdate(
           slotKey,
           true,
+          expectedScheduleDate: scheduleDate,
         );
         canUndo = succeeded;
         break;
@@ -627,6 +640,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
               language,
             ),
             language: language,
+            scheduleDate: selection.scheduleDate,
           );
           succeeded = true;
         } catch (error, stackTrace) {
@@ -683,7 +697,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                  * - No return value; the status update continues asynchronously.
                  */() {
                   unawaited(
-                    viewModel.requestMedicationSlotStatusUpdate(slotKey, false),
+                    viewModel.requestMedicationSlotStatusUpdate(
+                      slotKey,
+                      false,
+                      expectedScheduleDate: scheduleDate,
+                    ),
                   );
                 },
               )

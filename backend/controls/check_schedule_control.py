@@ -264,6 +264,7 @@ class CheckSchedule:
     # - slot_key (str): Supported medication schedule time-slot key.
     # - medication_status (bool): Completion state applied to every medication.
     # - patient_hash (str | None): Patient ownership key used to scope the update.
+    # - expected_schedule_date (date | None): Reject a delayed action for another day.
     # Returns:
     # - API-compatible list of every updated medication schedule.
     def updateMedicationSlotStatus(
@@ -271,6 +272,8 @@ class CheckSchedule:
         slot_key: str,
         medication_status: bool,
         patient_hash: str | None = None,
+        *,
+        expected_schedule_date: date | None = None,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
@@ -282,6 +285,11 @@ class CheckSchedule:
             )
 
         today = application_today()
+        if expected_schedule_date is not None and expected_schedule_date != today:
+            raise HTTPException(
+                status_code=409,
+                detail="The reminder date no longer matches today's schedule.",
+            )
         medications = [
             medication
             for medication in self.medication_repository.list_by_patient(

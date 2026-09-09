@@ -175,12 +175,14 @@ class CheckSchedule {
   // Parameters:
   // - slotKey (String): Morning, lunch, evening, or bedtime schedule key.
   // - medicationStatus (bool): Completion state applied to the whole slot.
+  // - expectedScheduleDate (String?): ISO dose day to guard delayed actions.
   // Returns:
   // - Updated schedules returned by the backend.
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) async {
     final normalizedSlotKey = slotKey.trim().toLowerCase();
     if (!medicationScheduleSlotKeys.contains(normalizedSlotKey)) {
       throw ArgumentError.value(slotKey, 'slotKey', 'Unsupported slot key.');
@@ -190,7 +192,11 @@ class CheckSchedule {
           .patch(
             _buildScheduleUri('schedule/slot/$normalizedSlotKey/status'),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'medication_status': medicationStatus}),
+            body: jsonEncode({
+              'medication_status': medicationStatus,
+              if (expectedScheduleDate != null)
+                'expected_schedule_date': expectedScheduleDate,
+            }),
           )
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);

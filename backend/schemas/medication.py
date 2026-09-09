@@ -169,6 +169,7 @@ class SavedMedicationCreate(BaseModel):
 class MedicationStatusUpdate(BaseModel):
     medication_status: bool
     slot_key: Optional[str] = Field(default=None, max_length=32)
+    expected_schedule_date: date | None = None
 
 
 # 클래스명: PushTokenRegistration

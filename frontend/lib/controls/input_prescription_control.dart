@@ -190,6 +190,8 @@ class InputPrescription {
     ImageSource imageSource = ImageSource.camera,
   }) async {
     final imageOperation = Completer<void>();
+    final abortTrigger = Completer<void>();
+    _abortTriggers.add(abortTrigger);
     _activeImageOperations[image.path] = imageOperation;
     _lastRecognizedTextRegions = [];
     var failureStage = 'local OCR';
@@ -197,11 +199,12 @@ class InputPrescription {
       final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
         image.path,
       );
+      if (abortTrigger.isCompleted) {
+        throw StateError('Prescription analysis was cancelled.');
+      }
       final localRegions = localOcrResult.regions;
       _lastRecognizedTextRegions = localRegions;
       failureStage = 'server request';
-      final abortTrigger = Completer<void>();
-      _abortTriggers.add(abortTrigger);
       final request = http.AbortableRequest(
         'POST',
         Uri.parse('$baseUrl/analyze-prescription-text'),
@@ -313,6 +316,7 @@ class InputPrescription {
       );
       rethrow;
     } finally {
+      _abortTriggers.remove(abortTrigger);
       if (identical(_activeImageOperations[image.path], imageOperation)) {
         _activeImageOperations.remove(image.path);
       }

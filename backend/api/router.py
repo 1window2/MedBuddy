@@ -553,6 +553,7 @@ def update_medication_slot_status(
         slot_key,
         request.medication_status,
         authorized_patient_hash,
+        expected_schedule_date=request.expected_schedule_date,
     )
     for completion_event in check_schedule.consumeCompletionEvents():
         background_tasks.add_task(

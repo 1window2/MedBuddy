@@ -52,8 +52,9 @@ class _RecordingCheckSchedule extends _EmptyCheckSchedule {
   @override
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) async {
     updatedSlotKey = slotKey;
     updatedStatus = medicationStatus;
     return const [];
@@ -215,6 +216,7 @@ class _NoopNotificationService implements NotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {}
 
   // 함수이름: showCaregiverAlert
@@ -289,6 +291,7 @@ class _RecordingNotificationService extends _NoopNotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {
     snoozedId = id;
     snoozedSlotKey = slotKey;
@@ -306,6 +309,27 @@ class _RecordingNotificationService extends _NoopNotificationService {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: dated payload regression
+  // Description: Strict dates prevent rollover and undated legacy quick actions.
+  // Parameters: None.
+  // Returns: Parser assertions for valid, malformed, stale, and legacy payloads.
+  test('quick actions require a valid matching reminder date', () {
+    final selection = NotificationService.selectionFromPayload(
+      'schedule:morning:17:2026-09-10',
+      actionId: NotificationService.markSlotTakenActionId,
+    );
+    expect(selection?.isForDate(DateTime(2026, 9, 10)), isTrue);
+    expect(selection?.isForDate(DateTime(2026, 9, 11)), isFalse);
+    expect(NotificationService.selectionFromPayload(
+      'schedule:morning:17',
+    )?.isForDate(DateTime(2026, 9, 10)), isFalse);
+    for (final invalid in ['2026-02-30', '2026-09-10T12', 'invalid']) {
+      expect(NotificationService.selectionFromPayload(
+        'schedule:morning:17:$invalid',
+      ), isNull);
+    }
+  });
+
   // Function Name: tearDown callback
   // Description:
   // - Remove the global notification-selection handler after every test.
@@ -604,11 +628,12 @@ void main() {
     await tester.pumpAndSettle();
 
     selectionHandler!(
-      const MedicationNotificationSelection(
+      MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
         slotKey: 'evening',
         notificationId: 29,
         action: MedicationNotificationAction.markSlotTaken,
+        scheduleDate: DateTime.now(),
       ),
     );
     await tester.pumpAndSettle();
@@ -616,6 +641,24 @@ void main() {
     expect(schedule.updatedSlotKey, 'evening');
     expect(schedule.updatedStatus, isTrue);
     expect(find.byType(CheckScheduleUI), findsNothing);
+
+    // Old, future, and undated reminders may never mutate today's dose.
+    for (final date in <DateTime?>[
+      DateTime.now().subtract(const Duration(days: 1)),
+      DateTime.now().add(const Duration(days: 1)),
+      null,
+    ]) {
+      schedule.updatedSlotKey = null;
+      selectionHandler!(MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: 'evening',
+        notificationId: 29,
+        action: MedicationNotificationAction.markSlotTaken,
+        scheduleDate: date,
+      ));
+      await tester.pumpAndSettle();
+      expect(schedule.updatedSlotKey, isNull);
+    }
   });
 
   // Function Name: testWidgets callback
@@ -663,11 +706,12 @@ void main() {
     await tester.pumpAndSettle();
 
     selectionHandler!(
-      const MedicationNotificationSelection(
+      MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
         slotKey: 'bedtime',
         notificationId: 31,
         action: MedicationNotificationAction.snoozeTenMinutes,
+        scheduleDate: DateTime.now(),
       ),
     );
     await tester.pumpAndSettle();

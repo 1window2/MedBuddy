@@ -187,8 +187,9 @@ class _CompletableCheckSchedule extends CheckSchedule {
   @override
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) async {
     expect(slotKey, 'morning');
     wholeSlotUpdateCount += 1;
     _completed = medicationStatus;
@@ -516,6 +517,7 @@ class _SuccessfulNotificationService implements NotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {}
 
   // 함수이름: showCaregiverAlert
@@ -702,6 +704,7 @@ class _FailingNotificationService implements NotificationService {
     required String slotTitle,
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
   }) async {}
 
   // 함수이름: showCaregiverAlert

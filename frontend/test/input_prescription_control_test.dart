@@ -210,6 +210,44 @@ class _AbortAwareClient extends http.BaseClient {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final disposeDuringOcr in [false, true]) {
+    // Function Name: cancellation during OCR regression
+    // Description: Exiting during OCR prevents upload and preserves capture cleanup.
+    // Parameters: None; disposeDuringOcr selects explicit cancellation or disposal.
+    // Returns: Completion of cancellation and file-lifetime assertions.
+    test('cancels before upload during OCR (dispose=$disposeDuringOcr)', () async {
+      final directory = await Directory.systemTemp.createTemp('medbuddy-ocr-cancel-');
+      addTearDown(() => directory.delete(recursive: true));
+      final image = File('${directory.path}/capture.jpg');
+      await image.writeAsBytes([1, 2, 3]);
+      final ocr = _BlockingPrescriptionLocalOcrBoundary();
+      var uploads = 0;
+      final client = MockClient((_) async {
+        uploads++;
+        return http.Response('{"medications":[]}', 200);
+      });
+      addTearDown(client.close);
+      final control = InputPrescription(client: client, localOcrBoundary: ocr);
+      final request = control.requestCapturedPrescriptionImage(XFile(image.path));
+      final assertion = expectLater(request, throwsA(isA<StateError>()));
+      await ocr.started.future;
+      final cleanup = control.clearSelectedImage();
+      if (disposeDuringOcr) {
+        control.dispose();
+      } else {
+        control.cancelPendingRequests();
+      }
+      expect(await image.exists(), isTrue);
+      ocr.allowCompletion.complete();
+      await assertion;
+      await cleanup;
+      expect(uploads, 0);
+      expect(control.lastRecognizedTextRegions, isEmpty);
+      expect(await image.exists(), isFalse);
+      if (!disposeDuringOcr) control.dispose();
+    });
+  }
+
   for (final error in <Object>[
     http.ClientException('connection closed'),
     const SocketException('connection refused'),

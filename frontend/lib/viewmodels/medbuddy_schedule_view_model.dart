@@ -130,16 +130,19 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   // Parameters:
   // - slotKey (String): Time slot whose medications should be updated together.
   // - medicationStatus (bool): Completion state applied to the full slot.
+  // - expectedScheduleDate (String?): Optional original dose day checked by the server.
   // Returns:
   // - True when the backend update and local state replacement succeed.
   Future<bool> requestMedicationSlotStatusUpdate(
     String slotKey,
-    bool medicationStatus,
-  ) async {
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) async {
     try {
       final updatedSchedules = await checkSchedule.updateMedicationSlotStatus(
         slotKey,
         medicationStatus,
+        expectedScheduleDate: expectedScheduleDate,
       );
       final updatedById = {
         for (final schedule in updatedSchedules)
