@@ -3,6 +3,7 @@
 //   priorities.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
@@ -693,13 +694,10 @@ void main() {
     expect(find.text('Prescription Analysis'), findsOneWidget);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: large grid preserves inherited scale and action wording.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: 큰 글씨 카드 회귀 테스트
+  // 함수역할: 두 배 확대에서도 제목을 강제로 분리하거나 설명을 숨기지 않는지 검사한다.
+  // 매개변수: tester (WidgetTester): 홈 화면을 구성하는 테스트 도구.
+  // 반환값: 모든 접근성 검증이 완료되는 Future<void>.
   testWidgets('large grid preserves inherited scale and action wording', (
     tester,
   ) async {
@@ -726,14 +724,136 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final prescriptionTitle = tester.widget<Text>(find.text('처방전\n분석'));
-    final pillTitle = tester.widget<Text>(find.text('낱알약\n식별'));
+    final prescriptionTitle = tester.widget<Text>(find.text('처방전 분석'));
+    final pillTitle = tester.widget<Text>(find.text('낱알약 식별'));
     expect(prescriptionTitle.textScaler, isNull);
     expect(pillTitle.textScaler, isNull);
-    expect(find.text('건강 관리\n추천'), findsOneWidget);
-    expect(find.text('복약 알림\n설정'), findsOneWidget);
+    expect(find.text('건강 관리 추천'), findsOneWidget);
+    expect(find.text('복약 알림 설정'), findsOneWidget);
+    expect(find.text('처방전을 촬영하거나 사진에서 불러와요'), findsOneWidget);
+    expect(find.text('앞·뒷면을 촬영해 가능성 높은 약을 찾아요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final viewport in const [
+    Size(320, 640),
+    Size(350, 800),
+    Size(390, 844),
+    Size(430, 932),
+    Size(800, 600),
+  ]) {
+    for (final scale in const [1.3, 2.0]) {
+      for (final language in const ['ko', 'en']) {
+        // 함수이름: 화면 크기·언어별 큰 글씨 테스트
+        // 함수역할: 제목·설명·화살표가 유지되고, 카드 안에서 글씨가 잘리지 않는지 확인한다.
+        // 매개변수: tester (WidgetTester): 화면 배치와 실제 텍스트 영역을 검사하는 도구.
+        // 반환값: 선택한 화면·배율·언어 조합의 검증을 마치는 Future<void>.
+        testWidgets(
+          'large home retains full content $viewport $scale $language',
+          (tester) async {
+            _setViewport(tester, viewport);
+            await tester.pumpWidget(
+              MaterialApp(
+                // 함수이름: builder 콜백
+                // 함수역할: 운영체제와 앱에서 이미 결정한 접근성 배율을 홈 화면에 전달한다.
+                // 매개변수: context (BuildContext), child (Widget?): 기존 앱 위젯과 문맥.
+                // 반환값: 요청된 확대 배율을 상속하는 위젯.
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: _home(
+                  userSetting: UserSetting(fontSize: 20, language: language),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            const keys = [
+              'homePrescriptionAnalysisCard',
+              'homePillIdentificationCard',
+              'homeHealthRecommendationCard',
+              'homeMedicationReminderCard',
+            ];
+            for (final key in keys) {
+              final card = find.byKey(ValueKey(key));
+              final labels = find.descendant(
+                of: card,
+                matching: find.byType(Text),
+              );
+              expect(labels, findsNWidgets(2));
+              expect(
+                find.descendant(
+                  of: card,
+                  matching: find.byIcon(Icons.arrow_forward_rounded),
+                ),
+                findsOneWidget,
+              );
+              final cardRect = tester.getRect(card);
+              for (final element in labels.evaluate()) {
+                final label = element.widget as Text;
+                expect(label.maxLines, isNull);
+                expect(label.textScaler, isNull);
+                expect(
+                  MediaQuery.textScalerOf(element).scale(16),
+                  closeTo(16 * scale, 0.01),
+                );
+                final paragraph =
+                    element.findRenderObject()! as RenderParagraph;
+                expect(paragraph.didExceedMaxLines, isFalse);
+                final origin = paragraph.localToGlobal(Offset.zero);
+                expect(origin.dx, greaterThanOrEqualTo(cardRect.left));
+                expect(origin.dy, greaterThanOrEqualTo(cardRect.top));
+                expect(
+                  origin.dx + paragraph.size.width,
+                  lessThanOrEqualTo(cardRect.right + 0.01),
+                );
+                expect(
+                  origin.dy + paragraph.size.height,
+                  lessThanOrEqualTo(cardRect.bottom + 0.01),
+                );
+              }
+            }
+            if (viewport.width >= 350) {
+              final first = tester.getRect(
+                find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
+              );
+              final second = tester.getRect(
+                find.byKey(const ValueKey('homePillIdentificationCard')),
+              );
+              expect(first.top, second.top);
+              expect(first.height, second.height);
+              expect(first.right, lessThan(second.left));
+              // 기본 큰 글씨의 카드가 불필요한 세로 고정 비율로 늘어나지 않게 한다.
+              if (scale == 1.3 && language == 'ko' && viewport.width == 390) {
+                expect(first.height, lessThan(first.width * 1.25));
+                expect(
+                  tester
+                      .getSize(
+                        find.byKey(const ValueKey('homeEncouragementPanel')),
+                      )
+                      .height,
+                  lessThan(260),
+                );
+              }
+            }
+            await tester.ensureVisible(
+              find.byKey(const ValueKey('homeMedicationReminderCard')),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              find
+                  .byKey(const ValueKey('homeMedicationReminderCard'))
+                  .hitTestable(),
+              findsOneWidget,
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  }
 
   // Function Name: testWidgets callback
   // Description:
@@ -1088,8 +1208,7 @@ InputPrescriptionUI _home({
   int completedCount = 0,
   int totalCount = 0,
   DateTime Function()? nowProvider,
-  Future<void> Function(String slotKey)?
-      onNextMedicationCompleteRequested,
+  Future<void> Function(String slotKey)? onNextMedicationCompleteRequested,
 }) {
   return InputPrescriptionUI(
     statusMessage: '',
@@ -1099,8 +1218,7 @@ InputPrescriptionUI _home({
     todayMedicationCompletedCount: completedCount,
     todayMedicationTotalCount: totalCount,
     nowProvider: nowProvider,
-    onNextMedicationCompleteRequested:
-        onNextMedicationCompleteRequested,
+    onNextMedicationCompleteRequested: onNextMedicationCompleteRequested,
     // Function Name: onPrescriptionScanRequested callback
     // Description:
     // - Keep prescription camera navigation available in the fixture without performing the action.

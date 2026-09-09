@@ -431,13 +431,10 @@ void main() {
       (size: Size(320, 568), textScale: 1.3),
       (size: Size(360, 640), textScale: 2.0),
     ]) {
-      // Function Name: testWidgets callback
-      // Description:
-      // - Verify that all home actions remain reachable by scrolling at each enlarged-text viewport.
-      // Parameters:
-      // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-      // Returns:
-      // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+      // 함수이름: 큰 글씨 홈 화면 스크롤 테스트
+      // 함수역할: 강제 줄바꿈 없이 표시된 기능 제목과 설명을 스크롤로 확인할 수 있는지 검사한다.
+      // 매개변수: tester (WidgetTester): 화면 배치와 상호작용을 검증하는 도구.
+      // 반환값: 모든 기능에 접근할 수 있는지 검증하는 Future<void>.
       testWidgets('홈 화면은 ${viewportCase.size.width.toInt()} 너비와 '
           '${viewportCase.textScale}배 글씨에서도 모든 기능을 스크롤해 표시한다', (tester) async {
         await _setViewport(tester, viewportCase.size);
@@ -511,11 +508,11 @@ void main() {
 
         expect(find.text('MedBuddy'), findsOneWidget);
         expect(
-          find.text(viewportCase.size.width >= 350 ? '처방전\n분석' : '처방전 분석'),
+          find.text('처방전 분석'),
           findsOneWidget,
         );
         expect(
-          find.text(viewportCase.size.width >= 350 ? '낱알약\n식별' : '낱알약 식별'),
+          find.text('낱알약 식별'),
           findsOneWidget,
         );
         await tester.drag(
@@ -524,7 +521,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          find.text(viewportCase.size.width >= 350 ? '복약 알림\n설정' : '복약 알림 설정'),
+          find.text('복약 알림 설정'),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);

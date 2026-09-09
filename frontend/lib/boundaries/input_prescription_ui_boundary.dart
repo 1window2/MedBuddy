@@ -120,11 +120,11 @@ class InputPrescriptionUI extends StatelessWidget {
       onUserSettingRequested = null,
       isAnalyzing = true;
 
-  // Function Name: build
-  // Description: Renders medication status and quick medication input or lookup actions from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for medication status and quick medication input or lookup actions.
+  // 함수이름: build
+  // 함수역할: 복약 현황과 빠른 기능을 표시하고, 큰 글씨에서는 설명 길이에 맞춰 카드 높이를 정한다.
+  // 매개변수:
+  // - context (BuildContext): 화면 크기와 접근성 배율을 제공하는 위젯 위치.
+  // 반환값: 복약 현황과 입력·조회 기능을 포함한 스크롤 가능한 홈 화면.
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
@@ -142,17 +142,15 @@ class InputPrescriptionUI extends StatelessWidget {
             _HomeHeader(text: text, onSettingPressed: onUserSettingRequested),
             Expanded(
               child: LayoutBuilder(
-                // Function Name: build.builder callback
-                // Description: Composes medication status and quick medication input or lookup actions with ValueKey, BoxConstraints, SizedBox for the active layout.
-                // Parameters:
-                // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-                // - viewportConstraints (BoxConstraints): Size limits provided by the scrolling viewport.
-                // Returns: Widget subtree for the described layout or fallback.
+                // 함수이름: 홈 스크롤 영역 builder
+                // 함수역할: 화면 너비에 맞춰 여백을 정하고 접근성 배율을 카드에 전달한다.
+                // 매개변수: context (BuildContext), viewportConstraints (BoxConstraints): 화면 문맥과 사용 가능한 크기.
+                // 반환값: 복약 현황과 기능 카드가 배치된 스크롤 영역.
                 builder: (context, viewportConstraints) {
                   final textScale =
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
-                      viewportConstraints.maxWidth >= 350 && textScale <= 1.1;
+                      viewportConstraints.maxWidth >= 350;
                   final dashboardActionSpacing = useCompactDashboard
                       ? viewportConstraints.maxHeight >= 600
                             ? 20.0
@@ -191,15 +189,12 @@ class InputPrescriptionUI extends StatelessWidget {
                             ),
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
-                              // Function Name: build.builder callback
-                              // Description: Composes medication status and quick medication input or lookup actions with ValueKey, SizedBox, NeverScrollableScrollPhysics for the active layout.
-                              // Parameters:
-                              // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-                              // - constraints (BoxConstraints): Width and height constraints supplied by the parent layout.
-                              // Returns: Widget subtree for the described layout or fallback.
+                              // 함수이름: 빠른 기능 영역 builder
+                              // 함수역할: 좁은 화면은 한 열, 일반 화면은 두 열로 배치하며 큰 글씨의 행 높이는 내용에 맞춘다.
+                              // 매개변수: context (BuildContext), constraints (BoxConstraints): 문맥과 실제 콘텐츠 너비.
+                              // 반환값: 글씨 크기에 따라 설명이 사라지지 않는 기능 카드 목록.
                               builder: (context, constraints) {
-                                final useGrid =
-                                    MediaQuery.sizeOf(context).width >= 350;
+                                final useGrid = constraints.maxWidth >= 310;
                                 final useLargeTextGridLayout = textScale > 1.1;
                                 final homeActions = <Widget>[
                                   _HomeActionCard(
@@ -213,8 +208,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largePrescriptionAnalysis,
                                     // Function Name: build.onTap callback
                                     // Description: Connects medication status and quick medication input or lookup actions to the captured operation `_showAnalysisTaskOptions(context)`.
                                     // Parameters:
@@ -233,8 +226,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     tone: _HomeActionTone.mint,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largePillIdentification,
                                     userSetting: userSetting,
                                     onTap: onPillIdentificationRequested,
                                   ),
@@ -248,8 +239,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     tone: _HomeActionTone.lavender,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largeHealthRecommendation,
                                     userSetting: userSetting,
                                     onTap: onHealthRecommendationRequested,
                                   ),
@@ -263,8 +252,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                     tone: _HomeActionTone.butter,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largeMedicationReminder,
                                     userSetting: userSetting,
                                     onTap: onMedicationReminderRequested,
                                   ),
@@ -286,6 +273,45 @@ class InputPrescriptionUI extends StatelessWidget {
                                   );
                                 }
 
+                                if (useLargeTextGridLayout) {
+                                  // 두 행만 내용 높이를 측정해 설명을 보존하고 같은 행의 카드 높이를 맞춘다.
+                                  const gap = 10.0;
+                                  final cardWidth =
+                                      (constraints.maxWidth - gap) / 2;
+                                  return Column(
+                                    children: [
+                                      for (
+                                        int index = 0;
+                                        index < 4;
+                                        index += 2
+                                      ) ...[
+                                        if (index > 0)
+                                          const SizedBox(height: gap),
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            minHeight: cardWidth / 1.25,
+                                          ),
+                                          child: IntrinsicHeight(
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Expanded(
+                                                  child: homeActions[index],
+                                                ),
+                                                const SizedBox(width: gap),
+                                                Expanded(
+                                                  child: homeActions[index + 1],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                }
+
                                 return Column(
                                   children: [
                                     GridView.count(
@@ -301,9 +327,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                       mainAxisSpacing: useCompactDashboard
                                           ? 10
                                           : 14,
-                                      childAspectRatio: useLargeTextGridLayout
-                                          ? 0.75
-                                          : useCompactDashboard
+                                      childAspectRatio: useCompactDashboard
                                           ? 1.25
                                           : 1,
                                       children: homeActions,
@@ -590,24 +614,17 @@ class _HomeActionCard extends StatelessWidget {
   final _HomeActionTone tone;
   final bool compact;
   final bool largeTextGridLayout;
-  final String? largeGridTitle;
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
-  // Function Name: _HomeActionCard
-  // Description: Initializes a home quick action with its icon and title with the supplied configuration.
-  // Parameters:
-  // - cardKey (Key?): Widget identity used to distinguish elements and preserve state.
-  // - icon (IconData): Icon shown in normal or selected state.
-  // - title (String): Heading shown for the screen, section, or item.
-  // - subtitle (String): Supporting explanation or account detail below the primary label.
-  // - tone (_HomeActionTone): Accent and background palette for the home action.
-  // - compact (bool): Whether compact card or header layout is used.
-  // - largeTextGridLayout (bool): Whether the dedicated large-text grid layout is used.
-  // - largeGridTitle (String?): Heading shown for the screen, section, or item.
-  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
-  // - onTap (VoidCallback?): Callback executing the item's documented primary action.
-  // Returns: Initialized _HomeActionCard instance.
+  // 함수이름: _HomeActionCard
+  // 함수역할: 동일한 제목·설명을 일반 글씨와 큰 글씨 모두에서 사용할 기능 카드를 만든다.
+  // 매개변수:
+  // - cardKey (Key?), icon (IconData), title, subtitle (String): 카드 식별자와 표시할 내용.
+  // - tone (_HomeActionTone), compact (bool): 색상과 두 열 카드 사용 여부.
+  // - largeTextGridLayout (bool): 제목과 설명을 줄 수 제한 없이 표시할지 여부.
+  // - userSetting (UserSetting), onTap (VoidCallback?): 사용자 설정과 기능 실행 동작.
+  // 반환값: 초기화된 홈 기능 카드.
   const _HomeActionCard({
     this.cardKey,
     required this.icon,
@@ -616,16 +633,14 @@ class _HomeActionCard extends StatelessWidget {
     required this.tone,
     this.compact = false,
     this.largeTextGridLayout = false,
-    this.largeGridTitle,
     required this.userSetting,
     required this.onTap,
   });
 
-  // Function Name: build
-  // Description: Renders a home quick action with its icon and title from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a home quick action with its icon and title.
+  // 함수이름: build
+  // 함수역할: 기능별 색상을 적용하고 목록형 또는 두 열 카드의 전체 설명을 구성한다.
+  // 매개변수: context (BuildContext): 접근성 배율과 테마를 상속하는 위젯 위치.
+  // 반환값: 제목·설명·아이콘·이동 화살표를 포함한 기능 카드.
   @override
   Widget build(BuildContext context) {
     final background = switch (tone) {
@@ -647,9 +662,6 @@ class _HomeActionCard extends StatelessWidget {
       _HomeActionTone.butter => MedBuddyColors.reminderAccent,
     };
     final scale = userSetting.contentTextScale;
-    final displayedTitle = largeTextGridLayout
-        ? largeGridTitle ?? title
-        : title;
 
     return Material(
       color: background,
@@ -662,7 +674,7 @@ class _HomeActionCard extends StatelessWidget {
           width: double.infinity,
           constraints: compact ? null : const BoxConstraints(minHeight: 102),
           padding: compact
-              ? EdgeInsets.all(largeTextGridLayout ? 8 : 10)
+              ? const EdgeInsets.all(10)
               : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.largeCard,
@@ -674,56 +686,27 @@ class _HomeActionCard extends StatelessWidget {
             ),
           ),
           child: compact
-              ? _buildCompactContent(
-                  displayedTitle,
-                  foreground,
-                  secondary,
-                  accent,
-                  scale,
-                )
+              ? _buildCompactContent(foreground, secondary, accent, scale)
               : _buildListContent(foreground, secondary, accent, scale),
         ),
       ),
     );
   }
 
-  // Function Name: _buildCompactContent
-  // Description: Builds home-action icons, titles, and descriptions for large-text grids or compact cards.
-  // Parameters:
-  // - displayedTitle (String): Heading shown for the screen, section, or item.
-  // - foreground (Color): Foreground or accent color applied to text, icons, or state guidance.
-  // - secondary (Color): Foreground color for supporting text.
-  // - accent (Color): Foreground or accent color applied to text, icons, or state guidance.
-  // - scale (double): Content text scale reflecting user accessibility settings.
-  // Returns: Widget tree for a home quick action with its icon and title.
+  // 함수이름: _buildCompactContent
+  // 함수역할: 큰 글씨에서도 아이콘·화살표·제목·설명을 유지하고 텍스트를 자연스럽게 줄바꿈한다.
+  // 매개변수:
+  // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
+  // - scale (double): 콘텐츠 배율. 전역 접근성 배율은 Text가 별도로 상속한다.
+  // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
   Widget _buildCompactContent(
-    String displayedTitle,
     Color foreground,
     Color secondary,
     Color accent,
     double scale,
   ) {
-    if (largeTextGridLayout) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _ActionIcon(icon: icon, tone: tone, color: accent, size: 52),
-          const SizedBox(height: 5),
-          Text(
-            displayedTitle,
-            maxLines: 3,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 14,
-              height: 1.18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      );
-    }
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -736,9 +719,11 @@ class _HomeActionCard extends StatelessWidget {
         ),
         const SizedBox(height: 7),
         Text(
-          displayedTitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          title,
+          maxLines: largeTextGridLayout ? null : 2,
+          overflow: largeTextGridLayout
+              ? TextOverflow.clip
+              : TextOverflow.ellipsis,
           style: TextStyle(
             color: foreground,
             fontSize: 14 * scale,
@@ -749,8 +734,10 @@ class _HomeActionCard extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          maxLines: largeTextGridLayout ? null : 2,
+          overflow: largeTextGridLayout
+              ? TextOverflow.clip
+              : TextOverflow.ellipsis,
           style: TextStyle(
             color: secondary,
             fontSize: 11 * scale,
@@ -762,14 +749,12 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
-  // Function Name: _buildListContent
-  // Description: Lays out a list-style home action with icon, title, description, and navigation arrow.
-  // Parameters:
-  // - foreground (Color): Foreground or accent color applied to text, icons, or state guidance.
-  // - secondary (Color): Foreground color for supporting text.
-  // - accent (Color): Foreground or accent color applied to text, icons, or state guidance.
-  // - scale (double): Content text scale reflecting user accessibility settings.
-  // Returns: Widget tree for a home quick action with its icon and title.
+  // 함수이름: _buildListContent
+  // 함수역할: 좁은 화면의 한 열 카드에서도 큰 글씨의 제목과 설명을 생략하지 않는다.
+  // 매개변수:
+  // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
+  // - scale (double): 전역 접근성 배율과 중복되지 않는 콘텐츠 배율.
+  // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
   Widget _buildListContent(
     Color foreground,
     Color secondary,
@@ -787,8 +772,10 @@ class _HomeActionCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: largeTextGridLayout ? null : 1,
+                overflow: largeTextGridLayout
+                    ? TextOverflow.clip
+                    : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: foreground,
                   fontSize: 17 * scale,
@@ -798,8 +785,10 @@ class _HomeActionCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                maxLines: largeTextGridLayout ? null : 2,
+                overflow: largeTextGridLayout
+                    ? TextOverflow.clip
+                    : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: secondary,
                   fontSize: 12 * scale,
@@ -945,13 +934,6 @@ class _HomeText {
   // Returns: The formatted display text or identifier described above.
   String get prescriptionAnalysis =>
       isEnglish ? 'Prescription Analysis' : '처방전 분석';
-  // Function Name: largePrescriptionAnalysis
-  // Description: Provides localized wording for "Prescription\nAnalysis" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get largePrescriptionAnalysis =>
-      isEnglish ? 'Prescription\nAnalysis' : '처방전\n분석';
   // Function Name: prescriptionAnalysisSubtitle
   // Description: Provides localized wording for "Scan a prescription or choose a saved image" using the current language and message inputs.
   // Parameters:
@@ -967,13 +949,6 @@ class _HomeText {
   // Returns: The formatted display text or identifier described above.
   String get pillIdentification =>
       isEnglish ? 'Loose-pill Identification' : '낱알약 식별';
-  // Function Name: largePillIdentification
-  // Description: Provides localized wording for "Loose-pill\nIdentification" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get largePillIdentification =>
-      isEnglish ? 'Loose-pill\nIdentification' : '낱알약\n식별';
   // Function Name: pillIdentificationSubtitle
   // Description: Provides localized wording for "Photograph both sides to find likely matches" using the current language and message inputs.
   // Parameters:
@@ -989,13 +964,6 @@ class _HomeText {
   // Returns: The formatted display text or identifier described above.
   String get healthRecommendation =>
       isEnglish ? 'Health Recommendations' : '건강 관리 추천';
-  // Function Name: largeHealthRecommendation
-  // Description: Provides localized wording for "Health\nRecommendations" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get largeHealthRecommendation =>
-      isEnglish ? 'Health\nRecommendations' : '건강 관리\n추천';
   // Function Name: healthRecommendationSubtitle
   // Description: Provides localized wording for "Review food and activity guidance for your medications" using the current language and message inputs.
   // Parameters:
@@ -1011,13 +979,6 @@ class _HomeText {
   // Returns: The formatted display text or identifier described above.
   String get medicationReminder =>
       isEnglish ? 'Medication Reminders' : '복약 알림 설정';
-  // Function Name: largeMedicationReminder
-  // Description: Provides localized wording for "Medication\nReminders" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get largeMedicationReminder =>
-      isEnglish ? 'Medication\nReminders' : '복약 알림\n설정';
   // Function Name: medicationReminderSubtitle
   // Description: Provides localized wording for "Adjust reminder times to fit your routine" using the current language and message inputs.
   // Parameters:
@@ -1199,11 +1160,10 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.isCompletionLoading = false,
   });
 
-  // Function Name: build
-  // Description: Renders the home dashboard's medication status and completion encouragement from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the home dashboard's medication status and completion encouragement.
+  // 함수이름: build
+  // 함수역할: 복약 현황과 다음 일정을 표시하고 진행률 제목만 필요한 경우 줄바꿈한다.
+  // 매개변수: context (BuildContext): 접근성 배율과 화면 테마를 제공하는 문맥.
+  // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
   @override
   Widget build(BuildContext context) {
     final isEnglish = userSetting.language.trim().toLowerCase().startsWith(
@@ -1218,8 +1178,6 @@ class _HomeEncouragementPanel extends StatelessWidget {
       isEnglish: isEnglish,
       nowProvider: nowProvider,
     );
-    final useStackedProgressLabel =
-        MediaQuery.textScalerOf(context).scale(16) / 16 > 1.1;
 
     return Material(
       key: const ValueKey('homeEncouragementPanel'),
@@ -1277,11 +1235,10 @@ class _HomeEncouragementPanel extends StatelessWidget {
                 ],
               ),
               SizedBox(height: compact ? 10 : 20),
-              if (useStackedProgressLabel)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
                       isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -1289,39 +1246,18 @@ class _HomeEncouragementPanel extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      dashboard.progressLabel,
-                      style: const TextStyle(
-                        color: MedBuddyColors.primaryDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    dashboard.progressLabel,
+                    style: const TextStyle(
+                      color: MedBuddyColors.primaryDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
-                )
-              else
-                Row(
-                  children: [
-                    Text(
-                      isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      dashboard.progressLabel,
-                      style: const TextStyle(
-                        color: MedBuddyColors.primaryDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
               SizedBox(height: compact ? 6 : 9),
               ClipRRect(
                 borderRadius: MedBuddyRadii.pill,
