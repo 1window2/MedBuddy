@@ -389,16 +389,16 @@ class NotificationService {
   }
 
   // Function Name: registerNotification
-  // Description: Replaces reminders for a slot, deduplicates active dates, skips elapsed times, and schedules date-specific medication text with an inexact fallback when exact alarms are unavailable.
+  // Description: Replaces dated slot reminders with neutral text and an inexact fallback when exact alarms are unavailable.
   // Parameters:
   // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
   // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
   // - slotTitle (String): Localized medication slot name.
   // - hour (int): Local hour in 24-hour time.
   // - minute (int): Minute component of local time.
-  // - medicationNames (List<String>): Medication display names used in reminders or recommendations.
+  // - medicationNames (List<String>): Retained for caller compatibility; never used as a live pending-dose claim.
   // - activeDates (List<DateTime>): Reminder dates within the medication course.
-  // - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
+  // - medicationNamesByDate (Map<String, List<String>>): Legacy name snapshots, deliberately excluded from reminder text.
   // - language (String): Language code used for display or speech guidance.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
@@ -428,10 +428,7 @@ class NotificationService {
     final sortedDates = uniqueDates.values.toList(growable: false)..sort();
 
     for (final activeDate in sortedDates) {
-      final body = _buildReminderBody(
-        medicationNamesByDate[_dateKey(activeDate)] ?? medicationNames,
-        language,
-      );
+      final body = _buildReminderBody(language);
       final scheduledDate = timezone.TZDateTime(
         timezone.local,
         activeDate.year,
@@ -522,48 +519,17 @@ class NotificationService {
   }
 
   // 함수이름: _buildReminderBody
-  // 함수역할: 알림 본문을 긴 약품명 나열 대신 사용자가 바로 이해할 수 있는 문장으로 만든다.
+  // 함수역할: 예약 후 복용 상태가 바뀌어도 재복용을 지시하지 않는 중립적 안내를 만든다.
   // 매개변수:
-  // - medicationNames (List<String>): 해당 시간대에 복용할 약 이름 목록
   // - language (String): 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 알림 본문 문자열
-  String _buildReminderBody(List<String> medicationNames, String language) {
-    final isEnglish = _isEnglish(language);
-    if (!_showSensitiveDetails) {
-      return isEnglish
-          ? 'Please check your scheduled medication.'
-          : '예정된 복약 일정을 확인해 주세요.';
-    }
-    final names = medicationNames
-        .map(/* 함수이름: map 콜백
-         * 함수역할: 알림에 표시할 약 이름의 앞뒤 공백을 제거한다.
-         * 매개변수:
-         * - name (String): 표시·일치 여부를 검사할 약 이름
-         * 반환값:
-         * - 공백 정리된 약 이름.
-         */(name) => name.trim())
-        .where(/* 함수이름: where 콜백
-         * 함수역할: 복약 알림에 내용이 있는 약 이름만 포함한다.
-         * 매개변수:
-         * - name (String): 표시·일치 여부를 검사할 약 이름
-         * 반환값:
-         * - 약 이름이 비어 있지 않으면 true.
-         */(name) => name.isNotEmpty)
-        .toList(growable: false);
-    if (names.isEmpty) {
-      return isEnglish ? 'Please check your medication.' : '복용할 약을 확인해 주세요.';
-    }
-
-    final representativeName = _shortenMedicationName(names.first);
-    if (names.length == 1) {
-      return isEnglish
-          ? 'Time to take $representativeName.'
-          : '$representativeName 복용 시간입니다.';
-    }
-    return isEnglish
-        ? 'Time to take $representativeName and ${names.length - 1} more.'
-        : '$representativeName 외 ${names.length - 1}개 약을 복용할 시간입니다.';
+  String _buildReminderBody(String language) {
+    // Android retains this text until delivery. A name snapshot cannot tell us
+    // which doses are still pending then, even when sensitive details are on.
+    return _isEnglish(language)
+        ? 'Check your medication schedule and recorded completion status.'
+        : '복약 일정과 복용 완료 기록을 확인해 주세요.';
   }
 
   // 함수이름: _isEnglish
@@ -574,20 +540,6 @@ class NotificationService {
   // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
   bool _isEnglish(String language) {
     return language.trim().toLowerCase().startsWith('en');
-  }
-
-  // 함수이름: _shortenMedicationName
-  // 함수역할: 알림창에서 한눈에 보이도록 긴 약품명을 짧게 줄인다.
-  // 매개변수:
-  // - medicationName (String): 원본 약품명
-  // 반환값:
-  // - 알림용으로 축약한 약품명
-  String _shortenMedicationName(String medicationName) {
-    const maxLength = 14;
-    if (medicationName.length <= maxLength) {
-      return medicationName;
-    }
-    return '${medicationName.substring(0, maxLength)}...';
   }
 
   // Function Name: _scheduleWithMode
@@ -614,8 +566,8 @@ class NotificationService {
     DateTime? scheduleDate,
   }) async {
     final title = _isEnglish(language)
-        ? '$slotTitle medication time'
-        : '$slotTitle 복약 시간입니다';
+        ? '$slotTitle medication schedule'
+        : '$slotTitle 복약 일정 확인';
 
     await _plugin.zonedSchedule(
       id: id,
@@ -674,9 +626,7 @@ class NotificationService {
     final now = timezone.TZDateTime.now(timezone.local);
     final scheduledDate = now.add(delay);
     final originalDate = scheduleDate ?? now;
-    final body = _isEnglish(language)
-        ? 'Please check your scheduled medication.'
-        : '예정된 복약을 확인해 주세요.';
+    final body = _buildReminderBody(language);
     try {
       await _scheduleWithMode(
         id: id,
