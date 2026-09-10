@@ -614,7 +614,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _selectDestination(MedBuddyDestination.schedule);
       },
       // Function Name: _buildHomeInput.onNextMedicationCompleteRequested callback
-      // Description: Prevents overlapping home slot updates, marks the slot complete, and offers Undo after success.
+      // Description: Prevents overlapping home slot updates, marks the slot complete, and offers schedule review after success.
       // Parameters:
       // - slotKey (inferred by callback contract): Key identifying morning, lunch, evening, or bedtime.
       // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -687,7 +687,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Function Name: _completeHomeMedicationSlot
-  // Description: Prevents overlapping home slot updates, marks the slot complete, and offers Undo after success.
+  // Description: Prevents overlapping home slot updates, marks the slot complete, and offers schedule review after success.
   // Parameters:
   // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
   // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
@@ -739,17 +739,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         persist: false,
         action: success
             ? SnackBarAction(
-                label: isEnglish ? 'Undo' : '실행 취소',
+                label: isEnglish ? 'Review schedule' : '일정 확인',
                 // Function Name: _completeHomeMedicationSlot.onPressed callback
-                // Description: Connects the active screen selected by prescription flow and navigation destination to the captured operation `viewModel.requestMedicationSlotStatusUpdate(slotKey, false)`.
+                // Description: Opens individual-dose review without clearing completion records from before the bulk action.
                 // Parameters:
                 // - None.
                 // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-                onPressed: () async {
-                  await viewModel.requestMedicationSlotStatusUpdate(
-                    slotKey,
-                    false,
-                  );
+                onPressed: () {
+                  _selectDestination(MedBuddyDestination.schedule);
                 },
               )
             : null,

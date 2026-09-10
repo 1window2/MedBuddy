@@ -27,6 +27,18 @@ import 'package:provider/provider.dart';
 // - requestCount (int): Number of intercepted control requests.
 class _CountingCheckSchedule extends CheckSchedule {
   int requestCount = 0;
+  final List<bool> slotWrites = [];
+
+  // Record whole-slot writes so navigation can be checked for accidental resets.
+  @override
+  Future<List<MedicationSchedule>> updateMedicationSlotStatus(
+    String slotKey,
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) async {
+    slotWrites.add(medicationStatus);
+    return const [];
+  }
 
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -74,6 +86,31 @@ class _CountingCheckSavedMedication extends CheckSavedMedication {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  testWidgets('home bulk completion offers review without resetting the slot', (
+    tester,
+  ) async {
+    _setViewport(tester, const Size(390, 844));
+    final schedule = _CountingCheckSchedule();
+    final viewModel = MedBuddyViewModel(checkSchedule: schedule);
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    tester.widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+        .onNextMedicationCompleteRequested!('morning');
+    await tester.pumpAndSettle();
+    expect(schedule.slotWrites, [true]);
+    expect(find.text('실행 취소'), findsNothing);
+    await tester.tap(find.text('일정 확인'));
+    await tester.pumpAndSettle();
+    expect(schedule.requestCount, 1);
+    expect(schedule.slotWrites, [true]);
+    expect(tester.takeException(), isNull);
+  });
+
   // 함수이름: 약 등록·식별 진입 테스트
   // 함수역할: 중복 카드 없이 공통 메뉴에서 처방전·알약 식별·직접 등록에 접근하는지 확인한다.
   // 매개변수: tester: 위젯 테스트 도구. 반환값: 진입 동작 검증 완료.

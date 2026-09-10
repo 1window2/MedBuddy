@@ -603,7 +603,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     final language = viewModel.userSetting.language;
     final isEnglish = language.trim().toLowerCase().startsWith('en');
     var succeeded = false;
-    var canUndo = false;
+    var canReview = false;
 
     if (!selection.isForDate(DateTime.now())) {
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
@@ -624,7 +624,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
           true,
           expectedScheduleDate: scheduleDate,
         );
-        canUndo = succeeded;
+        canReview = succeeded;
         break;
       case MedicationNotificationAction.snoozeTenMinutes:
         final notificationId = selection.notificationId;
@@ -684,25 +684,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
             MedicationNotificationAction.open => '',
           },
         ),
-        duration: Duration(seconds: canUndo ? 5 : 2),
+        duration: Duration(seconds: canReview ? 5 : 2),
         persist: false,
-        action: canUndo
+        action: canReview
             ? SnackBarAction(
-                label: isEnglish ? 'Undo' : '실행 취소',
+                label: isEnglish ? 'Review schedule' : '일정 확인',
                 onPressed: /* Function Name: onPressed callback
-                 * Description: Reverts the selected medication slot to incomplete when the notification-action undo control is pressed.
+                 * Description: Opens per-dose review without clearing earlier completion records in the slot.
                  * Parameters:
                  * - None.
                  * Returns:
-                 * - No return value; the status update continues asynchronously.
+                 * - No return value; opens schedule navigation without a status write.
                  */() {
-                  unawaited(
-                    viewModel.requestMedicationSlotStatusUpdate(
-                      slotKey,
-                      false,
-                      expectedScheduleDate: scheduleDate,
-                    ),
-                  );
+                  _openSchedule(navigator, initialSlotKey: slotKey);
                 },
               )
             : null,

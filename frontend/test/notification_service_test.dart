@@ -642,6 +642,13 @@ void main() {
     expect(schedule.updatedStatus, isTrue);
     expect(find.byType(CheckScheduleUI), findsNothing);
 
+    expect(find.text('실행 취소'), findsNothing);
+    schedule.updatedSlotKey = null;
+    await tester.tap(find.text('일정 확인'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckScheduleUI), findsOneWidget);
+    expect(schedule.updatedSlotKey, isNull);
+
     // Old, future, and undated reminders may never mutate today's dose.
     for (final date in <DateTime?>[
       DateTime.now().subtract(const Duration(days: 1)),
