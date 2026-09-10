@@ -1588,8 +1588,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                   children: [
                     Text(
                       schedule.displayNameForLanguage(text.language),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: TextStyle(
                         color: isCompleted
                             ? MedBuddyColors.textLight
@@ -1604,8 +1603,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       text.dosageLabel(schedule),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: const TextStyle(
                         color: Color(0xFF667085),
                         fontSize: 13,

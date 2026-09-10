@@ -634,6 +634,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ListView), findsOneWidget);
+      final longName = find.text('대웅바이오클래리트로마이신건조시럽125mg/5mL').first;
+      await tester.ensureVisible(longName);
+      await tester.pumpAndSettle();
+      final nameText = tester.widget<Text>(longName);
+      expect(nameText.maxLines, isNull);
+      expect(nameText.overflow, isNot(TextOverflow.ellipsis));
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: longName, matching: find.byType(RichText)).first,
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.size.height, greaterThan(60));
       await tester.drag(find.byType(ListView), const Offset(0, -240));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

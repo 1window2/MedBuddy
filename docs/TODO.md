@@ -55,7 +55,8 @@ silently inferred from weak evidence.
 - [x] Keep the existing atomic whole-slot completion endpoint as the only batch
       writer, so one action records every active medication in a time slot.
 - [x] Add a large home-screen `복용했어요` / `Taken` action for the next pending
-      medication slot, with duplicate-request protection and undo.
+      medication slot, with duplicate-request protection and schedule review.
+      Bulk review must not reset doses completed before the original action.
 - [x] Add Android medication-notification actions for `복용했어요` / `Taken`
       and `10분 후 다시 알림` / `Remind in 10 min`. Completion uses the same
       authenticated atomic endpoint; snoozed text does not disclose medication
@@ -74,7 +75,9 @@ silently inferred from weak evidence.
 - [ ] Verify both notification actions on a physical Android device while the
       app is foregrounded, backgrounded, and terminated; also test a locked
       screen, reboot, battery saver, offline completion failure, retry, snooze,
-      and accidental-completion undo.
+      and explicit per-dose correction after accidental completion.
+      Two-device checks below are deferred at the user's request for this
+      single-device validation pass; they are not considered passed.
 - [ ] Deploy and smoke-test the server-scheduled missed-deadline path with two
       linked physical devices, including patient/caregiver force-stop and
       transient FCM failure. The Android polling path is retained only for
