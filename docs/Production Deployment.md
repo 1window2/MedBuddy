@@ -84,6 +84,32 @@ deploy/backend.env.example
 Never commit the real `.env` files, Firebase Admin credential, Cloudflare Tunnel
 token, API keys, database passwords, or Android signing material.
 
+### Cloudflare token file permissions
+
+The pinned `cloudflared` image runs as UID/GID `65532:65532`. Compose mounts
+the token as a read-only host file; a host-owner-only `0600` token is not
+readable by that container user. On this Linux deployment, grant a file ACL
+to the container UID without granting access to the host group or everyone:
+
+```bash
+setfacl -m u:65532:r-- /absolute/path/to/cloudflare-tunnel-token
+getfacl /absolute/path/to/cloudflare-tunnel-token
+docker compose --env-file deploy/.env -f compose.self-hosted.yml restart cloudflared
+```
+
+Resolve the actual path from your private deployment configuration; never
+print the token. Recheck the ACL after replacing the file, restoring a backup,
+or changing its permissions: `chmod 600` disables the ACL's effective read
+permission. Recheck the image's user before changing the pinned image. Keep
+the secret directory private and do not use `chmod 644` or run the tunnel as
+root to bypass the problem.
+
+After a restart, verify both container health and public `/health` and `/ready`.
+A healthy local backend alone cannot detect a disconnected tunnel. The
+2026-09-10 check found public HTTP 530 while the tunnel repeatedly reported
+`Failed to read token file ... permission denied`; restoring the restricted
+ACL is required before continuing device tests.
+
 The backend environment must include one public-data credential authorized for
 the configured medication services and the National Emergency Medical Center
 pharmacy services. Public Data Portal approval is service-specific: nationwide
