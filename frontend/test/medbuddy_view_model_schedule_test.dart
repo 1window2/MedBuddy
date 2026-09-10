@@ -29,6 +29,80 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // Failed quick actions must not optimistically mark doses complete or erase
+  // existing records. Only an explicitly retried, successful response applies.
+  for (final failure in ['transport', 'service', 'stale-date']) {
+    test('whole-slot $failure preserves records until explicit retry', () async {
+      var recover = false;
+      var patchCount = 0;
+      final payloadDates = <String?>[];
+      final client = MockClient((request) async {
+        if (request.method == 'PATCH') {
+          patchCount += 1;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['medication_status'], isTrue);
+          payloadDates.add(body['expected_schedule_date'] as String?);
+          if (!recover) {
+            if (failure == 'transport') {
+              throw http.ClientException('Simulated offline connection');
+            }
+            return http.Response(
+              '{"detail":"Simulated rejected completion"}',
+              failure == 'stale-date' ? 409 : 503,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+        }
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            for (final id in ['already-complete', 'pending'])
+              {
+                'medication_id': id,
+                'drug_name': id,
+                'schedule_slot_keys': ['morning'],
+                'slot_statuses': {
+                  'morning': id == 'already-complete' || recover,
+                },
+                'patient_hash': 'patient-a',
+              },
+          ],
+        });
+      });
+      addTearDown(client.close);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.fetchTodayMedicationSchedule();
+      final previous = viewModel.todayMedicationScheduleList.toList();
+      final firstDate = failure == 'stale-date' ? '2026-09-09' : '2026-09-10';
+
+      expect(await viewModel.requestMedicationSlotStatusUpdate(
+        'morning', true, expectedScheduleDate: firstDate,
+      ), isFalse);
+      expect(patchCount, 1);
+      expect(viewModel.todayMedicationScheduleList, previous);
+      expect(viewModel.todayMedicationProgress.completedCount, 1);
+      expect(viewModel.todayMedicationScheduleList.last.isSlotCompleted('morning'),
+          isFalse);
+
+      recover = true;
+      expect(await viewModel.requestMedicationSlotStatusUpdate(
+        'morning', true, expectedScheduleDate: '2026-09-10',
+      ), isTrue);
+      expect(patchCount, 2);
+      expect(payloadDates, [firstDate, '2026-09-10']);
+      expect(viewModel.todayMedicationProgress.completedCount, 2);
+      expect(viewModel.todayMedicationScheduleList.first.isSlotCompleted('morning'),
+          isTrue);
+    });
+  }
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 기대 동작: 일정 변경은 일정 화면 채널에만 전달된다.

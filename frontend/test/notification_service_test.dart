@@ -40,6 +40,7 @@ class _EmptyCheckSchedule extends CheckSchedule {
 class _RecordingCheckSchedule extends _EmptyCheckSchedule {
   String? updatedSlotKey;
   bool? updatedStatus;
+  String? updatedScheduleDate;
 
   // Function Name: updateMedicationSlotStatus
   // Description:
@@ -57,6 +58,7 @@ class _RecordingCheckSchedule extends _EmptyCheckSchedule {
   }) async {
     updatedSlotKey = slotKey;
     updatedStatus = medicationStatus;
+    updatedScheduleDate = expectedScheduleDate;
     return const [];
   }
 }
@@ -271,6 +273,7 @@ class _RecordingNotificationService extends _NoopNotificationService {
   String? snoozedSlotKey;
   String? snoozedSlotTitle;
   Duration? snoozedDelay;
+  DateTime? snoozedScheduleDate;
 
   // Function Name: snoozeMedicationReminder
   // Description:
@@ -297,6 +300,7 @@ class _RecordingNotificationService extends _NoopNotificationService {
     snoozedSlotKey = slotKey;
     snoozedSlotTitle = slotTitle;
     snoozedDelay = delay;
+    snoozedScheduleDate = scheduleDate;
   }
 }
 
@@ -640,6 +644,8 @@ void main() {
 
     expect(schedule.updatedSlotKey, 'evening');
     expect(schedule.updatedStatus, isTrue);
+    expect(schedule.updatedScheduleDate,
+        DateTime.now().toIso8601String().split('T').first);
     expect(find.byType(CheckScheduleUI), findsNothing);
 
     expect(find.text('실행 취소'), findsNothing);
@@ -727,6 +733,26 @@ void main() {
     expect(notifications.snoozedSlotKey, 'bedtime');
     expect(notifications.snoozedSlotTitle, '취침 전');
     expect(notifications.snoozedDelay, const Duration(minutes: 10));
+    expect(notifications.snoozedScheduleDate?.toIso8601String().split('T').first,
+        DateTime.now().toIso8601String().split('T').first);
+
+    // A delayed or legacy action cannot reschedule a different day's dose.
+    for (final date in <DateTime?>[
+      DateTime.now().subtract(const Duration(days: 1)),
+      DateTime.now().add(const Duration(days: 1)),
+      null,
+    ]) {
+      notifications.snoozedId = null;
+      selectionHandler!(MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: 'bedtime',
+        notificationId: 31,
+        action: MedicationNotificationAction.snoozeTenMinutes,
+        scheduleDate: date,
+      ));
+      await tester.pumpAndSettle();
+      expect(notifications.snoozedId, isNull);
+    }
   });
 
   // Function Name: testWidgets callback
