@@ -162,7 +162,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               // - controller (inferred by callback contract): Object controlling the associated camera, map, input, or scrolling interaction.
               // Returns: No payload; applies the captured state changes.
               onMapReady: (controller) {
-                _mapController = controller;
+                if (!mounted) return;
+                setState(() => _mapController = controller);
                 unawaited(_synchronizeMap());
               },
             ),
