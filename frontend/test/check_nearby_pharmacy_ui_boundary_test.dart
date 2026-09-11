@@ -342,6 +342,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+    final mapSize = tester.getSize(find.byKey(const Key('test-nearby-pharmacy-map')));
+    expect(mapSize.height, greaterThan(224));
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
     expect(find.text('영업중 메드버디약국'), findsOneWidget);
     expect(find.text('영업종료 메드버디약국'), findsNothing);
     expect(find.text('영업 중'), findsWidgets);
@@ -353,6 +358,14 @@ void main() {
     expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    final mapElement = tester.element(find.byKey(const Key('test-nearby-pharmacy-map')));
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(mapElement));
+    expect(requestCount, 1);
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
     expect(find.text('공공심야약국'), findsNothing);
@@ -445,10 +458,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('map-status:아래 약국을 누르면 지도에서 위치를 확인할 수 있습니다'),
+      find.text('map-status:지도 표시를 누르거나 약국 목록을 열어 상세 정보를 확인하세요'),
       findsOneWidget,
     );
 
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pharmacy-card-open')));
     await tester.pump();
 
@@ -483,6 +498,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
     final directionsButton = find.byKey(
       const ValueKey('pharmacy-directions-open'),
     );
@@ -535,6 +552,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
     await tester.tap(

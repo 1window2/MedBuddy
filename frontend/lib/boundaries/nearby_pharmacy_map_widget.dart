@@ -126,7 +126,6 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       label: widget.statusText,
       child: Container(
         key: const Key('nearby-pharmacy-map'),
-        height: 224,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: MedBuddyColors.surfaceSubtle,

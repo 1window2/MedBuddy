@@ -163,6 +163,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   DeviceLocationFailure? _locationFailure;
   String? _errorMessage;
   bool _isLoading = true;
+  bool _listExpanded = false;
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
@@ -705,7 +706,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         child: Column(
           children: [
             _buildHeader(context),
-            Expanded(child: _buildBody()),
+            Expanded(child: _buildMapFirstBody()),
           ],
         ),
       ),
@@ -786,6 +787,64 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   // 매개변수:
   // - 없음.
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
+  Widget _buildMapFirstBody() {
+    final pharmacies = _visiblePharmacies;
+    if (_isLoading || _locationFailure != null ||
+        _errorMessage != null || pharmacies.isEmpty) {
+      return _buildBody();
+    }
+    final english = widget.userSetting.language.toLowerCase().startsWith('en');
+    return Column(
+      children: [
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ExcludeSemantics(
+                  excluding: _listExpanded,
+                  child: IgnorePointer(
+                    ignoring: _listExpanded,
+                    child: _buildPharmacyMap(pharmacies),
+                  ),
+                ),
+              ),
+              if (_listExpanded)
+                Positioned.fill(
+                  top: 32,
+                  child: Material(
+                    key: const Key('pharmacy-list-panel'),
+                    elevation: 8,
+                    color: MedBuddyColors.pageBackground,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildBody(),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('pharmacy-list-toggle'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => setState(() => _listExpanded = !_listExpanded),
+              icon: Icon(_listExpanded ? Icons.map_outlined : Icons.list_alt),
+              label: Text(_listExpanded
+                  ? (english ? 'Show map' : '지도 크게 보기')
+                  : (english ? 'Show pharmacies (${pharmacies.length})' : '약국 목록 보기 (${pharmacies.length})')),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody() {
     final text = _text;
     if (_isLoading) {
@@ -807,11 +866,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     final visiblePharmacies = _visiblePharmacies;
     return Column(
       children: [
-        if (visiblePharmacies.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-            child: _buildPharmacyMap(visiblePharmacies),
-          ),
         if (_lastRefreshedAt != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -1101,7 +1155,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       return mapBuilder(
         pharmacies: pharmacies,
         selectedPharmacyId: _selectedPharmacyId,
-        onPharmacySelected: _selectPharmacy,
+        onPharmacySelected: _selectMapPharmacy,
         onAttributionRequested: _requestMapAttribution,
         statusText: statusText,
         selectMarkerHint: text.selectMarkerHint,
@@ -1114,7 +1168,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     return NearbyPharmacyMap(
       pharmacies: pharmacies,
       selectedPharmacyId: _selectedPharmacyId,
-      onPharmacySelected: _selectPharmacy,
+      onPharmacySelected: _selectMapPharmacy,
       onAttributionRequested: _requestMapAttribution,
       statusText: statusText,
       selectMarkerHint: text.selectMarkerHint,
@@ -1130,6 +1184,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   // 매개변수:
   // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
   // 반환값: NearbyPharmacy?: 선택 ID와 일치하는 약국; 없으면 null.
+  void _selectMapPharmacy(NearbyPharmacy pharmacy) {
+    _selectPharmacy(pharmacy);
+    setState(() => _listExpanded = true);
+  }
+
   NearbyPharmacy? _findSelectedPharmacy(List<NearbyPharmacy> pharmacies) {
     for (final pharmacy in pharmacies) {
       if (pharmacy.pharmacyId == _selectedPharmacyId) {
@@ -2287,8 +2346,8 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get mapInstruction => isEnglish
-      ? 'Tap a pharmacy below to view its location'
-      : '아래 약국을 누르면 지도에서 위치를 확인할 수 있습니다';
+      ? 'Tap a marker or open the pharmacy list for details'
+      : '지도 표시를 누르거나 약국 목록을 열어 상세 정보를 확인하세요';
   // 함수이름: selectMarkerHint
   // 함수역할: 현재 언어와 입력값에 맞춰 "이 약국을 지도에서 보기" 문구를 제공한다.
   // 매개변수:
