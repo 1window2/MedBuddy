@@ -548,7 +548,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!mounted || task == null) {
       return;
     }
-    if (task == MedicationCaptureTask.pill) {
+    if (task == MedicationCaptureTask.multiplePills ||
+        task == MedicationCaptureTask.individualPills) {
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -559,6 +560,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
           // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
           builder: (context) => PillIdentificationUI(
             userSetting: viewModel.userSetting,
+            captureMode: task == MedicationCaptureTask.multiplePills
+                ? PillCaptureMode.singlePhoto
+                : PillCaptureMode.individualPhotos,
             onSaveRequested: viewModel.saveIdentifiedPill,
             onBatchSaveRequested: viewModel.saveIdentifiedPills,
           ),

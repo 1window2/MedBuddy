@@ -563,11 +563,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onPrescriptionGalleryRequested:
           viewModel.requestPrescriptionImageFromGallery,
       // 함수이름: _buildHomeInput.onPillIdentificationRequested callback
-      // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => PillIdentificationUI(userSetting: viewModel.userSetting, onSaveRequested: view...; MaterialPageRoute(builder: (context) => PillIdentificationUI(userSetting: viewModel.userSetting, onSaveRequested: viewModel.saveIdentifiedPill...`을 실행한다.
+      // 함수역할: 선택한 촬영 방식으로 알약 화면을 열고 기존 저장 동작을 연결한다.
       // 매개변수:
-      // - 없음.
-      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-      onPillIdentificationRequested: () {
+      // - mode (PillCaptureMode): 한 장 또는 개별 앞뒷면 촬영 방식.
+      // 반환값: 없음. 알약 식별 화면으로 이동한다.
+      onPillIdentificationRequested: (mode) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -578,6 +578,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
             builder: (context) => PillIdentificationUI(
               userSetting: viewModel.userSetting,
+              captureMode: mode,
               onSaveRequested: viewModel.saveIdentifiedPill,
               onBatchSaveRequested: viewModel.saveIdentifiedPills,
             ),

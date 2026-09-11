@@ -3,6 +3,7 @@
 //   priorities.
 
 import 'package:flutter/material.dart';
+import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
@@ -99,7 +100,8 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
-    tester.widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+    tester
+        .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
         .onNextMedicationCompleteRequested!('morning');
     await tester.pumpAndSettle();
     expect(schedule.slotWrites, [true]);
@@ -151,7 +153,7 @@ void main() {
           // - None.
           // Returns:
           // - No value; the callback completes after its recorded side effects.
-          onPillIdentificationRequested: () {
+          onPillIdentificationRequested: (mode) {
             pillTaskRequested = true;
           },
           // 함수이름: onManualMedicationRequested 콜백
@@ -217,6 +219,9 @@ void main() {
     await tester.tap(find.text('약 등록·식별'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('낱알약 식별'));
+    await tester.pumpAndSettle();
+    expect(pillTaskRequested, isFalse);
+    await tester.tap(find.text('여러 알약 한 번에 찾기'));
     await tester.pump();
     expect(pillTaskRequested, isTrue);
   });
@@ -276,10 +281,18 @@ void main() {
     final inputBoundary = tester.widget<InputPrescriptionUI>(
       find.byType(InputPrescriptionUI),
     );
-    inputBoundary.onPillIdentificationRequested?.call();
+    inputBoundary.onPillIdentificationRequested?.call(
+      PillCaptureMode.singlePhoto,
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(PillIdentificationUI), findsOneWidget);
+    expect(
+      tester
+          .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
+          .captureMode,
+      PillCaptureMode.singlePhoto,
+    );
   });
 
   // 함수이름: 홈 기본 기능 테스트
@@ -526,7 +539,7 @@ void main() {
           // - 없음.
           // 반환값:
           // - 없음; 외부 동작을 수행하지 않는다.
-          onPillIdentificationRequested: () {},
+          onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -617,7 +630,7 @@ void main() {
           // - 없음.
           // 반환값:
           // - 없음; 외부 동작을 수행하지 않는다.
-          onPillIdentificationRequested: () {},
+          onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -718,7 +731,7 @@ void main() {
           // - 없음.
           // 반환값:
           // - 없음; 외부 동작을 수행하지 않는다.
-          onPillIdentificationRequested: () {},
+          onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
           // - Keep today-schedule navigation available in the fixture without performing the action.
@@ -1401,7 +1414,7 @@ InputPrescriptionUI _home({
     // - 없음.
     // 반환값:
     // - 없음; 외부 동작을 수행하지 않는다.
-    onPillIdentificationRequested: () {},
+    onPillIdentificationRequested: (mode) {},
     // Function Name: onTodayScheduleRequested callback
     // Description:
     // - Keep today-schedule navigation available in the fixture without performing the action.

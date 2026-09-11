@@ -351,7 +351,7 @@ void main() {
                 // - 없음.
                 // 반환값:
                 // - 없음; 외부 동작을 수행하지 않는다.
-                onPillIdentificationRequested: () {},
+                onPillIdentificationRequested: (mode) {},
                 // 함수이름: onTodayScheduleRequested 콜백
                 // 함수역할:
                 // - 오늘 일정 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -471,7 +471,7 @@ void main() {
               // - 없음.
               // 반환값:
               // - 없음; 외부 동작을 수행하지 않는다.
-              onPillIdentificationRequested: () {},
+              onPillIdentificationRequested: (mode) {},
               // 함수이름: onTodayScheduleRequested 콜백
               // 함수역할:
               // - 오늘 일정 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.

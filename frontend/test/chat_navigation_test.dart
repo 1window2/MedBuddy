@@ -481,7 +481,9 @@ void main() {
                 onPrescriptionScanRequested: _noop,
                 onPrescriptionGalleryRequested: _noop,
                 onTodayScheduleRequested: _noop,
-                onPillIdentificationRequested: _noop,
+                // 함수역할: 선택한 알약 촬영 방식을 받고 실제 탐색은 생략한다.
+                // 매개변수: mode. 반환값: 없음.
+                onPillIdentificationRequested: (mode) {},
                 onUserSettingRequested: _noop,
                 onHealthRecommendationRequested: _noop,
                 // 함수이름: 알림 설정 진입 콜백

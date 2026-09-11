@@ -34,7 +34,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final DateTime Function()? nowProvider;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
-  final VoidCallback? onPillIdentificationRequested;
+  final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
   final Future<void> Function(String slotKey)?
@@ -60,7 +60,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
   // - onPrescriptionScanRequested (VoidCallback?): Callback requesting prescription capture or recapture through the guided camera.
   // - onPrescriptionGalleryRequested (VoidCallback?): Callback selecting a prescription photo from the gallery.
-  // - onPillIdentificationRequested (VoidCallback?): Callback opening pill-photo identification.
+  // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식의 알약 식별을 여는 콜백.
   // - onManualMedicationRequested (VoidCallback?): Callback opening manual medication and schedule entry.
   // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
   // - onNextMedicationCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
@@ -364,8 +364,13 @@ class InputPrescriptionUI extends StatelessWidget {
     if (!context.mounted || task == null) {
       return;
     }
-    if (task == MedicationCaptureTask.pill) {
-      onPillIdentificationRequested?.call();
+    if (task == MedicationCaptureTask.multiplePills ||
+        task == MedicationCaptureTask.individualPills) {
+      onPillIdentificationRequested?.call(
+        task == MedicationCaptureTask.multiplePills
+            ? PillCaptureMode.singlePhoto
+            : PillCaptureMode.individualPhotos,
+      );
       return;
     }
     if (task == MedicationCaptureTask.manual) {

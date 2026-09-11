@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -442,6 +443,7 @@ Future<void> _openRefinementGroup(
       home: PillIdentificationUI(
         userSetting: const UserSetting(language: 'ko', fontSize: 20),
         control: control,
+        captureMode: PillCaptureMode.singlePhoto,
       ),
     ),
   );
@@ -520,6 +522,20 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
 }
 
+// 클래스명: _PhotoSourceIdentifyPill
+// 역할: 각 입력칸의 카메라·갤러리 선택과 취소를 외부 앱 없이 재현한다.
+class _PhotoSourceIdentifyPill extends _FakeIdentifyPill {
+  bool cancelSelection = false;
+  final List<ImageSource> sources = [];
+
+  // 함수역할: 취소 상태에서는 사진을 변경하지 않는다. 매개변수: source. 반환값: 이미지 또는 null.
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    sources.add(source);
+    return cancelSelection ? null : _FakeIdentifyPill._png;
+  }
+}
+
 // Function Name: main
 // Description:
 // - Register regression cases for pill-photo selection, candidate confirmation, schedule review, and
@@ -529,6 +545,183 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 빈 알약 입력 추가 테스트
+    // 함수역할: 사진 없이도 앞·뒷면 입력을 10개까지 추가하고 새 영역으로 이동하는지 확인한다.
+    // 매개변수: tester는 위젯 테스트 제어기이다. 반환값: 큰 글씨·추가·삭제 검증 완료.
+    testWidgets('추가 버튼은 빈 알약 입력을 바로 만든다 $language', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final control = _PhotoSourceIdentifyPill();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: PillIdentificationUI(
+              userSetting: UserSetting(fontSize: 20, language: language),
+              control: control,
+            ),
+          ),
+        ),
+      );
+      final addButton = find.byKey(const Key('add-pill-photo-set-button'));
+      for (var index = 1; index < 10; index += 1) {
+        expect(tester.widget<OutlinedButton>(addButton).onPressed, isNotNull);
+        await _tapVisible(tester, addButton);
+        await tester.pumpAndSettle();
+        final front = find.byKey(Key('pill-front-image-slot-$index'));
+        expect(front, findsOneWidget);
+        expect(find.byKey(Key('pill-back-image-slot-$index')), findsOneWidget);
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(control.sources, isEmpty);
+        if (language == 'ko') {
+          expect(find.text('알약 ${index + 1}개 후보 찾기'), findsOneWidget);
+        }
+        expect(
+          tester.getRect(front).overlaps(const Rect.fromLTWH(0, 0, 320, 640)),
+          isTrue,
+        );
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('identify-pill-button')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+      }
+      expect(tester.widget<OutlinedButton>(addButton).onPressed, isNull);
+      expect(find.byKey(const Key('pill-front-image-slot-10')), findsNothing);
+      await _tapVisible(
+        tester,
+        find.byKey(const Key('remove-pill-photo-set-9')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pill-front-image-slot-9')), findsNothing);
+      expect(tester.widget<OutlinedButton>(addButton).onPressed, isNotNull);
+    });
+  }
+
+  for (final gallery in [true, false]) {
+    // 함수이름: 추가 알약의 사진 선택 테스트
+    // 함수역할: 새 칸의 촬영 취소와 뒷면 선택은 다른 알약을 변경하지 않고 앞면이 있어야 분석된다.
+    // 매개변수: tester는 위젯 테스트 제어기이다. 반환값: 개별 사진·필수 입력 검증 완료.
+    testWidgets('추가 알약의 앞뒷면을 각각 선택한다 $gallery', (tester) async {
+      final control = _PhotoSourceIdentifyPill();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PillIdentificationUI(
+            userSetting: const UserSetting(),
+            control: control,
+          ),
+        ),
+      );
+      await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('카메라로 촬영'));
+      await tester.pumpAndSettle();
+      await _tapVisible(
+        tester,
+        find.byKey(const Key('add-pill-photo-set-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('알약 2 사진'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(control.sources, [ImageSource.camera]);
+      final front = find.byKey(const Key('pill-front-image-slot-1'));
+      final back = find.byKey(const Key('pill-back-image-slot-1'));
+      expect(front, findsOneWidget);
+      expect(back, findsOneWidget);
+      control.cancelSelection = true;
+      await _tapVisible(tester, front);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(gallery ? '갤러리에서 선택' : '카메라로 촬영'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('remove-pill-front-image-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('remove-pill-front-image-button-1')),
+        findsNothing,
+      );
+      expect(front, findsOneWidget);
+      control.cancelSelection = false;
+      await _tapVisible(tester, back);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('갤러리에서 선택'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('remove-pill-back-image-button-1')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('identify-pill-button')))
+            .onPressed,
+        isNull,
+      );
+      await _tapVisible(tester, front);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('카메라로 촬영'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('remove-pill-front-image-button-1')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('identify-pill-button')))
+            .onPressed,
+        isNotNull,
+      );
+      await _tapVisible(
+        tester,
+        find.byKey(const Key('remove-pill-photo-set-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(front, findsNothing);
+      expect(
+        find.byKey(const Key('remove-pill-front-image-button')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수역할: 전체 사진 변경을 취소해도 기존 번호·후보와 저장 가능 상태를 유지한다.
+  // 매개변수: tester. 반환값: 결과 보존 검증 완료.
+  testWidgets('전체 사진 변경 취소는 후보 선택을 보존한다', (tester) async {
+    final control = _RefinementIdentifyPill();
+    addTearDown(control.dispose);
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.text('첫 번째 알약'));
+    await _tapVisible(tester, find.text('두 번째 알약'));
+    await tester.pumpAndSettle();
+    control.cancelPicker = true;
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('갤러리에서 선택'));
+    await tester.pumpAndSettle();
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(find.text('두 번째 알약'), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('confirm-pill-candidate-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
   // 함수이름: 동점 확장 테스트
   // 함수역할: 숨겨진 6번째 후보를 펼치며 퍼센트가 확정처럼 표시되지 않는지 확인한다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -649,6 +842,7 @@ void main() {
         home: PillIdentificationUI(
           userSetting: const UserSetting(language: 'ko'),
           control: _OnePhotoMultipleIdentifyPill(),
+          captureMode: PillCaptureMode.singlePhoto,
         ),
       ),
     );
@@ -669,42 +863,64 @@ void main() {
     expect(find.text('두 번째 알약'), findsOneWidget);
     expect(find.textContaining('알약 1'), findsWidgets);
     expect(find.textContaining('알약 2'), findsWidgets);
+    expect(find.text('알약 2개 후보 확인'), findsOneWidget);
+    expect(find.byKey(const Key('add-pill-photo-set-button')), findsNothing);
+    expect(find.byKey(const Key('pill-front-image-slot')), findsNothing);
+    expect(find.text('여러 알약이 담긴 사진을 추가하세요'), findsNothing);
+    expect(
+      tester.widget(
+        find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
+      ),
+      isA<TextButton>(),
+    );
     expect(tester.takeException(), isNull);
   });
 
   for (final legacyEnabled in [null, false, true]) {
-    // 함수이름: 기본 다중 알약 진입 테스트
-    // 함수역할: 신규 설정과 이전 실험실 설정 유무에 관계없이 단일·다중 알약 입력을 제공한다.
-    // 매개변수: tester: 위젯 도구. 반환값: 입력 명령 표시 검증 완료.
-    testWidgets('다중 알약은 이전 설정과 무관하게 기본 제공된다 $legacyEnabled', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: PillIdentificationUI(
-            userSetting: UserSetting.fromJson({
-              'language': 'ko',
-              'multi_pill_identification_lab_enabled': ?legacyEnabled,
-            }),
-            control: _FakeIdentifyPill(),
+    for (final mode in PillCaptureMode.values) {
+      // 함수이름: 촬영 방식별 기본 입력 테스트
+      // 함수역할: 구형 실험실 설정과 무관하게 선택한 방식의 입력만 제공한다.
+      // 매개변수: tester. 반환값: 두 방식의 버튼 분리 검증 완료.
+      testWidgets('촬영 방식만 표시한다 $legacyEnabled $mode', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PillIdentificationUI(
+              userSetting: UserSetting.fromJson({
+                'language': 'ko',
+                'multi_pill_identification_lab_enabled': ?legacyEnabled,
+              }),
+              captureMode: mode,
+              control: _FakeIdentifyPill(),
+            ),
           ),
-        ),
-      );
-
-      expect(find.text('알약을 한 개 이상 촬영해주세요'), findsOneWidget);
-      expect(find.byKey(const Key('pill-front-image-slot')), findsOneWidget);
-      expect(
-        find.byKey(const Key('identify-multiple-pills-from-one-photo-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('add-pill-photo-set-button')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('add-multiple-pill-images-button')),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-    });
+        );
+        final singlePhoto = mode == PillCaptureMode.singlePhoto;
+        expect(
+          find.byKey(const Key('pill-front-image-slot')),
+          singlePhoto ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('identify-multiple-pills-from-one-photo-button'),
+          ),
+          singlePhoto ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('identify-pill-button')),
+          singlePhoto ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('add-multiple-pill-images-button')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('add-pill-photo-set-button')),
+          singlePhoto ? findsNothing : findsOneWidget,
+        );
+        expect(find.textContaining('외부 AI'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   }
 
   // 함수이름: testWidgets 콜백
@@ -730,7 +946,7 @@ void main() {
       ),
     );
 
-    expect(find.text('알약 식별'), findsOneWidget);
+    expect(find.text('알약 하나씩 찾기'), findsOneWidget);
     expect(find.textContaining('외부 AI'), findsOneWidget);
 
     await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));

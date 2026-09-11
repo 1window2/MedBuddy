@@ -94,6 +94,9 @@ void main() {
 
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
+    expect(find.byType(PillIdentificationUI), findsNothing);
+    await tester.tap(find.text('알약 하나씩 찾기'));
+    await tester.pumpAndSettle();
 
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });

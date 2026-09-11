@@ -9,8 +9,17 @@ import '../theme/medbuddy_theme.dart';
 // 클래스명: MedicationCaptureTask
 // 역할: 처방전 분석·알약 식별·직접 입력 작업 구분을 담당한다.
 // 주요 책임:
-// - 처방전 분석·알약 식별·직접 입력 작업 구분에서 지원하는 선택지를 열거하고 구분한다: prescription, pill, manual.
-enum MedicationCaptureTask { prescription, pill, manual }
+// - 처방전·한 장의 여러 알약·개별 알약·직접 입력을 구분한다.
+enum MedicationCaptureTask {
+  prescription,
+  multiplePills,
+  individualPills,
+  manual,
+}
+
+// 열거형명: PillCaptureMode
+// 역할: 알약 화면에서 한 장의 여러 알약과 알약별 앞뒷면 입력 방식을 구분한다.
+enum PillCaptureMode { singlePhoto, individualPhotos }
 
 // 클래스명: PrescriptionImageSource
 // 역할: 처방전의 카메라·갤러리 입력 출처를 담당한다.
@@ -29,6 +38,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
   required UserSetting userSetting,
 }) {
   final text = _MedicationCaptureText(userSetting.language);
+  var choosingPillMode = false;
 
   return showModalBottomSheet<MedicationCaptureTask>(
     context: context,
@@ -43,53 +53,126 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
     // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
     // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
     builder: (sheetContext) {
-      return _MedicationCaptureOptionSheet(
-        children: [
-          _MedicationCaptureOption(
-            icon: Icons.photo_camera_outlined,
-            title: text.prescriptionTask,
-            subtitle: text.prescriptionTaskSubtitle,
-            userSetting: userSetting,
-            // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-            // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onTap: () {
-              Navigator.pop(sheetContext, MedicationCaptureTask.prescription);
-            },
+      return StatefulBuilder(
+        // 함수역할: 같은 시트 안에서 작업 선택과 알약 촬영 방식 선택을 전환한다.
+        // 매개변수: sheetContext, setSheetState. 반환값: 현재 단계의 선택지.
+        builder: (sheetContext, setSheetState) => PopScope<MedicationCaptureTask>(
+          canPop: !choosingPillMode,
+          // 함수역할: 시스템 뒤로 가기도 시트를 닫기 전에 이전 단계로 이동한다.
+          // 매개변수: didPop, result. 반환값: 없음.
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop && choosingPillMode) {
+              setSheetState(() => choosingPillMode = false);
+            }
+          },
+          child: _MedicationCaptureOptionSheet(
+            key: ValueKey(choosingPillMode),
+            children: [
+              if (choosingPillMode) ...[
+                Row(
+                  children: [
+                    IconButton(
+                      key: const Key('pill-mode-back-button'),
+                      tooltip: MaterialLocalizations.of(
+                        sheetContext,
+                      ).backButtonTooltip,
+                      onPressed: () =>
+                          setSheetState(() => choosingPillMode = false),
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                    Expanded(
+                      child: Text(
+                        text.pillTask,
+                        style: TextStyle(
+                          fontSize: 18 * userSetting.contentTextScale,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _MedicationCaptureOption(
+                  icon: Icons.center_focus_strong_outlined,
+                  title: text.isEnglish
+                      ? 'Find pills in one photo'
+                      : '여러 알약 한 번에 찾기',
+                  subtitle: text.isEnglish
+                      ? 'Compare pills placed together in one photo.'
+                      : '한 사진 속 여러 알약을 구분해 후보를 확인해요.',
+                  userSetting: userSetting,
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    MedicationCaptureTask.multiplePills,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _MedicationCaptureOption(
+                  icon: Icons.medication_outlined,
+                  title: text.isEnglish
+                      ? 'Find pills individually'
+                      : '알약 하나씩 찾기',
+                  subtitle: text.isEnglish
+                      ? 'Compare front and back photos of each pill.'
+                      : '알약의 앞·뒷면을 촬영해 후보를 확인해요.',
+                  userSetting: userSetting,
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    MedicationCaptureTask.individualPills,
+                  ),
+                ),
+              ] else ...[
+                _MedicationCaptureOption(
+                  icon: Icons.photo_camera_outlined,
+                  title: text.prescriptionTask,
+                  subtitle: text.prescriptionTaskSubtitle,
+                  userSetting: userSetting,
+                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
+                  // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                      MedicationCaptureTask.prescription,
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                _MedicationCaptureOption(
+                  icon: Icons.medication_outlined,
+                  title: text.pillTask,
+                  subtitle: text.pillTaskSubtitle,
+                  userSetting: userSetting,
+                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
+                  // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+                  onTap: () {
+                    setSheetState(() => choosingPillMode = true);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _MedicationCaptureOption(
+                  icon: Icons.edit_note_rounded,
+                  title: text.manualTask,
+                  subtitle: text.manualTaskSubtitle,
+                  userSetting: userSetting,
+                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
+                  // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+                  onTap: () {
+                    Navigator.pop(sheetContext, MedicationCaptureTask.manual);
+                  },
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 10),
-          _MedicationCaptureOption(
-            icon: Icons.medication_outlined,
-            title: text.pillTask,
-            subtitle: text.pillTaskSubtitle,
-            userSetting: userSetting,
-            // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-            // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.pill)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onTap: () {
-              Navigator.pop(sheetContext, MedicationCaptureTask.pill);
-            },
-          ),
-          const SizedBox(height: 10),
-          _MedicationCaptureOption(
-            icon: Icons.edit_note_rounded,
-            title: text.manualTask,
-            subtitle: text.manualTaskSubtitle,
-            userSetting: userSetting,
-            // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-            // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onTap: () {
-              Navigator.pop(sheetContext, MedicationCaptureTask.manual);
-            },
-          ),
-        ],
+        ),
       );
     },
   );
@@ -172,7 +255,7 @@ class _MedicationCaptureOptionSheet extends StatelessWidget {
   // 매개변수:
   // - children (List<Widget>): 순서대로 배치할 콘텐츠 위젯 목록.
   // 반환값: 입력 설정이 반영된 _MedicationCaptureOptionSheet 인스턴스.
-  const _MedicationCaptureOptionSheet({required this.children});
+  const _MedicationCaptureOptionSheet({super.key, required this.children});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 큰 글씨에서도 스크롤 가능한 입력 선택 시트 화면을 구성한다.
