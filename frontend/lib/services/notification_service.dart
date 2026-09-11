@@ -701,7 +701,7 @@ class NotificationService {
   }
 
   // 함수이름: cancelAllScheduledMedicationReminders
-  // 함수역할: 보호자·채팅 알림은 유지하고 사용자의 복약 시간 알림 예약만 취소한다.
+  // 함수역할: 보호자·채팅 알림은 유지하고 예약 및 표시 중인 복약 알림을 취소한다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -712,6 +712,16 @@ class NotificationService {
     for (final request in pendingRequests) {
       if ((request.payload ?? '').startsWith('schedule:')) {
         await _plugin.cancel(id: request.id);
+      }
+    }
+    // Delivered reminders are no longer pending. Remove their quick actions
+    // too, so disabling reminders does not leave a visible snooze shortcut.
+    final activeNotifications = await _plugin.getActiveNotifications();
+    for (final notification in activeNotifications) {
+      final id = notification.id;
+      if (id != null &&
+          (notification.payload ?? '').startsWith('schedule:')) {
+        await _plugin.cancel(id: id, tag: notification.tag);
       }
     }
     for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {

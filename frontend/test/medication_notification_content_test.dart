@@ -10,12 +10,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
   final scheduled = <Map<dynamic, dynamic>>[];
+  final cancelled = <Map<dynamic, dynamic>>[];
+  final active = <Map<String, Object?>>[];
+  final pending = <Map<String, Object?>>[];
   var rejectExact = false;
 
   setUp(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     AndroidFlutterLocalNotificationsPlugin.registerWith();
     scheduled.clear();
+    cancelled.clear();
+    active.clear();
+    pending.clear();
     rejectExact = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -23,7 +29,12 @@ void main() {
             case 'initialize':
               return true;
             case 'pendingNotificationRequests':
-              return <Map<String, Object?>>[];
+              return pending;
+            case 'getActiveNotifications':
+              return active;
+            case 'cancel':
+              cancelled.add(Map<dynamic, dynamic>.from(call.arguments as Map));
+              return null;
             case 'zonedSchedule':
               scheduled.add(Map<dynamic, dynamic>.from(call.arguments as Map));
               if (rejectExact && scheduled.length == 1) {
@@ -41,6 +52,28 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  test('disabling reminders removes delivered actions but preserves other alerts', () async {
+    pending.addAll([
+      {'id': 901, 'payload': 'schedule:morning:901:2026-09-11'},
+      {'id': 902, 'payload': 'chat:5'},
+    ]);
+    active.addAll([
+      {'id': 903, 'tag': 'dose', 'payload': 'schedule:evening:903:2026-09-11'},
+      {'id': 904, 'tag': 'caregiver', 'payload': 'caregiver:patient'},
+      {'id': 905, 'payload': 'chat:5'},
+      {'id': 906, 'payload': null},
+    ]);
+    await NotificationService.instance.cancelAllScheduledMedicationReminders();
+    expect(cancelled, contains(containsPair('id', 901)));
+    expect(cancelled, contains(allOf(
+      containsPair('id', 903),
+      containsPair('tag', 'dose'),
+    )));
+    for (final id in [902, 904, 905, 906]) {
+      expect(cancelled, isNot(contains(containsPair('id', id))));
+    }
   });
 
   for (final language in ['ko', 'en']) {

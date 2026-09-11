@@ -66,11 +66,17 @@ silently inferred from weak evidence.
       completion delivery, local/background missed-dose monitoring, and chat
       medication context instead of creating a second caregiver workflow.
 - [x] Move Firebase-mode missed-deadline detection to the backend maintenance
-      worker and durable outbox. Each caregiver receives at most one event per
-      patient, date, and slot; delivery revalidates consent, the active link,
+      worker and durable outbox. Outbox events are deduplicated by their event
+      key, but FCM delivery is at least once: retries after partial delivery or
+      a crash can produce duplicate receipts. Delivery revalidates consent, the active link,
       the deadline, and the live incomplete state immediately before FCM send.
 
 ### Required follow-up
+
+- [ ] Physically verify that disabling medication notifications removes both
+      pending alarms and already-displayed medication quick actions while
+      preserving caregiver/chat alerts. Android channel regression coverage
+      exists; actual device rendering/cleanup remains a separate check.
 
 - [ ] Verify both notification actions on a physical Android device while the
       app is foregrounded, backgrounded, and terminated; also test a locked
