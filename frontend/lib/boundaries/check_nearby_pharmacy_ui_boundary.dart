@@ -99,6 +99,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
   final NearbyPharmacyMapBuilder? mapBuilder;
   final PharmacyFavoriteService? favoriteService;
   final bool selectionMode;
+  final DateTime Function()? clock;
 
   // 함수이름: CheckNearbyPharmacyUI
   // 함수역할: 주입된 검색·지도·즐겨찾기 의존성으로 일반 약국 검색 화면을 구성하고 선택 모드는 끈다.
@@ -115,6 +116,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.control,
     this.mapBuilder,
     this.favoriteService,
+    this.clock,
   }) : selectionMode = false;
 
   // 함수이름: CheckNearbyPharmacyUI.selection
@@ -132,6 +134,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.control,
     this.mapBuilder,
     this.favoriteService,
+    this.clock,
   }) : selectionMode = true;
 
   // 함수이름: createState
@@ -169,6 +172,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
   String? _selectedPharmacyId;
   DateTime _targetDateTime = DateTime.now();
+  bool _hasSelectedSearchDate = false;
+
+  DateTime _now() => widget.clock?.call() ?? DateTime.now();
   bool _catalogIsStale = false;
   String _holidayScheduleStatus = 'not_applicable';
   DateTime? _lastRefreshedAt;
@@ -228,6 +234,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   Future<void> _loadPharmacies() async {
     if (!mounted) {
       return;
+    }
+    // Only an explicitly chosen calendar date survives a later search.
+    if (!_hasSelectedSearchDate) {
+      _targetDateTime = _now();
     }
     // 함수이름: _loadPharmacies.setState callback
     // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_isLoading = true; _locationFailure = null; _errorMessage = null`로 갱신한다.
@@ -458,7 +468,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       _filter = nextFilter;
       _selectedPharmacyId = null;
       if (nextFilter == _PharmacyFilter.openNow) {
-        _targetDateTime = DateTime.now();
+        _hasSelectedSearchDate = false;
+        _targetDateTime = _now();
       }
     });
     await _loadPharmacies();
@@ -681,6 +692,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
+      _hasSelectedSearchDate = true;
       _targetDateTime = DateTime(
         selected.year,
         selected.month,
@@ -1027,6 +1039,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                     return _PharmacyCard(
                       pharmacy: pharmacy,
                       text: text,
+                      usesSelectedTime: _filter != _PharmacyFilter.openNow,
                       isSelected: pharmacy.pharmacyId == _selectedPharmacyId,
                       isFavorite: _favoritePharmacyIds.contains(
                         pharmacy.pharmacyId,
@@ -1731,6 +1744,7 @@ class _PharmacyMessageState extends StatelessWidget {
 class _PharmacyCard extends StatelessWidget {
   final NearbyPharmacy pharmacy;
   final _NearbyPharmacyText text;
+  final bool usesSelectedTime;
   final bool isSelected;
   final bool isFavorite;
   final VoidCallback onSelected;
@@ -1753,6 +1767,7 @@ class _PharmacyCard extends StatelessWidget {
   const _PharmacyCard({
     required this.pharmacy,
     required this.text,
+    required this.usesSelectedTime,
     required this.isSelected,
     required this.isFavorite,
     required this.onSelected,
@@ -1775,11 +1790,13 @@ class _PharmacyCard extends StatelessWidget {
         ? MedBuddyColors.successSurface
         : MedBuddyColors.surfaceSubtle;
     final statusLabel = switch (pharmacy.isOpenNow) {
-      true => text.openNow,
-      false => text.closed,
+      true => usesSelectedTime ? text.openAtSearchTime : text.openNow,
+      false => usesSelectedTime ? text.closedAtSearchTime : text.closed,
       null => text.hoursNeedCheck,
     };
-    final operatingStatusDetail = text.operatingStatusDetail(pharmacy);
+    final operatingStatusDetail = usesSelectedTime
+        ? null
+        : text.operatingStatusDetail(pharmacy);
 
     return Semantics(
       container: true,
@@ -1869,7 +1886,7 @@ class _PharmacyCard extends StatelessWidget {
                 const SizedBox(height: 7),
                 _PharmacyInfoLine(
                   icon: Icons.schedule_outlined,
-                  text: text.todayHours(pharmacy),
+                  text: text.todayHours(pharmacy, usesSelectedTime: usesSelectedTime),
                 ),
                 if (operatingStatusDetail != null) ...[
                   const SizedBox(height: 7),
@@ -2105,6 +2122,10 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get openNow => isEnglish ? 'Open now' : '영업 중';
+  String get openAtSearchTime =>
+      isEnglish ? 'Open at search time' : '조회 시각 영업';
+  String get closedAtSearchTime =>
+      isEnglish ? 'Closed at search time' : '조회 시각 영업 종료';
   // 함수이름: openFilter
   // 함수역할: 현재 언어와 입력값에 맞춰 "현재 영업 중" 문구를 제공한다.
   // 매개변수:
@@ -2431,16 +2452,19 @@ class _NearbyPharmacyText {
   // 매개변수:
   // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String todayHours(NearbyPharmacy pharmacy) {
+  String todayHours(NearbyPharmacy pharmacy, {bool usesSelectedTime = false}) {
     if (pharmacy.is24Hours) {
       return isEnglish ? 'Open 24 hours' : '24시간 운영';
     }
     if (pharmacy.todayOpenTime == null || pharmacy.todayCloseTime == null) {
-      return isEnglish ? 'Check today\'s opening hours' : '오늘 영업시간 확인 필요';
+      return usesSelectedTime
+          ? (isEnglish ? 'Check search-date hours' : '조회일 영업시간 확인 필요')
+          : (isEnglish ? 'Check today\'s opening hours' : '오늘 영업시간 확인 필요');
     }
-    return isEnglish
-        ? 'Today ${pharmacy.todayOpenTime} - ${pharmacy.todayCloseTime}'
-        : '오늘 ${pharmacy.todayOpenTime} - ${pharmacy.todayCloseTime}';
+    final dayLabel = usesSelectedTime
+        ? (isEnglish ? 'Search date' : '조회일')
+        : (isEnglish ? 'Today' : '오늘');
+    return '$dayLabel ${pharmacy.todayOpenTime} - ${pharmacy.todayCloseTime}';
   }
 
   // 함수이름: scheduleTags
@@ -2471,7 +2495,9 @@ class _NearbyPharmacyText {
     final formatted =
         '${value.year.toString().padLeft(4, '0')}-'
         '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
+        '${value.day.toString().padLeft(2, '0')} '
+        '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
     return isEnglish ? 'Search date: $formatted' : '조회 날짜: $formatted';
   }
 

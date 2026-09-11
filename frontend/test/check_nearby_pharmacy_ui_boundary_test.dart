@@ -85,6 +85,7 @@ CheckNearbyPharmacy _buildControl({
   DeviceLocationFailure? failure,
   VoidCallback? onRequest,
   List<String?>? requestedModes,
+  List<DateTime>? requestedTimes,
   Set<String> emptyModes = const {},
   List<Map<String, Object?>>? customPharmacies,
   Future<bool> Function(Uri uri)? uriLauncher,
@@ -103,6 +104,9 @@ CheckNearbyPharmacy _buildControl({
       onRequest?.call();
       final requestedMode = request.url.queryParameters['search_mode'];
       requestedModes?.add(requestedMode);
+      requestedTimes?.add(
+        DateTime.parse(request.url.queryParameters['target_datetime']!),
+      );
       final includeClosed = requestedMode == 'all';
       final isEmpty = emptyModes.contains(requestedMode);
       final responseData = isEmpty
@@ -162,7 +166,7 @@ CheckNearbyPharmacy _buildControl({
 // - control (CheckNearbyPharmacy): 테스트가 주입하고 수명을 관리하는 제어기.
 // 반환값:
 // - 약국 목록과 가짜 지도가 있는 MaterialApp.
-Widget _testApp(CheckNearbyPharmacy control) {
+Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock}) {
   return MaterialApp(
     home: MediaQuery(
       data: const MediaQueryData(
@@ -172,6 +176,7 @@ Widget _testApp(CheckNearbyPharmacy control) {
       child: CheckNearbyPharmacyUI(
         userSetting: const UserSetting(fontSize: 20),
         control: control,
+        clock: clock,
         mapBuilder: _buildTestMap,
       ),
     ),
@@ -253,6 +258,34 @@ Widget _buildTestMap({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('filter search advances past midnight and labels reference time', (
+    tester,
+  ) async {
+    var now = DateTime(2026, 9, 11, 20, 30);
+    final requestedTimes = <DateTime>[];
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(requestedTimes: requestedTimes),
+        clock: () => now,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(requestedTimes.single, now);
+    now = DateTime(2026, 9, 12, 0, 50);
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-lateHours')));
+    await tester.pumpAndSettle();
+    expect(requestedTimes.last, now);
+    expect(find.text('조회 날짜: 2026-09-12 00:50'), findsOneWidget);
+    expect(find.text('조회 시각 영업'), findsWidgets);
+    expect(find.text('영업 중'), findsNothing);
+    expect(find.textContaining('조회일 '), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다.
