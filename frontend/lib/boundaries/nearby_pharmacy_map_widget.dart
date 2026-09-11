@@ -8,6 +8,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../entities/nearby_pharmacy_entity.dart';
 import '../services/naver_map_config.dart';
+import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: NearbyPharmacyMap
@@ -30,6 +31,8 @@ class NearbyPharmacyMap extends StatefulWidget {
   final String zoomOutTooltip;
   final String configurationUnavailableText;
   final String unavailableText;
+  final String myLocationTooltip;
+  final String locationFailureText;
 
   // 함수이름: NearbyPharmacyMap
   // 함수역할: 약국 마커·선택 강조·확대·출처 명령에 필요한 입력값과 표시 설정을 초기화한다.
@@ -58,6 +61,8 @@ class NearbyPharmacyMap extends StatefulWidget {
     required this.zoomOutTooltip,
     required this.configurationUnavailableText,
     required this.unavailableText,
+    this.myLocationTooltip = '현재 위치로 이동',
+    this.locationFailureText = '현재 위치를 확인할 수 없습니다. 위치 권한과 GPS 설정을 확인해 주세요.',
   });
 
   // 함수이름: createState
@@ -78,6 +83,7 @@ class NearbyPharmacyMap extends StatefulWidget {
 class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
+  bool _locating = false;
 
   // 함수이름: _mappablePharmacies
   // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.
@@ -204,6 +210,17 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               ),
             ),
             Positioned(
+              right: 8,
+              bottom: 54,
+              child: _MapControlButton(
+                tooltip: widget.myLocationTooltip,
+                icon: _locating ? Icons.hourglass_top : Icons.my_location,
+                onPressed: _locating || _mapController == null
+                    ? null
+                    : _moveToCurrentLocation,
+              ),
+            ),
+            Positioned(
               left: 8,
               bottom: 8,
               child: Column(
@@ -236,6 +253,30 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         ),
       ),
     );
+  }
+
+  // Only moves the camera: it does not repeat the pharmacy API search.
+  Future<void> _moveToCurrentLocation() async {
+    final controller = _mapController;
+    if (_locating || controller == null) return;
+    setState(() => _locating = true);
+    try {
+      final coordinate = await GeolocatorDeviceLocationService()
+          .requestCurrentCoordinate();
+      if (!mounted || !identical(controller, _mapController)) return;
+      await controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(coordinate.latitude, coordinate.longitude),
+        zoom: 15,
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(widget.locationFailureText)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   // Function Name: _synchronizeMap
@@ -418,7 +459,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
 class _MapControlButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   // 함수이름: _MapControlButton
   // 함수역할: 지도 위의 확대·축소·출처 아이콘 명령에 필요한 입력값과 표시 설정을 초기화한다.

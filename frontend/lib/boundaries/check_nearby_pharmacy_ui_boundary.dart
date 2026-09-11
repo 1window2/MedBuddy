@@ -1165,6 +1165,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       );
     }
     return NearbyPharmacyMap(
+      myLocationTooltip: text.isEnglish ? 'My location' : '현재 위치로 이동',
+      locationFailureText: text.isEnglish
+          ? 'Could not find your location. Check location permission and GPS settings.'
+          : '현재 위치를 확인할 수 없습니다. 위치 권한과 GPS 설정을 확인해 주세요.',
       pharmacies: pharmacies,
       selectedPharmacyId: _selectedPharmacyId,
       onPharmacySelected: _selectMapPharmacy,
