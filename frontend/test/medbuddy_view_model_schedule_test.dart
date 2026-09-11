@@ -1364,6 +1364,11 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
 // - failRegistration (bool): Whether local notification registration should throw.
 // - canceledAllMedicationReminders (bool): Whether session-wide reminder cancellation occurred.
 class _FakeNotificationService implements NotificationService {
+  // 함수이름: setHistoryUser
+  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
+  @override
+  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
+
   // 함수이름: setShowSensitiveDetails
   // 함수역할:
   // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
@@ -1410,6 +1415,8 @@ class _FakeNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showLinkedChatAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required int linkId,
     String language = 'ko',
@@ -1558,6 +1565,8 @@ class _FakeNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required String title,
     required String body,

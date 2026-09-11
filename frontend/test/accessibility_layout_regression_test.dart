@@ -412,7 +412,7 @@ void main() {
             ),
           );
           expect(
-            find.byKey(const ValueKey('homeMedicationReminderCard')),
+            find.byKey(const ValueKey('homeUserSettingsCard')),
             findsOneWidget,
           );
           expect(
@@ -420,7 +420,7 @@ void main() {
             findsNothing,
           );
           final reminders = find.byKey(
-            const ValueKey('homeMedicationReminderCard'),
+            const ValueKey('homeUserSettingsCard'),
           );
           await tester.ensureVisible(reminders);
           await tester.pumpAndSettle();
@@ -517,7 +517,7 @@ void main() {
           const Offset(0, -300),
         );
         await tester.pumpAndSettle();
-        expect(find.text('복약 알림 설정'), findsOneWidget);
+        expect(find.text('환경설정'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

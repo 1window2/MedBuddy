@@ -30,6 +30,9 @@ import '../controls/manage_chat_list_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
+import '../services/notification_inbox_store.dart';
+import '../controls/manage_notification_inbox_control.dart';
+import '../boundaries/notification_inbox_ui_boundary.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
@@ -70,6 +73,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   MedBuddyDestination _selectedDestination = MedBuddyDestination.home;
   ManageChatList? _chatList;
+  ManageNotificationInbox? _notificationInbox;
   Timer? _chatRefreshTimer;
   bool _isForeground = true;
   String? _updatingHomeMedicationSlotKey;
@@ -176,8 +180,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _isForeground = state == AppLifecycleState.resumed;
     if (_isForeground) {
       _startChatRefresh();
+      _notificationInbox?.start();
     } else {
       _chatRefreshTimer?.cancel();
+      _notificationInbox?.stop();
     }
   }
 
@@ -187,10 +193,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationInbox?.dispose();
     _chatRefreshTimer?.cancel();
     _chatList?.removeListener(_onChatListChanged);
     _chatList?.dispose();
     super.dispose();
+  }
+
+  // 함수이름: _syncNotificationInbox
+  // 함수역할: 로그인 계정별 알림함 제어기를 유지한다. 매개변수: viewModel. 반환값: 없음.
+  void _syncNotificationInbox(MedBuddyViewModel viewModel) {
+    if (_notificationInbox?.store.userHash == viewModel.patientHash) return;
+    _notificationInbox?.dispose();
+    final control = ManageNotificationInbox(
+      store: NotificationInboxStore(userHash: viewModel.patientHash),
+    );
+    _notificationInbox = control;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(_notificationInbox, control) && _isForeground) {
+        control.start();
+      }
+    });
+  }
+
+  // 함수이름: _openNotificationInbox
+  // 함수역할: 알림을 기존 세션 검증·화면 이동 처리기로 연결한다. 매개변수: context, viewModel. 반환값: 없음.
+  void _openNotificationInbox(
+    BuildContext context,
+    MedBuddyViewModel viewModel,
+  ) {
+    final control = _notificationInbox;
+    if (control == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotificationInboxUI(
+          control: control,
+          userSetting: viewModel.userSetting,
+          onOpen: (entry) =>
+              NotificationService.handleNotificationPayload(entry.payload),
+        ),
+      ),
+    );
   }
 
   // 함수이름: build
@@ -201,12 +245,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MedBuddyViewModel>();
+    _syncNotificationInbox(viewModel);
     return ListenableBuilder(
       listenable: Listenable.merge([
         viewModel.updatesFor(MedBuddyFeature.prescription),
         viewModel.updatesFor(MedBuddyFeature.schedule),
         viewModel.updatesFor(MedBuddyFeature.reminder),
         viewModel.updatesFor(MedBuddyFeature.userSetting),
+        ?_notificationInbox,
       ]),
       // 함수이름: build.builder callback
       // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
@@ -684,6 +730,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // - None.
       // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
       onUserSettingRequested: () => _openUserSettings(context, viewModel),
+      unreadNotificationCount: _notificationInbox?.unreadCount ?? 0,
+      onNotificationsRequested: () =>
+          _openNotificationInbox(context, viewModel),
     );
   }
 

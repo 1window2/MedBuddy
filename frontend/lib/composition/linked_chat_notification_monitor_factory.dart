@@ -88,6 +88,7 @@ class LinkedChatNotificationMonitorFactory {
               setting.showNotificationDetails,
             );
             return NotificationService.instance.showLinkedChatAlert(
+              historyUserHash: userHash,
               id: _notificationId(linkId, messageId),
               linkId: linkId,
               language: setting.language,

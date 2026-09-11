@@ -44,6 +44,8 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onHealthRecommendationRequested;
   final VoidCallback? onMedicationReminderRequested;
   final VoidCallback? onUserSettingRequested;
+  final VoidCallback? onNotificationsRequested;
+  final int unreadNotificationCount;
   final bool isAnalyzing;
 
   // Function Name: InputPrescriptionUI
@@ -91,6 +93,8 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onHealthRecommendationRequested,
     required this.onMedicationReminderRequested,
     required this.onUserSettingRequested,
+    this.onNotificationsRequested,
+    this.unreadNotificationCount = 0,
   }) : isAnalyzing = false;
 
   // Function Name: InputPrescriptionUI.analyzing
@@ -118,6 +122,8 @@ class InputPrescriptionUI extends StatelessWidget {
       onHealthRecommendationRequested = null,
       onMedicationReminderRequested = null,
       onUserSettingRequested = null,
+      onNotificationsRequested = null,
+      unreadNotificationCount = 0,
       isAnalyzing = true;
 
   // 함수이름: build
@@ -139,7 +145,11 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(text: text, onSettingPressed: onUserSettingRequested),
+            _HomeHeader(
+              text: text,
+              onNotificationsPressed: onNotificationsRequested,
+              unreadCount: unreadNotificationCount,
+            ),
             Expanded(
               child: LayoutBuilder(
                 // 함수이름: 홈 스크롤 영역 builder
@@ -208,26 +218,8 @@ class InputPrescriptionUI extends StatelessWidget {
                                     userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    // Function Name: build.onTap callback
-                                    // Description: Connects medication status and quick medication input or lookup actions to the captured operation `_showAnalysisTaskOptions(context)`.
-                                    // Parameters:
-                                    // - None.
-                                    // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                                     onTap: () =>
                                         _showAnalysisTaskOptions(context),
-                                  ),
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homeMedicationReminderCard',
-                                    ),
-                                    icon: Icons.notifications_active_outlined,
-                                    title: text.medicationReminder,
-                                    subtitle: text.medicationReminderSubtitle,
-                                    tone: _HomeActionTone.mint,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    userSetting: userSetting,
-                                    onTap: onMedicationReminderRequested,
                                   ),
                                   _HomeActionCard(
                                     cardKey: const ValueKey(
@@ -236,10 +228,10 @@ class InputPrescriptionUI extends StatelessWidget {
                                     icon: Icons.monitor_heart_outlined,
                                     title: text.healthRecommendation,
                                     subtitle: text.healthRecommendationSubtitle,
-                                    tone: _HomeActionTone.lavender,
+                                    tone: _HomeActionTone.mint,
+                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    userSetting: userSetting,
                                     onTap: onHealthRecommendationRequested,
                                   ),
                                   _HomeActionCard(
@@ -249,11 +241,24 @@ class InputPrescriptionUI extends StatelessWidget {
                                     icon: Icons.local_pharmacy_outlined,
                                     title: text.nearbyPharmacy,
                                     subtitle: text.nearbyPharmacySubtitle,
-                                    tone: _HomeActionTone.butter,
+                                    tone: _HomeActionTone.lavender,
+                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    userSetting: userSetting,
                                     onTap: onNearbyPharmacyRequested,
+                                  ),
+                                  _HomeActionCard(
+                                    cardKey: const ValueKey(
+                                      'homeUserSettingsCard',
+                                    ),
+                                    icon: Icons.settings_outlined,
+                                    title: text.userSettings,
+                                    subtitle: text.userSettingsSubtitle,
+                                    tone: _HomeActionTone.butter,
+                                    userSetting: userSetting,
+                                    compact: useGrid,
+                                    largeTextGridLayout: useLargeTextGridLayout,
+                                    onTap: onUserSettingRequested,
                                   ),
                                 ];
 
@@ -474,23 +479,25 @@ class InputPrescriptionUI extends StatelessWidget {
   }
 }
 
-// Class Name: _HomeHeader
-// Role: Represents the home heading and supporting top-bar content.
-// Responsibilities:
-// - Composes the home heading and supporting top-bar content using the display values and actions supplied by its parent.
-// Attributes:
-// - onSettingPressed (VoidCallback?): Callback opening user settings.
+// 클래스명: _HomeHeader
+// 역할: 홈 제목과 알림함 진입 버튼, 미확인 알림 개수를 표시한다.
 class _HomeHeader extends StatelessWidget {
   final _HomeText text;
-  final VoidCallback? onSettingPressed;
+  final VoidCallback? onNotificationsPressed;
+  final int unreadCount;
 
   // 함수이름: _HomeHeader
-  // 함수역할: 홈 제목과 앱 버전·설정 관련 상단 콘텐츠에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 홈 제목과 알림함 상단 콘텐츠를 초기화한다.
   // 매개변수:
   // - text (_HomeText): 해당 화면 구역의 언어별 표시 문구.
-  // - onSettingPressed (VoidCallback?): 사용자 환경설정 화면을 여는 콜백.
+  // - onNotificationsPressed (VoidCallback?): 알림함을 여는 콜백.
+  // - unreadCount (int): 아직 확인하지 않은 알림 개수.
   // 반환값: 입력 설정이 반영된 _HomeHeader 인스턴스.
-  const _HomeHeader({required this.text, required this.onSettingPressed});
+  const _HomeHeader({
+    required this.text,
+    required this.onNotificationsPressed,
+    required this.unreadCount,
+  });
 
   // Function Name: build
   // Description: Renders the home heading and supporting top-bar content from the current configuration and state.
@@ -533,7 +540,7 @@ class _HomeHeader extends StatelessWidget {
                         fontSize: 26,
                         height: 1.1,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
+                        letterSpacing: 0,
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -554,22 +561,24 @@ class _HomeHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              Material(
-                color: MedBuddyColors.mint,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  key: const ValueKey('homeSettingsButton'),
-                  customBorder: const CircleBorder(),
-                  onTap: onSettingPressed,
-                  child: const SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: Icon(
-                      Icons.settings_outlined,
-                      color: MedBuddyColors.primaryDark,
-                      size: 22,
-                    ),
+              Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  textScaler: TextScaler.noScaling,
+                ),
+                child: IconButton.filledTonal(
+                  key: const ValueKey('homeNotificationsButton'),
+                  tooltip: text.isEnglish
+                      ? 'Notifications, $unreadCount unread'
+                      : '알림, 안 읽은 알림 $unreadCount개',
+                  onPressed: onNotificationsPressed,
+                  style: IconButton.styleFrom(
+                    backgroundColor: MedBuddyColors.mint,
+                    foregroundColor: MedBuddyColors.primaryDark,
+                    minimumSize: const Size.square(48),
                   ),
+                  icon: const Icon(Icons.notifications_none_outlined, size: 24),
                 ),
               ),
             ],
@@ -916,6 +925,14 @@ class _HomeText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get brandSubtitle =>
       isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
+  // 함수이름: userSettings
+  // 함수역할: 환경설정 카드 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
+  String get userSettings => isEnglish ? 'Settings' : '환경설정';
+  // 함수이름: userSettingsSubtitle
+  // 함수역할: 환경설정 범위를 표시한다. 매개변수: 없음. 반환값: 설명.
+  String get userSettingsSubtitle => isEnglish
+      ? 'Adjust text, language and notifications'
+      : '글씨 크기·언어·알림을 설정해요';
   // 함수이름: prescriptionAnalysis
   // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.

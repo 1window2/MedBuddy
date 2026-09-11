@@ -307,6 +307,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // - 없음.
   void _synchronizeCaregiverNotificationMonitor() {
     final userHash = _authenticationControl.session?.userHash.trim();
+    NotificationService.instance.setHistoryUser(userHash);
     if (userHash == _monitoredUserHash) {
       return;
     }

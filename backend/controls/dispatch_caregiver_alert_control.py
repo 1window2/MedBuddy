@@ -142,6 +142,8 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                 body=body,
                 data={
                     "type": "caregiver_slot_completed",
+                    "recipient_hash": caregiver_hash,
+                    "language": "en" if is_english else "ko",
                     "patient_hash": patient_hash,
                     "slot_key": slot_key,
                 },
@@ -254,6 +256,8 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             body=body,
             data={
                 "type": "caregiver_slot_missed",
+                "recipient_hash": caregiver_hash,
+                "language": "en" if is_english else "ko",
                 "patient_hash": patient_hash,
                 "slot_key": slot_key,
             },

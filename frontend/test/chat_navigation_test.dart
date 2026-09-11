@@ -288,7 +288,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('homeMedicationReminderCard')),
+        find.byKey(const ValueKey('homeUserSettingsCard')),
         findsOneWidget,
       );
       links.result = [_link(1), _link(2)];
@@ -460,9 +460,9 @@ void main() {
   for (final scale in [1.0, 1.3, 2.0]) {
     for (final language in ['ko', 'en']) {
       // 함수이름: 알림·약국 2×2 배치 테스트
-      // 함수역할: 알림은 두 번째, 약국은 네 번째 칸에 배치되고 각각의 진입 동작을 유지하는지 확인한다.
+      // 함수역할: 건강 추천은 두 번째, 약국은 세 번째, 설정은 네 번째 칸에서 각각의 진입 동작을 유지한다.
       // 매개변수: tester: 위젯 도구. 반환값: 검증 완료.
-      testWidgets('reminders and pharmacy coexist in 2x2 $scale $language', (
+      testWidgets('settings and pharmacy coexist in 2x2 $scale $language', (
         tester,
       ) async {
         _viewport(tester, 390);
@@ -484,13 +484,13 @@ void main() {
                 // 함수역할: 선택한 알약 촬영 방식을 받고 실제 탐색은 생략한다.
                 // 매개변수: mode. 반환값: 없음.
                 onPillIdentificationRequested: (mode) {},
-                onUserSettingRequested: _noop,
+                onUserSettingRequested: () {
+                  reminderOpens++;
+                },
                 onHealthRecommendationRequested: _noop,
                 // 함수이름: 알림 설정 진입 콜백
                 // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
-                onMedicationReminderRequested: () {
-                  reminderOpens++;
-                },
+                onMedicationReminderRequested: _noop,
                 // 함수이름: 약국 진입 콜백
                 // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
                 onNearbyPharmacyRequested: () {
@@ -506,19 +506,21 @@ void main() {
           const ValueKey('homeHealthRecommendationCard'),
         );
         final scan = find.byKey(const ValueKey('homePrescriptionAnalysisCard'));
-        final reminder = find.byKey(
-          const ValueKey('homeMedicationReminderCard'),
-        );
+        final reminder = find.byKey(const ValueKey('homeUserSettingsCard'));
         expect(pharmacy, findsOneWidget);
         expect(reminder, findsOneWidget);
         expect(
           find.byKey(const ValueKey('homePillIdentificationCard')),
           findsNothing,
         );
-        expect(tester.getTopLeft(scan).dy, tester.getTopLeft(reminder).dy);
-        expect(tester.getTopLeft(health).dy, tester.getTopLeft(pharmacy).dy);
-        expect(tester.getTopLeft(pharmacy).dx, tester.getTopLeft(reminder).dx);
-        expect(tester.getSize(pharmacy).height, tester.getSize(health).height);
+        expect(tester.getTopLeft(scan).dy, tester.getTopLeft(health).dy);
+        expect(tester.getTopLeft(reminder).dy, tester.getTopLeft(pharmacy).dy);
+        expect(tester.getTopLeft(pharmacy).dx, tester.getTopLeft(scan).dx);
+        expect(tester.getTopLeft(reminder).dx, tester.getTopLeft(health).dx);
+        expect(
+          tester.getSize(pharmacy).height,
+          tester.getSize(reminder).height,
+        );
         await tester.ensureVisible(reminder);
         await tester.tap(reminder);
         expect(reminderOpens, 1);

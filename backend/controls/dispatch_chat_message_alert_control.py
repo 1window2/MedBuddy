@@ -111,6 +111,10 @@ class DispatchChatMessageAlert:
             body=notification_body,
             data={
                 "type": "linked_chat_message",
+                "recipient_hash": recipient_hash,
+                "language": language,
+                **({"event_id": f"chat:{link_id}:{message_id}"}
+                   if message_id is not None else {}),
                 "link_id": str(link_id),
                 "message_preview": message_preview if show_details else "",
                 "message_kind": message_kind,

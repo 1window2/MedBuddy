@@ -128,6 +128,7 @@ class CaregiverNotificationMonitorFactory {
               userSetting.showNotificationDetails,
             );
             return NotificationService.instance.showCaregiverAlert(
+              historyUserHash: caregiverHash,
               id: id,
               title: title,
               body: body,

@@ -8,7 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_reminder_settings_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/notification_inbox_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
@@ -19,6 +19,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Class Name: _CountingCheckSchedule
 // Role: Schedule stub that counts destination-triggered refreshes.
@@ -226,10 +227,11 @@ void main() {
     expect(pillTaskRequested, isTrue);
   });
 
-  // 함수이름: 홈 복약 알림 설정 진입 테스트
-  // 함수역할: 복원한 카드가 알림 설정 화면을 열고 돌아온 뒤에도 약국과 함께 유지되는지 확인한다.
+  // 함수이름: 홈 알림함 진입 테스트
+  // 함수역할: 상단 종 버튼이 알림함을 열고 돌아온 뒤에도 홈 메뉴가 유지되는지 확인한다.
   // 매개변수: tester: 위젯 테스트 도구. 반환값: 실제 화면 이동 검증 완료.
-  testWidgets('home reminder card opens reminder settings', (tester) async {
+  testWidgets('home bell opens notification inbox', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     _setViewport(tester, const Size(390, 844));
     final viewModel = MedBuddyViewModel();
     addTearDown(viewModel.dispose);
@@ -239,14 +241,12 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
-    final reminder = find.byKey(const ValueKey('homeMedicationReminderCard'));
+    final reminder = find.byKey(const ValueKey('homeNotificationsButton'));
     await tester.ensureVisible(reminder);
     await tester.tap(reminder);
     await tester.pumpAndSettle();
-    expect(find.byType(MedicationReminderSettingsUI), findsOneWidget);
-    final settingsContext = tester.element(
-      find.byType(MedicationReminderSettingsUI),
-    );
+    expect(find.byType(NotificationInboxUI), findsOneWidget);
+    final settingsContext = tester.element(find.byType(NotificationInboxUI));
     Navigator.of(settingsContext).pop();
     await tester.pumpAndSettle();
     expect(reminder, findsOneWidget);
@@ -321,11 +321,14 @@ void main() {
     expect(find.text('낱알약 식별'), findsNothing);
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('근처 운영 약국'), findsOneWidget);
-    expect(find.text('복약 알림 설정'), findsOneWidget);
+    expect(find.text('환경설정'), findsOneWidget);
     expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsNothing);
     expect(find.text('복약 팁'), findsNothing);
     expect(find.text('환자/보호자 연동'), findsNothing);
-    expect(find.byKey(const ValueKey('homeSettingsButton')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('homeNotificationsButton')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 20));
@@ -586,7 +589,7 @@ void main() {
       tester.getSize(healthCard).height,
     );
     expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -673,10 +676,7 @@ void main() {
       find.byKey(const ValueKey('homeNearbyPharmacyCard')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('homeMedicationReminderCard')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('homeUserSettingsCard')), findsOneWidget);
 
     // 함수이름: onNearbyPharmacyRequested 콜백
     // 함수역할:
@@ -776,7 +776,7 @@ void main() {
       find.text('Use a prescription, pill photo, or manual entry'),
       findsOneWidget,
     );
-    expect(find.text('Medication Reminders'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Nearby Pharmacy'), findsOneWidget);
   });
 
@@ -811,13 +811,13 @@ void main() {
     await tester.pumpAndSettle();
 
     final prescriptionTitle = tester.widget<Text>(find.text('약 등록·식별'));
-    final reminderTitle = tester.widget<Text>(find.text('복약 알림 설정'));
+    final reminderTitle = tester.widget<Text>(find.text('환경설정'));
     expect(prescriptionTitle.textScaler, isNull);
     expect(reminderTitle.textScaler, isNull);
     expect(find.text('건강 관리 추천'), findsOneWidget);
-    expect(find.text('복약 알림 설정'), findsOneWidget);
+    expect(find.text('환경설정'), findsOneWidget);
     expect(find.text('처방전·알약 사진 또는 직접 입력으로 등록해요'), findsOneWidget);
-    expect(find.text('복약 알림 시간을 내 생활에 맞게 조정해요'), findsOneWidget);
+    expect(find.text('글씨 크기·언어·알림을 설정해요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -858,7 +858,7 @@ void main() {
             await tester.pumpAndSettle();
             const keys = [
               'homePrescriptionAnalysisCard',
-              'homeMedicationReminderCard',
+              'homeUserSettingsCard',
               'homeHealthRecommendationCard',
               'homeNearbyPharmacyCard',
             ];
@@ -906,7 +906,7 @@ void main() {
                 find.byKey(const ValueKey('homePrescriptionAnalysisCard')),
               );
               final second = tester.getRect(
-                find.byKey(const ValueKey('homeMedicationReminderCard')),
+                find.byKey(const ValueKey('homeHealthRecommendationCard')),
               );
               expect(first.top, second.top);
               expect(first.height, second.height);

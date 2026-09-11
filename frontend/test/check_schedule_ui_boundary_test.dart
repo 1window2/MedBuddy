@@ -365,6 +365,11 @@ class _MutableSetNotification extends SetNotification {
 // - Grant notification permission in the fake without invoking an OS permission prompt.
 // - Accept reminder registration without creating a real device notification.
 class _SuccessfulNotificationService implements NotificationService {
+  // 함수이름: setHistoryUser
+  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
+  @override
+  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
+
   // 함수이름: setShowSensitiveDetails
   // 함수역할:
   // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
@@ -409,6 +414,8 @@ class _SuccessfulNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showLinkedChatAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required int linkId,
     String language = 'ko',
@@ -533,6 +540,8 @@ class _SuccessfulNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required String title,
     required String body,
@@ -549,6 +558,11 @@ class _SuccessfulNotificationService implements NotificationService {
 // - Reject local reminder registration so schedule loading can be checked independently of platform
 //   failure.
 class _FailingNotificationService implements NotificationService {
+  // 함수이름: setHistoryUser
+  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
+  @override
+  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
+
   // 함수이름: setShowSensitiveDetails
   // 함수역할:
   // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
@@ -593,6 +607,8 @@ class _FailingNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showLinkedChatAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required int linkId,
     String language = 'ko',
@@ -720,6 +736,8 @@ class _FailingNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    String? historyUserHash,
+    bool recordHistory = true,
     required int id,
     required String title,
     required String body,

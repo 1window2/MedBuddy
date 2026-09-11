@@ -186,6 +186,8 @@ class MissedDoseAlertTest(unittest.TestCase):
             push.calls[0]["data"],
             {
                 "type": "caregiver_slot_missed",
+                "recipient_hash": "caregiver-a",
+                "language": "ko",
                 "patient_hash": "patient-a",
                 "slot_key": "lunch",
             },

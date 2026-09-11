@@ -261,6 +261,8 @@ class PushNotificationControlTest(unittest.TestCase):
             push_boundary.calls[0]["data"],
             {
                 "type": "caregiver_slot_completed",
+                "recipient_hash": "caregiver-a",
+                "language": "ko",
                 "patient_hash": "patient-a",
                 "slot_key": "morning",
             },

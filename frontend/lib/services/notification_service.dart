@@ -1,13 +1,19 @@
 // 파일명: notification_service.dart
 // 역할: 복약, 보호자와 채팅 로컬 알림의 초기화, 예약, 표시와 취소를 담당한다.
 
+import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/medication_alarm_entity.dart';
+import '../entities/notification_inbox_entity.dart';
+import 'notification_inbox_store.dart';
 
 // 클래스명: MedicationNotificationDestination
 // 역할: 복약 일정·보호자 환자 일정·가족 채팅 알림의 이동 대상을 구분한다.
@@ -88,8 +94,6 @@ class MedicationNotificationSelection {
 typedef MedicationNotificationSelectionHandler =
     void Function(MedicationNotificationSelection selection);
 
-
-
 // Class Name: NotificationService
 // Role: Wraps local notifications for medication, caregiver, and linked-chat workflows.
 // Responsibilities:
@@ -119,6 +123,72 @@ class NotificationService {
   bool _isInitialized = false;
   Future<void>? _initializationFuture;
   bool _showSensitiveDetails = true;
+  String? _historyUserHash;
+  Future<void> _scopeWrite = Future<void>.value();
+
+  // 함수이름: setHistoryUser
+  // 함수역할: 알림 기록의 계정 범위를 교체한다. 매개변수: userHash, 전경 세션 저장 여부. 반환값: 없음.
+  void setHistoryUser(String? userHash, {bool persistSession = true}) {
+    _historyUserHash = userHash?.trim();
+    if (!persistSession) return;
+    _scopeWrite = _scopeWrite
+        .catchError((Object _) {})
+        .then((_) async {
+          final preferences = await SharedPreferences.getInstance();
+          final current = _historyUserHash;
+          if (current == null || current.isEmpty) {
+            await preferences.remove(NotificationInboxStore.activeUserKey);
+          } else {
+            await preferences.setString(
+              NotificationInboxStore.activeUserKey,
+              current,
+            );
+          }
+        })
+        .catchError((Object error, StackTrace stack) {
+          developer.log(
+            '알림함 세션을 저장하지 못했습니다.',
+            name: 'NotificationService',
+            error: error,
+            stackTrace: stack,
+          );
+        });
+  }
+
+  // 함수이름: _recordInbox
+  // 함수역할: 기록 오류가 실제 알림 표시를 막지 않게 한다. 매개변수: owner, entry. 반환값: 기록 시도 완료.
+  Future<void> _recordInbox(String? owner, NotificationInboxEntry entry) async {
+    if (owner == null || owner.isEmpty) return;
+    try {
+      await NotificationInboxStore(userHash: owner).record(entry);
+    } catch (error, stack) {
+      developer.log(
+        '알림 내역 저장 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  // 함수이름: _cancelInboxReminders
+  // 함수역할: 알림함의 미래 예약만 취소한다. 매개변수: 선택적 slotKey, id. 반환값: 완료.
+  Future<void> _cancelInboxReminders({String? slotKey, int? id}) async {
+    final owner = _historyUserHash;
+    if (owner == null || owner.isEmpty) return;
+    try {
+      await NotificationInboxStore(
+        userHash: owner,
+      ).cancelFutureReminders(slotKey: slotKey, id: id);
+    } catch (error, stack) {
+      developer.log(
+        '알림 내역 예약 취소 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
 
   // 함수이름: setShowSensitiveDetails
   // 함수역할: 이후 표시·예약하는 복약·보호자·채팅 알림에 적용할 민감정보 본문 노출 여부를 바꾼다.
@@ -210,8 +280,7 @@ class NotificationService {
         notificationId: notificationId ?? notificationID,
         scheduleDate: scheduleDate,
         action: switch (actionId) {
-          markSlotTakenActionId =>
-            MedicationNotificationAction.markSlotTaken,
+          markSlotTakenActionId => MedicationNotificationAction.markSlotTaken,
           snoozeTenMinutesActionId =>
             MedicationNotificationAction.snoozeTenMinutes,
           _ => MedicationNotificationAction.open,
@@ -413,7 +482,9 @@ class NotificationService {
     Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
+    final owner = _historyUserHash;
     await initialize();
+    if (owner != _historyUserHash) return;
     await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
     final now = timezone.TZDateTime.now(timezone.local);
     final uniqueDates = <String, DateTime>{};
@@ -443,6 +514,7 @@ class NotificationService {
       final notificationId = _notificationIdForDate(id, slotKey, activeDate);
       try {
         await _scheduleWithMode(
+          owner: owner,
           id: notificationId,
           slotKey: slotKey,
           slotTitle: slotTitle,
@@ -453,6 +525,7 @@ class NotificationService {
         );
       } on PlatformException {
         await _scheduleWithMode(
+          owner: owner,
           id: notificationId,
           slotKey: slotKey,
           slotTitle: slotTitle,
@@ -476,6 +549,7 @@ class NotificationService {
     String slotKey, {
     int? legacyId,
   }) async {
+    await _cancelInboxReminders(slotKey: slotKey);
     if (legacyId != null) {
       await _plugin.cancel(id: legacyId);
     }
@@ -556,6 +630,7 @@ class NotificationService {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _scheduleWithMode({
+    required String? owner,
     required int id,
     required String slotKey,
     required String slotTitle,
@@ -565,6 +640,8 @@ class NotificationService {
     required AndroidScheduleMode scheduleMode,
     DateTime? scheduleDate,
   }) async {
+    // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
+    if (owner != _historyUserHash) return;
     final title = _isEnglish(language)
         ? '$slotTitle medication schedule'
         : '$slotTitle 복약 일정 확인';
@@ -599,7 +676,20 @@ class NotificationService {
         iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
-      payload: 'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+      payload:
+          'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+    );
+    await _recordInbox(
+      owner,
+      NotificationInboxEntry(
+        id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
+        title: title,
+        body: body,
+        payload:
+            'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+        category: NotificationInboxCategory.medication,
+        occurredAt: scheduledDate,
+      ),
     );
   }
 
@@ -622,6 +712,7 @@ class NotificationService {
     Duration delay = const Duration(minutes: 10),
     DateTime? scheduleDate,
   }) async {
+    final owner = _historyUserHash;
     await initialize();
     final now = timezone.TZDateTime.now(timezone.local);
     final scheduledDate = now.add(delay);
@@ -629,6 +720,7 @@ class NotificationService {
     final body = _buildReminderBody(language);
     try {
       await _scheduleWithMode(
+        owner: owner,
         id: id,
         slotKey: slotKey,
         slotTitle: slotTitle,
@@ -640,6 +732,7 @@ class NotificationService {
       );
     } on PlatformException {
       await _scheduleWithMode(
+        owner: owner,
         id: id,
         slotKey: slotKey,
         slotTitle: slotTitle,
@@ -660,6 +753,7 @@ class NotificationService {
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> cancelReminder(int id, {String? slotKey}) async {
+    await _cancelInboxReminders(slotKey: slotKey, id: id);
     await initialize();
     if (slotKey != null && slotKey.trim().isNotEmpty) {
       await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
@@ -675,6 +769,7 @@ class NotificationService {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> cancelAllMedicationReminders() async {
+    await _cancelInboxReminders();
     await initialize();
     final pendingRequests = await _plugin.pendingNotificationRequests();
     for (final request in pendingRequests) {
@@ -707,6 +802,7 @@ class NotificationService {
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> cancelAllScheduledMedicationReminders() async {
+    await _cancelInboxReminders();
     await initialize();
     final pendingRequests = await _plugin.pendingNotificationRequests();
     for (final request in pendingRequests) {
@@ -719,8 +815,7 @@ class NotificationService {
     final activeNotifications = await _plugin.getActiveNotifications();
     for (final notification in activeNotifications) {
       final id = notification.id;
-      if (id != null &&
-          (notification.payload ?? '').startsWith('schedule:')) {
+      if (id != null && (notification.payload ?? '').startsWith('schedule:')) {
         await _plugin.cancel(id: id, tag: notification.tag);
       }
     }
@@ -747,7 +842,10 @@ class NotificationService {
     required String body,
     String? patientHash,
     String language = 'ko',
+    String? historyUserHash,
+    bool recordHistory = true,
   }) async {
+    final owner = historyUserHash ?? _historyUserHash;
     await initialize();
     final isEnglish = _isEnglish(language);
     final visibleBody = _showSensitiveDetails
@@ -775,6 +873,21 @@ class NotificationService {
           ? null
           : 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
     );
+    if (recordHistory && patientHash != null && patientHash.trim().isNotEmpty) {
+      await _recordInbox(
+        owner,
+        NotificationInboxEntry(
+          id: 'caregiver:$id',
+          title: isEnglish ? 'Medication update' : '복약 상태 알림',
+          body: isEnglish
+              ? 'Check your linked patient\'s medication status.'
+              : '연동된 환자의 복약 상태를 확인해 주세요.',
+          payload: 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+          category: NotificationInboxCategory.medication,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
   }
 
   // 함수이름: showLinkedChatAlert
@@ -783,9 +896,11 @@ class NotificationService {
   // - id (int): 플랫폼 알림의 예약·교체·취소 식별자
   // - linkId (int): 조회·전송·감시 대상 연동 ID
   // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // - messagePreview (String?): 시스템 알림에 표시할 선택적 메시지 미리보기
+  // - messagePreview (String?): 시스템 알림과 알림함에 표시할 선택적 메시지 미리보기
   // - messageKind (String?): 일반·복약·약국 맥락 메시지 유형
   // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
+  // - historyUserHash (String?): 기록할 수신 계정. 생략하면 현재 세션을 사용한다.
+  // - recordHistory (bool): 푸시 처리기에서 이미 저장한 알림의 중복 기록을 막는 선택값.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> showLinkedChatAlert({
@@ -795,19 +910,21 @@ class NotificationService {
     String? messagePreview,
     String? messageKind,
     String? slotKey,
+    String? historyUserHash,
+    bool recordHistory = true,
   }) async {
+    final owner = historyUserHash ?? _historyUserHash;
+    final body = buildLinkedChatNotificationBody(
+      messagePreview: messagePreview,
+      showSensitiveDetails: _showSensitiveDetails,
+      language: language,
+    );
     await initialize();
     final isEnglish = _isEnglish(language);
-    final normalizedPreview = _linkedChatMessagePreview(messagePreview);
-    final fallbackBody = isEnglish
-        ? 'You received a new message from a linked family member.'
-        : '연동된 가족에게 새 메시지가 도착했습니다.';
     await _plugin.show(
       id: id,
       title: isEnglish ? 'New family message' : '새 가족 메시지',
-      body: _showSensitiveDetails && normalizedPreview.isNotEmpty
-          ? normalizedPreview
-          : fallbackBody,
+      body: body,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_linked_chat',
@@ -826,6 +943,35 @@ class NotificationService {
           ? 'schedule:${slotKey!.trim()}:$id'
           : 'chat:$linkId',
     );
+    if (recordHistory) {
+      await _recordInbox(
+        owner,
+        NotificationInboxEntry(
+          id: 'chat:$linkId:$id',
+          title: isEnglish ? 'New family message' : '새 가족 메시지',
+          body: body,
+          payload: 'chat:$linkId',
+          category: NotificationInboxCategory.chat,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+
+  // 함수이름: buildLinkedChatNotificationBody
+  // 함수역할: 로컬·푸시 알림함이 같은 미리보기 길이와 내용 숨김 규칙을 사용하게 한다.
+  // 매개변수: messagePreview: 수신 내용, showSensitiveDetails: 내용 표시 허용 여부, language: 언어.
+  // 반환값: 최대 120자의 미리보기 또는 내용 없는 알림의 대체 문구.
+  static String buildLinkedChatNotificationBody({
+    String? messagePreview,
+    bool showSensitiveDetails = true,
+    String language = 'ko',
+  }) {
+    final preview = _linkedChatMessagePreview(messagePreview);
+    if (showSensitiveDetails && preview.isNotEmpty) return preview;
+    return language.trim().toLowerCase().startsWith('en')
+        ? 'You received a new message from a linked family member.'
+        : '연동된 가족에게 새 메시지가 도착했습니다.';
   }
 
   // 함수이름: _isSupportedScheduleSlot
@@ -854,13 +1000,16 @@ class NotificationService {
     final normalized = (value ?? '')
         .trim()
         .split(RegExp(r'\s+'))
-        .where(/* 함수이름: where 콜백
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 알림 본문 조각 중 비어 있지 않은 부분만 결합 대상으로 남긴다.
          * 매개변수:
          * - part (String): 알림 본문에 결합할 문구 조각
          * 반환값:
          * - 본문 조각이 비어 있지 않으면 true.
-         */(part) => part.isNotEmpty)
+         */
+          (part) => part.isNotEmpty,
+        )
         .join(' ');
     if (normalized.length <= maximumLength) {
       return normalized;

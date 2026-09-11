@@ -198,6 +198,7 @@ class MedicationReminderRefreshService {
     );
     final resolvedNotificationService =
         notificationService ?? NotificationService.instance;
+    resolvedNotificationService.setHistoryUser(normalizedPatientHash, persistSession: false);
     return MedicationReminderRefreshService(
       loadSettings: alarmControl.requestMedicationAlarm,
       loadSchedules: scheduleControl.requestMedicationScheduleWindow,

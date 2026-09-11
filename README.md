@@ -8,6 +8,13 @@
 
 ## Key Features
 
+### Home and Notification Inbox
+
+- Keep a 2x2 home menu: medication registration and identification, health recommendations, nearby operating pharmacies, and settings. Reminder settings remain available from Schedule and Settings.
+- Open one latest-first notification list from the header bell, with an unread badge, received chat previews, read actions, and notification-only deletion.
+- History is stored per account on the current device, not in a server mailbox. Chat previews respect content-visibility settings; reminder entries reflect scheduled events rather than proof of delivery or medication intake.
+- See [the notification inbox design note](docs/MedBuddy%20-%20Notification%20Inbox.md) for storage and lifecycle boundaries.
+
 ### Prescription and Pill-Envelope Analysis
 
 - Capture or select prescription and pill-envelope images, with a guided prescription camera that supports portrait and landscape framing only while the camera is active.
@@ -33,7 +40,7 @@
 
 ### Nearby Operating Pharmacies
 
-- Keep four home shortcuts: pharmacy search replaces the reminder shortcut instead of adding a fifth card. Reminder settings remain available from Schedule and Settings.
+- Open pharmacy search directly from the four-shortcut home menu.
 
 - Pharmacy search is a standard v0.2.0 feature, available without enabling a laboratory switch. Existing laboratory choices do not restrict access.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
