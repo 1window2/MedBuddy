@@ -789,7 +789,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildMapFirstBody() {
     final pharmacies = _visiblePharmacies;
-    if (_isLoading || _locationFailure != null ||
+    if (_locationFailure != null ||
         _errorMessage != null || pharmacies.isEmpty) {
       return _buildBody();
     }
@@ -801,9 +801,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
             children: [
               Positioned.fill(
                 child: ExcludeSemantics(
-                  excluding: _listExpanded,
+                  excluding: _listExpanded || _isLoading,
                   child: IgnorePointer(
-                    ignoring: _listExpanded,
+                    ignoring: _listExpanded || _isLoading,
                     child: _buildPharmacyMap(pharmacies),
                   ),
                 ),
@@ -819,6 +819,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                     child: _buildBody(),
                   ),
                 ),
+              if (_isLoading)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: MedBuddyColors.pageBackground,
+                    child: _PharmacyLoadingState(message: _text.findingNearby),
+                  ),
+                ),
             ],
           ),
         ),
@@ -832,7 +839,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              onPressed: () => setState(() => _listExpanded = !_listExpanded),
+              onPressed: _isLoading ? null : () => setState(() => _listExpanded = !_listExpanded),
               icon: Icon(_listExpanded ? Icons.map_outlined : Icons.list_alt),
               label: Text(_listExpanded
                   ? (english ? 'Show map' : '지도 크게 보기')

@@ -381,10 +381,20 @@ void main() {
 
     expect(requestCount, 2);
     expect(requestedModes, ['open_at_time', 'all']);
+    expect(find.byKey(const ValueKey('test-map-marker-closed')), findsOneWidget);
+    expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(mapElement));
     await tester.drag(find.byType(ListView).last, const Offset(0, -420));
     await tester.pumpAndSettle();
     expect(find.text('영업종료 메드버디약국'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-openNow')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('test-map-marker-open')), findsOneWidget);
+    expect(find.byKey(const ValueKey('test-map-marker-closed')), findsNothing);
+    expect(find.byKey(const ValueKey('pharmacy-card-closed')), findsNothing);
   });
 
   // 함수이름: testWidgets 콜백

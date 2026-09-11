@@ -261,7 +261,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     if (_locating || controller == null) return;
     setState(() => _locating = true);
     try {
-      final coordinate = await GeolocatorDeviceLocationService()
+      final coordinate = await GeolocatorDeviceLocationService(reuseRecentFix: false)
           .requestCurrentCoordinate();
       if (!mounted || !identical(controller, _mapController)) return;
       await controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
