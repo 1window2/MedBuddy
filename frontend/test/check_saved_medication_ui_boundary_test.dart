@@ -54,6 +54,106 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: 조회 조건 전환 테스트
+  // 함수역할: 기본 복용 중 상태와 종료·전체 선택에 따른 실제 목록을 확인한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('조회 조건은 복용 중으로 시작하고 종료와 전체를 선택한다', (tester) async {
+    await _pumpFilterApp(tester);
+    expect(find.text('조회 조건: 복용 중'), findsOneWidget);
+    expect(find.text('복용 종료'), findsNothing);
+    expect(find.text('진행약'), findsOneWidget);
+    expect(find.text('종료약'), findsNothing);
+    expect(find.text('예정약'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('saved-medication-filter-option-active')),
+        matching: find.byIcon(Icons.radio_button_checked),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const Key('saved-medication-filter-option-ended')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 복용 종료'), findsOneWidget);
+    expect(find.text('진행약'), findsNothing);
+    expect(find.text('종료약'), findsOneWidget);
+    await _chooseSavedFilter(tester, 'all');
+    expect(find.text('조회 조건: 전체'), findsOneWidget);
+    expect(find.text('진행약'), findsOneWidget);
+    expect(find.text('종료약'), findsOneWidget);
+    expect(find.text('예정약'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 선택 삭제 유지 테스트
+  // 함수역할: 취소·동일 조건은 선택 약을 유지하고 조건을 바꿀 때만 선택을 비우는지 확인한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('조회 조건 취소는 선택 삭제 대상을 유지하고 변경은 초기화한다', (tester) async {
+    await _pumpFilterApp(tester);
+    await tester.tap(find.text('선택'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택됨'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saved-medication-filter-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택됨'), findsOneWidget);
+    await _chooseSavedFilter(tester, 'active');
+    expect(find.text('1개 선택됨'), findsOneWidget);
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('0개 선택됨'), findsOneWidget);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox).first).value, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 빈 필터 결과 테스트
+  // 함수역할: 복용 중인 약이 없어도 조회 조건을 바꾸어 종료된 약을 볼 수 있는지 확인한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('복용 중 결과가 비어도 조회 조건에서 종료 약으로 전환한다', (tester) async {
+    await _pumpFilterApp(tester, onlyEnded: true);
+    expect(find.text('현재 복용 중인 약이 없습니다.'), findsOneWidget);
+    expect(find.text('조회 조건: 복용 중'), findsOneWidget);
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('종료약'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 조회 조건 접근성 테스트
+    // 함수역할: 작은 화면과 두 배 글씨에서도 조건 버튼·선택 창이 넘치지 않는지 확인한다.
+    // 매개변수: tester. 반환값: 검증 완료.
+    testWidgets('조회 조건은 작은 화면과 큰 글씨에서 표시된다: $language', (tester) async {
+      await _pumpFilterApp(
+        tester,
+        language: language,
+        textScale: 2,
+        small: true,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(
+        find.byKey(const Key('saved-medication-filter-selector')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final all = find.byKey(const Key('saved-medication-filter-option-all'));
+      await tester.ensureVisible(all);
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(language == 'ko' ? '조회 조건: 전체' : 'Search filter: All'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다.
@@ -398,7 +498,9 @@ void main() {
       final sortModeCenter = tester.getCenter(
         find.byKey(const ValueKey('savedMedicationSortModeButton')),
       );
-      final filterCenter = tester.getCenter(find.text('복용 중'));
+      final filterCenter = tester.getCenter(
+        find.byKey(const Key('saved-medication-filter-selector')),
+      );
       final sortDirectionCenter = tester.getCenter(
         find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
       );
@@ -488,6 +590,98 @@ void main() {
     expect(find.text('Saved Medication'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+// 함수이름: _chooseSavedFilter
+// 함수역할: 조회 조건 시트에서 지정한 상태를 선택한다. 매개변수: tester, mode. 반환값: 화면 갱신 완료.
+Future<void> _chooseSavedFilter(WidgetTester tester, String mode) async {
+  await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key('saved-medication-filter-option-$mode')));
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _pumpFilterApp
+// 함수역할: 오늘 기준의 복용 중·종료·예정 약과 접근성 설정으로 필터 화면을 준비한다.
+// 매개변수: tester, onlyEnded, language, textScale, small. 반환값: 화면 로딩 완료.
+Future<void> _pumpFilterApp(
+  WidgetTester tester, {
+  bool onlyEnded = false,
+  String language = 'ko',
+  double textScale = 1,
+  bool small = false,
+}) async {
+  tester.view.physicalSize = small
+      ? const Size(320, 640)
+      : const Size(480, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  SharedPreferences.setMockInitialValues({});
+  // 함수역할: 위치나 실제 저장 정보에 접근하지 않고 복용 기간별 목록을 반환한다.
+  final client = MockClient((request) async {
+    final today = DateTime.now();
+    return http.Response(
+      jsonEncode({
+        'success': true,
+        'data': [
+          if (!onlyEnded)
+            {
+              ..._savedMedicationJson(request, 1, '진행약'),
+              'prescription_date': today.toIso8601String(),
+              'total_days': '14',
+            },
+          {
+            ..._savedMedicationJson(request, 2, '종료약'),
+            'prescription_date': today
+                .subtract(const Duration(days: 30))
+                .toIso8601String(),
+            'total_days': '7',
+          },
+          if (!onlyEnded)
+            {
+              ..._savedMedicationJson(request, 3, '예정약'),
+              'prescription_date': today
+                  .add(const Duration(days: 5))
+                  .toIso8601String(),
+              'total_days': '7',
+            },
+        ],
+      }),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  });
+  final viewModel = MedBuddyViewModel(
+    checkSavedMedication: CheckSavedMedication(
+      baseUrl: 'http://medbuddy.test',
+      client: client,
+    ),
+    manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+    apiClient: client,
+  );
+  addTearDown(viewModel.dispose);
+  await viewModel.requestUserSettingSave(
+    fontSizeOption: 'large',
+    readingSpeedOption: 'medium',
+    language: language,
+  );
+  await tester.pumpWidget(
+    ChangeNotifierProvider.value(
+      value: viewModel,
+      child: MaterialApp(
+        // 함수역할: 시트에도 같은 접근성 글씨 배율을 적용한다.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const CheckSavedMedicationUI(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 // 함수이름: _emptySavedMedicationResponse

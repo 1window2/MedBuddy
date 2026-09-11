@@ -200,6 +200,11 @@ Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock}) {
 // 반환값:
 // - 높이 80의 지도 대체 위젯.
 Widget _buildTestMap({
+  required PharmacySearchArea searchArea,
+  required int centerRevision,
+  required bool isSearching,
+  required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+  required VoidCallback onCurrentLocationRequested,
   required List<NearbyPharmacy> pharmacies,
   required String? selectedPharmacyId,
   required ValueChanged<NearbyPharmacy> onPharmacySelected,
@@ -258,33 +263,36 @@ Widget _buildTestMap({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  testWidgets('filter search advances past midnight and labels reference time', (
-    tester,
-  ) async {
-    var now = DateTime(2026, 9, 11, 20, 30);
-    final requestedTimes = <DateTime>[];
-    await tester.pumpWidget(
-      _testApp(
-        _buildControl(requestedTimes: requestedTimes),
-        clock: () => now,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(requestedTimes.single, now);
-    now = DateTime(2026, 9, 12, 0, 50);
-    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-lateHours')));
-    await tester.pumpAndSettle();
-    expect(requestedTimes.last, now);
-    expect(find.text('조회 날짜: 2026-09-12 00:50'), findsOneWidget);
-    expect(find.text('조회 시각 영업'), findsWidgets);
-    expect(find.text('영업 중'), findsNothing);
-    expect(find.textContaining('조회일 '), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'filter search advances past midnight and labels reference time',
+    (tester) async {
+      var now = DateTime(2026, 9, 11, 20, 30);
+      final requestedTimes = <DateTime>[];
+      await tester.pumpWidget(
+        _testApp(
+          _buildControl(requestedTimes: requestedTimes),
+          clock: () => now,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(requestedTimes.single, now);
+      now = DateTime(2026, 9, 12, 0, 50);
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('pharmacy-filter-option-lateHours')),
+      );
+      await tester.pumpAndSettle();
+      expect(requestedTimes.last, now);
+      expect(find.text('조회 날짜: 2026-09-12 00:50'), findsOneWidget);
+      expect(find.text('조회 시각 영업'), findsWidgets);
+      expect(find.text('영업 중'), findsNothing);
+      expect(find.textContaining('조회일 '), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -376,7 +384,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
-    final mapSize = tester.getSize(find.byKey(const Key('test-nearby-pharmacy-map')));
+    final mapSize = tester.getSize(
+      find.byKey(const Key('test-nearby-pharmacy-map')),
+    );
     expect(mapSize.height, greaterThan(224));
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
@@ -391,13 +401,18 @@ void main() {
     expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    final mapElement = tester.element(find.byKey(const Key('test-nearby-pharmacy-map')));
+    final mapElement = tester.element(
+      find.byKey(const Key('test-nearby-pharmacy-map')),
+    );
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
-    expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(mapElement));
+    expect(
+      tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))),
+      same(mapElement),
+    );
     expect(requestCount, 1);
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
@@ -414,8 +429,14 @@ void main() {
 
     expect(requestCount, 2);
     expect(requestedModes, ['open_at_time', 'all']);
-    expect(find.byKey(const ValueKey('test-map-marker-closed')), findsOneWidget);
-    expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(mapElement));
+    expect(
+      find.byKey(const ValueKey('test-map-marker-closed')),
+      findsOneWidget,
+    );
+    expect(
+      tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))),
+      same(mapElement),
+    );
     await tester.drag(find.byType(ListView).last, const Offset(0, -420));
     await tester.pumpAndSettle();
     expect(find.text('영업종료 메드버디약국'), findsOneWidget);
@@ -423,7 +444,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-openNow')));
+    await tester.tap(
+      find.byKey(const ValueKey('pharmacy-filter-option-openNow')),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('test-map-marker-open')), findsOneWidget);
     expect(find.byKey(const ValueKey('test-map-marker-closed')), findsNothing);
@@ -622,12 +645,12 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 위치 서비스가 꺼졌을 때 위치 설정으로 이동하는 명확한 명령을 표시하는지 검증한다.
+  // - 위치 서비스가 꺼져도 홍익대 기준 안내와 지도를 표시하는지 검증한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('shows a clear action when location service is disabled', (
+  testWidgets('shows Hongik fallback when location service is disabled', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -635,8 +658,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('기기 위치가 꺼져 있습니다'), findsOneWidget);
-    expect(find.text('위치 설정 열기'), findsOneWidget);
+    expect(find.text('위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.'), findsOneWidget);
+    expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
+    expect(find.text('기기 위치가 꺼져 있습니다'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

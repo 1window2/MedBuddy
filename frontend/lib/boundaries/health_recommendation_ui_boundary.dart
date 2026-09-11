@@ -2,12 +2,17 @@
 // 역할: 건강 관리 추천 요청과 식사·운동·주의사항 표시를 제공한다.
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../entities/health_recommendation_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import 'guided_prescription_camera_ui_boundary.dart';
+import 'manual_medication_entry_ui_boundary.dart';
+import 'medication_capture_options_ui_boundary.dart';
+import 'pill_identification_ui_boundary.dart';
 
 // 파일명: health_recommendation_ui_boundary.dart
 // 역할: 약 조합 기반 건강 관리 추천 화면을 구성한다.
@@ -41,6 +46,7 @@ class HealthRecommendationUI extends StatefulWidget {
 // - 요청 전·로딩·오류·성공을 구분해 추천 콘텐츠 또는 재시도를 표시한다.
 class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
   bool _hasRequestedRecommendation = false;
+  bool _openingRegistration = false;
 
   // 함수이름: initState
   // 함수역할: 첫 프레임 뒤 요청 시작 상태를 표시하고 건강 추천 조회를 실행한다.
@@ -67,6 +73,83 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
       setState(() => _hasRequestedRecommendation = true);
       context.read<MedBuddyViewModel>().fetchHealthRecommendation();
     });
+  }
+
+  // 함수이름: _openMedicationRegistration
+  // 함수역할: 홈과 같은 등록 메뉴를 열고 기존 저장·분석 흐름으로 연결한다. 입력 화면에서 돌아오면 추천을 갱신한다.
+  // 매개변수: 없음. 반환값: 등록 화면 또는 선택 취소 처리 완료.
+  Future<void> _openMedicationRegistration() async {
+    if (_openingRegistration) return;
+    setState(() => _openingRegistration = true);
+    final viewModel = context.read<MedBuddyViewModel>();
+    try {
+      final task = await showMedicationCaptureTaskOptions(
+        context: context,
+        userSetting: viewModel.userSetting,
+      );
+      if (!mounted || task == null) return;
+      if (task == MedicationCaptureTask.manual) {
+        await Navigator.push<bool>(
+          context,
+          MaterialPageRoute<bool>(
+            // 함수이름: 직접 등록 화면 builder
+            // 함수역할: 현재 계정의 약 저장 명령을 연결한다. 매개변수: context. 반환값: 직접 등록 화면.
+            builder: (context) => ManualMedicationEntryUI(
+              userSetting: viewModel.userSetting,
+              onSaveRequested: viewModel.saveManualMedication,
+            ),
+          ),
+        );
+      } else if (task == MedicationCaptureTask.multiplePills ||
+          task == MedicationCaptureTask.individualPills) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            // 함수이름: 알약 식별 화면 builder
+            // 함수역할: 선택한 촬영 방식과 기존 저장 명령을 연결한다. 매개변수: context. 반환값: 알약 식별 화면.
+            builder: (context) => PillIdentificationUI(
+              userSetting: viewModel.userSetting,
+              captureMode: task == MedicationCaptureTask.multiplePills
+                  ? PillCaptureMode.singlePhoto
+                  : PillCaptureMode.individualPhotos,
+              onSaveRequested: viewModel.saveIdentifiedPill,
+              onBatchSaveRequested: viewModel.saveIdentifiedPills,
+            ),
+          ),
+        );
+      } else {
+        final source = await showPrescriptionImageSourceOptions(
+          context: context,
+          userSetting: viewModel.userSetting,
+        );
+        if (!mounted || source == null) return;
+        XFile? image;
+        if (source == PrescriptionImageSource.camera) {
+          image = await Navigator.push<XFile>(
+            context,
+            MaterialPageRoute<XFile>(
+              // 함수이름: 처방전 촬영 화면 builder
+              // 함수역할: 기존 촬영 가이드를 재사용한다. 매개변수: context. 반환값: 처방전 카메라.
+              builder: (context) => GuidedPrescriptionCameraUI(
+                userSetting: viewModel.userSetting,
+              ),
+            ),
+          );
+          if (!mounted || image == null) return;
+        }
+        // 일정·채팅을 거쳐 진입했어도 최상위 홈이 관리하는 OCR 진행 화면을 가리지 않는다.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        if (image != null) {
+          await viewModel.requestCapturedPrescriptionImage(image);
+        } else {
+          await viewModel.requestPrescriptionImageFromGallery();
+        }
+        return;
+      }
+      if (mounted) await viewModel.fetchHealthRecommendation();
+    } finally {
+      if (mounted) setState(() => _openingRegistration = false);
+    }
   }
 
   // 함수이름: build
@@ -139,7 +222,13 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
     if (recommendation == null) {
       return _HealthRecommendationError(
         text: text,
-        message: viewModel.statusMessage,
+        message: viewModel.hasNoActiveHealthMedications
+            ? text.emptyMessage
+            : viewModel.statusMessage,
+        isEmpty: viewModel.hasNoActiveHealthMedications,
+        onRegisterRequested: _openingRegistration
+            ? null
+            : _openMedicationRegistration,
         onRetryRequested: viewModel.fetchHealthRecommendation,
       );
     }
@@ -586,6 +675,8 @@ class _HealthRecommendationError extends StatelessWidget {
   final _HealthRecommendationText text;
   final String message;
   final Future<void> Function() onRetryRequested;
+  final bool isEmpty;
+  final VoidCallback? onRegisterRequested;
 
   // 함수이름: _HealthRecommendationError
   // 함수역할: 건강 추천 실패 안내와 재시도에 필요한 입력값과 표시 설정을 초기화한다.
@@ -593,11 +684,14 @@ class _HealthRecommendationError extends StatelessWidget {
   // - text (_HealthRecommendationText): 해당 화면 구역의 언어별 표시 문구.
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
   // - onRetryRequested (Future<void> Function()): 실패하거나 오래된 화면 데이터를 다시 조회할 콜백.
+  // - isEmpty, onRegisterRequested: 복용 약 없음 여부와 등록 메뉴 열기 콜백.
   // 반환값: 입력 설정이 반영된 _HealthRecommendationError 인스턴스.
   const _HealthRecommendationError({
     required this.text,
     required this.message,
     required this.onRetryRequested,
+    required this.isEmpty,
+    required this.onRegisterRequested,
   });
 
   // 함수이름: build
@@ -607,55 +701,117 @@ class _HealthRecommendationError extends StatelessWidget {
   // 반환값: 건강 추천 실패 안내와 재시도에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 24),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: MedBuddyRadii.largeCard,
-            boxShadow: MedBuddyShadows.card,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.health_and_safety_outlined,
-                color: MedBuddyColors.primary,
-                size: 52,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: MedBuddyColors.textMuted,
-                  fontSize: 17,
-                  height: 1.45,
-                  fontWeight: FontWeight.w700,
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 24),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: MedBuddyRadii.largeCard,
+              boxShadow: MedBuddyShadows.card,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.health_and_safety_outlined,
+                  color: MedBuddyColors.primary,
+                  size: 52,
                 ),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton(
-                onPressed: onRetryRequested,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MedBuddyColors.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                const SizedBox(height: 14),
+                if (isEmpty) ...[
+                  Text(
+                    text.emptyTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                      letterSpacing: 0,
+                    ),
                   ),
-                ),
-                child: Text(
-                  text.retry,
+                  const SizedBox(height: 10),
+                ],
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
                     fontSize: 17,
-                    fontWeight: FontWeight.w800,
+                    height: 1.45,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                if (isEmpty) ...[
+                  FilledButton.icon(
+                    key: const ValueKey('healthRegisterMedication'),
+                    onPressed: onRegisterRequested,
+                    icon: const Icon(Icons.document_scanner_outlined),
+                    label: Text(
+                      text.registerMedication,
+                      textAlign: TextAlign.center,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        height: 1.35,
+                        letterSpacing: 0,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: onRegisterRequested == null
+                        ? null
+                        : onRetryRequested,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(text.retry, textAlign: TextAlign.center),
+                    style: TextButton.styleFrom(
+                      foregroundColor: MedBuddyColors.primaryDark,
+                      textStyle: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                ] else
+                  ElevatedButton(
+                    onPressed: onRetryRequested,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      text.retry,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -741,4 +897,20 @@ class _HealthRecommendationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get retry => isEnglish ? 'Try Again' : '다시 불러오기';
+
+  // 함수이름: emptyTitle
+  // 함수역할: 추천 대상 약 없음 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 제목.
+  String get emptyTitle =>
+      isEnglish ? 'No active medications yet' : '현재 복용 중인 약이 없어요';
+
+  // 함수이름: emptyMessage
+  // 함수역할: 약 등록 후 이용 가능한 추천을 안내한다. 매개변수: 없음. 반환값: 언어별 안내.
+  String get emptyMessage => isEnglish
+      ? 'Add your medications to get health recommendations based on what you take.'
+      : '약을 등록하면 복용 중인 약에 맞는 건강 관리 추천을 받을 수 있어요.';
+
+  // 함수이름: registerMedication
+  // 함수역할: 홈과 같은 약 등록·식별 명령을 표시한다. 매개변수: 없음. 반환값: 언어별 버튼 이름.
+  String get registerMedication =>
+      isEnglish ? 'Add or Identify Medication' : '약 등록·식별';
 }

@@ -131,6 +131,12 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "NearbyPharmacyMap" as NearbyPharmacyMap <<UI: 지도 지역 검색>> {
+            + searchArea: PharmacySearchArea
+            + onSearchAreaRequested(area): Future<bool>
+            + onCurrentLocationRequested(): void
+        }
+
         class "ChatListUI" as ChatListUI <<UI: 연동 대화 목록>> {
             + control: ManageChatList
             + userSetting: UserSetting
@@ -286,6 +292,8 @@ package "Flutter Frontend" {
 
         class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
             + requestNearbyPharmacies(): Future<List<NearbyPharmacy>>
+            + requestNearbyPharmacySearch(searchArea): Future<NearbyPharmacySearchResult>
+            + requestSearchArea(): Future<PharmacySearchArea>
             + requestPhoneCall(telephone): Future<bool>
             + requestDirections(pharmacy): Future<bool>
             + openApplicationSettings(): Future<bool>
@@ -686,6 +694,13 @@ package "Flutter Frontend" {
             + localImagePath: String
             + totalDays: int
             + dosage: String
+        }
+
+        class "PharmacySearchArea" as PharmacySearchArea <<Entity: 약국 검색 지역>> {
+            + center: DeviceCoordinate
+            + radiusKm: double
+            + isFallback: bool
+            + isMapArea: bool
         }
 
         class "NearbyPharmacy" as FNearbyPharmacy <<Entity: 근처 약국>> {
@@ -1499,6 +1514,9 @@ HomeScreen ..> AppLanguageControl
 CheckScheduleUI ..> MedBuddyViewModel
 CheckSavedMedicationUI ..> MedBuddyViewModel
 HealthRecommendationUI ..> MedBuddyViewModel
+HealthRecommendationUI ..> ManualMedicationEntryUI : empty state registration
+HealthRecommendationUI ..> PillIdentificationUI : empty state identification
+HealthRecommendationUI ..> GuidedPrescriptionCameraUI : prescription shortcut
 MedicationReminderSettingsUI ..> MedBuddyViewModel
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
@@ -1510,6 +1528,8 @@ ManualMedicationEntryUI ..> ManualMedicationImageStore
 ManualMedicationEntryUI ..> FCheckSavedMedication
 PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
 CheckNearbyPharmacyUI o-- FCheckNearbyPharmacy
+CheckNearbyPharmacyUI *-- NearbyPharmacyMap
+NearbyPharmacyMap ..> PharmacySearchArea
 CheckNearbyPharmacyUI o-- PharmacyFavoriteService
 CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
@@ -1625,6 +1645,7 @@ FIdentifyPill ..> FPillIdentificationResult
 FIdentifyPill ..> FMultiplePillIdentificationResult
 FIdentifyPillBatch ..> FPillIdentificationResult
 FCheckNearbyPharmacy ..> FNearbyPharmacy
+FCheckNearbyPharmacy ..> PharmacySearchArea : GPS 실패 시 홍익대 기준
 FManageLinkedChat ..> FChatMessage
 FManageLinkedChat ..> FChatMedicationContext
 FManageLinkedChat ..> FChatScheduleContext

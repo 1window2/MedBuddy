@@ -489,6 +489,23 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get allMedication => isEnglish ? 'All' : '전체';
+
+  // 함수이름: filterTitle
+  // 함수역할: 조회 조건 선택 창의 제목을 제공한다. 매개변수: 없음. 반환값: 번역된 제목.
+  String get filterTitle => isEnglish ? 'Search filter' : '조회 조건';
+
+  // 함수이름: filterLabel
+  // 함수역할: 복용 상태에 해당하는 선택지 이름을 제공한다. 매개변수: mode. 반환값: 번역된 상태명.
+  String filterLabel(_SavedMedicationFilterMode mode) => switch (mode) {
+    _SavedMedicationFilterMode.active => activeMedication,
+    _SavedMedicationFilterMode.ended => endedMedication,
+    _SavedMedicationFilterMode.all => allMedication,
+  };
+
+  // 함수이름: selectedFilter
+  // 함수역할: 현재 조회 조건을 버튼에 표시한다. 매개변수: mode. 반환값: 조건과 선택값을 합친 문구.
+  String selectedFilter(_SavedMedicationFilterMode mode) =>
+      '$filterTitle: ${filterLabel(mode)}';
   // 함수이름: filteredEmptyMessage
   // 함수역할: 현재 언어와 입력값에 맞춰 "현재 복용 중인 약이 없습니다." 문구를 제공한다.
   // 매개변수:

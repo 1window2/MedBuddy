@@ -50,7 +50,8 @@ class CheckNearbyPharmacy {
     ExternalUriLauncher? uriLauncher,
     PharmacyClipboardWriter? clipboardWriter,
   }) : _locationBoundary =
-           locationBoundary ?? GeolocatorDeviceLocationService(),
+           locationBoundary ??
+           GeolocatorDeviceLocationService(reuseRecentFix: false),
        _client = client ?? AuthenticatedApiClient(),
        _externalActionService = PharmacyExternalActionService(
          uriLauncher: uriLauncher,
@@ -79,20 +80,19 @@ class CheckNearbyPharmacy {
     return result.data;
   }
 
-  // Function Name: requestNearbyPharmacySearch
-  // Description: Queries nearby pharmacies with the current coordinates and search constraints, dropping unidentified entries while preserving catalog freshness and holiday metadata.
-  // Parameters:
-  // - searchMode (PharmacySearchMode): Pharmacy filter such as opening time or late-night service.
-  // - targetDateTime (DateTime?): Reference timestamp for checking pharmacy opening status.
-  // - maxDistanceKm (double): Maximum pharmacy search radius in kilometers.
-  // Returns:
-  // - Future<NearbyPharmacySearchResult>: Queries nearby pharmacies with the current coordinates and search constraints, dropping unidentified entries while preserving catalog freshness and holiday metadata.
+  // 함수이름: requestNearbyPharmacySearch
+  // 함수역할: 지정 지역 또는 현재 위치로 조회하고 위치 실패 시 홍익대 기준으로 검색한다. 서버 오류는 그대로 전달한다.
+  // 매개변수: searchMode, targetDateTime, maxDistanceKm, searchArea: 영업 조건·시간·기본 반경·선택 지역.
+  // 반환값: 검색 기준과 약국 목록·카탈로그 상태.
   Future<NearbyPharmacySearchResult> requestNearbyPharmacySearch({
     PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = 20,
+    PharmacySearchArea? searchArea,
   }) async {
-    final coordinate = await _locationBoundary.requestCurrentCoordinate();
+    final area = searchArea ?? await requestSearchArea(radiusKm: maxDistanceKm);
+    if (!area.isValid) throw ArgumentError('Invalid pharmacy search area.');
+    final coordinate = area.center;
     final effectiveTarget = targetDateTime ?? DateTime.now();
     final uri = Uri.parse(ApiConfig.pharmacyUrl('/nearby')).replace(
       queryParameters: {
@@ -101,7 +101,7 @@ class CheckNearbyPharmacy {
         'search_mode': searchMode.apiValue,
         'target_datetime': effectiveTarget.toIso8601String(),
         'limit': '30',
-        'max_distance_km': maxDistanceKm.toStringAsFixed(1),
+        'max_distance_km': area.radiusKm.toStringAsFixed(1),
       },
     );
 
@@ -132,15 +132,18 @@ class CheckNearbyPharmacy {
             // - 위치와 영업 정보를 담은 약국 모델.
             (item) => NearbyPharmacy.fromJson(Map<String, dynamic>.from(item)),
           )
-          .where(/* 함수이름: where 콜백
+          .where(
+            /* 함수이름: where 콜백
            * 함수역할: 식별자와 이름이 모두 있는 약국만 검색 결과에 남긴다.
            * 매개변수:
            * - item (NearbyPharmacy): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 두 필수 필드가 비어 있지 않으면 true.
-           */(item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty)
+           */ (item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty,
+          )
           .toList(growable: false);
       return NearbyPharmacySearchResult(
+        searchArea: area,
         data: pharmacies,
         searchMode: searchMode,
         targetDateTime:
@@ -166,6 +169,29 @@ class CheckNearbyPharmacy {
       );
       throw StateError('Nearby pharmacy request failed.');
     }
+  }
+
+  // 함수이름: requestSearchArea
+  // 함수역할: 현재 위치를 시도하고 권한·GPS·시간 초과·잘못된 좌표는 홍익대 기본 지역으로 대체한다.
+  // 매개변수: radiusKm: 검색 반경. 반환값: 실제 위치 또는 기본 검색 지역.
+  Future<PharmacySearchArea> requestSearchArea({double radiusKm = 20}) async {
+    if (!radiusKm.isFinite || radiusKm < 0.1 || radiusKm > 50) {
+      throw ArgumentError('Invalid pharmacy search radius.');
+    }
+    try {
+      final coordinate = await _locationBoundary
+          .requestCurrentCoordinate()
+          .timeout(const Duration(seconds: 16));
+      final area = PharmacySearchArea(center: coordinate, radiusKm: radiusKm);
+      if (area.isValid) return area;
+    } catch (_) {
+      // 위치 실패만 대체한다. 약국 API 실패를 정상 검색 결과로 숨기지 않는다.
+    }
+    return PharmacySearchArea(
+      center: PharmacySearchArea.hongik.center,
+      radiusKm: radiusKm,
+      isFallback: true,
+    );
   }
 
   // 함수이름: requestPhoneCall

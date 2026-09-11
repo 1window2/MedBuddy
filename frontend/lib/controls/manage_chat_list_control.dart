@@ -67,11 +67,18 @@ class ManageChatList extends ChangeNotifier {
   bool isCaregiver(PatientCaregiverLink link) => link.caregiverHash == userHash;
 
   // 함수이름: peerName
-  // 함수역할: 보호자에게는 환자 별칭을, 환자에게는 구분 가능한 보호자 이름을 제공한다.
+  // 함수역할: 보호자에게는 서버의 최신 환자 별칭을 우선하고, 환자에게는 보호자 이름을 제공한다.
   // 매개변수: link, isEnglish: 연동과 표시 언어. 반환값: 대화 상대 표시 이름.
   String peerName(PatientCaregiverLink link, {required bool isEnglish}) {
     if (isCaregiver(link)) {
-      final alias = _labels[link.patientHash] ?? link.patientAlias;
+      // 서버 값이 있으면 동시 로컬 저장 중의 오래된 캐시로 덮어쓰지 않는다.
+      final serverAlias = link.patientAlias?.trim();
+      if (serverAlias != null) {
+        return serverAlias.isNotEmpty
+            ? serverAlias
+            : _localState.fallbackLabel(link.patientHash);
+      }
+      final alias = _labels[link.patientHash];
       if (alias != null && alias.trim().isNotEmpty) return alias;
       return '${isEnglish ? 'Patient' : '환자'} ${link.patientHash}';
     }

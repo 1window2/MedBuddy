@@ -69,6 +69,11 @@ class NearbyPharmacySelection {
 // 반환값: 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유에 쓰는 위젯 트리.
 typedef NearbyPharmacyMapBuilder =
     Widget Function({
+      required PharmacySearchArea searchArea,
+      required int centerRevision,
+      required bool isSearching,
+      required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+      required VoidCallback onCurrentLocationRequested,
       required List<NearbyPharmacy> pharmacies,
       required String? selectedPharmacyId,
       required ValueChanged<NearbyPharmacy> onPharmacySelected,
@@ -179,6 +184,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   String _holidayScheduleStatus = 'not_applicable';
   DateTime? _lastRefreshedAt;
   bool _selectedPhoneVerified = false;
+  PharmacySearchArea? _searchArea;
+  int _searchGeneration = 0;
+  int _centerRevision = 0;
 
   // 함수이름: _text
   // 함수역할: 현재 언어에 맞는 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유 문구 객체를 만든다.
@@ -227,14 +235,19 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   }
 
   // 함수이름: _loadPharmacies
-  // 함수역할: 현재 검색 조건으로 약국을 조회하고 선택 유지 여부·위치 오류·조회 시각을 갱신한다.
+  // 함수역할: 검색 지역과 조건으로 약국을 조회하고 가장 최근 요청의 결과만 반영한다.
   // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _loadPharmacies() async {
+  // - searchArea: 지도에서 선택한 지역. locate: 기존 지역 대신 기기 위치를 다시 확인할지 여부.
+  // 반환값: 검색 성공 여부. 실패 시 기존 검색 지역을 유지한다.
+  Future<bool> _loadPharmacies({
+    PharmacySearchArea? searchArea,
+    bool locate = false,
+  }) async {
     if (!mounted) {
-      return;
+      return false;
     }
+    final generation = ++_searchGeneration;
+    final requestedArea = searchArea ?? (locate ? null : _searchArea);
     // Only an explicitly chosen calendar date survives a later search.
     if (!_hasSelectedSearchDate) {
       _targetDateTime = _now();
@@ -251,11 +264,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
     });
     try {
       final result = await _control.requestNearbyPharmacySearch(
+        searchArea: requestedArea,
         searchMode: _searchModeForFilter(_filter),
         targetDateTime: _targetDateTime,
       );
-      if (!mounted) {
-        return;
+      if (!mounted || generation != _searchGeneration) {
+        return false;
       }
       // 함수이름: _loadPharmacies.setState callback
       // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_pharmacies = result.data; _catalogIsStale = result.catalogIsStale; _holidayScheduleStatus = result.holidayScheduleStatus`로 갱신한다.
@@ -263,6 +277,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
+        _searchArea =
+            result.searchArea ?? requestedArea ?? PharmacySearchArea.hongik;
+        if (locate) _centerRevision++;
+        if (searchArea != null || locate) {
+          _selectedPharmacyId = null;
+          _selectedPhoneVerified = false;
+        }
         _pharmacies = result.data;
         _catalogIsStale = result.catalogIsStale;
         _holidayScheduleStatus = result.holidayScheduleStatus;
@@ -280,8 +301,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         }
         _lastRefreshedAt = DateTime.now();
       });
+      return true;
     } on DeviceLocationException catch (error) {
-      if (mounted) {
+      if (mounted && generation == _searchGeneration) {
         // 함수이름: _loadPharmacies.setState callback
         // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_locationFailure = error.failure`로 갱신한다.
         // 매개변수:
@@ -290,7 +312,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         setState(() => _locationFailure = error.failure);
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _searchGeneration) {
         // 함수이름: _loadPharmacies.setState callback
         // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_errorMessage = _text.loadFailed`로 갱신한다.
         // 매개변수:
@@ -301,7 +323,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         });
       }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _searchGeneration) {
         // 함수이름: _loadPharmacies.setState callback
         // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_isLoading = false`로 갱신한다.
         // 매개변수:
@@ -310,6 +332,20 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         setState(() => _isLoading = false);
       }
     }
+    return false;
+  }
+
+  // 함수이름: _searchMapArea
+  // 함수역할: 지도 중심·반경을 현재 영업 조건으로 조회한다. 매개변수: area. 반환값: 갱신 성공 여부.
+  Future<bool> _searchMapArea(PharmacySearchArea area) async {
+    if (_isLoading) return false;
+    return _loadPharmacies(searchArea: area);
+  }
+
+  // 함수이름: _searchCurrentLocation
+  // 함수역할: 기기 위치를 다시 시도하고 성공한 검색 기준으로 지도를 이동한다. 매개변수: 없음. 반환값: 없음.
+  void _searchCurrentLocation() {
+    if (!_isLoading) unawaited(_loadPharmacies(locate: true));
   }
 
   // Function Name: _requestRefresh
@@ -801,13 +837,39 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildMapFirstBody() {
     final pharmacies = _visiblePharmacies;
-    if (_locationFailure != null ||
-        _errorMessage != null || pharmacies.isEmpty) {
+    if (_searchArea == null) {
       return _buildBody();
     }
     final english = widget.userSetting.language.toLowerCase().startsWith('en');
     return Column(
       children: [
+        if (_searchArea!.isFallback ||
+            _searchArea!.isMapArea ||
+            _errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            child: Text(
+              _errorMessage != null
+                  ? (english
+                        ? 'Search failed. Move the map to try again, or refresh.'
+                        : '검색하지 못했어요. 지도를 옮겨 다시 검색하거나 새로고침해주세요.')
+                  : _searchArea!.isFallback
+                  ? (english
+                        ? 'Location unavailable. Searching near Hongik University, Seoul.'
+                        : '위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.')
+                  : (english
+                        ? 'Distances are measured from the searched map center.'
+                        : '거리는 검색한 지도 중심을 기준으로 표시해요.'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+                letterSpacing: 0,
+                color: MedBuddyColors.textMuted,
+              ),
+            ),
+          ),
         Expanded(
           child: Stack(
             children: [
@@ -826,17 +888,19 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
                     key: const Key('pharmacy-list-panel'),
                     elevation: 8,
                     color: MedBuddyColors.pageBackground,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
                     clipBehavior: Clip.antiAlias,
                     child: _buildBody(),
                   ),
                 ),
               if (_isLoading)
-                Positioned.fill(
-                  child: ColoredBox(
-                    color: MedBuddyColors.pageBackground,
-                    child: _PharmacyLoadingState(message: _text.findingNearby),
-                  ),
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(color: MedBuddyColors.primary),
                 ),
             ],
           ),
@@ -848,14 +912,25 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
             child: FilledButton.icon(
               key: const Key('pharmacy-list-toggle'),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              onPressed: _isLoading ? null : () => setState(() => _listExpanded = !_listExpanded),
+              onPressed: _isLoading
+                  ? null
+                  : () => setState(() => _listExpanded = !_listExpanded),
               icon: Icon(_listExpanded ? Icons.map_outlined : Icons.list_alt),
-              label: Text(_listExpanded
-                  ? (english ? 'Show map' : '지도 크게 보기')
-                  : (english ? 'Show pharmacies (${pharmacies.length})' : '약국 목록 보기 (${pharmacies.length})')),
+              label: Text(
+                _listExpanded
+                    ? (english ? 'Show map' : '지도 크게 보기')
+                    : (english
+                          ? 'Show pharmacies (${pharmacies.length})'
+                          : '약국 목록 보기 (${pharmacies.length})'),
+              ),
             ),
           ),
         ),
@@ -1168,10 +1243,21 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   Widget _buildPharmacyMap(List<NearbyPharmacy> pharmacies) {
     final text = _text;
     final selectedPharmacy = _findSelectedPharmacy(pharmacies);
-    final statusText = selectedPharmacy == null ? text.mapInstruction : null;
+    final statusText = pharmacies.isEmpty
+        ? (text.isEnglish
+              ? 'No pharmacies match here. Move the map or change the filter.'
+              : '조건에 맞는 약국이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.')
+        : selectedPharmacy == null
+        ? text.mapInstruction
+        : null;
     final mapBuilder = widget.mapBuilder;
     if (mapBuilder != null) {
       return mapBuilder(
+        searchArea: _searchArea!,
+        centerRevision: _centerRevision,
+        isSearching: _isLoading,
+        onSearchAreaRequested: _searchMapArea,
+        onCurrentLocationRequested: _searchCurrentLocation,
         pharmacies: pharmacies,
         selectedPharmacyId: _selectedPharmacyId,
         onPharmacySelected: _selectMapPharmacy,
@@ -1185,6 +1271,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       );
     }
     return NearbyPharmacyMap(
+      searchArea: _searchArea!,
+      centerRevision: _centerRevision,
+      isSearching: _isLoading,
+      onSearchAreaRequested: _searchMapArea,
+      onCurrentLocationRequested: _searchCurrentLocation,
+      searchAreaLabel: text.isEnglish ? 'Search this area' : '이 지역에서 검색',
       myLocationTooltip: text.isEnglish ? 'My location' : '현재 위치로 이동',
       locationFailureText: text.isEnglish
           ? 'Could not find your location. Check location permission and GPS settings.'
@@ -1886,7 +1978,10 @@ class _PharmacyCard extends StatelessWidget {
                 const SizedBox(height: 7),
                 _PharmacyInfoLine(
                   icon: Icons.schedule_outlined,
-                  text: text.todayHours(pharmacy, usesSelectedTime: usesSelectedTime),
+                  text: text.todayHours(
+                    pharmacy,
+                    usesSelectedTime: usesSelectedTime,
+                  ),
                 ),
                 if (operatingStatusDetail != null) ...[
                   const SizedBox(height: 7),
@@ -2066,13 +2161,13 @@ class _NearbyPharmacyText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get title => isEnglish ? 'Nearby Pharmacies' : '근처 운영 약국';
   // 함수이름: subtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치에서 가까운 약국을 확인하세요" 문구를 제공한다.
+  // 함수역할: GPS와 지도 선택 모두에 맞는 검색 위치 안내를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get subtitle => isEnglish
-      ? 'Find pharmacies near your current location'
-      : '현재 위치에서 가까운 약국을 확인하세요';
+      ? 'Find pharmacies near the search location'
+      : '검색 위치 주변의 약국을 확인하세요';
   // 함수이름: refreshTooltip
   // 함수역할: 현재 언어와 입력값에 맞춰 "약국 목록 새로고침" 문구를 제공한다.
   // 매개변수:
@@ -2122,8 +2217,7 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get openNow => isEnglish ? 'Open now' : '영업 중';
-  String get openAtSearchTime =>
-      isEnglish ? 'Open at search time' : '조회 시각 영업';
+  String get openAtSearchTime => isEnglish ? 'Open at search time' : '조회 시각 영업';
   String get closedAtSearchTime =>
       isEnglish ? 'Closed at search time' : '조회 시각 영업 종료';
   // 함수이름: openFilter
@@ -2211,29 +2305,23 @@ class _NearbyPharmacyText {
   }
 
   // 함수이름: noOpenPharmacy
-  // 함수역할: 현재 언어와 입력값에 맞춰 "20km 안에 영업 중인 약국이 없습니다" 문구를 제공한다.
+  // 함수역할: 선택한 검색 지역에 영업 중인 약국이 없음을 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get noOpenPharmacy => isEnglish
-      ? 'No open pharmacies were found within 20 km'
-      : '20km 안에 영업 중인 약국이 없습니다';
-  // Function Name: noLateNightPharmacy
-  // Description: Provides localized wording for "No late-night pharmacies were found within 20 km" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
+      ? 'No open pharmacies were found in this search area'
+      : '검색한 지역에 영업 중인 약국이 없습니다';
+  // 함수이름: noLateNightPharmacy
+  // 함수역할: 선택 지역의 심야 약국 검색 결과가 없음을 안내한다. 매개변수: 없음. 반환값: 번역 문구.
   String get noLateNightPharmacy => isEnglish
-      ? 'No late-night pharmacies were found within 20 km'
-      : '20km 안에 심야 운영 약국이 없습니다';
-  // Function Name: noWeekendHolidayPharmacy
-  // Description: Provides localized wording for "No pharmacies with weekend or holiday hours were found within 20 km" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
+      ? 'No late-night pharmacies were found in this search area'
+      : '검색한 지역에 심야 운영 약국이 없습니다';
+  // 함수이름: noWeekendHolidayPharmacy
+  // 함수역할: 선택 지역의 주말·공휴일 약국 결과가 없음을 안내한다. 매개변수: 없음. 반환값: 번역 문구.
   String get noWeekendHolidayPharmacy => isEnglish
-      ? 'No pharmacies with weekend or holiday hours were found within 20 km'
-      : '20km 안에 주말·공휴일 운영 약국이 없습니다';
+      ? 'No pharmacies with weekend or holiday hours were found in this search area'
+      : '검색한 지역에 주말·공휴일 운영 약국이 없습니다';
   // 함수이름: noNearbyPharmacy
   // 함수역할: 현재 언어와 입력값에 맞춰 "주변 약국을 찾지 못했습니다" 문구를 제공한다.
   // 매개변수:
@@ -2242,13 +2330,13 @@ class _NearbyPharmacyText {
   String get noNearbyPharmacy =>
       isEnglish ? 'No nearby pharmacies were found' : '주변 약국을 찾지 못했습니다';
   // 함수이름: checkLocation
-  // 함수역할: 현재 언어와 입력값에 맞춰 "위치를 확인한 뒤 목록을 새로고침해주세요." 문구를 제공한다.
+  // 함수역할: 다른 검색 지역을 선택하도록 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get checkLocation => isEnglish
-      ? 'Check your location and refresh the list.'
-      : '위치를 확인한 뒤 목록을 새로고침해주세요.';
+      ? 'Move the map to search another area.'
+      : '지도를 옮겨 다른 지역을 검색해주세요.';
   // 함수이름: tryAllPharmacies
   // 함수역할: 현재 언어와 입력값에 맞춰 "전체 약국으로 전환하거나 잠시 후 다시 확인해주세요." 문구를 제공한다.
   // 매개변수:
@@ -2422,13 +2510,13 @@ class _NearbyPharmacyText {
       ? 'Map coordinates are unavailable for these pharmacies.'
       : '표시할 수 있는 약국 좌표가 없습니다.';
   // 함수이름: findingNearby
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치 주변 약국을 찾고 있습니다" 문구를 제공한다.
+  // 함수역할: 선택한 위치 주변 약국을 조회 중임을 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get findingNearby => isEnglish
-      ? 'Finding pharmacies near your current location'
-      : '현재 위치 주변 약국을 찾고 있습니다';
+      ? 'Finding pharmacies near the search location'
+      : '검색 위치 주변 약국을 찾고 있습니다';
   // 함수이름: closed
   // 함수역할: 현재 언어와 입력값에 맞춰 "영업 종료" 문구를 제공한다.
   // 매개변수:

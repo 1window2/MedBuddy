@@ -11,7 +11,13 @@ import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-
+// 클래스명: NoActiveMedicationsError
+// 역할: 서버가 확인한 복용 약 없음 상태를 통신·권한·추천 생성 실패와 구분한다.
+class NoActiveMedicationsError extends StateError {
+  // 함수이름: NoActiveMedicationsError
+  // 함수역할: 빈 복용 약 상태를 전달한다. 매개변수: 없음. 반환값: 상태 오류.
+  NoActiveMedicationsError() : super('No active medications.');
+}
 
 // 클래스명: CheckHealthRecommendation
 // 역할: 현재 복용 약 조합 기반 건강 관리 추천을 서버에서 조회한다.
@@ -60,9 +66,14 @@ class CheckHealthRecommendation {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
+        final detail = ApiResponseParser.extractErrorDetail(responseBody);
+        // 다른 404(주소 오류 등)는 약이 없는 상태로 안내하지 않는다.
+        if (response.statusCode == 404 && detail == '오늘 복용 중인 약 정보가 없습니다.') {
+          throw NoActiveMedicationsError();
+        }
         throw StateError(
           'Health recommendation failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+          '$detail',
         );
       }
 

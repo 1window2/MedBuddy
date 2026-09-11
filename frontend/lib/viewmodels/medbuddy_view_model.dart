@@ -290,6 +290,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - bool: 건강 관리 추천 조회의 진행 여부를 제공한다.
   bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
 
+  bool _hasNoActiveHealthMedications = false;
+  // 함수이름: hasNoActiveHealthMedications
+  // 함수역할: 서버에서 확인된 건강 추천 대상 약 없음 상태를 제공한다. 매개변수: 없음. 반환값: 대상 약 없음 여부.
+  bool get hasNoActiveHealthMedications => _hasNoActiveHealthMedications;
+
   String _statusMessage = '';
   // 함수이름: statusMessage
   // 함수역할: 최근 상태 안내를 제공하고 아직 없으면 현재 언어의 처방전 입력 안내를 사용한다.

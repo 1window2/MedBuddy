@@ -10,6 +10,7 @@ import 'package:medbuddy_frontend/entities/notification_inbox_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:medbuddy_frontend/services/push_notification_service.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 // 함수이름: _entry
 // 함수역할: 고정 시각의 테스트 알림을 만든다. 매개변수: id, date, chat. 반환값: 알림.
@@ -263,17 +264,171 @@ void main() {
     await tester.tap(find.byKey(const Key('inbox-mark-all-read')));
     await tester.pumpAndSettle();
     expect(control.unreadCount, 0);
-    await tester.tap(find.byKey(const Key('inbox-delete-all')));
+    await tester.tap(find.byKey(const Key('inbox-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inbox-select-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inbox-delete-selected')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     expect(control.entries, hasLength(2));
-    await tester.tap(find.byKey(const Key('inbox-delete-all')));
+    await tester.tap(find.byKey(const Key('inbox-delete-selected')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('삭제'));
     await tester.pumpAndSettle();
     expect(find.text('아직 알림이 없어요'), findsOneWidget);
     expect(control.entries, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 선택 삭제 테스트
+  // 함수역할: 선택 중에는 이동·읽음 처리를 하지 않고 선택 당시 항목만 삭제한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets(
+    'selection supports toggling and preserves arrivals during confirmation',
+    (tester) async {
+      await store.record(_entry('dose', now));
+      await store.record(
+        _entry('chat', now.subtract(const Duration(minutes: 1)), chat: true),
+      );
+      final control = ManageNotificationInbox(store: store);
+      addTearDown(control.dispose);
+      var opened = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationInboxUI(
+            control: control,
+            userSetting: const UserSetting(),
+            onOpen: (_) => opened = true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(const ValueKey('inbox-entry-chat')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Checkbox>(find.byKey(const ValueKey('inbox-check-chat')))
+            .value,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey('inbox-entry-dose')));
+      await tester.pumpAndSettle();
+      expect(opened, isFalse);
+      expect(control.unreadCount, 2);
+      await tester.tap(find.byKey(const Key('inbox-select-all')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('inbox-delete-selected')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byKey(const ValueKey('inbox-entry-chat')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('inbox-delete-selected')));
+      await tester.pumpAndSettle();
+      await store.record(_entry('new', now));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('삭제'));
+      await tester.pumpAndSettle();
+      expect(
+        control.entries.map((entry) => entry.id),
+        unorderedEquals(['dose', 'new']),
+      );
+      expect(control.unreadCount, 2);
+      expect(find.byKey(const Key('inbox-select-all')), findsNothing);
+      expect(opened, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: 전체 선택 스냅샷 테스트
+  // 함수역할: 전체 선택 이후 새 알림은 선택되지 않고 뒤로가기는 선택만 취소한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('select all excludes new arrivals and back cancels selection', (
+    tester,
+  ) async {
+    await store.record(_entry('first', now));
+    final control = ManageNotificationInbox(store: store);
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationInboxUI(
+          control: control,
+          userSetting: const UserSetting(),
+          onOpen: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inbox-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inbox-select-all')));
+    await tester.pumpAndSettle();
+    await store.record(_entry('later', now));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Checkbox>(find.byKey(const ValueKey('inbox-check-later')))
+          .value,
+      isFalse,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('inbox-select')), findsOneWidget);
+    expect(control.entries, hasLength(2));
+    expect(control.unreadCount, 2);
+  });
+
+  // 함수이름: 알림 선택 스타일 테스트
+  // 함수역할: 공통 글꼴 굵기·자간과 선택 색상·개수 안내를 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('selection uses app typography and a clear selection count', (
+    tester,
+  ) async {
+    await store.record(_entry('dose', now));
+    final control = ManageNotificationInbox(store: store);
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationInboxUI(
+          control: control,
+          userSetting: const UserSetting(),
+          onOpen: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inbox-select')));
+    await tester.pumpAndSettle();
+    final selectLabel = tester.widget<Text>(find.text('전체 선택'));
+    expect(selectLabel.style?.fontWeight, FontWeight.w700);
+    expect(selectLabel.style?.letterSpacing, 0);
+    expect(selectLabel.style?.color, MedBuddyColors.textStrong);
+    expect(find.text('0개 선택'), findsOneWidget);
+    expect(find.text('선택한 알림 삭제'), findsOneWidget);
+    final button = tester.widget<FilledButton>(
+      find.byKey(const Key('inbox-delete-selected')),
+    );
+    expect(button.style?.textStyle?.resolve({})?.fontWeight, FontWeight.w700);
+    expect(button.style?.textStyle?.resolve({})?.letterSpacing, 0);
+    expect(button.onPressed, isNull);
+    await tester.tap(find.byKey(const Key('inbox-select-all')));
+    await tester.pumpAndSettle();
+    final count = tester.widget<Text>(
+      find.byKey(const Key('inbox-selection-count')),
+    );
+    expect(count.data, '1개 선택');
+    expect(count.style?.color, MedBuddyColors.primaryDark);
+    expect(find.text('알림 1개 삭제'), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(find.byKey(const Key('inbox-check-dose')))
+          .activeColor,
+      MedBuddyColors.primary,
+    );
+    expect(control.unreadCount, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -306,6 +461,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('테스트 알림 내용'), findsOneWidget);
       expect(find.byType(SegmentedButton<int>), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('inbox-select')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('inbox-select-all')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('inbox-delete-selected')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.text(language == 'en' ? '1 selected' : '1개 선택').hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('inbox-delete-selected')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(language == 'en' ? 'Cancel' : '취소').hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.text(language == 'en' ? 'Cancel' : '취소'));
+      await tester.pumpAndSettle();
+      expect(control.entries, hasLength(1));
       expect(tester.takeException(), isNull);
     });
   }

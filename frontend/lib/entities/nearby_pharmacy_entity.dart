@@ -22,6 +22,44 @@ class DeviceCoordinate {
   const DeviceCoordinate({required this.latitude, required this.longitude});
 }
 
+// 클래스명: PharmacySearchArea
+// 역할: 기기 위치·지도 중심·기본 위치의 검색 좌표와 반경을 보관한다.
+class PharmacySearchArea {
+  final DeviceCoordinate center;
+  final double radiusKm;
+  final bool isFallback;
+  final bool isMapArea;
+
+  // 함수이름: PharmacySearchArea
+  // 함수역할: 검색 기준과 표시 출처를 묶는다. 매개변수: center, radiusKm, isFallback, isMapArea. 반환값: 검색 지역.
+  const PharmacySearchArea({
+    required this.center,
+    this.radiusKm = 20,
+    this.isFallback = false,
+    this.isMapArea = false,
+  });
+
+  // 홍익대학교 서울캠퍼스(와우산로 94). 기기 위치로 기록하거나 캐시하지 않는다.
+  static const hongik = PharmacySearchArea(
+    center: DeviceCoordinate(latitude: 37.5516, longitude: 126.9250),
+    isFallback: true,
+  );
+
+  // 함수이름: isValid
+  // 함수역할: 서버가 받는 유한한 좌표와 반경 범위를 검증한다. 매개변수: 없음. 반환값: 유효 여부.
+  bool get isValid =>
+      center.latitude.isFinite &&
+      center.longitude.isFinite &&
+      center.latitude >= -90 &&
+      center.latitude <= 90 &&
+      center.longitude >= -180 &&
+      center.longitude <= 180 &&
+      (center.latitude != 0 || center.longitude != 0) &&
+      radiusKm.isFinite &&
+      radiusKm >= 0.1 &&
+      radiusKm <= 50;
+}
+
 // Class Name: PharmacySearchMode
 // Role: Defines the pharmacy search filters supported by the backend.
 // Responsibilities:
@@ -317,6 +355,7 @@ class NearbyPharmacy {
 // - catalogIsStale (bool): Whether the pharmacy catalog exceeds its freshness limit.
 // - holidayScheduleStatus (String): Verification status of holiday opening hours.
 class NearbyPharmacySearchResult {
+  final PharmacySearchArea? searchArea;
   final List<NearbyPharmacy> data;
   final PharmacySearchMode searchMode;
   final DateTime targetDateTime;
@@ -336,6 +375,7 @@ class NearbyPharmacySearchResult {
   // Returns:
   // - NearbyPharmacySearchResult: the initialized instance.
   const NearbyPharmacySearchResult({
+    this.searchArea,
     required this.data,
     required this.searchMode,
     required this.targetDateTime,

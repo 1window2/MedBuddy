@@ -207,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _notificationInbox?.dispose();
     final control = ManageNotificationInbox(
       store: NotificationInboxStore(userHash: viewModel.patientHash),
+      chatList: _chatList,
     );
     _notificationInbox = control;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -224,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ) {
     final control = _notificationInbox;
     if (control == null) return;
+    unawaited(_chatList?.refresh());
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -245,6 +247,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MedBuddyViewModel>();
+    _syncChatControl(viewModel);
     _syncNotificationInbox(viewModel);
     return ListenableBuilder(
       listenable: Listenable.merge([
@@ -265,11 +268,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // 함수이름: _buildActiveScreen
-  // 함수역할: 계정별 채팅 목록을 동기화하고 처방 흐름별 화면과 저장 중 뒤로가기 제한을 선택한다.
+  // 함수역할: 처방 흐름별 화면과 저장 중 뒤로가기 제한을 선택한다.
   // 매개변수: context, viewModel: 화면 문맥과 현재 사용자 상태.
   // 반환값: 활성 처방 또는 탐색 화면.
   Widget _buildActiveScreen(BuildContext context, MedBuddyViewModel viewModel) {
-    _syncChatControl(viewModel);
     final flowState = viewModel.prescriptionFlowState;
     final isPrescriptionExitBlocked =
         viewModel.isMedicationSaving || viewModel.isAllMedicationSaving;

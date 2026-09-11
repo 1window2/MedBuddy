@@ -8,7 +8,6 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../entities/nearby_pharmacy_entity.dart';
 import '../services/naver_map_config.dart';
-import '../services/device_location_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: NearbyPharmacyMap
@@ -21,6 +20,12 @@ import '../theme/medbuddy_theme.dart';
 // - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
+  final PharmacySearchArea searchArea;
+  final int centerRevision;
+  final bool isSearching;
+  final Future<bool> Function(PharmacySearchArea)? onSearchAreaRequested;
+  final VoidCallback? onCurrentLocationRequested;
+  final String searchAreaLabel;
   final List<NearbyPharmacy> pharmacies;
   final String? selectedPharmacyId;
   final ValueChanged<NearbyPharmacy> onPharmacySelected;
@@ -51,6 +56,12 @@ class NearbyPharmacyMap extends StatefulWidget {
   // 반환값: 입력 설정이 반영된 NearbyPharmacyMap 인스턴스.
   const NearbyPharmacyMap({
     super.key,
+    this.searchArea = PharmacySearchArea.hongik,
+    this.centerRevision = 0,
+    this.isSearching = false,
+    this.onSearchAreaRequested,
+    this.onCurrentLocationRequested,
+    this.searchAreaLabel = '이 지역에서 검색',
     required this.pharmacies,
     required this.selectedPharmacyId,
     required this.onPharmacySelected,
@@ -79,11 +90,13 @@ class NearbyPharmacyMap extends StatefulWidget {
 // 주요 책임:
 // - 기존 약국 마커를 지운 뒤 최신 세대의 마커만 추가하고 카메라 범위를 갱신한다.
 // - 약국 좌표에 선택 크기·색상·이름과 탭 선택 콜백을 갖춘 마커를 만든다.
-// - 선택 약국은 확대 16, 단일 약국은 15로 이동하고 여러 약국은 모두 보이는 범위에 맞춘다.
+// - 검색 후에는 지도 중심과 확대 수준을 유지하고 약국 선택·내 위치 요청 때만 이동한다.
 class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
-  bool _locating = false;
+  bool _cameraMoved = false;
+  PharmacySearchArea? _pendingArea;
+  int _cameraGeneration = 0;
 
   // 함수이름: _mappablePharmacies
   // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.
@@ -93,11 +106,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   List<NearbyPharmacy> get _mappablePharmacies =>
       widget.pharmacies.where(_hasValidCoordinate).toList(growable: false);
 
-  // Function Name: didUpdateWidget
-  // Description: Synchronizes map markers and camera when selection or the ID/coordinate list changes.
-  // Parameters:
-  // - oldWidget (NearbyPharmacyMap): Previous widget configuration used for change detection.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: didUpdateWidget
+  // 함수역할: 결과 마커를 갱신하고 명시적인 약국 선택·내 위치 요청만 카메라에 반영한다.
+  // 매개변수: oldWidget: 이전 지도 설정. 반환값: 없음.
   @override
   void didUpdateWidget(covariant NearbyPharmacyMap oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -106,8 +117,20 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     final pharmaciesChanged =
         _coordinateSignature(oldWidget.pharmacies) !=
         _coordinateSignature(widget.pharmacies);
-    if (selectionChanged || pharmaciesChanged) {
-      unawaited(_synchronizeMap());
+    final recenter = oldWidget.centerRevision != widget.centerRevision;
+    if (recenter || (selectionChanged && widget.selectedPharmacyId != null)) {
+      _cameraMoved = false;
+      _pendingArea = null;
+      _cameraGeneration++;
+    }
+    if (selectionChanged || pharmaciesChanged || recenter) {
+      unawaited(
+        _synchronizeMap(
+          moveCamera:
+              recenter ||
+              (selectionChanged && widget.selectedPharmacyId != null),
+        ),
+      );
     }
   }
 
@@ -118,15 +141,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 반환값: 약국 마커·선택 강조·확대·출처 명령에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final pharmacies = _mappablePharmacies;
     if (!isNaverMapConfigured) {
       return _MapUnavailableState(message: widget.configurationUnavailableText);
     }
-    if (pharmacies.isEmpty) {
-      return _MapUnavailableState(message: widget.unavailableText);
-    }
-
-    final first = pharmacies.first;
     return Semantics(
       container: true,
       label: widget.statusText,
@@ -144,7 +161,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               forceGesture: true,
               options: NaverMapViewOptions(
                 initialCameraPosition: NCameraPosition(
-                  target: NLatLng(first.latitude, first.longitude),
+                  target: NLatLng(
+                    widget.searchArea.center.latitude,
+                    widget.searchArea.center.longitude,
+                  ),
                   zoom: 13,
                 ),
                 minZoom: 5,
@@ -166,8 +186,40 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 setState(() => _mapController = controller);
                 unawaited(_synchronizeMap());
               },
+              onCameraChange: _onCameraChange,
+              onCameraIdle: () => unawaited(_onCameraIdle()),
             ),
-            if (widget.statusText case final statusText?)
+            if (_pendingArea != null && widget.onSearchAreaRequested != null)
+              Positioned(
+                top: 8,
+                left: 16,
+                right: 16,
+                child: Center(
+                  child: FilledButton.icon(
+                    key: const Key('pharmacy-search-this-area'),
+                    onPressed: widget.isSearching ? null : _searchThisArea,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(
+                      widget.searchAreaLabel,
+                      textAlign: TextAlign.center,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else if (widget.statusText case final statusText?)
               Positioned(
                 top: 8,
                 left: 8,
@@ -215,10 +267,10 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               bottom: 54,
               child: _MapControlButton(
                 tooltip: widget.myLocationTooltip,
-                icon: _locating ? Icons.hourglass_top : Icons.my_location,
-                onPressed: _locating || _mapController == null
+                icon: Icons.my_location,
+                onPressed: widget.isSearching || _mapController == null
                     ? null
-                    : _moveToCurrentLocation,
+                    : widget.onCurrentLocationRequested,
               ),
             ),
             Positioned(
@@ -256,36 +308,64 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     );
   }
 
-  // Only moves the camera: it does not repeat the pharmacy API search.
-  Future<void> _moveToCurrentLocation() async {
-    final controller = _mapController;
-    if (_locating || controller == null) return;
-    setState(() => _locating = true);
-    try {
-      final coordinate = await GeolocatorDeviceLocationService(reuseRecentFix: false)
-          .requestCurrentCoordinate();
-      if (!mounted || !identical(controller, _mapController)) return;
-      await controller.updateCamera(NCameraUpdate.scrollAndZoomTo(
-        target: NLatLng(coordinate.latitude, coordinate.longitude),
-        zoom: 15,
-      ));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(widget.locationFailureText)),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _locating = false);
+  // 함수이름: _onCameraChange
+  // 함수역할: 사용자 이동 중에는 이전 지역 검색을 숨긴다. 매개변수: reason, animated. 반환값: 없음.
+  void _onCameraChange(NCameraUpdateReason reason, bool animated) {
+    if (reason == NCameraUpdateReason.gesture ||
+        reason == NCameraUpdateReason.control) {
+      _cameraMoved = true;
+      _cameraGeneration++;
+      if (_pendingArea != null) setState(() => _pendingArea = null);
     }
   }
 
-  // Function Name: _synchronizeMap
-  // Description: Clears old markers, adds only the current generation's markers, and updates camera framing.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
-  Future<void> _synchronizeMap() async {
+  // 함수이름: _onCameraIdle
+  // 함수역할: 이동이 끝난 지도 중심과 화면 반경을 저장하며 자동 검색하지 않는다. 매개변수: 없음. 반환값: 좌표 확인 완료.
+  Future<void> _onCameraIdle() async {
+    final controller = _mapController;
+    if (!_cameraMoved || controller == null) return;
+    final generation = _cameraGeneration;
+    try {
+      final position = await controller.getCameraPosition();
+      final bounds = await controller.getContentBounds();
+      if (!mounted || generation != _cameraGeneration) return;
+      final radius = [
+        position.target.distanceTo(bounds.southWest),
+        position.target.distanceTo(bounds.northEast),
+      ].reduce((a, b) => a > b ? a : b);
+      final area = PharmacySearchArea(
+        center: DeviceCoordinate(
+          latitude: position.target.latitude,
+          longitude: position.target.longitude,
+        ),
+        radiusKm: (radius / 1000).clamp(0.1, 50).toDouble(),
+        isMapArea: true,
+      );
+      if (area.isValid) setState(() => _pendingArea = area);
+    } catch (_) {
+      // 지도 준비가 풀리면 다음 이동 완료 시 다시 좌표를 확인한다.
+    }
+  }
+
+  // 함수이름: _searchThisArea
+  // 함수역할: 마지막 이동 지역을 검색하고 성공했을 때만 버튼을 숨긴다. 매개변수: 없음. 반환값: 검색 완료.
+  Future<void> _searchThisArea() async {
+    final area = _pendingArea;
+    if (area == null || widget.isSearching) return;
+    final generation = _cameraGeneration;
+    final succeeded = await widget.onSearchAreaRequested?.call(area) ?? false;
+    if (mounted && succeeded && generation == _cameraGeneration) {
+      setState(() {
+        _pendingArea = null;
+        _cameraMoved = false;
+      });
+    }
+  }
+
+  // 함수이름: _synchronizeMap
+  // 함수역할: 최신 결과의 마커만 표시하고 요청한 경우에만 카메라를 이동한다.
+  // 매개변수: moveCamera: 명시적 위치 이동 여부. 반환값: 지도 갱신 완료.
+  Future<void> _synchronizeMap({bool moveCamera = false}) async {
     final controller = _mapController;
     if (controller == null) {
       return;
@@ -303,7 +383,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     if (!mounted || generation != _overlayGeneration) {
       return;
     }
-    await _updateCamera(controller, pharmacies);
+    if (moveCamera) await _updateCamera(controller, pharmacies);
   }
 
   // Function Name: _buildMarker
@@ -339,7 +419,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   }
 
   // 함수이름: _updateCamera
-  // 함수역할: 선택 약국은 확대 16, 단일 약국은 15로 이동하고 여러 약국은 모두 보이는 범위에 맞춘다.
+  // 함수역할: 약국 선택 또는 내 위치 재검색 때만 카메라를 이동해 지역 검색 후 확대·중심을 보존한다.
   // 매개변수:
   // - controller (NaverMapController): 마커와 카메라 이동에 사용할 준비된 네이버 지도 컨트롤러.
   // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
@@ -348,9 +428,6 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     NaverMapController controller,
     List<NearbyPharmacy> pharmacies,
   ) async {
-    if (pharmacies.isEmpty) {
-      return;
-    }
     final selected = _findSelectedPharmacy(pharmacies);
     if (selected != null) {
       await controller.updateCamera(
@@ -361,27 +438,13 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       );
       return;
     }
-    if (pharmacies.length == 1) {
-      final pharmacy = pharmacies.first;
-      await controller.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(
-          target: NLatLng(pharmacy.latitude, pharmacy.longitude),
-          zoom: 15,
-        ),
-      );
-      return;
-    }
     await controller.updateCamera(
-      NCameraUpdate.fitBounds(
-        NLatLngBounds.from(
-          // 함수이름: _updateCamera.map callback
-          // 함수역할: 약국 마커·선택 강조·확대·출처 명령의 변환값을 `NLatLng(item.latitude, item.longitude)` 규칙으로 계산한다.
-          // 매개변수:
-          // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-          // 반환값: 컬렉션 연산에 전달할 변환값.
-          pharmacies.map((item) => NLatLng(item.latitude, item.longitude)),
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(
+          widget.searchArea.center.latitude,
+          widget.searchArea.center.longitude,
         ),
-        padding: const EdgeInsets.fromLTRB(34, 58, 34, 34),
+        zoom: 13,
       ),
     );
   }
@@ -408,6 +471,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   void _changeZoom(double delta) {
     final controller = _mapController;
     if (controller != null) {
+      _cameraMoved = true;
+      _cameraGeneration++;
+      setState(() => _pendingArea = null);
       unawaited(controller.updateCamera(NCameraUpdate.zoomBy(delta)));
     }
   }

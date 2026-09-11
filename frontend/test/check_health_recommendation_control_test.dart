@@ -16,6 +16,59 @@ import 'package:medbuddy_frontend/controls/check_health_recommendation_control.d
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final status in [404, 401, 403, 429, 500]) {
+    // 함수이름: 빈 복용 약 응답 구분 테스트
+    // 함수역할: 같은 안내 문구라도 약 없음 전용 404만 빈 상태로 처리한다. 매개변수: 없음. 반환값: 검증 완료.
+    test(
+      'only the documented empty response is classified as empty: $status',
+      () async {
+        final client = MockClient(
+          (_) async => http.Response(
+            jsonEncode({'detail': '오늘 복용 중인 약 정보가 없습니다.'}),
+            status,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        addTearDown(client.close);
+        final control = CheckHealthRecommendation(client: client);
+        addTearDown(control.dispose);
+        await expectLater(
+          control.requestHealthRecommendation(),
+          throwsA(
+            status == 404
+                ? isA<NoActiveMedicationsError>()
+                : isA<StateError>().having(
+                    (error) => error is NoActiveMedicationsError,
+                    'empty state',
+                    false,
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 함수이름: 알 수 없는 404 테스트
+  // 함수역할: 잘못된 주소나 일반 404를 약 없음으로 오인하지 않는지 확인한다. 매개변수: 없음. 반환값: 검증 완료.
+  test('unrelated 404 remains a request failure', () async {
+    final client = MockClient(
+      (_) async => http.Response('{"detail":"Not Found"}', 404),
+    );
+    addTearDown(client.close);
+    final control = CheckHealthRecommendation(client: client);
+    addTearDown(control.dispose);
+    await expectLater(
+      control.requestHealthRecommendation(),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error is NoActiveMedicationsError,
+          'empty state',
+          false,
+        ),
+      ),
+    );
+  });
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 건강 추천 요청이 환자와 언어 범위를 전달하고 식사·운동·주의 정보를 해석하는지 검증한다.
@@ -79,49 +132,46 @@ void main() {
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'requestHealthRecommendation supports a selected patient scope',
-    () async {
-      // Function Name: MockClient callback
-      // Description:
-      // - Assert that the selected patient-b scope and Korean language reach the recommendation endpoint.
-      // Parameters:
-      // - request (http.Request): HTTP request intercepted instead of reaching the server.
-      // Returns:
-      // - HTTP 200 with fixed recommendation content.
-      final client = MockClient((http.Request request) async {
-        expect(request.method, 'GET');
-        expect(request.url.path, '/health/recommendation');
-        expect(request.url.queryParameters['patient_hash'], 'patient-b');
-        expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
-        expect(request.url.queryParameters.containsKey('role'), isFalse);
-        expect(request.url.queryParameters['language'], 'ko');
-        return http.Response(
-          jsonEncode({
-            'success': true,
-            'data': {
-              'diet_recommendation': '식사',
-              'exercise_recommendation': '운동',
-              'caution_items': ['주의'],
-            },
-          }),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = CheckHealthRecommendation(
-        baseUrl: 'http://localhost',
-        patientHash: 'patient-b',
-        client: client,
+  test('requestHealthRecommendation supports a selected patient scope', () async {
+    // Function Name: MockClient callback
+    // Description:
+    // - Assert that the selected patient-b scope and Korean language reach the recommendation endpoint.
+    // Parameters:
+    // - request (http.Request): HTTP request intercepted instead of reaching the server.
+    // Returns:
+    // - HTTP 200 with fixed recommendation content.
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/health/recommendation');
+      expect(request.url.queryParameters['patient_hash'], 'patient-b');
+      expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
+      expect(request.url.queryParameters.containsKey('role'), isFalse);
+      expect(request.url.queryParameters['language'], 'ko');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'diet_recommendation': '식사',
+            'exercise_recommendation': '운동',
+            'caution_items': ['주의'],
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
+    });
+    final control = CheckHealthRecommendation(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-b',
+      client: client,
+    );
 
-      final recommendation = await control.requestHealthRecommendation();
+    final recommendation = await control.requestHealthRecommendation();
 
-      expect(recommendation.dietRecommendation, '식사');
-      expect(recommendation.exerciseRecommendation, '운동');
-      expect(recommendation.cautionItems, ['주의']);
-    },
-  );
+    expect(recommendation.dietRecommendation, '식사');
+    expect(recommendation.exerciseRecommendation, '운동');
+    expect(recommendation.cautionItems, ['주의']);
+  });
 
   // 함수이름: test 콜백
   // 함수역할:

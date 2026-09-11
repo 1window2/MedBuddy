@@ -71,6 +71,7 @@ HomeScreen --> NotificationInboxUI : bell / unread badge
 HomeScreen --> ManageNotificationInbox : lifecycle / unread count
 NotificationInboxUI --> ManageNotificationInbox : list / read / delete
 ManageNotificationInbox --> NotificationInboxStore : per-account local history
+ManageNotificationInbox --> ManageChatList : current peer names
 NotificationInboxStore --> NotificationInboxEntry
 NotificationService --> NotificationInboxStore : local alerts / reminder events
 PushNotificationService --> NotificationInboxStore : recipient-scoped push
