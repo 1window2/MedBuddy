@@ -810,7 +810,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
               ),
               if (_listExpanded)
                 Positioned.fill(
-                  top: 32,
                   child: Material(
                     key: const Key('pharmacy-list-panel'),
                     elevation: 8,
