@@ -60,9 +60,9 @@ void main() {
       {'id': 902, 'payload': 'chat:5'},
     ]);
     active.addAll([
-      {'id': 903, 'tag': 'dose', 'payload': 'schedule:evening:903:2026-09-11'},
-      {'id': 904, 'tag': 'caregiver', 'payload': 'caregiver:patient'},
-      {'id': 905, 'payload': 'chat:5'},
+      {'id': 903, 'tag': 'dose', 'channelId': 'medbuddy_medication_reminders'},
+      {'id': 904, 'tag': 'caregiver', 'channelId': 'medbuddy_caregiver_updates'},
+      {'id': 905, 'channelId': 'medbuddy_linked_chat'},
       {'id': 906, 'payload': null},
     ]);
     await NotificationService.instance.cancelAllScheduledMedicationReminders();
@@ -82,12 +82,15 @@ void main() {
       {'id': 912, 'payload': 'schedule:morning:912:2026-09-12'},
     ]);
     active.addAll([
-      {'id': 913, 'tag': 'snooze', 'payload': 'schedule:evening:913:2026-09-12'},
-      {'id': 914, 'payload': 'schedule:morning:914:2026-09-12'},
-      {'id': 915, 'payload': 'caregiver:patient'},
-      {'id': 916, 'payload': 'chat:5'},
+      {'id': 913, 'tag': 'snooze', 'channelId': 'medbuddy_medication_reminders',
+        'groupKey': 'medbuddy.reminder.evening'},
+      {'id': 914, 'channelId': 'medbuddy_medication_reminders',
+        'groupKey': 'medbuddy.reminder.morning'},
+      {'id': 915, 'channelId': 'medbuddy_caregiver_updates'},
+      {'id': 916, 'channelId': 'medbuddy_linked_chat'},
       {'id': 917, 'payload': null},
-      {'id': 918, 'payload': 'schedule:eveningExtra:918:2026-09-12'},
+      {'id': 918, 'channelId': 'medbuddy_medication_reminders',
+        'groupKey': 'medbuddy.reminder.eveningExtra'},
     ]);
     await NotificationService.instance.cancelReminder(103, slotKey: 'evening');
     expect(cancelled, contains(containsPair('id', 103)));
@@ -99,6 +102,43 @@ void main() {
     for (final id in [912, 914, 915, 916, 917, 918]) {
       expect(cancelled, isNot(contains(containsPair('id', id))));
     }
+  });
+
+  test('legacy Android reminders match date IDs only on their channel', () async {
+    await NotificationService.instance.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final previousDay = DateTime(now.year, now.month, now.day - 1);
+    var hash = 0x811C9DC5;
+    for (final unit in '103|evening|${_dateKey(previousDay)}'.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0x7FFFFFFF;
+    }
+    final legacyDateId = 100000 + (hash % 2000000000);
+    active.addAll([
+      {'id': legacyDateId, 'tag': 'legacy',
+        'channelId': 'medbuddy_medication_reminders'},
+      {'id': legacyDateId, 'tag': 'unrelated', 'channelId': 'other'},
+      {'id': 923, 'channelId': 'medbuddy_medication_reminders'},
+    ]);
+    await NotificationService.instance.cancelReminder(103, slotKey: 'evening');
+    expect(cancelled, contains(allOf(
+      containsPair('id', legacyDateId), containsPair('tag', 'legacy'),
+    )));
+    expect(cancelled, isNot(contains(containsPair('tag', 'unrelated'))));
+    expect(cancelled, isNot(contains(containsPair('id', 923))));
+  });
+
+  test('session cleanup recognizes Android channels without payloads', () async {
+    active.addAll([
+      {'id': 931, 'channelId': 'medbuddy_medication_reminders'},
+      {'id': 932, 'channelId': 'medbuddy_caregiver_updates'},
+      {'id': 933, 'channelId': 'medbuddy_linked_chat'},
+      {'id': 934, 'channelId': 'other'},
+    ]);
+    await NotificationService.instance.cancelAllMedicationReminders();
+    for (final id in [931, 932, 933]) {
+      expect(cancelled, contains(containsPair('id', id)));
+    }
+    expect(cancelled, isNot(contains(containsPair('id', 934))));
   });
 
   for (final language in ['ko', 'en']) {
@@ -130,6 +170,8 @@ void main() {
             language: language,
           );
           expect(scheduled.last['body'], _body(language));
+          expect((scheduled.last['platformSpecifics'] as Map)['groupKey'],
+              'medbuddy.reminder.evening');
           expect(scheduled.last['title'], language == 'en'
               ? 'Evening medication schedule' : 'Evening 복약 일정 확인');
           expect(scheduled.last['payload'], endsWith(':${_dateKey(tomorrow)}'));

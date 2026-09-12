@@ -660,6 +660,7 @@ class NotificationService {
               : 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
           priority: Priority.high,
+          groupKey: 'medbuddy.reminder.$slotKey',
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
               markSlotTakenActionId,
@@ -762,10 +763,29 @@ class NotificationService {
       // Keep this out of routine rescheduling, which should retain delivered
       // reminders while refreshing future dates.
       final activeNotifications = await _plugin.getActiveNotifications();
+      // Android's plugin does not return payload for active notifications.
+      // Older builds also lack our group marker: recognize their deterministic
+      // IDs over the same 90-day window as local reminder history, but only on
+      // the medication channel. Unknown/other-slot notifications stay intact.
+      final now = timezone.TZDateTime.now(timezone.local);
+      final legacyIds = <int>{id};
+      for (var day = 0; day <= 90; day++) {
+        legacyIds.add(_notificationIdForDate(
+          id,
+          slotKey,
+          DateTime(now.year, now.month, now.day - day),
+        ));
+      }
       for (final notification in activeNotifications) {
         final notificationId = notification.id;
+        final androidMatch =
+            notification.channelId == 'medbuddy_medication_reminders' &&
+            (notification.groupKey == 'medbuddy.reminder.$slotKey' ||
+                (notification.groupKey == null &&
+                    legacyIds.contains(notificationId)));
         if (notificationId != null &&
-            (notification.payload?.startsWith('schedule:$slotKey:') ?? false)) {
+            (androidMatch ||
+                (notification.payload?.startsWith('schedule:$slotKey:') ?? false))) {
           await _plugin.cancel(id: notificationId, tag: notification.tag);
         }
       }
@@ -793,7 +813,12 @@ class NotificationService {
     for (final notification in activeNotifications) {
       final notificationId = notification.id;
       if (notificationId != null &&
-          isSessionNotificationPayload(notification.payload)) {
+          (isSessionNotificationPayload(notification.payload) ||
+              const {
+                'medbuddy_medication_reminders',
+                'medbuddy_caregiver_updates',
+                'medbuddy_linked_chat',
+              }.contains(notification.channelId))) {
         await _plugin.cancel(id: notificationId, tag: notification.tag);
       }
     }
@@ -827,7 +852,9 @@ class NotificationService {
     final activeNotifications = await _plugin.getActiveNotifications();
     for (final notification in activeNotifications) {
       final id = notification.id;
-      if (id != null && (notification.payload ?? '').startsWith('schedule:')) {
+      if (id != null &&
+          (notification.channelId == 'medbuddy_medication_reminders' ||
+              (notification.payload ?? '').startsWith('schedule:'))) {
         await _plugin.cancel(id: id, tag: notification.tag);
       }
     }
