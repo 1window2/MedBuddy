@@ -1,6 +1,7 @@
 // 파일명: check_nearby_pharmacy_ui_boundary_test.dart
 // 역할: 근처 약국 화면의 결과·필터·위치 오류 상태를 검증한다.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -86,6 +87,7 @@ CheckNearbyPharmacy _buildControl({
   VoidCallback? onRequest,
   List<String?>? requestedModes,
   List<DateTime>? requestedTimes,
+  Future<void> Function()? beforeResponse,
   Set<String> emptyModes = const {},
   List<Map<String, Object?>>? customPharmacies,
   Future<bool> Function(Uri uri)? uriLauncher,
@@ -107,6 +109,7 @@ CheckNearbyPharmacy _buildControl({
       requestedTimes?.add(
         DateTime.parse(request.url.queryParameters['target_datetime']!),
       );
+      await beforeResponse?.call();
       final includeClosed = requestedMode == 'all';
       final isEmpty = emptyModes.contains(requestedMode);
       final responseData = isEmpty
@@ -263,6 +266,72 @@ Widget _buildTestMap({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('stale background resume refreshes once; brief inactive does not', (
+    tester,
+  ) async {
+    var now = DateTime(2026, 9, 12, 10);
+    final times = <DateTime>[];
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(
+      _testApp(_buildControl(requestedTimes: times), clock: () => now),
+    );
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(times, hasLength(1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(seconds: 10));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(times, hasLength(1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(minutes: 2));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(times, hasLength(2));
+    expect(times.last, now);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(times, hasLength(2));
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('resume queues one fresh search behind an in-flight old request', (
+    tester,
+  ) async {
+    var now = DateTime(2026, 9, 12, 23, 59, 50);
+    final times = <DateTime>[];
+    final response = Completer<void>();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(
+          requestedTimes: times,
+          beforeResponse: () async {
+            if (times.length == 1) await response.future;
+          },
+        ),
+        clock: () => now,
+      ),
+    );
+    await tester.pump();
+    expect(times, hasLength(1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(seconds: 20));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(times, hasLength(1));
+    response.complete();
+    await tester.pumpAndSettle();
+    expect(times, hasLength(2));
+    expect(times.last, now);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'filter search advances past midnight and labels reference time',
     (tester) async {

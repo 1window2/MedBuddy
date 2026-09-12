@@ -162,7 +162,8 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
 // - _favoriteService (PharmacyFavoriteService): 사용자별 약국 즐겨찾기 저장소.
 // - _pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
 // - _isLoading (bool): 진행 중 표시를 보여줄지 여부.
-class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
+class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
+    with WidgetsBindingObserver {
   late final CheckNearbyPharmacy _control;
   late final bool _ownsControl;
   late final PharmacyFavoriteService _favoriteService;
@@ -187,6 +188,34 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   PharmacySearchArea? _searchArea;
   int _searchGeneration = 0;
   int _centerRevision = 0;
+  bool _wasBackgrounded = false;
+  bool _resumeRefreshPending = false;
+  DateTime? _lastSearchStartedAt;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _wasBackgrounded = true;
+      return;
+    }
+    if (state != AppLifecycleState.resumed || !_wasBackgrounded) return;
+    _wasBackgrounded = false;
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    final now = _now();
+    final previous = _lastSearchStartedAt;
+    final stale = previous == null ||
+        now.isBefore(previous) ||
+        now.difference(previous) >= const Duration(minutes: 1) ||
+        now.year != previous.year ||
+        now.month != previous.month ||
+        now.day != previous.day;
+    if (!stale && _errorMessage == null && _locationFailure == null) return;
+    if (_isLoading) {
+      _resumeRefreshPending = true;
+    } else {
+      unawaited(_loadPharmacies());
+    }
+  }
 
   // 함수이름: _text
   // 함수역할: 현재 언어에 맞는 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유 문구 객체를 만든다.
@@ -204,6 +233,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ownsControl = widget.control == null;
     _control = widget.control ?? CheckNearbyPharmacy();
     _favoriteService =
@@ -227,6 +257,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
@@ -247,6 +278,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
       return false;
     }
     final generation = ++_searchGeneration;
+    _lastSearchStartedAt = _now();
+    _resumeRefreshPending = false;
     final requestedArea = searchArea ?? (locate ? null : _searchArea);
     // Only an explicitly chosen calendar date survives a later search.
     if (!_hasSelectedSearchDate) {
@@ -299,7 +332,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
           _selectedPharmacyId = null;
           _selectedPhoneVerified = false;
         }
-        _lastRefreshedAt = DateTime.now();
+        _lastRefreshedAt = _now();
       });
       return true;
     } on DeviceLocationException catch (error) {
@@ -330,6 +363,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI> {
         // - 없음.
         // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() => _isLoading = false);
+        if (_resumeRefreshPending &&
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          unawaited(_loadPharmacies());
+        }
       }
     }
     return false;
