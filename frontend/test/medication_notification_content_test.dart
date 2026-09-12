@@ -76,6 +76,31 @@ void main() {
     }
   });
 
+  test('disabling one slot removes its delivered actions only', () async {
+    pending.addAll([
+      {'id': 911, 'payload': 'schedule:evening:911:2026-09-12'},
+      {'id': 912, 'payload': 'schedule:morning:912:2026-09-12'},
+    ]);
+    active.addAll([
+      {'id': 913, 'tag': 'snooze', 'payload': 'schedule:evening:913:2026-09-12'},
+      {'id': 914, 'payload': 'schedule:morning:914:2026-09-12'},
+      {'id': 915, 'payload': 'caregiver:patient'},
+      {'id': 916, 'payload': 'chat:5'},
+      {'id': 917, 'payload': null},
+      {'id': 918, 'payload': 'schedule:eveningExtra:918:2026-09-12'},
+    ]);
+    await NotificationService.instance.cancelReminder(103, slotKey: 'evening');
+    expect(cancelled, contains(containsPair('id', 103)));
+    expect(cancelled, contains(containsPair('id', 911)));
+    expect(cancelled, contains(allOf(
+      containsPair('id', 913),
+      containsPair('tag', 'snooze'),
+    )));
+    for (final id in [912, 914, 915, 916, 917, 918]) {
+      expect(cancelled, isNot(contains(containsPair('id', id))));
+    }
+  });
+
   for (final language in ['ko', 'en']) {
     for (final sensitiveDetails in [true, false]) {
       test('stale name snapshots are neutral: $language/$sensitiveDetails', () async {

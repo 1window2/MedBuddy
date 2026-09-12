@@ -757,6 +757,18 @@ class NotificationService {
     await initialize();
     if (slotKey != null && slotKey.trim().isNotEmpty) {
       await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
+      // Delivered date-specific reminders are no longer pending. Explicitly
+      // disabling this slot must remove their completion/snooze shortcuts too.
+      // Keep this out of routine rescheduling, which should retain delivered
+      // reminders while refreshing future dates.
+      final activeNotifications = await _plugin.getActiveNotifications();
+      for (final notification in activeNotifications) {
+        final notificationId = notification.id;
+        if (notificationId != null &&
+            (notification.payload?.startsWith('schedule:$slotKey:') ?? false)) {
+          await _plugin.cancel(id: notificationId, tag: notification.tag);
+        }
+      }
       return;
     }
     await _plugin.cancel(id: id);
