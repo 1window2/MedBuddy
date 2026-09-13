@@ -95,6 +95,7 @@ typedef ReminderPrivacySetter = void Function(bool showSensitiveDetails);
 const String medicationReminderBackgroundTask =
     'medbuddy_medication_reminder_refresh';
 const String _medicationReminderBackgroundTag = 'medbuddy_medication_reminder';
+const String _reminderWorkerOwnerKey = 'medbuddy_reminder_worker_owner';
 
 // 클래스명: MedicationReminderRefreshService
 // 역할: 서버 상태를 기준으로 제한된 로컬 복약 알림 기간을 다시 구성한다.
@@ -526,7 +527,12 @@ class MedicationReminderBackgroundScheduler {
       return;
     }
     final normalizedHash = PatientHash.normalizePatientHash(patientHash);
-    await Workmanager().cancelByTag(_medicationReminderBackgroundTag);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.reload();
+    if (preferences.getString(_reminderWorkerOwnerKey) != normalizedHash) {
+      await Workmanager().cancelByTag(_medicationReminderBackgroundTag);
+      await preferences.setString(_reminderWorkerOwnerKey, normalizedHash);
+    }
     await Workmanager().registerPeriodicTask(
       '$_medicationReminderBackgroundTag.$normalizedHash',
       medicationReminderBackgroundTask,
@@ -537,6 +543,8 @@ class MedicationReminderBackgroundScheduler {
       },
       constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      backoffPolicy: BackoffPolicy.exponential,
+      backoffPolicyDelay: const Duration(seconds: 30),
       tag: _medicationReminderBackgroundTag,
     );
   }
@@ -552,5 +560,7 @@ class MedicationReminderBackgroundScheduler {
       return;
     }
     await Workmanager().cancelByTag(_medicationReminderBackgroundTag);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_reminderWorkerOwnerKey);
   }
 }

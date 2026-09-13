@@ -8,6 +8,19 @@ part of 'medbuddy_view_model.dart';
 // 주요 책임:
 // - 알림 개인정보 정책을 설정 변경과 동기화하고 새로고침과 분석 상태 초기화 및 세션 데이터 정리를 조정한다.
 extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
+  /// Reconcile only reads and local alarms; never replay a completion write.
+  Future<bool> recoverMedicationConnectivity() async {
+    if (_isTodayScheduleLoading) return false;
+    // Foreground recovery refreshes the visible state without replacing native
+    // alarms (which could otherwise erase an outstanding ten-minute snooze).
+    // The persistent reminder worker owns rolling-window reconciliation.
+    await Future.wait([
+      loadMedicationReminderSettings(notifyAfterLoad: false),
+      fetchTodayMedicationSchedule(),
+    ]);
+    return _lastTodayScheduleLoadSucceeded &&
+        _lastReminderSettingsLoadSucceeded;
+  }
   // 함수이름: loadUserSetting
   // 함수역할: 앱 시작 시 로컬 사용자 설정, 알림 설정, 오늘 복약 일정을 함께 불러온다.
   // 매개변수:

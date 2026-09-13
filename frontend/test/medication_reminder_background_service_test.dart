@@ -17,6 +17,40 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  test('offline refresh preserves native alarms and recovers after reconnect', () async {
+    SharedPreferences.setMockInitialValues({});
+    var offline = true;
+    var registered = 0;
+    var cancelled = 0;
+    final service = MedicationReminderRefreshService(
+      loadSettings: () async => const [
+        MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
+      ],
+      loadSchedules: () async {
+        if (offline) throw StateError('network unavailable');
+        return [MedicationSchedule(
+          medicationName: 'TEST_ONLY',
+          prescriptionDate: DateTime(2026, 9, 13),
+          medicationTime: 2,
+          scheduleSlotKeys: const ['morning'],
+        )];
+      },
+      registerReminder: ({required id, required slotKey, required slotTitle,
+        required hour, required minute, required medicationNames,
+        required activeDates, medicationNamesByDate = const <String, List<String>>{},
+        language = 'ko'}) async { registered++; },
+      cancelReminder: (id, {slotKey}) async { cancelled++; },
+      now: () => DateTime(2026, 9, 13, 7),
+    );
+    expect(await service.synchronize(), isFalse);
+    expect(registered, 0);
+    expect(cancelled, 0);
+    offline = false;
+    expect(await service.synchronize(), isTrue);
+    expect(registered, 1);
+    expect(cancelled, 3);
+    service.dispose();
+  });
   // Function Name: test callback
   // Description:
   // - Verify that background synchronization replenishes long-course reminders beyond fourteen days.

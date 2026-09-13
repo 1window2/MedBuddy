@@ -277,6 +277,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - bool: Failure of the latest applicable schedule load for retry-state rendering.
   bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
   bool _lastTodayScheduleLoadSucceeded = false;
+  bool _lastReminderSettingsLoadSucceeded = false;
   int _todayScheduleEpoch = 0;
   // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
   int? _activeTodayScheduleLoadEpoch;

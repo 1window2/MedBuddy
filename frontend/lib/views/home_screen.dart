@@ -30,6 +30,7 @@ import '../controls/manage_chat_list_control.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
+import '../services/foreground_recovery_service.dart';
 import '../services/notification_inbox_store.dart';
 import '../controls/manage_notification_inbox_control.dart';
 import '../boundaries/notification_inbox_ui_boundary.dart';
@@ -75,6 +76,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ManageChatList? _chatList;
   ManageNotificationInbox? _notificationInbox;
   Timer? _chatRefreshTimer;
+  ForegroundRecoveryService? _medicationRecovery;
+  MedBuddyViewModel? _recoveryOwner;
+  void _onScheduleRecoveryNeeded() {
+    final owner = _recoveryOwner;
+    if (_isForeground && owner != null &&
+        owner.hasTodayScheduleLoadError && !owner.isTodayScheduleLoading) {
+      _medicationRecovery?.start();
+    }
+  }
   bool _isForeground = true;
   String? _updatingHomeMedicationSlotKey;
   final Set<MedBuddyDestination> _visitedDestinations = {
@@ -181,7 +191,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isForeground) {
       _startChatRefresh();
       _notificationInbox?.start();
+      _medicationRecovery?.start();
     } else {
+      _medicationRecovery?.stop();
       _chatRefreshTimer?.cancel();
       _notificationInbox?.stop();
     }
@@ -193,6 +205,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _medicationRecovery?.dispose();
+    _recoveryOwner?.updatesFor(MedBuddyFeature.schedule)
+        .removeListener(_onScheduleRecoveryNeeded);
     _notificationInbox?.dispose();
     _chatRefreshTimer?.cancel();
     _chatList?.removeListener(_onChatListChanged);
@@ -247,6 +262,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<MedBuddyViewModel>();
+    if (!identical(_recoveryOwner, viewModel)) {
+      _medicationRecovery?.dispose();
+      _recoveryOwner?.updatesFor(MedBuddyFeature.schedule)
+          .removeListener(_onScheduleRecoveryNeeded);
+      _recoveryOwner = viewModel;
+      viewModel.updatesFor(MedBuddyFeature.schedule)
+          .addListener(_onScheduleRecoveryNeeded);
+      final recovery = ForegroundRecoveryService(
+        viewModel.recoverMedicationConnectivity,
+      );
+      _medicationRecovery = recovery;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _isForeground && identical(_medicationRecovery, recovery)) {
+          _onScheduleRecoveryNeeded();
+        }
+      });
+    }
     _syncChatControl(viewModel);
     _syncNotificationInbox(viewModel);
     return ListenableBuilder(

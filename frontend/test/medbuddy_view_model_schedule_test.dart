@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
+import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
@@ -29,6 +30,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  test('partial offline settings never cancel alarms; recovery performs reads only', () async {
+    SharedPreferences.setMockInitialValues({});
+    var offline = true;
+    final methods = <String>[];
+    final client = MockClient((request) async {
+      methods.add(request.method);
+      if (request.url.path.contains('notification/settings')) {
+        if (offline) throw http.ClientException('offline');
+        return _jsonResponse({'success': true, 'data': []});
+      }
+      return _jsonResponse({'success': true, 'data': []});
+    });
+    final notifications = _FakeNotificationService();
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      setNotification: SetNotification(patientHash: 'patient-a', client: client),
+      notificationService: notifications,
+    );
+    addTearDown(viewModel.dispose);
+    addTearDown(client.close);
+    await viewModel.refreshMedicationSchedule();
+    expect(notifications.canceledIds, isEmpty);
+    expect(notifications.registeredSlotKeys, isEmpty);
+    expect(await viewModel.recoverMedicationConnectivity(), isFalse);
+    offline = false;
+    expect(await viewModel.recoverMedicationConnectivity(), isTrue);
+    expect(methods.every((method) => method == 'GET'), isTrue);
+    expect(notifications.canceledIds, isEmpty);
+    expect(notifications.registeredSlotKeys, isEmpty);
+  });
   // Failed quick actions must not optimistically mark doses complete or erase
   // existing records. Only an explicitly retried, successful response applies.
   for (final failure in ['transport', 'service', 'stale-date']) {

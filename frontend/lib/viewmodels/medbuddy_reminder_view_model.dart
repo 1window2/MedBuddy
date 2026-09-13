@@ -17,6 +17,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   Future<void> loadMedicationReminderSettings({
     bool notifyAfterLoad = true,
   }) async {
+    _lastReminderSettingsLoadSucceeded = false;
     try {
       final settings = await setNotification.requestMedicationAlarm();
       final settingsBySlot = {
@@ -37,6 +38,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
       for (final setting in settingsBySlot.values) {
         await _cacheMedicationReminderSetting(preferences, setting);
       }
+      _lastReminderSettingsLoadSucceeded = true;
     } catch (_) {
       await _loadMedicationReminderSettingsFromCache();
     }
@@ -357,7 +359,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void>
   _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
-    if (!_lastTodayScheduleLoadSucceeded) {
+    if (!_lastTodayScheduleLoadSucceeded || !_lastReminderSettingsLoadSucceeded) {
       return;
     }
     try {
