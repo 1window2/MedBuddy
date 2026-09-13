@@ -9,6 +9,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../entities/nearby_pharmacy_entity.dart';
 import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';
+import 'pharmacy_map_symbols.dart';
 
 // 클래스명: NearbyPharmacyMap
 // 역할: 약국 마커·선택 강조·확대·출처 명령을 담당한다.
@@ -21,6 +22,8 @@ import '../theme/medbuddy_theme.dart';
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
   final PharmacySearchArea searchArea;
+  /// Last device fix, independent from a manually moved search area.
+  final DeviceCoordinate? deviceLocation;
   final int centerRevision;
   final bool isSearching;
   final Future<bool> Function(PharmacySearchArea)? onSearchAreaRequested;
@@ -57,6 +60,7 @@ class NearbyPharmacyMap extends StatefulWidget {
   const NearbyPharmacyMap({
     super.key,
     this.searchArea = PharmacySearchArea.hongik,
+    this.deviceLocation,
     this.centerRevision = 0,
     this.isSearching = false,
     this.onSearchAreaRequested,
@@ -97,6 +101,24 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   bool _cameraMoved = false;
   PharmacySearchArea? _pendingArea;
   int _cameraGeneration = 0;
+  Future<void>? _symbolLoading;
+  NOverlayImage? _pinIcon;
+  NOverlayImage? _selectedPinIcon;
+  NOverlayImage? _locationIcon;
+
+  Future<void> _loadSymbols() => _symbolLoading ??= () async {
+    final icons = await Future.wait([
+      NOverlayImage.fromWidget(widget: const PharmacyMapPin(),
+          size: PharmacyMapPin.size, context: context),
+      NOverlayImage.fromWidget(widget: const PharmacyMapPin(selected: true),
+          size: PharmacyMapPin.size, context: context),
+      NOverlayImage.fromWidget(widget: const PharmacyDeviceLocationDot(),
+          size: PharmacyDeviceLocationDot.size, context: context),
+    ]);
+    _pinIcon = icons[0];
+    _selectedPinIcon = icons[1];
+    _locationIcon = icons[2];
+  }();
 
   // 함수이름: _mappablePharmacies
   // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.
@@ -123,7 +145,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       _pendingArea = null;
       _cameraGeneration++;
     }
-    if (selectionChanged || pharmaciesChanged || recenter) {
+    if (selectionChanged || pharmaciesChanged || recenter ||
+        oldWidget.deviceLocation != widget.deviceLocation) {
       unawaited(
         _synchronizeMap(
           moveCamera:
@@ -371,6 +394,20 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       return;
     }
     final generation = ++_overlayGeneration;
+    await _loadSymbols();
+    if (!mounted || generation != _overlayGeneration) return;
+    final locationOverlay = await controller.getLocationOverlay();
+    if (!mounted || generation != _overlayGeneration) return;
+    final coordinate = widget.deviceLocation;
+    final validLocation = coordinate != null &&
+        PharmacySearchArea(center: coordinate).isValid;
+    locationOverlay.setIsVisible(validLocation);
+    if (validLocation) {
+      locationOverlay.setPosition(NLatLng(coordinate.latitude, coordinate.longitude));
+      locationOverlay.setIcon(_locationIcon!);
+      locationOverlay.setIconSize(PharmacyDeviceLocationDot.size);
+      locationOverlay.setSubIcon(null);
+    }
     final pharmacies = _mappablePharmacies;
     final markers = pharmacies.map(_buildMarker).toSet();
     await controller.clearOverlays(type: NOverlayType.marker);
@@ -396,10 +433,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     final marker = NMarker(
       id: 'pharmacy-${pharmacy.pharmacyId}',
       position: NLatLng(pharmacy.latitude, pharmacy.longitude),
-      iconTintColor: isSelected
-          ? MedBuddyColors.primaryDark
-          : MedBuddyColors.primary,
-      size: Size.square(isSelected ? 42 : 34),
+      icon: isSelected ? _selectedPinIcon : _pinIcon,
+      size: isSelected ? PharmacyMapPin.selectedSize : PharmacyMapPin.size,
       caption: isSelected
           ? NOverlayCaption(
               text: pharmacy.name,

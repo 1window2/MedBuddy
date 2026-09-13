@@ -169,7 +169,8 @@ CheckNearbyPharmacy _buildControl({
 // - control (CheckNearbyPharmacy): 테스트가 주입하고 수명을 관리하는 제어기.
 // 반환값:
 // - 약국 목록과 가짜 지도가 있는 MaterialApp.
-Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock}) {
+Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock,
+    bool nativeMap = false}) {
   return MaterialApp(
     home: MediaQuery(
       data: const MediaQueryData(
@@ -180,7 +181,7 @@ Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock}) {
         userSetting: const UserSetting(fontSize: 20),
         control: control,
         clock: clock,
-        mapBuilder: _buildTestMap,
+        mapBuilder: nativeMap ? null : _buildTestMap,
       ),
     ),
   );
@@ -266,6 +267,34 @@ Widget _buildTestMap({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('device dot stays at the fix when the search area moves', (tester) async {
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control, nativeMap: true));
+    await tester.pumpAndSettle();
+    var map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    final fix = map.deviceLocation;
+    expect(fix, isNotNull);
+    const moved = PharmacySearchArea(
+      center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+      isMapArea: true,
+    );
+    await map.onSearchAreaRequested!(moved);
+    await tester.pumpAndSettle();
+    map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    expect(map.searchArea.center.longitude, moved.center.longitude);
+    expect(map.deviceLocation, same(fix));
+  });
+
+  testWidgets('fallback search never pretends to be the device position', (tester) async {
+    final control = _buildControl(failure: DeviceLocationFailure.serviceDisabled);
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control, nativeMap: true));
+    await tester.pumpAndSettle();
+    final map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    expect(map.searchArea.isFallback, isTrue);
+    expect(map.deviceLocation, isNull);
+  });
   testWidgets('stale background resume refreshes once; brief inactive does not', (
     tester,
   ) async {

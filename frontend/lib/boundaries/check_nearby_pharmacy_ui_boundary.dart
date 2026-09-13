@@ -170,6 +170,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   List<NearbyPharmacy> _pharmacies = const [];
   Set<String> _favoritePharmacyIds = const {};
   DeviceLocationFailure? _locationFailure;
+  DeviceCoordinate? _deviceLocation;
   String? _errorMessage;
   bool _isLoading = true;
   bool _listExpanded = false;
@@ -312,6 +313,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       setState(() {
         _searchArea =
             result.searchArea ?? requestedArea ?? PharmacySearchArea.hongik;
+        if (!_searchArea!.isFallback && !_searchArea!.isMapArea) {
+          _deviceLocation = _searchArea!.center;
+        } else if (_searchArea!.isFallback) {
+          _deviceLocation = null;
+        }
         if (locate) _centerRevision++;
         if (searchArea != null || locate) {
           _selectedPharmacyId = null;
@@ -1310,6 +1316,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     }
     return NearbyPharmacyMap(
       searchArea: _searchArea!,
+      deviceLocation: _deviceLocation,
       centerRevision: _centerRevision,
       isSearching: _isLoading,
       onSearchAreaRequested: _searchMapArea,
