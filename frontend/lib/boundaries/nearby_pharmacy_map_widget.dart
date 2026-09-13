@@ -396,7 +396,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     final generation = ++_overlayGeneration;
     await _loadSymbols();
     if (!mounted || generation != _overlayGeneration) return;
-    final locationOverlay = await controller.getLocationOverlay();
+    final locationOverlay = controller.getLocationOverlay();
     if (!mounted || generation != _overlayGeneration) return;
     final coordinate = widget.deviceLocation;
     final validLocation = coordinate != null &&
