@@ -60,7 +60,10 @@ The following implemented flows are in v0.2.0 verification:
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Nearby-pharmacy lookup using foreground location, backend-held
     public-data credentials, one explained filter selector, an attributed in-app
-    Naver Map view with synchronized card/marker selection, device-scoped
+    Naver Map view with named markers and synchronized card/marker selection.
+    Selection opens a content-sized, collapsible detail sheet while retaining
+    map exploration and the list switch; overlapping names are decluttered at
+    wider zoom levels. It also includes device-scoped
     favorites, closing-soon and next-opening status, source-freshness metadata,
     refresh cooldown, validated phone launch, user-selected installed-map or
     Google directions, address-copy fallback, and authorized pharmacy sharing

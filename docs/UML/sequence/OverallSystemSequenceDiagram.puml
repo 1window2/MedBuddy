@@ -776,14 +776,18 @@ Router --> ApiClient : 저장 응답
 ApiClient --> FrontControl : MedicationSaveResult
 FrontControl --> UI : 저장 결과와 갱신된 일정
 
-== 12. 근처 운영 약국 실험실 기능 ==
+== 12. 근처 운영 약국 지도·목록 조회 ==
 
-User -> UI : 실험실에서 근처 운영 약국 활성화 후 홈 기능 선택
+User -> UI : 홈의 근처 운영 약국 선택
 UI -> FrontControl : CheckNearbyPharmacy.requestNearbyPharmacies()
 FrontControl -> FrontService : DeviceLocationBoundary.requestCurrentCoordinate()
 FrontService -> LocationService : 전경 위치 권한과 현재 좌표 요청
 LocationService --> FrontService : 현재 좌표 또는 권한 오류
-FrontService --> FrontControl : DeviceCoordinate
+FrontService --> FrontControl : 현재 좌표 또는 위치 조회 실패
+opt 위치 권한 거부·GPS 꺼짐·조회 실패
+    FrontControl -> FrontControl : 홍익대학교 서울캠퍼스 기준 선택
+    FrontControl --> UI : 대체 검색 위치 안내
+end
 FrontControl -> ApiClient : GET /pharmacy/nearby?latitude&longitude
 ApiClient -> Router : 인증된 근처 약국 요청
 Router -> BackControl : CheckNearbyPharmacy.requestNearbyPharmacies()
@@ -801,6 +805,18 @@ BackControl --> FrontControl : 거리순 NearbyPharmacy 목록
 FrontControl -> FrontService : 사용자별 기기 즐겨찾기 조회
 FrontService --> FrontControl : favoriteIds
 FrontControl --> UI : 즐겨찾기 우선 목록과 갱신 상태
+UI --> User : 이름이 있는 마커와 약국 목록 전환 버튼
+User -> UI : 지도 마커 또는 목록의 약국 선택
+UI -> UI : 선택 위치로 지도 이동 + 하단 정보창 열기
+opt 정보창을 접거나 펼치기
+    User -> UI : 드래그 또는 접기·펼치기 버튼
+    UI -> UI : 실제 내용 높이에 맞춤 + 긴 내용 스크롤
+    UI --> User : 지도를 계속 탐색할 수 있는 정보창
+end
+opt 정보창 닫기
+    User -> UI : 닫기 선택
+    UI -> UI : 선택 해제, 지도 탐색 위치 유지
+end
 User -> UI : 전화 또는 길찾기 선택
 UI -> FrontService : 검증된 전화번호 또는 약국명·좌표 전달
 FrontService -> ExternalApp : 운영체제 앱 열기
