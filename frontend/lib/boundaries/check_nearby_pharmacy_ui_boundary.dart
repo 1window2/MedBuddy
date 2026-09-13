@@ -553,6 +553,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     setState(() {
       _filter = nextFilter;
       _selectedPharmacyId = null;
+      // Never label the previous condition's pins as new-filter results.
+      _pharmacies = [];
       if (nextFilter == _PharmacyFilter.openNow) {
         _hasSelectedSearchDate = false;
         _targetDateTime = _now();
@@ -948,6 +950,32 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                 height: 1.35,
                 letterSpacing: 0,
                 color: MedBuddyColors.textMuted,
+              ),
+            ),
+          ),
+        if (!_listExpanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('pharmacy-map-filter-selector'),
+                    onPressed: _isLoading ? null : _showFilterPicker,
+                    icon: const Icon(Icons.filter_alt_outlined),
+                    label: Text(_text.selectedFilter(_filterLabel(_filter))),
+                  ),
+                  if (_filter != _PharmacyFilter.openNow) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: const Key('pharmacy-map-search-date'),
+                      onPressed: _isLoading ? null : _pickSearchDate,
+                      icon: const Icon(Icons.event_outlined),
+                      label: Text(_text.searchDate(_targetDateTime)),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -2477,8 +2505,8 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get filterPickerDescription => isEnglish
-      ? 'Choose one condition for the pharmacy list.'
-      : '약국 목록에 적용할 조건을 하나 선택해주세요.';
+      ? 'Choose one condition for the map and pharmacy list.'
+      : '지도와 약국 목록에 적용할 조건을 하나 선택해주세요.';
   // 함수이름: selectedFilter
   // 함수역할: 현재 언어와 입력값에 맞춰 "조회 조건: $label" 문구를 제공한다.
   // 매개변수:

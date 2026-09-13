@@ -827,6 +827,34 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('map filters update pins without opening the pharmacy list', (
+    tester,
+  ) async {
+    final modes = <String?>[];
+    await tester.pumpWidget(_testApp(_buildControl(requestedModes: modes)));
+    await tester.pumpAndSettle();
+    final map = tester.element(find.byKey(const Key('test-nearby-pharmacy-map')));
+    for (final option in ['lateHours', 'weekendHoliday', 'all', 'openNow']) {
+      await tester.tap(find.byKey(const Key('pharmacy-map-filter-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('pharmacy-filter-option-$option')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+      expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(map));
+      expect(find.byKey(const ValueKey('test-map-marker-open')), findsOneWidget);
+      expect(find.byKey(const ValueKey('test-map-marker-closed')),
+          option == 'all' ? findsOneWidget : findsNothing);
+      expect(find.byKey(const Key('pharmacy-map-search-date')),
+          option == 'openNow' ? findsNothing : findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+    expect(modes, ['open_at_time', 'late_hours', 'weekend_holiday', 'all', 'open_at_time']);
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 현재 영업 중'), findsOneWidget);
+    expect(find.byKey(const Key('pharmacy-map-filter-selector')), findsNothing);
+  });
+
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,
   ) async {
