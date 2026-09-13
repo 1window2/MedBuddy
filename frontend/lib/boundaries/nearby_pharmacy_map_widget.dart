@@ -22,9 +22,13 @@ import 'pharmacy_map_symbols.dart';
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
   final PharmacySearchArea searchArea;
+
   /// Last device fix, independent from a manually moved search area.
   final DeviceCoordinate? deviceLocation;
   final int centerRevision;
+  // 하단 정보창 높이만큼 지도 중심·로고·조작 버튼의 표시 영역을 확보한다.
+  final double bottomInset;
+  final bool showControls;
   final bool isSearching;
   final Future<bool> Function(PharmacySearchArea)? onSearchAreaRequested;
   final VoidCallback? onCurrentLocationRequested;
@@ -62,6 +66,8 @@ class NearbyPharmacyMap extends StatefulWidget {
     this.searchArea = PharmacySearchArea.hongik,
     this.deviceLocation,
     this.centerRevision = 0,
+    this.bottomInset = 0,
+    this.showControls = true,
     this.isSearching = false,
     this.onSearchAreaRequested,
     this.onCurrentLocationRequested,
@@ -108,12 +114,21 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
 
   Future<void> _loadSymbols() => _symbolLoading ??= () async {
     final icons = await Future.wait([
-      NOverlayImage.fromWidget(widget: const PharmacyMapPin(),
-          size: PharmacyMapPin.size, context: context),
-      NOverlayImage.fromWidget(widget: const PharmacyMapPin(selected: true),
-          size: PharmacyMapPin.size, context: context),
-      NOverlayImage.fromWidget(widget: const PharmacyDeviceLocationDot(),
-          size: PharmacyDeviceLocationDot.size, context: context),
+      NOverlayImage.fromWidget(
+        widget: const PharmacyMapPin(),
+        size: PharmacyMapPin.size,
+        context: context,
+      ),
+      NOverlayImage.fromWidget(
+        widget: const PharmacyMapPin(selected: true),
+        size: PharmacyMapPin.size,
+        context: context,
+      ),
+      NOverlayImage.fromWidget(
+        widget: const PharmacyDeviceLocationDot(),
+        size: PharmacyDeviceLocationDot.size,
+        context: context,
+      ),
     ]);
     _pinIcon = icons[0];
     _selectedPinIcon = icons[1];
@@ -145,7 +160,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       _pendingArea = null;
       _cameraGeneration++;
     }
-    if (selectionChanged || pharmaciesChanged || recenter ||
+    if (selectionChanged ||
+        pharmaciesChanged ||
+        recenter ||
         oldWidget.deviceLocation != widget.deviceLocation) {
       unawaited(
         _synchronizeMap(
@@ -197,7 +214,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 scaleBarEnable: false,
                 compassEnable: false,
                 logoClickEnable: true,
-                contentPadding: const EdgeInsets.only(bottom: 28),
+                contentPadding: EdgeInsets.only(
+                  bottom: widget.bottomInset + 28,
+                ),
               ),
               // Function Name: build.onMapReady callback
               // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
@@ -276,55 +295,58 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                   ),
                 ),
               ),
-            Positioned(
-              right: 8,
-              bottom: 8,
-              child: _MapControlButton(
-                tooltip: 'Naver Map',
-                icon: Icons.info_outline,
-                onPressed: widget.onAttributionRequested,
+            if (widget.showControls)
+              Positioned(
+                right: 8,
+                bottom: widget.bottomInset + 8,
+                child: _MapControlButton(
+                  tooltip: 'Naver Map',
+                  icon: Icons.info_outline,
+                  onPressed: widget.onAttributionRequested,
+                ),
               ),
-            ),
-            Positioned(
-              right: 8,
-              bottom: 54,
-              child: _MapControlButton(
-                tooltip: widget.myLocationTooltip,
-                icon: Icons.my_location,
-                onPressed: widget.isSearching || _mapController == null
-                    ? null
-                    : widget.onCurrentLocationRequested,
+            if (widget.showControls)
+              Positioned(
+                right: 8,
+                bottom: widget.bottomInset + 54,
+                child: _MapControlButton(
+                  tooltip: widget.myLocationTooltip,
+                  icon: Icons.my_location,
+                  onPressed: widget.isSearching || _mapController == null
+                      ? null
+                      : widget.onCurrentLocationRequested,
+                ),
               ),
-            ),
-            Positioned(
-              left: 8,
-              bottom: 8,
-              child: Column(
-                children: [
-                  _MapControlButton(
-                    tooltip: widget.zoomInTooltip,
-                    icon: Icons.add,
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: 지도 준비가 끝난 경우 현재 확대 수준에 지정 변화량을 더한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onPressed: () => _changeZoom(1),
-                  ),
-                  const SizedBox(height: 6),
-                  _MapControlButton(
-                    tooltip: widget.zoomOutTooltip,
-                    icon: Icons.remove,
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: 지도 준비가 끝난 경우 현재 확대 수준에 지정 변화량을 더한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onPressed: () => _changeZoom(-1),
-                  ),
-                ],
+            if (widget.showControls)
+              Positioned(
+                left: 8,
+                bottom: widget.bottomInset + 8,
+                child: Column(
+                  children: [
+                    _MapControlButton(
+                      tooltip: widget.zoomInTooltip,
+                      icon: Icons.add,
+                      // 함수이름: build.onPressed callback
+                      // 함수역할: 지도 준비가 끝난 경우 현재 확대 수준에 지정 변화량을 더한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      onPressed: () => _changeZoom(1),
+                    ),
+                    const SizedBox(height: 6),
+                    _MapControlButton(
+                      tooltip: widget.zoomOutTooltip,
+                      icon: Icons.remove,
+                      // 함수이름: build.onPressed callback
+                      // 함수역할: 지도 준비가 끝난 경우 현재 확대 수준에 지정 변화량을 더한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      onPressed: () => _changeZoom(-1),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -399,11 +421,13 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     final locationOverlay = controller.getLocationOverlay();
     if (!mounted || generation != _overlayGeneration) return;
     final coordinate = widget.deviceLocation;
-    final validLocation = coordinate != null &&
-        PharmacySearchArea(center: coordinate).isValid;
+    final validLocation =
+        coordinate != null && PharmacySearchArea(center: coordinate).isValid;
     locationOverlay.setIsVisible(validLocation);
     if (validLocation) {
-      locationOverlay.setPosition(NLatLng(coordinate.latitude, coordinate.longitude));
+      locationOverlay.setPosition(
+        NLatLng(coordinate.latitude, coordinate.longitude),
+      );
       locationOverlay.setIcon(_locationIcon!);
       locationOverlay.setIconSize(PharmacyDeviceLocationDot.size);
       locationOverlay.setSubIcon(null);

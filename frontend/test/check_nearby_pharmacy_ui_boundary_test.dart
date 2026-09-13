@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/nearby_pharmacy_map_widget.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
@@ -169,16 +170,21 @@ CheckNearbyPharmacy _buildControl({
 // - control (CheckNearbyPharmacy): 테스트가 주입하고 수명을 관리하는 제어기.
 // 반환값:
 // - 약국 목록과 가짜 지도가 있는 MaterialApp.
-Widget _testApp(CheckNearbyPharmacy control, {DateTime Function()? clock,
-    bool nativeMap = false}) {
+Widget _testApp(
+  CheckNearbyPharmacy control, {
+  DateTime Function()? clock,
+  bool nativeMap = false,
+  String language = 'ko',
+  double textScale = 1.6,
+}) {
   return MaterialApp(
     home: MediaQuery(
-      data: const MediaQueryData(
+      data: MediaQueryData(
         size: Size(360, 640),
-        textScaler: TextScaler.linear(1.6),
+        textScaler: TextScaler.linear(textScale),
       ),
       child: CheckNearbyPharmacyUI(
-        userSetting: const UserSetting(fontSize: 20),
+        userSetting: UserSetting(fontSize: 20, language: language),
         control: control,
         clock: clock,
         mapBuilder: nativeMap ? null : _buildTestMap,
@@ -267,7 +273,274 @@ Widget _buildTestMap({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  testWidgets('device dot stays at the fix when the search area moves', (tester) async {
+  // 함수이름: setUp 콜백
+  // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  // 함수이름: 마커 상세창 테스트
+  // 함수역할: 마커 선택, 접기·펼치기, 닫기와 지도 상태 보존을 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('marker opens draggable details without replacing the map', (
+    tester,
+  ) async {
+    var requestCount = 0;
+    await tester.pumpWidget(
+      _testApp(_buildControl(onRequest: () => requestCount++)),
+    );
+    await tester.pumpAndSettle();
+    final map = tester.element(
+      find.byKey(const Key('test-nearby-pharmacy-map')),
+    );
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+    final sheet = find.byKey(const Key('pharmacy-detail-sheet'));
+    expect(sheet, findsOneWidget);
+    final expandedHeight = tester.getSize(sheet).height;
+    await tester.drag(
+      find.byKey(const Key('pharmacy-detail-handle')),
+      const Offset(0, 280),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(sheet).height, lessThan(expandedHeight));
+    expect(find.text('서울특별시 종로구'), findsNothing);
+    expect(find.text('전화'), findsOneWidget);
+    expect(find.text('길찾기'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('pharmacy-detail-handle')));
+    await tester.pumpAndSettle();
+    expect(find.text('서울특별시 종로구'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('pharmacy-detail-close')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+    expect(
+      tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))),
+      same(map),
+    );
+    expect(requestCount, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 지도 표시 여백 테스트
+  // 함수역할: 정보창 높이에 따라 지도 여백과 조작 버튼을 조정하고 닫으면 복원하는지 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('native map reserves detail space and restores it on close', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_testApp(_buildControl(), nativeMap: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-card-open')));
+    await tester.pumpAndSettle();
+    var map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    expect(map.selectedPharmacyId, 'open');
+    expect(map.bottomInset, greaterThan(0));
+    final revision = map.centerRevision;
+    final sheet = tester.widget<DraggableScrollableSheet>(
+      find.byType(DraggableScrollableSheet),
+    );
+    sheet.controller!.jumpTo(.92);
+    await tester.pumpAndSettle();
+    map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    expect(map.showControls, isFalse);
+    expect(map.centerRevision, revision);
+    await tester.tap(find.byKey(const Key('pharmacy-detail-close')));
+    await tester.pumpAndSettle();
+    map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    expect(map.bottomInset, 0);
+    expect(map.showControls, isTrue);
+    expect(map.selectedPharmacyId, isNull);
+    expect(map.centerRevision, revision);
+  });
+
+  // 함수이름: 목록·지도 이동 테스트
+  // 함수역할: 목록에서 선택하면 지도 상세로 이동하고 뒤로가기가 각 패널을 닫는지 확인한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets(
+    'list selection opens map details and back closes panels in order',
+    (tester) async {
+      await tester.pumpWidget(_testApp(_buildControl()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-card-open')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pharmacy-detail-sheet')), findsOneWidget);
+      expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pharmacy-list-panel')), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+      expect(find.byKey(const Key('pharmacy-detail-sheet')), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('pharmacy-detail-sheet')), findsNothing);
+      expect(find.byType(CheckNearbyPharmacyUI), findsOneWidget);
+    },
+  );
+
+  // 함수이름: 상세창 명령 테스트
+  // 함수역할: 전화와 즐겨찾기가 목록 전환 없이 선택한 약국에 적용되는지 확인한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets(
+    'detail actions use the selected pharmacy without opening the list',
+    (tester) async {
+      final launched = <Uri>[];
+      await tester.pumpWidget(
+        _testApp(
+          _buildControl(
+            uriLauncher: (uri) async {
+              launched.add(uri);
+              return true;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('test-map-marker-open')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('즐겨찾기 추가'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('즐겨찾기 해제'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('pharmacy-detail-handle')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('전화'));
+      await tester.tap(find.text('전화'));
+      await tester.pumpAndSettle();
+      expect(launched.single.scheme, 'tel');
+      expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+    },
+  );
+
+  // 함수이름: 결과 소멸 테스트
+  // 함수역할: 선택한 약국이 재조회 결과에서 사라지면 정보창도 닫는지 확인한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('refresh clears details when the selected pharmacy disappears', (
+    tester,
+  ) async {
+    final emptyModes = <String>{};
+    await tester.pumpWidget(_testApp(_buildControl(emptyModes: emptyModes)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    emptyModes.add('open_at_time');
+    await tester.tap(find.byTooltip('약국 목록 새로고침'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pharmacy-detail-sheet')), findsNothing);
+    expect(find.byKey(const Key('test-nearby-pharmacy-map')), findsOneWidget);
+  });
+
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 큰 글씨 상세창 테스트
+    // 함수역할: 작은 화면의 한글·영문 2배 글씨에서 펼침·접힘이 넘치지 않는지 검증한다.
+    // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+    testWidgets('small $language screen supports large-text details', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        _testApp(_buildControl(), language: language, textScale: 2),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('test-map-marker-open')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('pharmacy-detail-handle')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // 드래그는 먼저 시트를 펼친 뒤 내용을 스크롤하므로 실제 제스처로 확인한다.
+      for (
+        var drag = 0;
+        drag < 8 &&
+            find
+                .byKey(const Key('pharmacy-directions-open'))
+                .hitTestable()
+                .evaluate()
+                .isEmpty;
+        drag++
+      ) {
+        await tester.drag(
+          find.byKey(const Key('pharmacy-detail-sheet')),
+          const Offset(0, -180),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(
+        find.byKey(const Key('pharmacy-directions-open')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('pharmacy-list-toggle')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: 정보창 채팅 공유 테스트
+  // 함수역할: 선택 모드의 전화 확인 상태와 약국이 상세창에서 호출자에게 반환되는지 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('detail sheet preserves the pharmacy chat-sharing result', (
+    tester,
+  ) async {
+    NearbyPharmacySelection? selection;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () async {
+                selection = await Navigator.push<NearbyPharmacySelection>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CheckNearbyPharmacyUI.selection(
+                      userSetting: const UserSetting(),
+                      control: _buildControl(),
+                      mapBuilder: _buildTestMap,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('open selection'),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('open selection'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    final check = find.byType(CheckboxListTile);
+    for (
+      var drag = 0;
+      drag < 8 && check.hitTestable().evaluate().isEmpty;
+      drag++
+    ) {
+      await tester.drag(
+        find.byKey(const Key('pharmacy-detail-sheet')),
+        const Offset(0, -180),
+      );
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(check);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('채팅에 공유'));
+    await tester.tap(find.text('채팅에 공유'));
+    await tester.pumpAndSettle();
+    expect(selection?.pharmacy.pharmacyId, 'open');
+    expect(selection?.phoneVerified, isTrue);
+    expect(find.text('open selection'), findsOneWidget);
+  });
+
+  testWidgets('device dot stays at the fix when the search area moves', (
+    tester,
+  ) async {
     final control = _buildControl();
     addTearDown(control.dispose);
     await tester.pumpWidget(_testApp(control, nativeMap: true));
@@ -286,80 +559,88 @@ void main() {
     expect(map.deviceLocation, same(fix));
   });
 
-  testWidgets('fallback search never pretends to be the device position', (tester) async {
-    final control = _buildControl(failure: DeviceLocationFailure.serviceDisabled);
+  testWidgets('fallback search never pretends to be the device position', (
+    tester,
+  ) async {
+    final control = _buildControl(
+      failure: DeviceLocationFailure.serviceDisabled,
+    );
     addTearDown(control.dispose);
     await tester.pumpWidget(_testApp(control, nativeMap: true));
     await tester.pumpAndSettle();
-    final map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+    final map = tester.widget<NearbyPharmacyMap>(
+      find.byType(NearbyPharmacyMap),
+    );
     expect(map.searchArea.isFallback, isTrue);
     expect(map.deviceLocation, isNull);
   });
-  testWidgets('stale background resume refreshes once; brief inactive does not', (
-    tester,
-  ) async {
-    var now = DateTime(2026, 9, 12, 10);
-    final times = <DateTime>[];
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpWidget(
-      _testApp(_buildControl(requestedTimes: times), clock: () => now),
-    );
-    await tester.pumpAndSettle();
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
-    expect(times, hasLength(1));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    now = now.add(const Duration(seconds: 10));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
-    expect(times, hasLength(1));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    now = now.add(const Duration(minutes: 2));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
-    expect(times, hasLength(2));
-    expect(times.last, now);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
-    expect(times, hasLength(2));
-    await tester.pumpWidget(const SizedBox.shrink());
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'stale background resume refreshes once; brief inactive does not',
+    (tester) async {
+      var now = DateTime(2026, 9, 12, 10);
+      final times = <DateTime>[];
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(
+        _testApp(_buildControl(requestedTimes: times), clock: () => now),
+      );
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(times, hasLength(1));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      now = now.add(const Duration(seconds: 10));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(times, hasLength(1));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      now = now.add(const Duration(minutes: 2));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(times, hasLength(2));
+      expect(times.last, now);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(times, hasLength(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('resume queues one fresh search behind an in-flight old request', (
-    tester,
-  ) async {
-    var now = DateTime(2026, 9, 12, 23, 59, 50);
-    final times = <DateTime>[];
-    final response = Completer<void>();
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpWidget(
-      _testApp(
-        _buildControl(
-          requestedTimes: times,
-          beforeResponse: () async {
-            if (times.length == 1) await response.future;
-          },
+  testWidgets(
+    'resume queues one fresh search behind an in-flight old request',
+    (tester) async {
+      var now = DateTime(2026, 9, 12, 23, 59, 50);
+      final times = <DateTime>[];
+      final response = Completer<void>();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(
+        _testApp(
+          _buildControl(
+            requestedTimes: times,
+            beforeResponse: () async {
+              if (times.length == 1) await response.future;
+            },
+          ),
+          clock: () => now,
         ),
-        clock: () => now,
-      ),
-    );
-    await tester.pump();
-    expect(times, hasLength(1));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    now = now.add(const Duration(seconds: 20));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
-    expect(times, hasLength(1));
-    response.complete();
-    await tester.pumpAndSettle();
-    expect(times, hasLength(2));
-    expect(times.last, now);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pump();
+      expect(times, hasLength(1));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      now = now.add(const Duration(seconds: 20));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(times, hasLength(1));
+      response.complete();
+      await tester.pumpAndSettle();
+      expect(times, hasLength(2));
+      expect(times.last, now);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'filter search advances past midnight and labels reference time',
