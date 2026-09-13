@@ -1,3 +1,6 @@
+# File Name: dependabot.yml
+# Role: Schedules dependency update proposals for Python, Flutter and GitHub Actions.
+
 version: 2
 
 multi-ecosystem-groups:

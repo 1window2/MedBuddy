@@ -1,30 +1,39 @@
+# File Name: pubspec.yaml
+# Role: Declares the Flutter application version, SDK constraints, dependencies and assets.
+
 name: medbuddy_frontend
 description: A Flutter medication management client for MedBuddy.
 publish_to: 'none'
-version: 0.1.1+12
+version: 0.2.0+21
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
 
 dependencies:
   camera: ^0.12.0+2
-  firebase_app_check: ^0.4.6
-  firebase_auth: ^6.5.7
-  firebase_core: ^4.13.0
-  firebase_messaging: ^16.5.0
+  firebase_app_check: ^0.4.7
+  firebase_auth: ^6.6.1
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   flutter_local_notifications: ^22.3.0
   flutter_tts: ^4.2.5
+  geolocator: ^14.0.3
   google_mlkit_text_recognition: ^0.16.0
   google_sign_in: 7.2.0
   http: ^1.2.0
   image: ^4.8.0
   image_picker: ^1.2.3
+  path_provider: ^2.1.5
   provider: ^6.1.2
   shared_preferences: ^2.3.3
   timezone: ^0.11.1
+  url_launcher: ^6.3.2
   workmanager: ^0.10.9
+  flutter_naver_map: 1.4.4
 
 dev_dependencies:
   flutter_test:

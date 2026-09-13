@@ -1,5 +1,6 @@
-# 파일명: test_check_saved_medication_control.py
-# 역할: 저장 복약 control의 저장, 조회, 삭제, 보호자 권한 범위 처리를 검증한다.
+# File Name: test_check_saved_medication_control.py
+# Role: Regression coverage for saved-medication persistence, deduplication, read-only listing,
+#   and patient-scoped deletion.
 
 import hashlib
 import sys
@@ -30,7 +31,29 @@ from entities.saved_medication_entity import (  # noqa: E402
 from schemas.medication import SavedMedicationCreate  # noqa: E402
 
 
+# Class Name: CheckSavedMedicationTest
+# Role: Isolated persistence tests for medication metadata, legacy schema upgrades, and
+#   ownership boundaries.
+# Responsibilities:
+# - Builds a seven-day, three-dose medication payload with configurable owner, product name,
+#   confirmed slots, and analysis batch.
+# - Returns only the requested patient's medications while retaining prescription date and image
+#   metadata.
+# - Normalizes an empty patient hash to the default owner when saving a medication.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - control (CheckSavedMedication): Use-case control under test, isolated from production state.
+# - active_prescription_date (date.today): Today's prescription date used for active courses.
 class CheckSavedMedicationTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an in-memory medication database with current completion schemas and an
+    #   active prescription date.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -48,10 +71,31 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.control = CheckSavedMedication(self.db)
         self.active_prescription_date = date.today()
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the medication session and disposes the isolated database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: _saved_medication
+    # Description:
+    # - Builds a seven-day, three-dose medication payload with configurable owner, product
+    #   name, confirmed slots, and analysis batch.
+    # Parameters:
+    # - patient_hash (str): Patient owner identifying the medication or linked-data scope.
+    # - item_name (str): Product name in the authoritative or saved medication record.
+    # - schedule_slot_keys (list[str] | None): Confirmed dose slots, encoded as JSON when
+    #   the storage helper expects text.
+    # - prescription_batch_id (str | None): Analysis batch identity separating independently
+    #   entered prescriptions.
+    # Returns:
+    # - SavedMedicationCreate: Unsaved medication request with the selected owner, slots,
+    #   and batch.
     def _saved_medication(
         self,
         *,
@@ -80,6 +124,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             ai_guide="guide",
         )
 
+    # Function Name: test_save_preserves_patient_hash_and_schedule_fields
+    # Description:
+    # - Requires saving and listing to preserve patient scope, product code, dosing, batch,
+    #   image, and safety metadata without reporting a duplicate.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_save_preserves_patient_hash_and_schedule_fields(self) -> None:
         response = self.control.saveMedicationDetail(self._saved_medication())
 
@@ -111,6 +163,13 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(list_item["side_effect"], "drowsiness")
         self.assertEqual(list_item["storage_method"], "store below 25 C")
 
+    # 함수이름: test_save_preserves_user_confirmed_schedule_slots
+    # 함수역할:
+    # - 사용자가 확정한 아침·취침 시간대가 저장 JSON과 목록 응답 모두에서 유지되는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_save_preserves_user_confirmed_schedule_slots(self) -> None:
         response = self.control.saveMedicationDetail(
             self._saved_medication(
@@ -128,6 +187,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             ["morning", "bedtime"],
         )
 
+    # Function Name: test_schema_upgrade_adds_saved_metadata_to_legacy_table
+    # Description:
+    # - Upgrades a legacy medication table with product, batch, schedule, AI-guide, and
+    #   safety fields and verifies new metadata can be saved.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_schema_upgrade_adds_saved_metadata_to_legacy_table(self) -> None:
         engine = create_engine(
             "sqlite:///:memory:",
@@ -191,6 +258,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             db.close()
             engine.dispose()
 
+    # Function Name: test_save_rejects_same_day_duplicate_medication
+    # Description:
+    # - Rejects an identical same-day medication as a duplicate and keeps a single stored
+    #   row.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_save_rejects_same_day_duplicate_medication(self) -> None:
         first_response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -205,6 +280,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_rows = self.db.query(_SavedMedication).all()
         self.assertEqual(len(saved_rows), 1)
 
+    # Function Name: test_legacy_deduplication_key_is_stable_without_batch_id
+    # Description:
+    # - Requires medications without a batch ID to retain the legacy SHA-256 deduplication
+    #   key.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_legacy_deduplication_key_is_stable_without_batch_id(self) -> None:
         legacy_signature = "\0".join(
             (
@@ -232,6 +315,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             hashlib.sha256(legacy_signature.encode("utf-8")).hexdigest(),
         )
 
+    # Function Name: test_save_allows_same_medication_with_different_period
+    # Description:
+    # - Allows the same medication with a different treatment period to persist as two
+    #   nonduplicate rows.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_save_allows_same_medication_with_different_period(self) -> None:
         first_response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -249,6 +340,13 @@ class CheckSavedMedicationTest(unittest.TestCase):
         saved_rows = self.db.query(_SavedMedication).all()
         self.assertEqual(len(saved_rows), 2)
 
+    # Function Name: test_save_allows_same_medication_from_distinct_analysis_batches
+    # Description:
+    # - Allows the same medication from separate analysis batches to persist independently.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_save_allows_same_medication_from_distinct_analysis_batches(self) -> None:
         first_response = self.control.saveMedicationDetail(
             self._saved_medication(
@@ -267,6 +365,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertTrue(second_response["success"])
         self.assertEqual(self.db.query(_SavedMedication).count(), 2)
 
+    # Function Name: test_list_is_scoped_by_patient_hash
+    # Description:
+    # - Returns only the requested patient's medications while retaining prescription date
+    #   and image metadata.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_list_is_scoped_by_patient_hash(self) -> None:
         self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -290,6 +396,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             "https://nedrug.mfds.go.kr/medicine.jpg",
         )
 
+    # Function Name: test_list_does_not_enrich_or_mutate_legacy_missing_image
+    # Description:
+    # - Requires listing legacy rows with missing product codes or images to neither enrich
+    #   the response nor mutate storage.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_list_does_not_enrich_or_mutate_legacy_missing_image(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
@@ -306,6 +420,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertIsNone(saved_row.item_seq)
         self.assertIsNone(saved_row.image_url)
 
+    # Function Name: test_list_suppresses_legacy_untrusted_image_url
+    # Description:
+    # - Suppresses an untrusted legacy image URL in the response without rewriting the
+    #   original stored snapshot.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_list_suppresses_legacy_untrusted_image_url(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
@@ -324,6 +446,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
             "https://tracker.example/patient-a.png",
         )
 
+    # Function Name: test_list_preserves_expired_medications_without_mutating_storage
+    # Description:
+    # - Keeps expired and active medication history and completion rows intact during
+    #   read-only listing.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_list_preserves_expired_medications_without_mutating_storage(self) -> None:
         expired_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -389,6 +519,13 @@ class CheckSavedMedicationTest(unittest.TestCase):
         )
         self.assertIsNotNone(self.db.get(_SavedMedication, expired_response["id"]))
 
+    # Function Name: test_list_keeps_medications_without_total_days
+    # Description:
+    # - Keeps a medication with an unknown treatment duration in saved history.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_list_keeps_medications_without_total_days(self) -> None:
         unknown_period_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -403,6 +540,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 1)
         self.assertEqual(response["data"][0]["item_name"], "unknown-period-tablet")
 
+    # Function Name: test_delete_is_scoped_by_patient_hash
+    # Description:
+    # - Rejects cross-patient deletion with 404 and leaves the other patient's medication
+    #   intact after an authorized deletion.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_delete_is_scoped_by_patient_hash(self) -> None:
         patient_a_response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -425,6 +570,14 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertEqual(len(patient_a_list["data"]), 1)
         self.assertEqual(patient_a_list["data"][0]["id"], patient_a_response["id"])
 
+    # Function Name: test_delete_removes_owned_completion_rows
+    # Description:
+    # - Requires deleting an owned medication to remove both its saved row and dependent
+    #   completion rows.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_delete_removes_owned_completion_rows(self) -> None:
         response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash="patient-a", item_name="A tablet")
@@ -446,6 +599,13 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertIsNone(self.db.get(_SavedMedication, response["id"]))
         self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
 
+    # Function Name: test_empty_patient_hash_falls_back_to_default_hash
+    # Description:
+    # - Normalizes an empty patient hash to the default owner when saving a medication.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         response = self.control.saveMedicationDetail(
             self._saved_medication(patient_hash=" ")

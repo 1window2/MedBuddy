@@ -2,17 +2,11 @@
 
 이 문서는 MedBuddy의 주요 상호작용을 Boundary-Control-Entity 관점으로 정리한 PlantUML 시퀀스 다이어그램 제안본이다.
 
-> **Implementation status (2026-07-20):** The six UC-1 through UC-14 groups
-> below preserve the first-semester behavioral baseline. Current implementation
-> names are defined by `MedBuddy - Class Diagram.md`: use `Caregiver`,
-> `LinkPatientCaregiver`, and `CaregiverNotification` where older diagrams say
-> `Guardian`, `PatientGuardianLinkControl`, or `GuardianAlertSetting`. UC-15
-> loose-pill identification is documented in `MedBuddy - v0.0.9 Pill
-> Identification Extension.md`. Caregiver preference persistence is implemented,
-> but cross-device caregiver alert delivery is a beta requirement and must not
-> be inferred from the external notification messages in this historical flow.
-> Authentication and HTTPS are cross-cutting beta additions defined in
-> `MedBuddy - Beta Security Architecture.md`.
+> **구현 상태 (2026-08-25):** 1~6번은 1학기 핵심 동작을 보존하되 현재
+> 구현 이름과 설정 동작을 반영한다. 7~10번은 `beta/v0.2.0`에서 추가한
+> 직접 등록, 다중 낱알 식별, 근처 운영 약국, 복약 맥락 채팅 흐름이다.
+> 인증·인가·HTTPS와 실험실 기능의 보안 경계는
+> `MedBuddy - Beta Security Architecture.md`를 따른다.
 
 ## 수정 기준과 논거
 
@@ -27,7 +21,7 @@
 - `critical`은 DB 상태 변경과 외부 알림 등록처럼 원자성이 필요한 변경 구간에 사용한다.
 - `par`는 하나의 커밋 이후 서로 독립적으로 갱신 가능한 UI/알림 흐름에만 제한적으로 사용한다.
 
-최종 시퀀스 다이어그램은 다음 6개로 구성한다.
+최종 시퀀스 다이어그램은 다음 10개로 구성한다.
 
 | No. | 시나리오 | 관련 유스케이스 |
 | --- | --- | --- |
@@ -37,6 +31,10 @@
 | 4 | 오늘의 복약 일정 확인, 건강 추천, 음성 안내, 알림, 복약 완료 | UC-3, UC-8, UC-10, UC-11, UC-12 |
 | 5 | 환자/보호자 연동 및 연동 해제 | UC-6, UC-7 |
 | 6 | 사용자 설정 | UC-14 |
+| 7 | 복약정보 직접 등록 및 일정 검토 | UC-25, UC-29 |
+| 8 | 다중 낱알 약 일괄 식별 및 일정 검토 | UC-20, UC-26, UC-29 |
+| 9 | 근처 운영 약국 조회 | UC-27 |
+| 10 | 복약 맥락 채팅 | UC-28 |
 
 ## 1. 처방전/약봉투 이미지 입력, 분석, 결과 확인
 
@@ -897,19 +895,24 @@ end
 ### 수정 논거
 
 - 사용자 설정이 없으면 기본 설정을 생성해야 하므로 `alt [setting exists] / [setting not found]`로 초기 조회 결과를 분리했다.
-- 사용자는 설정 화면을 닫기 전까지 여러 항목을 반복 변경할 수 있으므로 `loop [while setting page is open]`를 사용했다.
-- 한 번의 변경 이벤트에서 글씨 크기, 읽기 속도, 언어 변경은 동시에 발생하는 것이 아니라 상호 배타적 선택이므로 `alt`로 표현했다.
-- 설정 저장은 사용자 경험에 즉시 반영되어야 하는 상태 변경이므로 각 변경을 `critical persist user setting`으로 묶었다.
+- 글자 크기와 언어 선택은 저장 전에도 현재 설정 화면에 즉시 반영되므로 `loop` 안에서 미리보기 상태만 갱신한다.
+- 읽기 속도는 TTS 미리듣기로 확인하며 사용자가 직접 중지한 경우 오류로 처리하지 않는다.
+- 복약·보호자·채팅 알림 허용, 잠금 화면 공개 범위, 시간 표시 방식과 신규 일정 기본 시각을 하나의 사용자 설정 계약으로 저장한다.
+- 신규 일정 기본 시각은 이후 생성되는 일정에만 적용하고 이미 확인한 복약 일정은 변경하지 않는다.
+- 명시적인 저장을 선택할 때만 서버 설정을 변경하고, 저장 후에도 설정 화면에 남는다.
 
 ```plantuml
 @startuml SD06_User_Setting
 autonumber
 actor "환자 또는 보호자" as User
 boundary "MainUI_boundary" as MainUI
-boundary "UserSettingUI_boundary" as SettingUI
-control "UserSetting_control" as C
+boundary "ManageUserSettingUI_boundary" as SettingUI
+control "ManageUserSetting_control" as C
+control "AppLanguageControl" as LanguageControl
+boundary "TTSService_boundary" as TTS
+boundary "Android Notification Settings" as AndroidSettings
 entity "UserSetting_entity" as Setting
-boundary "LocalSettingStorage_boundary" as Storage
+database "UserSettingStorage" as Storage
 
 User -> MainUI : clickSettingButton()
 activate MainUI
@@ -942,69 +945,316 @@ deactivate C
 deactivate MainUI
 SettingUI --> User : displayUserSettingPage()
 
-loop [while setting page is open and user changes settings]
+loop [설정 화면에서 값을 미리 보는 동안]
   alt [font size selected]
     User -> SettingUI : selectFontSize(fontSize)
-    SettingUI -> C : updateFontSize(fontSize)
-    activate C
-    critical persist user setting
-      C -> Setting : changeFontSize(fontSize)
-      activate Setting
-      Setting -> Storage : saveFontSize(fontSize)
-      activate Storage
-      Storage --> Setting : savedFontSize
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
-    end
-    C --> SettingUI : applyFontSize(updatedUserSetting)
-    deactivate C
+    SettingUI -> SettingUI : updateLivePreview(fontSize)
     SettingUI --> User : displayUpdatedFontSize()
   else [reading speed selected]
     User -> SettingUI : selectReadingSpeed(readingSpeed)
-    SettingUI -> C : updateReadingSpeed(readingSpeed)
-    activate C
-    critical persist user setting
-      C -> Setting : changeReadingSpeed(readingSpeed)
-      activate Setting
-      Setting -> Storage : saveReadingSpeed(readingSpeed)
-      activate Storage
-      Storage --> Setting : savedReadingSpeed
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
+    SettingUI -> SettingUI : updateLivePreview(readingSpeed)
+    opt [음성으로 들어보기]
+      SettingUI -> TTS : speak(previewText, language, readingSpeed)
+      TTS --> User : 선택 속도로 미리듣기
+      opt [사용자가 듣기 중지]
+        User -> SettingUI : stopVoicePreview()
+        SettingUI -> TTS : stop()
+        SettingUI --> User : 오류 문구 없이 중지 상태 표시
+      end
     end
-    C --> SettingUI : applyReadingSpeed(updatedUserSetting)
-    deactivate C
-    SettingUI --> User : displayUpdatedReadingSpeed()
   else [language selected]
     User -> SettingUI : selectLanguage(language)
-    SettingUI -> C : updateLanguage(language)
-    activate C
-    critical persist user setting
-      C -> Setting : changeLanguage(language)
-      activate Setting
-      Setting -> Storage : saveLanguage(language)
-      activate Storage
-      Storage --> Setting : savedLanguage
-      deactivate Storage
-      Setting --> C : updatedUserSetting
-      deactivate Setting
-    end
-    C --> SettingUI : applyLanguage(updatedUserSetting)
-    deactivate C
+    SettingUI -> LanguageControl : setLanguage(language)
+    LanguageControl --> SettingUI : 전역 언어 즉시 갱신
     SettingUI --> User : displayUpdatedLanguage()
+  else [알림·기본 시각·공개 범위·시간 표시 변경]
+    User -> SettingUI : updateNotificationAndTimePreferences()
+    SettingUI -> SettingUI : updateDraftSetting()
+    SettingUI --> User : 변경값 미리 표시
   end
 end
 
-User -> SettingUI : closeSettingPage()
-SettingUI -> C : finishUserSetting()
+opt [휴대폰 알림 설정 열기]
+  User -> SettingUI : openDeviceNotificationSettings()
+  SettingUI -> AndroidSettings : openApplicationNotificationSettings()
+end
+
+User -> SettingUI : saveUserSetting()
+SettingUI -> C : saveUserSetting(notificationPolicy, defaultTimes,\nprivacy, display, language, timeFormat, labFlags)
 activate C
-C --> MainUI : returnToMainScreen()
-activate MainUI
+critical [사용자 설정 저장]
+  C -> Setting : applyConfirmedValues()
+  Setting -> Storage : upsertUserSetting()
+  Storage --> Setting : savedUserSetting
+end
+C --> SettingUI : savedUserSetting
 deactivate C
-MainUI --> User : displayMainScreen()
-deactivate MainUI
-deactivate SettingUI
+SettingUI --> User : 저장 완료 안내 후 설정 화면 유지
+
+opt [사용자가 닫기 선택]
+  User -> SettingUI : closeSettingPage()
+  SettingUI --> MainUI : returnToMainScreen()
+  MainUI --> User : displayMainScreen()
+end
+@enduml
+```
+
+## 7. 복약정보 직접 등록 및 일정 검토
+
+### 수정 논거
+
+- 직접 입력도 별도 저장 체계를 만들지 않고 기존 저장 복약정보와 일정 모델을 재사용한다.
+- 선택 사진은 앱 전용 저장소에 보관하고 서버에는 로컬 경로를 전송하지 않는다.
+- 저장 전 날짜·횟수·용량·시간대를 검토하여 사진 기반 입력과 동일한 일정 품질을 유지한다.
+
+```plantuml
+@startuml SD07_Manual_Medication_Entry
+autonumber
+actor "사용자" as User
+boundary "ManualMedicationEntryUI" as UI
+boundary "ManualMedicationImageStore" as ImageStore
+control "CheckSavedMedication" as SaveControl
+entity "ManualMedicationEntry" as Entry
+entity "MedicationSchedule" as Schedule
+database "Medication Database" as DB
+
+User -> UI : 직접 등록 선택
+UI --> User : 약명, 용량, 기간, 시간대, 선택 사진 입력 화면
+User -> UI : 값 입력 및 저장 선택
+UI -> Entry : validateRequiredValues()
+Entry --> UI : validatedEntry
+opt [사진을 선택함]
+  UI -> ImageStore : saveImage(patientHash, sourcePath)
+  ImageStore --> UI : appOwnedImagePath
+end
+UI -> Schedule : convertToMedicationSchedule(validatedEntry)
+Schedule --> UI : confirmedSchedule
+UI -> SaveControl : saveMedicationDetail(confirmedSchedule)
+SaveControl -> DB : 중복 확인 및 저장
+DB --> SaveControl : 저장 또는 중복 결과
+SaveControl --> UI : MedicationSaveResult
+UI --> User : 결과 안내 및 일정 갱신
+@enduml
+```
+
+## 8. 다중 낱알 약 일괄 식별 및 일정 검토
+
+### 수정 논거
+
+- 일괄 식별은 검증된 단일 낱알 식별 컨트롤을 재사용한다.
+- 최대 10개 입력과 최대 2개 동시 요청으로 외부 분석 호출을 제한한다.
+- 한 항목이 실패해도 성공한 항목을 유지하고, 확인된 후보만 일정 검토와 저장으로 전달한다.
+
+```plantuml
+@startuml SD08_Multi_Pill_Batch
+autonumber
+actor "사용자" as User
+boundary "PillIdentificationUI" as UI
+control "IdentifyPillBatch" as Batch
+control "IdentifyPill" as Single
+boundary "Pill Identification API" as API
+boundary "MedicationScheduleReviewBoundary" as Review
+entity "PillIdentificationResult" as Result
+
+User -> UI : 최대 10개 알약의 앞면 필수·뒷면 선택 사진 입력
+UI -> Batch : requestBatchIdentification(inputs)
+loop [입력 순서 보존, 최대 2개 동시 실행]
+  Batch -> Single : requestPillIdentification(front, back)
+  Single -> API : requestCandidateRanking()
+  alt [항목 성공]
+    API --> Single : PillIdentificationResult
+    Single --> Batch : success(index, result)
+  else [항목 실패]
+    API --> Single : item error
+    Single --> Batch : failure(index, error)
+  end
+end
+Batch --> UI : ordered item outcomes
+UI --> User : 후보와 항목별 실패 표시
+User -> UI : 실제 약 후보 확인
+UI -> Review : showMedicationScheduleReview(confirmedCandidates)
+Review --> User : 시작일, 기간, 횟수, 용량, 시간대 검토
+User -> Review : 확인 또는 수정 완료
+Review --> UI : normalized schedules
+@enduml
+```
+
+## 9. 근처 운영 약국 조회
+
+### 수정 논거
+
+- 기기는 좌표만 제공하고 공공데이터 인증키는 Backend가 소유한다.
+- 위치 권한, 공공 API 조회, 거리·영업상태 계산, 앱 내 지도, 전화·길찾기 실행을 분리한다.
+- 약국 카드와 지도 마커는 하나의 선택 상태를 공유하며 지도 이동만으로 공공 API를 다시 호출하지 않는다.
+- 반복 새로고침은 화면에서 제한하여 불필요한 외부 API 호출을 줄인다.
+- 즐겨찾기는 사용자별 기기 저장소에만 보관하며 서버 거리 정렬 결과를 변경하지 않는다.
+- 전화·길찾기·주소 복사·출처·채팅 공유는 검증된 공통 외부 동작 서비스와 서버 약국 스냅샷을 사용한다.
+
+```plantuml
+@startuml SD09_Nearby_Pharmacy
+autonumber
+actor "사용자" as User
+boundary "CheckNearbyPharmacyUI" as UI
+control "CheckNearbyPharmacy (Flutter)" as FE
+boundary "DeviceLocationBoundary" as Location
+boundary "NearbyPharmacyMap" as Map
+boundary "PharmacyFavoriteService" as Favorite
+boundary "PharmacyExternalActionService" as ExternalAction
+control "CheckNearbyPharmacy (FastAPI)" as BE
+boundary "PharmacyCatalogRepository" as Catalog
+boundary "NEMC Pharmacy API" as PharmacyAPI
+boundary "KoreanHolidayAPI" as HolidayAPI
+boundary "Naver Dynamic Map SDK" as NaverMap
+boundary "OS Phone / Directions" as ExternalApp
+
+User -> UI : 실험실 기능을 켠 뒤 근처 운영 약국 선택
+UI -> FE : requestNearbyPharmacies()
+FE -> Location : requestCurrentCoordinate()
+Location --> FE : DeviceCoordinate
+FE -> BE : GET /pharmacy/nearby
+BE -> HolidayAPI : isHoliday(today, previous day)
+HolidayAPI --> BE : 법정공휴일 여부
+BE -> Catalog : searchNearbyCandidates(latitude, longitude, radius)
+alt [지역 Catalog 조회 가능]
+  Catalog --> BE : 주간·공휴일 영업시간 포함 약국 목록
+else [Catalog가 비었거나 조회 실패]
+  BE -> PharmacyAPI : 현재 위치 기준 실시간 보완 조회
+  PharmacyAPI --> BE : 약국 위치와 운영시간
+end
+BE -> BE : 거리, 영업 중, 마감 임박, 다음 영업시각 계산 및 정렬
+BE --> FE : NearbyPharmacy 목록
+FE -> Favorite : 사용자별 즐겨찾기 ID 조회
+Favorite --> FE : favoriteIds
+FE --> UI : 즐겨찾기 우선 목록과 필터·갱신 상태
+UI -> Map : 약국 좌표와 공통 선택 상태 전달
+Map -> NaverMap : 인증된 SDK로 현재 화면 범위 지도 요청
+NaverMap --> Map : 네이버 지도와 기본 저작권 표시
+UI --> User : 지도·거리·운영시간·연락처 표시
+opt [약국 카드 또는 지도 마커 선택]
+  User -> UI : 약국 선택
+  UI -> Map : selectedPharmacyId 갱신
+  Map --> User : 선택 약국 중심으로 지도 이동
+end
+opt [전화 또는 길찾기]
+  User -> UI : 약국 동작 선택
+  alt [전화]
+    UI -> ExternalAction : 검증된 전화번호 전달
+    ExternalAction -> ExternalApp : 전화 앱 열기
+  else [길찾기]
+    UI --> User : 설치된 지도 앱, Google 지도, 주소 복사 선택지
+    User -> UI : 길찾기 방식 선택
+    UI -> ExternalAction : 검증된 약국명·좌표·주소 전달
+    ExternalAction -> ExternalApp : 선택한 지도 앱 또는 브라우저 열기
+    opt [외부 앱을 열 수 없음]
+      ExternalAction --> UI : 실행 실패
+      UI -> ExternalAction : 검증된 주소 복사
+      UI --> User : 주소 복사 완료 안내
+    end
+  end
+end
+opt [연동 채팅으로 약국 공유]
+  User -> UI : 약국 공유 또는 전화 확인 후 공유
+  UI -> BE : pharmacyId와 메시지 유형 전송
+  BE -> Catalog : 약국 존재와 최신 표시값 재조회
+  Catalog --> BE : 신뢰 가능한 약국 Snapshot
+end
+opt [짧은 시간 안에 새로고침 반복]
+  UI --> User : API 재호출 없이 남은 대기시간 안내
+end
+@enduml
+```
+
+## 10. 복약 맥락 채팅
+
+### 수정 논거
+
+- 실험실 기능이 켜져 있어도 활성 환자-보호자 연결과 현재 복용 약이 있어야 채팅을 사용할 수 있다.
+- 메시지 저장은 REST, 실시간 수신은 WebSocket으로 분리하고 재연결 시 이력으로 누락을 보완한다.
+- `clientMessageId`로 재전송 중복을 막고, 사용자가 약을 선택한 메시지는 전송 시점의 표시용 스냅샷을 선택적으로 보존한다.
+- 일반 메시지는 약 선택 없이 전송할 수 있다. 약을 첨부할 때는 오늘 일정의 시간대별 화면을 재사용하고, 선택 약과 이전 메시지의 약 카드는 권한 확인 후 공통 상세 화면으로 이동한다.
+- 상대가 채팅 화면에 없으면 공백을 정리하고 120자로 제한한 메시지 미리보기를 알림에 표시한다.
+- 시간대 확인 요청, 자동 복용 완료, 약 부족·불편, 약국 공유는 `messageKind`로 구분하고 서버가 현재 일정·복용 기간·약국 Catalog에서 표시 스냅샷을 다시 만든다.
+- 같은 날짜와 시간대의 자동 완료 메시지는 멱등 ID를 사용해 한 번만 저장한다.
+
+```plantuml
+@startuml SD10_Linked_Medication_Chat
+autonumber
+actor "환자 또는 보호자" as User
+actor "연결 상대" as Peer
+boundary "LinkedChatUI" as UI
+control "ManageLinkedChat (Flutter)" as FE
+boundary "LinkedChatRealtimeService" as Realtime
+control "ManageLinkedChat (FastAPI)" as BE
+database "Chat Message Database" as DB
+boundary "ChatConnectionManager" as Connections
+boundary "PushNotificationBoundary" as Push
+
+User -> UI : 활성 연결의 채팅 선택
+UI -> FE : requestHistory(linkId)
+FE -> BE : GET message history
+BE -> DB : 연결 권한 검증 및 최근 이력 조회
+DB --> BE : 메시지와 복약 스냅샷
+BE --> UI : ChatMessage 목록
+UI -> Realtime : start(linkId, userHash)
+Realtime -> BE : WSS stream 연결
+BE -> DB : 활성 연결 재검증
+BE --> Realtime : connection accepted
+
+opt [메시지에 약 문맥 첨부]
+  User -> UI : 오늘 일정형 화면에서 활성 복용 약 여러 개 선택
+  UI -> FE : selectMedicationContexts(medicationIds)
+  FE --> UI : 선택 약 목록과 개별 해제 상태
+end
+opt [시간대별 확인 요청]
+  User -> UI : 보호자가 시간대 확인 요청
+  UI -> FE : sendMessage(messageKind=slot_check_request, slotKey)
+  FE -> BE : POST structured message
+  BE -> DB : 활성 연결·보호자 역할·현재 시간대 일정 검증
+  DB --> BE : 서버가 재구성한 일정 Snapshot
+end
+opt [약 부족·불편 또는 약국 공유]
+  User -> UI : 구조화 동작 선택
+  UI -> FE : messageKind와 medicationId 또는 pharmacyId 전달
+  FE -> BE : POST structured message
+  BE -> DB : 활성 복용 약 또는 약국 Catalog 재검증
+  DB --> BE : 복용 기간 또는 약국 Snapshot
+end
+opt [선택 약 또는 이전 메시지의 약 카드 상세보기]
+  User -> UI : 약 카드 선택
+  UI -> FE : requestMedicationDetail(linkId, medicationId)
+  FE -> BE : GET authorized medication detail
+  BE -> DB : 활성 연결과 환자 소유 약 검증
+  DB --> BE : 저장 복약 상세정보
+  BE --> UI : 공통 약 상세 화면용 정보
+end
+opt [환자가 시간대 일정 카드 선택]
+  User -> UI : 시간대 카드 선택
+  UI -> UI : 오늘의 복약 일정에서 해당 시간대로 이동
+else [보호자가 시간대 일정 카드 확인]
+  UI --> User : 읽기 전용 진행 상태 유지
+end
+opt [역할별 추천 문구 사용]
+  User -> UI : 환자 또는 보호자용 추천 문구 선택
+  UI --> User : 수정 가능한 입력 문구 제공
+end
+User -> UI : 일반 메시지 또는 선택 약들을 포함한 메시지 전송
+UI -> FE : sendMessage(clientMessageId, medicationIds?, body)
+FE -> BE : POST message
+BE -> DB : 연결 검증 및 모든 선택 약의 소유권·복용기간 검증 후 멱등 저장
+DB --> BE : 저장 메시지 또는 기존 중복 응답
+BE -> Connections : broadcast(linkId, messageEvent)
+Connections --> Peer : 실시간 메시지
+opt [상대가 실시간 연결 중이 아님]
+  BE -> Push : 공백 정리·최대 120자 미리보기와 유형·시간대
+  Push --> Peer : 채팅 또는 해당 복약 시간대로 이동할 알림
+end
+opt [환자가 한 시간대의 약을 모두 완료]
+  BE -> DB : link/date/slot 멱등 ID로 완료 메시지 저장
+  BE -> Connections : 활성 연결에 완료 사건 Broadcast
+end
+Peer -> UI : 채팅 열기
+UI -> FE : markRead(throughMessageId)
+FE -> BE : POST read marker
+BE -> DB : 상대 메시지 readAt 일괄 갱신
 @enduml
 ```

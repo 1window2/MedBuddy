@@ -1,3 +1,5 @@
+# 파일명: 7d2e4f1a8c63_add_caregiver_alert_outbox.py
+# 역할: 복약 완료와 같은 트랜잭션에서 보호자 알림 요청을 보존할 테이블을 만든다.
 """보호자 알림 트랜잭션 아웃박스를 추가한다.
 
 Revision ID: 7d2e4f1a8c63
@@ -17,9 +19,13 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-# 함수명: upgrade
-# 역할:
+# 함수이름: upgrade
+# 함수역할:
 # - 복약 완료와 같은 트랜잭션에서 보호자 알림 요청을 보존할 테이블을 만든다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def upgrade() -> None:
     op.create_table(
         "caregiver_alert_outbox",
@@ -77,9 +83,13 @@ def upgrade() -> None:
     )
 
 
-# 함수명: downgrade
-# 역할:
+# 함수이름: downgrade
+# 함수역할:
 # - 보호자 알림 아웃박스 테이블과 인덱스를 제거한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def downgrade() -> None:
     op.drop_index(
         "ix_caregiver_alert_outbox_available_at",

@@ -1,3 +1,6 @@
+# File Name: analysis_options.yaml
+# Role: Selects Flutter lint rules and excludes generated platform/build directories from analysis.
+
 # This file configures the analyzer, which statically analyzes Dart code to
 # check for errors, warnings, and lints.
 #

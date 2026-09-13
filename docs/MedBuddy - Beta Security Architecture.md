@@ -3,7 +3,7 @@
 ## Decision Status
 
 - Status: production infrastructure provisioned and public HTTPS smoke-tested; authenticated Android device and final signed-release validation remain
-- Applies to: Android beta and FastAPI production deployment
+- Applies to: Android v0.2.0 beta and FastAPI production deployment
 - Replaces: alpha hash-based identity as an authorization mechanism
 - Preserves: existing Boundary-Control-Entity use-case controls and API routes
 
@@ -33,6 +33,10 @@ responsibilities without improving MedBuddy's medication domain.
 | Frontend external boundary | `AuthenticatedApiClient` | Attach fresh bearer tokens to the existing HTTP control calls. |
 | Frontend external boundary | `FirebaseRuntimeService` | Initialize Firebase and Android App Check once in foreground and background isolates. |
 | Frontend privacy boundary | `PrescriptionLocalOcrService` | Perform Korean OCR on the device, remove sensitive lines, and return privacy-filtered text plus preview regions. |
+| Frontend local boundary | `ManualMedicationImageStore` | Copy optional direct-entry images into patient-scoped app storage and remove unreferenced copies without touching gallery originals. |
+| Frontend external boundary | `DeviceLocationBoundary` | Request foreground coordinates only for the nearby-pharmacy screen and expose permission/service failures as typed states. |
+| Frontend map boundary | `NearbyPharmacyMap` | Render only backend-normalized pharmacy coordinates through the Naver Dynamic Map SDK and synchronize card/marker selection. The public client identifier is injected at build time; public-data service keys remain backend-only. |
+| Frontend external boundary | `LinkedChatRealtimeService` | Maintain the authenticated linked-chat WebSocket, heartbeat, bounded reconnect, and event stream independently of chat UI state. |
 | Frontend external boundary | `PushNotificationService` | Register, refresh, and deactivate the authenticated device's FCM token and display foreground pushes. |
 | Frontend entity | `AuthSession` | Immutable account/session state exposed to the view model. |
 | Backend boundary | `OIDCTokenVerifier` | Verify signature, issuer, audience, expiry, and subject. |
@@ -43,6 +47,11 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend control | `AuthorizationControl` | Resolve owned patient scope and validate active caregiver links. |
 | Backend control | `ManagePushToken` | Register or disable device tokens within the authenticated user scope. |
 | Backend control | `DispatchCaregiverAlert` | Send newly completed-dose events only to linked caregivers who enabled that slot. |
+| Backend external boundary | `NationalEmergencyMedicalCenterPharmacyAPI` | Send the minimum coordinate query to the public pharmacy service and normalize its untrusted response. |
+| Backend control | `CheckNearbyPharmacy` | Validate coordinates, apply result bounds, and return only presentation-safe pharmacy fields. |
+| Backend control | `ManageLinkedChat` | Authorize the active link, validate optional medication context when attached, persist idempotent messages, and track participant read state. |
+| Backend control | `DispatchChatMessageAlert` | Notify only the linked recipient with generic content after the message transaction succeeds. |
+| Backend runtime service | `ChatConnectionManager` | Own in-process WebSocket memberships and broadcast only to connections authorized for the same active link. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
 | Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
 | Backend dependency policy | `_lock_account_operation` | Serialize every authenticated account request with deletion using a transaction-scoped PostgreSQL advisory lock or a local SQLite write transaction. |
@@ -83,6 +92,11 @@ that every identifier will be detected. User-facing notices and release privacy
 review must disclose that privacy-filtered text can still be processed by an
 external model. Loose-pill photos remain a separate external
 visible-attribute-extraction flow and must not be persisted or logged.
+
+Direct medication entry does not reuse either external image-analysis path.
+Its optional image is copied into app-owned local storage for display and is
+not uploaded by the direct-entry request. The copied image is deleted when it
+is no longer referenced; user-owned gallery originals are never removed.
 
 ## Target Request Flow
 
@@ -132,6 +146,9 @@ Router --> AuthenticatedApiClient : JSON response
 6. Release mode has no unauthenticated `local_patient`, query-role, or
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
+7. Linked-chat history, message, read, unread-count, and WebSocket routes repeat
+   the same active-link authorization. A laboratory toggle controls only UI
+   visibility and cannot grant chat or pharmacy access.
 
 ## Irreversible Account Deletion
 
@@ -172,13 +189,17 @@ exhausted. Push startup and token registration are tracked as lifecycle
 operations, so signing out waits for any in-flight registration before it
 requests deactivation of the current token.
 
-Missed-deadline evaluation currently remains in the Android Workmanager
-monitor. Its background isolate initializes Firebase before making
-authenticated API requests. In local demo mode,
-`DisabledPushNotificationBoundary` prevents remote delivery and the same
-monitor polls for both completion and missed-deadline changes. A production
-beta still requires server-scheduled missed-deadline delivery and two-device
-FCM smoke testing.
+In Firebase mode, the backend maintenance worker evaluates configured
+missed-dose deadlines and inserts a durable outbox event with a unique
+caregiver/patient/date/slot key. Immediately before FCM delivery it revalidates
+the active link, explicit per-slot consent, current deadline, global caregiver
+notification preference, and live incomplete schedule state. This suppresses
+stale alerts after a late completion and bounds delivery to one event per
+caregiver, patient, date, and slot. Transient failures use the same retry and
+dead-letter policy as dose-completion delivery. In local demo mode,
+`DisabledPushNotificationBoundary` prevents remote delivery and the Android
+monitor retains its local missed-deadline polling fallback. Production still
+requires deployment of the latest migration and two-device FCM smoke testing.
 
 ## Patient Reminder Privacy and Continuity
 
@@ -197,6 +218,71 @@ the server-side reminder preference remains available for a later sign-in.
 Permanent account deletion performs the same local cleanup before the backend
 deletion request. Caregiver alerts and unrelated notification categories are
 not removed by patient-reminder cleanup.
+
+## Nearby Pharmacy Location Boundary
+
+Nearby-pharmacy lookup is a user-initiated laboratory feature. Flutter requests
+foreground location only while the screen is active and sends latitude and
+longitude to the authenticated MedBuddy backend over HTTPS. The backend keeps
+the public-data key private, validates coordinate ranges, requests only the
+bounded search radius needed for the screen, and returns normalized pharmacy
+name, address, telephone, operating-hours, distance, and destination coordinate
+fields.
+
+Neither Flutter nor FastAPI persists the current coordinate. Application logs,
+error messages, analytics, and notification payloads must not contain precise
+location. The UI applies a refresh cooldown and the backend retains an
+independent request quota.
+
+The in-app map requests map content through Naver Dynamic Map for the visible
+viewport. This does not expose the MedBuddy public-data credential, but the map
+provider necessarily receives requested tile coordinates and ordinary network
+metadata such as the device IP address. MedBuddy does not persist those tile
+requests. Pharmacy cards and markers share one local selection state, so
+centering the map does not repeat the pharmacy API request. The attribution
+action remains available in the map. Opening call or turn-by-turn directions
+delegates to the operating system; MedBuddy does not claim real-time stock or
+guaranteed opening hours and asks the user to confirm by phone.
+
+Favorites are scoped by the current local user hash and remain on that device;
+they are a presentation preference, not an authorization signal. Telephone,
+directions, and attribution actions pass through one validation service so a
+malformed public-data value cannot become an arbitrary external URI.
+
+## Linked Medication Chat Boundary
+
+The chat laboratory feature requires an active patient-caregiver link and at
+least one active medication belonging to the linked patient. A plain text
+message may be sent without context. Medication, schedule-slot, and pharmacy
+messages carry only bounded context identifiers from the client. A medication
+message may include a deduplicated list of up to ten identifiers; the first
+identifier is retained in the legacy singular field for older clients.
+`ManageLinkedChat` rechecks link ownership and current activity for every
+selected medication, then reconstructs each persisted snapshot from the saved
+medication, today's schedule, or pharmacy catalog instead of trusting client
+names, dosage, coordinates, or completion state.
+
+Slot-completion messages are generated only after the server-observed schedule
+transition and are idempotent per link, date, and slot. A slot-check request
+opens the matching schedule section after notification navigation; it does not
+grant the caregiver permission to alter the patient's completion record.
+
+REST history and WebSocket events share the same principal-to-link
+authorization. Client-generated message identifiers are normalized and unique
+per sender so a retry returns the existing message instead of duplicating it.
+Message length and page size are bounded, read state is participant-specific,
+and unlinking immediately blocks subsequent history, send, read, unread, and
+stream operations.
+
+Chat message bodies and medication contexts are stored medical-adjacent data and
+must not appear in logs. FCM and local chat alerts may show only the
+whitespace-normalized user-authored message preview capped at 120 characters;
+the operating system may display that preview on the lock screen. The private
+payload contains the link routing value required for authenticated in-app
+navigation and does not add medication names, patient display names, or image
+URLs. `ChatConnectionManager` is an in-process delivery optimization;
+persisted history remains the source of truth after a disconnect or server
+restart.
 
 ## Migration Without Pipeline Breakage
 
@@ -244,11 +330,13 @@ Cloudflare Tunnel.
 ## Client Egress and Resource-Safety Policy
 
 - `ApiConfig` defaults to the production HTTPS endpoint
-  `https://api.medbuddy.pp.ua/api/v1/medication` and requires a public HTTPS
-  backend in debug, profile, and release modes.
-- The Android debug manifest retains Internet access for ADB, breakpoints, and
-  Flutter hot reload but does not enable clear-text HTTP or trusted-LAN API
-  access.
+  `https://api.medbuddy.pp.ua/api/v1/medication`. Profile and release builds
+  require public HTTPS. Debug builds may opt into clear-text HTTP only for
+  `10.0.2.2`, loopback hostnames, or loopback addresses on port `8000` through
+  `MEDBUDDY_ALLOW_LOCAL_HTTP=true`.
+- The Android debug manifest permits clear-text traffic only so the emulator
+  can reach the local FastAPI demo. The main/release manifest keeps clear-text
+  disabled, and `ApiConfig` rejects arbitrary LAN or public HTTP endpoints.
 - Medication images are external content. The backend accepts, persists, and
   returns them only from the documented `https://nedrug.mfds.go.kr`
   public-data host. Flutter independently revalidates the value immediately
@@ -280,8 +368,8 @@ Cloudflare Tunnel.
   and AAB verification uses strict jarsigner semantics before certificate
   comparison.
 - The release manifest/network security configuration permits HTTPS only.
-- Debug builds retain Internet permission for Flutter tooling, but clear-text
-  HTTP access is not enabled in the Android manifest.
+- Debug builds retain Internet permission and a local-demo clear-text override;
+  profile and release builds keep the HTTPS-only manifest and URL policy.
 
 ## Delivery Order to July 31
 
@@ -399,6 +487,12 @@ The current ordered Alembic chain records the beta data boundary:
 | `0bc4a8d9e210` | Move the loose-pill reference catalog into the shared database. |
 | `b71d8c2e4f10` | Add account-deletion tombstone and external-identity completion timestamps. |
 | `9d2f6c1a8b30` | Add atomic full-refresh generation markers for public medication catalogs. |
+| `ae4c7d19f2b0` | Add prescription-batch identifiers used for course grouping, duplicate control, and history comparison. |
+| `7d2e4f1a8c63` | Add the durable caregiver-alert outbox used for retryable transition delivery. |
+| `3a9f5c7d2e10` | Add linked patient-caregiver chat messages, idempotent client message identifiers, and participant read timestamps. |
+| `6e1b4a9c2d80` | Bind each chat message to a validated active saved-medication context and preserve its display snapshot. |
+| `c2e4a6b8d901` | Add participant-specific and shared linked-chat deletion markers. |
+| `c2a7e4d9f610` | Generalize the caregiver-alert outbox for idempotent server-scheduled missed-dose delivery. |
 
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still

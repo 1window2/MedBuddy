@@ -29,6 +29,11 @@ skinparam classBackgroundColor<<External>> #FFF7E6
 skinparam classBorderColor<<External>> #D97706
 
 package "Flutter Frontend" #E8F4FF {
+  class HomeScreen <<UI>>
+  class ChatListUI <<UI>>
+  class LinkedChatUI <<UI>>
+  class ManageChatList <<Control>>
+  class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
@@ -38,6 +43,10 @@ package "Flutter Frontend" #E8F4FF {
   class CaregiverPatientLocalStateService <<Service>>
   class PushNotificationService <<Service>>
   class NotificationService <<Service>>
+  class NotificationInboxUI <<UI>>
+  class ManageNotificationInbox <<Control>>
+  class NotificationInboxStore <<Service>>
+  class NotificationInboxEntry
 }
 
 package "FastAPI Backend" #EAF8F0 {
@@ -57,6 +66,23 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+HomeScreen --> ManageChatList : active connections
+HomeScreen --> NotificationInboxUI : bell / unread badge
+HomeScreen --> ManageNotificationInbox : lifecycle / unread count
+NotificationInboxUI --> ManageNotificationInbox : list / read / delete
+ManageNotificationInbox --> NotificationInboxStore : per-account local history
+ManageNotificationInbox --> ManageChatList : current peer names
+NotificationInboxStore --> NotificationInboxEntry
+NotificationService --> NotificationInboxStore : local alerts / reminder events
+PushNotificationService --> NotificationInboxStore : recipient-scoped push
+NotificationInboxUI --> NotificationService : existing navigation handler
+HomeScreen --> ChatListUI : conditional chat tab
+ChatListUI --> LinkedChatUI : selected conversation
+ChatListUI --> ManageChatList
+ManageChatList --> FLinkPatientCaregiver
+ManageChatList --> ManageCaregiverPatientLocalState
+ManageChatList --> ManageLinkedChat : latest messages
+LinkedChatUI --> ManageLinkedChat
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification
@@ -84,5 +110,10 @@ PushNotificationService --> NotificationService
 note bottom of DispatchCaregiverAlert
   Medication completion is delivered through
   a retryable outbox instead of direct best-effort push.
+end note
+note bottom of NotificationInboxStore
+  Per-account device history, not a server mailbox.
+  Chat previews follow content-visibility settings.
+  Reminder entries represent scheduled events.
 end note
 @enduml

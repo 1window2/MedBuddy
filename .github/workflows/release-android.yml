@@ -1,14 +1,24 @@
+# File Name: release-android.yml
+# Role: Validates production configuration and builds verified, signed Android artifacts.
+
 name: Build Signed Android Release
 
 on:
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Optional public HTTPS API URL for an isolated beta build
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/beta/v0.2.0'
     runs-on: ubuntu-latest
     environment: beta-android
 
@@ -24,13 +34,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF}" = "refs/heads/main" || {
-            echo "Signed Android builds are restricted to the protected main branch." >&2
+          [[ "${GITHUB_REF}" == "refs/heads/main" || \
+             "${GITHUB_REF}" == "refs/heads/beta/v0.2.0" ]] || {
+            echo "Signed Android builds are restricted to main and the active beta branch." >&2
             exit 1
           }
 
       - name: Java Setup
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: '17'
@@ -44,6 +55,17 @@ jobs:
 
       - name: Package Get
         run: flutter pub get
+
+      - name: Validate Naver Map client
+        shell: bash
+        env:
+          NAVER_MAP_CLIENT_ID: ${{ vars.NAVER_MAP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${NAVER_MAP_CLIENT_ID}" =~ ^[A-Za-z0-9_-]{5,100}$ ]]; then
+            echo "NAVER_MAP_CLIENT_ID is missing or malformed." >&2
+            exit 1
+          fi
 
       - name: Normalize release App Check policy
         shell: bash
@@ -72,7 +94,7 @@ jobs:
       - name: Validate standalone backend endpoint
         shell: bash
         env:
-          MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
@@ -296,11 +318,12 @@ jobs:
           MEDBUDDY_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'
           EXPECTED_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
-          MEDBUDDY_API_BASE_URL: ${{ vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
           FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          NAVER_MAP_CLIENT_ID: ${{ vars.NAVER_MAP_CLIENT_ID }}
         run: |
           set -euo pipefail
           APP_CHECK_REQUIRED="${MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED}"
@@ -323,6 +346,7 @@ jobs:
             "--dart-define=MEDBUDDY_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}"
             "--dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
+            "--dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=${NAVER_MAP_CLIENT_ID}"
           )
           flutter build apk --release --no-pub \
             "${COMMON_DEFINES[@]}" \

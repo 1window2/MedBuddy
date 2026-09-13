@@ -1,0 +1,301 @@
+# 파일명: chat_message_entity.py
+# 역할: 환자·보호자 채팅 메시지의 저장 모델과 응답 모델을 정의한다.
+
+"""환자·보호자 채팅 메시지의 저장 모델과 응답 모델을 정의한다."""
+
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
+
+from core.database import Base
+from entities.medication_image_url_entity import safe_medication_image_url
+from entities.patient_caregiver_link_entity import _PatientCaregiverLink  # noqa: F401
+from entities.user_account_entity import _UserAccount  # noqa: F401
+
+
+CHAT_MESSAGE_KIND_TEXT = "text"
+CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST = "slot_check_request"
+CHAT_MESSAGE_KIND_SLOT_COMPLETION = "slot_completion"
+CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE = "medication_shortage"
+CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT = "medication_discomfort"
+CHAT_MESSAGE_KIND_PHARMACY_SHARE = "pharmacy_share"
+CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED = "pharmacy_phone_verified"
+MAX_CHAT_MEDICATION_CONTEXTS = 10
+CHAT_MESSAGE_KINDS = (
+    CHAT_MESSAGE_KIND_TEXT,
+    CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
+    CHAT_MESSAGE_KIND_SLOT_COMPLETION,
+    CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
+    CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
+    CHAT_MESSAGE_KIND_PHARMACY_SHARE,
+    CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
+)
+
+
+# 함수이름: utc_now
+# 함수역할:
+# - 데이터베이스에 저장할 시간대 정보 없는 UTC 현재 시각을 만든다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 시간대 정보가 없는 현재 UTC datetime.
+def utc_now() -> datetime:
+    """DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+# 클래스명: _ChatMessage
+# 역할:
+# - 연동별 채팅 메시지와 복약 스냅샷을 영속화한다.
+# 주요 책임:
+# - 중복 전송 방지 키, 본문, 복약 맥락과 읽음 시각을 저장한다.
+# 속성:
+# - link_id (Integer): 저장된 환자·보호자 연동 식별자.
+# - sender_hash (String): 채팅 메시지를 작성한 계정 식별자.
+# - client_message_id (String(length=64)): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
+# - body (Text): 서버 검증을 거쳐 저장된 채팅 본문; 전체 삭제 시 비운다.
+# - message_kind (String(length=40)): 텍스트 또는 구조화 문맥 메시지 유형.
+# - context_payload (JSON): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
+class _ChatMessage(Base):
+    """하나의 활성 환자·보호자 연동에서 주고받은 메시지를 저장한다."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "link_id",
+            "sender_hash",
+            "client_message_id",
+            name="uq_chat_message_client_request",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    link_id = Column(
+        Integer,
+        ForeignKey("patient_caregiver_links.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sender_hash = Column(
+        String,
+        ForeignKey("user_accounts.user_hash", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    client_message_id = Column(String(length=64), nullable=False)
+    body = Column(Text, nullable=False)
+    message_kind = Column(
+        String(length=40),
+        nullable=False,
+        default=CHAT_MESSAGE_KIND_TEXT,
+        server_default=CHAT_MESSAGE_KIND_TEXT,
+    )
+    context_payload = Column(JSON, nullable=True)
+    medication_id = Column(Integer, nullable=True)
+    medication_name = Column(String(length=300), nullable=True)
+    medication_image_url = Column(Text, nullable=True)
+    medication_dosage = Column(String(length=100), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now, index=True)
+    read_at = Column(DateTime, nullable=True)
+    patient_deleted_at = Column(DateTime, nullable=True)
+    caregiver_deleted_at = Column(DateTime, nullable=True)
+    deleted_for_everyone_at = Column(DateTime, nullable=True)
+
+
+# 클래스명: ChatMessage
+# 역할:
+# - 서버 내부와 API 응답에서 사용하는 불변 채팅 메시지를 표현한다.
+# 주요 책임:
+# - DB 행 변환, 복약 스냅샷 정리와 UTC 응답 직렬화를 담당한다.
+# 속성:
+# - message_id (int): 저장된 채팅 메시지 식별자.
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - sender_hash (str): 채팅 메시지를 작성한 계정 식별자.
+# - client_message_id (str): 채팅 재전송 중복 방지용 클라이언트 생성 식별자.
+# - body (str): 응답할 채팅 본문; 전체 삭제한 메시지는 빈 문자열.
+# - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
+class ChatMessage(BaseModel):
+    """서버 내부와 API 응답에서 사용하는 불변 채팅 메시지 모델이다."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message_id: int
+    link_id: int
+    sender_hash: str
+    client_message_id: str
+    body: str
+    created_at: datetime
+    message_kind: str = CHAT_MESSAGE_KIND_TEXT
+    context_payload: dict[str, object] | None = None
+    medication_id: int | None = None
+    medication_name: str | None = None
+    medication_image_url: str | None = None
+    medication_dosage: str | None = None
+    read_at: datetime | None = None
+    hidden_for_me: bool = False
+    deleted_for_everyone: bool = False
+
+    # 함수이름: from_row
+    # 함수역할:
+    # - SQLAlchemy 채팅 행을 불변 응답 모델로 변환한다.
+    # 매개변수:
+    # - row (_ChatMessage): 저장된 채팅 메시지 행
+    # - hidden_for_me (bool): 현재 참여자가 이 메시지를 개인 삭제했는지 여부.
+    # 반환값:
+    # - 저장 행의 문맥과 삭제 상태를 반영한 메시지 엔티티.
+    @classmethod
+    def from_row(
+        cls, row: _ChatMessage, *, hidden_for_me: bool = False,
+    ) -> "ChatMessage":
+        """SQLAlchemy 행을 채팅 응답 모델로 변환한다."""
+        return cls(
+            message_id=int(row.id),
+            link_id=int(row.link_id),
+            sender_hash=str(row.sender_hash),
+            client_message_id=str(row.client_message_id),
+            body=str(row.body),
+            created_at=row.created_at,
+            message_kind=str(row.message_kind or CHAT_MESSAGE_KIND_TEXT),
+            context_payload=(
+                dict(row.context_payload)
+                if isinstance(row.context_payload, dict)
+                else None
+            ),
+            medication_id=(
+                int(row.medication_id) if row.medication_id is not None else None
+            ),
+            medication_name=row.medication_name,
+            medication_image_url=row.medication_image_url,
+            medication_dosage=row.medication_dosage,
+            read_at=row.read_at,
+            hidden_for_me=hidden_for_me,
+            deleted_for_everyone=row.deleted_for_everyone_at is not None,
+        )
+
+    # 함수이름: to_response_dict
+    # 함수역할:
+    # - 채팅 메시지를 모바일 앱 응답 필드 형식으로 변환한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - JSON 직렬화 가능한 메시지 사전
+    def to_response_dict(self) -> dict[str, object]:
+        """모바일 앱이 사용하는 JSON 필드 형식으로 변환한다."""
+        medication_context = self._medication_context_response()
+        medication_contexts = self._medication_contexts_response(
+            fallback=medication_context,
+        )
+        response = {
+            "message_id": self.message_id,
+            "link_id": self.link_id,
+            "sender_hash": self.sender_hash,
+            "client_message_id": self.client_message_id,
+            "body": self.body,
+            "message_kind": self.message_kind,
+            "context": self.context_payload,
+            "created_at": _as_utc_isoformat(self.created_at),
+            "medication_context": medication_context,
+            "medication_contexts": medication_contexts,
+            "read_at": (
+                _as_utc_isoformat(self.read_at) if self.read_at is not None else None
+            ),
+            "hidden_for_me": self.hidden_for_me,
+            "deleted_for_everyone": self.deleted_for_everyone,
+        }
+        if self.hidden_for_me or self.deleted_for_everyone:
+            response.update({
+                "body": "", "message_kind": CHAT_MESSAGE_KIND_TEXT,
+                "context": None, "medication_context": None,
+                "medication_contexts": [],
+            })
+        return response
+
+    # 함수이름: _medication_context_response
+    # 함수역할:
+    # - 전송 당시 보존한 약 정보를 클라이언트 표시 형식으로 반환한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 기존 약품 열에서 만든 단일 약품 문맥 또는 연결 약이 없을 때 None.
+    def _medication_context_response(self) -> dict[str, object] | None:
+        """전송 당시 보존한 약 정보를 클라이언트 표시 형식으로 반환한다."""
+        medication_name = (self.medication_name or "").strip()
+        if not medication_name:
+            return None
+        return {
+            "medication_id": self.medication_id,
+            "medication_name": medication_name,
+            "image_url": safe_medication_image_url(self.medication_image_url),
+            "dosage_per_time": (self.medication_dosage or "").strip(),
+        }
+
+    # 함수이름: _medication_contexts_response
+    # 함수역할:
+    # - 다중 약 스냅샷을 정리하고 이전 단일 약 메시지도 목록으로 보완한다.
+    # 매개변수:
+    # - fallback (dict[str, object] | None): 구조화 목록이 없을 때 사용할 기존 단일 약품 문맥.
+    # 반환값:
+    # - 유효한 약품 문맥 목록; 구조화 목록이 없거나 유효한 항목이 없으면 기존 단일 약품 문맥을 사용한다.
+    def _medication_contexts_response(
+        self,
+        *,
+        fallback: dict[str, object] | None,
+    ) -> list[dict[str, object]]:
+        """다중 약 스냅샷을 정리하고 이전 단일 약 메시지도 목록으로 보완한다."""
+        payload = self.context_payload if isinstance(self.context_payload, dict) else {}
+        raw_contexts = payload.get("medication_contexts")
+        if not isinstance(raw_contexts, list):
+            return [fallback] if fallback is not None else []
+
+        contexts: list[dict[str, object]] = []
+        seen_ids: set[int] = set()
+        for raw_context in raw_contexts:
+            if not isinstance(raw_context, dict):
+                continue
+            try:
+                medication_id = int(raw_context.get("medication_id"))
+            except (TypeError, ValueError):
+                continue
+            medication_name = str(raw_context.get("medication_name") or "").strip()
+            if medication_id < 1 or not medication_name or medication_id in seen_ids:
+                continue
+            seen_ids.add(medication_id)
+            contexts.append(
+                {
+                    "medication_id": medication_id,
+                    "medication_name": medication_name,
+                    "image_url": safe_medication_image_url(
+                        raw_context.get("image_url")
+                    ),
+                    "dosage_per_time": str(
+                        raw_context.get("dosage_per_time") or ""
+                    ).strip(),
+                }
+            )
+        return contexts or ([fallback] if fallback is not None else [])
+
+
+# 함수이름: _as_utc_isoformat
+# 함수역할:
+# - 데이터베이스 시각을 명시적인 UTC ISO 문자열로 변환한다.
+# 매개변수:
+# - value (datetime): 변환할 시각
+# 반환값:
+# - UTC ISO 8601 문자열
+def _as_utc_isoformat(value: datetime) -> str:
+    """DB의 시간대 없는 UTC 값을 명시적인 UTC ISO 문자열로 바꾼다."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    else:
+        value = value.astimezone(UTC)
+    return value.isoformat()

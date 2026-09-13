@@ -1,3 +1,5 @@
+# File Name: ae4c7d19f2b0_add_prescription_batch_id.py
+# Role: Adds the analysis batch identifier used to keep separate same-day prescriptions from being combined by the change radar.
 """Add prescription analysis batch identifiers.
 
 Revision ID: ae4c7d19f2b0
@@ -19,8 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 # Function Name: upgrade
 # Description:
-# - Adds the analysis batch identifier used to keep separate same-day
-#   prescriptions from being combined by the change radar.
+# - Adds the analysis batch identifier used to keep separate same-day prescriptions from being combined by the change radar.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def upgrade() -> None:
@@ -39,6 +42,8 @@ def upgrade() -> None:
 # Function Name: downgrade
 # Description:
 # - Removes prescription batch indexing and storage.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def downgrade() -> None:

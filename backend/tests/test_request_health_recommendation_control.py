@@ -1,5 +1,5 @@
 # 파일명: test_request_health_recommendation_control.py
-# 역할: 건강 관리 추천 control의 약 조합 조회와 AI 응답 정규화를 검증한다.
+# 역할: 활성 복약 기반 건강 추천의 환자 범위·캐시·언어 및 응답 계약을 검증한다.
 
 import sys
 import unittest
@@ -25,16 +25,38 @@ from entities.saved_medication_entity import (  # noqa: E402
 )
 
 
-# 클래스명: _FakeLLMService
-# 역할: Gemini 호출 없이 control 입력값을 검증하기 위한 테스트용 생성기이다.
-# 주요 책임:
-#   - 전달된 약 요약 정보를 기록한다.
-#   - 고정된 건강 관리 추천 응답을 반환한다.
+# Class Name: _FakeLLMService
+# Role: Health recommendation generator double recording medication summaries and returning
+#   fixed diet, exercise, and caution guidance without Gemini.
+# Responsibilities:
+# - Records the medication summaries, counts generation requests, and returns deterministic
+#   diet, exercise, and caution recommendations.
+# Attributes:
+# - generation_count (int): Number of health recommendations generated.
+# - received_medications (list[dict[str, str]]): Medication summaries captured from the
+#   recommendation request.
 class _FakeLLMService:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 추천 생성 횟수와 전달받은 약 요약 목록을 초기화한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def __init__(self) -> None:
         self.generation_count = 0
         self.received_medications: list[dict[str, str]] = []
 
+    # Function Name: requestHealthRecommendation
+    # Description:
+    # - Records the medication summaries, counts generation requests, and returns
+    #   deterministic diet, exercise, and caution recommendations.
+    # Parameters:
+    # - medication_summaries (list[dict[str, str]]): Active-medication summaries submitted
+    #   for recommendations.
+    # - language (str): Requested recommendation language.
+    # Returns:
+    # - dict[str, object]: Fixed diet, exercise, and caution recommendations.
     async def requestHealthRecommendation(
         self,
         medication_summaries: list[dict[str, str]],
@@ -49,7 +71,30 @@ class _FakeLLMService:
         }
 
 
+# Class Name: CheckHealthRecommendationTest
+# Role: Async database-backed tests for active-medication selection and health-recommendation
+#   caching.
+# Responsibilities:
+# - Sends only active medication summaries to the LLM and returns their names with one generated
+#   recommendation.
+# - Keeps recommendation cache entries separate by language and generates once for each
+#   language.
+# - Returns HTTP 404 instead of generating recommendations when there are no active medications.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - llm_service (_FakeLLMService): Recording recommendation generator replacing Gemini.
+# - control (CheckHealthRecommendation): Use-case control under test, isolated from production
+#   state.
 class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an isolated medication database and recommendation control wired to a
+    #   recording LLM double.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -69,10 +114,27 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             llm_service=self.llm_service,
         )
 
+    # 함수이름: tearDown
+    # 함수역할:
+    # - 건강 추천 테스트의 DB 세션과 엔진을 닫는다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # 함수이름: _save_medication
+    # 함수역할:
+    # - 지정 환자·약명·처방일·기간의 약을 저장하고 갱신한 행을 반환하여 활성 복약 범위를 준비한다.
+    # 매개변수:
+    # - item_name (str): 공식 카탈로그 또는 저장 약 레코드의 제품명.
+    # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
+    # - prescription_date (date | None): 처방 또는 복용 시작일이며 None이면 fixture 기본 날짜 사용.
+    # - total_days (str): 처방된 복용 기간 문자열이며 미상일 수 있음.
+    # 반환값:
+    # - _SavedMedication: 생성된 ID를 포함하여 저장·갱신한 약 행.
     def _save_medication(
         self,
         *,
@@ -97,6 +159,14 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.db.refresh(medication)
         return medication
 
+    # Function Name: test_recommendation_uses_only_active_medications
+    # Description:
+    # - Sends only active medication summaries to the LLM and returns their names with one
+    #   generated recommendation.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def test_recommendation_uses_only_active_medications(self) -> None:
         self._save_medication(
             item_name="active-tablet",
@@ -130,6 +200,14 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(self.llm_service.generation_count, 1)
 
+    # Function Name: test_recommendation_reuses_cached_result_for_same_medication_combo
+    # Description:
+    # - Reuses an identical recommendation for the same medication combination without a
+    #   second generation call.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def test_recommendation_reuses_cached_result_for_same_medication_combo(
         self,
     ) -> None:
@@ -145,6 +223,14 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_response["data"], second_response["data"])
         self.assertEqual(self.llm_service.generation_count, 1)
 
+    # Function Name: test_recommendation_cache_is_separated_by_language
+    # Description:
+    # - Keeps recommendation cache entries separate by language and generates once for each
+    #   language.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def test_recommendation_cache_is_separated_by_language(self) -> None:
         self._save_medication(
             item_name="active-tablet",
@@ -157,6 +243,14 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.llm_service.generation_count, 2)
 
+    # Function Name: test_recommendation_without_active_medications_returns_not_found
+    # Description:
+    # - Returns HTTP 404 instead of generating recommendations when there are no active
+    #   medications.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def test_recommendation_without_active_medications_returns_not_found(
         self,
     ) -> None:
@@ -166,7 +260,19 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.exception.status_code, 404)
 
 
+# Class Name: LLMServiceTest
+# Role: Response-normalization tests for bounded health-recommendation caution lists.
+# Responsibilities:
+# - Preserves diet and exercise text while limiting caution items to the first five entries.
 class LLMServiceTest(unittest.TestCase):
+    # Function Name: test_normalize_response_limits_caution_items
+    # Description:
+    # - Preserves diet and exercise text while limiting caution items to the first five
+    #   entries.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_normalize_response_limits_caution_items(self) -> None:
         llm_service = LLMService(ai_client=object())
 
@@ -184,7 +290,21 @@ class LLMServiceTest(unittest.TestCase):
         self.assertEqual(normalized_response["caution_items"], ["1", "2", "3", "4", "5"])
 
 
+# Class Name: CheckHealthRecommendationContractTest
+# Role: Contract tests ensuring the UML recommendation entrypoint executes the real
+#   medication-based flow.
+# Responsibilities:
+# - Requires the diagram-named operation to return a successful recommendation containing the
+#   active medication name.
 class CheckHealthRecommendationContractTest(unittest.IsolatedAsyncioTestCase):
+    # Function Name: test_diagram_method_name_executes_recommendation_flow
+    # Description:
+    # - Requires the diagram-named operation to return a successful recommendation
+    #   containing the active medication name.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def test_diagram_method_name_executes_recommendation_flow(self) -> None:
         engine = create_engine(
             "sqlite:///:memory:",

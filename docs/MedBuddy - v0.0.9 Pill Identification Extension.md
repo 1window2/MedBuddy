@@ -208,9 +208,12 @@ official MFDS reference image. The expected product ranked first, the pair was
 accepted as consistent, and the result remained explicitly confirmable by the
 user.
 
-A complete live catalog refresh advertised 25,315 upstream rows and accepted
-25,298 normalized image-bearing entries after validation and deduplication,
-well above the 95% completeness threshold. With the bounded 12-request
+A historical v0.0.9 live catalog refresh advertised 25,315 upstream rows and
+accepted 25,298 normalized entries after validation and deduplication under the
+then-current 95% completeness threshold. The current synchronization contract
+instead requires every advertised raw row to be fetched, reports rejected and
+duplicate rows separately, enforces the dated KPIC product floor, and verifies
+the exact persisted `item_seq` set before commit. With the bounded 12-request
 concurrency used by the external catalog adapter, the local validation refresh
 completed in approximately 14.7 seconds; an in-memory cache lookup was
 effectively immediate. These timings describe one development-machine run and
@@ -250,8 +253,10 @@ generated catalog files.
   siblings when one page fails. Catalog lock waiting, refresh, and fallback share
   one fixed deadline; failed cold-cache refreshes use a short retry backoff so
   queued callers do not repeat the same outage.
-- A catalog refresh is accepted only when at least 95% of the advertised rows
-  are present, preventing a partial response from replacing a valid cache.
+- A catalog refresh is accepted only when every advertised raw row is fetched,
+  the unique accepted set meets the configured KPIC product floor, and the
+  persisted `item_seq` set exactly equals that accepted generation. Rejected and
+  duplicate upstream rows remain visible in structured reconciliation logs.
 - A stale persisted catalog remains available during upstream failure, but its
   in-memory fallback is retried after five minutes rather than suppressing
   refresh attempts for the full seven-day fresh-cache lifetime.

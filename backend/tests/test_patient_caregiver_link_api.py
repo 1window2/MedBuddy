@@ -1,3 +1,6 @@
+# File Name: test_patient_caregiver_link_api.py
+# Role: Regression coverage for the patient-caregiver link lifecycle across separate HTTP
+#   clients.
 import asyncio
 import os
 import sys
@@ -34,7 +37,21 @@ from entities.authenticated_principal_entity import (  # noqa: E402
 )
 
 
+# Class Name: _UnavailableRedis
+# Role: Redis double that forces the local fallback path without making a network connection.
+# Responsibilities:
+# - Raises an intentional Redis connection error for every atomic quota request.
+# - Accepts client cleanup without side effects because the Redis double owns no connection.
 class _UnavailableRedis:
+    # Function Name: eval
+    # Description:
+    # - Raises an intentional Redis connection error for every atomic quota request.
+    # Parameters:
+    # - script (str): Lua script combining quota increment and expiry.
+    # - number_of_keys (int): Number of Redis keys preceding the Lua arguments.
+    # - *keys_and_args (object): Redis keys and Lua arguments captured in call order.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     async def eval(
         self,
         script: str,
@@ -44,10 +61,26 @@ class _UnavailableRedis:
         del script, number_of_keys, keys_and_args
         raise ConnectionError("Redis is intentionally unavailable in this test.")
 
+    # Function Name: aclose
+    # Description:
+    # - Accepts client cleanup without side effects because the Redis double owns no
+    #   connection.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def aclose(self) -> None:
         return None
 
 
+# Function Name: test_patient_and_caregiver_clients_complete_link_lifecycle
+# Description:
+# - Runs separate patient and caregiver clients through code creation, link registration, shared
+#   listing, and unlink removal.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
     engine = create_engine(
         "sqlite://",
@@ -61,6 +94,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         bind=engine,
     )
 
+    # Function Name: override_link_control
+    # Description:
+    # - Yields a linking control with a fresh test session and closes the session after
+    #   dependency cleanup.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Yields a linking control; closes its request session afterward.
     def override_link_control() -> Generator[LinkPatientCaregiver, None, None]:
         db: Session = session_factory()
         try:
@@ -68,6 +109,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         finally:
             db.close()
 
+    # Function Name: override_authorization_control
+    # Description:
+    # - Yields an authorization control with an isolated request session and closes it after
+    #   use.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Yields an authorization control; closes its request session afterward.
     def override_authorization_control() -> Generator[AuthorizationControl, None, None]:
         db: Session = session_factory()
         try:
@@ -92,6 +141,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         AuthenticatedPrincipal.development_principal
     )
 
+    # Function Name: run_link_lifecycle
+    # Description:
+    # - Requires both device clients to see the same active link, then empty lists after a
+    #   successful caregiver unlink.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def run_link_lifecycle() -> None:
         async with (
             httpx.AsyncClient(

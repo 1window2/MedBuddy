@@ -1,3 +1,6 @@
+// File Name: input_prescription_ui_boundary.dart
+// Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
+
 import 'package:flutter/material.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
@@ -9,12 +12,17 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// 클래스명: InputPrescriptionUI
-// 역할: 오늘의 복약 요약과 중복되지 않는 네 가지 빠른 기능을 제공하는 홈 화면이다.
-// 주요 책임:
-// - 사용자 설정에 맞춘 홈 화면 문구와 글자 크기를 보여준다.
-// - 카메라/갤러리 처방전 입력 방식을 선택할 수 있게 한다.
-// - OCR 진행 중에는 입력 화면 대신 진행 상태를 보여준다.
+// Class Name: InputPrescriptionUI
+// Role: Represents medication status and quick medication input or lookup actions.
+// Responsibilities:
+// - Applies the user's home wording and text size.
+// - Offers camera and gallery prescription input.
+// - Replaces input with progress while OCR is running.
+// Attributes:
+// - statusMessage (String): Visible wording for the current result, error, or state.
+// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+// - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
 class InputPrescriptionUI extends StatelessWidget {
   final String statusMessage;
   final UserSetting userSetting;
@@ -26,13 +34,44 @@ class InputPrescriptionUI extends StatelessWidget {
   final DateTime Function()? nowProvider;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
-  final VoidCallback? onPillIdentificationRequested;
+  final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
+  final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
+  final Future<void> Function(String slotKey)?
+  onNextMedicationCompleteRequested;
+  final bool isNextMedicationCompletionLoading;
+  final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onHealthRecommendationRequested;
   final VoidCallback? onMedicationReminderRequested;
   final VoidCallback? onUserSettingRequested;
+  final VoidCallback? onNotificationsRequested;
+  final int unreadNotificationCount;
   final bool isAnalyzing;
 
+  // Function Name: InputPrescriptionUI
+  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - todayMedicationCompletedCount (int): Number of completed doses.
+  // - todayMedicationTotalCount (int): Total scheduled doses or operation items.
+  // - isTodayScheduleLoading (bool): Whether to show the in-progress state.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // - onPrescriptionScanRequested (VoidCallback?): Callback requesting prescription capture or recapture through the guided camera.
+  // - onPrescriptionGalleryRequested (VoidCallback?): Callback selecting a prescription photo from the gallery.
+  // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식의 알약 식별을 여는 콜백.
+  // - onManualMedicationRequested (VoidCallback?): Callback opening manual medication and schedule entry.
+  // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
+  // - onNextMedicationCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
+  // - onNearbyPharmacyRequested (VoidCallback?): Callback opening nearby-pharmacy search.
+  // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
+  // - onMedicationReminderRequested (VoidCallback?): Callback opening the associated slot's reminder settings.
+  // - onUserSettingRequested (VoidCallback?): Callback opening user settings.
+  // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI({
     super.key,
     required this.statusMessage,
@@ -46,12 +85,24 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
+    this.onManualMedicationRequested,
     required this.onTodayScheduleRequested,
+    this.onNextMedicationCompleteRequested,
+    this.isNextMedicationCompletionLoading = false,
+    this.onNearbyPharmacyRequested,
     required this.onHealthRecommendationRequested,
     required this.onMedicationReminderRequested,
     required this.onUserSettingRequested,
+    this.onNotificationsRequested,
+    this.unreadNotificationCount = 0,
   }) : isAnalyzing = false;
 
+  // Function Name: InputPrescriptionUI.analyzing
+  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
+  // Parameters:
+  // - key (Key?): Widget identity used to distinguish elements and preserve state.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
     : userSetting = const UserSetting(),
       todayMedicationScheduleList = const [],
@@ -63,12 +114,23 @@ class InputPrescriptionUI extends StatelessWidget {
       onPrescriptionScanRequested = null,
       onPrescriptionGalleryRequested = null,
       onPillIdentificationRequested = null,
+      onManualMedicationRequested = null,
       onTodayScheduleRequested = null,
+      onNextMedicationCompleteRequested = null,
+      isNextMedicationCompletionLoading = false,
+      onNearbyPharmacyRequested = null,
       onHealthRecommendationRequested = null,
       onMedicationReminderRequested = null,
       onUserSettingRequested = null,
+      onNotificationsRequested = null,
+      unreadNotificationCount = 0,
       isAnalyzing = true;
 
+  // 함수이름: build
+  // 함수역할: 복약 현황과 빠른 기능을 표시하고, 큰 글씨에서는 설명 길이에 맞춰 카드 높이를 정한다.
+  // 매개변수:
+  // - context (BuildContext): 화면 크기와 접근성 배율을 제공하는 위젯 위치.
+  // 반환값: 복약 현황과 입력·조회 기능을 포함한 스크롤 가능한 홈 화면.
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
@@ -83,14 +145,22 @@ class InputPrescriptionUI extends StatelessWidget {
         top: false,
         child: Column(
           children: [
-            _HomeHeader(onSettingPressed: onUserSettingRequested),
+            _HomeHeader(
+              text: text,
+              onNotificationsPressed: onNotificationsRequested,
+              unreadCount: unreadNotificationCount,
+            ),
             Expanded(
               child: LayoutBuilder(
+                // 함수이름: 홈 스크롤 영역 builder
+                // 함수역할: 화면 너비에 맞춰 여백을 정하고 접근성 배율을 카드에 전달한다.
+                // 매개변수: context (BuildContext), viewportConstraints (BoxConstraints): 화면 문맥과 사용 가능한 크기.
+                // 반환값: 복약 현황과 기능 카드가 배치된 스크롤 영역.
                 builder: (context, viewportConstraints) {
                   final textScale =
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
-                      viewportConstraints.maxWidth >= 350 && textScale <= 1.1;
+                      viewportConstraints.maxWidth >= 350;
                   final dashboardActionSpacing = useCompactDashboard
                       ? viewportConstraints.maxHeight >= 600
                             ? 20.0
@@ -122,12 +192,19 @@ class InputPrescriptionUI extends StatelessWidget {
                               nowProvider: nowProvider,
                               compact: useCompactDashboard,
                               onTap: onTodayScheduleRequested,
+                              onCompleteRequested:
+                                  onNextMedicationCompleteRequested,
+                              isCompletionLoading:
+                                  isNextMedicationCompletionLoading,
                             ),
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
+                              // 함수이름: 빠른 기능 영역 builder
+                              // 함수역할: 좁은 화면은 한 열, 일반 화면은 두 열로 배치하며 큰 글씨의 행 높이는 내용에 맞춘다.
+                              // 매개변수: context (BuildContext), constraints (BoxConstraints): 문맥과 실제 콘텐츠 너비.
+                              // 반환값: 글씨 크기에 따라 설명이 사라지지 않는 기능 카드 목록.
                               builder: (context, constraints) {
-                                final useGrid =
-                                    MediaQuery.sizeOf(context).width >= 350;
+                                final useGrid = constraints.maxWidth >= 310;
                                 final useLargeTextGridLayout = textScale > 1.1;
                                 final homeActions = <Widget>[
                                   _HomeActionCard(
@@ -141,25 +218,8 @@ class InputPrescriptionUI extends StatelessWidget {
                                     userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largePrescriptionAnalysis,
                                     onTap: () =>
-                                        _showPrescriptionSourceOptions(context),
-                                  ),
-                                  _HomeActionCard(
-                                    cardKey: const ValueKey(
-                                      'homePillIdentificationCard',
-                                    ),
-                                    icon: Icons.medication_liquid_outlined,
-                                    title: text.pillIdentification,
-                                    subtitle: text.pillIdentificationSubtitle,
-                                    tone: _HomeActionTone.mint,
-                                    compact: useGrid,
-                                    largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largePillIdentification,
-                                    userSetting: userSetting,
-                                    onTap: onPillIdentificationRequested,
+                                        _showAnalysisTaskOptions(context),
                                   ),
                                   _HomeActionCard(
                                     cardKey: const ValueKey(
@@ -168,28 +228,37 @@ class InputPrescriptionUI extends StatelessWidget {
                                     icon: Icons.monitor_heart_outlined,
                                     title: text.healthRecommendation,
                                     subtitle: text.healthRecommendationSubtitle,
-                                    tone: _HomeActionTone.lavender,
+                                    tone: _HomeActionTone.mint,
+                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largeHealthRecommendation,
-                                    userSetting: userSetting,
                                     onTap: onHealthRecommendationRequested,
                                   ),
                                   _HomeActionCard(
                                     cardKey: const ValueKey(
-                                      'homeMedicationReminderCard',
+                                      'homeNearbyPharmacyCard',
                                     ),
-                                    icon: Icons.notifications_active_outlined,
-                                    title: text.medicationReminder,
-                                    subtitle: text.medicationReminderSubtitle,
-                                    tone: _HomeActionTone.butter,
+                                    icon: Icons.local_pharmacy_outlined,
+                                    title: text.nearbyPharmacy,
+                                    subtitle: text.nearbyPharmacySubtitle,
+                                    tone: _HomeActionTone.lavender,
+                                    userSetting: userSetting,
                                     compact: useGrid,
                                     largeTextGridLayout: useLargeTextGridLayout,
-                                    largeGridTitle:
-                                        text.largeMedicationReminder,
+                                    onTap: onNearbyPharmacyRequested,
+                                  ),
+                                  _HomeActionCard(
+                                    cardKey: const ValueKey(
+                                      'homeUserSettingsCard',
+                                    ),
+                                    icon: Icons.settings_outlined,
+                                    title: text.userSettings,
+                                    subtitle: text.userSettingsSubtitle,
+                                    tone: _HomeActionTone.butter,
                                     userSetting: userSetting,
-                                    onTap: onMedicationReminderRequested,
+                                    compact: useGrid,
+                                    largeTextGridLayout: useLargeTextGridLayout,
+                                    onTap: onUserSettingRequested,
                                   ),
                                 ];
 
@@ -204,6 +273,45 @@ class InputPrescriptionUI extends StatelessWidget {
                                         homeActions[index],
                                         if (index != homeActions.length - 1)
                                           const SizedBox(height: 14),
+                                      ],
+                                    ],
+                                  );
+                                }
+
+                                if (useLargeTextGridLayout) {
+                                  // 두 행만 내용 높이를 측정해 설명을 보존하고 같은 행의 카드 높이를 맞춘다.
+                                  const gap = 10.0;
+                                  final cardWidth =
+                                      (constraints.maxWidth - gap) / 2;
+                                  return Column(
+                                    children: [
+                                      for (
+                                        int index = 0;
+                                        index < 4;
+                                        index += 2
+                                      ) ...[
+                                        if (index > 0)
+                                          const SizedBox(height: gap),
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            minHeight: cardWidth / 1.25,
+                                          ),
+                                          child: IntrinsicHeight(
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Expanded(
+                                                  child: homeActions[index],
+                                                ),
+                                                const SizedBox(width: gap),
+                                                Expanded(
+                                                  child: homeActions[index + 1],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ],
                                   );
@@ -224,9 +332,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                       mainAxisSpacing: useCompactDashboard
                                           ? 10
                                           : 14,
-                                      childAspectRatio: useLargeTextGridLayout
-                                          ? 0.75
-                                          : useCompactDashboard
+                                      childAspectRatio: useCompactDashboard
                                           ? 1.25
                                           : 1,
                                       children: homeActions,
@@ -235,8 +341,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                 );
                               },
                             ),
-                            SizedBox(height: useCompactDashboard ? 8 : 12),
-                            _MedicationTipCard(text: text),
                           ],
                         ),
                       ),
@@ -251,15 +355,33 @@ class InputPrescriptionUI extends StatelessWidget {
     );
   }
 
-  // 함수이름: _showPrescriptionSourceOptions
-  // 함수역할:
-  // - 처방전 분석 카드에서 카메라와 갤러리 중 이미지 출처를 선택하게 한다.
-  // - 낱알약 식별은 별도 빠른 기능 카드가 직접 처리한다.
+  // 함수이름: _showAnalysisTaskOptions
+  // 함수역할: 공통 선택 화면에서 처방전 분석, 낱알약 식별, 직접 등록 작업을 선택하게 한다. 처방전 분석을 선택하면 카메라와 갤러리 중 이미지 출처를 추가로 선택하게 한다.
   // 매개변수:
-  // - context: 선택 화면 표시와 화면 활성 상태 확인에 사용할 BuildContext
-  // 반환값:
-  // - 없음
-  Future<void> _showPrescriptionSourceOptions(BuildContext context) async {
+  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  Future<void> _showAnalysisTaskOptions(BuildContext context) async {
+    final task = await showMedicationCaptureTaskOptions(
+      context: context,
+      userSetting: userSetting,
+    );
+
+    if (!context.mounted || task == null) {
+      return;
+    }
+    if (task == MedicationCaptureTask.multiplePills ||
+        task == MedicationCaptureTask.individualPills) {
+      onPillIdentificationRequested?.call(
+        task == MedicationCaptureTask.multiplePills
+            ? PillCaptureMode.singlePhoto
+            : PillCaptureMode.individualPhotos,
+      );
+      return;
+    }
+    if (task == MedicationCaptureTask.manual) {
+      onManualMedicationRequested?.call();
+      return;
+    }
     final source = await showPrescriptionImageSourceOptions(
       context: context,
       userSetting: userSetting,
@@ -274,13 +396,11 @@ class InputPrescriptionUI extends StatelessWidget {
     onPrescriptionGalleryRequested?.call();
   }
 
-  // 함수명: _buildAnalyzingScreen
-  // 함수역할:
-  // - 처방전 이미지가 선택된 뒤 OCR 요청이 진행되는 동안 보여줄 화면을 만든다.
-  // 매개변수:
-  // - text: 현재 언어에 맞는 홈 화면 문구 묶음
-  // 반환값:
-  // - 분석 진행 상태 Widget
+  // Function Name: _buildAnalyzingScreen
+  // Description: Replaces home input with OCR progress guidance and indicators.
+  // Parameters:
+  // - text (_HomeText): Localized labels used by this section.
+  // Returns: Widget tree for medication status and quick medication input or lookup actions.
   Widget _buildAnalyzingScreen(_HomeText text) {
     return Scaffold(
       body: Container(
@@ -359,11 +479,31 @@ class InputPrescriptionUI extends StatelessWidget {
   }
 }
 
+// 클래스명: _HomeHeader
+// 역할: 홈 제목과 알림함 진입 버튼, 미확인 알림 개수를 표시한다.
 class _HomeHeader extends StatelessWidget {
-  final VoidCallback? onSettingPressed;
+  final _HomeText text;
+  final VoidCallback? onNotificationsPressed;
+  final int unreadCount;
 
-  const _HomeHeader({required this.onSettingPressed});
+  // 함수이름: _HomeHeader
+  // 함수역할: 홈 제목과 알림함 상단 콘텐츠를 초기화한다.
+  // 매개변수:
+  // - text (_HomeText): 해당 화면 구역의 언어별 표시 문구.
+  // - onNotificationsPressed (VoidCallback?): 알림함을 여는 콜백.
+  // - unreadCount (int): 아직 확인하지 않은 알림 개수.
+  // 반환값: 입력 설정이 반영된 _HomeHeader 인스턴스.
+  const _HomeHeader({
+    required this.text,
+    required this.onNotificationsPressed,
+    required this.unreadCount,
+  });
 
+  // Function Name: build
+  // Description: Renders the home heading and supporting top-bar content from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the home heading and supporting top-bar content.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -385,12 +525,12 @@ class _HomeHeader extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'MedBuddy',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -400,42 +540,45 @@ class _HomeHeader extends StatelessWidget {
                         fontSize: 26,
                         height: 1.1,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
+                        letterSpacing: 0,
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
-                      '건강한 복약 관리 도우미',
+                      text.brandSubtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textScaler: TextScaler.noScaling,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: MedBuddyColors.textSubtle,
                         fontSize: 13,
                         height: 1.2,
                         fontWeight: FontWeight.w500,
+                        letterSpacing: 0,
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 16),
-              Material(
-                color: MedBuddyColors.mint,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  key: const ValueKey('homeSettingsButton'),
-                  customBorder: const CircleBorder(),
-                  onTap: onSettingPressed,
-                  child: const SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: Icon(
-                      Icons.settings_outlined,
-                      color: MedBuddyColors.primaryDark,
-                      size: 22,
-                    ),
+              Badge(
+                isLabelVisible: unreadCount > 0,
+                label: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  textScaler: TextScaler.noScaling,
+                ),
+                child: IconButton.filledTonal(
+                  key: const ValueKey('homeNotificationsButton'),
+                  tooltip: text.isEnglish
+                      ? 'Notifications, $unreadCount unread'
+                      : '알림, 안 읽은 알림 $unreadCount개',
+                  onPressed: onNotificationsPressed,
+                  style: IconButton.styleFrom(
+                    backgroundColor: MedBuddyColors.mint,
+                    foregroundColor: MedBuddyColors.primaryDark,
+                    minimumSize: const Size.square(48),
                   ),
+                  icon: const Icon(Icons.notifications_none_outlined, size: 24),
                 ),
               ),
             ],
@@ -446,8 +589,21 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeActionTone
+// Role: Represents background and icon color combinations for home quick actions.
+// Responsibilities:
+// - Enumerates and distinguishes the supported options for background and icon color combinations for home quick actions: primary, mint, lavender, butter.
 enum _HomeActionTone { primary, mint, lavender, butter }
 
+// Class Name: _HomeActionCard
+// Role: Represents a home quick action with its icon and title.
+// Responsibilities:
+// - Composes a home quick action with its icon and title using the display values and actions supplied by its parent.
+// Attributes:
+// - cardKey (Key?): Widget identity used to distinguish elements and preserve state.
+// - icon (IconData): Icon shown in normal or selected state.
+// - title (String): Heading shown for the screen, section, or item.
+// - subtitle (String): Supporting explanation or account detail below the primary label.
 class _HomeActionCard extends StatelessWidget {
   final Key? cardKey;
   final IconData icon;
@@ -456,10 +612,17 @@ class _HomeActionCard extends StatelessWidget {
   final _HomeActionTone tone;
   final bool compact;
   final bool largeTextGridLayout;
-  final String? largeGridTitle;
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
+  // 함수이름: _HomeActionCard
+  // 함수역할: 동일한 제목·설명을 일반 글씨와 큰 글씨 모두에서 사용할 기능 카드를 만든다.
+  // 매개변수:
+  // - cardKey (Key?), icon (IconData), title, subtitle (String): 카드 식별자와 표시할 내용.
+  // - tone (_HomeActionTone), compact (bool): 색상과 두 열 카드 사용 여부.
+  // - largeTextGridLayout (bool): 제목과 설명을 줄 수 제한 없이 표시할지 여부.
+  // - userSetting (UserSetting), onTap (VoidCallback?): 사용자 설정과 기능 실행 동작.
+  // 반환값: 초기화된 홈 기능 카드.
   const _HomeActionCard({
     this.cardKey,
     required this.icon,
@@ -468,11 +631,14 @@ class _HomeActionCard extends StatelessWidget {
     required this.tone,
     this.compact = false,
     this.largeTextGridLayout = false,
-    this.largeGridTitle,
     required this.userSetting,
     required this.onTap,
   });
 
+  // 함수이름: build
+  // 함수역할: 기능별 색상을 적용하고 목록형 또는 두 열 카드의 전체 설명을 구성한다.
+  // 매개변수: context (BuildContext): 접근성 배율과 테마를 상속하는 위젯 위치.
+  // 반환값: 제목·설명·아이콘·이동 화살표를 포함한 기능 카드.
   @override
   Widget build(BuildContext context) {
     final background = switch (tone) {
@@ -494,9 +660,6 @@ class _HomeActionCard extends StatelessWidget {
       _HomeActionTone.butter => MedBuddyColors.reminderAccent,
     };
     final scale = userSetting.contentTextScale;
-    final displayedTitle = largeTextGridLayout
-        ? largeGridTitle ?? title
-        : title;
 
     return Material(
       color: background,
@@ -509,7 +672,7 @@ class _HomeActionCard extends StatelessWidget {
           width: double.infinity,
           constraints: compact ? null : const BoxConstraints(minHeight: 102),
           padding: compact
-              ? EdgeInsets.all(largeTextGridLayout ? 8 : 10)
+              ? const EdgeInsets.all(10)
               : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.largeCard,
@@ -521,47 +684,27 @@ class _HomeActionCard extends StatelessWidget {
             ),
           ),
           child: compact
-              ? _buildCompactContent(
-                  displayedTitle,
-                  foreground,
-                  secondary,
-                  accent,
-                  scale,
-                )
+              ? _buildCompactContent(foreground, secondary, accent, scale)
               : _buildListContent(foreground, secondary, accent, scale),
         ),
       ),
     );
   }
 
+  // 함수이름: _buildCompactContent
+  // 함수역할: 큰 글씨에서도 아이콘·화살표·제목·설명을 유지하고 텍스트를 자연스럽게 줄바꿈한다.
+  // 매개변수:
+  // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
+  // - scale (double): 콘텐츠 배율. 전역 접근성 배율은 Text가 별도로 상속한다.
+  // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
   Widget _buildCompactContent(
-    String displayedTitle,
     Color foreground,
     Color secondary,
     Color accent,
     double scale,
   ) {
-    if (largeTextGridLayout) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _ActionIcon(icon: icon, tone: tone, color: accent, size: 52),
-          const SizedBox(height: 5),
-          Text(
-            displayedTitle,
-            maxLines: 3,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 14,
-              height: 1.18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      );
-    }
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -574,9 +717,11 @@ class _HomeActionCard extends StatelessWidget {
         ),
         const SizedBox(height: 7),
         Text(
-          displayedTitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          title,
+          maxLines: largeTextGridLayout ? null : 2,
+          overflow: largeTextGridLayout
+              ? TextOverflow.clip
+              : TextOverflow.ellipsis,
           style: TextStyle(
             color: foreground,
             fontSize: 14 * scale,
@@ -587,8 +732,10 @@ class _HomeActionCard extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          maxLines: largeTextGridLayout ? null : 2,
+          overflow: largeTextGridLayout
+              ? TextOverflow.clip
+              : TextOverflow.ellipsis,
           style: TextStyle(
             color: secondary,
             fontSize: 11 * scale,
@@ -600,6 +747,12 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
+  // 함수이름: _buildListContent
+  // 함수역할: 좁은 화면의 한 열 카드에서도 큰 글씨의 제목과 설명을 생략하지 않는다.
+  // 매개변수:
+  // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
+  // - scale (double): 전역 접근성 배율과 중복되지 않는 콘텐츠 배율.
+  // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
   Widget _buildListContent(
     Color foreground,
     Color secondary,
@@ -617,8 +770,10 @@ class _HomeActionCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: largeTextGridLayout ? null : 1,
+                overflow: largeTextGridLayout
+                    ? TextOverflow.clip
+                    : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: foreground,
                   fontSize: 17 * scale,
@@ -628,8 +783,10 @@ class _HomeActionCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                maxLines: largeTextGridLayout ? null : 2,
+                overflow: largeTextGridLayout
+                    ? TextOverflow.clip
+                    : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: secondary,
                   fontSize: 12 * scale,
@@ -647,12 +804,29 @@ class _HomeActionCard extends StatelessWidget {
   }
 }
 
+// Class Name: _ActionIcon
+// Role: Represents the color-coded icon for a home quick action.
+// Responsibilities:
+// - Composes the color-coded icon for a home quick action using the display values and actions supplied by its parent.
+// Attributes:
+// - icon (IconData): Icon shown in normal or selected state.
+// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+// - size (double): Display dimensions of the widget or canvas.
 class _ActionIcon extends StatelessWidget {
   final IconData icon;
   final _HomeActionTone tone;
   final Color color;
   final double size;
 
+  // Function Name: _ActionIcon
+  // Description: Initializes the color-coded icon for a home quick action with the supplied configuration.
+  // Parameters:
+  // - icon (IconData): Icon shown in normal or selected state.
+  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - size (double): Display dimensions of the widget or canvas.
+  // Returns: Initialized _ActionIcon instance.
   const _ActionIcon({
     required this.icon,
     required this.tone,
@@ -660,6 +834,11 @@ class _ActionIcon extends StatelessWidget {
     required this.size,
   });
 
+  // Function Name: build
+  // Description: Renders the color-coded icon for a home quick action from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the color-coded icon for a home quick action.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -676,12 +855,30 @@ class _ActionIcon extends StatelessWidget {
   }
 }
 
+// Class Name: _ActionArrow
+// Role: Represents the navigation arrow on a home quick action.
+// Responsibilities:
+// - Composes the navigation arrow on a home quick action using the display values and actions supplied by its parent.
+// Attributes:
+// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - color (Color): Foreground or accent color applied to text, icons, or state guidance.
 class _ActionArrow extends StatelessWidget {
   final _HomeActionTone tone;
   final Color color;
 
+  // Function Name: _ActionArrow
+  // Description: Initializes the navigation arrow on a home quick action with the supplied configuration.
+  // Parameters:
+  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // Returns: Initialized _ActionArrow instance.
   const _ActionArrow({required this.tone, required this.color});
 
+  // Function Name: build
+  // Description: Renders the navigation arrow on a home quick action from the current configuration and state.
+  // Parameters:
+  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+  // Returns: Widget tree for the navigation arrow on a home quick action.
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -698,122 +895,116 @@ class _ActionArrow extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeText
+// Role: Represents localized wording for the home medication dashboard and medication input entry points.
+// Responsibilities:
+// - Selects Korean or English labels and interpolates message values for localized wording for the home medication dashboard and medication input entry points.
+// Attributes:
+// - language (String): Language code selecting visible wording.
 class _HomeText {
   final String language;
 
+  // 함수이름: _HomeText
+  // 함수역할: 홈 대시보드의 복약 요약과 약 정보 입력 진입에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 매개변수:
+  // - language (String): 화면 문구를 선택할 언어 코드.
+  // 반환값: 입력 설정이 반영된 _HomeText 인스턴스.
   const _HomeText(this.language);
 
+  // 함수이름: isEnglish
+  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => language == 'en';
 
+  // 함수이름: brandSubtitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "건강한 복약 관리 도우미" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get brandSubtitle =>
+      isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
+  // 함수이름: userSettings
+  // 함수역할: 환경설정 카드 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
+  String get userSettings => isEnglish ? 'Settings' : '환경설정';
+  // 함수이름: userSettingsSubtitle
+  // 함수역할: 환경설정 범위를 표시한다. 매개변수: 없음. 반환값: 설명.
+  String get userSettingsSubtitle => isEnglish
+      ? 'Adjust text, language and notifications'
+      : '글씨 크기·언어·알림을 설정해요';
+  // 함수이름: prescriptionAnalysis
+  // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
   String get prescriptionAnalysis =>
-      isEnglish ? 'Prescription Analysis' : '처방전 분석';
-  String get largePrescriptionAnalysis =>
-      isEnglish ? 'Prescription\nAnalysis' : '처방전\n분석';
+      isEnglish ? 'Add or Identify Medication' : '약 등록·식별';
+  // 함수이름: prescriptionAnalysisSubtitle
+  // 함수역할: 약 정보 입력과 식별 방법을 카드 설명으로 안내한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 카드 설명.
   String get prescriptionAnalysisSubtitle => isEnglish
-      ? 'Scan a prescription or choose a saved image'
-      : '처방전을 촬영하거나 사진에서 불러와요';
-  String get pillIdentification =>
-      isEnglish ? 'Loose-pill Identification' : '낱알약 식별';
-  String get largePillIdentification =>
-      isEnglish ? 'Loose-pill\nIdentification' : '낱알약\n식별';
-  String get pillIdentificationSubtitle => isEnglish
-      ? 'Photograph both sides to find likely matches'
-      : '앞·뒷면을 촬영해 가능성 높은 약을 찾아요';
+      ? 'Use a prescription, pill photo, or manual entry'
+      : '처방전·알약 사진 또는 직접 입력으로 등록해요';
+  // Function Name: healthRecommendation
+  // Description: Provides localized wording for "Health Recommendations" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get healthRecommendation =>
       isEnglish ? 'Health Recommendations' : '건강 관리 추천';
-  String get largeHealthRecommendation =>
-      isEnglish ? 'Health\nRecommendations' : '건강 관리\n추천';
+  // Function Name: healthRecommendationSubtitle
+  // Description: Provides localized wording for "Review food and activity guidance for your medications" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get healthRecommendationSubtitle => isEnglish
       ? 'Review food and activity guidance for your medications'
       : '복용 중인 약에 맞는 식사와 활동 팁을 확인해요';
+  // Function Name: medicationReminder
+  // Description: Provides localized wording for "Medication Reminders" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationReminder =>
       isEnglish ? 'Medication Reminders' : '복약 알림 설정';
-  String get largeMedicationReminder =>
-      isEnglish ? 'Medication\nReminders' : '복약 알림\n설정';
+  // Function Name: medicationReminderSubtitle
+  // Description: Provides localized wording for "Adjust reminder times to fit your routine" using the current language and message inputs.
+  // Parameters:
+  // - None.
+  // Returns: The formatted display text or identifier described above.
   String get medicationReminderSubtitle => isEnglish
       ? 'Adjust reminder times to fit your routine'
       : '복약 알림 시간을 내 생활에 맞게 조정해요';
-  String get medicationTipTitle => isEnglish ? 'Medication tip' : '복약 팁';
-  String get medicationTipBody => isEnglish
-      ? 'Take medicine with water and follow your care instructions.'
-      : '약은 충분한 물과 함께, 처방·복약지도에 맞춰 복용하세요.';
+  // 함수이름: nearbyPharmacy
+  // 함수역할: 현재 언어와 입력값에 맞춰 "근처 운영 약국" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get nearbyPharmacy => isEnglish ? 'Nearby Pharmacy' : '근처 운영 약국';
+  // 함수이름: nearbyPharmacySubtitle
+  // 함수역할: 2×2 기능 카드에서 읽기 쉬운 약국 탐색 설명을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get nearbyPharmacySubtitle =>
+      isEnglish ? 'Find an open pharmacy nearby' : '가까운 운영 약국을 찾아요';
+  // 함수이름: analyzingTitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 인식 중..." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get analyzingTitle =>
       isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
 
-// 홈 하단의 남는 공간에 짧은 안전 복약 안내를 제공한다.
-class _MedicationTipCard extends StatelessWidget {
-  final _HomeText text;
-
-  const _MedicationTipCard({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    final useCompactText =
-        MediaQuery.textScalerOf(context).scale(16) / 16 <= 1.1;
-
-    return Semantics(
-      label: '${text.medicationTipTitle}. ${text.medicationTipBody}',
-      container: true,
-      child: Container(
-        key: const ValueKey('homeMedicationTipCard'),
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 48),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: MedBuddyColors.successSurface,
-          borderRadius: MedBuddyRadii.card,
-          border: Border.all(color: MedBuddyColors.successBorder),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: MedBuddyColors.mint,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 19,
-                color: MedBuddyColors.primaryDark,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ExcludeSemantics(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${text.medicationTipTitle} · ',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      TextSpan(text: text.medicationTipBody),
-                    ],
-                  ),
-                  maxLines: useCompactText ? 2 : null,
-                  overflow: useCompactText
-                      ? TextOverflow.ellipsis
-                      : TextOverflow.visible,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textBody,
-                    fontSize: 12,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// 대시보드 첫 줄을 가로지르는 복약 현황 정보 영역이다.
+// Class Name: _HomeEncouragementPanel
+// Role: Represents the home dashboard's medication status and completion encouragement.
+// Responsibilities:
+// - Composes the home dashboard's medication status and completion encouragement using the display values and actions supplied by its parent.
+// Attributes:
+// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+// - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+// - completedCount (int): Number of completed doses.
 class _HomeEncouragementPanel extends StatelessWidget {
   final UserSetting userSetting;
   final List<MedicationSchedule> schedules;
@@ -824,7 +1015,24 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final bool compact;
   final DateTime Function()? nowProvider;
   final VoidCallback? onTap;
+  final Future<void> Function(String slotKey)? onCompleteRequested;
+  final bool isCompletionLoading;
 
+  // Function Name: _HomeEncouragementPanel
+  // Description: Initializes the home dashboard's medication status and completion encouragement with the supplied configuration.
+  // Parameters:
+  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - completedCount (int): Number of completed doses.
+  // - totalCount (int): Total scheduled doses or operation items.
+  // - isLoading (bool): Whether to show the in-progress state.
+  // - compact (bool): Whether compact card or header layout is used.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // - onTap (VoidCallback?): Callback executing the item's documented primary action.
+  // - onCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - isCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
+  // Returns: Initialized _HomeEncouragementPanel instance.
   const _HomeEncouragementPanel({
     required this.userSetting,
     required this.schedules,
@@ -835,8 +1043,14 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.compact = false,
     this.nowProvider,
     this.onTap,
+    this.onCompleteRequested,
+    this.isCompletionLoading = false,
   });
 
+  // 함수이름: build
+  // 함수역할: 복약 현황과 다음 일정을 표시하고 안내 문구를 생략 없이 줄바꿈해 보여준다.
+  // 매개변수: context (BuildContext): 접근성 배율과 화면 테마를 제공하는 문맥.
+  // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
   @override
   Widget build(BuildContext context) {
     final isEnglish = userSetting.language.trim().toLowerCase().startsWith(
@@ -851,8 +1065,6 @@ class _HomeEncouragementPanel extends StatelessWidget {
       isEnglish: isEnglish,
       nowProvider: nowProvider,
     );
-    final useStackedProgressLabel =
-        MediaQuery.textScalerOf(context).scale(16) / 16 > 1.1;
 
     return Material(
       key: const ValueKey('homeEncouragementPanel'),
@@ -910,11 +1122,10 @@ class _HomeEncouragementPanel extends StatelessWidget {
                 ],
               ),
               SizedBox(height: compact ? 10 : 20),
-              if (useStackedProgressLabel)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
                       isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -922,39 +1133,18 @@ class _HomeEncouragementPanel extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      dashboard.progressLabel,
-                      style: const TextStyle(
-                        color: MedBuddyColors.primaryDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    dashboard.progressLabel,
+                    style: const TextStyle(
+                      color: MedBuddyColors.primaryDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
-                )
-              else
-                Row(
-                  children: [
-                    Text(
-                      isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      dashboard.progressLabel,
-                      style: const TextStyle(
-                        color: MedBuddyColors.primaryDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
               SizedBox(height: compact ? 6 : 9),
               ClipRRect(
                 borderRadius: MedBuddyRadii.pill,
@@ -1010,8 +1200,6 @@ class _HomeEncouragementPanel extends StatelessWidget {
                           SizedBox(height: compact ? 2 : 3),
                           Text(
                             dashboard.nextMedicationGuide,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: MedBuddyColors.textMuted,
                               fontSize: compact ? 11 : 12,
@@ -1031,6 +1219,53 @@ class _HomeEncouragementPanel extends StatelessWidget {
                   ],
                 ),
               ),
+              if (dashboard.nextSlotKey != null &&
+                  onCompleteRequested != null) ...[
+                SizedBox(height: compact ? 10 : 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    key: const ValueKey('homeNextSlotCompletionButton'),
+                    onPressed: isCompletionLoading
+                        ? null
+                        // Function Name: build.onPressed callback
+                        // Description: Supplies `onCompleteRequested!(dashboard.nextSlotKey!)` from the captured state of the home dashboard's medication status and completion encouragement.
+                        // Parameters:
+                        // - None.
+                        // Returns: The value of `onCompleteRequested!(dashboard.nextSlotKey!)`.
+                        : () => onCompleteRequested!(dashboard.nextSlotKey!),
+                    icon: isCompletionLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.done_all_rounded),
+                    label: Text(
+                      isCompletionLoading
+                          ? (isEnglish ? 'Saving...' : '저장 중...')
+                          : (isEnglish ? 'Taken' : '복용했어요'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MedBuddyColors.primary,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: MedBuddyColors.primary
+                          .withValues(alpha: 0.45),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: MedBuddyRadii.pill,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1039,6 +1274,15 @@ class _HomeEncouragementPanel extends StatelessWidget {
   }
 }
 
+// Class Name: _HomeDashboardSummary
+// Role: Represents home summary text, the next dose slot, and batch completion state.
+// Responsibilities:
+// - Maps a dose-slot key to its Korean or English name, preserving unknown keys.
+// Attributes:
+// - progress (double): Completion fraction from zero to one.
+// - progressLabel (String): Text showing completed and total counts.
+// - statusMessage (String): Visible wording for the current result, error, or state.
+// - hasNextMedication (bool): Whether the summary requires user attention or dose action.
 class _HomeDashboardSummary {
   static const _slotOrder = ['morning', 'lunch', 'evening', 'bedtime'];
 
@@ -1046,18 +1290,42 @@ class _HomeDashboardSummary {
   final String progressLabel;
   final String statusMessage;
   final bool hasNextMedication;
+  final String? nextSlotKey;
   final String nextMedicationLabel;
   final String nextMedicationGuide;
 
+  // Function Name: _HomeDashboardSummary
+  // Description: Combines the supplied values for home summary text, the next dose slot, and batch completion state in a _HomeDashboardSummary instance.
+  // Parameters:
+  // - progress (double): Completion fraction from zero to one.
+  // - progressLabel (String): Text showing completed and total counts.
+  // - statusMessage (String): Visible wording for the current result, error, or state.
+  // - hasNextMedication (bool): Whether the summary requires user attention or dose action.
+  // - nextSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
+  // - nextMedicationLabel (String): Heading for the next-dose or missed-dose state.
+  // - nextMedicationGuide (String): Medication, time, and safety guidance for the next dose.
+  // Returns: Initialized _HomeDashboardSummary instance.
   const _HomeDashboardSummary({
     required this.progress,
     required this.progressLabel,
     required this.statusMessage,
     required this.hasNextMedication,
+    required this.nextSlotKey,
     required this.nextMedicationLabel,
     required this.nextMedicationGuide,
   });
 
+  // Function Name: _HomeDashboardSummary.from
+  // Description: Clamps completed doses to the total and summarizes the next upcoming slot or latest overdue slot.
+  // Parameters:
+  // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
+  // - reminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+  // - completedCount (int): Number of completed doses.
+  // - totalCount (int): Total scheduled doses or operation items.
+  // - isLoading (bool): Whether to show the in-progress state.
+  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
+  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
+  // Returns: Initialized _HomeDashboardSummary instance.
   factory _HomeDashboardSummary.from({
     required List<MedicationSchedule> schedules,
     required Map<String, MedicationAlarm> reminderSettings,
@@ -1075,6 +1343,7 @@ class _HomeDashboardSummary {
             ? 'Preparing your medication plan'
             : '복약 일정을 준비하고 있어요',
         hasNextMedication: false,
+        nextSlotKey: null,
         nextMedicationLabel: isEnglish ? 'Next medication' : '다음 복약',
         nextMedicationGuide: isEnglish
             ? 'Please wait a moment.'
@@ -1096,6 +1365,11 @@ class _HomeDashboardSummary {
     for (final slotKey in _slotOrder) {
       final pendingSchedules = schedules
           .where(
+            // 함수이름: initializer.where callback
+            // 함수역할: 홈 요약 문구·다음 시간대·일괄 완료 상태에 대해 `schedule.slotKeys.contains(slotKey) && !schedule.isSlotCompleted(slotKey)` 조건으로 컬렉션 항목을 판별한다.
+            // 매개변수:
+            // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+            // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
             (schedule) =>
                 schedule.slotKeys.contains(slotKey) &&
                 !schedule.isSlotCompleted(slotKey),
@@ -1134,6 +1408,7 @@ class _HomeDashboardSummary {
                   ? 'You have completed today\'s medication'
                   : '오늘의 복약을 모두 완료했어요'),
         hasNextMedication: false,
+        nextSlotKey: null,
         nextMedicationLabel: isEnglish
             ? 'No upcoming medication'
             : '다음 복약 일정이 없어요',
@@ -1144,9 +1419,20 @@ class _HomeDashboardSummary {
     }
 
     pendingSlots.sort(
+      // Function Name: initializer.sort callback
+      // Description: Computes the ordering comparison for home summary text, the next dose slot, and batch completion state with `left.scheduledAt.compareTo(right.scheduledAt)`.
+      // Parameters:
+      // - left (inferred by callback contract): One of the two items being compared for ordering.
+      // - right (inferred by callback contract): One of the two items being compared for ordering.
+      // Returns: The ordering comparison passed back to the collection operation.
       (left, right) => left.scheduledAt.compareTo(right.scheduledAt),
     );
     final upcomingSlots = pendingSlots
+        // Function Name: initializer.where callback
+        // Description: Checks the collection condition `!slot.scheduledAt.isBefore(now)` for home summary text, the next dose slot, and batch completion state.
+        // Parameters:
+        // - slot (inferred by callback contract): Dose-slot identity, time, and presentation data.
+        // Returns: Boolean predicate result for the supplied item.
         .where((slot) => !slot.scheduledAt.isBefore(now))
         .toList(growable: false);
     final nextSlot = upcomingSlots.isNotEmpty
@@ -1184,6 +1470,7 @@ class _HomeDashboardSummary {
       progressLabel: progressLabel,
       statusMessage: statusMessage,
       hasNextMedication: true,
+      nextSlotKey: nextSlot.slotKey,
       nextMedicationLabel: nextMedicationLabel,
       nextMedicationGuide: isEnglish
           ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Check your prescription guidance before taking a missed dose.' : 'Take it on time.'}'
@@ -1191,6 +1478,12 @@ class _HomeDashboardSummary {
     );
   }
 
+  // Function Name: _slotLabel
+  // Description: Maps a dose-slot key to its Korean or English name, preserving unknown keys.
+  // Parameters:
+  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
+  // Returns: The formatted display text or identifier described above.
   static String _slotLabel(String slotKey, {required bool isEnglish}) {
     if (isEnglish) {
       return switch (slotKey) {
@@ -1211,12 +1504,29 @@ class _HomeDashboardSummary {
   }
 }
 
+// Class Name: _DashboardPendingSlot
+// Role: Represents a pending dashboard slot and its medication count.
+// Responsibilities:
+// - Groups the supplied field values for a pending dashboard slot and its medication count in a single object.
+// Attributes:
+// - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+// - scheduledAt (DateTime): Scheduled date and time for the dose slot.
+// - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+// - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
 class _DashboardPendingSlot {
   final String slotKey;
   final DateTime scheduledAt;
   final MedicationAlarm alarm;
   final List<MedicationSchedule> medications;
 
+  // Function Name: _DashboardPendingSlot
+  // Description: Combines the supplied values for a pending dashboard slot and its medication count in a _DashboardPendingSlot instance.
+  // Parameters:
+  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
+  // - scheduledAt (DateTime): Scheduled date and time for the dose slot.
+  // - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
+  // - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
+  // Returns: Initialized _DashboardPendingSlot instance.
   const _DashboardPendingSlot({
     required this.slotKey,
     required this.scheduledAt,
