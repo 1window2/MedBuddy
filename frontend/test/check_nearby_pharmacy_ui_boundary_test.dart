@@ -231,7 +231,12 @@ Widget _buildTestMap({
     height: 80,
     child: Column(
       children: [
-        if (statusText != null) Text('map-status:$statusText'),
+        if (statusText != null)
+          Text(
+            'map-status:$statusText',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         Expanded(
           child: ListView(
             scrollDirection: Axis.horizontal,
