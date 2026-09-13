@@ -447,11 +447,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     if (moveCamera) await _updateCamera(controller, pharmacies);
   }
 
-  // Function Name: _buildMarker
-  // Description: Creates a pharmacy marker with selected size, color, caption, and a tap-selection callback.
-  // Parameters:
-  // - pharmacy (NearbyPharmacy): Pharmacy to display, call, obtain directions to, or share.
-  // Returns: NMarker: Map marker with selection styling and pharmacy tap selection.
+  // 함수이름: _buildMarker
+  // 함수역할: 모든 약국 마커 아래에 이름을 표시하고 선택한 약국을 강조한다.
+  // 매개변수: pharmacy: 지도에 표시할 약국. 반환값: 이름과 선택 동작을 가진 마커.
   NMarker _buildMarker(NearbyPharmacy pharmacy) {
     final isSelected = pharmacy.pharmacyId == widget.selectedPharmacyId;
     final marker = NMarker(
@@ -459,14 +457,17 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       position: NLatLng(pharmacy.latitude, pharmacy.longitude),
       icon: isSelected ? _selectedPinIcon : _pinIcon,
       size: isSelected ? PharmacyMapPin.selectedSize : PharmacyMapPin.size,
-      caption: isSelected
-          ? NOverlayCaption(
-              text: pharmacy.name,
-              textSize: 12,
-              color: MedBuddyColors.textStrong,
-              haloColor: Colors.white,
-            )
-          : null,
+      caption: NOverlayCaption(
+        text: pharmacy.name,
+        textSize: 12,
+        color: MedBuddyColors.textStrong,
+        haloColor: Colors.white,
+      ),
+      captionAligns: const [NAlign.bottom],
+      captionOffset: 3,
+      // 밀집 지역의 이름 겹침은 줄이되 선택한 약국 이름은 유지한다.
+      isHideCollidedCaptions: true,
+      isForceShowCaption: isSelected,
     );
     // Function Name: _buildMarker.setOnTapListener callback
     // Description: Connects pharmacy markers, selected highlighting, zoom, and attribution controls to the captured operation `widget.onPharmacySelected(pharmacy)`.
@@ -555,7 +556,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   }
 
   // 함수이름: _coordinateSignature
-  // 함수역할: 약국 ID·위도·경도를 순서대로 연결해 지도 갱신 여부 비교 키를 만든다.
+  // 함수역할: 약국 ID·이름·좌표를 연결해 지도 표시 갱신 여부를 비교한다.
   // 매개변수:
   // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
@@ -563,12 +564,12 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     return pharmacies
         .map(
           // 함수이름: _coordinateSignature.map callback
-          // 함수역할: 약국 마커·선택 강조·확대·출처 명령의 변환값을 `'${pharmacy.pharmacyId}:${pharmacy.latitude}:${pharmacy.longitude}'` 규칙으로 계산한다.
+          // 함수역할: 약국 식별 정보와 이름·좌표를 지도 갱신 비교값으로 변환한다.
           // 매개변수:
           // - pharmacy (콜백 계약에서 추론): 표시하거나 전화·길찾기·공유할 약국.
           // 반환값: 컬렉션 연산에 전달할 변환값.
           (pharmacy) =>
-              '${pharmacy.pharmacyId}:${pharmacy.latitude}:${pharmacy.longitude}',
+              '${pharmacy.pharmacyId}:${pharmacy.name}:${pharmacy.latitude}:${pharmacy.longitude}',
         )
         .join('|');
   }
