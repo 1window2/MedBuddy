@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../controls/check_nearby_pharmacy_control.dart';
 import '../entities/nearby_pharmacy_entity.dart';
@@ -954,13 +955,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           child: LayoutBuilder(
             builder: (context, constraints) {
               final showDetails = !_listExpanded && selected != null;
-              final minimumExtent = _PharmacyDetailsSheet.minimumExtent(
-                context,
-                constraints.maxHeight,
-              );
               final bottomInset = showDetails
-                  ? constraints.maxHeight *
-                        _detailExtent.clamp(minimumExtent, .92)
+                  ? constraints.maxHeight * _detailExtent.clamp(0.0, .92)
                   : 0.0;
               return Stack(
                 children: [
@@ -983,7 +979,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       key: ValueKey(
                         'pharmacy-sheet-${selected.pharmacyId}-$_centerRevision',
                       ),
-                      minimumSize: minimumExtent,
                       isEnglish: english,
                       onExtentChanged: (extent) {
                         if ((_detailExtent - extent).abs() > .001) {
@@ -2102,16 +2097,23 @@ class _PharmacyCard extends StatelessWidget {
         child: InkWell(
           onTap: embedded ? null : onSelected,
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: embedded
+                ? const EdgeInsets.fromLTRB(18, 0, 18, 8)
+                : const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: embedded
+                      ? CrossAxisAlignment.center
+                      : CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Text(
                         pharmacy.name,
+                        key: embedded
+                            ? const Key('pharmacy-detail-name')
+                            : null,
                         maxLines: embedded && !compact ? null : 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -2125,6 +2127,9 @@ class _PharmacyCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     IconButton(
+                      key: embedded
+                          ? const Key('pharmacy-detail-favorite')
+                          : null,
                       tooltip: isFavorite
                           ? text.removeFavorite
                           : text.addFavorite,
@@ -2151,9 +2156,10 @@ class _PharmacyCard extends StatelessWidget {
                     if (!embedded) statusBadge,
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: embedded ? 2 : 12),
                 if (embedded)
                   Wrap(
+                    key: const Key('pharmacy-detail-status'),
                     spacing: 10,
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -2210,7 +2216,7 @@ class _PharmacyCard extends StatelessWidget {
                     ),
                   ],
                 ],
-                const SizedBox(height: 16),
+                SizedBox(height: embedded ? 10 : 16),
                 Row(
                   children: [
                     Expanded(

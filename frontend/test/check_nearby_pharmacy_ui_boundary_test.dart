@@ -320,6 +320,87 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 내용 맞춤 높이 테스트
+  // 함수역할: 두 상태의 버튼 아래 여백과 제목·아이콘 정렬을 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('details fit content and align the title actions in both modes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_testApp(_buildControl()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    for (var mode = 0; mode < 2; mode++) {
+      final sheet = tester.getRect(
+        find.byKey(const Key('pharmacy-detail-sheet')),
+      );
+      final directions = tester.getRect(
+        find.byKey(const Key('pharmacy-directions-open')),
+      );
+      expect(sheet.bottom - directions.bottom, closeTo(8, .1));
+      final name = tester.getRect(
+        find.byKey(const Key('pharmacy-detail-name')),
+      );
+      final favorite = tester.getRect(
+        find.byKey(const Key('pharmacy-detail-favorite')),
+      );
+      final close = tester.getRect(
+        find.byKey(const Key('pharmacy-detail-close')),
+      );
+      final status = tester.getRect(
+        find.byKey(const Key('pharmacy-detail-status')),
+      );
+      expect(name.center.dy, closeTo(favorite.center.dy, .1));
+      expect(name.center.dy, closeTo(close.center.dy, .1));
+      expect(status.top - name.bottom, lessThanOrEqualTo(14));
+      expect(
+        find.byKey(const Key('pharmacy-directions-open')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('pharmacy-detail-handle')));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 화면 크기 변경 테스트
+  // 함수역할: 열린 정보창이 폭·높이 변경 후에도 내용 높이에 맞고 접힘 상태를 유지하는지 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('open details refit after viewport changes', (tester) async {
+    tester.view.physicalSize = const Size(600, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_testApp(_buildControl()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    for (var mode = 0; mode < 2; mode++) {
+      for (final size in [const Size(360, 1000), const Size(600, 1100)]) {
+        tester.view.physicalSize = size;
+        await tester.pumpAndSettle();
+        final sheet = tester.getRect(
+          find.byKey(const Key('pharmacy-detail-sheet')),
+        );
+        final action = tester.getRect(
+          find.byKey(const Key('pharmacy-directions-open')),
+        );
+        expect(sheet.bottom - action.bottom, closeTo(8, .1));
+        expect(
+          find.text('서울특별시 종로구'),
+          mode == 0 ? findsOneWidget : findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      }
+      await tester.tap(find.byKey(const Key('pharmacy-detail-handle')));
+      await tester.pumpAndSettle();
+    }
+  });
+
   // 함수이름: 지도 표시 여백 테스트
   // 함수역할: 정보창 높이에 따라 지도 여백과 조작 버튼을 조정하고 닫으면 복원하는지 검증한다.
   // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
@@ -339,10 +420,16 @@ void main() {
     final sheet = tester.widget<DraggableScrollableSheet>(
       find.byType(DraggableScrollableSheet),
     );
-    sheet.controller!.jumpTo(.92);
+    sheet.controller!.jumpTo(sheet.minChildSize);
     await tester.pumpAndSettle();
     map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
-    expect(map.showControls, isFalse);
+    expect(
+      map.bottomInset,
+      closeTo(
+        tester.getSize(find.byKey(const Key('pharmacy-detail-sheet'))).height,
+        .1,
+      ),
+    );
     expect(map.centerRevision, revision);
     await tester.tap(find.byKey(const Key('pharmacy-detail-close')));
     await tester.pumpAndSettle();
