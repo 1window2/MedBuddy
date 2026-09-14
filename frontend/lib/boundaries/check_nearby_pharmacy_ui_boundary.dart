@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/rendering.dart';
 
 import '../controls/check_nearby_pharmacy_control.dart';
@@ -851,65 +852,20 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildHeader(BuildContext context) {
     final text = _text;
-    return Container(
-      width: double.infinity,
-      color: MedBuddyColors.topBar,
-      padding: EdgeInsets.fromLTRB(
-        18,
-        MediaQuery.paddingOf(context).top + 14,
-        18,
-        20,
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: text.back,
-            // 함수이름: _buildHeader.onPressed callback
-            // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: _handleBack,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  text.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  text.subtitle,
-                  maxLines: 2,
-                  style: TextStyle(
-                    color: Color(0xFFE7FFF5),
-                    fontSize: 14,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: text.refreshTooltip,
-            onPressed: _requestRefresh,
-            icon: const Icon(Icons.refresh, color: Colors.white, size: 28),
-          ),
-        ],
-      ),
+    return MedBuddyPageHeader(
+      title: text.title,
+      subtitle: text.subtitle,
+      titleMaxLines: 1,
+      subtitleMaxLines: 2,
+      backTooltip: text.back,
+      onBackRequested: _handleBack,
+      actions: [
+        IconButton(
+          tooltip: text.refreshTooltip,
+          onPressed: _requestRefresh,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
     );
   }
 
@@ -2444,9 +2400,8 @@ class _NearbyPharmacyText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get subtitle => isEnglish
-      ? 'Find pharmacies near the search location'
-      : '검색 위치 주변의 약국을 확인하세요';
+  String get subtitle =>
+      isEnglish ? 'Find pharmacies in this area.' : '주변 약국을 확인합니다.';
   // 함수이름: refreshTooltip
   // 함수역할: 현재 언어와 입력값에 맞춰 "약국 목록 새로고침" 문구를 제공한다.
   // 매개변수:

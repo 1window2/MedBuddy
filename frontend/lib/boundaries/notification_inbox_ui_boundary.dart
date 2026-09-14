@@ -5,6 +5,7 @@ import '../controls/manage_notification_inbox_control.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 
 // 클래스명: NotificationInboxUI
 // 역할: 알림함 화면. 목록과 저장 명령은 Control에 위임한다.
@@ -219,54 +220,53 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
         final selected = _selectedEntries;
         return Scaffold(
           backgroundColor: MedBuddyColors.pageBackground,
-          appBar: AppBar(
-            backgroundColor: MedBuddyColors.pageBackground,
-            foregroundColor: MedBuddyColors.textStrong,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            centerTitle: false,
-            leading: _selecting
-                ? IconButton(
-                    key: const Key('inbox-cancel-selection'),
-                    tooltip: _english ? 'Cancel selection' : '선택 취소',
-                    onPressed: _busy ? null : _endSelection,
-                    icon: const Icon(Icons.close),
-                  )
-                : null,
-            title: Text(
-              _selecting
-                  ? (_english ? 'Select' : '알림 선택')
-                  : (_english ? 'Notifications' : '알림'),
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-                color: MedBuddyColors.textStrong,
-              ),
-            ),
-            actions: _selecting
-                ? []
-                : [
-                    IconButton(
-                      key: const Key('inbox-mark-all-read'),
-                      tooltip: _english ? 'Mark all as read' : '모두 읽음',
-                      onPressed: _busy || control.unreadCount == 0
-                          ? null
-                          : () => _run(() => control.markRead()),
-                      icon: const Icon(Icons.done_all),
-                    ),
-                    IconButton(
-                      key: const Key('inbox-select'),
-                      tooltip: _english ? 'Select notifications' : '알림 선택',
-                      onPressed: _busy || control.entries.isEmpty
-                          ? null
-                          : () => _startSelection(),
-                      icon: const Icon(Icons.checklist),
-                    ),
-                  ],
-          ),
           body: SafeArea(
+            top: false,
             child: Column(
               children: [
+                MedBuddyPageHeader(
+                  onBackRequested: _selecting
+                      ? null
+                      : () => Navigator.maybePop(context),
+                  leading: _selecting
+                      ? IconButton(
+                          key: const Key('inbox-cancel-selection'),
+                          tooltip: _english ? 'Cancel selection' : '선택 취소',
+                          onPressed: _busy ? null : _endSelection,
+                          icon: const Icon(Icons.close),
+                        )
+                      : null,
+                  title: _selecting
+                      ? (_english ? 'Select' : '알림 선택')
+                      : (_english ? 'Notifications' : '알림'),
+                  subtitle: _selecting
+                      ? null
+                      : (_english
+                            ? 'View received notifications.'
+                            : '받은 알림을 확인합니다.'),
+                  actions: _selecting
+                      ? []
+                      : [
+                          IconButton(
+                            key: const Key('inbox-mark-all-read'),
+                            tooltip: _english ? 'Mark all as read' : '모두 읽음',
+                            onPressed: _busy || control.unreadCount == 0
+                                ? null
+                                : () => _run(() => control.markRead()),
+                            icon: const Icon(Icons.done_all),
+                          ),
+                          IconButton(
+                            key: const Key('inbox-select'),
+                            tooltip: _english
+                                ? 'Select notifications'
+                                : '알림 선택',
+                            onPressed: _busy || control.entries.isEmpty
+                                ? null
+                                : () => _startSelection(),
+                            icon: const Icon(Icons.checklist),
+                          ),
+                        ],
+                ),
                 if (_selecting)
                   Material(
                     color: MedBuddyColors.surfaceSubtle,

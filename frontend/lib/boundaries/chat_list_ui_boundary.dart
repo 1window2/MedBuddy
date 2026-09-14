@@ -1,8 +1,6 @@
 // 파일명: chat_list_ui_boundary.dart
 // 역할: 연동된 환자·보호자별 대화 목록에서 기존 복약 맥락 채팅으로 연결한다.
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../controls/manage_chat_list_control.dart';
@@ -10,6 +8,7 @@ import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'linked_chat_ui_boundary.dart';
 
 // 클래스명: ChatListUI
@@ -49,45 +48,28 @@ class ChatListUI extends StatelessWidget {
       // 매개변수: context, child: 표시 문맥과 미사용 하위 위젯. 반환값: 채팅 목록 화면.
       builder: (context, child) => Scaffold(
         backgroundColor: MedBuddyColors.pageBackground,
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: MedBuddyColors.pageBackground,
-          foregroundColor: MedBuddyColors.primaryDark,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          centerTitle: false,
-          titleSpacing: MedBuddySpacing.pageHorizontal,
-          // 내 정보와 같은 제목 스타일을 사용하고 확대된 한 줄 높이에 여백을 더한다.
-          toolbarHeight: math.max(
-            72,
-            MediaQuery.textScalerOf(context).scale(28) * 1.2 + 32,
-          ),
-          title: Text(
-            _isEnglish ? 'Chat' : '채팅',
-            key: const ValueKey('chatListTitle'),
-            style: const TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 28,
-              height: 1.2,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh),
-              tooltip: _isEnglish ? 'Refresh' : '새로고침',
-            ),
-            IconButton(
-              onPressed: onManageLinks,
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-              tooltip: _isEnglish ? 'Manage connections' : '환자·보호자 연동 관리',
-            ),
-          ],
-        ),
         body: Column(
           children: [
+            MedBuddyPageHeader(
+              title: _isEnglish ? 'Chat' : '채팅',
+              subtitle: _isEnglish
+                  ? 'Message your family.'
+                  : '가족과 메시지를 주고받습니다.',
+              titleKey: const ValueKey('chatListTitle'),
+              prominent: true,
+              actions: [
+                IconButton(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: _isEnglish ? 'Refresh' : '새로고침',
+                ),
+                IconButton(
+                  onPressed: onManageLinks,
+                  icon: const Icon(Icons.person_add_alt_1_outlined),
+                  tooltip: _isEnglish ? 'Manage connections' : '환자·보호자 연동 관리',
+                ),
+              ],
+            ),
             if (control.isLoading) const LinearProgressIndicator(minHeight: 2),
             if (control.hasError)
               Padding(
@@ -102,7 +84,7 @@ class ChatListUI extends StatelessWidget {
               child: RefreshIndicator(
                 onRefresh: _refresh,
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.only(top: 4, bottom: 20),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     if (control.links.isEmpty && !control.isLoading)
@@ -136,7 +118,7 @@ class ChatListUI extends StatelessWidget {
           key: ValueKey('chatConversation-${link.linkId}'),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 20,
-            vertical: 12,
+            vertical: 8,
           ),
           leading: CircleAvatar(
             backgroundColor: MedBuddyColors.mint,

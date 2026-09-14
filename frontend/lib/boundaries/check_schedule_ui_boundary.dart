@@ -15,6 +15,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
@@ -456,12 +457,12 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                     );
                   },
                   // 함수이름: _buildContent.onReminderRequested callback
-                  // 함수역할: 꺼진 알림은 시간 편집으로 켜고 켜진 알림은 취소 요청을 보낸다.
+                  // 함수역할: 시간대 알림 설정을 열고 확정한 변경만 적용한다.
                   // 매개변수:
                   // - 없음.
                   // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                   onReminderRequested: () {
-                    _handleReminderToggle(viewModel, slot, text);
+                    _showReminderDialog(viewModel, slot, text);
                   },
                   // Function Name: _buildContent.onGuideRequested callback
                   // Description: Converts today's medication schedule to detail data and opens details with current settings.
@@ -770,7 +771,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   }
 
   // 함수이름: _showReminderDialog
-  // 함수역할: 현재 알림 시각 편집 창을 열고 확정된 시각으로 시간대 알림을 저장한다.
+  // 함수역할: 알림 활성 여부와 무관하게 같은 설정창을 열고 확정한 변경만 저장한다.
   // 매개변수:
   // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
   // - slot (_ScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
@@ -785,57 +786,129 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
     final slotTitle = text.slotTitle(slot.key);
-    final selectedTime = await SetNotificationUI.showNotificationPopup(
-      context,
-      language: viewModel.userSetting.language,
-      slotTitle: slotTitle,
-      initialTime: TimeOfDay(hour: setting.hour, minute: setting.minute),
+    final selectedSetting = await _showReminderConfiguration(
+      setting,
+      slotTitle,
+      text,
     );
-    if (selectedTime == null) {
+    if (!mounted || selectedSetting == null) {
+      return;
+    }
+    if (selectedSetting.isEnabled == setting.isEnabled &&
+        selectedSetting.hour == setting.hour &&
+        selectedSetting.minute == setting.minute) {
       return;
     }
 
-    final success = await viewModel.requestMedicationReminderSave(
-      slotKey: slot.key,
-      slotTitle: slotTitle,
-      hour: selectedTime.hour,
-      minute: selectedTime.minute,
-      schedules: slot.medications,
-    );
+    final success = selectedSetting.isEnabled
+        ? await viewModel.requestMedicationReminderSave(
+            slotKey: slot.key,
+            slotTitle: slotTitle,
+            hour: selectedSetting.hour,
+            minute: selectedSetting.minute,
+            schedules: slot.medications,
+          )
+        : await viewModel.requestMedicationReminderCancel(
+            slotKey: slot.key,
+            slotTitle: slotTitle,
+          );
     if (!mounted) {
       return;
     }
     _showReminderResultMessage(viewModel.statusMessage, success: success);
   }
 
-  // 함수이름: _handleReminderToggle
-  // 함수역할: 꺼진 알림은 시간 편집으로 켜고 켜진 알림은 취소 요청을 보낸다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - slot (_ScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
-  // - text (_ScheduleText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _handleReminderToggle(
-    MedBuddyViewModel viewModel,
-    _ScheduleSlot slot,
+  // 함수이름: _showReminderConfiguration
+  // 함수역할: 활성 상태와 시각을 임시 편집하며 저장 전에는 기존 알림을 변경하지 않는다.
+  // 매개변수: setting은 기존 알림, slotTitle은 시간대 제목, text는 언어별 문구.
+  // 반환값: 저장하면 선택한 설정, 취소·뒤로가기·바깥 터치이면 null.
+  Future<MedicationAlarm?> _showReminderConfiguration(
+    MedicationAlarm setting,
+    String slotTitle,
     _ScheduleText text,
-  ) async {
-    final setting =
-        viewModel.medicationReminderSettings[slot.key] ??
-        MedicationAlarm.defaults(slot.key);
-    if (!setting.isEnabled) {
-      await _showReminderDialog(viewModel, slot, text);
-      return;
-    }
-
-    final success = await viewModel.requestMedicationReminderCancel(
-      slotKey: slot.key,
-      slotTitle: text.slotTitle(slot.key),
+  ) {
+    var draft = setting;
+    return showDialog<MedicationAlarm>(
+      context: context,
+      // 함수역할: dialogContext에 설정창을 구성한다. 반환값: 임시 상태를 가진 대화상자.
+      builder: (dialogContext) => StatefulBuilder(
+        // 함수역할: context와 setDialogState로 초안을 표시한다. 반환값: 저장·취소 가능한 설정창.
+        builder: (context, setDialogState) => AlertDialog(
+          key: const Key('schedule-reminder-configuration'),
+          backgroundColor: MedBuddyColors.surface,
+          scrollable: true,
+          title: Text(text.reminderTooltip(slotTitle)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SwitchListTile.adaptive(
+                key: const Key('schedule-reminder-enabled'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(text.reminderEnabled),
+                value: draft.isEnabled,
+                activeTrackColor: MedBuddyColors.primary,
+                // 함수역할: enabled를 임시 활성 상태로 반영한다. 반환값: 없음.
+                onChanged: (enabled) => setDialogState(
+                  // 함수역할: 초안만 변경한다. 매개변수·반환값: 없음.
+                  () => draft = draft.copyWith(enabled: enabled),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const Key('schedule-reminder-edit-time'),
+                icon: const Icon(Icons.schedule_outlined),
+                label: Text('${text.reminderTime} ${draft.timeLabel}'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: MedBuddyColors.primaryDark,
+                ),
+                // 함수역할: 시각 선택을 열어 확정한 값만 초안에 반영한다. 매개변수: 없음. 반환값: 완료 Future.
+                onPressed: !draft.isEnabled
+                    ? null
+                    : () async {
+                        final time =
+                            await SetNotificationUI.showNotificationPopup(
+                              context,
+                              language: text.language,
+                              slotTitle: slotTitle,
+                              initialTime: TimeOfDay(
+                                hour: draft.hour,
+                                minute: draft.minute,
+                              ),
+                            );
+                        if (!context.mounted || time == null) {
+                          return;
+                        }
+                        setDialogState(
+                          // 함수역할: 확정 시각을 초안에 반영한다. 매개변수·반환값: 없음.
+                          () => draft = draft.copyWith(
+                            hour: time.hour,
+                            minute: time.minute,
+                          ),
+                        );
+                      },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              key: const Key('schedule-reminder-cancel'),
+              // 함수역할: 초안을 버리고 창을 닫는다. 매개변수·반환값: 없음.
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(text.cancel),
+            ),
+            FilledButton.icon(
+              key: const Key('schedule-reminder-save'),
+              // 함수역할: 저장할 초안을 호출 화면에 전달한다. 매개변수·반환값: 없음.
+              onPressed: () => Navigator.pop(dialogContext, draft),
+              icon: const Icon(Icons.check),
+              label: Text(text.save),
+            ),
+          ],
+        ),
+      ),
     );
-    if (!mounted) {
-      return;
-    }
-    _showReminderResultMessage(viewModel.statusMessage, success: success);
   }
 
   // 함수이름: _showReminderResultMessage
@@ -926,6 +999,7 @@ class _HealthRecommendationFooter extends StatelessWidget {
         border: Border(top: BorderSide(color: MedBuddyColors.divider)),
       ),
       child: OutlinedButton(
+        key: const Key('schedule-health-recommendation'),
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(64),
@@ -1006,6 +1080,7 @@ class _ScheduleHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (onBackRequested != null) ...[
                 IconButton(
@@ -1025,11 +1100,8 @@ class _ScheduleHeader extends StatelessWidget {
                   text.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: MedBuddyPageHeader.titleStyle,
+                  strutStyle: MedBuddyPageHeader.titleStrutStyle,
                 ),
               ),
             ],
@@ -1114,53 +1186,14 @@ class _ScheduleSelectionHeader extends StatelessWidget {
   // 반환값: 채팅에 첨부할 약 선택 화면의 제목과 뒤로가기에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: MedBuddyColors.topBar,
-      padding: EdgeInsets.fromLTRB(
-        18,
-        MediaQuery.of(context).padding.top + 12,
-        28,
-        20,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconButton(
-            tooltip: text.back,
-            onPressed: onBackRequested,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  text.selectionTitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  text.selectionDescription,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: MedBuddyPageHeader(
+        title: text.selectionTitle,
+        subtitle: text.selectionDescription,
+        onBackRequested: onBackRequested,
+        backTooltip: text.back,
       ),
     );
   }
@@ -1786,21 +1819,27 @@ class _ReminderIconButton extends StatelessWidget {
 
     return Tooltip(
       message: text.reminderTooltip(slotTitle),
-      child: Material(
-        color: backgroundColor,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onPressed,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(
-              isEnabled
-                  ? Icons.notifications_active_outlined
-                  : Icons.notifications_none_outlined,
-              color: iconColor,
-              size: 29,
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: text.reminderTooltip(slotTitle),
+        value: isEnabled ? text.reminderOn : text.reminderOff,
+        child: Material(
+          color: backgroundColor,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                isEnabled
+                    ? Icons.notifications_active_outlined
+                    : Icons.notifications_none_outlined,
+                color: iconColor,
+                size: 29,
+              ),
             ),
           ),
         ),
@@ -2254,6 +2293,30 @@ class _ScheduleText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get emptySchedule =>
       isEnglish ? 'No medication scheduled for today' : '오늘 복용할 약이 없습니다';
+
+  // 함수이름: reminderEnabled
+  // 함수역할: 알림 스위치 이름을 번역한다. 매개변수: 없음. 반환값: 언어별 설정명.
+  String get reminderEnabled => isEnglish ? 'Reminder enabled' : '알림 사용';
+
+  // 함수이름: reminderTime
+  // 함수역할: 시간 편집 명령을 번역한다. 매개변수: 없음. 반환값: 언어별 설정명.
+  String get reminderTime => isEnglish ? 'Time' : '알림 시간';
+
+  // 함수이름: reminderOn
+  // 함수역할: 켜진 알림의 접근성 상태를 번역한다. 매개변수: 없음. 반환값: 언어별 상태.
+  String get reminderOn => isEnglish ? 'On' : '켜짐';
+
+  // 함수이름: reminderOff
+  // 함수역할: 꺼진 알림의 접근성 상태를 번역한다. 매개변수: 없음. 반환값: 언어별 상태.
+  String get reminderOff => isEnglish ? 'Off' : '꺼짐';
+
+  // 함수이름: cancel
+  // 함수역할: 변경 취소 명령을 번역한다. 매개변수: 없음. 반환값: 언어별 버튼 문구.
+  String get cancel => isEnglish ? 'Cancel' : '취소';
+
+  // 함수이름: save
+  // 함수역할: 설정 저장 명령을 번역한다. 매개변수: 없음. 반환값: 언어별 버튼 문구.
+  String get save => isEnglish ? 'Save' : '저장';
   // 함수이름: complete
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 완료" 문구를 제공한다.
   // 매개변수:

@@ -10,6 +10,7 @@ import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
 import 'set_notification_ui_boundary.dart';
 
@@ -239,25 +240,47 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         child: Scaffold(
           backgroundColor: MedBuddyColors.pageBackground,
           body: SafeArea(
+            top: false,
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(40, 26, 40, 0),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: _SettingsBackButton(
-                          tooltip: text.back,
-                          onTap: _handleBackRequested,
-                        ),
-                      ),
+                    MedBuddyPageHeader(
+                      title: switch (_selectedSection) {
+                        _SettingSection.overview => text.settingsTitle,
+                        _SettingSection.medicationAndNotifications =>
+                          text.medicationAndNotificationsTitle,
+                        _SettingSection.displayAndVoice =>
+                          text.displayAndVoiceTitle,
+                        _SettingSection.account => text.accountTitle,
+                      },
+                      onBackRequested: _handleBackRequested,
+                      subtitle: switch (_selectedSection) {
+                        _SettingSection.overview =>
+                          text.isEnglish
+                              ? 'Set alerts, display and account.'
+                              : '알림과 화면, 계정을 설정합니다.',
+                        _SettingSection.medicationAndNotifications =>
+                          text.isEnglish
+                              ? 'Set medication times and alerts.'
+                              : '복약 시간과 알림 수신을 설정합니다.',
+                        _SettingSection.displayAndVoice =>
+                          text.isEnglish
+                              ? 'Set text size and read-aloud.'
+                              : '글자 크기와 읽어주기를 설정합니다.',
+                        _SettingSection.account =>
+                          text.isEnglish
+                              ? 'Manage sign-in and security.'
+                              : '로그인 정보와 계정 보안을 관리합니다.',
+                      },
+                      backTooltip: text.back,
+                      backButtonKey: const ValueKey('settingsBackButton'),
                     ),
                     Expanded(
                       child: SingleChildScrollView(
                         key: ValueKey(_selectedSection),
-                        padding: const EdgeInsets.fromLTRB(40, 22, 40, 24),
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                         child: _buildSelectedSection(
                           text: text,
                           contentScale: contentScale,
@@ -345,8 +368,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingTitle(text.medicationAndNotificationsTitle),
-        const SizedBox(height: 24),
         _SettingToggle(
           switchKey: const ValueKey('medicationNotificationsSwitch'),
           title: text.medicationNotificationsTitle,
@@ -488,8 +509,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingTitle(text.displayAndVoiceTitle),
-        const SizedBox(height: 28),
         _SettingFieldTitle(text.fontSizeTitle),
         const SizedBox(height: 16),
         _OptionRow(
@@ -606,8 +625,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingTitle(text.accountTitle),
-        const SizedBox(height: 24),
         _AccountWelcomePanel(presentation: accountPresentation, compact: true),
         if (hasMfaSettings) ...[
           const SizedBox(height: 18),
@@ -1306,8 +1323,6 @@ class _SettingsOverview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingTitle(text.settingsTitle),
-        const SizedBox(height: 24),
         _AccountWelcomePanel(presentation: accountPresentation),
         const SizedBox(height: 28),
         _SettingsMenuTile(
@@ -1749,54 +1764,6 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
   }
 }
 
-// 클래스명: _SettingsBackButton
-// 역할: 설정 하위 화면에서 이전 단계로 이동을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 하위 화면에서 이전 단계로 이동 위젯을 구성한다.
-// 속성:
-// - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-// - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _SettingsBackButton extends StatelessWidget {
-  final String tooltip;
-  final VoidCallback onTap;
-
-  // 함수이름: _SettingsBackButton
-  // 함수역할: 설정 하위 화면에서 이전 단계로 이동에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-  // - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _SettingsBackButton 인스턴스.
-  const _SettingsBackButton({required this.tooltip, required this.onTap});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 하위 화면에서 이전 단계로 이동 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 하위 화면에서 이전 단계로 이동에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: tooltip,
-      button: true,
-      child: ExcludeSemantics(
-        child: IconButton(
-          key: const ValueKey('settingsBackButton'),
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-          tooltip: tooltip,
-          onPressed: onTap,
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF4A5565),
-            size: 31,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // 클래스명: _SettingSaveFooter
 // 역할: 설정 변경사항 저장 명령을 담당한다.
 // 주요 책임:
@@ -1861,40 +1828,6 @@ class _SettingSaveFooter extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _SettingTitle
-// 역할: 설정 하위 화면 제목을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 하위 화면 제목 위젯을 구성한다.
-class _SettingTitle extends StatelessWidget {
-  final String text;
-
-  // 함수이름: _SettingTitle
-  // 함수역할: 설정 하위 화면 제목에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (String): 해당 라벨 또는 정보 행에 표시할 문자열.
-  // 반환값: 입력 설정이 반영된 _SettingTitle 인스턴스.
-  const _SettingTitle(this.text);
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 하위 화면 제목 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 하위 화면 제목에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: MedBuddyColors.textStrong,
-        fontSize: 32,
-        fontWeight: FontWeight.w800,
-        height: 1,
-        letterSpacing: 0,
       ),
     );
   }

@@ -4,6 +4,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -12,6 +13,7 @@ import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import 'medication_photo_source_sheet.dart';
 
 // 파일명: manual_medication_entry_ui_boundary.dart
 // 역할: 사진이나 처방전이 없는 약을 사용자가 직접 등록하는 화면을 제공한다.
@@ -124,7 +126,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 사진을 포함한 약품명·처방일·복용 일정 직접 입력 화면을 구성한다.
+  // 함수역할: 안전 안내와 필수 약품명·복용량을 먼저 배치하고 선택 사진과 일정을 제공한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
@@ -132,19 +134,17 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
-      appBar: AppBar(
-        backgroundColor: MedBuddyColors.pageBackground,
-        foregroundColor: MedBuddyColors.textStrong,
-        elevation: 0,
-        title: Text(
-          _text.title,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
+            MedBuddyPageHeader(
+              title: _text.title,
+              subtitle: _isEnglish
+                  ? 'Enter medication details.'
+                  : '약 이름과 복용 일정을 입력합니다.',
+              onBackRequested: () => Navigator.maybePop(context),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
@@ -155,11 +155,11 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
                     children: [
                       _buildIntroNotice(),
                       const SizedBox(height: 20),
-                      _buildPhotoSection(),
-                      const SizedBox(height: 24),
                       _buildMedicationNameField(),
                       const SizedBox(height: 18),
                       _buildDosageFields(),
+                      const SizedBox(height: 24),
+                      _buildPhotoSection(),
                       const SizedBox(height: 24),
                       _buildDateSection(),
                       const SizedBox(height: 24),
@@ -181,14 +181,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _buildIntroNotice
-  // 함수역할: 사용자가 입력한 정보로 일정을 저장한다는 안내를 표시한다.
+  // 함수역할: 기존 안전 문구를 줄이지 않고 간결한 안내 행으로 표시한다.
   // 매개변수:
   // - 없음.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
   Widget _buildIntroNotice() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: MedBuddyColors.successSurface,
         border: Border.all(color: MedBuddyColors.successBorder),
@@ -205,7 +205,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
                 height: 1.45,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w400,
               ),
             ),
           ),
@@ -215,7 +215,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _buildPhotoSection
-  // 함수역할: 선택 사진 또는 빈 사진 영역과 사진 추가 동작을 배치한다.
+  // 함수역할: 선택 사진이 없으면 작은 추가 명령을, 선택한 뒤에는 미리보기와 삭제를 표시한다.
   // 매개변수:
   // - 없음.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
@@ -223,33 +223,31 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(title: _text.photoTitle, optional: _text.optional),
-        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _SectionTitle(
+                title: _text.photoTitle,
+                optional: _text.optional,
+              ),
+            ),
+            IconButton(
+              key: const Key('manual-medication-photo'),
+              tooltip: _text.addPhoto,
+              onPressed: _isSaving ? null : _selectImageSource,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              color: MedBuddyColors.primary,
+            ),
+          ],
+        ),
         Text(
           _text.photoDescription,
           style: const TextStyle(color: MedBuddyColors.textMuted, height: 1.4),
         ),
-        const SizedBox(height: 12),
-        Material(
-          color: Colors.white,
-          borderRadius: MedBuddyRadii.card,
-          child: InkWell(
-            key: const Key('manual-medication-photo'),
-            borderRadius: MedBuddyRadii.card,
-            onTap: _isSaving ? null : _selectImageSource,
-            child: Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(minHeight: 150),
-              decoration: BoxDecoration(
-                borderRadius: MedBuddyRadii.card,
-                border: Border.all(color: MedBuddyColors.outline, width: 1.5),
-              ),
-              child: _selectedImagePath.isEmpty
-                  ? _buildEmptyPhoto()
-                  : _buildSelectedPhoto(),
-            ),
-          ),
-        ),
+        if (_selectedImagePath.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildSelectedPhoto(),
+        ],
       ],
     );
   }
@@ -285,7 +283,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _buildSelectedPhoto
-  // 함수역할: 선택한 로컬 사진과 제거 버튼을 표시하고 로드 실패는 빈 사진 영역으로 대체한다.
+  // 함수역할: 선택한 사진을 잘리지 않는 미리보기로 표시하고 저장 중에는 삭제를 막는다.
   // 매개변수:
   // - 없음.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
@@ -297,8 +295,8 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           child: Image.file(
             File(_selectedImagePath),
             width: double.infinity,
-            height: 210,
-            fit: BoxFit.cover,
+            height: 140,
+            fit: BoxFit.contain,
             // 함수이름: _buildSelectedPhoto.errorBuilder callback
             // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
             // 매개변수:
@@ -321,11 +319,13 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             // - 없음.
             // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
             // 함수이름: _buildSelectedPhoto.onPressed callback
-            // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에서 캡처된 작업 `setState(() => _selectedImagePath = '')`을 실행한다.
+            // 함수역할: 저장 중이 아닐 때 선택 사진을 제거한다.
             // 매개변수:
             // - 없음.
             // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            onPressed: () => setState(() => _selectedImagePath = ''),
+            onPressed: _isSaving
+                ? null
+                : () => setState(() => _selectedImagePath = ''),
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.68),
               foregroundColor: Colors.white,
@@ -375,7 +375,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _buildDosageFields
-  // 함수역할: 1회 복용량 숫자 입력과 단위 선택을 저장 상태에 맞게 제어한다.
+  // 함수역할: 복용량·단위를 저장 상태에 맞게 제어하고 큰 글씨의 단위 메뉴를 입력 폭에 맞춘다.
   // 매개변수:
   // - 없음.
   // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
@@ -411,6 +411,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             Expanded(
               child: DropdownButtonFormField<String>(
                 key: const Key('manual-medication-unit'),
+                isExpanded: true,
                 initialValue: _dosageUnit,
                 decoration: InputDecoration(
                   labelText: _text.unit,
@@ -641,46 +642,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _selectImageSource
-  // 함수역할: 카메라·갤러리 선택 후 크기 제한으로 사진을 가져와 로컬 경로를 보관한다.
+  // 함수역할: 공통 카메라·갤러리 선택창에서 선택한 사진을 기존 크기 제한으로 가져와 경로를 보관한다.
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _selectImageSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showMedicationPhotoSourceOptions(
       context: context,
-      // 함수이름: _selectImageSource.builder callback
-      // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 Icon을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_camera_outlined),
-                title: Text(_text.camera),
-                // 함수이름: _selectImageSource.onTap callback
-                // 함수역할: `Navigator.pop(sheetContext, ImageSource.camera)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: Text(_text.gallery),
-                // 함수이름: _selectImageSource.onTap callback
-                // 함수역할: `Navigator.pop(sheetContext, ImageSource.gallery)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
-              ),
-            ],
-          ),
-        );
-      },
+      language: _isEnglish ? 'en' : 'ko',
     );
     if (!mounted || source == null) {
       return;
@@ -1134,18 +1103,6 @@ class _ManualMedicationText {
     };
   }
 
-  // 함수이름: camera
-  // 함수역할: 현재 언어와 입력값에 맞춰 "카메라로 촬영" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get camera => isEnglish ? 'Take photo' : '카메라로 촬영';
-  // 함수이름: gallery
-  // 함수역할: 현재 언어와 입력값에 맞춰 "갤러리에서 선택" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get gallery => isEnglish ? 'Choose from gallery' : '갤러리에서 선택';
   // 함수이름: save
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보 저장" 문구를 제공한다.
   // 매개변수:

@@ -19,6 +19,7 @@ import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
@@ -349,6 +350,15 @@ void main() {
     );
     expect(find.text('삭제된 메시지입니다'), findsOneWidget);
     expect(find.text('Message 2'), findsNothing);
+    final header = tester.getRect(find.byType(MedBuddyPageHeader));
+    final firstConversation = find.byType(ListTile).first;
+    final conversation = tester.getRect(firstConversation);
+    expect(conversation.top - header.bottom, closeTo(4, 0.01));
+    final tile = tester.widget<ListTile>(firstConversation);
+    expect(
+      tile.contentPadding,
+      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    );
     await tester.tap(find.byKey(const ValueKey('chatConversation-2')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
@@ -392,19 +402,25 @@ void main() {
           final titleFinder = find.byKey(const ValueKey('chatListTitle'));
           final title = tester.widget<Text>(titleFinder);
           expect(title.data, language == 'en' ? 'Chat' : '채팅');
-          expect(title.style?.fontSize, 28);
+          expect(
+            find.text(
+              language == 'en' ? 'Message your family.' : '가족과 메시지를 주고받습니다.',
+            ),
+            findsOneWidget,
+          );
+          expect(title.style?.fontSize, 21);
           expect(title.style?.fontWeight, FontWeight.w800);
-          expect(title.style?.color, MedBuddyColors.textStrong);
+          expect(title.style?.color, Colors.white);
           final titleRect = tester.getRect(titleFinder);
-          final toolbarRect = tester.getRect(find.byType(AppBar));
-          expect(titleRect.left, MedBuddySpacing.pageHorizontal);
+          final toolbarRect = tester.getRect(find.byType(MedBuddyPageHeader));
+          expect(titleRect.left, MedBuddySpacing.pageHorizontal + 12);
           expect(titleRect.top, greaterThanOrEqualTo(toolbarRect.top));
           expect(titleRect.bottom, lessThanOrEqualTo(toolbarRect.bottom));
           for (final icon in [Icons.refresh, Icons.person_add_alt_1_outlined]) {
             final actionRect = tester.getRect(
               find.widgetWithIcon(IconButton, icon),
             );
-            expect(titleRect.right, lessThanOrEqualTo(actionRect.left));
+            expect(titleRect.overlaps(actionRect), isFalse);
             expect(actionRect.bottom, lessThanOrEqualTo(toolbarRect.bottom));
           }
           expect(tester.takeException(), isNull);

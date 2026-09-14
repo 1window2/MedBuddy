@@ -18,6 +18,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/medbuddy_page_header.dart';
 
 part 'check_saved_medication_empty_widgets.dart';
 part 'check_saved_medication_filter_widgets.dart';
@@ -73,20 +74,14 @@ enum _SavedMedicationSortDirection { ascending, descending }
 // - 복용 중·복용 종료·전체 표시 범위에서 지원하는 선택지를 열거하고 구분한다: active, ended, all.
 enum _SavedMedicationFilterMode { active, ended, all }
 
-// Class Name: _CheckSavedMedicationUIState
-// Role: Manages state for date-grouped saved medications, filtering, and selection deletion.
-// Responsibilities:
-// - Lays out the saved-medication heading, ordering, filters, and selection controls for the viewport width.
-// - Routes task and image-source choices into pill identification, manual entry, or prescription OCR.
-// - Confirms and deletes selected medications, retaining selection only for IDs that remain afterward.
-// Attributes:
-// - _selectedMedicationIds (Set<int>): Medication IDs selected for attachment or deletion.
-// - _isSelectionMode (bool): Whether attachment or deletion selection replaces normal interaction.
-// - _sortMode (_SavedMedicationSortMode): Registration-date or prescription-date sort field.
-// - _sortDirection (_SavedMedicationSortDirection): Ascending or descending date-sort direction.
+// 클래스명: _CheckSavedMedicationUIState
+// 역할: 저장 목록의 필터·정렬·선택과 등록 흐름을 연결한다.
+// 주요 책임: 현재 조회 조건의 유효 ID만 삭제하고 실패한 선택을 유지한다.
+// 속성: _selectedMedicationIds는 선택 ID, _isDeleting은 중복 조작 방지 상태이다.
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
   bool _isSelectionMode = false;
+  bool _isDeleting = false;
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
   _SavedMedicationSortDirection _sortDirection =
       _SavedMedicationSortDirection.descending;
@@ -134,211 +129,135 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // Function Name: _buildScreen
-  // Description: Lays out the saved-medication heading, ordering, filters, and selection controls for the viewport width.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
-  // Returns: Widget tree for date-grouped saved medications, filtering, and selection deletion.
+  // 함수이름: _buildScreen
+  // 함수역할: 일정 화면과 같은 헤더 아래 조회 도구·본문을 스크롤하고 선택 삭제 버튼은 하단에 고정한다.
+  // 매개변수: context는 화면 위치, viewModel은 조회 상태. 반환값: 뒤로가기를 제어하는 화면.
   Widget _buildScreen(BuildContext context, MedBuddyViewModel viewModel) {
-    final userSetting = viewModel.userSetting;
-    final text = _SavedMedicationText(userSetting.language);
-    final savedMedicationInfoList = viewModel.savedMedicationInfoList;
-    final compactLayout =
-        MediaQuery.sizeOf(context).height < 700 ||
-        MediaQuery.textScalerOf(context).scale(16) > 19;
+    final text = _SavedMedicationText(viewModel.userSetting.language);
+    final medications = viewModel.savedMedicationInfoList;
+    final titleActions = [
+      _buildSortMenu(text),
+      IconButton(
+        key: const Key('saved-medication-select'),
+        tooltip: text.selectionTitle,
+        onPressed: _isDeleting || _visibleMedicationIds(viewModel).isEmpty
+            ? null
+            : _startSelection,
+        icon: const Icon(Icons.checklist),
+      ),
+    ];
+    final visibleIds = _visibleMedicationIds(viewModel);
+    final selectedIds = _selectedMedicationIds.intersection(visibleIds);
 
-    return Scaffold(
-      backgroundColor: MedBuddyColors.pageBackground,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: MedBuddySpacing.contentMaxWidth,
-            ),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                MedBuddySpacing.pageHorizontal,
-                compactLayout ? 14 : 24,
-                MedBuddySpacing.pageHorizontal,
-                compactLayout ? 16 : 28,
+    return PopScope(
+      canPop: !_isSelectionMode && !_isDeleting,
+      onPopInvokedWithResult: _handleBack,
+      child: Scaffold(
+        backgroundColor: MedBuddyColors.pageBackground,
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: MedBuddySpacing.contentMaxWidth,
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (widget.showCloseButton)
-                        IconButton(
-                          key: const ValueKey('savedMedicationCloseButton'),
-                          tooltip: text.close,
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 42,
-                            height: 42,
-                          ),
-                          // 함수이름: _buildScreen.onPressed callback
-                          // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(
-                            Icons.close,
-                            color: MedBuddyColors.textMuted,
-                            size: 30,
-                          ),
-                        ),
-                      if (!widget.showCloseButton) const Spacer(),
-                      if (savedMedicationInfoList.isNotEmpty)
-                        PopupMenuButton<_SavedMedicationSortMode>(
-                          key: const ValueKey('savedMedicationSortModeButton'),
-                          tooltip: text.sortSettings,
-                          initialValue: _sortMode,
-                          // 함수이름: _buildScreen.onSelected callback
-                          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `setState(() {_sortMode = sortMode;})`을 실행한다.
-                          // 매개변수:
-                          // - sortMode (콜백 계약에서 추론): 약품 등록일 또는 처방일 정렬 기준.
-                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                          onSelected: (sortMode) {
-                            // 함수이름: _buildScreen.setState callback
-                            // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제의 입력·요청 상태를 `_sortMode = sortMode`로 갱신한다.
-                            // 매개변수:
-                            // - 없음.
-                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                            setState(() {
-                              _sortMode = sortMode;
-                            });
-                          },
-                          // 함수이름: _buildScreen.itemBuilder callback
-                          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-                          // 매개변수:
-                          // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-                          // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: _SavedMedicationSortMode.registeredDate,
-                              child: _SavedMedicationSortMenuItem(
-                                label: text.sortByRegisteredDate,
-                                isSelected:
-                                    _sortMode ==
-                                    _SavedMedicationSortMode.registeredDate,
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: _SavedMedicationSortMode.medicationDate,
-                              child: _SavedMedicationSortMenuItem(
-                                label: text.sortByMedicationDate,
-                                isSelected:
-                                    _sortMode ==
-                                    _SavedMedicationSortMode.medicationDate,
-                              ),
-                            ),
-                          ],
-                          icon: const Icon(Icons.tune_rounded),
-                        ),
+                  MedBuddyPageHeader(
+                    title: _isSelectionMode ? text.selectionTitle : text.title,
+                    subtitle: _isSelectionMode ? null : text.subtitle,
+                    prominent: !widget.showCloseButton && !_isSelectionMode,
+                    backButtonKey: const ValueKey('savedMedicationCloseButton'),
+                    leading: _isSelectionMode
+                        ? IconButton(
+                            key: const Key('saved-medication-cancel-selection'),
+                            tooltip: text.cancelSelection,
+                            onPressed: _isDeleting ? null : _endSelection,
+                            icon: const Icon(Icons.close),
+                          )
+                        : null,
+                    onBackRequested:
+                        widget.showCloseButton &&
+                            !_isSelectionMode &&
+                            !_isDeleting
+                        ? _requestBack
+                        : null,
+                    actions: [
+                      if (!_isSelectionMode && medications.isNotEmpty)
+                        ...titleActions,
                     ],
                   ),
-                  SizedBox(height: compactLayout ? 14 : 30),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          text.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF0A0A0A),
-                            fontSize: 27,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0,
+                  Expanded(
+                    child: CustomScrollView(
+                      key: const Key('saved-medication-scroll'),
+                      slivers: [
+                        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          sliver: SliverToBoxAdapter(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (medications.isNotEmpty) ...[
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _SavedMedicationFilterControl(
+                                          filterMode: _filterMode,
+                                          text: text,
+                                          enabled: !_isDeleting,
+                                          onChanged: _changeFilter,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _SavedMedicationSortControl(
+                                        sortDirection: _sortDirection,
+                                        text: text,
+                                        enabled: !_isDeleting,
+                                        onDirectionChanged:
+                                            _changeSortDirection,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                if (_isSelectionMode)
+                                  _SavedMedicationSelectionControl(
+                                    text: text,
+                                    selectedCount: selectedIds.length,
+                                    visibleCount: visibleIds.length,
+                                    enabled: !_isDeleting,
+                                    onToggleAll: _toggleAll,
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      if (savedMedicationInfoList.isNotEmpty)
-                        TextButton(
-                          // 함수이름: _buildScreen.onPressed callback
-                          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `setState(() {_isSelectionMode = !_isSelectionMode; _selectedMedicationIds.clear();})`을 실행한다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                          onPressed: () {
-                            // 함수이름: _buildScreen.setState callback
-                            // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제의 입력·요청 상태를 `_isSelectionMode = !_isSelectionMode`로 갱신한다.
-                            // 매개변수:
-                            // - 없음.
-                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                            setState(() {
-                              _isSelectionMode = !_isSelectionMode;
-                              _selectedMedicationIds.clear();
-                            });
-                          },
-                          child: Text(
-                            _isSelectionMode ? text.done : text.select,
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (savedMedicationInfoList.isNotEmpty) ...[
-                    SizedBox(height: compactLayout ? 8 : 14),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: _SavedMedicationFilterControl(
-                            filterMode: _filterMode,
-                            text: text,
-                            // 함수이름: _buildScreen.onChanged callback
-                            // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `setState(() {_filterMode = filterMode; _selectedMedicationIds.clear();})`을 실행한다.
-                            // 매개변수:
-                            // - filterMode (콜백 계약에서 추론): 저장 약품의 복용 중·종료·전체 표시 기준.
-                            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                            onChanged: (filterMode) {
-                              // 함수이름: _buildScreen.setState callback
-                              // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제의 입력·요청 상태를 `_filterMode = filterMode`로 갱신한다.
-                              // 매개변수:
-                              // - 없음.
-                              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                              setState(() {
-                                _filterMode = filterMode;
-                                _selectedMedicationIds.clear();
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _SavedMedicationSortControl(
-                          sortDirection: _sortDirection,
-                          text: text,
-                          // 함수이름: _buildScreen.onDirectionChanged callback
-                          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `setState(() {_sortDirection = sortDirection;})`을 실행한다.
-                          // 매개변수:
-                          // - sortDirection (콜백 계약에서 추론): 날짜 정렬의 오름차순·내림차순 선택.
-                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                          onDirectionChanged: (sortDirection) {
-                            // 함수이름: _buildScreen.setState callback
-                            // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제의 입력·요청 상태를 `_sortDirection = sortDirection`로 갱신한다.
-                            // 매개변수:
-                            // - 없음.
-                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                            setState(() {
-                              _sortDirection = sortDirection;
-                            });
-                          },
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                          sliver: _buildContent(viewModel, medications, text),
                         ),
                       ],
                     ),
-                  ],
-                  SizedBox(height: compactLayout ? 10 : 20),
-                  Expanded(
-                    child: _buildContent(
-                      viewModel,
-                      savedMedicationInfoList,
-                      text,
-                    ),
                   ),
+                  if (_isSelectionMode)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: _SelectionDeleteBar(
+                        text: text,
+                        userSetting: viewModel.userSetting,
+                        selectedCount: selectedIds.length,
+                        isDeleting: _isDeleting,
+                        // 함수역할: 보이는 선택 약의 삭제를 확인한다.
+                        // 매개변수: 없음. 반환값: 삭제 확인·처리 완료.
+                        onDeleteRequested: () =>
+                            _confirmAndDeleteSelectedMedications(
+                              viewModel: viewModel,
+                              text: text,
+                            ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -348,159 +267,213 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
+  // 함수이름: _buildSortMenu
+  // 함수역할: 제목의 정렬 기준 메뉴를 만든다. 매개변수: text는 번역 문구. 반환값: 정렬 메뉴.
+  Widget _buildSortMenu(_SavedMedicationText text) {
+    return PopupMenuButton<_SavedMedicationSortMode>(
+      key: const ValueKey('savedMedicationSortModeButton'),
+      tooltip: text.sortSettings,
+      initialValue: _sortMode,
+      enabled: !_isDeleting,
+      onSelected: _changeSortMode,
+      // 함수역할: 등록일·복용일 선택지를 구성한다. 매개변수: context. 반환값: 메뉴 항목.
+      itemBuilder: (context) => [
+        for (final mode in _SavedMedicationSortMode.values)
+          PopupMenuItem(
+            value: mode,
+            child: _SavedMedicationSortMenuItem(
+              label: mode == _SavedMedicationSortMode.registeredDate
+                  ? text.sortByRegisteredDate
+                  : text.sortByMedicationDate,
+              isSelected: _sortMode == mode,
+            ),
+          ),
+      ],
+      icon: const Icon(Icons.tune_rounded),
+    );
+  }
+
+  // 함수이름: _startSelection
+  // 함수역할: 빈 선택으로 삭제 모드를 연다. 매개변수: 없음. 반환값: 없음.
+  void _startSelection() {
+    if (_isDeleting) return;
+    setState(() {
+      _isSelectionMode = true;
+      _selectedMedicationIds.clear();
+    });
+  }
+
+  // 함수이름: _endSelection
+  // 함수역할: 삭제하지 않고 선택을 취소한다. 매개변수: 없음. 반환값: 없음.
+  void _endSelection() {
+    if (_isDeleting) return;
+    setState(() {
+      _isSelectionMode = false;
+      _selectedMedicationIds.clear();
+    });
+  }
+
+  // 함수이름: _handleBack
+  // 함수역할: 시스템 뒤로가기는 화면보다 선택을 먼저 닫는다.
+  // 매개변수: didPop은 이동 여부, result는 이동 결과. 반환값: 없음.
+  void _handleBack(bool didPop, Object? result) {
+    if (!didPop && _isSelectionMode && !_isDeleting) _endSelection();
+  }
+
+  // 함수이름: _requestBack
+  // 함수역할: 하위 화면의 이전 화면으로 돌아간다. 매개변수: 없음. 반환값: 없음.
+  void _requestBack() {
+    if (!_isDeleting) Navigator.maybePop(context);
+  }
+
+  // 함수이름: _changeFilter
+  // 함수역할: 실제 조건 변경 시 숨겨지는 선택을 모두 비운다.
+  // 매개변수: mode는 새 조회 조건. 반환값: 없음.
+  void _changeFilter(_SavedMedicationFilterMode mode) {
+    if (_isDeleting || mode == _filterMode) return;
+    setState(() {
+      _filterMode = mode;
+      _selectedMedicationIds.clear();
+    });
+  }
+
+  // 함수이름: _showAll
+  // 함수역할: 빈 결과에서 전체 목록으로 전환한다. 매개변수: 없음. 반환값: 없음.
+  void _showAll() => _changeFilter(_SavedMedicationFilterMode.all);
+
+  // 함수이름: _changeSortMode
+  // 함수역할: 제목 메뉴의 날짜 기준을 적용한다. 매개변수: mode는 정렬 기준. 반환값: 없음.
+  void _changeSortMode(_SavedMedicationSortMode mode) {
+    if (_isDeleting) return;
+    setState(() => _sortMode = mode);
+  }
+
+  // 함수이름: _changeSortDirection
+  // 함수역할: 날짜 표시 순서를 바꾼다. 매개변수: direction은 정렬 방향. 반환값: 없음.
+  void _changeSortDirection(_SavedMedicationSortDirection direction) {
+    if (_isDeleting) return;
+    setState(() => _sortDirection = direction);
+  }
+
+  // 함수이름: _visibleMedicationIds
+  // 함수역할: 현재 필터에 보이는 양수 ID를 중복 없이 구한다.
+  // 매개변수: viewModel은 최신 목록. 반환값: 삭제 가능한 ID 집합.
+  Set<int> _visibleMedicationIds(MedBuddyViewModel viewModel) =>
+      _filterMedicationList(viewModel.savedMedicationInfoList)
+          // 함수역할: 약의 저장 ID를 읽는다. 매개변수: medication. 반환값: 선택적 ID.
+          .map((medication) => medication.id)
+          .whereType<int>()
+          // 함수역할: 유효한 저장 ID만 허용한다. 매개변수: id. 반환값: 양수 여부.
+          .where((id) => id > 0)
+          .toSet();
+
+  // 함수이름: _toggleAll
+  // 함수역할: 현재 보이는 유효 약만 전체 선택하거나 해제한다. 매개변수: 없음. 반환값: 없음.
+  void _toggleAll() {
+    if (_isDeleting) return;
+    final ids = _visibleMedicationIds(context.read<MedBuddyViewModel>());
+    final allSelected =
+        ids.isNotEmpty &&
+        _selectedMedicationIds.intersection(ids).length == ids.length;
+    setState(() {
+      _selectedMedicationIds.clear();
+      if (!allSelected) _selectedMedicationIds.addAll(ids);
+    });
+  }
+
+  // 함수이름: _changeSelection
+  // 함수역할: 보이는 유효 약 한 개의 선택만 변경한다.
+  // 매개변수: medication은 대상 약, selected는 선택 여부. 반환값: 없음.
+  void _changeSelection(MedicationDetail medication, bool selected) {
+    if (_isDeleting) return;
+    final ids = _visibleMedicationIds(context.read<MedBuddyViewModel>());
+    final id = medication.id;
+    if (id == null || !ids.contains(id)) return;
+    setState(() {
+      _selectedMedicationIds.retainAll(ids);
+      if (selected) {
+        _selectedMedicationIds.add(id);
+      } else {
+        _selectedMedicationIds.remove(id);
+      }
+    });
+  }
+
   // 함수이름: _buildContent
-  // 함수역할: 저장 목록 로딩, 빈 상태, 날짜별 목록 상태를 분기해 화면 본문을 만든다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - savedMedicationInfoList (List<MedicationDetail>): 조회·선택·정렬·표시에 사용할 약품 목록.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 저장 약품의 날짜별 조회·필터·선택 삭제에 쓰는 위젯 트리.
+  // 함수역할: 로딩·빈 결과·날짜별 목록을 나누고 기존 등록 및 상세 흐름을 연결한다.
+  // 매개변수: viewModel은 상태, savedMedicationInfoList는 전체 목록, text는 문구.
+  // 반환값: 스크롤 가능한 목록 또는 빈 상태.
   Widget _buildContent(
     MedBuddyViewModel viewModel,
     List<MedicationDetail> savedMedicationInfoList,
     _SavedMedicationText text,
   ) {
     if (viewModel.isSavedMedicationLoading && savedMedicationInfoList.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: MedBuddyColors.primary),
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: CircularProgressIndicator(color: MedBuddyColors.primary),
+        ),
       );
     }
-
     if (savedMedicationInfoList.isEmpty) {
       return _SavedMedicationEmptyState(
         text: text,
         userSetting: viewModel.userSetting,
-        // 함수이름: _buildContent.onPrescriptionInputRequested callback
-        // 함수역할: 입력 작업과 사진 출처 선택을 처리해 알약 식별·직접 입력·처방전 OCR 흐름으로 연결한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-        onPrescriptionInputRequested: () async {
-          await _showMedicationCaptureOptions(viewModel: viewModel);
-        },
+        onPrescriptionInputRequested: _isDeleting
+            ? null
+            // 함수역할: 기존 등록 선택을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
+            : () => _showMedicationCaptureOptions(viewModel: viewModel),
       );
     }
-
-    final filteredMedicationInfoList = _filterMedicationList(
-      savedMedicationInfoList,
-    );
-    if (filteredMedicationInfoList.isEmpty) {
+    final filtered = _filterMedicationList(savedMedicationInfoList);
+    if (filtered.isEmpty) {
       return _SavedMedicationFilteredEmptyState(
         filterMode: _filterMode,
         text: text,
+        onShowAll: _isDeleting ? null : _showAll,
+        onRegister: _isDeleting
+            ? null
+            // 함수역할: 기존 약 등록·식별을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
+            : () => _showMedicationCaptureOptions(viewModel: viewModel),
       );
     }
-
     final groups = _SavedMedicationGroup.fromMedicationList(
-      filteredMedicationInfoList,
+      filtered,
       sortMode: _sortMode,
       sortDirection: _sortDirection,
     );
-
-    final medicationListView = ListView.builder(
-      padding: const EdgeInsets.only(bottom: 20),
+    return SliverList.builder(
       itemCount: groups.length,
-      // Function Name: _buildContent.itemBuilder callback
-      // Description: Composes date-grouped saved medications, filtering, and selection deletion with the current parent constraints for the active layout.
-      // Parameters:
-      // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-      // - index (int): Zero-based position of the target medication, photo, or row.
-      // Returns: Widget subtree for the described layout or fallback.
-      itemBuilder: (context, index) {
-        return _SavedMedicationDateCard(
+      // 함수역할: 날짜 묶음에 선택·상세·삭제 동작을 연결한다.
+      // 매개변수: context는 화면 위치, index는 묶음 순번. 반환값: 날짜별 목록.
+      itemBuilder: (context, index) => _SavedMedicationDateCard(
+        group: groups[index],
+        text: text,
+        userSetting: viewModel.userSetting,
+        isSelectionMode: _isSelectionMode,
+        enabled: !_isDeleting,
+        selectedMedicationIds: _selectedMedicationIds,
+        onSelectionChanged: _changeSelection,
+        // 함수역할: 약 상세를 연다. 매개변수: medication은 대상 약. 반환값: 없음.
+        onGuideRequested: (medication) => _showMedicationDetail(
+          medication: medication,
+          text: text,
+          userSetting: viewModel.userSetting,
+        ),
+        // 함수역할: 약 사진을 연다. 매개변수: medication은 대상 약. 반환값: 없음.
+        onImageRequested: (medication) => _showMedicationImage(
+          medication: medication,
+          text: text,
+          userSetting: viewModel.userSetting,
+        ),
+        // 함수역할: 날짜 묶음 삭제를 확인한다. 매개변수: 없음. 반환값: 삭제 처리 완료.
+        onDeleteRequested: () => _confirmAndDeleteMedicationGroup(
+          viewModel: viewModel,
           group: groups[index],
           text: text,
-          userSetting: viewModel.userSetting,
-          isSelectionMode: _isSelectionMode,
-          selectedMedicationIds: _selectedMedicationIds,
-          // 함수이름: _buildContent.onSelectionChanged callback
-          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `setState(() {if (selected) {_selectedMedicationIds.add(id);} else {_selectedMedicationIds.remove(id);}})`을 실행한다.
-          // 매개변수:
-          // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-          // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onSelectionChanged: (medication, selected) {
-            final id = medication.id;
-            if (id == null) {
-              return;
-            }
-            // 함수이름: _buildContent.setState callback
-            // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `_selectedMedicationIds.add(id); _selectedMedicationIds.remove(id)`을 실행한다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            setState(() {
-              if (selected) {
-                _selectedMedicationIds.add(id);
-              } else {
-                _selectedMedicationIds.remove(id);
-              }
-            });
-          },
-          // Function Name: _buildContent.onGuideRequested callback
-          // Description: Opens medication details using the saved detail data and user settings.
-          // Parameters:
-          // - medication (inferred by callback contract): Medication data to display, transform, save, or compare.
-          // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-          onGuideRequested: (medication) {
-            _showMedicationDetail(
-              medication: medication,
-              text: text,
-              userSetting: viewModel.userSetting,
-            );
-          },
-          // 함수이름: _buildContent.onImageRequested callback
-          // 함수역할: 안전한 이미지 URL이 있는지 확인하고 약 사진 창 또는 사진 없음 안내를 표시한다.
-          // 매개변수:
-          // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onImageRequested: (medication) {
-            _showMedicationImage(
-              medication: medication,
-              text: text,
-              userSetting: viewModel.userSetting,
-            );
-          },
-          // 함수이름: _buildContent.onDeleteRequested callback
-          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에서 캡처된 작업 `_confirmAndDeleteMedicationGroup(viewModel: viewModel, group: groups[index], text: text)`을 실행한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onDeleteRequested: () async {
-            await _confirmAndDeleteMedicationGroup(
-              viewModel: viewModel,
-              group: groups[index],
-              text: text,
-            );
-          },
-        );
-      },
-    );
-
-    if (!_isSelectionMode) {
-      return medicationListView;
-    }
-
-    return Column(
-      children: [
-        Expanded(child: medicationListView),
-        _SelectionDeleteBar(
-          text: text,
-          userSetting: viewModel.userSetting,
-          selectedCount: _selectedMedicationIds.length,
-          // 함수이름: _buildContent.onDeleteRequested callback
-          // 함수역할: 선택 약 삭제를 확인받아 일괄 삭제하고 실패해 남은 ID만 선택 상태에 유지한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onDeleteRequested: () async {
-            await _confirmAndDeleteSelectedMedications(
-              viewModel: viewModel,
-              text: text,
-            );
-          },
         ),
-      ],
+      ),
     );
   }
 
@@ -625,108 +598,70 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   }
 
   // 함수이름: _confirmAndDeleteMedicationGroup
-  // 함수역할: 삭제 확인 팝업을 띄운 뒤 사용자가 승인하면 날짜 그룹의 약들을 삭제한다. 날짜 그룹 전체를 ViewModel의 일괄 삭제 흐름으로 전달한다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - group (_SavedMedicationGroup): 같은 날짜의 저장 약품 묶음.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 날짜 묶음 중 현재 보이는 약의 삭제를 확인한다.
+  // 매개변수: viewModel은 삭제 흐름, group은 묶음, text는 문구. 반환값: 처리 완료.
   Future<void> _confirmAndDeleteMedicationGroup({
     required MedBuddyViewModel viewModel,
     required _SavedMedicationGroup group,
     required _SavedMedicationText text,
-  }) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black.withAlpha(115),
-      // 함수이름: _confirmAndDeleteMedicationGroup.builder callback
-      // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context) {
-        return _DeleteConfirmationDialog(text: text);
-      },
-    );
-    if (shouldDelete != true) {
-      return;
-    }
-
-    final result = await viewModel.requestDeleteSavedMedications(
-      // Function Name: _confirmAndDeleteMedicationGroup.map callback
-      // Description: Computes the mapped value for date-grouped saved medications, filtering, and selection deletion with `medication.id`.
-      // Parameters:
-      // - medication (inferred by callback contract): Medication data to display, transform, save, or compare.
-      // Returns: The mapped value passed back to the collection operation.
-      group.medications.map((medication) => medication.id).whereType<int>(),
-    );
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
-  }
+  }) => _confirmAndDeleteMedications(
+    viewModel: viewModel,
+    text: text,
+    candidateIds: group.medications
+        // 함수역할: 묶음의 저장 ID를 읽는다. 매개변수: medication. 반환값: 선택적 ID.
+        .map((medication) => medication.id)
+        .whereType<int>()
+        .toSet(),
+  );
 
   // 함수이름: _confirmAndDeleteSelectedMedications
-  // 함수역할: 선택 약 삭제를 확인받아 일괄 삭제하고 실패해 남은 ID만 선택 상태에 유지한다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 선택 집합의 복사본으로 삭제를 확인한다.
+  // 매개변수: viewModel은 삭제 흐름, text는 문구. 반환값: 처리 완료.
   Future<void> _confirmAndDeleteSelectedMedications({
     required MedBuddyViewModel viewModel,
     required _SavedMedicationText text,
+  }) => _confirmAndDeleteMedications(
+    viewModel: viewModel,
+    text: text,
+    candidateIds: Set<int>.from(_selectedMedicationIds),
+  );
+
+  // 함수이름: _confirmAndDeleteMedications
+  // 함수역할: 보이는 유효 ID만 재검증해 삭제하고 남은 실패 항목은 선택을 유지한다.
+  // 매개변수: viewModel은 기존 일괄 삭제 흐름, text는 문구, candidateIds는 확인 대상.
+  // 반환값: 확인 취소 또는 삭제 완료. 실패 예외에도 조작 잠금은 해제한다.
+  Future<void> _confirmAndDeleteMedications({
+    required MedBuddyViewModel viewModel,
+    required _SavedMedicationText text,
+    required Set<int> candidateIds,
   }) async {
-    if (_selectedMedicationIds.isEmpty) {
+    if (_isDeleting) return;
+    final ids = candidateIds.intersection(_visibleMedicationIds(viewModel));
+    if (ids.isEmpty) return;
+    setState(() => _isDeleting = true);
+    try {
+      final shouldDelete = await showDialog<bool>(
+        context: context,
+        barrierColor: Colors.black.withAlpha(115),
+        // 함수역할: 기존 삭제 확인을 표시한다. 매개변수: context. 반환값: 확인 창.
+        builder: (context) => _DeleteConfirmationDialog(text: text),
+      );
+      if (!mounted || shouldDelete != true) return;
+      // 확인 중 조회 결과가 바뀌어도 숨겨진 약을 삭제하지 않는다.
+      ids.retainAll(_visibleMedicationIds(viewModel));
+      if (ids.isEmpty) return;
+      final result = await viewModel.requestDeleteSavedMedications(ids);
+      if (!mounted) return;
+      setState(() {
+        _selectedMedicationIds.retainAll(_visibleMedicationIds(viewModel));
+        _isSelectionMode = _selectedMedicationIds.isNotEmpty;
+      });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(text.noSelection)));
-      return;
+      ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
     }
-
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black.withAlpha(115),
-      // 함수이름: _confirmAndDeleteSelectedMedications.builder callback
-      // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context) {
-        return _DeleteConfirmationDialog(text: text);
-      },
-    );
-    if (shouldDelete != true) {
-      return;
-    }
-
-    final selectedIds = List<int>.from(_selectedMedicationIds);
-    final result = await viewModel.requestDeleteSavedMedications(selectedIds);
-    if (!mounted) {
-      return;
-    }
-    final remainingIds = viewModel.savedMedicationInfoList
-        // Function Name: _confirmAndDeleteSelectedMedications.map callback
-        // Description: Computes the mapped value for date-grouped saved medications, filtering, and selection deletion with `medication.id`.
-        // Parameters:
-        // - medication (inferred by callback contract): Medication data to display, transform, save, or compare.
-        // Returns: The mapped value passed back to the collection operation.
-        .map((medication) => medication.id)
-        .whereType<int>()
-        .toSet();
-    // Function Name: _confirmAndDeleteSelectedMedications.setState callback
-    // Description: Updates the local input or request state for date-grouped saved medications, filtering, and selection deletion: `_isSelectionMode = _selectedMedicationIds.isNotEmpty`.
-    // Parameters:
-    // - None.
-    // Returns: No payload; applies the captured state changes.
-    setState(() {
-      _selectedMedicationIds.retainAll(remainingIds);
-      _isSelectionMode = _selectedMedicationIds.isNotEmpty;
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
   }
 
   // Function Name: _showMedicationDetail

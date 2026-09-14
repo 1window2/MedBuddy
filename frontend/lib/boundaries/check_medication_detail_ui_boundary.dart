@@ -10,6 +10,7 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_medication_detail_ui_boundary.dart
@@ -73,7 +74,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
   }
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 효능·복용법·주의사항과 읽어주기 기능을 갖춘 약 상세 화면을 구성한다.
+  // 함수역할: 공통 헤더 아래 복용 요약을 한 번 표시하고 상세 복용법·위험 정보와 읽어주기를 유지한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 효능·복용법·주의사항과 읽어주기 기능을 갖춘 약 상세에 쓰는 위젯 트리.
@@ -85,95 +86,96 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
-        child: Stack(
+        top: false,
+        child: Column(
           children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: MedBuddySpacing.contentMaxWidth,
-                ),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                  children: [
-                    _DetailHeader(
-                      title: text.title,
-                      backTooltip: text.back,
-                      // Function Name: build.onBackRequested callback
-                      // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
-                      // Parameters:
-                      // - None.
-                      // Returns: No callback payload; any selection is delivered through the route result.
-                      onBackRequested: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(height: 28),
-                    _MedicationHeroCard(
-                      medicationDetail: widget.medicationDetail,
-                      displayName: widget.medicationDetail
-                          .displayNameForLanguage(widget.userSetting.language),
-                      language: widget.userSetting.language,
-                      scale: scale,
-                    ),
-                    const SizedBox(height: 24),
-                    _DetailQuestionSection(
-                      title: text.efficacyQuestion,
-                      values: _summaryValues(
-                        widget.medicationDetail.efficacy,
-                        text.noInformation,
-                      ),
-                      noInformation: text.noInformation,
-                      scale: scale,
-                    ),
-                    const SizedBox(height: 24),
-                    _DetailQuestionSection(
-                      title: text.dosageQuestion,
-                      values: widget.medicationDetail
-                          .compactDosageGuideLinesForLanguage(
-                            widget.userSetting.language,
-                          ),
-                      noInformation: text.noInformation,
-                      scale: scale,
-                    ),
-                    const SizedBox(height: 24),
-                    _RecommendedDosageCard(
-                      medicationDetail: widget.medicationDetail,
-                      scale: scale,
-                      text: text,
-                    ),
-                    const SizedBox(height: 22),
-                    _DetailedDosageGuideCard(
-                      medicationDetail: widget.medicationDetail,
-                      scale: scale,
-                      text: text,
-                    ),
-                    const SizedBox(height: 18),
-                    _MedicationRiskCard(
-                      medicationDetail: widget.medicationDetail,
-                      scale: scale,
-                      text: text,
-                    ),
-                    const SizedBox(height: 18),
-                    _MedicationChecklistCard(
-                      medicationDetail: widget.medicationDetail,
-                      scale: scale,
-                      text: text,
-                    ),
-                  ],
-                ),
-              ),
+            MedBuddyPageHeader(
+              title: text.title,
+              subtitle: text.isEnglish
+                  ? 'Check uses, dosage and precautions.'
+                  : '효능과 복용법, 주의사항을 확인합니다.',
+              backTooltip: text.back,
+              // 함수이름: onBackRequested 콜백
+              // 함수역할: 이전 화면으로 돌아간다. 매개변수: 없음. 반환값: 없음.
+              onBackRequested: () => Navigator.pop(context),
             ),
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 16,
+            Expanded(
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: MedBuddySpacing.contentMaxWidth,
                   ),
-                  child: _TtsButton(
-                    isSpeaking: _isSpeaking,
-                    onPressed: _handleTtsButtonPressed,
-                    text: text,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                    children: [
+                      _MedicationHeroCard(
+                        medicationDetail: widget.medicationDetail,
+                        displayName: widget.medicationDetail
+                            .displayNameForLanguage(
+                              widget.userSetting.language,
+                            ),
+                        language: widget.userSetting.language,
+                        scale: scale,
+                      ),
+                      const SizedBox(height: 24),
+                      _DetailQuestionSection(
+                        title: text.efficacyQuestion,
+                        values: _summaryValues(
+                          widget.medicationDetail.efficacy,
+                          text.noInformation,
+                        ),
+                        noInformation: text.noInformation,
+                        scale: scale,
+                      ),
+                      const SizedBox(height: 24),
+                      _DetailQuestionSection(
+                        title: text.dosageQuestion,
+                        subtitle: text.registeredDosage,
+                        values: widget.medicationDetail
+                            .compactDosageGuideLinesForLanguage(
+                              widget.userSetting.language,
+                            ),
+                        noInformation: text.noInformation,
+                        scale: scale,
+                      ),
+                      const SizedBox(height: 22),
+                      _DetailedDosageGuideCard(
+                        medicationDetail: widget.medicationDetail,
+                        scale: scale,
+                        text: text,
+                      ),
+                      const SizedBox(height: 18),
+                      _MedicationRiskCard(
+                        medicationDetail: widget.medicationDetail,
+                        scale: scale,
+                        text: text,
+                      ),
+                      const SizedBox(height: 18),
+                      _MedicationChecklistCard(
+                        medicationDetail: widget.medicationDetail,
+                        scale: scale,
+                        text: text,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // 읽어주기는 별도 영역에 고정해 상세 본문을 가리지 않는다.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: MedBuddySpacing.contentMaxWidth,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _TtsButton(
+                      isSpeaking: _isSpeaking,
+                      onPressed: _handleTtsButtonPressed,
+                      text: text,
+                    ),
                   ),
                 ),
               ),
@@ -239,64 +241,6 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
         setState(() => _isSpeaking = false);
       }
     }
-  }
-}
-
-// 클래스명: _DetailHeader
-// 역할: 약 상세 제목과 이전 화면으로 돌아가기를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약 상세 제목과 이전 화면으로 돌아가기 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - backTooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-// - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-class _DetailHeader extends StatelessWidget {
-  final String title;
-  final String backTooltip;
-  final VoidCallback onBackRequested;
-
-  // 함수이름: _DetailHeader
-  // 함수역할: 약 상세 제목과 이전 화면으로 돌아가기에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - backTooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
-  // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _DetailHeader 인스턴스.
-  const _DetailHeader({
-    required this.title,
-    required this.backTooltip,
-    required this.onBackRequested,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약 상세 제목과 이전 화면으로 돌아가기 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약 상세 제목과 이전 화면으로 돌아가기에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          tooltip: backTooltip,
-          onPressed: onBackRequested,
-          icon: const Icon(Icons.arrow_back_ios_new, size: 28),
-        ),
-        Expanded(
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontSize: 25,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-        ),
-        const SizedBox(width: 48),
-      ],
-    );
   }
 }
 
@@ -531,27 +475,30 @@ class _MedicationImageBox extends StatelessWidget {
 // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _DetailQuestionSection extends StatelessWidget {
   final String title;
+  final String? subtitle;
   final List<String> values;
   final String noInformation;
   final double scale;
 
   // 함수이름: _DetailQuestionSection
-  // 함수역할: 약 효능·복용법 질문 제목과 간추린 답변 목록에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 질문 제목·선택 설명과 답변 목록의 표시 설정을 초기화한다.
   // 매개변수:
   // - title (String): 화면·구역·항목에 표시할 제목.
+  // - subtitle (String?): 등록된 복용 정보 등 답변의 성격을 구분하는 설명.
   // - values (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
   // - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
   // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _DetailQuestionSection 인스턴스.
   const _DetailQuestionSection({
     required this.title,
+    this.subtitle,
     required this.values,
     required this.noInformation,
     required this.scale,
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약 효능·복용법 질문 제목과 간추린 답변 목록 화면을 구성한다.
+  // 함수역할: 질문과 선택 설명 아래 모든 답변을 순서대로 표시한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 약 효능·복용법 질문 제목과 간추린 답변 목록에 쓰는 위젯 트리.
@@ -578,6 +525,17 @@ class _DetailQuestionSection extends StatelessWidget {
             letterSpacing: 0,
           ),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            subtitle!,
+            style: TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 14 * scale,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Column(
           children: [
@@ -642,128 +600,6 @@ class _DetailValueTile extends StatelessWidget {
   }
 }
 
-// 클래스명: _RecommendedDosageCard
-// 역할: 핵심 복용 가이드와 주요 경고를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 핵심 복용 가이드와 주요 경고 위젯을 구성한다.
-// 속성:
-// - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-class _RecommendedDosageCard extends StatelessWidget {
-  final MedicationDetail medicationDetail;
-  final double scale;
-  final _MedicationDetailText text;
-
-  // 함수이름: _RecommendedDosageCard
-  // 함수역할: 핵심 복용 가이드와 주요 경고에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _RecommendedDosageCard 인스턴스.
-  const _RecommendedDosageCard({
-    required this.medicationDetail,
-    required this.scale,
-    required this.text,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 핵심 복용 가이드와 주요 경고 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 핵심 복용 가이드와 주요 경고에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final dosageLines = medicationDetail.compactDosageGuideLinesForLanguage(
-      text.isEnglish ? 'en' : 'ko',
-    );
-    final warning = _summaryValue(medicationDetail.warning, text.noInformation);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            text.recommendedDosage,
-            style: TextStyle(
-              color: const Color(0xFF0A0A0A),
-              fontSize: 16 * scale,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 16),
-          for (int index = 0; index < dosageLines.length; index++) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: index == 0
-                      ? const Icon(
-                          Icons.add_box_rounded,
-                          color: MedBuddyColors.primary,
-                          size: 18,
-                        )
-                      : null,
-                ),
-                Expanded(
-                  child: Text(
-                    dosageLines[index],
-                    style: TextStyle(
-                      color: const Color(0xFF0A0A0A),
-                      fontSize: 14 * scale,
-                      height: 1.5,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (index != dosageLines.length - 1) const SizedBox(height: 8),
-          ],
-          const SizedBox(height: 20),
-          Text(
-            text.warning,
-            style: TextStyle(
-              color: const Color(0xFF0A0A0A),
-              fontSize: 16 * scale,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(18, 17, 18, 17),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFCE7F3),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(
-              warning,
-              style: TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 14 * scale,
-                height: 1.55,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 클래스명: _DetailedDosageGuideCard
 // 역할: 설정 언어별 상세 복용 가이드 목록을 담당한다.
 // 주요 책임:
@@ -790,7 +626,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 언어별 상세 복용 가이드 목록 화면을 구성한다.
+  // 함수역할: 복용 요약을 반복하지 않고 용법 원문 전체를 상세 가이드로 표시한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 설정 언어별 상세 복용 가이드 목록에 쓰는 위젯 트리.
@@ -798,9 +634,7 @@ class _DetailedDosageGuideCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailListCard(
       title: text.detailedGuide,
-      items: medicationDetail.compactDosageGuideLinesForLanguage(
-        text.isEnglish ? 'en' : 'ko',
-      ),
+      items: _uniqueNonEmptyValues([medicationDetail.usageMethod]),
       scale: scale,
       noInformation: text.noInformation,
     );
@@ -1173,19 +1007,11 @@ class _MedicationDetailText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get dosageQuestion => isEnglish ? 'How should I take it?' : '어떻게 먹나요?';
-  // 함수이름: recommendedDosage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "권장된 복용방법" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get recommendedDosage =>
-      isEnglish ? 'Recommended directions' : '권장된 복용방법';
-  // 함수이름: warning
-  // 함수역할: 현재 언어와 입력값에 맞춰 "주의사항" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get warning => isEnglish ? 'Warnings' : '주의사항';
+  // 함수이름: registeredDosage
+  // 함수역할: 출처를 추측하지 않고 등록된 복용값임을 구분한다.
+  // 매개변수: 없음. 반환값: 언어별 복용 정보 설명.
+  String get registeredDosage =>
+      isEnglish ? 'Registered dosage information' : '등록된 복용 정보';
   // 함수이름: detailedGuide
   // 함수역할: 현재 언어와 입력값에 맞춰 "상세 복용 가이드" 문구를 제공한다.
   // 매개변수:

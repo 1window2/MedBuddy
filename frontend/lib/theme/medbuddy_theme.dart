@@ -83,3 +83,129 @@ class MedBuddyShadows {
     ),
   ];
 }
+
+// 기존 브랜드 색상과 기본 제목·본문·명령 버튼 규칙을 앱 전체에 적용한다.
+class MedBuddyTheme {
+  // 매개변수 없이 기본 밝은 테마를 반환한다. 화면의 명시적 상태 색상은 유지한다.
+  static ThemeData light() {
+    final scheme = ColorScheme.fromSeed(seedColor: MedBuddyColors.primary)
+        .copyWith(
+          primary: MedBuddyColors.primary,
+          onPrimary: Colors.white,
+          surface: MedBuddyColors.pageBackground,
+          onSurface: MedBuddyColors.textStrong,
+          error: MedBuddyColors.danger,
+        );
+    const label = TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    );
+    const title = TextStyle(
+      fontSize: 22,
+      fontWeight: FontWeight.w800,
+      height: 1.25,
+      letterSpacing: 0,
+    );
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      primaryColor: MedBuddyColors.primary,
+      scaffoldBackgroundColor: MedBuddyColors.pageBackground,
+      fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
+      textTheme: const TextTheme(
+        titleLarge: title,
+        headlineMedium: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
+          height: 1.25,
+          letterSpacing: 0,
+        ),
+        bodyLarge: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w400,
+          height: 1.5,
+          letterSpacing: 0,
+        ),
+        bodyMedium: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
+          height: 1.5,
+          letterSpacing: 0,
+        ),
+        labelLarge: label,
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: MedBuddyColors.surface,
+        titleTextStyle: TextStyle(
+          color: MedBuddyColors.textStrong,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          height: 1.35,
+          letterSpacing: 0,
+        ),
+        contentTextStyle: TextStyle(
+          color: MedBuddyColors.textBody,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          height: 1.5,
+          letterSpacing: 0,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: MedBuddyColors.pageBackground,
+        foregroundColor: MedBuddyColors.textStrong,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        titleTextStyle: TextStyle(
+          color: MedBuddyColors.textStrong,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          height: 1.25,
+          letterSpacing: 0,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          textStyle: label,
+          shape: shape,
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: MedBuddyColors.primary,
+          foregroundColor: Colors.white,
+          textStyle: label,
+          shape: shape,
+          elevation: 0,
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: MedBuddyColors.primaryDark,
+          textStyle: label,
+          shape: shape,
+          minimumSize: const Size(0, 48),
+          side: const BorderSide(color: MedBuddyColors.outline),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: MedBuddyColors.primaryDark,
+          textStyle: label,
+          minimumSize: const Size(48, 48),
+        ),
+      ),
+    );
+  }
+}

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 
 // File Name: manage_user_hub_ui_boundary.dart
 // Role: UI boundaries and helpers for account summaries and access to link management and settings.
@@ -41,7 +42,7 @@ class ManageUserHubUI extends StatelessWidget {
   });
 
   // Function Name: build
-  // Description: Renders the account summary and link or settings management actions from the current configuration and state.
+  // 함수역할: 공통 제목 아래 계정 요약과 연동·환경설정 동선을 표시한다.
   // Parameters:
   // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
   // Returns: Widget tree for the account summary and link or settings management actions.
@@ -58,59 +59,51 @@ class ManageUserHubUI extends StatelessWidget {
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
+        top: false,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: MedBuddySpacing.contentMaxWidth,
             ),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+            child: Column(
               children: [
-                Text(
-                  text.title,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 28,
-                    height: 1.2,
-                    fontWeight: FontWeight.w800,
+                MedBuddyPageHeader(
+                  title: text.title,
+                  subtitle: text.subtitle,
+                  prominent: true,
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                    children: [
+                      _AccountSummaryCard(
+                        accountLabel: accountLabel,
+                        accountType: authenticationControl.isAnonymous
+                            ? text.guestDescription
+                            : text.signedInDescription,
+                      ),
+                      const SizedBox(height: 16),
+                      _UserHubActionCard(
+                        key: const ValueKey('userHubCaregiverLinkAction'),
+                        icon: Icons.people_alt_outlined,
+                        title: text.patientCaregiver,
+                        subtitle: text.patientCaregiverDescription,
+                        backgroundColor: MedBuddyColors.mint,
+                        iconColor: MedBuddyColors.primaryDark,
+                        onTap: onPatientCaregiverLinkRequested,
+                      ),
+                      const SizedBox(height: 12),
+                      _UserHubActionCard(
+                        key: const ValueKey('userHubSettingsAction'),
+                        icon: Icons.settings_outlined,
+                        title: text.settings,
+                        subtitle: text.settingsDescription,
+                        backgroundColor: MedBuddyColors.surface,
+                        iconColor: MedBuddyColors.textStrong,
+                        onTap: onUserSettingRequested,
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  text.subtitle,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 14,
-                    height: 1.4,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _AccountSummaryCard(
-                  accountLabel: accountLabel,
-                  accountType: authenticationControl.isAnonymous
-                      ? text.guestDescription
-                      : text.signedInDescription,
-                ),
-                const SizedBox(height: 16),
-                _UserHubActionCard(
-                  key: const ValueKey('userHubCaregiverLinkAction'),
-                  icon: Icons.people_alt_outlined,
-                  title: text.patientCaregiver,
-                  subtitle: text.patientCaregiverDescription,
-                  backgroundColor: MedBuddyColors.mint,
-                  iconColor: MedBuddyColors.primaryDark,
-                  onTap: onPatientCaregiverLinkRequested,
-                ),
-                const SizedBox(height: 12),
-                _UserHubActionCard(
-                  key: const ValueKey('userHubSettingsAction'),
-                  icon: Icons.settings_outlined,
-                  title: text.settings,
-                  subtitle: text.settingsDescription,
-                  backgroundColor: MedBuddyColors.surface,
-                  iconColor: MedBuddyColors.textStrong,
-                  onTap: onUserSettingRequested,
                 ),
               ],
             ),
@@ -346,14 +339,12 @@ class _UserHubText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get title => isEnglish ? 'My Info' : '내 정보';
-  // Function Name: subtitle
-  // Description: Provides localized wording for "Manage your account, connections, and accessibility preferences." using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
+  // 함수이름: subtitle
+  // 함수역할: 내 정보의 제목 아래 표시할 짧은 설명을 선택한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 계정·연동·설정 요약.
   String get subtitle => isEnglish
-      ? 'Manage your account, connections, and accessibility preferences.'
-      : '계정과 연동 상태, 접근성 환경설정을 관리하세요.';
+      ? 'Manage your account and family links.'
+      : '계정과 가족 연결, 앱 설정을 관리합니다.';
   // Function Name: guestAccount
   // Description: Provides localized wording for "Guest account" using the current language and message inputs.
   // Parameters:

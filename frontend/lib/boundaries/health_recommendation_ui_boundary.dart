@@ -2,17 +2,14 @@
 // 역할: 건강 관리 추천 요청과 식사·운동·주의사항 표시를 제공한다.
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../entities/health_recommendation_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
-import 'guided_prescription_camera_ui_boundary.dart';
-import 'manual_medication_entry_ui_boundary.dart';
-import 'medication_capture_options_ui_boundary.dart';
-import 'pill_identification_ui_boundary.dart';
+import '../widgets/medbuddy_page_header.dart';
+import 'medication_registration_flow.dart';
 
 // 파일명: health_recommendation_ui_boundary.dart
 // 역할: 약 조합 기반 건강 관리 추천 화면을 구성한다.
@@ -76,76 +73,14 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
   }
 
   // 함수이름: _openMedicationRegistration
-  // 함수역할: 홈과 같은 등록 메뉴를 열고 기존 저장·분석 흐름으로 연결한다. 입력 화면에서 돌아오면 추천을 갱신한다.
+  // 함수역할: 중복 진입을 막으며 공통 등록 흐름을 열고 복귀하면 추천을 갱신한다.
   // 매개변수: 없음. 반환값: 등록 화면 또는 선택 취소 처리 완료.
   Future<void> _openMedicationRegistration() async {
     if (_openingRegistration) return;
     setState(() => _openingRegistration = true);
     final viewModel = context.read<MedBuddyViewModel>();
     try {
-      final task = await showMedicationCaptureTaskOptions(
-        context: context,
-        userSetting: viewModel.userSetting,
-      );
-      if (!mounted || task == null) return;
-      if (task == MedicationCaptureTask.manual) {
-        await Navigator.push<bool>(
-          context,
-          MaterialPageRoute<bool>(
-            // 함수이름: 직접 등록 화면 builder
-            // 함수역할: 현재 계정의 약 저장 명령을 연결한다. 매개변수: context. 반환값: 직접 등록 화면.
-            builder: (context) => ManualMedicationEntryUI(
-              userSetting: viewModel.userSetting,
-              onSaveRequested: viewModel.saveManualMedication,
-            ),
-          ),
-        );
-      } else if (task == MedicationCaptureTask.multiplePills ||
-          task == MedicationCaptureTask.individualPills) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            // 함수이름: 알약 식별 화면 builder
-            // 함수역할: 선택한 촬영 방식과 기존 저장 명령을 연결한다. 매개변수: context. 반환값: 알약 식별 화면.
-            builder: (context) => PillIdentificationUI(
-              userSetting: viewModel.userSetting,
-              captureMode: task == MedicationCaptureTask.multiplePills
-                  ? PillCaptureMode.singlePhoto
-                  : PillCaptureMode.individualPhotos,
-              onSaveRequested: viewModel.saveIdentifiedPill,
-              onBatchSaveRequested: viewModel.saveIdentifiedPills,
-            ),
-          ),
-        );
-      } else {
-        final source = await showPrescriptionImageSourceOptions(
-          context: context,
-          userSetting: viewModel.userSetting,
-        );
-        if (!mounted || source == null) return;
-        XFile? image;
-        if (source == PrescriptionImageSource.camera) {
-          image = await Navigator.push<XFile>(
-            context,
-            MaterialPageRoute<XFile>(
-              // 함수이름: 처방전 촬영 화면 builder
-              // 함수역할: 기존 촬영 가이드를 재사용한다. 매개변수: context. 반환값: 처방전 카메라.
-              builder: (context) => GuidedPrescriptionCameraUI(
-                userSetting: viewModel.userSetting,
-              ),
-            ),
-          );
-          if (!mounted || image == null) return;
-        }
-        // 일정·채팅을 거쳐 진입했어도 최상위 홈이 관리하는 OCR 진행 화면을 가리지 않는다.
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        if (image != null) {
-          await viewModel.requestCapturedPrescriptionImage(image);
-        } else {
-          await viewModel.requestPrescriptionImageFromGallery();
-        }
-        return;
-      }
+      await openMedicationRegistration(context);
       if (mounted) await viewModel.fetchHealthRecommendation();
     } finally {
       if (mounted) setState(() => _openingRegistration = false);
@@ -176,7 +111,7 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
   }
 
   // 함수이름: _buildScreen
-  // 함수역할: 건강 추천 제목·뒤로가기와 요청 상태별 본문을 배치한다.
+  // 함수역할: 안전 영역 안에 공통 보조 화면 헤더와 요청 상태별 본문을 배치한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
@@ -185,20 +120,28 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
     final text = _HealthRecommendationText(viewModel.userSetting.language);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          _HealthRecommendationHeader(
-            text: text,
-            // 함수이름: _buildScreen.onBackRequested callback
-            // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onBackRequested: () => Navigator.pop(context),
-          ),
-          Expanded(child: _buildContent(viewModel, text)),
-        ],
+      backgroundColor: MedBuddyColors.pageBackground,
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: Column(
+          children: [
+            MedBuddyPageHeader(
+              title: text.title,
+              subtitle: text.isEnglish
+                  ? 'Diet & exercise'
+                  : '복용 중인 약에 맞는 식사·운동 안내',
+              backTooltip: text.back,
+              // 함수이름: _buildScreen.onBackRequested callback
+              // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+              onBackRequested: () => Navigator.pop(context),
+            ),
+            Expanded(child: _buildContent(viewModel, text)),
+          ],
+        ),
       ),
     );
   }
@@ -255,7 +198,7 @@ class _HealthRecommendationLoading extends StatelessWidget {
   const _HealthRecommendationLoading({required this.text});
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 건강 추천 생성 중 진행 표시 화면을 구성한다.
+  // 함수역할: 제목과 진행 표시는 강조하고 대기 안내는 보통 굵기로 표시한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 건강 추천 생성 중 진행 표시에 쓰는 위젯 트리.
@@ -280,8 +223,8 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 text.loadingTitle,
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 34),
@@ -300,8 +243,8 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: MedBuddyColors.primary,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 12),
@@ -310,75 +253,12 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 style: const TextStyle(
                   color: MedBuddyColors.textMuted,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _HealthRecommendationHeader
-// 역할: 건강 추천 제목과 돌아가기를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 건강 추천 제목과 돌아가기 위젯을 구성한다.
-// 속성:
-// - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-class _HealthRecommendationHeader extends StatelessWidget {
-  final _HealthRecommendationText text;
-  final VoidCallback onBackRequested;
-
-  // 함수이름: _HealthRecommendationHeader
-  // 함수역할: 건강 추천 제목과 돌아가기에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_HealthRecommendationText): 해당 화면 구역의 언어별 표시 문구.
-  // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _HealthRecommendationHeader 인스턴스.
-  const _HealthRecommendationHeader({
-    required this.text,
-    required this.onBackRequested,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 건강 추천 제목과 돌아가기 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 건강 추천 제목과 돌아가기에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: MedBuddyColors.topBar,
-      padding: EdgeInsets.fromLTRB(
-        18,
-        MediaQuery.of(context).padding.top + 12,
-        24,
-        22,
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: text.back,
-            onPressed: onBackRequested,
-            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 31),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -406,7 +286,7 @@ class _HealthRecommendationContent extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 식사·운동 추천과 주의사항 본문 화면을 구성한다.
+  // 함수역할: 좌우 20 여백으로 식사·운동 원문과 주의사항을 스크롤 가능한 본문에 배치한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 식사·운동 추천과 주의사항 본문에 쓰는 위젯 트리.
@@ -415,7 +295,7 @@ class _HealthRecommendationContent extends StatelessWidget {
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(42, 24, 42, bottomSafeArea + 28),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomSafeArea + 28),
       children: [
         _RecommendationCard(
           title: text.diet,
@@ -476,7 +356,7 @@ class _RecommendationCard extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 식사 또는 운동 추천의 제목과 설명 화면을 구성한다.
+  // 함수역할: 제목은 강조하고 원문의 줄·목록 표식을 보존하며 본문을 보통 굵기로 표시한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 식사 또는 운동 추천의 제목과 설명에 쓰는 위젯 트리.
@@ -505,8 +385,8 @@ class _RecommendationCard extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -515,14 +395,26 @@ class _RecommendationCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-              child: Text(
-                body,
-                style: const TextStyle(
-                  color: MedBuddyColors.textBody,
-                  fontSize: 17,
-                  height: 1.62,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final line in body.split(RegExp(r'\r?\n')))
+                    if (line.trim().isEmpty)
+                      const SizedBox(height: 8)
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          line,
+                          style: const TextStyle(
+                            color: MedBuddyColors.textBody,
+                            fontSize: 16,
+                            height: 1.55,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                ],
               ),
             ),
           ],
@@ -552,7 +444,7 @@ class _CautionCard extends StatelessWidget {
   const _CautionCard({required this.title, required this.cautionItems});
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 건강 추천에 수반되는 주의사항 목록 화면을 구성한다.
+  // 함수역할: 주의사항 제목을 강조하고 전달받은 모든 주의 문구를 목록으로 표시한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 건강 추천에 수반되는 주의사항 목록에 쓰는 위젯 트리.
@@ -588,8 +480,8 @@ class _CautionCard extends StatelessWidget {
                     title,
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -628,11 +520,10 @@ class _CautionItem extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _CautionItem 인스턴스.
   const _CautionItem({required this.text});
 
-  // Function Name: build
-  // Description: Renders one emphasized health-recommendation caution from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for one emphasized health-recommendation caution.
+  // 함수이름: build
+  // 함수역할: 주의 문구 원문을 중간 굵기로 줄바꿈하여 표시한다.
+  // 매개변수: context (BuildContext): 테마와 접근성 설정 위치.
+  // 반환값: 주의사항 한 항목의 위젯.
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -655,7 +546,7 @@ class _CautionItem extends StatelessWidget {
               color: MedBuddyColors.textMuted,
               fontSize: 16,
               height: 1.5,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -695,7 +586,7 @@ class _HealthRecommendationError extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 건강 추천 실패 안내와 재시도 화면을 구성한다.
+  // 함수역할: 오류·빈 상태의 안내를 보통 굵기로 표시하고 등록 및 재시도를 연결한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 건강 추천 실패 안내와 재시도에 쓰는 위젯 트리.
@@ -741,9 +632,9 @@ class _HealthRecommendationError extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: MedBuddyColors.textMuted,
-                    fontSize: 17,
+                    fontSize: 16,
                     height: 1.45,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 18),

@@ -1236,7 +1236,7 @@ void main() {
 
     await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Take a photo'));
+    await tester.tap(find.text('Take Photo'));
     await tester.pumpAndSettle();
 
     expect(
@@ -1274,7 +1274,7 @@ void main() {
     ]) {
       await _tapVisible(tester, find.byKey(slotKey));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Take a photo'));
+      await tester.tap(find.text('Take Photo'));
       await tester.pumpAndSettle();
     }
 
@@ -1352,7 +1352,7 @@ void main() {
 
     await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Take a photo'));
+    await tester.tap(find.text('Take Photo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('identify-pill-button')));
     await tester.pumpAndSettle();
@@ -1389,7 +1389,7 @@ void main() {
 
     await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Take a photo'));
+    await tester.tap(find.text('Take Photo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('identify-pill-button')));
     await tester.pumpAndSettle();
@@ -1425,7 +1425,7 @@ void main() {
 
     await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Take a photo'));
+    await tester.tap(find.text('Take Photo'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('identify-pill-button')));
     await tester.pumpAndSettle();
@@ -1446,7 +1446,7 @@ void main() {
     await tester.ensureVisible(frontSlot);
     await tester.tap(frontSlot);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Choose from gallery'));
+    await tester.tap(find.text('Choose From Gallery'));
     await tester.pump();
 
     final identifyButton = tester.widget<FilledButton>(
@@ -1508,7 +1508,7 @@ void main() {
     await tester.ensureVisible(frontSlot);
     await tester.tap(frontSlot);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Take a photo'));
+    await tester.tap(find.text('Take Photo'));
     await tester.pumpAndSettle();
     final identifyButton = find.byKey(const Key('identify-pill-button'));
     await tester.ensureVisible(identifyButton);

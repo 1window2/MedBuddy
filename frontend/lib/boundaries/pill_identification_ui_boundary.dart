@@ -4,6 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_saved_medication_control.dart';
@@ -18,6 +19,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_review_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
+import 'medication_photo_source_sheet.dart';
 
 // 타입명: IdentifiedPillSaveCallback
 // 역할: 사용자가 확인한 낱알약 후보와 복약 일정을 기존 저장 흐름으로 전달한다.
@@ -279,160 +281,170 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final hasVisibleResults = _drafts.any((draft) => draft.result != null);
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
-      appBar: AppBar(
-        backgroundColor: MedBuddyColors.pageBackground,
-        foregroundColor: MedBuddyColors.textStrong,
-        elevation: 0,
-        title: Text(
-          text.modeTitle(_usesSinglePhoto),
-          style: TextStyle(
-            fontSize: 20 * textScale,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-      ),
       body: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _SafetyNotice(text: text, textScale: textScale),
-              const SizedBox(height: 22),
-              Text(
-                hasVisibleResults
-                    ? text.detectedPillCount(_drafts.length)
-                    : text.photoSectionTitle(_usesSinglePhoto),
-                style: TextStyle(
-                  color: MedBuddyColors.textStrong,
-                  fontSize: 18 * textScale,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                ),
-              ),
-              if (!hasVisibleResults) ...[
-                const SizedBox(height: 6),
-                Text(
-                  text.photoSectionDescription(_usesSinglePhoto),
-                  style: TextStyle(
-                    color: MedBuddyColors.textMuted,
-                    fontSize: 13 * textScale,
-                    height: 1.45,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              if (_multiplePillSourceImage != null)
-                _MultiplePillObservationPreview(
-                  imageBytes: _multiplePillSourceImage!,
-                  observations: _multiplePillObservations,
-                  textScale: textScale,
-                  description: text.multiplePhotoPreviewDescription,
-                )
-              else if (!_usesSinglePhoto)
-                for (var index = 0; index < _drafts.length; index += 1) ...[
-                  _buildPhotoDraft(index, text, textScale),
-                  if (index < _drafts.length - 1) const Divider(height: 32),
-                ],
-              const SizedBox(height: 14),
-              _buildAddPhotoActions(text, textScale),
-              // 함수이름: build.any callback
-              // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasAnyImage` 조건으로 컬렉션 항목을 판별한다.
-              // 매개변수:
-              // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
-              // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-              if (!_allDraftsReady && _drafts.any((draft) => draft.hasAnyImage))
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    text.frontPhotoRequiredForEveryPill,
-                    style: TextStyle(
-                      color: const Color(0xFF9A6700),
-                      fontSize: 12 * textScale,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              if (_errorMessage.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                _ErrorNotice(message: _errorMessage),
-              ],
-              if (!_usesSinglePhoto) ...[
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    key: const Key('identify-pill-button'),
-                    onPressed: !_allDraftsReady || pendingCount == 0 || _isBusy
-                        ? null
-                        : _requestIdentification,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      backgroundColor: MedBuddyColors.primary,
-                      disabledBackgroundColor: MedBuddyColors.outline,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: _isAnalyzing
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.4,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.search),
-                    label: Text(
-                      _isAnalyzing
-                          ? text.analysisProgress(
-                              completedCount: _analysisCompletedCount,
-                              totalCount: _analysisTotalCount,
-                              isWaitingForRetry: _retryingRequestCount > 0,
-                            )
-                          : text.identifyPills(
-                              _allDraftsReady ? pendingCount : _drafts.length,
-                            ),
-                      textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            MedBuddyPageHeader(
+              title: text.modeTitle(_usesSinglePhoto),
+              subtitle: text.isEnglish
+                  ? 'Find pill matches from photos.'
+                  : '사진으로 알약 후보를 찾습니다.',
+              onBackRequested: () => Navigator.maybePop(context),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SafetyNotice(text: text, textScale: textScale),
+                    const SizedBox(height: 22),
+                    Text(
+                      hasVisibleResults
+                          ? text.detectedPillCount(_drafts.length)
+                          : text.photoSectionTitle(_usesSinglePhoto),
                       style: TextStyle(
-                        fontSize: 17 * textScale,
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 18 * textScale,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0,
                       ),
                     ),
-                  ),
+                    if (!hasVisibleResults) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        text.photoSectionDescription(_usesSinglePhoto),
+                        style: TextStyle(
+                          color: MedBuddyColors.textMuted,
+                          fontSize: 13 * textScale,
+                          height: 1.45,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    if (_multiplePillSourceImage != null)
+                      _MultiplePillObservationPreview(
+                        imageBytes: _multiplePillSourceImage!,
+                        observations: _multiplePillObservations,
+                        textScale: textScale,
+                        description: text.multiplePhotoPreviewDescription,
+                      )
+                    else if (!_usesSinglePhoto)
+                      for (
+                        var index = 0;
+                        index < _drafts.length;
+                        index += 1
+                      ) ...[
+                        _buildPhotoDraft(index, text, textScale),
+                        if (index < _drafts.length - 1)
+                          const Divider(height: 32),
+                      ],
+                    const SizedBox(height: 14),
+                    _buildAddPhotoActions(text, textScale),
+                    // 함수이름: build.any callback
+                    // 함수역할: 알약 앞·뒷면 촬영과 후보 선택 후 복약 저장에 대해 `draft.hasAnyImage` 조건으로 컬렉션 항목을 판별한다.
+                    // 매개변수:
+                    // - draft (콜백 계약에서 추론): 앞·뒷면 사진과 결과·선택을 보관한 알약 작업 초안.
+                    // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
+                    if (!_allDraftsReady &&
+                        _drafts.any((draft) => draft.hasAnyImage))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          text.frontPhotoRequiredForEveryPill,
+                          style: TextStyle(
+                            color: const Color(0xFF9A6700),
+                            fontSize: 12 * textScale,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    if (_errorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _ErrorNotice(message: _errorMessage),
+                    ],
+                    if (!_usesSinglePhoto) ...[
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          key: const Key('identify-pill-button'),
+                          onPressed:
+                              !_allDraftsReady || pendingCount == 0 || _isBusy
+                              ? null
+                              : _requestIdentification,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(56),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            backgroundColor: MedBuddyColors.primary,
+                            disabledBackgroundColor: MedBuddyColors.outline,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: _isAnalyzing
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.search),
+                          label: Text(
+                            _isAnalyzing
+                                ? text.analysisProgress(
+                                    completedCount: _analysisCompletedCount,
+                                    totalCount: _analysisTotalCount,
+                                    isWaitingForRetry:
+                                        _retryingRequestCount > 0,
+                                  )
+                                : text.identifyPills(
+                                    _allDraftsReady
+                                        ? pendingCount
+                                        : _drafts.length,
+                                  ),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 17 * textScale,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (_isAnalyzing && _retryingRequestCount > 0) ...[
+                      const SizedBox(height: 10),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          text.retryWaitNotice(_retryAfter),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: const Color(0xFF8A6200),
+                            fontSize: 12 * textScale,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (hasVisibleResults) ...[
+                      const SizedBox(height: 30),
+                      _buildAllResults(text, textScale),
+                    ],
+                  ],
                 ),
-              ],
-              if (_isAnalyzing && _retryingRequestCount > 0) ...[
-                const SizedBox(height: 10),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    text.retryWaitNotice(_retryAfter),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: const Color(0xFF8A6200),
-                      fontSize: 12 * textScale,
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-              if (hasVisibleResults) ...[
-                const SizedBox(height: 30),
-                _buildAllResults(text, textScale),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1079,48 +1091,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (_isBusy || draftIndex < 0 || draftIndex >= _drafts.length) {
       return;
     }
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showMedicationPhotoSourceOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      // Function Name: _selectImage.builder callback
-      // Description: Composes front and back pill photos, candidate selection, and medication saving with EdgeInsets.fromLTRB, SizedBox for the active layout.
-      // Parameters:
-      // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-      // Returns: Widget subtree for the described layout or fallback.
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ImageSourceOption(
-                icon: Icons.photo_camera_outlined,
-                title: text.camera,
-                // Function Name: _selectImage.onTap callback
-                // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, ImageSource.camera)`.
-                // Parameters:
-                // - None.
-                // Returns: No callback payload; any selection is delivered through the route result.
-                onTap: () => Navigator.pop(context, ImageSource.camera),
-              ),
-              const SizedBox(height: 8),
-              _ImageSourceOption(
-                icon: Icons.photo_library_outlined,
-                title: text.gallery,
-                // Function Name: _selectImage.onTap callback
-                // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, ImageSource.gallery)`.
-                // Parameters:
-                // - None.
-                // Returns: No callback payload; any selection is delivered through the route result.
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
-              ),
-            ],
-          ),
-        ),
-      ),
+      language: widget.userSetting.language,
     );
     if (!mounted || source == null) {
       return;
@@ -1362,48 +1335,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (_isBusy || !_usesSinglePhoto) {
       return;
     }
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showMedicationPhotoSourceOptions(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      // Function Name: _selectMultiplePillPhoto.builder callback
-      // Description: Composes front and back pill photos, candidate selection, and medication saving with EdgeInsets.fromLTRB, SizedBox for the active layout.
-      // Parameters:
-      // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-      // Returns: Widget subtree for the described layout or fallback.
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ImageSourceOption(
-                icon: Icons.photo_camera_outlined,
-                title: text.camera,
-                // Function Name: _selectMultiplePillPhoto.onTap callback
-                // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, ImageSource.camera)`.
-                // Parameters:
-                // - None.
-                // Returns: No callback payload; any selection is delivered through the route result.
-                onTap: () => Navigator.pop(context, ImageSource.camera),
-              ),
-              const SizedBox(height: 8),
-              _ImageSourceOption(
-                icon: Icons.photo_library_outlined,
-                title: text.gallery,
-                // Function Name: _selectMultiplePillPhoto.onTap callback
-                // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, ImageSource.gallery)`.
-                // Parameters:
-                // - None.
-                // Returns: No callback payload; any selection is delivered through the route result.
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
-              ),
-            ],
-          ),
-        ),
-      ),
+      language: widget.userSetting.language,
     );
     if (!mounted || source == null) {
       return;
@@ -2568,50 +2502,6 @@ class _CandidateImage extends StatelessWidget {
                 },
               ),
       ),
-    );
-  }
-}
-
-// Class Name: _ImageSourceOption
-// Role: Represents a camera or gallery source choice for pill photos.
-// Responsibilities:
-// - Composes a camera or gallery source choice for pill photos using the display values and actions supplied by its parent.
-// Attributes:
-// - icon (IconData): Icon shown in normal or selected state.
-// - title (String): Heading shown for the screen, section, or item.
-// - onTap (VoidCallback): Callback executing the item's documented primary action.
-class _ImageSourceOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  // Function Name: _ImageSourceOption
-  // Description: Initializes a camera or gallery source choice for pill photos with the supplied configuration.
-  // Parameters:
-  // - icon (IconData): Icon shown in normal or selected state.
-  // - title (String): Heading shown for the screen, section, or item.
-  // - onTap (VoidCallback): Callback executing the item's documented primary action.
-  // Returns: Initialized _ImageSourceOption instance.
-  const _ImageSourceOption({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
-
-  // Function Name: build
-  // Description: Renders a camera or gallery source choice for pill photos from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a camera or gallery source choice for pill photos.
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      tileColor: MedBuddyColors.surfaceSubtle,
-      leading: Icon(icon, color: MedBuddyColors.primary),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
     );
   }
 }

@@ -928,15 +928,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                 ),
               );
             },
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: MedBuddyColors.primary,
-              ),
-              primaryColor: MedBuddyColors.primary,
-              scaffoldBackgroundColor: MedBuddyColors.pageBackground,
-              useMaterial3: true,
-              fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
-            ),
+            theme: MedBuddyTheme.light(),
             home: AuthenticationGate(
               state: authentication,
               unauthenticatedChild: AuthenticationUI(

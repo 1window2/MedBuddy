@@ -1042,7 +1042,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                               notificationSetting?.notificationEnabled == true
                               ? IconButton.styleFrom(
                                   backgroundColor: Colors.white,
-                                  foregroundColor: Colors.redAccent,
+                                  foregroundColor: MedBuddyColors.primaryDark,
                                 )
                               : null,
                           icon: Icon(
@@ -1051,7 +1051,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                                 : Icons.notifications_none_outlined,
                             color:
                                 notificationSetting?.notificationEnabled == true
-                                ? Colors.redAccent
+                                ? MedBuddyColors.primaryDark
                                 : Colors.white,
                           ),
                         ),

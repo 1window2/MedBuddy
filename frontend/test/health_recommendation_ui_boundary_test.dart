@@ -14,6 +14,7 @@ import 'package:medbuddy_frontend/entities/health_recommendation_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 클래스명: _HealthControl
 // 역할: 약 없음·오류·정상 응답을 전환하는 건강 추천 대역.
@@ -21,9 +22,15 @@ class _HealthControl extends CheckHealthRecommendation {
   bool empty = true;
   bool fail = false;
   int calls = 0;
+  HealthRecommendation response = const HealthRecommendation(
+    dietRecommendation: 'Diet advice',
+    exerciseRecommendation: 'Exercise advice',
+    cautionItems: ['Caution'],
+    medicationNames: ['Test medication'],
+  );
 
   // 함수이름: requestHealthRecommendation
-  // 함수역할: 선택한 응답 상태와 요청 횟수를 제공한다. 매개변수: language. 반환값: 추천 또는 오류.
+  // 함수역할: 원문 보존 검사를 위한 선택 응답과 요청 횟수를 제공한다. 매개변수: language. 반환값: 추천 또는 오류.
   @override
   Future<HealthRecommendation> requestHealthRecommendation({
     String language = 'ko',
@@ -31,12 +38,7 @@ class _HealthControl extends CheckHealthRecommendation {
     calls++;
     if (fail) throw StateError('Server unavailable');
     if (empty) throw NoActiveMedicationsError();
-    return const HealthRecommendation(
-      dietRecommendation: 'Diet advice',
-      exerciseRecommendation: 'Exercise advice',
-      cautionItems: ['Caution'],
-      medicationNames: ['Test medication'],
-    );
+    return response;
   }
 }
 
@@ -107,7 +109,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   // 함수이름: 직접 등록과 복귀 테스트
-  // 함수역할: 공통 메뉴 취소는 추천을 유지하고 직접 등록 후 돌아오면 추천을 갱신한다. 매개변수: tester. 반환값: 검증 완료.
+  // 함수역할: 중복 등록 진입을 막고 공통 메뉴 취소 또는 직접 등록 후 복귀하면 추천을 갱신한다. 매개변수: tester. 반환값: 검증 완료.
   testWidgets(
     'empty state opens the shared menu and refreshes after manual entry',
     (tester) async {
@@ -116,14 +118,18 @@ void main() {
       addTearDown(model.dispose);
       await _pumpScreen(tester, model);
       expect(find.text('현재 복용 중인 약이 없어요'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
+      final register = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('healthRegisterMedication')),
+      );
+      register.onPressed!();
+      register.onPressed!();
       await tester.pumpAndSettle();
       expect(find.text('처방전 분석'), findsOneWidget);
       expect(find.text('낱알약 식별'), findsOneWidget);
       expect(find.text('직접 등록'), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(control.calls, 1);
+      expect(control.calls, 2);
       expect(find.byType(HealthRecommendationUI), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
       await tester.pumpAndSettle();
@@ -135,7 +141,7 @@ void main() {
         tester.element(find.byType(ManualMedicationEntryUI)),
       ).pop(true);
       await tester.pumpAndSettle();
-      expect(control.calls, 2);
+      expect(control.calls, 3);
       expect(model.hasNoActiveHealthMedications, isFalse);
       expect(find.text('Diet advice'), findsOneWidget);
       expect(
@@ -253,6 +259,100 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
+    // 함수이름: 추천 원문·글꼴·접근성 테스트
+    // 함수역할: 원문의 문단·목록·용량·부정문과 모든 주의사항을 큰 글씨에서도 유지한다.
+    // 매개변수: tester. 반환값: 검증 완료.
+    testWidgets(
+      'full recommendation and cautions remain accessible at 2x in $language',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final dietLines = language == 'ko'
+            ? [
+                '식사 안내 원문: 처방 지시를 먼저 확인하세요.',
+                '',
+                '1. 0.5정과 1정은 다릅니다. 임의로 변경하지 마세요.',
+                '- 제한 식품은 의료진에게 확인하세요.',
+              ]
+            : [
+                'Original dietary guidance: check the prescription instructions.',
+                '',
+                '1. 0.5 tablets and 1 tablet differ. Do not change the dose.',
+                '- Confirm restricted foods with the clinician.',
+              ];
+        final exerciseLines = language == 'ko'
+            ? ['운동 안내 원문: 상태에 맞춰 활동하세요.', '', '어지러우면 중단하고 의료진에게 알리세요.']
+            : [
+                'Original exercise guidance: adapt activity to your condition.',
+                '',
+                'Stop and tell a clinician if dizzy.',
+              ];
+        final cautions = language == 'ko'
+            ? ['주의 원문 하나: 임의로 약을 중단하지 마세요.', '주의 원문 둘: 다른 약의 병용 여부를 확인하세요.']
+            : [
+                'Original caution one: do not stop medication on your own.',
+                'Original caution two: check other medications for interactions.',
+              ];
+        final control = _HealthControl()
+          ..empty = false
+          ..response = HealthRecommendation(
+            dietRecommendation: dietLines.join('\n'),
+            exerciseRecommendation: exerciseLines.join('\n'),
+            cautionItems: cautions,
+          );
+        final model = _ViewModel(control, language: language);
+        addTearDown(model.dispose);
+        await _pumpScreen(tester, model, scale: 2);
+        final header = tester.widget<MedBuddyPageHeader>(
+          find.byType(MedBuddyPageHeader),
+        );
+        expect(header.prominent, isFalse);
+        final title = tester.widget<Text>(find.text(header.title));
+        expect(title.style!.fontSize, 21);
+        expect(title.style!.fontWeight, FontWeight.w800);
+        expect(title.style!.color, Colors.white);
+        final semantics = tester.ensureSemantics();
+        try {
+          for (final line in [...dietLines, ...exerciseLines, ...cautions]) {
+            if (line.isEmpty) continue;
+            final finder = find.text(line);
+            await tester.scrollUntilVisible(
+              finder,
+              180,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.ensureVisible(finder);
+            await tester.pumpAndSettle();
+            expect(finder, findsOneWidget);
+            final body = tester.widget<Text>(finder);
+            expect(body.style!.fontSize, 16);
+            expect(
+              body.style!.fontWeight,
+              cautions.contains(line) ? FontWeight.w500 : FontWeight.w400,
+            );
+            expect(
+              tester.getSemantics(finder).label.split('\n'),
+              contains(line),
+            );
+            expect(tester.takeException(), isNull);
+          }
+          expect(
+            model.healthRecommendation!.dietRecommendation,
+            dietLines.join('\n'),
+          );
+          expect(
+            model.healthRecommendation!.exerciseRecommendation,
+            exerciseLines.join('\n'),
+          );
+          expect(model.healthRecommendation!.cautionItems, cautions);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+
     // 함수이름: 빈 상태 접근성 테스트
     // 함수역할: 작은 화면·두 배 글씨에서도 안내와 등록 버튼에 접근할 수 있다. 매개변수: tester. 반환값: 검증 완료.
     testWidgets('empty registration fits 320px at 2x in $language', (

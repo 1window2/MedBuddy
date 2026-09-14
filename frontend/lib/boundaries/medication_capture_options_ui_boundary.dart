@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import 'medication_photo_source_sheet.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -187,57 +190,16 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
 Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
   required BuildContext context,
   required UserSetting userSetting,
-}) {
-  final text = _MedicationCaptureText(userSetting.language);
-
-  return showModalBottomSheet<PrescriptionImageSource>(
+}) async {
+  final source = await showMedicationPhotoSourceOptions(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    // 함수이름: showPrescriptionImageSourceOptions.builder callback
-    // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 SizedBox을 적용해 현재 배치를 구성한다.
-    // 매개변수:
-    // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-    // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-    builder: (sheetContext) {
-      return _MedicationCaptureOptionSheet(
-        children: [
-          _MedicationCaptureOption(
-            icon: Icons.photo_camera_outlined,
-            title: text.cameraOption,
-            subtitle: text.cameraOptionSubtitle,
-            userSetting: userSetting,
-            // 함수이름: showPrescriptionImageSourceOptions.onTap callback
-            // 함수역할: `Navigator.pop(sheetContext, PrescriptionImageSource.camera)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onTap: () {
-              Navigator.pop(sheetContext, PrescriptionImageSource.camera);
-            },
-          ),
-          const SizedBox(height: 10),
-          _MedicationCaptureOption(
-            icon: Icons.photo_library_outlined,
-            title: text.galleryOption,
-            subtitle: text.galleryOptionSubtitle,
-            userSetting: userSetting,
-            // 함수이름: showPrescriptionImageSourceOptions.onTap callback
-            // 함수역할: `Navigator.pop(sheetContext, PrescriptionImageSource.gallery)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onTap: () {
-              Navigator.pop(sheetContext, PrescriptionImageSource.gallery);
-            },
-          ),
-        ],
-      );
-    },
+    language: userSetting.language,
   );
+  return switch (source) {
+    ImageSource.camera => PrescriptionImageSource.camera,
+    ImageSource.gallery => PrescriptionImageSource.gallery,
+    null => null,
+  };
 }
 
 // 클래스명: _MedicationCaptureOptionSheet

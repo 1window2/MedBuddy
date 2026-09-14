@@ -416,6 +416,35 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get title => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
+
+  // 함수역할: 복약함 제목 아래 표시할 간단한 설명을 반환한다. 매개변수: 없음.
+  String get subtitle =>
+      isEnglish ? 'View saved medication.' : '약과 복용 기록을 확인합니다.';
+
+  // 함수이름: selectionTitle
+  // 함수역할: 삭제 선택의 제목을 제공한다. 매개변수: 없음. 반환값: 번역된 제목.
+  String get selectionTitle => isEnglish ? 'Select medication' : '복약 선택';
+
+  // 함수이름: cancelSelection
+  // 함수역할: 닫기 버튼의 선택 취소 의미를 알린다. 매개변수: 없음. 반환값: 도구 설명.
+  String get cancelSelection => isEnglish ? 'Cancel selection' : '선택 취소';
+
+  // 함수이름: selectAll
+  // 함수역할: 전체 선택 체크박스의 이름을 제공한다. 매개변수: 없음. 반환값: 번역 문구.
+  String get selectAll => isEnglish ? 'Select all' : '전체 선택';
+
+  // 함수이름: showAll
+  // 함수역할: 빈 필터 결과의 복구 동작을 제공한다. 매개변수: 없음. 반환값: 버튼 문구.
+  String get showAll => isEnglish ? 'View all' : '전체 보기';
+
+  // 함수이름: registerMedication
+  // 함수역할: 등록·식별 진입을 함께 표현한다. 매개변수: 없음. 반환값: 버튼 문구.
+  String get registerMedication =>
+      isEnglish ? 'Add or identify medication' : '약 등록·식별';
+
+  // 함수이름: deleting
+  // 함수역할: 삭제 요청 중임을 알린다. 매개변수: 없음. 반환값: 진행 문구.
+  String get deleting => isEnglish ? 'Deleting...' : '삭제 중...';
   // 함수이름: close
   // 함수역할: 현재 언어와 입력값에 맞춰 "Close" 문구를 제공한다.
   // 매개변수:
@@ -625,12 +654,12 @@ class _SavedMedicationText {
   String get noSelection =>
       isEnglish ? 'Select medication to delete.' : '삭제할 약을 선택해주세요.';
   // 함수이름: selectedCount
-  // 함수역할: 현재 언어와 입력값에 맞춰 "$count개 선택됨" 문구를 제공한다.
+  // 함수역할: 현재 언어로 보이는 약의 선택 개수를 제공한다.
   // 매개변수:
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String selectedCount(int count) =>
-      isEnglish ? '$count selected' : '$count개 선택됨';
+      isEnglish ? '$count selected' : '$count개 선택';
   // 함수이름: deleted
   // 함수역할: 현재 언어와 입력값에 맞춰 "삭제되었습니다." 문구를 제공한다.
   // 매개변수:

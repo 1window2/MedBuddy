@@ -547,9 +547,15 @@ end
 
 == 6. 환자 복약 알림 설정 ==
 
-Patient -> UI : 홈 빠른 기능의 복약 알림 설정\n또는 시간대 알림 아이콘 선택
-UI --> Patient : MedicationReminderSettingsUI 또는\nSetNotificationUI 출력
-Patient -> UI : 알림 시간 선택 및 저장
+Patient -> UI : 환경설정의 복약 알림 설정\n또는 시간대 알림 아이콘 선택
+UI --> Patient : 현재 활성 상태와 알림 시간 출력
+note right of UI
+  일정 알림 아이콘은 활성 상태와 무관하게 설정창을 연다.
+  시각 편집은 SetNotificationUI로 연결한다.
+  저장 전에는 초안만 바꾸며 취소 또는 변경 없는 저장은 요청하지 않는다.
+end note
+Patient -> UI : 알림 사용 여부와 시간 편집 후 저장
+alt 알림 사용 상태로 저장
 UI -> ViewModel : requestMedicationReminderSave()
 ViewModel -> FrontControl : SetNotification.saveNotificationSetting()
 FrontControl -> ApiClient : PUT /notification/settings/{slotKey}
@@ -565,6 +571,14 @@ FrontService -> LocalNotification : 복약 Local Notification 예약
 LocalNotification --> FrontService : 예약 완료
 FrontService --> ViewModel : 알림 등록 완료
 ViewModel --> UI : 알림 활성 상태 출력
+else 일정 설정창에서 알림 사용을 끄고 저장
+    UI -> ViewModel : requestMedicationReminderCancel()
+    ViewModel -> FrontControl : SetNotification.disableAlarmSetting()
+    FrontControl --> ViewModel : 비활성화된 MedicationAlarm
+    ViewModel -> FrontService : 해당 시간대의 로컬 알림 취소
+    FrontService -> LocalNotification : 예약 취소
+    ViewModel --> UI : 알림 해제 결과 출력
+end
 
 loop Android Workmanager 12시간 주기
     Workmanager -> FrontService : medication reminder refresh

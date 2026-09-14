@@ -17,6 +17,7 @@ import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_realtime_service.dart';
 import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_page_header.dart';
 
 // 클래스명: LinkedChatUI
 // 역할: 연동 사용자 메시지와 복약 관련 첨부를 담당한다.
@@ -1341,100 +1342,86 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
-      appBar: AppBar(
-        backgroundColor: MedBuddyColors.primary,
-        foregroundColor: Colors.white,
-        titleSpacing: 0,
-        leading: _isSelectingMessages
-            ? IconButton(
-                tooltip: _text.cancel,
-                icon: const Icon(Icons.close),
-                onPressed: _isDeletingMessages
-                    ? null
-                    // 함수이름: build.setState callback
-                    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSelectingMessages = false`로 갱신한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() {_isSelectingMessages = false; _selectedMessageIds.clear();})`을 실행한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => setState(() {
-                        _isSelectingMessages = false;
-                        _selectedMessageIds.clear();
-                      }),
-              )
-            : null,
-        actions: [
-          IconButton(
-            key: const ValueKey('deleteChatMessages'),
-            tooltip: _text.deleteMessages,
-            onPressed:
-                _isLoading ||
-                    _isSending ||
-                    _isDeletingMessages ||
-                    (_isSelectingMessages
-                        ? _selectedMessageIds.isEmpty
-                        : _messages.isEmpty)
-                ? null
-                // 함수이름: build.onPressed callback
-                // 함수역할: 선택 메시지의 전체 삭제 가능 여부를 확인하고 확정한 개인·공유 범위로 삭제하며 실패 시 선택을 유지한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                : () {
-                    if (_isSelectingMessages) {
-                      unawaited(_confirmMessageDeletion());
-                    } else {
-                      // 함수이름: build.setState callback
-                      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSelectingMessages = true`로 갱신한다.
-                      // 매개변수:
-                      // - 없음.
-                      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                      setState(() => _isSelectingMessages = true);
-                    }
-                  },
-            icon: _isDeletingMessages
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.delete_outline),
-          ),
-        ],
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _isSelectingMessages
-                  ? _text.selectedCount(_selectedMessageIds.length)
-                  : _peerName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0,
-              ),
-            ),
-            Text(
-              _connectionLabel,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.82),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-              ),
-            ),
-          ],
-        ),
-      ),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
+            MedBuddyPageHeader(
+              onBackRequested: _isSelectingMessages
+                  ? null
+                  : () => Navigator.maybePop(context),
+              leading: _isSelectingMessages
+                  ? IconButton(
+                      tooltip: _text.cancel,
+                      icon: const Icon(Icons.close),
+                      onPressed: _isDeletingMessages
+                          ? null
+                          // 함수이름: build.setState callback
+                          // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSelectingMessages = false`로 갱신한다.
+                          // 매개변수:
+                          // - 없음.
+                          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                          // 함수이름: build.onPressed callback
+                          // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() {_isSelectingMessages = false; _selectedMessageIds.clear();})`을 실행한다.
+                          // 매개변수:
+                          // - 없음.
+                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                          : () => setState(() {
+                              _isSelectingMessages = false;
+                              _selectedMessageIds.clear();
+                            }),
+                    )
+                  : null,
+              actions: [
+                IconButton(
+                  key: const ValueKey('deleteChatMessages'),
+                  tooltip: _text.deleteMessages,
+                  onPressed:
+                      _isLoading ||
+                          _isSending ||
+                          _isDeletingMessages ||
+                          (_isSelectingMessages
+                              ? _selectedMessageIds.isEmpty
+                              : _messages.isEmpty)
+                      ? null
+                      // 함수이름: build.onPressed callback
+                      // 함수역할: 선택 메시지의 전체 삭제 가능 여부를 확인하고 확정한 개인·공유 범위로 삭제하며 실패 시 선택을 유지한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      : () {
+                          if (_isSelectingMessages) {
+                            unawaited(_confirmMessageDeletion());
+                          } else {
+                            // 함수이름: build.setState callback
+                            // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSelectingMessages = true`로 갱신한다.
+                            // 매개변수:
+                            // - 없음.
+                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                            setState(() => _isSelectingMessages = true);
+                          }
+                        },
+                  icon: _isDeletingMessages
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.delete_outline),
+                ),
+              ],
+              title: _isSelectingMessages
+                  ? _text.selectedCount(_selectedMessageIds.length)
+                  : _peerName,
+              subtitle: _connectionLabel,
+              // 작은 화면·키보드 표시 중에는 이름을 한 줄로 줄여 메시지 영역을 확보한다.
+              titleMaxLines:
+                  MediaQuery.sizeOf(context).height -
+                          MediaQuery.viewInsetsOf(context).bottom <
+                      700
+                  ? 1
+                  : 2,
+              subtitleMaxLines: 1,
+            ),
             if (_showMedicationContextGuide)
               Container(
                 width: double.infinity,

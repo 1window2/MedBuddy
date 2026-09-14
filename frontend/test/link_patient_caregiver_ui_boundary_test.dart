@@ -230,6 +230,16 @@ void main() {
     hiddenLinkControl.linkRequests.single.complete(const [link]);
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    // 기본 목록은 일상 동작만 표시하고, 식별자와 연동 해제는 펼쳤을 때 노출한다.
+    expect(find.text('patient-a'), findsNothing);
+    expect(find.text('연동 해제'), findsNothing);
+    await tester.tap(find.text('연동 관리'));
+    await tester.pumpAndSettle();
+    expect(find.text('patient-a'), findsOneWidget);
+    expect(find.text('연동 해제'), findsOneWidget);
+    await tester.tap(find.text('연동 관리'));
+    await tester.pumpAndSettle();
+    expect(find.text('patient-a'), findsNothing);
 
     final disabledLinkControl = _FakeLinkPatientCaregiver('caregiver-a');
     await tester.pumpWidget(
@@ -352,6 +362,8 @@ void main() {
     control.linkRequests.single.complete(const [link]);
     await tester.pump();
 
+    await tester.tap(find.text('연동 관리'));
+    await tester.pumpAndSettle();
     final generateButton = find.byType(OutlinedButton).first;
     expect(tester.widget<OutlinedButton>(generateButton).onPressed, isNotNull);
     await tester.tap(generateButton);
@@ -378,7 +390,7 @@ void main() {
     expect(
       tester
           .widget<IconButton>(
-            find.widgetWithIcon(IconButton, Icons.close).first,
+            find.widgetWithIcon(IconButton, Icons.arrow_back).first,
           )
           .onPressed,
       isNotNull,
@@ -480,6 +492,8 @@ void main() {
       ),
     ]);
     await tester.pump();
+    await tester.tap(find.text('연동 관리'));
+    await tester.pumpAndSettle();
     expect(find.text('patient-current'), findsOneWidget);
 
     oldControl.linkRequests.single.complete(const [

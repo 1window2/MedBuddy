@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/services.dart';
 
 import '../controls/link_patient_caregiver_control.dart';
@@ -178,17 +179,32 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         mediaQuery.size.height < 700 || textScale > 1.3;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
-        child: usesScrollableLayout
-            ? SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-                child: _buildLinkContent(usesScrollableList: true),
-              )
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(42, 24, 42, 28),
-                child: _buildLinkContent(usesScrollableList: false),
-              ),
+        top: false,
+        child: Column(
+          children: [
+            MedBuddyPageHeader(
+              title: _text.screenTitle,
+              subtitle: _text.isEnglish
+                  ? 'Link patient and caregiver accounts.'
+                  : '환자와 보호자 계정을 연결합니다.',
+              backTooltip: _text.close,
+              onBackRequested: () => Navigator.pop(context),
+            ),
+            Expanded(
+              child: usesScrollableLayout
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                      child: _buildLinkContent(usesScrollableList: true),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                      child: _buildLinkContent(usesScrollableList: false),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -225,34 +241,6 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        IconButton(
-          tooltip: text.close,
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 42, height: 42),
-          // Function Name: _buildLinkContent.onPressed callback
-          // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
-          // Parameters:
-          // - None.
-          // Returns: No callback payload; any selection is delivered through the route result.
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.close,
-            color: MedBuddyColors.textMuted,
-            size: 30,
-          ),
-        ),
-        SizedBox(height: usesScrollableList ? 20 : 30),
-        Text(
-          text.screenTitle,
-          style: const TextStyle(
-            color: Color(0xFF0A0A0A),
-            fontSize: 27,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0,
-          ),
-        ),
-        SizedBox(height: usesScrollableList ? 18 : 26),
         _StatusCard(statusMessage: _statusMessage, isLoading: _isLoading),
         SizedBox(height: usesScrollableList ? 18 : 24),
         if (usesScrollableList) linkList else Expanded(child: linkList),
@@ -1950,9 +1938,7 @@ class _LinkedUserTile extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  patientLabel ?? text.linkInformation,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  _peerLabel,
                   style: const TextStyle(
                     color: Color(0xFF0A0A0A),
                     fontSize: 18,
@@ -2009,29 +1995,49 @@ class _LinkedUserTile extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
-          _LinkedIdentityField(
-            label: text.patientHash,
-            value: _displayHash(link.patientHash, text.noInformation),
-          ),
-          const SizedBox(height: 10),
-          _LinkedIdentityField(
-            label: text.caregiverHash,
-            value: _displayHash(link.caregiverHash, text.noInformation),
-          ),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: onUnlinkRequested,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFFB2C36),
-              minimumSize: const Size.fromHeight(48),
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
+          ExpansionTile(
+            key: PageStorageKey(
+              'link-management-$currentUserHash-${link.linkId}',
+            ),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 4),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: Text(
+              text.linkManagement,
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
             ),
-            child: Text(text.delete),
+            children: [
+              _LinkedIdentityField(
+                label: text.patientHash,
+                value: _displayHash(link.patientHash, text.noInformation),
+              ),
+              const SizedBox(height: 10),
+              _LinkedIdentityField(
+                label: text.caregiverHash,
+                value: _displayHash(link.caregiverHash, text.noInformation),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: onUnlinkRequested,
+                style: TextButton.styleFrom(
+                  foregroundColor: MedBuddyColors.danger,
+                  minimumSize: const Size.fromHeight(48),
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                child: Text(text.delete),
+              ),
+            ],
           ),
         ],
       ),
@@ -2047,6 +2053,19 @@ class _LinkedUserTile extends StatelessWidget {
     return link.linkStatus &&
         link.caregiverHash == currentUserHash &&
         link.patientHash.trim().isNotEmpty;
+  }
+
+  // 별칭이 있으면 우선 표시하고, 없으면 관계와 짧은 식별자로 상대를 구분한다.
+  // 매개변수: 없음. 반환값: 상세 식별자를 펼치지 않아도 구분 가능한 상대 표시명.
+  String get _peerLabel {
+    final isCaregiver = link.caregiverHash == currentUserHash;
+    if (isCaregiver && patientLabel?.trim().isNotEmpty == true) {
+      return patientLabel!.trim();
+    }
+    final hash = (isCaregiver ? link.patientHash : link.caregiverHash).trim();
+    final suffix = hash.length > 4 ? hash.substring(hash.length - 4) : hash;
+    final role = isCaregiver ? text.patientPeer : text.caregiverPeer;
+    return suffix.isEmpty ? role : '$role ${suffix.toUpperCase()}';
   }
 }
 
@@ -2078,12 +2097,7 @@ class _LinkedIdentityField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2099,6 +2113,8 @@ class _LinkedIdentityField extends StatelessWidget {
           const SizedBox(height: 6),
           SelectableText(
             value,
+            // 펼침 상태와 텍스트 내부 스크롤 위치가 같은 저장 키를 공유하지 않도록 분리한다.
+            key: PageStorageKey('link-identity-$label-$value'),
             style: const TextStyle(
               color: Color(0xFF0A0A0A),
               fontSize: 15,
@@ -2463,7 +2479,10 @@ class _LinkPatientCaregiverText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get delete => isEnglish ? 'Remove link' : '삭제하기';
+  String get delete => isEnglish ? 'Remove link' : '연동 해제';
+
+  // 추가 입력 없이 현재 언어의 상세 연동 관리 제목을 반환한다.
+  String get linkManagement => isEnglish ? 'Manage link' : '연동 관리';
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.
   // 매개변수:

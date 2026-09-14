@@ -1,17 +1,20 @@
-// File Name: check_schedule_ui_boundary_test.dart
-// Role: Regression coverage for schedule loading, retry, reminder feedback, and whole-slot completion
-//   UI.
+// 파일명: check_schedule_ui_boundary_test.dart
+// 역할: 일정 조회·알림 설정의 저장과 취소·기존 화면 배치·복약 완료를 검증한다.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/entities/health_recommendation_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -262,17 +265,24 @@ class _EnabledSetNotification extends SetNotification {
   }
 }
 
-// Class Name: _MutableSetNotification
-// Role: Mutable alarm fixture for verifying successful enable/disable feedback in the schedule UI.
-// Responsibilities:
-// - Accept reminder registration without creating a real device notification.
+// 클래스명: _MutableSetNotification
+// 역할: 알림 상태와 저장·해제 요청 횟수를 추적한다.
+// 주요 책임: 플랫폼 알림 없이 설정창 취소·저장에 따른 변경을 검증한다.
+// 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수.
 class _MutableSetNotification extends SetNotification {
-  MedicationAlarm _setting = const MedicationAlarm(
-    slotKey: 'morning',
-    hour: 8,
-    minute: 0,
-    enabled: false,
-  );
+  MedicationAlarm _setting;
+  int saveCount = 0;
+  int disableCount = 0;
+
+  // 함수이름: _MutableSetNotification
+  // 함수역할: enabled로 초기 활성 상태를 지정한다. 반환값: 변경 추적 가능한 알림 대역.
+  _MutableSetNotification({bool enabled = false})
+    : _setting = MedicationAlarm(
+        slotKey: 'morning',
+        hour: 8,
+        minute: 0,
+        enabled: enabled,
+      );
 
   // 함수이름: requestMedicationAlarm
   // 함수역할:
@@ -299,6 +309,7 @@ class _MutableSetNotification extends SetNotification {
     required int hour,
     required int minute,
   }) async {
+    saveCount += 1;
     _setting = MedicationAlarm(
       slotKey: slotKey,
       hour: hour,
@@ -317,6 +328,7 @@ class _MutableSetNotification extends SetNotification {
   // - 비활성으로 바뀐 현재 알림 설정.
   @override
   Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
+    disableCount += 1;
     _setting = _setting.copyWith(enabled: false);
     return _setting;
   }
@@ -746,14 +758,77 @@ class _FailingNotificationService implements NotificationService {
   }) async {}
 }
 
-// Function Name: main
-// Description:
-// - Register regression cases for schedule loading, retry, reminder feedback, and whole-slot
-//   completion UI.
-// Parameters:
-// - None.
-// Returns:
-// - No value; the test framework executes the registered cases.
+// 클래스명: _ScheduleHealthRecommendation
+// 역할: 일정에서 건강 추천으로 이동할 때 서버 없이 정상 결과를 제공한다.
+// 주요 책임: 실제 추천 화면의 경로와 복귀를 검증할 데이터를 반환한다.
+class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
+  // 함수이름: requestHealthRecommendation
+  // 함수역할: language와 무관한 고정 추천을 반환한다. 반환값: 정상 건강 추천 Future.
+  @override
+  Future<HealthRecommendation> requestHealthRecommendation({
+    String language = 'ko',
+  }) async {
+    return const HealthRecommendation(
+      dietRecommendation: '식사 추천',
+      exerciseRecommendation: '운동 추천',
+      cautionItems: [],
+      medicationNames: ['테스트정'],
+    );
+  }
+}
+
+// 함수이름: _pumpReminderSchedule
+// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. 반환값: 생성한 화면 모델.
+Future<MedBuddyViewModel> _pumpReminderSchedule(
+  WidgetTester tester,
+  _MutableSetNotification notification, {
+  double textScale = 1,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final viewModel = MedBuddyViewModel(
+    checkSchedule: _ActiveCheckSchedule(),
+    setNotification: notification,
+    notificationService: _SuccessfulNotificationService(),
+  );
+  addTearDown(viewModel.dispose);
+  await tester.pumpWidget(
+    ChangeNotifierProvider<MedBuddyViewModel>.value(
+      value: viewModel,
+      child: MaterialApp(
+        // 함수역할: context의 child에 요청한 글씨 배율을 적용한다. 반환값: 접근성 설정을 가진 화면 트리.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const CheckScheduleUI(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return viewModel;
+}
+
+// 함수이름: _editReminderHour
+// 함수역할: tester로 설정창의 시간을 hour로 수정하고 시간창만 확정한다. 반환값: 조작 완료 Future.
+Future<void> _editReminderHour(WidgetTester tester, String hour) async {
+  await tester.tap(find.byKey(const Key('schedule-reminder-edit-time')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('notification-hour-direct-input')));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const Key('notification-direct-time-field')),
+    hour,
+  );
+  await tester.tap(find.byKey(const Key('notification-direct-time-confirm')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('notification-time-confirm')));
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: main
+// 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
   // Function Name: testWidgets callback
   // Description:
@@ -792,7 +867,7 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 정상 응답이 빈 일정인 경우 오류 재시도 대신 일정 없음 상태를 표시하는지 검증한다.
+  // - 빈 일정에서 기존 안내 카드를 표시하고 오류 안내와 구분하는지 검증한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
@@ -816,6 +891,12 @@ void main() {
 
     expect(find.byKey(const Key('schedule-load-error')), findsNothing);
     expect(find.text('오늘 복용할 약이 없습니다'), findsOneWidget);
+    expect(find.byKey(const Key('schedule-register-medication')), findsNothing);
+    expect(
+      find.byKey(const Key('schedule-health-recommendation')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   // 함수이름: testWidgets 콜백
@@ -917,7 +998,7 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 알림 설정과 해제 완료 결과를 화면 하단에 안내한다.
+  // - 켜진 알림과 꺼진 알림 모두 같은 설정창에서 스위치 변경을 저장해야 반영한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
@@ -942,15 +1023,388 @@ void main() {
     final morningReminder = find.byTooltip('아침 알림 설정');
     await tester.tap(morningReminder);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('notification-time-confirm')));
-    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      find.byKey(const Key('schedule-reminder-configuration')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('notification-time-confirm')), findsNothing);
+    expect(viewModel.medicationReminderSettings['morning']!.isEnabled, isFalse);
+    await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+    await tester.pumpAndSettle();
+    expect(viewModel.medicationReminderSettings['morning']!.isEnabled, isFalse);
+    await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+    await tester.pumpAndSettle();
 
     expect(viewModel.statusMessage, '아침 알림이 08:00으로 설정되었습니다.');
     expect(find.text(viewModel.statusMessage), findsOneWidget);
 
     await tester.tap(morningReminder);
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('schedule-reminder-configuration')),
+      findsOneWidget,
+    );
+    expect(viewModel.medicationReminderSettings['morning']!.isEnabled, isTrue);
+    expect(find.text('아침 알림이 해제되었습니다.'), findsNothing);
+    expect(
+      tester
+          .widget<Icon>(find.byIcon(Icons.notifications_active_outlined))
+          .color,
+      const Color(0xFFFF1744),
+    );
+    await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+    await tester.pumpAndSettle();
+    expect(viewModel.medicationReminderSettings['morning']!.isEnabled, isTrue);
+    await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+    await tester.pumpAndSettle();
+    expect(viewModel.medicationReminderSettings['morning']!.isEnabled, isFalse);
     expect(find.text('아침 알림이 해제되었습니다.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final enabled in [false, true]) {
+    // 함수이름: 알림 종 접근성 테스트
+    // 함수역할: tester로 활성 여부에 따른 종의 이름과 상태가 중복 없이 전달되는지 검증한다. 반환값: 검증 완료.
+    testWidgets(
+      'reminder accessibility includes name and value for enabled=$enabled',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          await _pumpReminderSchedule(
+            tester,
+            _MutableSetNotification(enabled: enabled),
+          );
+          final reminder = find.byTooltip('아침 알림 설정');
+          expect(tester.widget<Tooltip>(reminder).excludeFromSemantics, isTrue);
+          final node = tester.getSemantics(
+            find
+                .descendant(of: reminder, matching: find.byType(Semantics))
+                .first,
+          );
+          expect(node.label, '아침 알림 설정');
+          expect(node.value, enabled ? '켜짐' : '꺼짐');
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+
+    for (final dismissal in ['cancel', 'back', 'barrier']) {
+      // 함수이름: 알림 설정 닫기 테스트
+      // 함수역할: enabled 상태에서 tester로 스위치를 바꾼 뒤 dismissal로 닫으면 저장·해제가 없는지 검증한다. 반환값: 검증 완료.
+      testWidgets(
+        'reminder $dismissal discards an unsaved switch change from enabled=$enabled',
+        (tester) async {
+          final notification = _MutableSetNotification(enabled: enabled);
+          final model = await _pumpReminderSchedule(tester, notification);
+          await tester.tap(find.byTooltip('아침 알림 설정'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+          await tester.pumpAndSettle();
+          expect(notification.disableCount, 0);
+          expect(notification.saveCount, 0);
+          if (dismissal == 'cancel') {
+            await tester.tap(find.byKey(const Key('schedule-reminder-cancel')));
+          } else if (dismissal == 'back') {
+            await tester.binding.handlePopRoute();
+          } else {
+            await tester.tapAt(const Offset(8, 8));
+          }
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('schedule-reminder-configuration')),
+            findsNothing,
+          );
+          expect(
+            model.medicationReminderSettings['morning']!.isEnabled,
+            enabled,
+          );
+          expect(notification.disableCount, 0);
+          expect(notification.saveCount, 0);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  // 함수이름: 알림 시각 초안 테스트
+  // 함수역할: tester로 시각을 확정해도 바깥 창 저장 전에는 변경이 없으며 취소하면 초안이 사라지는지 검증한다. 반환값: 검증 완료.
+  testWidgets('reminder time changes persist only after configuration save', (
+    tester,
+  ) async {
+    final notification = _MutableSetNotification(enabled: true);
+    final model = await _pumpReminderSchedule(tester, notification);
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    await _editReminderHour(tester, '9');
+    expect(find.text('알림 시간 09:00'), findsOneWidget);
+    expect(notification.saveCount, 0);
+    expect(model.medicationReminderSettings['morning']!.hour, 8);
+    await tester.tap(find.byKey(const Key('schedule-reminder-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    expect(find.text('알림 시간 08:00'), findsOneWidget);
+    await _editReminderHour(tester, '10');
+    await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+    await tester.pumpAndSettle();
+    expect(notification.saveCount, 1);
+    expect(notification.disableCount, 0);
+    expect(model.medicationReminderSettings['morning']!.hour, 10);
+    expect(model.medicationReminderSettings['morning']!.isEnabled, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 시간 선택 취소 테스트
+  // 함수역할: tester로 중첩 시간창을 취소하고 설정을 그대로 저장하면 영속화 요청이 없는지 검증한다. 반환값: 검증 완료.
+  testWidgets(
+    'cancelled time picker and unchanged save leave the reminder intact',
+    (tester) async {
+      final notification = _MutableSetNotification(enabled: true);
+      await _pumpReminderSchedule(tester, notification);
+      await tester.tap(find.byTooltip('아침 알림 설정'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('schedule-reminder-edit-time')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('notification-time-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('알림 시간 08:00'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+      await tester.pumpAndSettle();
+      expect(notification.saveCount, 0);
+      expect(notification.disableCount, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: 꺼진 알림 설정 테스트
+  // 함수역할: tester로 꺼진 알림의 동일 설정창에서 활성화·시간 초안을 취소하거나 저장하는 결과를 검증한다. 반환값: 검증 완료.
+  testWidgets(
+    'disabled reminder shares configuration and only saves confirmed drafts',
+    (tester) async {
+      final notification = _MutableSetNotification();
+      final model = await _pumpReminderSchedule(tester, notification);
+      await tester.tap(find.byTooltip('아침 알림 설정'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('schedule-reminder-configuration')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('notification-time-confirm')), findsNothing);
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const Key('schedule-reminder-enabled')),
+            )
+            .value,
+        isFalse,
+      );
+      await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+      await tester.pumpAndSettle();
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+      expect(notification.saveCount, 0);
+      expect(notification.disableCount, 0);
+
+      await tester.tap(find.byTooltip('아침 알림 설정'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+      await tester.pumpAndSettle();
+      await _editReminderHour(tester, '9');
+      expect(find.text('알림 시간 09:00'), findsOneWidget);
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+      expect(notification.saveCount, 0);
+      await tester.tap(find.byKey(const Key('schedule-reminder-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('아침 알림 설정'));
+      await tester.pumpAndSettle();
+      expect(find.text('알림 시간 08:00'), findsOneWidget);
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const Key('schedule-reminder-enabled')),
+            )
+            .value,
+        isFalse,
+      );
+      await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+      await tester.pumpAndSettle();
+      await _editReminderHour(tester, '10');
+      await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+      await tester.pumpAndSettle();
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isTrue);
+      expect(model.medicationReminderSettings['morning']!.hour, 10);
+      expect(notification.saveCount, 1);
+      expect(notification.disableCount, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: 알림 설정 큰 글씨 테스트
+  // 함수역할: tester의 작은 화면·2배 글씨에서 설정과 저장 명령이 스크롤로 접근 가능한지 검증한다. 반환값: 검증 완료.
+  testWidgets(
+    'reminder configuration supports a compact viewport and large text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final notification = _MutableSetNotification(enabled: true);
+      final model = await _pumpReminderSchedule(
+        tester,
+        notification,
+        textScale: 2,
+      );
+      final reminder = find.byTooltip('아침 알림 설정');
+      await tester.ensureVisible(reminder);
+      await tester.pumpAndSettle();
+      expect(reminder.hitTestable(), findsOneWidget);
+      await tester.tap(reminder);
+      await tester.pumpAndSettle();
+      final enableSwitch = find.byKey(const Key('schedule-reminder-enabled'));
+      await tester.ensureVisible(enableSwitch);
+      await tester.pumpAndSettle();
+      await tester.tap(enableSwitch);
+      await tester.pumpAndSettle();
+      final save = find.byKey(const Key('schedule-reminder-save'));
+      await tester.ensureVisible(save);
+      await tester.pumpAndSettle();
+      expect(save.hitTestable(), findsOneWidget);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+      expect(notification.disableCount, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final showBackButton in [false, true]) {
+    // 함수이름: 기존 헤더와 큰 글씨 테스트
+    // 함수역할: tester의 작은 화면·2배 글씨에서 기존 초록 헤더와 진행률·뒤로가기가 유지되는지 검증한다. 반환값: 검증 완료.
+    testWidgets(
+      'original green schedule header supports large text with back=$showBackButton',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final model = MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: _EmptySetNotification(),
+        );
+        addTearDown(model.dispose);
+        await tester.pumpWidget(
+          ChangeNotifierProvider<MedBuddyViewModel>.value(
+            value: model,
+            child: MaterialApp(
+              // 함수역할: context의 child에 2배 글씨를 적용한다. 반환값: 확대된 화면 트리.
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(2)),
+                child: child!,
+              ),
+              home: CheckScheduleUI(showBackButton: showBackButton),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(MedBuddyPageHeader), findsNothing);
+        expect(
+          find.byTooltip('뒤로가기'),
+          showBackButton ? findsOneWidget : findsNothing,
+        );
+        final title = tester.widget<Text>(find.text('오늘의 복약 일정'));
+        expect(title.style!.fontSize, 21);
+        expect(title.style!.color, Colors.white);
+        expect(title.strutStyle, MedBuddyPageHeader.titleStrutStyle);
+        expect(tester.getTopLeft(find.text('오늘의 복약 일정')).dy, 12);
+        expect(
+          find.ancestor(
+            of: find.text('오늘의 복약 일정'),
+            matching: find.byWidgetPredicate(
+              // 초록색 배경과 하단 라운드가 적용된 기존 헤더 컨테이너를 찾는다.
+              (widget) =>
+                  widget is Container &&
+                  widget.decoration is BoxDecoration &&
+                  (widget.decoration! as BoxDecoration).gradient
+                      is LinearGradient &&
+                  (widget.decoration! as BoxDecoration).borderRadius ==
+                      const BorderRadius.vertical(bottom: Radius.circular(28)),
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        expect(find.byKey(const Key('schedule-progress-band')), findsNothing);
+        expect(find.text('오늘 복용할 약이 없습니다'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  // 함수이름: 첨부 선택 모드 테스트
+  // 함수역할: tester에 빈 선택 목록을 표시해 등록 CTA 없이 보조 헤더만 나오는지 검증한다. 반환값: 검증 완료.
+  testWidgets(
+    'empty attachment selection is not the registration empty state',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: CheckScheduleUI.selection(schedules: [], language: 'ko'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final header = tester.widget<MedBuddyPageHeader>(
+        find.byType(MedBuddyPageHeader),
+      );
+      expect(header.prominent, isFalse);
+      expect(header.onBackRequested, isNotNull);
+      expect(find.text('대화할 약 선택'), findsOneWidget);
+      expect(
+        find.byKey(const Key('schedule-register-medication')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('schedule-progress-band')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: 고정 건강 추천 테스트
+  // 함수역할: tester로 하단에 고정된 추천 버튼의 위치와 화면 이동을 검증한다. 반환값: 검증 완료.
+  testWidgets('health recommendation stays fixed below the schedule list', (
+    tester,
+  ) async {
+    final model = MedBuddyViewModel(
+      checkSchedule: _ActiveCheckSchedule(),
+      setNotification: _EmptySetNotification(),
+      checkHealthRecommendation: _ScheduleHealthRecommendation(),
+    );
+    addTearDown(model.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: const MaterialApp(home: CheckScheduleUI()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final recommendation = find.byKey(
+      const Key('schedule-health-recommendation'),
+    );
+    final initialPosition = tester.getTopLeft(recommendation);
+    expect(recommendation.hitTestable(), findsOneWidget);
+    expect(
+      find.ancestor(of: recommendation, matching: find.byType(ListView)),
+      findsNothing,
+    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -350));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(recommendation), initialPosition);
+    await tester.tap(recommendation);
+    await tester.pumpAndSettle();
+    expect(find.byType(HealthRecommendationUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckScheduleUI), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

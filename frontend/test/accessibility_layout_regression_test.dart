@@ -806,15 +806,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // Function Name: testWidgets callback
-    // Description:
-    // - Verify that medication details display noun-phrase summaries while retaining the original TTS
-    //   text.
-    // Parameters:
-    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-    // Returns:
-    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+    // 함수이름: 복용 요약 중복·원문 보존 테스트
+    // 함수역할: 복용 요약은 한 번만 표시하고 상세 복용법과 음성 원문은 유지한다.
+    // 매개변수: tester. 반환값: 검증 완료.
     testWidgets('약 상세정보는 명사형 요약을 표시하고 TTS 원문은 보존한다', (tester) async {
+      await _setViewport(tester, const Size(390, 3000));
       const medicationDetail = MedicationDetail(
         itemName: '테스트정',
         efficacy: '이 약은 다발성 관절염, 류마티스 관절염, 통증 및 발열을 수반하는 감염증에 사용합니다.',
@@ -838,16 +834,68 @@ void main() {
       expect(find.text('다발성 관절염'), findsOneWidget);
       expect(find.text('류마티스 관절염'), findsOneWidget);
       expect(find.text('통증 및 발열을 수반하는 감염증'), findsOneWidget);
-      expect(find.text('1회 복용량 · 1정'), findsWidgets);
-      expect(find.text('복용 횟수 · 1일 1회'), findsWidgets);
-      expect(find.text('복용 기간 · 7일'), findsWidgets);
-      expect(find.text(medicationDetail.usageMethod), findsNothing);
+      expect(find.text('1회 복용량 · 1정'), findsOneWidget);
+      expect(find.text('복용 횟수 · 1일 1회'), findsOneWidget);
+      expect(find.text('복용 기간 · 7일'), findsOneWidget);
+      expect(find.text('복용 시점 · 식후'), findsOneWidget);
+      expect(find.text('등록된 복용 정보'), findsOneWidget);
+      expect(find.text(medicationDetail.usageMethod), findsOneWidget);
+      expect(find.text(medicationDetail.warning), findsOneWidget);
       expect(
         medicationDetail.voiceGuideText,
         contains(medicationDetail.usageMethod),
       );
       expect(tester.takeException(), isNull);
     });
+
+    for (final language in ['ko', 'en']) {
+      // 함수이름: 상세 복용법·위험 정보 접근성 테스트
+      // 함수역할: 원문의 의사·제품 안내와 서로 다른 모든 위험 정보를 작은 화면에서 보존한다.
+      // 매개변수: tester. 반환값: 검증 완료.
+      testWidgets('약 상세정보의 모든 안전 정보는 2배 글씨에서도 접근된다 $language', (tester) async {
+        await _setViewport(tester, const Size(320, 568));
+        const medicationDetail = MedicationDetail(
+          itemName: '안전 정보 테스트정',
+          efficacy: '테스트 효능',
+          usageMethod: '의사 지시: 처방 용량을 임의로 변경하지 마세요.\n제품 안내: 충분한 물과 함께 복용하세요.',
+          warning: '알레르기 병력이 있으면 복용 전 상담하세요.',
+          precaution: '알레르기 병력이 있으면 복용 전 상담하세요. 발진이 나타나면 의료진에게 알리세요.',
+          interaction: '다른 약을 함께 복용하기 전에 확인하세요.',
+          sideEffect: '호흡 곤란 등 이상 반응을 확인하세요.',
+          storageMethod: '어린이의 손이 닿지 않는 곳에 보관하세요.',
+          aiGuide: '추가 안내 원문을 확인하세요.',
+          dosagePerTime: '0.5정',
+          dailyFrequency: '1일 2회',
+          totalDays: '7일',
+        );
+        await tester.pumpWidget(_scaledMaterialApp(
+          textScale: 2,
+          home: CheckMedicationDetailUI(
+            medicationDetail: medicationDetail,
+            userSetting: UserSetting(language: language),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        for (final original in [
+          medicationDetail.usageMethod,
+          medicationDetail.warning,
+          medicationDetail.precaution,
+          medicationDetail.interaction,
+          medicationDetail.sideEffect,
+          medicationDetail.storageMethod,
+          medicationDetail.aiGuide,
+        ]) {
+          final finder = find.text(original);
+          await tester.scrollUntilVisible(finder, 180, scrollable: find.byType(Scrollable).first);
+          await tester.ensureVisible(finder);
+          await tester.pumpAndSettle();
+          expect(finder, findsOneWidget);
+          expect(tester.takeException(), isNull);
+        }
+        expect(find.text(language == 'en' ? 'Read aloud' : '큰 소리로 읽어주세요').hitTestable(), findsOneWidget);
+        expect(medicationDetail.voiceGuideTextForLanguage(language), contains(medicationDetail.usageMethod));
+      });
+    }
 
     // Function Name: testWidgets callback
     // Description:

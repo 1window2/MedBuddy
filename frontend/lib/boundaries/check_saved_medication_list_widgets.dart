@@ -12,6 +12,7 @@ part of 'check_saved_medication_ui_boundary.dart';
 // - onDirectionChanged (ValueChanged<_SavedMedicationSortDirection>): 변경한 날짜 정렬 방향을 전달할 콜백.
 class _SavedMedicationSortControl extends StatelessWidget {
   final _SavedMedicationSortDirection sortDirection;
+  final bool enabled;
   final _SavedMedicationText text;
   final ValueChanged<_SavedMedicationSortDirection> onDirectionChanged;
 
@@ -19,11 +20,13 @@ class _SavedMedicationSortControl extends StatelessWidget {
   // 함수역할: 저장 날짜 정렬 방향 선택과 전환에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - sortDirection (_SavedMedicationSortDirection): 날짜 정렬의 오름차순·내림차순 선택.
+  // - enabled (bool): 삭제 중에는 정렬 전환을 막는다.
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
   // - onDirectionChanged (ValueChanged<_SavedMedicationSortDirection>): 변경한 날짜 정렬 방향을 전달할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationSortControl 인스턴스.
   const _SavedMedicationSortControl({
     required this.sortDirection,
+    required this.enabled,
     required this.text,
     required this.onDirectionChanged,
   });
@@ -56,7 +59,7 @@ class _SavedMedicationSortControl extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          onPressed: _toggleDirection,
+          onPressed: enabled ? _toggleDirection : null,
           icon: Icon(
             isAscending
                 ? Icons.arrow_upward_rounded
@@ -119,11 +122,13 @@ class _SavedMedicationSortMenuItem extends StatelessWidget {
           size: 20,
         ),
         const SizedBox(width: 10),
-        Text(
-          label,
-          style: TextStyle(
-            color: MedBuddyColors.textStrong,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -145,6 +150,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
   final _SavedMedicationText text;
   final UserSetting userSetting;
   final bool isSelectionMode;
+  final bool enabled;
   final bool isSelected;
   final void Function(bool selected) onSelectionChanged;
   final VoidCallback onGuideRequested;
@@ -156,7 +162,8 @@ class _SavedMedicationNameRow extends StatelessWidget {
   // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - isSelectionMode (bool): 일반 조작 대신 첨부·삭제 선택 모드를 사용할지 여부.
+  // - isSelectionMode (bool): 일반 조작 대신 삭제 선택 모드를 사용할지 여부.
+  // - enabled (bool): 삭제 중에는 선택과 상세 이동을 막는다.
   // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
   // - onSelectionChanged (void Function(bool selected)): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
   // - onGuideRequested (VoidCallback): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
@@ -167,6 +174,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
     required this.text,
     required this.userSetting,
     required this.isSelectionMode,
+    required this.enabled,
     required this.isSelected,
     required this.onSelectionChanged,
     required this.onGuideRequested,
@@ -181,7 +189,8 @@ class _SavedMedicationNameRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
-    final dateLineLeftPadding = isSelectionMode ? 52.0 : 0.0;
+    // 선택 체크박스와 무관하게 날짜는 행 전체 너비를 사용한다.
+    const dateLineLeftPadding = 0.0;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 124),
@@ -195,9 +204,11 @@ class _SavedMedicationNameRow extends StatelessWidget {
               children: [
                 if (isSelectionMode) ...[
                   Checkbox(
+                    key: ValueKey('saved-medication-checkbox-${medication.id}'),
+                    semanticLabel: medication.itemName,
                     value: isSelected,
                     activeColor: MedBuddyColors.primary,
-                    onChanged: medication.id == null
+                    onChanged: !enabled || (medication.id ?? 0) <= 0
                         ? null
                         // 함수이름: build.onChanged callback
                         // 함수역할: 약품명·처방일·복용기간과 선택·가이드·사진 동작에서 캡처된 작업 `onSelectionChanged(value ?? false)`을 실행한다.
@@ -213,18 +224,26 @@ class _SavedMedicationNameRow extends StatelessWidget {
                     medication: medication,
                     text: text,
                     scale: scale,
-                    isEnabled: !isSelectionMode,
+                    isEnabled: enabled && !isSelectionMode,
                     onPressed: onGuideRequested,
                   ),
                 ),
-                const SizedBox(width: 12),
-                _MedicationRowActions(
-                  medication: medication,
-                  text: text,
-                  userSetting: userSetting,
-                  onGuideRequested: onGuideRequested,
-                  onImageRequested: onImageRequested,
-                ),
+                if (!isSelectionMode) ...[
+                  const SizedBox(width: 12),
+                  ExcludeFocus(
+                    excluding: !enabled,
+                    child: AbsorbPointer(
+                      absorbing: !enabled,
+                      child: _MedicationRowActions(
+                        medication: medication,
+                        text: text,
+                        userSetting: userSetting,
+                        onGuideRequested: onGuideRequested,
+                        onImageRequested: onImageRequested,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 7),
@@ -359,7 +378,7 @@ class _MedicationDateLine extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 날짜 제목·값과 날짜 부재 대체 표시 화면을 구성한다.
+  // 함수역할: 날짜 제목과 전체 값을 읽기 쉬운 대비로 표시하고 큰 글씨에서는 줄바꿈한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 날짜 제목·값과 날짜 부재 대체 표시에 쓰는 위젯 트리.
@@ -369,11 +388,10 @@ class _MedicationDateLine extends StatelessWidget {
 
     return Text(
       '$label: $displayValue',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: true,
       style: TextStyle(
-        color: MedBuddyColors.textLight,
-        fontSize: 11 * scale,
+        color: MedBuddyColors.textMuted,
+        fontSize: 13 * scale,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
       ),

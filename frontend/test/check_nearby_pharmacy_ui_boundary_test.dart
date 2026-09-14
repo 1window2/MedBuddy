@@ -798,6 +798,9 @@ void main() {
     await tester.tap(check);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('채팅에 공유'));
+    // 스크롤에 따른 상세창 높이 재계산이 끝난 위치에서 실제 버튼을 누른다.
+    await tester.pumpAndSettle();
+    expect(find.text('채팅에 공유').hitTestable(), findsOneWidget);
     await tester.tap(find.text('채팅에 공유'));
     await tester.pumpAndSettle();
     expect(selection?.pharmacy.pharmacyId, 'open');

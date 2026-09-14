@@ -13,6 +13,7 @@ part of 'check_saved_medication_ui_boundary.dart';
 class _SavedMedicationFilterControl extends StatelessWidget {
   final _SavedMedicationFilterMode filterMode;
   final _SavedMedicationText text;
+  final bool enabled;
   final ValueChanged<_SavedMedicationFilterMode> onChanged;
 
   // 함수이름: _SavedMedicationFilterControl
@@ -20,11 +21,13 @@ class _SavedMedicationFilterControl extends StatelessWidget {
   // 매개변수:
   // - filterMode (_SavedMedicationFilterMode): 저장 약품의 복용 중·종료·전체 표시 기준.
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
+  // - enabled (bool): 삭제 중에는 조건 변경을 막는 조작 상태.
   // - onChanged (ValueChanged<_SavedMedicationFilterMode>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationFilterControl 인스턴스.
   const _SavedMedicationFilterControl({
     required this.filterMode,
     required this.text,
+    required this.enabled,
     required this.onChanged,
   });
 
@@ -37,7 +40,8 @@ class _SavedMedicationFilterControl extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton(
       key: const Key('saved-medication-filter-selector'),
-      onPressed: () => _showFilterPicker(context),
+      // 함수역할: 조회 조건을 연다. 매개변수: 없음. 반환값: 조건 선택 완료.
+      onPressed: enabled ? () => _showFilterPicker(context) : null,
       style: OutlinedButton.styleFrom(
         alignment: Alignment.centerLeft,
         minimumSize: const Size(0, 48),
@@ -209,57 +213,88 @@ class _SavedMedicationFilterControl extends StatelessWidget {
 }
 
 // 클래스명: _SavedMedicationFilteredEmptyState
-// 역할: 선택한 복용 상태에 해당하는 약이 없다는 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 선택한 복용 상태에 해당하는 약이 없다는 안내 위젯을 구성한다.
-// 속성:
-// - filterMode (_SavedMedicationFilterMode): 저장 약품의 복용 중·종료·전체 표시 기준.
+// 역할: 빈 조회 결과에서 전체 목록 또는 약 등록으로 이동하게 한다.
+// 주요 책임: 긴 문구와 큰 글씨에서도 모든 동작을 스크롤로 제공한다.
+// 속성: filterMode는 조회 상태, onShowAll과 onRegister는 실제 화면 동작이다.
 class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   final _SavedMedicationFilterMode filterMode;
   final _SavedMedicationText text;
+  final VoidCallback? onShowAll;
+  final VoidCallback? onRegister;
 
   // 함수이름: _SavedMedicationFilteredEmptyState
-  // 함수역할: 선택한 복용 상태에 해당하는 약이 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - filterMode (_SavedMedicationFilterMode): 저장 약품의 복용 중·종료·전체 표시 기준.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _SavedMedicationFilteredEmptyState 인스턴스.
+  // 함수역할: 빈 결과의 조건과 연결 동작을 받는다.
+  // 매개변수: filterMode, text, onShowAll, onRegister. 반환값: 빈 결과 위젯.
   const _SavedMedicationFilteredEmptyState({
     required this.filterMode,
     required this.text,
+    required this.onShowAll,
+    required this.onRegister,
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 선택한 복용 상태에 해당하는 약이 없다는 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 선택한 복용 상태에 해당하는 약이 없다는 안내에 쓰는 위젯 트리.
+  // 함수역할: 전체 보기와 복용 중 빈 상태의 등록 버튼을 구성한다.
+  // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 빈 결과 안내.
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.medication_outlined,
-              color: MedBuddyColors.textLight,
-              size: 52,
+  Widget build(BuildContext context) => SliverFillRemaining(
+    hasScrollBody: false,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Icon(
+            Icons.medication_outlined,
+            color: MedBuddyColors.textMuted,
+            size: 42,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            text.filteredEmptyMessage(filterMode),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 14),
-            Text(
-              text.filteredEmptyMessage(filterMode),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton(
+            key: const Key('saved-medication-show-all'),
+            onPressed: onShowAll,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
+            child: Text(text.showAll, textAlign: TextAlign.center),
+          ),
+          if (filterMode == _SavedMedicationFilterMode.active) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const Key('saved-medication-register'),
+              onPressed: onRegister,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                backgroundColor: MedBuddyColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.add),
+              label: Text(text.registerMedication, textAlign: TextAlign.center),
+            ),
           ],
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
