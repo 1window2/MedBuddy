@@ -13,6 +13,7 @@ import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/backend_session_failure.dart';
 import '../services/firebase_runtime_service.dart';
 import '../services/user_facing_error_message.dart';
 
@@ -211,6 +212,11 @@ class AuthenticationControl extends ChangeNotifier
         _session == null &&
         !_initializationFailed;
   }
+
+  bool get shouldAutoRetryBackendSession =>
+      canRetryBackendSession &&
+      !_configurationFailed &&
+      isTransientBackendSessionFailure(_backendSessionError);
 
   String? _smsVerificationId;
   String? _smsDestination;
@@ -1133,7 +1139,7 @@ class AuthenticationControl extends ChangeNotifier
         return;
       }
       if (response.statusCode != 200) {
-        throw StateError('Authenticated backend session could not be created.');
+        throw BackendSessionHttpException(response.statusCode);
       }
       final payload = jsonDecode(utf8.decode(response.bodyBytes));
       if (payload is! Map<String, dynamic>) {
@@ -1145,13 +1151,11 @@ class AuthenticationControl extends ChangeNotifier
       }
       _session = session;
       _errorMessage = null;
+      _backendSessionError = null;
     } catch (error) {
-      if (kDebugMode) {
-        debugPrint(
-          'Backend session handshake failed: ${error.runtimeType}: $error',
-        );
-      }
       if (generation == _sessionGeneration) {
+        // Fixed diagnostic codes are safe in signed builds; no tokens or bodies.
+        debugPrint('MedBuddy session failure: ${backendSessionFailureCode(error)}');
         _session = null;
         _setError(
           resolveBackendSessionError(error, isEnglish: false),

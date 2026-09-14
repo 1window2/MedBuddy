@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
+import '../services/foreground_recovery_service.dart';
 import '../theme/medbuddy_theme.dart';
 
 // Class Name: AuthenticationUI
@@ -47,7 +48,10 @@ class AuthenticationUI extends StatefulWidget {
 // - 이메일·비밀번호 검증 후 선택된 모드에 따라 계정 생성 또는 로그인을 요청한다.
 // 속성:
 // - _languageControl (AppLanguageControl): 앱 언어를 조회·변경하고 변경을 알리는 컨트롤러.
-class _AuthenticationUIState extends State<AuthenticationUI> {
+class _AuthenticationUIState extends State<AuthenticationUI>
+    with WidgetsBindingObserver {
+  late final ForegroundRecoveryService _sessionRecovery;
+  bool _foreground = true;
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -64,6 +68,17 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   @override
   void initState() {
     super.initState();
+    _foreground = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _sessionRecovery = ForegroundRecoveryService(() async {
+      if (!widget.control.shouldAutoRetryBackendSession) return true;
+      if (widget.control.isBusy || widget.control.isInitializing) return false;
+      await widget.control.retryBackendSession();
+      return !widget.control.shouldAutoRetryBackendSession;
+    });
+    WidgetsBinding.instance.addObserver(this);
+    widget.control.addListener(_scheduleSessionRecovery);
+    _scheduleSessionRecovery();
     _ownsLanguageControl = widget.languageControl == null;
     _languageControl =
         widget.languageControl ?? AppLanguageControl(loadPersisted: false);
@@ -77,6 +92,9 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
   // Returns: None; updates state or performs the documented action.
   @override
   void dispose() {
+    widget.control.removeListener(_scheduleSessionRecovery);
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionRecovery.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _languageControl.removeListener(_handleLanguageChanged);
@@ -84,6 +102,36 @@ class _AuthenticationUIState extends State<AuthenticationUI> {
       _languageControl.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthenticationUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.control != widget.control) {
+      oldWidget.control.removeListener(_scheduleSessionRecovery);
+      _sessionRecovery.stop();
+      widget.control.addListener(_scheduleSessionRecovery);
+      _scheduleSessionRecovery();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) _sessionRecovery.stop();
+    _scheduleSessionRecovery();
+  }
+
+  void _scheduleSessionRecovery() {
+    // Auth notifications can arrive during a build: defer the retry mutation.
+    Future.microtask(() {
+      if (!mounted) return;
+      if (_foreground && widget.control.shouldAutoRetryBackendSession) {
+        _sessionRecovery.start();
+      } else {
+        _sessionRecovery.stop();
+      }
+    });
   }
 
   // 함수이름: build
