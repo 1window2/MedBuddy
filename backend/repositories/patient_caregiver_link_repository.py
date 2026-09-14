@@ -211,6 +211,23 @@ class PatientCaregiverLinkRepository:
             .first()
         )
 
+    # 함수이름: find_active_for_patient_by_id
+    # 함수역할: 보호자 별칭을 수정할 연결을 환자 본인의 활성 연결로 제한한다.
+    # 매개변수: link_id (int): 연결 ID, patient_hash (str): 인증된 환자 식별자.
+    # 반환값: 해당 환자의 활성 연결 또는 None.
+    def find_active_for_patient_by_id(
+        self, link_id: int, patient_hash: str
+    ) -> _PatientCaregiverLink | None:
+        return (
+            self.db.query(_PatientCaregiverLink)
+            .filter(
+                _PatientCaregiverLink.id == link_id,
+                _PatientCaregiverLink.patient_hash == patient_hash,
+                _PatientCaregiverLink.linked.is_(True),
+            )
+            .first()
+        )
+
     # 함수이름: has_active_pair
     # 함수역할:
     # - 환자·보호자 해시 쌍에 활성 연동이 존재하는지 ID 조회만으로 확인한다.

@@ -30,6 +30,8 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   final List<Completer<PatientCaregiverLink>> registrationRequests = [];
   final List<String> registrationCodes = [];
   final List<(int, String)> aliasUpdates = [];
+  final List<(int, String)> caregiverAliasUpdates = [];
+  bool failCaregiverAlias = false;
   int disposeCount = 0;
 
   // 함수이름: _FakeLinkPatientCaregiver
@@ -118,6 +120,26 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
       caregiverHash: fakeUserHash,
       linkStatus: true,
       patientAlias: patientAlias,
+    );
+  }
+
+  // 함수이름: saveCaregiverAlias
+  // 함수역할: 환자가 저장한 보호자 별칭만 기록하거나 저장 실패를 재현한다.
+  // 매개변수: linkId, caregiverAlias. 반환값: 갱신된 연결 또는 StateError.
+  @override
+  Future<PatientCaregiverLink> saveCaregiverAlias({
+    required int linkId,
+    required String caregiverAlias,
+  }) async {
+    caregiverAliasUpdates.add((linkId, caregiverAlias));
+    if (failCaregiverAlias) throw StateError('Caregiver alias save failed.');
+    return PatientCaregiverLink(
+      linkId: linkId,
+      patientHash: fakeUserHash,
+      caregiverHash: 'caregiver-a',
+      patientAlias: '어머니',
+      caregiverAlias: caregiverAlias,
+      linkStatus: true,
     );
   }
 
@@ -617,6 +639,90 @@ void main() {
     expect(find.text('어머니 표시 이름을 저장했습니다.'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  for (final action in ['save', 'cancel', 'clear', 'failure', 'switch']) {
+    // 함수이름: 환자 보호자 별칭 편집 테스트
+    // 함수역할: 저장·취소·해제·실패와 입력 중 계정 변경 시 화면 및 요청을 검증한다.
+    // 매개변수: tester. 반환값: 검증 완료.
+    testWidgets('patient caregiver alias $action', (tester) async {
+      _useLinkScreenViewport(tester);
+      final control = _FakeLinkPatientCaregiver('patient-a')
+        ..failCaregiverAlias = action == 'failure';
+      final other = _FakeLinkPatientCaregiver('patient-b');
+      var updates = 0;
+      // 함수이름: screen
+      // 함수역할: 계정별 연결 제어기를 가진 동일 화면을 구성한다.
+      // 매개변수: user. 반환값: 테스트 앱.
+      Widget screen(String user) => MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: user,
+          controlFactory: (hash) => hash == 'patient-a' ? control : other,
+          onLinksChanged: () => updates++,
+        ),
+      );
+      await tester.pumpWidget(screen('patient-a'));
+      await tester.pump();
+      control.linkRequests.single.complete(const [
+        PatientCaregiverLink(
+          linkId: 1,
+          patientHash: 'patient-a',
+          caregiverHash: 'caregiver-a',
+          patientAlias: '어머니',
+          caregiverAlias: '이전 이름',
+          linkStatus: true,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+      updates = 0;
+      expect(find.byTooltip('환자 표시 이름 수정'), findsNothing);
+      await tester.tap(find.byTooltip('보호자 표시 이름 수정'));
+      await tester.pumpAndSettle();
+      expect(find.text('보호자 표시 이름'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).maxLength,
+        20,
+      );
+      await tester.enterText(
+        find.byType(TextFormField),
+        action == 'clear' ? '' : '우리 딸',
+      );
+      if (action == 'switch') {
+        await tester.pumpWidget(screen('patient-b'));
+        await tester.pump();
+        other.linkRequests.single.complete([]);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        action == 'cancel'
+            ? find.widgetWithText(TextButton, '취소')
+            : find.widgetWithText(FilledButton, '저장'),
+      );
+      await tester.pumpAndSettle();
+      expect(control.aliasUpdates, isEmpty);
+      expect(other.caregiverAliasUpdates, isEmpty);
+      if (action == 'cancel' || action == 'switch') {
+        expect(control.caregiverAliasUpdates, isEmpty);
+      } else {
+        expect(control.caregiverAliasUpdates, [
+          (1, action == 'clear' ? '' : '우리 딸'),
+        ]);
+      }
+      if (action == 'save') {
+        expect(find.text('우리 딸'), findsOneWidget);
+        expect(updates, 1);
+      } else if (action == 'cancel' || action == 'failure') {
+        expect(find.text('이전 이름'), findsOneWidget);
+        expect(find.text('우리 딸'), findsNothing);
+        expect(updates, 0);
+      } else if (action == 'clear') {
+        expect(find.text('이전 이름'), findsNothing);
+        expect(find.text('기본 이름으로 변경했습니다.'), findsOneWidget);
+      }
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:

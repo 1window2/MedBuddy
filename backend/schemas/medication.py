@@ -387,6 +387,17 @@ class PatientAliasUpdate(BaseModel):
     )
 
 
+# 클래스명: CaregiverAliasUpdate
+# 역할: 환자가 지정하는 보호자 별칭을 검증한다.
+# 주요 책임: 최대 20자를 허용하며 빈 문자열은 기본 이름 복원을 뜻한다.
+# 속성: caregiver_alias (str): 환자가 지정한 보호자 표시 이름.
+class CaregiverAliasUpdate(BaseModel):
+    caregiver_alias: str = Field(
+        max_length=20,
+        validation_alias=AliasChoices("caregiver_alias", "caregiverAlias"),
+    )
+
+
 # Class Name: MedicationResponse
 # Role:
 # - Response DTO for medication lookup results.

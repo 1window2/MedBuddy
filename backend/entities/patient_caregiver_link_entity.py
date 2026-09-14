@@ -75,6 +75,8 @@ class _PatientCaregiverLink(Base):
         index=True,
     )
     patient_alias = Column(String(20), nullable=True)
+    # 환자가 이 연결의 보호자에게 붙인 이름. 보호자의 환자 별칭과 독립적으로 저장한다.
+    caregiver_alias = Column(String(20), nullable=True)
     linked = Column(Boolean, nullable=False, default=True, server_default="1")
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
@@ -169,6 +171,7 @@ class PatientCaregiverLink(BaseModel):
     patient_hash: str = ""
     caregiver_hash: str = ""
     patient_alias: str | None = None
+    caregiver_alias: str | None = None
     link_status: bool = False
     linked_at: datetime | None = None
 

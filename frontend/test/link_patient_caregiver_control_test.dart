@@ -129,43 +129,40 @@ void main() {
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'generatePatientHash preserves the diagram-level control name',
-    () async {
-      // Function Name: MockClient callback
-      // Description:
-      // - Assert the UML-compatible code-generation route and provide a second invitation code.
-      // Parameters:
-      // - request (http.Request): HTTP request intercepted instead of reaching the server.
-      // Returns:
-      // - HTTP 200 containing WXYZ5678 and its expiry.
-      final client = MockClient((http.Request request) async {
-        expect(request.method, 'POST');
-        expect(request.url.path, '/link/code');
-        return http.Response(
-          jsonEncode({
-            'success': true,
-            'data': {
-              'patient_hash': 'patient-a',
-              'patient_code': 'WXYZ5678',
-              'expires_at': '2026-06-17T00:15:00+00:00',
-            },
-          }),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = LinkPatientCaregiver(
-        baseUrl: 'http://localhost',
-        userHash: 'patient-a',
-        client: client,
+  test('generatePatientHash preserves the diagram-level control name', () async {
+    // Function Name: MockClient callback
+    // Description:
+    // - Assert the UML-compatible code-generation route and provide a second invitation code.
+    // Parameters:
+    // - request (http.Request): HTTP request intercepted instead of reaching the server.
+    // Returns:
+    // - HTTP 200 containing WXYZ5678 and its expiry.
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/link/code');
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'patient_hash': 'patient-a',
+            'patient_code': 'WXYZ5678',
+            'expires_at': '2026-06-17T00:15:00+00:00',
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
+    });
+    final control = LinkPatientCaregiver(
+      baseUrl: 'http://localhost',
+      userHash: 'patient-a',
+      client: client,
+    );
 
-      final patientCode = await control.generatePatientHash();
+    final patientCode = await control.generatePatientHash();
 
-      expect(patientCode.code, 'WXYZ5678');
-    },
-  );
+    expect(patientCode.code, 'WXYZ5678');
+  });
 
   // 함수이름: test 콜백
   // 함수역할:
@@ -355,6 +352,69 @@ void main() {
     expect(requestBody['patient_alias'], '어머니');
     expect(link.patientAlias, '어머니');
   });
+
+  // 함수이름: 보호자 별칭 API 테스트
+  // 함수역할: 환자 범위 PATCH, 별칭 직렬화·해제·복사 및 HTTP 실패 전달을 검증한다.
+  // 매개변수: 없음. 반환값: 검증 완료.
+  test(
+    'patient saves and clears a caregiver alias without changing patient alias',
+    () async {
+      var status = 200;
+      final client = MockClient((request) async {
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/link/7/caregiver-alias');
+        expect(request.url.queryParameters['user_hash'], 'patient-a');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body.keys, ['caregiver_alias']);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 7,
+              'patient_hash': 'patient-a',
+              'caregiver_hash': 'caregiver-a',
+              'linked': true,
+              'patient_alias': '어머니',
+              'caregiver_alias': body['caregiver_alias'],
+            },
+          }),
+          status,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+      final control = LinkPatientCaregiver(
+        baseUrl: 'http://localhost',
+        userHash: 'patient-a',
+        client: client,
+      );
+      addTearDown(control.dispose);
+      for (final alias in ['딸', '']) {
+        final link = await control.saveCaregiverAlias(
+          linkId: 7,
+          caregiverAlias: alias,
+        );
+        expect(link.caregiverAlias, alias);
+        expect(link.patientAlias, '어머니');
+        expect(
+          PatientCaregiverLink.fromJson(link.toJson()).caregiverAlias,
+          alias,
+        );
+        expect(link.copyWith(linkStatus: false).caregiverAlias, alias);
+      }
+      expect(
+        PatientCaregiverLink.fromJson({'patient_alias': '엄마'}).caregiverAlias,
+        isNull,
+      );
+      expect(
+        PatientCaregiverLink.fromJson({'caregiverAlias': '딸'}).caregiverAlias,
+        '딸',
+      );
+      status = 404;
+      await expectLater(
+        control.saveCaregiverAlias(linkId: 7, caregiverAlias: '실패'),
+        throwsStateError,
+      );
+    },
+  );
 
   // 함수이름: test 콜백
   // 함수역할:

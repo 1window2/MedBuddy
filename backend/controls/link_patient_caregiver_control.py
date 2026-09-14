@@ -331,6 +331,37 @@ class LinkPatientCaregiver:
             "data": self.toResponseDict(link),
         }
 
+    # 함수이름: update_caregiver_alias
+    # 함수역할: 환자 본인의 활성 연결에 보호자 별칭만 저장하고 빈 값은 해제로 보존한다.
+    # 매개변수: link_id (int): 연결 ID, patient_hash (str): 환자 식별자,
+    # - caregiver_alias (str): 보호자 별칭.
+    # 반환값: 갱신된 연결 응답. 소유권이 없거나 해제된 연결은 404로 처리한다.
+    def update_caregiver_alias(
+        self, link_id: int, patient_hash: str, caregiver_alias: str
+    ) -> dict[str, object]:
+        link = self.link_repository.find_active_for_patient_by_id(
+            link_id, normalize_patient_hash(patient_hash)
+        )
+        if link is None:
+            raise HTTPException(
+                status_code=404, detail="Patient-caregiver link was not found."
+            )
+        try:
+            link.caregiver_alias = " ".join(caregiver_alias.split())[:20]
+            self.db.commit()
+            self.db.refresh(link)
+        except Exception as exc:
+            self.db.rollback()
+            logger.error("Caregiver alias persistence failed: %s", type(exc).__name__)
+            raise HTTPException(
+                status_code=500, detail="Caregiver alias could not be saved."
+            ) from exc
+        return {
+            "success": True,
+            "message": "Caregiver alias was saved.",
+            "data": self.toResponseDict(link),
+        }
+
     # Function Name: _revoke_caregiver_notification
     # Description:
     # - Deletes notification settings for the unlinked patient-caregiver pair within the caller's transaction.
@@ -503,6 +534,7 @@ class LinkPatientCaregiver:
             "caregiver_hash": link.caregiver_hash,
             "guardian_hash": link.caregiver_hash,
             "patient_alias": link.patient_alias,
+            "caregiver_alias": link.caregiver_alias,
             "linked": link.linked,
             "link_status": link.linked,
             "created_at": link.created_at.isoformat() if link.created_at else "",

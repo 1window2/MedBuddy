@@ -82,6 +82,10 @@ class ManageChatList extends ChangeNotifier {
       if (alias != null && alias.trim().isNotEmpty) return alias;
       return '${isEnglish ? 'Patient' : '환자'} ${link.patientHash}';
     }
+    final caregiverAlias = link.caregiverAlias?.trim();
+    if (caregiverAlias != null && caregiverAlias.isNotEmpty) {
+      return caregiverAlias;
+    }
     return '${isEnglish ? 'Caregiver' : '보호자'} ${link.caregiverHash}';
   }
 

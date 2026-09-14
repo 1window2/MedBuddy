@@ -106,6 +106,8 @@ class PatientCaregiverLink {
   final String patientHash;
   final String caregiverHash;
   final String? patientAlias;
+  // 환자가 지정한 보호자 별칭. 빈 문자열은 별칭 해제를 뜻한다.
+  final String? caregiverAlias;
   final bool linkStatus;
   final DateTime? linkedAt;
 
@@ -129,6 +131,7 @@ class PatientCaregiverLink {
     this.patientHash = '',
     this.caregiverHash = '',
     this.patientAlias,
+    this.caregiverAlias,
     this.linkStatus = false,
     this.linkedAt,
   });
@@ -158,6 +161,12 @@ class PatientCaregiverLink {
             json['guardianID'],
       ),
       patientAlias: _readPatientAlias(json),
+      caregiverAlias:
+          (json.containsKey('caregiver_alias')
+                  ? json['caregiver_alias']
+                  : json['caregiverAlias'])
+              ?.toString()
+              .trim(),
       linkStatus: _readBool(
         json['link_status'] ?? json['linkStatus'] ?? json['linked'],
       ),
@@ -181,6 +190,7 @@ class PatientCaregiverLink {
       'patient_hash': patientHash,
       'caregiver_hash': caregiverHash,
       'patient_alias': patientAlias,
+      'caregiver_alias': caregiverAlias,
       'link_status': linkStatus,
       'linked_at': linkedAt?.toIso8601String(),
     };
@@ -240,6 +250,7 @@ class PatientCaregiverLink {
     String? patientHash,
     String? caregiverHash,
     String? patientAlias,
+    String? caregiverAlias,
     bool? linkStatus,
     DateTime? linkedAt,
   }) {
@@ -250,6 +261,7 @@ class PatientCaregiverLink {
       patientHash: patientHash ?? this.patientHash,
       caregiverHash: caregiverHash ?? this.caregiverHash,
       patientAlias: patientAlias ?? this.patientAlias,
+      caregiverAlias: caregiverAlias ?? this.caregiverAlias,
       linkStatus: linkStatus ?? this.linkStatus,
       linkedAt: linkedAt ?? this.linkedAt,
     );

@@ -51,6 +51,43 @@ def test_chat_deletion_upgrade_preserves_existing_content_and_round_trips(tmp_pa
         engine.dispose()
 
 
+# 함수이름: test_caregiver_alias_migration_preserves_existing_link
+# 함수역할: 신규 열 추가·롤백·재적용 시 기존 연결과 환자 별칭을 보존한다.
+# 매개변수: tmp_path (Path): 격리 DB 디렉터리. 반환값: 없음.
+def test_caregiver_alias_migration_preserves_existing_link(tmp_path: Path) -> None:
+    url = f"sqlite:///{(tmp_path / 'caregiver-alias.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "c2a7e4d9f610")
+    engine = create_engine(url)
+    metadata = MetaData()
+    users = Table("user_accounts", metadata, autoload_with=engine)
+    links = Table("patient_caregiver_links", metadata, autoload_with=engine)
+    now = datetime(2026, 9, 14)
+    try:
+        with engine.begin() as connection:
+            connection.execute(users.insert(), [
+                {"user_hash": user, "created_at": now, "updated_at": now}
+                for user in ("patient-a", "caregiver-a")
+            ])
+            connection.execute(links.insert().values(
+                id=1, patient_hash="patient-a", caregiver_hash="caregiver-a",
+                patient_alias="어머니", linked=True, created_at=now,
+            ))
+        for _ in range(2):
+            command.upgrade(config, "head")
+            current = Table("patient_caregiver_links", MetaData(), autoload_with=engine)
+            with engine.begin() as connection:
+                row = connection.execute(select(current)).mappings().one()
+                assert row["patient_alias"] == "어머니"
+                assert row["caregiver_alias"] is None
+                connection.execute(current.update().values(caregiver_alias="딸"))
+            command.downgrade(config, "c2a7e4d9f610")
+            assert "caregiver_alias" not in {c["name"] for c in inspect(engine).get_columns("patient_caregiver_links")}
+    finally:
+        engine.dispose()
+
+
 # Function Name: test_current_schema_migrates_into_an_empty_database
 # Description:
 # - Migrates an empty database to the complete schema, including medication safety metadata,
@@ -122,6 +159,7 @@ def test_current_schema_migrates_into_an_empty_database(tmp_path: Path) -> None:
         "identity_deleted_at",
     }.issubset(user_account_columns)
     assert "patient_alias" in caregiver_link_columns
+    assert "caregiver_alias" in caregiver_link_columns
     assert any(
         foreign_key["referred_table"] == "saved_medications"
         for foreign_key in completion_foreign_keys

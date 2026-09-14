@@ -226,7 +226,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       medicationContextsByLink: _medicationContextsByLink,
       onChatRequested: _openLinkedChat,
       onPatientMedicationRequested: _openPatientMedicationInfo,
-      onPatientLabelRequested: _showPatientLabelDialog,
+      onPeerLabelRequested: _showPeerLabelDialog,
       onUnlinkRequested: _removePatientCaregiverLink,
       text: text,
     );
@@ -640,44 +640,60 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         identical(request.control, _control);
   }
 
-  // 함수이름: _showPatientLabelDialog
-  // 함수역할: 보호자가 여러 환자를 쉽게 구분하도록 환자별 표시 이름을 입력받아 저장한다.
+  // 함수이름: _showPeerLabelDialog
+  // 함수역할: 참여자가 자기 화면에서 사용할 상대 별칭을 입력받아 역할별로 저장한다.
   // 매개변수:
   // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showPatientLabelDialog(PatientCaregiverLink link) async {
-    if (link.caregiverHash != _committedUserHash || !mounted) {
+  Future<void> _showPeerLabelDialog(PatientCaregiverLink link) async {
+    final isCaregiver = link.caregiverHash == _committedUserHash;
+    if (!mounted ||
+        !link.linkStatus ||
+        (!isCaregiver && link.patientHash != _committedUserHash)) {
       return;
     }
-    var draftLabel =
-        _patientLabels[link.patientHash] ??
-        _localStateControl.fallbackLabel(link.patientHash);
+    final dialogRequest = _LinkRequest(
+      generation: _requestGeneration,
+      userHash: _committedUserHash,
+      control: _control,
+    );
+    var draftLabel = isCaregiver
+        ? (_patientLabels[link.patientHash] ??
+              _localStateControl.fallbackLabel(link.patientHash))
+        : (link.caregiverAlias ?? '');
     final submittedLabel = await showDialog<String>(
       context: context,
-      // 함수이름: _showPatientLabelDialog.builder callback
+      // 함수이름: _showPeerLabelDialog.builder callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
       // 매개변수:
       // - dialogContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(_text.patientLabelTitle),
+          title: Text(
+            isCaregiver ? _text.patientLabelTitle : _text.caregiverLabelTitle,
+          ),
           content: TextFormField(
             initialValue: draftLabel,
             autofocus: true,
             maxLength: ManageCaregiverPatientLocalState.maximumLabelLength,
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
-              hintText: _text.patientLabelHint,
-              helperText: _text.patientLabelHelper,
+              hintText: isCaregiver
+                  ? _text.patientLabelHint
+                  : _text.caregiverLabelHint,
+              helperText: isCaregiver
+                  ? _text.patientLabelHelper
+                  : _text.caregiverLabelHelper,
+              helperMaxLines: 3,
             ),
-            // 함수이름: _showPatientLabelDialog.onChanged callback
+            // 함수이름: _showPeerLabelDialog.onChanged callback
             // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `draftLabel = value`로 갱신한다.
             // 매개변수:
             // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
             // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
             onChanged: (value) => draftLabel = value,
-            // 함수이름: _showPatientLabelDialog.onFieldSubmitted callback
+            // 함수이름: _showPeerLabelDialog.onFieldSubmitted callback
             // 함수역할: `Navigator.pop(dialogContext, value)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
             // 매개변수:
             // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
@@ -686,7 +702,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           ),
           actions: [
             TextButton(
-              // 함수이름: _showPatientLabelDialog.onPressed callback
+              // 함수이름: _showPeerLabelDialog.onPressed callback
               // 함수역할: `Navigator.pop(dialogContext)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
               // 매개변수:
               // - 없음.
@@ -695,7 +711,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               child: Text(_text.cancel),
             ),
             FilledButton(
-              // 함수이름: _showPatientLabelDialog.onPressed callback
+              // 함수이름: _showPeerLabelDialog.onPressed callback
               // 함수역할: `Navigator.pop(dialogContext, draftLabel)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
               // 매개변수:
               // - 없음.
@@ -707,12 +723,12 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
         );
       },
     );
-    if (submittedLabel == null || !mounted) {
+    if (submittedLabel == null || !_isCurrentRequest(dialogRequest)) {
       return;
     }
     final linkId = link.linkId;
     if (linkId == null) {
-      // 함수이름: _showPatientLabelDialog.setState callback
+      // 함수이름: _showPeerLabelDialog.setState callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_statusMessage = _text.missingAliasLinkId`로 갱신한다.
       // 매개변수:
       // - 없음.
@@ -723,28 +739,35 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
     String? savedLabel;
-    // 함수이름: _showPatientLabelDialog._runLinkAction callback
+    // 함수이름: _showPeerLabelDialog._runLinkAction callback
     // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `savedLabel = await _localStateControl.saveLabel(caregiverHash: link.caregiverHash, patientHash: l...`로 갱신한다.
     // 매개변수:
     // - request (콜백 계약에서 추론): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     final request = await _runLinkAction((request) async {
-      final updatedLink = await request.control.savePatientAlias(
-        linkId: linkId,
-        patientAlias: submittedLabel,
-      );
+      final updatedLink = isCaregiver
+          ? await request.control.savePatientAlias(
+              linkId: linkId,
+              patientAlias: submittedLabel,
+            )
+          : await request.control.saveCaregiverAlias(
+              linkId: linkId,
+              caregiverAlias: submittedLabel,
+            );
       if (!_isCurrentRequest(request)) {
         return;
       }
-      savedLabel = await _localStateControl.saveLabel(
-        caregiverHash: link.caregiverHash,
-        patientHash: link.patientHash,
-        label: updatedLink.patientAlias ?? submittedLabel,
-      );
+      savedLabel = isCaregiver
+          ? await _localStateControl.saveLabel(
+              caregiverHash: link.caregiverHash,
+              patientHash: link.patientHash,
+              label: updatedLink.patientAlias ?? submittedLabel,
+            )
+          : (updatedLink.caregiverAlias ?? '');
       if (!_isCurrentRequest(request)) {
         return;
       }
-      // 함수이름: _showPatientLabelDialog.setState callback
+      // 함수이름: _showPeerLabelDialog.setState callback
       // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = _links.map((currentLink) => currentLink.linkId == linkId ? updatedLink : currentLink).to...; _patientLabels = {..._patientLabels, link.patientHash : savedLabel!}`로 갱신한다.
       // 매개변수:
       // - 없음.
@@ -752,7 +775,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       setState(() {
         _links = _links
             .map(
-              // 함수이름: _showPatientLabelDialog.map callback
+              // 함수이름: _showPeerLabelDialog.map callback
               // 함수역할: 환자 코드 발급·등록과 연동 목록의 변환값을 `currentLink.linkId == linkId ? updatedLink : currentLink` 규칙으로 계산한다.
               // 매개변수:
               // - currentLink (콜백 계약에서 추론): 별칭 갱신 대상 ID와 비교할 기존 연결.
@@ -761,7 +784,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
                   currentLink.linkId == linkId ? updatedLink : currentLink,
             )
             .toList(growable: false);
-        _patientLabels = {..._patientLabels, link.patientHash: savedLabel!};
+        if (isCaregiver) {
+          _patientLabels = {..._patientLabels, link.patientHash: savedLabel!};
+        }
       });
     });
     final confirmedLabel = savedLabel;
@@ -773,7 +798,11 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(_text.patientLabelSaved(confirmedLabel)),
+          content: Text(
+            confirmedLabel.isEmpty
+                ? _text.labelCleared
+                : _text.patientLabelSaved(confirmedLabel),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -849,7 +878,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     final isCaregiver = link.caregiverHash == _committedUserHash;
     final peerName = isCaregiver
         ? (_patientLabels[link.patientHash] ?? _text.patientPeer)
-        : _text.caregiverPeer;
+        : (link.caregiverAlias?.trim().isNotEmpty == true
+              ? link.caregiverAlias!.trim()
+              : _text.caregiverPeer);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         // 함수이름: _openLinkedChat.builder callback
@@ -1756,8 +1787,7 @@ class _LinkListCard extends StatelessWidget {
   final Map<int, List<ChatMedicationContext>> medicationContextsByLink;
   final void Function(PatientCaregiverLink link) onChatRequested;
   final void Function(PatientCaregiverLink link) onPatientMedicationRequested;
-  final Future<void> Function(PatientCaregiverLink link)
-  onPatientLabelRequested;
+  final Future<void> Function(PatientCaregiverLink link) onPeerLabelRequested;
   final Future<void> Function(PatientCaregiverLink link) onUnlinkRequested;
   final _LinkPatientCaregiverText text;
 
@@ -1773,7 +1803,7 @@ class _LinkListCard extends StatelessWidget {
   // - medicationContextsByLink (Map<int, List<ChatMedicationContext>>): 연동 ID별 채팅에 사용할 약품 맥락.
   // - onChatRequested (void Function(PatientCaregiverLink link)): 연동 사용자와의 복약 대화를 여는 콜백.
   // - onPatientMedicationRequested (void Function(PatientCaregiverLink link)): 연동 환자의 오늘 복약 상태를 여는 콜백.
-  // - onPatientLabelRequested (Future<void> Function(PatientCaregiverLink link)): 연동 환자의 표시 별칭을 수정할 콜백.
+  // - onPeerLabelRequested (Future<void> Function(PatientCaregiverLink link)): 연동 환자의 표시 별칭을 수정할 콜백.
   // - onUnlinkRequested (Future<void> Function(PatientCaregiverLink link)): 선택한 환자·보호자 연결 해제를 요청할 콜백.
   // - text (_LinkPatientCaregiverText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _LinkListCard 인스턴스.
@@ -1787,7 +1817,7 @@ class _LinkListCard extends StatelessWidget {
     required this.medicationContextsByLink,
     required this.onChatRequested,
     required this.onPatientMedicationRequested,
-    required this.onPatientLabelRequested,
+    required this.onPeerLabelRequested,
     required this.onUnlinkRequested,
     required this.text,
   });
@@ -1848,14 +1878,17 @@ class _LinkListCard extends StatelessWidget {
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
               ? () => onPatientMedicationRequested(link)
               : null,
-          onPatientLabelRequested:
-              isEnabled && link.caregiverHash == currentUserHash
-              // 함수이름: build.onPatientLabelRequested callback
-              // 함수역할: 연동된 환자 또는 보호자 목록에서 캡처된 작업 `onPatientLabelRequested(link)`을 실행한다.
+          onPeerLabelRequested:
+              isEnabled &&
+                  link.linkStatus &&
+                  (link.caregiverHash == currentUserHash ||
+                      link.patientHash == currentUserHash)
+              // 함수이름: build.onPeerLabelRequested callback
+              // 함수역할: 연동된 환자 또는 보호자 목록에서 캡처된 작업 `onPeerLabelRequested(link)`을 실행한다.
               // 매개변수:
               // - 없음.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              ? () => onPatientLabelRequested(link)
+              ? () => onPeerLabelRequested(link)
               : null,
           // Function Name: build.onUnlinkRequested callback
           // Description: Connects the list of linked patients or caregivers to the captured operation `onUnlinkRequested(link)`.
@@ -1887,7 +1920,7 @@ class _LinkedUserTile extends StatelessWidget {
   final bool isChatAvailable;
   final VoidCallback? onChatRequested;
   final VoidCallback? onPatientMedicationRequested;
-  final VoidCallback? onPatientLabelRequested;
+  final VoidCallback? onPeerLabelRequested;
   final VoidCallback? onUnlinkRequested;
   final _LinkPatientCaregiverText text;
 
@@ -1901,7 +1934,7 @@ class _LinkedUserTile extends StatelessWidget {
   // - isChatAvailable (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
   // - onChatRequested (VoidCallback?): 연동 사용자와의 복약 대화를 여는 콜백.
   // - onPatientMedicationRequested (VoidCallback?): 연동 환자의 오늘 복약 상태를 여는 콜백.
-  // - onPatientLabelRequested (VoidCallback?): 연동 환자의 표시 별칭을 수정할 콜백.
+  // - onPeerLabelRequested (VoidCallback?): 연동 환자의 표시 별칭을 수정할 콜백.
   // - onUnlinkRequested (VoidCallback?): 선택한 환자·보호자 연결 해제를 요청할 콜백.
   // - text (_LinkPatientCaregiverText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _LinkedUserTile 인스턴스.
@@ -1913,7 +1946,7 @@ class _LinkedUserTile extends StatelessWidget {
     required this.isChatAvailable,
     required this.onChatRequested,
     required this.onPatientMedicationRequested,
-    required this.onPatientLabelRequested,
+    required this.onPeerLabelRequested,
     required this.onUnlinkRequested,
     required this.text,
   });
@@ -1965,15 +1998,17 @@ class _LinkedUserTile extends StatelessWidget {
                         : MedBuddyColors.primary,
                   ),
                 ),
-              if (onPatientLabelRequested != null)
+              if (onPeerLabelRequested != null)
                 IconButton(
-                  tooltip: text.editPatientLabel,
+                  tooltip: link.caregiverHash == currentUserHash
+                      ? text.editPatientLabel
+                      : text.editCaregiverLabel,
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints.tightFor(
                     width: 40,
                     height: 40,
                   ),
-                  onPressed: onPatientLabelRequested,
+                  onPressed: onPeerLabelRequested,
                   icon: const Icon(
                     Icons.edit_outlined,
                     color: MedBuddyColors.primary,
@@ -2061,6 +2096,9 @@ class _LinkedUserTile extends StatelessWidget {
     final isCaregiver = link.caregiverHash == currentUserHash;
     if (isCaregiver && patientLabel?.trim().isNotEmpty == true) {
       return patientLabel!.trim();
+    }
+    if (!isCaregiver && link.caregiverAlias?.trim().isNotEmpty == true) {
+      return link.caregiverAlias!.trim();
     }
     final hash = (isCaregiver ? link.patientHash : link.caregiverHash).trim();
     final suffix = hash.length > 4 ? hash.substring(hash.length - 4) : hash;
@@ -2270,6 +2308,32 @@ class _LinkPatientCaregiverText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get patientLabelTitle =>
       isEnglish ? 'Patient display name' : '환자 표시 이름';
+  // 함수이름: caregiverLabelTitle
+  // 함수역할: 보호자 별칭 입력창 제목을 반환한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 제목.
+  String get caregiverLabelTitle =>
+      isEnglish ? 'Caregiver display name' : '보호자 표시 이름';
+  // 함수이름: editCaregiverLabel
+  // 함수역할: 보호자 별칭 편집 버튼의 접근성 이름을 제공한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 버튼 설명.
+  String get editCaregiverLabel =>
+      isEnglish ? 'Edit caregiver display name' : '보호자 표시 이름 수정';
+  // 함수이름: caregiverLabelHint
+  // 함수역할: 보호자 별칭 입력 예시를 제공한다.
+  // 매개변수: 없음. 반환값: 현재 언어의 입력 예시.
+  String get caregiverLabelHint =>
+      isEnglish ? 'Example: Daughter, Son' : '예: 딸, 아들';
+  // 함수이름: caregiverLabelHelper
+  // 함수역할: 별칭 적용 범위와 해제 방법을 알린다.
+  // 매개변수: 없음. 반환값: 현재 언어의 안내.
+  String get caregiverLabelHelper => isEnglish
+      ? 'Used on your account. Leave blank to restore the default name.'
+      : '내 계정에 표시할 이름입니다. 비우면 기본 이름으로 돌아갑니다.';
+  // 함수이름: labelCleared
+  // 함수역할: 빈 별칭을 저장한 결과를 알린다.
+  // 매개변수: 없음. 반환값: 현재 언어의 완료 문구.
+  String get labelCleared =>
+      isEnglish ? 'Restored the default name.' : '기본 이름으로 변경했습니다.';
   // 함수이름: patientLabelHint
   // 함수역할: 현재 언어와 입력값에 맞춰 "예: 어머니, 아버지" 문구를 제공한다.
   // 매개변수:

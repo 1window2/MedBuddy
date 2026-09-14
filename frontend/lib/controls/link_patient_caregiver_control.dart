@@ -208,6 +208,45 @@ class LinkPatientCaregiver {
     }
   }
 
+  // 함수이름: saveCaregiverAlias
+  // 함수역할: 환자 본인의 활성 연결에 보호자 별칭을 저장한다. 빈 값은 별칭 해제다.
+  // 매개변수: linkId (int): 연결 ID, caregiverAlias (String): 보호자 표시 이름.
+  // 반환값: 갱신된 연결 정보. 실패하거나 응답이 유효하지 않으면 StateError.
+  Future<PatientCaregiverLink> saveCaregiverAlias({
+    required int linkId,
+    required String caregiverAlias,
+  }) async {
+    try {
+      final response = await _client
+          .patch(
+            _buildLinkUri('link/$linkId/caregiver-alias'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'caregiver_alias': caregiverAlias}),
+          )
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.decodeBody(response);
+      if (response.statusCode != 200) {
+        throw StateError(
+          'Caregiver alias save failed (${response.statusCode}): '
+          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        );
+      }
+      return _decodeSingleLink(
+        ApiResponseParser.decodeMap(responseBody)['data'],
+      );
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        '보호자 표시 이름 서버 저장에 실패했습니다.',
+        name: 'LinkPatientCaregiver',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw StateError('Caregiver alias save failed.');
+    }
+  }
+
   // Function Name: requestUnlink
   // Description: Removes one patient-caregiver link for the current user hash.
   // Parameters:

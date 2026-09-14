@@ -376,5 +376,41 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 404)
 
 
+    # 함수이름: test_patient_caregiver_alias_is_independent_and_persistent
+    # 함수역할: 환자 별칭과 보호자 별칭의 독립 저장, 재조회 및 해제를 확인한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_patient_caregiver_alias_is_independent_and_persistent(self) -> None:
+        code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
+        self.assertIsNone(link["caregiver_alias"])
+        self.control.updatePatientAlias(link["id"], "guardian-a", "어머니")
+        result = self.control.update_caregiver_alias(link["id"], "patient-a", "  우리  딸  ")["data"]
+        self.assertEqual(result["caregiver_alias"], "우리 딸")
+        self.assertEqual(result["patient_alias"], "어머니")
+        listed = self.control.requestLinkScreen("patient-a")["data"][0]
+        self.assertEqual(listed["caregiver_alias"], "우리 딸")
+        result = self.control.update_caregiver_alias(link["id"], "patient-a", "  ")["data"]
+        self.assertEqual(result["caregiver_alias"], "")
+        self.assertEqual(result["patient_alias"], "어머니")
+
+    # 함수이름: test_caregiver_alias_rejects_nonowners_and_inactive_links
+    # 함수역할: 다른 환자, 상대 보호자, 없는 연결 및 해제된 연결의 별칭 변경을 차단한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_caregiver_alias_rejects_nonowners_and_inactive_links(self) -> None:
+        code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
+        for user in ("patient-b", "guardian-a"):
+            with self.subTest(user=user), self.assertRaises(HTTPException) as error:
+                self.control.update_caregiver_alias(link["id"], user, "별칭")
+            self.assertEqual(error.exception.status_code, 404)
+        with self.assertRaises(HTTPException) as error:
+            self.control.update_caregiver_alias(link["id"] + 1000, "patient-a", "별칭")
+        self.assertEqual(error.exception.status_code, 404)
+        self.control.requestUnlink(link["id"], "patient-a")
+        with self.assertRaises(HTTPException) as error:
+            self.control.update_caregiver_alias(link["id"], "patient-a", "별칭")
+        self.assertEqual(error.exception.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
