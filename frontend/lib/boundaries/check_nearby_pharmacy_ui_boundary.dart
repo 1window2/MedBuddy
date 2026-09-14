@@ -15,6 +15,7 @@ import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
 
 part 'pharmacy_details_sheet.dart';
+part 'pharmacy_list_panel.dart';
 
 // 클래스명: _PharmacyFilter
 // 역할: 현재 영업·심야·주말공휴일·전체 약국 조회 조건을 담당한다.
@@ -1043,15 +1044,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                     ),
                   if (_listExpanded)
                     Positioned.fill(
-                      child: Material(
-                        key: const Key('pharmacy-list-panel'),
-                        elevation: 8,
-                        color: MedBuddyColors.pageBackground,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildBody(),
+                      top: 12,
+                      child: _PharmacyListPanel(
+                        header: _buildListStatus(),
+                        showMapLabel: english ? 'Show map' : '지도 크게 보기',
+                        onDismissed: _handleBack,
+                        child: _buildBody(showStatus: false),
                       ),
                     ),
                   if (_isLoading)
@@ -1104,7 +1102,65 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     );
   }
 
-  Widget _buildBody() {
+  // 함수이름: _buildListStatus
+  // 함수역할: 조회 시각과 전화 확인 안내를 배치하고 큰 글씨에서는 줄을 나눈다.
+  // 매개변수: 없음. 반환값: 목록 상단 상태 영역.
+  Widget _buildListStatus() {
+    if (_lastRefreshedAt == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            Text.rich(
+              TextSpan(
+                children: [
+                  const WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Icon(
+                        Icons.update_outlined,
+                        size: 17,
+                        color: MedBuddyColors.textSubtle,
+                      ),
+                    ),
+                  ),
+                  TextSpan(text: _text.refreshedAt(_lastRefreshedAt!)),
+                ],
+              ),
+              style: const TextStyle(
+                color: MedBuddyColors.textSubtle,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+            Text(
+              _text.callBeforeVisit,
+              style: const TextStyle(
+                color: MedBuddyColors.primaryDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 함수이름: _buildBody
+  // 함수역할: 조회 상태·필터·스크롤 목록을 제공한다.
+  // 매개변수: showStatus: 별도 드래그 상단이 없을 때 조회 상태를 포함할지 여부.
+  // 반환값: 약국 목록 또는 조회 상태 화면.
+  Widget _buildBody({bool showStatus = true}) {
     final text = _text;
     if (_isLoading) {
       return _PharmacyLoadingState(message: text.findingNearby);
@@ -1125,40 +1181,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     final visiblePharmacies = _visiblePharmacies;
     return Column(
       children: [
-        if (_lastRefreshedAt != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.update_outlined,
-                  size: 17,
-                  color: MedBuddyColors.textSubtle,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    text.refreshedAt(_lastRefreshedAt!),
-                    style: const TextStyle(
-                      color: MedBuddyColors.textSubtle,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                Text(
-                  text.callBeforeVisit,
-                  style: const TextStyle(
-                    color: MedBuddyColors.primaryDark,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        if (showStatus) _buildListStatus(),
         Padding(
           padding: EdgeInsets.fromLTRB(
             20,
@@ -2132,58 +2155,77 @@ class _PharmacyCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: embedded
-                      ? CrossAxisAlignment.center
-                      : CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        pharmacy.name,
-                        key: embedded
-                            ? const Key('pharmacy-detail-name')
-                            : null,
-                        maxLines: embedded && !compact ? null : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: MedBuddyColors.textStrong,
-                          fontSize: 20,
-                          height: 1.25,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // 좁은 화면의 큰 글씨에서는 운영 상태를 다음 줄로 내려 이름 공간을 확보한다.
+                    final separateStatus =
+                        !embedded &&
+                        constraints.maxWidth <
+                            200 * MediaQuery.textScalerOf(context).scale(1);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: embedded
+                              ? CrossAxisAlignment.center
+                              : CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                pharmacy.name,
+                                key: embedded
+                                    ? const Key('pharmacy-detail-name')
+                                    : null,
+                                maxLines: embedded && !compact ? null : 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: MedBuddyColors.textStrong,
+                                  fontSize: 20,
+                                  height: 1.25,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            IconButton(
+                              key: embedded
+                                  ? const Key('pharmacy-detail-favorite')
+                                  : null,
+                              tooltip: isFavorite
+                                  ? text.removeFavorite
+                                  : text.addFavorite,
+                              onPressed: onFavoriteRequested,
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(
+                                isFavorite
+                                    ? Icons.star_rounded
+                                    : Icons.star_border_rounded,
+                                color: isFavorite
+                                    ? const Color(0xFFF2A900)
+                                    : MedBuddyColors.textSubtle,
+                              ),
+                            ),
+                            if (onClose != null)
+                              IconButton(
+                                key: const Key('pharmacy-detail-close'),
+                                tooltip: text.isEnglish
+                                    ? 'Close pharmacy details'
+                                    : '약국 정보 닫기',
+                                onPressed: onClose,
+                                icon: const Icon(Icons.close),
+                              ),
+                            if (!embedded && !separateStatus) statusBadge,
+                          ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    IconButton(
-                      key: embedded
-                          ? const Key('pharmacy-detail-favorite')
-                          : null,
-                      tooltip: isFavorite
-                          ? text.removeFavorite
-                          : text.addFavorite,
-                      onPressed: onFavoriteRequested,
-                      visualDensity: VisualDensity.compact,
-                      icon: Icon(
-                        isFavorite
-                            ? Icons.star_rounded
-                            : Icons.star_border_rounded,
-                        color: isFavorite
-                            ? const Color(0xFFF2A900)
-                            : MedBuddyColors.textSubtle,
-                      ),
-                    ),
-                    if (onClose != null)
-                      IconButton(
-                        key: const Key('pharmacy-detail-close'),
-                        tooltip: text.isEnglish
-                            ? 'Close pharmacy details'
-                            : '약국 정보 닫기',
-                        onPressed: onClose,
-                        icon: const Icon(Icons.close),
-                      ),
-                    if (!embedded) statusBadge,
-                  ],
+                        if (separateStatus)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: statusBadge,
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 SizedBox(height: embedded ? 2 : 12),
                 if (embedded)

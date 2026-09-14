@@ -282,6 +282,140 @@ void main() {
   // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  // 함수이름: 목록 상단 드래그 복귀 테스트
+  // 함수역할: 지도 노출 간격과 드래그 닫기를 확인하고 선택·지도·조회 결과가 유지되는지 검증한다.
+  // 매개변수: tester: 화면 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('dragging the list header reveals the same map and selection', (
+    tester,
+  ) async {
+    var requests = 0;
+    await tester.pumpWidget(
+      _testApp(_buildControl(onRequest: () => requests++)),
+    );
+    await tester.pumpAndSettle();
+    final mapFinder = find.byKey(const Key('test-nearby-pharmacy-map'));
+    final map = tester.element(mapFinder);
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const Key('pharmacy-list-panel'));
+    expect(
+      tester.getTopLeft(panel).dy - tester.getTopLeft(mapFinder).dy,
+      closeTo(12, .1),
+    );
+    final before = tester.getTopLeft(panel).dy;
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('pharmacy-list-handle'))),
+    );
+    await gesture.moveBy(const Offset(0, 30));
+    await gesture.moveBy(const Offset(0, 100));
+    await tester.pump();
+    expect(tester.getTopLeft(panel).dy, greaterThan(before));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(panel, findsNothing);
+    expect(find.byKey(const Key('pharmacy-detail-sheet')), findsOneWidget);
+    expect(tester.element(mapFinder), same(map));
+    expect(requests, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 목록 드래그 취소·스크롤 분리 테스트
+  // 함수역할: 짧은 이동·제스처 취소·목록 스크롤이 패널을 닫지 않는지 확인한다.
+  // 매개변수: tester: 화면 제어기. 반환값: 비동기 검증 완료.
+  testWidgets(
+    'short or cancelled header drags restore the list and scrolling stays independent',
+    (tester) async {
+      await tester.pumpWidget(_testApp(_buildControl()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      final panel = find.byKey(const Key('pharmacy-list-panel'));
+      final top = tester.getTopLeft(panel).dy;
+      for (final cancel in [false, true]) {
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byKey(const Key('pharmacy-list-handle'))),
+        );
+        await gesture.moveBy(const Offset(0, 24));
+        await tester.pump(const Duration(milliseconds: 300));
+        await gesture.moveBy(Offset(0, cancel ? 120 : 8));
+        await tester.pump(const Duration(milliseconds: 300));
+        if (cancel) {
+          await gesture.cancel();
+        } else {
+          await gesture.up();
+        }
+        await tester.pumpAndSettle();
+        expect(panel, findsOneWidget);
+        expect(tester.getTopLeft(panel).dy, closeTo(top, .1));
+      }
+      final list = find.descendant(of: panel, matching: find.byType(ListView));
+      await tester.drag(list, const Offset(0, -140));
+      await tester.pumpAndSettle();
+      expect(panel, findsOneWidget);
+      expect(tester.getTopLeft(panel).dy, closeTo(top, .1));
+      await tester.drag(list, const Offset(0, 180));
+      await tester.pumpAndSettle();
+      expect(panel, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: 목록 지도 복귀 명령 테스트
+  // 함수역할: 손잡이 탭과 기존 하단 버튼이 모두 지도 복귀를 제공하는지 검증한다.
+  // 매개변수: tester: 화면 제어기. 반환값: 비동기 검증 완료.
+  testWidgets(
+    'list handle tap and existing map button both return to the map',
+    (tester) async {
+      await tester.pumpWidget(_testApp(_buildControl()));
+      await tester.pumpAndSettle();
+      for (final key in ['pharmacy-list-handle', 'pharmacy-list-toggle']) {
+        await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('지도 크게 보기'), findsOneWidget);
+        await tester.tap(find.byKey(Key(key)));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 작은 화면 목록 손잡이 테스트
+    // 함수역할: 큰 글씨에서도 상태 문구·손잡이가 겹치지 않고 드래그 복귀가 가능한지 검증한다.
+    // 매개변수: tester: 화면 제어기. 반환값: 비동기 검증 완료.
+    testWidgets(
+      'small $language list keeps large-text header and handle reachable',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          _testApp(_buildControl(), language: language, textScale: 2),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+        await tester.pumpAndSettle();
+        final handle = find.byKey(const Key('pharmacy-list-handle'));
+        final filter = find.byKey(const Key('pharmacy-filter-selector'));
+        expect(handle.hitTestable(), findsOneWidget);
+        expect(tester.getSize(handle).height, greaterThanOrEqualTo(48));
+        expect(
+          tester.getBottomLeft(handle).dy,
+          lessThan(tester.getTopLeft(filter).dy),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.drag(handle, const Offset(0, 160));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   // 함수이름: 마커 상세창 테스트
   // 함수역할: 마커 선택, 접기·펼치기, 닫기와 지도 상태 보존을 검증한다.
   // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
@@ -1110,6 +1244,7 @@ void main() {
       const ValueKey('pharmacy-directions-open'),
     );
     await tester.ensureVisible(directionsButton);
+    await tester.pumpAndSettle();
     await tester.tap(directionsButton);
     await tester.pumpAndSettle();
 
