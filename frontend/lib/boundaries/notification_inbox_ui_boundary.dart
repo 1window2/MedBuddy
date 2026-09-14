@@ -475,7 +475,13 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                entry.body,
+                                                control.bodyFor(
+                                                  entry,
+                                                  isEnglish: _english,
+                                                  showSensitiveDetails: widget
+                                                      .userSetting
+                                                      .showNotificationDetails,
+                                                ),
                                                 style: const TextStyle(
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w500,

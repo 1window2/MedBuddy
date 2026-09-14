@@ -148,6 +148,99 @@ void main() {
     },
   );
 
+  // 함수이름: 보호자 푸시 설명 테스트
+  // 함수역할: 완료·미복용 푸시의 실제 설명을 보존하고 다른 수신 계정은 제외한다.
+  // 매개변수: 없음. 반환값: 저장된 설명과 계정 범위 검증 완료.
+  test(
+    'caregiver push history keeps completed and missed slot descriptions',
+    () async {
+      for (final (type, body) in [
+        ('caregiver_slot_completed', '환자가 아침에 복용할 약을 모두 복용했습니다.'),
+        ('caregiver_dose_completed', '환자의 약 복용이 확인되었습니다.'),
+        ('caregiver_slot_missed', '연동된 환자의 점심 복약이 아직 확인되지 않았습니다.'),
+      ]) {
+        final message = RemoteMessage(
+          messageId: type,
+          data: {
+            'type': type,
+            'recipient_hash': 'caregiver',
+            'patient_hash': 'patient',
+            'slot_key': 'morning',
+          },
+          notification: RemoteNotification(title: '복약 확인', body: body),
+        );
+        await recordPushNotificationHistory(message, userHash: 'caregiver');
+        await recordPushNotificationHistory(message, userHash: 'patient');
+        final entry = (await NotificationInboxStore(
+          userHash: 'caregiver',
+        ).load()).singleWhere((entry) => entry.id == 'push:$type');
+        expect(entry.title, '복약 확인');
+        expect(entry.body, body);
+        expect(entry.payload, 'caregiver:patient');
+      }
+      expect(await NotificationInboxStore(userHash: 'patient').load(), isEmpty);
+    },
+  );
+
+  // 함수이름: 보호자 푸시 공개 범위 테스트
+  // 함수역할: 기기 또는 서버의 숨김 결정을 지키며 본문 없는 푸시의 상세 상태를 추측하지 않는다.
+  // 매개변수: 없음. 반환값: 숨김·누락 본문의 안전한 대체 문구 검증 완료.
+  test(
+    'caregiver push history does not reconstruct hidden or absent details',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        'user_setting_caregiver_notification_detail_mode',
+        'type_only',
+      );
+      const data = {
+        'type': 'caregiver_slot_completed',
+        'recipient_hash': 'caregiver',
+        'patient_hash': 'patient',
+        'slot_key': 'morning',
+      };
+      await recordPushNotificationHistory(
+        const RemoteMessage(
+          messageId: 'hidden-local',
+          data: data,
+          notification: RemoteNotification(
+            title: '환자 복약 완료',
+            body: '숨겨야 하는 아침 복약 상태',
+          ),
+        ),
+        userHash: 'caregiver',
+      );
+      await preferences.setString(
+        'user_setting_caregiver_notification_detail_mode',
+        'full',
+      );
+      await recordPushNotificationHistory(
+        const RemoteMessage(
+          messageId: 'hidden-server',
+          data: data,
+          notification: RemoteNotification(
+            title: '복약 상태 알림',
+            body: '연동된 환자의 복약 상태를 확인해 주세요.',
+          ),
+        ),
+        userHash: 'caregiver',
+      );
+      await recordPushNotificationHistory(
+        const RemoteMessage(messageId: 'no-body', data: data),
+        userHash: 'caregiver',
+      );
+      final entries = await NotificationInboxStore(
+        userHash: 'caregiver',
+      ).load();
+      expect(entries, hasLength(3));
+      expect(
+        entries.every((entry) => entry.body == '연동된 환자의 복약 상태를 확인해 주세요.'),
+        isTrue,
+      );
+      expect(entries.every((entry) => entry.title == '복약 상태 알림'), isTrue);
+    },
+  );
+
   // 함수이름: 푸시 내용 숨김 테스트
   // 함수역할: 서버에서 비운 미리보기는 알림 본문으로 우회해 저장하지 않는다.
   // 매개변수: 없음. 반환값: 검증 완료.

@@ -65,8 +65,22 @@ Future<void> recordPushNotificationHistory(
       final patient = message.data['patient_hash']?.toString().trim() ?? '';
       if (patient.isEmpty) return;
       payload = 'caregiver:${Uri.encodeComponent(patient)}';
-      title = english ? 'Medication update' : '복약 상태 알림';
-      body = english
+      final showDetails =
+          preferences.getString(
+            'user_setting_${active.trim()}_notification_detail_mode',
+          ) !=
+          'type_only';
+      final deliveredTitle = message.notification?.title?.trim() ?? '';
+      final deliveredBody = message.notification?.body?.trim() ?? '';
+      // 서버가 숨긴 내용은 payload의 시간대·유형으로 다시 생성하지 않는다.
+      title = showDetails && deliveredTitle.isNotEmpty
+          ? deliveredTitle
+          : english
+          ? 'Medication update'
+          : '복약 상태 알림';
+      body = showDetails && deliveredBody.isNotEmpty
+          ? deliveredBody
+          : english
           ? 'Check your linked patient\'s medication status.'
           : '연동된 환자의 복약 상태를 확인해 주세요.';
       category = NotificationInboxCategory.medication;

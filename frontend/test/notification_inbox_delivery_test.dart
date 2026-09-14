@@ -108,6 +108,43 @@ void main() {
     },
   );
 
+  // 함수이름: 보호자 알림 본문 보존 테스트
+  // 함수역할: 실제 시간대·완료 설명을 저장하고 내용 숨김일 때는 상세 내용 없이 기록한다.
+  // 매개변수: 없음. 반환값: 표시 내용과 계정별 저장 결과 검증 완료.
+  test(
+    'caregiver history preserves delivered details and respects privacy',
+    () async {
+      for (final showDetails in [true, false]) {
+        service.setShowSensitiveDetails(showDetails);
+        await service.showCaregiverAlert(
+          id: showDetails ? 201 : 202,
+          title: '환자 복약 완료',
+          body: '환자가 아침에 복용할 약을 모두 복용했습니다.',
+          patientHash: 'patient',
+          historyUserHash: 'caregiver',
+        );
+        final entries = await NotificationInboxStore(
+          userHash: 'caregiver',
+        ).load();
+        final entry = entries.singleWhere(
+          (entry) => entry.id == 'caregiver:${showDetails ? 201 : 202}',
+        );
+        expect(entry.title, showDetails ? '환자 복약 완료' : '복약 상태 알림');
+        expect(
+          entry.body,
+          showDetails ? '환자가 아침에 복용할 약을 모두 복용했습니다.' : '연동된 환자의 복약 상태가 변경되었습니다.',
+        );
+        expect(
+          (calls.lastWhere((call) => call.method == 'show').arguments
+              as Map)['body'],
+          entry.body,
+        );
+        expect(entry.payload, 'caregiver:patient');
+      }
+      expect(await NotificationInboxStore(userHash: 'patient').load(), isEmpty);
+    },
+  );
+
   // 함수이름: 내용 숨김 테스트
   // 함수역할: 종류만 표시하는 설정은 시스템 알림과 알림함 양쪽에서 본문을 숨긴다.
   // 매개변수: 없음. 반환값: 표시·저장 내용 검증 완료.

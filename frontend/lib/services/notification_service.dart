@@ -917,10 +917,13 @@ class NotificationService {
         owner,
         NotificationInboxEntry(
           id: 'caregiver:$id',
-          title: isEnglish ? 'Medication update' : '복약 상태 알림',
-          body: isEnglish
-              ? 'Check your linked patient\'s medication status.'
-              : '연동된 환자의 복약 상태를 확인해 주세요.',
+          // 표시가 허용된 실제 완료·미복용 설명을 보존한다.
+          title: _showSensitiveDetails
+              ? title
+              : isEnglish
+              ? 'Medication update'
+              : '복약 상태 알림',
+          body: visibleBody,
           payload: 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
           category: NotificationInboxCategory.medication,
           occurredAt: DateTime.now(),

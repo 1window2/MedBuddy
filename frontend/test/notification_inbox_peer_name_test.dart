@@ -117,6 +117,130 @@ void main() {
     },
   );
 
+  // 함수이름: 보호자 알림 별칭 테스트
+  // 함수역할: 완료·미복용 설명 옆에 활성 환자 별칭을 표시하고 별칭 변경·연동 해제·숨김을 반영한다.
+  // 매개변수: 없음. 반환값: 현재 이름과 기록 시점 설명 검증 완료.
+  test(
+    'caregiver history uses current patient aliases without changing historical status',
+    () async {
+      createControls();
+      await chats.refresh();
+      final entry = NotificationInboxEntry(
+        id: 'completed',
+        title: '환자 복약 완료',
+        body: '환자가 아침에 복용할 약을 모두 복용했습니다.',
+        payload: 'caregiver:patient%2D1',
+        category: NotificationInboxCategory.medication,
+        occurredAt: DateTime(2026, 9, 12),
+      );
+      expect(inbox.titleFor(entry, isEnglish: false), '엄마');
+      expect(inbox.bodyFor(entry, isEnglish: false), entry.body);
+      expect(
+        inbox.titleFor(
+          _entry('caregiver:patient-2', chat: false),
+          isEnglish: false,
+        ),
+        '아빠',
+      );
+      expect(
+        inbox.titleFor(entry, isEnglish: false, showSensitiveDetails: false),
+        '복약 상태 알림',
+      );
+      expect(
+        inbox.bodyFor(entry, isEnglish: false, showSensitiveDetails: false),
+        '연동된 환자의 복약 상태를 확인해 주세요.',
+      );
+      expect(
+        inbox.bodyFor(entry, isEnglish: true, showSensitiveDetails: false),
+        "Check your linked patient's medication status.",
+      );
+      links.result = [_link(1, '어머니')];
+      await chats.refresh();
+      expect(inbox.titleFor(entry, isEnglish: false), '어머니');
+      expect(inbox.bodyFor(entry, isEnglish: false), entry.body);
+      links.result = [];
+      await chats.refresh();
+      expect(inbox.titleFor(entry, isEnglish: false), '환자 복약 완료');
+      for (final payload in [
+        'caregiver:%',
+        'caregiver:',
+        'caregiver:patient-99',
+      ]) {
+        expect(
+          inbox.titleFor(_entry(payload, chat: false), isEnglish: false),
+          '복약 시간',
+        );
+      }
+      expect(
+        inbox.bodyFor(
+          _entry('caregiver:patient-1', chat: false),
+          isEnglish: false,
+        ),
+        '알림 내용',
+      );
+    },
+  );
+
+  // 함수이름: 보호자 알림 화면 테스트
+  // 함수역할: 작은 화면의 큰 글씨에서도 별칭과 실제 시간대 설명이 보이며 내용 숨김을 적용한다.
+  // 매개변수: tester는 화면 테스트 제어기. 반환값: 렌더링 검증 완료.
+  testWidgets(
+    'caregiver inbox renders a readable description at large text size',
+    (tester) async {
+      createControls();
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      const description = '환자가 아침에 복용할 약을 모두 복용했습니다.';
+      await inbox.store.record(
+        NotificationInboxEntry(
+          id: 'completed',
+          title: '환자 복약 완료',
+          body: description,
+          payload: 'caregiver:patient-1',
+          category: NotificationInboxCategory.medication,
+          occurredAt: DateTime(2026, 9, 12),
+        ),
+      );
+      await chats.refresh();
+      await inbox.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: NotificationInboxUI(
+            control: inbox,
+            userSetting: const UserSetting(),
+            onOpen: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('엄마'), findsOneWidget);
+      expect(find.text(description), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationInboxUI(
+            control: inbox,
+            userSetting: const UserSetting(notificationDetailMode: 'type_only'),
+            onOpen: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('엄마'), findsNothing);
+      expect(find.text(description), findsNothing);
+      expect(find.text('복약 상태 알림'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   // 함수이름: 환자 관점 테스트
   // 함수역할: 환자에게 자신의 별칭 대신 채팅 목록의 보호자 이름을 표시한다. 매개변수: 없음. 반환값: 검증 완료.
   test(

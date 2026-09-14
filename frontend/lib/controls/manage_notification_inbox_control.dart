@@ -38,14 +38,38 @@ class ManageNotificationInbox extends ChangeNotifier {
   int get unreadCount => entries.where((entry) => !entry.isRead).length;
 
   // 함수이름: titleFor
-  // 함수역할: 채팅 알림 제목을 현재 활성 연동의 상대 이름으로 표시하며 저장 원본은 변경하지 않는다.
-  // 매개변수: entry, isEnglish, showSensitiveDetails. 반환값: 채팅 목록의 이름 또는 기존 알림 제목.
+  // 함수역할: 채팅·보호자 알림에 현재 활성 연동의 별칭을 표시하며 저장 원본은 변경하지 않는다.
+  // 매개변수: entry, isEnglish, showSensitiveDetails. 반환값: 상대 별칭 또는 기존 알림 제목.
   String titleFor(
     NotificationInboxEntry entry, {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
     final chatList = _chatList;
+    if (_isCaregiverEntry(entry)) {
+      if (!showSensitiveDetails) {
+        return isEnglish ? 'Medication update' : '복약 상태 알림';
+      }
+      if (chatList == null) return entry.title;
+      final String patientHash;
+      try {
+        patientHash = Uri.decodeComponent(
+          entry.payload.substring('caregiver:'.length),
+        );
+      } on ArgumentError {
+        return entry.title;
+      }
+      for (final link in chatList.links) {
+        if (link.linkStatus &&
+            link.caregiverHash == store.userHash &&
+            link.patientHash == patientHash &&
+            patientHash.isNotEmpty &&
+            patientHash != store.userHash) {
+          return chatList.peerName(link, isEnglish: isEnglish);
+        }
+      }
+      return entry.title;
+    }
     if (!showSensitiveDetails ||
         entry.category != NotificationInboxCategory.chat ||
         chatList == null) {
@@ -64,6 +88,30 @@ class ManageNotificationInbox extends ChangeNotifier {
     }
     return entry.title;
   }
+
+  // 함수이름: bodyFor
+  // 함수역할: 실제 수신 내용을 표시하되 내용 숨김으로 바꾸면 이전 보호자 알림도 가린다.
+  // 매개변수: entry는 저장 알림, isEnglish는 언어, showSensitiveDetails는 공개 설정.
+  // 반환값: 수신 시점의 설명 또는 일반 상태 안내. 과거 상태를 현재 일정으로 추측하지 않는다.
+  String bodyFor(
+    NotificationInboxEntry entry, {
+    required bool isEnglish,
+    bool showSensitiveDetails = true,
+  }) {
+    if (_isCaregiverEntry(entry) && !showSensitiveDetails) {
+      return isEnglish
+          ? 'Check your linked patient\'s medication status.'
+          : '연동된 환자의 복약 상태를 확인해 주세요.';
+    }
+    return entry.body;
+  }
+
+  // 함수이름: _isCaregiverEntry
+  // 함수역할: 분류와 이동 경로가 모두 보호자 알림인지 확인한다.
+  // 매개변수: entry는 검사할 알림. 반환값: 보호자 복약 알림 여부.
+  bool _isCaregiverEntry(NotificationInboxEntry entry) =>
+      entry.category == NotificationInboxCategory.medication &&
+      entry.payload.startsWith('caregiver:');
 
   // 함수이름: _onPeerNamesChanged
   // 함수역할: 별칭 변경·연동 해제를 기존 알림 제목에도 반영한다. 매개변수: 없음. 반환값: 없음.
