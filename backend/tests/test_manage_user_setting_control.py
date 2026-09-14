@@ -30,6 +30,22 @@ from entities.user_setting_entity import _UserSetting, ensure_user_setting_schem
 # - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
 # - control (ManageUserSetting): 운영 상태와 분리하여 검증할 유스케이스 control.
 class ManageUserSettingTest(unittest.TestCase):
+    # 함수역할: 홈 선택을 계정별로 저장하며 구형 앱 저장에서도 보존하는지 검증한다.
+    def test_home_schedule_source_persists_and_preserves_legacy_requests(self) -> None:
+        self.assertEqual(self.control.requestUserSetting("user-a")["data"]["home_schedule_source"], "self")
+        saved = self.control.saveUserSetting("user-a", 16, 1.0, "ko", home_schedule_source="patients")
+        self.assertEqual(saved["data"]["home_schedule_source"], "patients")
+        self.assertEqual(self.control.requestUserSetting("user-a")["data"]["home_schedule_source"], "patients")
+        self.assertEqual(self.control.requestUserSetting("user-b")["data"]["home_schedule_source"], "self")
+        legacy = self.control.saveUserSetting("user-a", 20, 1.0, "ko")
+        self.assertEqual(legacy["data"]["home_schedule_source"], "patients")
+        updated = self.control.saveUserSetting("user-a", 20, 1.0, "ko", home_schedule_source="self")
+        self.assertEqual(updated["data"]["home_schedule_source"], "self")
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 16, 1.0, "ko", home_schedule_source="automatic")
+        self.assertEqual(error.exception.status_code, 400)
+
+
     # Function Name: setUp
     # Description:
     # - Creates an isolated user-settings database, upgrades its schema, and prepares the

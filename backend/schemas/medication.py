@@ -261,6 +261,8 @@ class UserSettingUpdate(BaseModel):
     language: str = Field(pattern=r"^(ko|en)$")
     language_mode: str = Field(default="ko", pattern=r"^(system|ko|en)$")
     time_format: str = Field(default="24h", pattern=r"^(12h|24h)$")
+    # 미전송은 기존 선택 유지, 신규 계정은 내 일정이 기본값이다.
+    home_schedule_source: str | None = Field(default=None, pattern=r"^(self|patients)$")
     medication_notifications_enabled: bool = True
     caregiver_notifications_enabled: bool = True
     chat_notifications_enabled: bool = True

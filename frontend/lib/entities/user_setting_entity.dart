@@ -23,12 +23,18 @@
 // - defaultEveningTime (String): 새 저녁 알림의 HH:mm 기본 시각
 // - defaultBedtime (String): 새 취침 전 알림의 HH:mm 기본 시각
 class UserSetting {
+  // 함수역할: 구형·잘못된 설정은 기본값인 내 일정으로 복원한다.
+  static String _normalizedHomeScheduleSource(String value) =>
+      value.trim().toLowerCase() == 'patients' ? 'patients' : 'self';
+
   final String userHash;
   final int fontSize;
   final double readingSpeed;
   final String language;
   final String languageMode;
   final String timeFormat;
+  // 홈 표시 대상은 복용약 유무와 무관하게 사용자가 선택한다.
+  final String homeScheduleSource;
   final bool medicationNotificationsEnabled;
   final bool caregiverNotificationsEnabled;
   final bool chatNotificationsEnabled;
@@ -64,6 +70,7 @@ class UserSetting {
     this.language = 'ko',
     this.languageMode = 'ko',
     this.timeFormat = '24h',
+    this.homeScheduleSource = 'self',
     this.medicationNotificationsEnabled = true,
     this.caregiverNotificationsEnabled = true,
     this.chatNotificationsEnabled = true,
@@ -94,6 +101,9 @@ class UserSetting {
       ),
       timeFormat: _normalizedTimeFormat(
         _readString(json['time_format'] ?? json['timeFormat']),
+      ),
+      homeScheduleSource: _normalizedHomeScheduleSource(
+        _readString(json['home_schedule_source'] ?? json['homeScheduleSource']),
       ),
       medicationNotificationsEnabled: _readBool(
         json['medication_notifications_enabled'] ??
@@ -308,6 +318,7 @@ class UserSetting {
     String? language,
     String? languageMode,
     String? timeFormat,
+    String? homeScheduleSource,
     bool? medicationNotificationsEnabled,
     bool? caregiverNotificationsEnabled,
     bool? chatNotificationsEnabled,
@@ -324,6 +335,9 @@ class UserSetting {
       language: language ?? this.language,
       languageMode: languageMode ?? this.languageMode,
       timeFormat: timeFormat ?? this.timeFormat,
+      homeScheduleSource: _normalizedHomeScheduleSource(
+        homeScheduleSource ?? this.homeScheduleSource,
+      ),
       medicationNotificationsEnabled:
           medicationNotificationsEnabled ?? this.medicationNotificationsEnabled,
       caregiverNotificationsEnabled:
@@ -373,6 +387,7 @@ class UserSetting {
       'language': language,
       'language_mode': languageMode,
       'time_format': timeFormat,
+      'home_schedule_source': homeScheduleSource,
       'medication_notifications_enabled': medicationNotificationsEnabled,
       'caregiver_notifications_enabled': caregiverNotificationsEnabled,
       'chat_notifications_enabled': chatNotificationsEnabled,

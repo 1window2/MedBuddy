@@ -20,6 +20,52 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('홈 일정 설정은 기본값·계정별 복원·서버 왕복을 지원한다', () async {
+    expect(const UserSetting().homeScheduleSource, 'self');
+    expect(
+      UserSetting.fromJson({
+        'home_schedule_source': 'automatic',
+      }).homeScheduleSource,
+      'self',
+    );
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['home_schedule_source'], 'patients');
+      return http.Response(jsonEncode({'success': true, 'data': body}), 200);
+    });
+    final control = ManageUserSetting(userHash: 'user-a', client: client);
+    addTearDown(control.dispose);
+    final result = await control.saveUserSetting(
+      currentSetting: const UserSetting(),
+      fontSizeOption: 'medium',
+      readingSpeedOption: 'medium',
+      language: 'ko',
+      homeScheduleSource: 'patients',
+    );
+    expect(result.synchronizedWithServer, isTrue);
+    expect(result.setting.homeScheduleSource, 'patients');
+    final restored = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+    final other = ManageUserSetting(
+      userHash: 'user-b',
+      useRemotePersistence: false,
+    );
+    addTearDown(restored.dispose);
+    addTearDown(other.dispose);
+    expect(
+      (await restored.requestUserSetting()).homeScheduleSource,
+      'patients',
+    );
+    expect((await other.requestUserSetting()).homeScheduleSource, 'self');
+    expect(
+      UserSetting.fromJson(result.setting.toJson()).homeScheduleSource,
+      'patients',
+    );
+  });
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 기대 동작: 사용자 설정에 따라 시각을 12시간제와 24시간제로 표시한다.

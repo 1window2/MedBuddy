@@ -63,6 +63,9 @@ class _UserSetting(Base):
     language = Column(String, nullable=False, default="ko", server_default="ko")
     language_mode = Column(String, nullable=False, default="ko", server_default="ko")
     time_format = Column(String, nullable=False, default="24h", server_default="24h")
+    home_schedule_source = Column(
+        String, nullable=False, default="self", server_default="self"
+    )
     medication_notifications_enabled = Column(
         Boolean,
         nullable=False,
@@ -133,6 +136,7 @@ class UserSetting(BaseModel):
     language: str = "ko"
     language_mode: str = "ko"
     time_format: str = "24h"
+    home_schedule_source: str = "self"
     medication_notifications_enabled: bool = True
     caregiver_notifications_enabled: bool = True
     chat_notifications_enabled: bool = True
@@ -176,6 +180,7 @@ class UserSetting(BaseModel):
         default_lunch_time: str,
         default_evening_time: str,
         default_bedtime: str,
+        home_schedule_source: str | None = None,
     ) -> "UserSetting":
         return self.model_copy(
             update={
@@ -184,6 +189,8 @@ class UserSetting(BaseModel):
                 "language": language,
                 "language_mode": language_mode,
                 "time_format": time_format,
+                # 구형 앱이 새 필드를 보내지 않아도 기존 선택을 유지한다.
+                "home_schedule_source": home_schedule_source or self.home_schedule_source,
                 "medication_notifications_enabled": medication_notifications_enabled,
                 "caregiver_notifications_enabled": caregiver_notifications_enabled,
                 "chat_notifications_enabled": chat_notifications_enabled,
@@ -210,6 +217,7 @@ class UserSetting(BaseModel):
             "language": self.language,
             "language_mode": self.language_mode,
             "time_format": self.time_format,
+            "home_schedule_source": self.home_schedule_source,
             "medication_notifications_enabled": self.medication_notifications_enabled,
             "caregiver_notifications_enabled": self.caregiver_notifications_enabled,
             "chat_notifications_enabled": self.chat_notifications_enabled,
@@ -244,6 +252,7 @@ def ensure_user_setting_schema(db_engine: Engine) -> None:
         "language": "VARCHAR DEFAULT 'ko'",
         "language_mode": "VARCHAR DEFAULT 'ko'",
         "time_format": "VARCHAR DEFAULT '24h'",
+        "home_schedule_source": "VARCHAR DEFAULT 'self'",
         "medication_notifications_enabled": "BOOLEAN DEFAULT 1",
         "caregiver_notifications_enabled": "BOOLEAN DEFAULT 1",
         "chat_notifications_enabled": "BOOLEAN DEFAULT 1",
@@ -296,6 +305,7 @@ def ensure_user_setting_schema(db_engine: Engine) -> None:
                 f"UPDATE {_UserSetting.__tablename__} SET "
                 "language_mode = COALESCE(NULLIF(language_mode, ''), language, 'ko'), "
                 "time_format = COALESCE(NULLIF(time_format, ''), '24h'), "
+                "home_schedule_source = COALESCE(NULLIF(home_schedule_source, ''), 'self'), "
                 "medication_notifications_enabled = "
                 "COALESCE(medication_notifications_enabled, 1), "
                 "caregiver_notifications_enabled = "

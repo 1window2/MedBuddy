@@ -83,7 +83,12 @@ class ManageUserSetting:
         default_lunch_time: str = "12:00",
         default_evening_time: str = "18:00",
         default_bedtime: str = "22:00",
+        home_schedule_source: str | None = None,
     ) -> dict[str, object]:
+        if home_schedule_source is not None:
+            home_schedule_source = home_schedule_source.strip().lower()
+            if home_schedule_source not in {"self", "patients"}:
+                raise HTTPException(status_code=400, detail="Invalid home schedule source.")
         normalized_user_hash = normalize_patient_hash(user_hash)
         normalized_font_size = self._validate_font_size(font_size)
         normalized_reading_speed = self._validate_reading_speed(reading_speed)
@@ -119,6 +124,7 @@ class ManageUserSetting:
                 normalized_default_times["lunch"],
                 normalized_default_times["evening"],
                 normalized_default_times["bedtime"],
+                home_schedule_source,
             )
             row.font_size = next_setting.font_size
             row.reading_speed = next_setting.reading_speed
@@ -144,6 +150,7 @@ class ManageUserSetting:
                 chat_notifications_enabled,
                 normalized_detail_mode,
                 normalized_default_times,
+                home_schedule_source,
             )
         except HTTPException:
             self.db.rollback()
@@ -203,6 +210,7 @@ class ManageUserSetting:
         chat_notifications_enabled: bool,
         notification_detail_mode: str,
         default_times: dict[str, str],
+        home_schedule_source: str | None = None,
     ) -> dict[str, object]:
         row = self._find_setting(user_hash)
         if row is None:
@@ -227,6 +235,7 @@ class ManageUserSetting:
             default_times["lunch"],
             default_times["evening"],
             default_times["bedtime"],
+            home_schedule_source,
         )
         self._apply_extended_setting(row, next_setting)
         self.db.commit()
@@ -352,6 +361,7 @@ class ManageUserSetting:
             language=row.language or "ko",
             language_mode=row.language_mode or row.language or "ko",
             time_format=row.time_format or "24h",
+            home_schedule_source=row.home_schedule_source or "self",
             medication_notifications_enabled=(
                 row.medication_notifications_enabled is not False
             ),
@@ -381,6 +391,7 @@ class ManageUserSetting:
     ) -> None:
         row.language_mode = setting.language_mode
         row.time_format = setting.time_format
+        row.home_schedule_source = setting.home_schedule_source
         row.medication_notifications_enabled = (
             setting.medication_notifications_enabled
         )

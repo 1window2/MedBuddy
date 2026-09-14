@@ -119,6 +119,7 @@ class ManageUserSetting {
     required String language,
     String? languageMode,
     String? timeFormat,
+    String? homeScheduleSource,
     bool? medicationNotificationsEnabled,
     bool? caregiverNotificationsEnabled,
     bool? chatNotificationsEnabled,
@@ -138,6 +139,7 @@ class ManageUserSetting {
         .copyWith(
           languageMode: languageMode,
           timeFormat: timeFormat,
+          homeScheduleSource: homeScheduleSource,
           medicationNotificationsEnabled: medicationNotificationsEnabled,
           caregiverNotificationsEnabled: caregiverNotificationsEnabled,
           chatNotificationsEnabled: chatNotificationsEnabled,
@@ -245,6 +247,10 @@ class ManageUserSetting {
       defaultEveningTime:
           preferences.getString(_defaultEveningTimeKey) ??
           fallbackSetting.defaultEveningTime,
+      homeScheduleSource:
+          preferences.getString(_homeScheduleSourceKey) == 'patients'
+          ? 'patients'
+          : 'self',
       defaultBedtime:
           preferences.getString(_defaultBedtimeKey) ??
           fallbackSetting.defaultBedtime,
@@ -264,6 +270,10 @@ class ManageUserSetting {
     await preferences.setString(_languageKey, setting.language);
     await preferences.setString(_languageModeKey, setting.languageMode);
     await preferences.setString(_timeFormatKey, setting.timeFormat);
+    await preferences.setString(
+      _homeScheduleSourceKey,
+      setting.homeScheduleSource,
+    );
     await preferences.setBool(
       _medicationNotificationsEnabledKey,
       setting.medicationNotificationsEnabled,
@@ -360,6 +370,10 @@ class ManageUserSetting {
   // - String: 시스템 언어 따르기 선택을 보존할 사용자별 언어 모드 저장 키를 만든다.
   String get _languageModeKey =>
       'user_setting_${_normalizedUserHash}_language_mode';
+
+  // 함수역할: 홈 일정 선택을 현재 계정에만 저장한다.
+  String get _homeScheduleSourceKey =>
+      'user_setting_${_normalizedUserHash}_home_schedule_source';
 
   // 함수이름: _timeFormatKey
   // 함수역할: 12시간·24시간 표시 방식을 보존할 사용자별 저장 키를 만든다.

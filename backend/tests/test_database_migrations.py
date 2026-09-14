@@ -295,3 +295,32 @@ def test_data_lifecycle_migration_supports_round_trip(tmp_path: Path) -> None:
         }
     finally:
         engine.dispose()
+
+
+# 함수역할: 홈 일정 선택 열 추가·롤백·재적용이 기존 설정을 보존하는지 확인한다.
+def test_home_schedule_source_migration_preserves_settings(tmp_path: Path) -> None:
+    url = f"sqlite:///{(tmp_path / 'home-setting.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "4b7a9e2c6d80")
+    engine = create_engine(url)
+    metadata = MetaData()
+    users = Table("user_accounts", metadata, autoload_with=engine)
+    settings = Table("user_settings", metadata, autoload_with=engine)
+    now = datetime(2026, 9, 14)
+    try:
+        with engine.begin() as connection:
+            connection.execute(users.insert().values(user_hash="owner", created_at=now, updated_at=now))
+            connection.execute(settings.insert().values(user_hash="owner", font_size=20, updated_at=now))
+        command.upgrade(config, "head")
+        current = Table("user_settings", MetaData(), autoload_with=engine)
+        with engine.connect() as connection:
+            row = connection.execute(select(current)).mappings().one()
+            assert row["home_schedule_source"] == "self"
+            assert row["font_size"] == 20
+        command.downgrade(config, "4b7a9e2c6d80")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.execute(select(current.c.font_size)).scalar_one() == 20
+    finally:
+        engine.dispose()

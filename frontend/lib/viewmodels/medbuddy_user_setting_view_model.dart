@@ -21,6 +21,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     return _lastTodayScheduleLoadSucceeded &&
         _lastReminderSettingsLoadSucceeded;
   }
+
   // 함수이름: loadUserSetting
   // 함수역할: 앱 시작 시 로컬 사용자 설정, 알림 설정, 오늘 복약 일정을 함께 불러온다.
   // 매개변수:
@@ -122,6 +123,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     required String language,
     String? languageMode,
     String? timeFormat,
+    String? homeScheduleSource,
     bool? medicationNotificationsEnabled,
     bool? caregiverNotificationsEnabled,
     bool? chatNotificationsEnabled,
@@ -142,6 +144,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       language: language,
       languageMode: languageMode,
       timeFormat: timeFormat,
+      homeScheduleSource: homeScheduleSource,
       medicationNotificationsEnabled: medicationNotificationsEnabled,
       caregiverNotificationsEnabled: caregiverNotificationsEnabled,
       chatNotificationsEnabled: chatNotificationsEnabled,
