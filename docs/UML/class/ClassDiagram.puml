@@ -343,6 +343,7 @@ package "Flutter Frontend" {
             + requestPatientCaregiverLink(code): Future<PatientCaregiverLink>
             + requestUnlink(linkId): Future<PatientCaregiverLink>
             + savePatientAlias(linkId, patientAlias): Future<PatientCaregiverLink>
+            + saveCaregiverAlias(linkId, caregiverAlias): Future<PatientCaregiverLink>
         }
 
         class "ManageCaregiverPatientLocalState" as ManageCaregiverPatientLocalState <<Controller: 보호자 환자 local state>> {
@@ -640,6 +641,7 @@ package "Flutter Frontend" {
             + patientHash: String
             + caregiverHash: String
             + patientAlias: String?
+            + caregiverAlias: String?
             + linkStatus: bool
             + fromJson(json): PatientCaregiverLink
         }
@@ -898,6 +900,7 @@ package "FastAPI Backend" {
             + requestUnlink(user_hash, link_id): dict
             + getLinkedPatientHash(caregiver_hash, patient_hash): str
             + updatePatientAlias(link_id, caregiver_hash, patient_alias): dict
+            + update_caregiver_alias(link_id, patient_hash, caregiver_alias): dict
         }
 
         class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control: 보호자 읽기 전용 조회>> {
@@ -1065,6 +1068,7 @@ package "FastAPI Backend" {
             + list_active_for_caregiver(caregiver_hash): list
             + find_active_for_user_by_id(link_id, user_hash): _PatientCaregiverLink?
             + find_active_for_caregiver_by_id(link_id, caregiver_hash): _PatientCaregiverLink?
+            + find_active_for_patient_by_id(link_id, patient_hash): _PatientCaregiverLink?
             + find_pair(patient_hash, caregiver_hash): _PatientCaregiverLink?
             + find_active_for_caregiver(caregiver_hash, patient_hash): _PatientCaregiverLink?
             + has_active_pair(caregiver_hash, patient_hash): bool
@@ -1376,6 +1380,7 @@ package "FastAPI Backend" {
             + patient_hash: String
             + caregiver_hash: String
             + patient_alias: String?
+            + caregiver_alias: String?
             + linked: Boolean
             + created_at: DateTime
         }

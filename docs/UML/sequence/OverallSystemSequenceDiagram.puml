@@ -631,12 +631,21 @@ else 만료, 재사용, 자기 연결 또는 잘못된 코드
     FrontControl --> UI : 사용자용 오류 메시지 출력
 end
 
-opt 보호자가 연결 환자의 표시 이름을 지정
-    Caregiver -> UI : 환자 표시 이름 입력 및 저장
-    UI -> FrontControl : ManageCaregiverPatientLocalState.saveLabel()
-    FrontControl -> FrontService : CaregiverPatientLocalStateService.saveLabel()
-    FrontService -> FrontService : 보호자·환자별 SharedPreferences 저장
-    FrontService --> UI : 정리된 local 표시 이름
+opt 환자 또는 보호자가 연결 상대의 표시 이름 지정
+    User -> UI : 상대 표시 이름 입력 및 저장
+    UI -> FrontControl : LinkPatientCaregiver.savePatientAlias()\n또는 saveCaregiverAlias()
+    FrontControl -> ApiClient : PATCH /link/{linkId}/patient-alias\n또는 /caregiver-alias
+    ApiClient -> Router : 현재 계정의 상대 별칭 변경 요청
+    Router -> BackControl : updatePatientAlias()\n또는 update_caregiver_alias()
+    BackControl -> Database : 인증 주체의 역할과 활성 연결 검증\n해당 방향 별칭만 저장
+    Database --> BackControl : 갱신된 연결 (빈 별칭은 해제)
+    BackControl --> Router : 변경된 연결 응답
+    Router --> ApiClient : 서버 저장 결과
+    ApiClient --> FrontControl : PatientCaregiverLink
+    opt 보호자가 지정한 환자 별칭
+        FrontControl -> FrontService : ManageCaregiverPatientLocalState.saveLabel()\n기존 로컬 캐시 갱신
+    end
+    FrontControl --> UI : 연결·채팅·알림함 표시 이름 갱신\n오류 또는 계정 변경 시 기존 이름 유지
 end
 
 Caregiver -> UI : 연결 환자의 복약 현황 선택
