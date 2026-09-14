@@ -187,6 +187,13 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "CaregiverHomeSummaryUI" as CaregiverHomeSummaryUI <<UI: 보호자 홈 현황>> {
+            + control: CheckCaregiverHome
+            + patientLabel(link): String
+            + onPatientRequested(link): void
+            + build(context): Widget
+        }
+
         class "ManageUserHubUI" as ManageUserHubUI <<UI: 내 정보 허브>> {
             + userSetting: UserSetting
             + authenticationControl: AuthenticationControl
@@ -359,6 +366,16 @@ package "Flutter Frontend" {
             + caregiverHash: String
             + requestPatientMedicationInfo(patientHash): Future<CaregiverMedicationInfo>
             + requestMonitoringSnapshot(): Future<List<CaregiverMonitoringSnapshot>>
+        }
+
+        class "CheckCaregiverHome" as CheckCaregiverHome <<Controller: 보호자 홈 조회>> {
+            + userHash: String
+            + isLoading: bool
+            + hasError: bool
+            + updateLinks(links): void
+            + refresh(): Future<void>
+            + snapshotFor(linkId): CaregiverMonitoringSnapshot?
+            + dispose(): void
         }
 
         class "SetNotification" as FSetNotification <<Controller: 환자 알림 관리>> {
@@ -682,6 +699,7 @@ package "Flutter Frontend" {
 
         class "UserSetting" as FUserSetting <<Entity: 사용자 설정>> {
             + userHash: String
+            + homeScheduleSource: String
             + fontSize: int
             + readingSpeed: double
             + language: String
@@ -1405,6 +1423,7 @@ package "FastAPI Backend" {
 
         class "_UserSetting" as DBUserSetting <<ORM: user_settings>> {
             + id: Integer
+            + home_schedule_source: String
             + user_hash: String
             + font_size: Integer
             + reading_speed: Float
@@ -1509,6 +1528,12 @@ AuthenticationGate ..> AuthenticationUI
 AuthenticationGate ..> HomeScreen
 HomeScreen ..> MedBuddyViewModel
 HomeScreen ..> InputPrescriptionUI
+HomeScreen *-- CheckCaregiverHome
+HomeScreen ..> CaregiverHomeSummaryUI
+HomeScreen ..> CheckCaregiverMedicationUI : 활성 환자 상세
+CaregiverHomeSummaryUI --> CheckCaregiverHome
+CheckCaregiverHome ..> FCheckCaregiverMedication : 통합 현황 재사용
+CheckCaregiverHome ..> FCaregiverMonitoringSnapshot
 HomeScreen *-- MedBuddyBottomNavigationUI
 HomeScreen ..> MedBuddyDestination
 HomeScreen ..> GuidedPrescriptionCameraUI
