@@ -1441,6 +1441,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       );
     }
     return NearbyPharmacyMap(
+      favoritePharmacyIds: _favoritePharmacyIds,
       bottomInset: bottomInset,
       showControls: showControls,
       searchArea: _searchArea!,

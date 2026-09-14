@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
@@ -18,6 +19,7 @@ import 'pharmacy_map_symbols.dart';
 // 속성:
 // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
 // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
+// - favoritePharmacyIds (Set<String>): 골드색 별로 표시할 사용자별 약국 ID.
 // - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
@@ -34,6 +36,8 @@ class NearbyPharmacyMap extends StatefulWidget {
   final VoidCallback? onCurrentLocationRequested;
   final String searchAreaLabel;
   final List<NearbyPharmacy> pharmacies;
+  // 현재 사용자가 저장한 약국 ID로 즐겨찾기 마커를 구분한다.
+  final Set<String> favoritePharmacyIds;
   final String? selectedPharmacyId;
   final ValueChanged<NearbyPharmacy> onPharmacySelected;
   final VoidCallback onAttributionRequested;
@@ -52,6 +56,7 @@ class NearbyPharmacyMap extends StatefulWidget {
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
   // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
+  // - favoritePharmacyIds (Set<String>): 지도에 반영할 사용자별 즐겨찾기 ID.
   // - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
   // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
   // - statusText (String?): 현재 작업 결과·오류·상태에 대한 표시 문구.
@@ -73,6 +78,7 @@ class NearbyPharmacyMap extends StatefulWidget {
     this.onCurrentLocationRequested,
     this.searchAreaLabel = '이 지역에서 검색',
     required this.pharmacies,
+    this.favoritePharmacyIds = const {},
     required this.selectedPharmacyId,
     required this.onPharmacySelected,
     required this.onAttributionRequested,
@@ -110,8 +116,12 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   Future<void>? _symbolLoading;
   NOverlayImage? _pinIcon;
   NOverlayImage? _selectedPinIcon;
+  NOverlayImage? _favoritePinIcon;
   NOverlayImage? _locationIcon;
 
+  // 함수이름: _loadSymbols
+  // 함수역할: 일반·선택·즐겨찾기 마커와 현재 위치 이미지를 한 번 생성한다.
+  // 매개변수: 없음. 반환값: 이미지 준비 완료.
   Future<void> _loadSymbols() => _symbolLoading ??= () async {
     final icons = await Future.wait([
       NOverlayImage.fromWidget(
@@ -129,10 +139,16 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         size: PharmacyDeviceLocationDot.size,
         context: context,
       ),
+      NOverlayImage.fromWidget(
+        widget: const PharmacyMapPin(favorite: true),
+        size: PharmacyMapPin.size,
+        context: context,
+      ),
     ]);
     _pinIcon = icons[0];
     _selectedPinIcon = icons[1];
     _locationIcon = icons[2];
+    _favoritePinIcon = icons[3];
   }();
 
   // 함수이름: _mappablePharmacies
@@ -144,7 +160,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       widget.pharmacies.where(_hasValidCoordinate).toList(growable: false);
 
   // 함수이름: didUpdateWidget
-  // 함수역할: 결과 마커를 갱신하고 명시적인 약국 선택·내 위치 요청만 카메라에 반영한다.
+  // 함수역할: 결과·즐겨찾기 마커를 갱신하고 명시적인 약국 선택·내 위치 요청만 카메라에 반영한다.
   // 매개변수: oldWidget: 이전 지도 설정. 반환값: 없음.
   @override
   void didUpdateWidget(covariant NearbyPharmacyMap oldWidget) {
@@ -162,6 +178,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
     if (selectionChanged ||
         pharmaciesChanged ||
+        !setEquals(oldWidget.favoritePharmacyIds, widget.favoritePharmacyIds) ||
         recenter ||
         oldWidget.deviceLocation != widget.deviceLocation) {
       unawaited(
@@ -448,14 +465,17 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   }
 
   // 함수이름: _buildMarker
-  // 함수역할: 모든 약국 마커 아래에 이름을 표시하고 선택한 약국을 강조한다.
+  // 함수역할: 즐겨찾기는 골드색 별로 표시하고 선택한 약국은 크기로 강조한다.
   // 매개변수: pharmacy: 지도에 표시할 약국. 반환값: 이름과 선택 동작을 가진 마커.
   NMarker _buildMarker(NearbyPharmacy pharmacy) {
     final isSelected = pharmacy.pharmacyId == widget.selectedPharmacyId;
+    final isFavorite = widget.favoritePharmacyIds.contains(pharmacy.pharmacyId);
     final marker = NMarker(
       id: 'pharmacy-${pharmacy.pharmacyId}',
       position: NLatLng(pharmacy.latitude, pharmacy.longitude),
-      icon: isSelected ? _selectedPinIcon : _pinIcon,
+      icon: isFavorite
+          ? _favoritePinIcon
+          : (isSelected ? _selectedPinIcon : _pinIcon),
       size: isSelected ? PharmacyMapPin.selectedSize : PharmacyMapPin.size,
       caption: NOverlayCaption(
         text: pharmacy.name,

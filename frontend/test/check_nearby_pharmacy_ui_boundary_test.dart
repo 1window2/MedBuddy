@@ -406,6 +406,47 @@ void main() {
     }
   });
 
+  // 함수이름: 지도 즐겨찾기 전달 테스트
+  // 함수역할: 저장된 즐겨찾기를 지도에 전달하고 추가·해제 시 선택과 검색 중심을 유지한다.
+  // 매개변수: tester: 화면 제어기. 반환값: 비동기 검증 완료.
+  testWidgets(
+    'map favorites load and toggle without changing selection or center',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'medbuddy.favorite_pharmacy_ids': ['open'],
+      });
+      await tester.pumpWidget(_testApp(_buildControl(), nativeMap: true));
+      await tester.pumpAndSettle();
+      var map = tester.widget<NearbyPharmacyMap>(
+        find.byType(NearbyPharmacyMap),
+      );
+      expect(map.favoritePharmacyIds, {'open'});
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-card-open')));
+      await tester.pumpAndSettle();
+      map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+      final revision = map.centerRevision;
+      for (final favorites in [
+        <String>{},
+        {'open'},
+      ]) {
+        await tester.tap(find.byKey(const Key('pharmacy-detail-favorite')));
+        await tester.pumpAndSettle();
+        map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
+        expect(map.favoritePharmacyIds, favorites);
+        expect(map.selectedPharmacyId, 'open');
+        expect(map.centerRevision, revision);
+        final preferences = await SharedPreferences.getInstance();
+        expect(
+          preferences.getStringList('medbuddy.favorite_pharmacy_ids')!.toSet(),
+          favorites,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   // 함수이름: 지도 표시 여백 테스트
   // 함수역할: 정보창 높이에 따라 지도 여백과 조작 버튼을 조정하고 닫으면 복원하는지 검증한다.
   // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
