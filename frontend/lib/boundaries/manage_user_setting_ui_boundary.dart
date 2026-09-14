@@ -14,6 +14,8 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
 import 'set_notification_ui_boundary.dart';
 
+part 'settings_preference_widgets.dart';
+
 // 함수이름: SettingPreviewSpeaker
 // 함수역할: 설정된 언어·속도로 미리보기 문장을 재생하고 완료 콜백을 지원하는 계약이다.
 // 매개변수:
@@ -217,7 +219,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
     final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
     final mediaQuery = MediaQuery.of(context);
-    final contentScale = draftSetting.contentTextScale;
     final accountPresentation = _resolveAccountPresentation(text);
 
     return MediaQuery(
@@ -283,7 +284,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                         child: _buildSelectedSection(
                           text: text,
-                          contentScale: contentScale,
                           accountPresentation: accountPresentation,
                         ),
                       ),
@@ -310,12 +310,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 함수역할: 설정 홈과 각 설정 영역을 동일한 상태값으로 전환해 저장 전 선택을 유지한다.
   // 매개변수:
   // - text (_SettingText): 해당 화면 구역의 언어별 표시 문구.
-  // - contentScale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - accountPresentation (_AccountPresentation): 현재 계정 또는 변화 유형의 표시 모델.
   // 반환값: 접근성·기본 복약 시각·계정 보안 설정에 쓰는 위젯 트리.
   Widget _buildSelectedSection({
     required _SettingText text,
-    required double contentScale,
     required _AccountPresentation accountPresentation,
   }) {
     return switch (_selectedSection) {
@@ -348,10 +346,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       ),
       _SettingSection.medicationAndNotifications =>
         _buildMedicationAndNotificationSettings(text),
-      _SettingSection.displayAndVoice => _buildDisplayAndVoiceSettings(
-        text,
-        contentScale,
-      ),
+      _SettingSection.displayAndVoice => _buildDisplayAndVoiceSettings(text),
       _SettingSection.account => _buildAccountSettings(
         text,
         accountPresentation,
@@ -368,240 +363,340 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SettingToggle(
-          switchKey: const ValueKey('medicationNotificationsSwitch'),
-          title: text.medicationNotificationsTitle,
-          description: text.medicationNotificationsDescription,
-          enabled: _medicationNotificationsEnabled,
-          // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _medicationNotificationsEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_medicationNotificationsEnabled = enabled`로 갱신한다.
+        _SettingsSection(
+          title: text.notificationReceptionTitle,
+          children: [
+            _SettingToggle(
+              switchKey: const ValueKey('medicationNotificationsSwitch'),
+              title: text.medicationNotificationsTitle,
+              description: text.medicationNotificationsDescription,
+              enabled: _medicationNotificationsEnabled,
+              // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
+              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _medicationNotificationsEnabled = enabled)`을 실행한다.
               // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _medicationNotificationsEnabled = enabled),
-        ),
-        const SizedBox(height: 12),
-        _SettingToggle(
-          switchKey: const ValueKey('caregiverNotificationsSwitch'),
-          title: text.caregiverNotificationsTitle,
-          description: text.caregiverNotificationsDescription,
-          enabled: _caregiverNotificationsEnabled,
-          // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _caregiverNotificationsEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_caregiverNotificationsEnabled = enabled`로 갱신한다.
+              // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onChanged: (enabled) =>
+                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
+                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_medicationNotificationsEnabled = enabled`로 갱신한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                  setState(() => _medicationNotificationsEnabled = enabled),
+            ),
+            _SettingToggle(
+              switchKey: const ValueKey('caregiverNotificationsSwitch'),
+              title: text.caregiverNotificationsTitle,
+              description: text.caregiverNotificationsDescription,
+              enabled: _caregiverNotificationsEnabled,
+              // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
+              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _caregiverNotificationsEnabled = enabled)`을 실행한다.
               // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _caregiverNotificationsEnabled = enabled),
-        ),
-        const SizedBox(height: 12),
-        _SettingToggle(
-          switchKey: const ValueKey('chatNotificationsSwitch'),
-          title: text.chatNotificationsTitle,
-          description: text.chatNotificationsDescription,
-          enabled: _chatNotificationsEnabled,
-          // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _chatNotificationsEnabled = enabled)`을 실행한다.
-          // 매개변수:
-          // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onChanged: (enabled) =>
-              // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_chatNotificationsEnabled = enabled`로 갱신한다.
+              // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onChanged: (enabled) =>
+                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
+                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_caregiverNotificationsEnabled = enabled`로 갱신한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                  setState(() => _caregiverNotificationsEnabled = enabled),
+            ),
+            _SettingToggle(
+              switchKey: const ValueKey('chatNotificationsSwitch'),
+              title: text.chatNotificationsTitle,
+              description: text.chatNotificationsDescription,
+              enabled: _chatNotificationsEnabled,
+              // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
+              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _chatNotificationsEnabled = enabled)`을 실행한다.
               // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _chatNotificationsEnabled = enabled),
-        ),
-        const SizedBox(height: 18),
-        _SettingsActionTile(
-          icon: Icons.notifications_active_outlined,
-          title: text.deviceNotificationSettingsTitle,
-          description: text.deviceNotificationSettingsDescription,
-          onTap: _openDeviceNotificationSettings,
-        ),
-        const SizedBox(height: 32),
-        _SettingFieldTitle(text.defaultMedicationTimeTitle),
-        const SizedBox(height: 8),
-        Text(
-          text.defaultMedicationTimeDescription,
-          style: const TextStyle(
-            color: MedBuddyColors.textMuted,
-            fontSize: 14,
-            height: 1.45,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 14),
-        _DefaultMedicationTimePanel(
-          text: text,
-          userSetting: _draftSetting,
-          morningTime: _defaultMorningTime,
-          lunchTime: _defaultLunchTime,
-          eveningTime: _defaultEveningTime,
-          bedtime: _defaultBedtime,
-          onTimeRequested: _selectDefaultMedicationTime,
-        ),
-        const SizedBox(height: 14),
-        _SettingsActionTile(
-          icon: Icons.schedule_outlined,
-          title: text.detailedScheduleSettingsTitle,
-          description: text.detailedScheduleSettingsDescription,
-          onTap: widget.onMedicationScheduleRequested,
-        ),
-        const SizedBox(height: 32),
-        _SettingFieldTitle(text.notificationPrivacyTitle),
-        const SizedBox(height: 8),
-        Text(
-          text.notificationPrivacyDescription,
-          style: const TextStyle(
-            color: MedBuddyColors.textMuted,
-            fontSize: 14,
-            height: 1.45,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 14),
-        _StackedOptionList(
-          options: [
-            _SettingOption(value: 'full', label: text.notificationPrivacyFull),
-            _SettingOption(
-              value: 'type_only',
-              label: text.notificationPrivacyTypeOnly,
+              // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onChanged: (enabled) =>
+                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
+                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_chatNotificationsEnabled = enabled`로 갱신한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                  setState(() => _chatNotificationsEnabled = enabled),
             ),
           ],
-          selectedValue: _notificationDetailMode,
-          // 함수이름: _buildMedicationAndNotificationSettings.onSelected callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _notificationDetailMode = value)`을 실행한다.
-          // 매개변수:
-          // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onSelected: (value) =>
-              // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_notificationDetailMode = value`로 갱신한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-              setState(() => _notificationDetailMode = value),
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.defaultMedicationTimeTitle,
+          description: text.defaultMedicationTimeDescription,
+          children: [
+            _DefaultMedicationTimePanel(
+              text: text,
+              userSetting: _draftSetting,
+              morningTime: _defaultMorningTime,
+              lunchTime: _defaultLunchTime,
+              eveningTime: _defaultEveningTime,
+              bedtime: _defaultBedtime,
+              onTimeRequested: _selectDefaultMedicationTime,
+            ),
+            _SettingsPreferenceRow(
+              key: const ValueKey('medicationScheduleSettingsRow'),
+              title: text.detailedScheduleSettingsTitle,
+              description: text.detailedScheduleSettingsDescription,
+              onTap: widget.onMedicationScheduleRequested,
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.notificationDisplayTitle,
+          children: [
+            _SettingsPreferenceRow(
+              key: const ValueKey('notificationPrivacySelector'),
+              title: text.notificationContentTitle,
+              value: _notificationDetailMode == 'full'
+                  ? text.notificationFullSummary
+                  : text.notificationTypeOnlySummary,
+              onTap: _selectNotificationPrivacy,
+            ),
+            _SettingsPreferenceRow(
+              key: const ValueKey('deviceNotificationSettingsRow'),
+              title: text.deviceNotificationSettingsTitle,
+              description: text.deviceNotificationSettingsDescription,
+              onTap: _openDeviceNotificationSettings,
+            ),
+          ],
         ),
       ],
     );
   }
 
+  // 함수이름: _selectNotificationPrivacy
+  // 함수역할: 공통 선택창에서 확정한 공개 범위만 초안에 반영한다.
+  // 매개변수: 없음. 반환값: 선택창 종료 완료. 실제 저장은 저장 버튼에서 처리한다.
+  Future<void> _selectNotificationPrivacy() async {
+    final text = _SettingText(_language);
+    final selected = await _showSettingOptions(
+      preferenceKey: 'notificationPrivacy',
+      title: text.notificationPrivacyTitle,
+      description: text.notificationPrivacyDescription,
+      selectedValue: _notificationDetailMode,
+      options: [
+        _SettingOption(value: 'full', label: text.notificationPrivacyFull),
+        _SettingOption(
+          value: 'type_only',
+          label: text.notificationPrivacyTypeOnly,
+        ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _notificationDetailMode = selected);
+  }
+
+  // 함수이름: _showSettingOptions
+  // 함수역할: 현재 글씨 배율의 선택창을 열고 선택값을 반환하며, 취소는 null로 반환한다.
+  // 매개변수: preferenceKey는 항목 키, title·description은 문구, selectedValue·options는 선택 상태.
+  // 반환값: 선택한 저장 값 또는 null. 이 함수에서는 설정을 저장하지 않는다.
+  Future<String?> _showSettingOptions({
+    required String preferenceKey,
+    required String title,
+    required String selectedValue,
+    required List<_SettingOption> options,
+    String? description,
+  }) {
+    final systemScale =
+        MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
+    final textScale = _draftSetting.resolveTextScale(systemScale);
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: MedBuddyColors.surface,
+      // 선택창도 저장 전 글씨 크기와 언어를 반영한다.
+      builder: (sheetContext) => MediaQuery(
+        data: MediaQuery.of(
+          sheetContext,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Semantics(
+                  header: true,
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (description != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: MedBuddyColors.textMuted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                RadioGroup<String>(
+                  groupValue: selectedValue,
+                  // 선택된 항목을 다시 눌러도 값을 유지하며 창을 닫는다.
+                  onChanged: (value) =>
+                      Navigator.pop(sheetContext, value ?? selectedValue),
+                  child: Column(
+                    children: [
+                      for (final option in options)
+                        RadioListTile<String>(
+                          key: ValueKey('$preferenceKey-${option.value}'),
+                          contentPadding: EdgeInsets.zero,
+                          value: option.value,
+                          toggleable: true,
+                          title: Text(
+                            option.label,
+                            style: TextStyle(
+                              fontSize: option.labelFontSize ?? 16,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 함수이름: _buildSettingChoice
+  // 함수역할: 현재 선택값을 보여주는 목록 행을 만들고 확정한 값만 전달한다.
+  // 매개변수: 항목 키·제목, 선택값·선택지와 onSelected 초안 변경 콜백.
+  // 반환값: 복약 설정과 같은 형식의 선택 행.
+  Widget _buildSettingChoice({
+    required String preferenceKey,
+    required String title,
+    required String selectedValue,
+    required List<_SettingOption> options,
+    required ValueChanged<String> onSelected,
+  }) {
+    return _SettingsPreferenceRow(
+      key: ValueKey('${preferenceKey}Selector'),
+      title: title,
+      value: options
+          .firstWhere((option) => option.value == selectedValue)
+          .label,
+      // 선택창 취소나 화면 종료 이후에는 초안을 변경하지 않는다.
+      onTap: () async {
+        final value = await _showSettingOptions(
+          preferenceKey: preferenceKey,
+          title: title,
+          selectedValue: selectedValue,
+          options: options,
+        );
+        if (!mounted || value == null) return;
+        onSelected(value);
+      },
+    );
+  }
+
   // 함수이름: _buildDisplayAndVoiceSettings
-  // 함수역할: 글씨 크기·읽기 속도·언어·시간 형식과 음성 미리보기를 배치한다.
-  // 매개변수:
-  // - text (_SettingText): 해당 화면 구역의 언어별 표시 문구.
-  // - contentScale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // 반환값: 접근성·기본 복약 시각·계정 보안 설정에 쓰는 위젯 트리.
-  Widget _buildDisplayAndVoiceSettings(_SettingText text, double contentScale) {
+  // 함수역할: 화면·음성 설정을 현재 값이 보이는 목록으로 묶고 공통 선택창에 연결한다.
+  // 매개변수: text는 현재 언어 문구. 반환값: 화면·음성·미리보기 구역.
+  Widget _buildDisplayAndVoiceSettings(_SettingText text) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SettingFieldTitle(text.fontSizeTitle),
-        const SizedBox(height: 16),
-        _OptionRow(
-          options: [
-            _SettingOption(
-              value: 'small',
-              label: text.small,
-              labelFontSize: 14,
+        _SettingsSection(
+          title: text.displaySectionTitle,
+          children: [
+            _buildSettingChoice(
+              preferenceKey: 'fontSize',
+              title: text.fontSizeTitle,
+              selectedValue: _fontSize,
+              options: [
+                _SettingOption(
+                  value: 'small',
+                  label: text.small,
+                  labelFontSize: 14,
+                ),
+                _SettingOption(
+                  value: 'medium',
+                  label: text.medium,
+                  labelFontSize: 17,
+                ),
+                _SettingOption(
+                  value: 'large',
+                  label: text.large,
+                  labelFontSize: 23,
+                ),
+              ],
+              // 글씨 크기는 저장 전에도 현재 설정 화면에서 미리 확인한다.
+              onSelected: (value) => setState(() => _fontSize = value),
             ),
-            _SettingOption(
-              value: 'medium',
-              label: text.medium,
-              labelFontSize: 17,
+            _buildSettingChoice(
+              preferenceKey: 'language',
+              title: text.languageTitle,
+              selectedValue: _languageMode,
+              options: [
+                _SettingOption(
+                  value: 'system',
+                  label: text.followDeviceLanguage,
+                ),
+                const _SettingOption(value: 'ko', label: '한국어'),
+                const _SettingOption(value: 'en', label: 'English'),
+              ],
+              onSelected: _selectLanguageMode,
             ),
-            _SettingOption(
-              value: 'large',
-              label: text.large,
-              labelFontSize: 23,
+            _buildSettingChoice(
+              preferenceKey: 'timeFormat',
+              title: text.timeFormatTitle,
+              selectedValue: _timeFormat,
+              options: [
+                _SettingOption(value: '12h', label: text.twelveHourTime),
+                _SettingOption(value: '24h', label: text.twentyFourHourTime),
+              ],
+              // 시간 형식 변경은 기존 알림 시각을 변경하지 않는다.
+              onSelected: (value) => setState(() => _timeFormat = value),
             ),
           ],
-          selectedValue: _fontSize,
-          contentScale: contentScale,
-          // 함수이름: _buildDisplayAndVoiceSettings.setState callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_fontSize = value`로 갱신한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-          // 함수이름: _buildDisplayAndVoiceSettings.onSelected callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _fontSize = value)`을 실행한다.
-          // 매개변수:
-          // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onSelected: (value) => setState(() => _fontSize = value),
         ),
-        const SizedBox(height: 34),
-        _SettingFieldTitle(text.readingSpeedTitle),
-        const SizedBox(height: 16),
-        _OptionRow(
-          options: [
-            _SettingOption(value: 'slow', label: text.slow),
-            _SettingOption(value: 'medium', label: text.medium),
-            _SettingOption(value: 'fast', label: text.fast),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.voiceSectionTitle,
+          children: [
+            _buildSettingChoice(
+              preferenceKey: 'readingSpeed',
+              title: text.readingSpeedTitle,
+              selectedValue: _readingSpeed,
+              options: [
+                _SettingOption(value: 'slow', label: text.slow),
+                _SettingOption(value: 'medium', label: text.medium),
+                _SettingOption(value: 'fast', label: text.fast),
+              ],
+              // 재생 중인 미리보기를 중지한 뒤 새 속도를 적용한다.
+              onSelected: (value) => unawaited(_selectReadingSpeed(value)),
+            ),
           ],
-          selectedValue: _readingSpeed,
-          contentScale: contentScale,
-          // 함수이름: _buildDisplayAndVoiceSettings.onSelected callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `_selectReadingSpeed(value)`을 실행한다.
-          // 매개변수:
-          // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onSelected: (value) => unawaited(_selectReadingSpeed(value)),
         ),
-        const SizedBox(height: 34),
-        _SettingFieldTitle(text.languageTitle),
-        const SizedBox(height: 16),
-        _StackedOptionList(
-          options: [
-            _SettingOption(value: 'system', label: text.followDeviceLanguage),
-            const _SettingOption(value: 'ko', label: '한국어'),
-            const _SettingOption(value: 'en', label: 'English'),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.preview,
+          children: [
+            _PreviewPanel(
+              text: text,
+              fontSize: _fontSize,
+              isSpeaking: _isPreviewSpeaking,
+              onVoicePreviewRequested: _toggleVoicePreview,
+            ),
           ],
-          selectedValue: _languageMode,
-          onSelected: _selectLanguageMode,
-        ),
-        const SizedBox(height: 34),
-        _SettingFieldTitle(text.timeFormatTitle),
-        const SizedBox(height: 16),
-        _OptionRow(
-          options: [
-            _SettingOption(value: '12h', label: text.twelveHourTime),
-            _SettingOption(value: '24h', label: text.twentyFourHourTime),
-          ],
-          selectedValue: _timeFormat,
-          contentScale: contentScale,
-          // 함수이름: _buildDisplayAndVoiceSettings.setState callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_timeFormat = value`로 갱신한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-          // 함수이름: _buildDisplayAndVoiceSettings.onSelected callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _timeFormat = value)`을 실행한다.
-          // 매개변수:
-          // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onSelected: (value) => setState(() => _timeFormat = value),
-        ),
-        const SizedBox(height: 34),
-        _PreviewPanel(
-          text: text,
-          fontSize: _fontSize,
-          readingSpeed: _readingSpeed,
-          isSpeaking: _isPreviewSpeaking,
-          onVoicePreviewRequested: _toggleVoicePreview,
         ),
       ],
     );
@@ -1833,40 +1928,6 @@ class _SettingSaveFooter extends StatelessWidget {
   }
 }
 
-// 클래스명: _SettingFieldTitle
-// 역할: 설정 입력 항목의 제목을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 입력 항목의 제목 위젯을 구성한다.
-class _SettingFieldTitle extends StatelessWidget {
-  final String text;
-
-  // 함수이름: _SettingFieldTitle
-  // 함수역할: 설정 입력 항목의 제목에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (String): 해당 라벨 또는 정보 행에 표시할 문자열.
-  // 반환값: 입력 설정이 반영된 _SettingFieldTitle 인스턴스.
-  const _SettingFieldTitle(this.text);
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 입력 항목의 제목 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 입력 항목의 제목에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: MedBuddyColors.textStrong,
-        fontSize: 22,
-        fontWeight: FontWeight.w800,
-        height: 1.2,
-        letterSpacing: 0,
-      ),
-    );
-  }
-}
-
 // 클래스명: _SettingToggle
 // 역할: 이진 설정의 라벨·설명·현재 값을 담당한다.
 // 주요 책임:
@@ -1908,125 +1969,32 @@ class _SettingToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: MedBuddyRadii.card,
-        side: const BorderSide(color: MedBuddyColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
+      color: Colors.transparent,
       child: SwitchListTile(
         key: switchKey,
         value: enabled,
         onChanged: onChanged,
         activeThumbColor: MedBuddyColors.primary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+        contentPadding: const EdgeInsets.symmetric(vertical: 6),
         title: Text(
           title,
           style: const TextStyle(
             color: MedBuddyColors.textStrong,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            height: 1.35,
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 5),
+          padding: const EdgeInsets.only(top: 4),
           child: Text(
             description,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,
               fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
+              height: 1.35,
+              fontWeight: FontWeight.w400,
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _SettingsActionTile
-// 역할: 설정 화면의 별도 작업 실행 행을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정 화면의 별도 작업 실행 행 위젯을 구성한다.
-// 속성:
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-// - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _SettingsActionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String description;
-  final VoidCallback? onTap;
-
-  // 함수이름: _SettingsActionTile
-  // 함수역할: 설정 화면의 별도 작업 실행 행에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-  // - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _SettingsActionTile 인스턴스.
-  const _SettingsActionTile({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.onTap,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정 화면의 별도 작업 실행 행 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정 화면의 별도 작업 실행 행에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: MedBuddyRadii.card,
-        side: const BorderSide(color: MedBuddyColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              Icon(icon, color: MedBuddyColors.primary, size: 28),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: MedBuddyColors.textLight,
-              ),
-            ],
           ),
         ),
       ),
@@ -2081,395 +2049,100 @@ class _DefaultMedicationTimePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = [
-      ('morning', text.morning, morningTime, Icons.wb_sunny_outlined),
-      ('lunch', text.lunch, lunchTime, Icons.lunch_dining_outlined),
-      ('evening', text.evening, eveningTime, Icons.wb_twilight_outlined),
-      ('bedtime', text.bedtime, bedtime, Icons.bedtime_outlined),
+      ('morning', text.morning, morningTime),
+      ('lunch', text.lunch, lunchTime),
+      ('evening', text.evening, eveningTime),
+      ('bedtime', text.bedtime, bedtime),
     ];
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: MedBuddyRadii.card,
-        side: const BorderSide(color: MedBuddyColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (int index = 0; index < entries.length; index++) ...[
-            ListTile(
-              // 함수이름: build.onTap callback
-              // 함수역할: 아침·점심·저녁·취침 전 기본 복약 시각에서 캡처된 작업 `onTimeRequested(entries[index].$1)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onTap: () => onTimeRequested(entries[index].$1),
-              leading: Icon(entries[index].$4, color: MedBuddyColors.primary),
-              title: Text(
-                entries[index].$2,
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              trailing: Text(
-                userSetting.formatTimeValue(entries[index].$3),
-                style: const TextStyle(
-                  color: MedBuddyColors.primary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            if (index != entries.length - 1)
-              const Divider(height: 1, color: MedBuddyColors.divider),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// 클래스명: _StackedOptionList
-// 역할: 설정값을 세로로 비교하는 선택 목록을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 설정값을 세로로 비교하는 선택 목록 위젯을 구성한다.
-// 속성:
-// - options (List<_SettingOption>): 선택 가능한 설정 값과 표시 정보.
-// - selectedValue (String): 현재 선택한 시·분 또는 선택지 값.
-// - onSelected (ValueChanged<String>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-class _StackedOptionList extends StatelessWidget {
-  final List<_SettingOption> options;
-  final String selectedValue;
-  final ValueChanged<String> onSelected;
-
-  // 함수이름: _StackedOptionList
-  // 함수역할: 설정값을 세로로 비교하는 선택 목록에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - options (List<_SettingOption>): 선택 가능한 설정 값과 표시 정보.
-  // - selectedValue (String): 현재 선택한 시·분 또는 선택지 값.
-  // - onSelected (ValueChanged<String>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _StackedOptionList 인스턴스.
-  const _StackedOptionList({
-    required this.options,
-    required this.selectedValue,
-    required this.onSelected,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 설정값을 세로로 비교하는 선택 목록 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 설정값을 세로로 비교하는 선택 목록에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: MedBuddyRadii.card,
-        side: const BorderSide(color: MedBuddyColors.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (int index = 0; index < options.length; index++) ...[
-            Semantics(
-              selected: options[index].value == selectedValue,
-              button: true,
-              child: ListTile(
-                // Function Name: build.onTap callback
-                // Description: Connects a vertical list of mutually selectable setting values to the captured operation `onSelected(options[index].value)`.
-                // Parameters:
-                // - None.
-                // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-                onTap: () => onSelected(options[index].value),
-                leading: Icon(
-                  options[index].value == selectedValue
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  color: options[index].value == selectedValue
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.textLight,
-                ),
-                title: Text(
-                  options[index].label,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            if (index != options.length - 1)
-              const Divider(height: 1, color: MedBuddyColors.divider),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// Class Name: _OptionRow
-// Role: Represents a setting option and its selected indicator.
-// Responsibilities:
-// - Composes a setting option and its selected indicator using the display values and actions supplied by its parent.
-// Attributes:
-// - options (List<_SettingOption>): Selectable setting values and their presentation data.
-// - selectedValue (String): Currently selected hour, minute, or option value.
-// - contentScale (double): Content text scale reflecting user accessibility settings.
-// - onSelected (ValueChanged<String>): Callback reporting the changed value or selection state to the owning screen.
-class _OptionRow extends StatelessWidget {
-  final List<_SettingOption> options;
-  final String selectedValue;
-  final double contentScale;
-  final ValueChanged<String> onSelected;
-
-  // 함수이름: _OptionRow
-  // 함수역할: 설정 선택지와 현재 선택 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - options (List<_SettingOption>): 선택 가능한 설정 값과 표시 정보.
-  // - selectedValue (String): 현재 선택한 시·분 또는 선택지 값.
-  // - contentScale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - onSelected (ValueChanged<String>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _OptionRow 인스턴스.
-  const _OptionRow({
-    required this.options,
-    required this.selectedValue,
-    required this.contentScale,
-    required this.onSelected,
-  });
-
-  // Function Name: build
-  // Description: Renders a setting option and its selected indicator from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a setting option and its selected indicator.
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        for (int index = 0; index < options.length; index++) ...[
-          Expanded(
-            child: _SegmentButton(
-              option: options[index],
-              selected: options[index].value == selectedValue,
-              contentScale: contentScale,
-              // Function Name: build.onTap callback
-              // Description: Connects a setting option and its selected indicator to the captured operation `onSelected(options[index].value)`.
-              // Parameters:
-              // - None.
-              // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-              onTap: () => onSelected(options[index].value),
-            ),
+        for (int index = 0; index < entries.length; index++) ...[
+          _SettingsPreferenceRow(
+            key: ValueKey('defaultMedicationTime-${entries[index].$1}'),
+            // 함수이름: build.onTap callback
+            // 함수역할: 아침·점심·저녁·취침 전 기본 복약 시각에서 캡처된 작업 `onTimeRequested(entries[index].$1)`을 실행한다.
+            // 매개변수:
+            // - 없음.
+            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+            onTap: () => onTimeRequested(entries[index].$1),
+            title: entries[index].$2,
+            value: userSetting.formatTimeValue(entries[index].$3),
           ),
-          if (index != options.length - 1) const SizedBox(width: 11),
+          if (index != entries.length - 1)
+            const Divider(height: 1, color: MedBuddyColors.divider),
         ],
       ],
     );
   }
 }
 
-// Class Name: _SegmentButton
-// Role: Represents one selectable segment for a setting value.
-// Responsibilities:
-// - Composes one selectable segment for a setting value using the display values and actions supplied by its parent.
-// Attributes:
-// - option (_SettingOption): Selectable setting values and their presentation data.
-// - selected (bool): Whether the item belongs to the current selection.
-// - contentScale (double): Content text scale reflecting user accessibility settings.
-// - onTap (VoidCallback?): Callback executing the item's documented primary action.
-class _SegmentButton extends StatelessWidget {
-  final _SettingOption option;
-  final bool selected;
-  final double contentScale;
-  final VoidCallback? onTap;
-
-  // 함수이름: _SegmentButton
-  // 함수역할: 설정값 분할 선택 버튼에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - option (_SettingOption): 선택 가능한 설정 값과 표시 정보.
-  // - selected (bool): 현재 선택 집합에 포함되는지 여부.
-  // - contentScale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _SegmentButton 인스턴스.
-  const _SegmentButton({
-    required this.option,
-    required this.selected,
-    required this.contentScale,
-    required this.onTap,
-  });
-
-  // Function Name: build
-  // Description: Renders one selectable segment for a setting value from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for one selectable segment for a setting value.
-  @override
-  Widget build(BuildContext context) {
-    final backgroundColor = selected ? MedBuddyColors.primary : Colors.white;
-    final foregroundColor = selected ? Colors.white : MedBuddyColors.textStrong;
-
-    return Semantics(
-      label: option.label,
-      button: true,
-      enabled: true,
-      selected: selected,
-      child: ExcludeSemantics(
-        child: Material(
-          color: backgroundColor,
-          borderRadius: MedBuddyRadii.card,
-          elevation: selected ? 7 : 0,
-          shadowColor: const Color.fromRGBO(0, 0, 0, 0.18),
-          child: InkWell(
-            borderRadius: MedBuddyRadii.card,
-            onTap: onTap,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 77),
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: MedBuddyRadii.card,
-                border: Border.all(
-                  color: MedBuddyColors.primary,
-                  width: selected ? 0 : 2.7,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    option.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textScaler: option.labelFontSize == null
-                        ? null
-                        : TextScaler.noScaling,
-                    style: TextStyle(
-                      color: foregroundColor,
-                      fontSize: option.labelFontSize ?? 16 * contentScale,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // 클래스명: _PreviewPanel
-// 역할: 현재 글씨 크기·언어 설정의 미리보기를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 현재 글씨 크기·언어 설정의 미리보기 위젯을 구성한다.
-// 속성:
-// - fontSize (String): 기준 글씨 크기 또는 선택한 크기 옵션.
-// - readingSpeed (String): 읽어주기에 사용할 음성 속도 옵션.
-// - isSpeaking (bool): 읽어주기가 현재 재생 중인지 여부.
-// - onVoicePreviewRequested (VoidCallback): 현재 언어·속도로 음성 미리보기를 시작·중지할 콜백.
+// 역할: 중첩 카드 없이 현재 글씨 크기의 예시와 음성 재생·중지 명령을 제공한다.
+// 속성: text는 언어 문구, fontSize는 초안 크기, isSpeaking은 재생 상태, 콜백은 재생 전환.
 class _PreviewPanel extends StatelessWidget {
   final _SettingText text;
   final String fontSize;
-  final String readingSpeed;
   final bool isSpeaking;
   final VoidCallback onVoicePreviewRequested;
 
   // 함수이름: _PreviewPanel
-  // 함수역할: 현재 글씨 크기·언어 설정의 미리보기에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_SettingText): 해당 화면 구역의 언어별 표시 문구.
-  // - fontSize (String): 기준 글씨 크기 또는 선택한 크기 옵션.
-  // - readingSpeed (String): 읽어주기에 사용할 음성 속도 옵션.
-  // - isSpeaking (bool): 읽어주기가 현재 재생 중인지 여부.
-  // - onVoicePreviewRequested (VoidCallback): 현재 언어·속도로 음성 미리보기를 시작·중지할 콜백.
-  // 반환값: 입력 설정이 반영된 _PreviewPanel 인스턴스.
+  // 함수역할: 미리보기 문구·글씨 크기·재생 상태·전환 콜백을 받는다. 반환값: 미리보기 위젯.
   const _PreviewPanel({
     required this.text,
     required this.fontSize,
-    required this.readingSpeed,
     required this.isSpeaking,
     required this.onVoicePreviewRequested,
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 현재 글씨 크기·언어 설정의 미리보기 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 현재 글씨 크기·언어 설정의 미리보기에 쓰는 위젯 트리.
+  // 함수역할: context의 접근성 배율과 초안 글씨 크기로 예시를 표시한다.
+  // 반환값: 예시 문장과 재생 버튼을 담은 단일 미리보기 영역.
   @override
   Widget build(BuildContext context) {
-    final speedLabel = switch (readingSpeed) {
-      'slow' => text.slowLabel,
-      'fast' => text.fastLabel,
-      _ => text.normalLabel,
-    };
     final textSize = switch (fontSize) {
       'small' => 13.0,
       'large' => 20.0,
       _ => 15.0,
     };
-
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(18),
+        color: MedBuddyColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            text.preview,
-            style: const TextStyle(
+            text.previewSentence,
+            key: const ValueKey('settingsPreviewSentence'),
+            style: TextStyle(
               color: MedBuddyColors.textStrong,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: MedBuddyRadii.card,
-            ),
-            child: Text(
-              text.previewSentence,
-              style: TextStyle(
-                color: MedBuddyColors.textMuted,
-                fontSize: textSize,
-                height: 1.55,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
+              fontSize: textSize,
+              height: 1.55,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 12),
-          Center(
-            child: Text(
-              '${text.readingSpeedLabel}: $speedLabel',
-              style: const TextStyle(
-                color: MedBuddyColors.textLight,
-                fontSize: 13,
+          const Divider(height: 1, color: MedBuddyColors.divider),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            key: const ValueKey('settingsVoicePreviewButton'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              foregroundColor: MedBuddyColors.primaryDark,
+              textStyle: const TextStyle(
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0,
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onVoicePreviewRequested,
-              icon: Icon(
-                isSpeaking ? Icons.stop_rounded : Icons.volume_up_outlined,
-              ),
-              label: Text(isSpeaking ? text.stopPreview : text.listenPreview),
+            onPressed: onVoicePreviewRequested,
+            icon: Icon(
+              isSpeaking ? Icons.stop_rounded : Icons.volume_up_outlined,
             ),
+            label: Text(isSpeaking ? text.stopPreview : text.listenPreview),
           ),
         ],
       ),
@@ -2625,6 +2298,37 @@ class _SettingText {
   String get noAccountActions => isEnglish
       ? 'No additional account actions are available in this mode.'
       : '현재 실행 모드에서는 추가로 변경할 계정 설정이 없습니다.';
+  // 함수이름: displaySectionTitle
+  // 함수역할: 화면 설정 구역명을 번역한다. 매개변수: 없음. 반환값: 구역명.
+  String get displaySectionTitle => isEnglish ? 'Display' : '화면';
+
+  // 함수이름: voiceSectionTitle
+  // 함수역할: 음성 설정 구역명을 번역한다. 매개변수: 없음. 반환값: 구역명.
+  String get voiceSectionTitle => isEnglish ? 'Voice' : '음성';
+
+  // 함수이름: notificationReceptionTitle
+  // 함수역할: 알림 수신 구역명을 번역한다. 매개변수: 없음. 반환값: 구역명.
+  String get notificationReceptionTitle =>
+      isEnglish ? 'Receive notifications' : '알림 수신';
+
+  // 함수이름: notificationDisplayTitle
+  // 함수역할: 알림 표시 구역명을 번역한다. 매개변수: 없음. 반환값: 구역명.
+  String get notificationDisplayTitle =>
+      isEnglish ? 'Notification display' : '알림 표시';
+
+  // 함수이름: notificationContentTitle
+  // 함수역할: 알림 공개 범위 설정명을 번역한다. 매개변수: 없음. 반환값: 설정명.
+  String get notificationContentTitle =>
+      isEnglish ? 'Notification content' : '알림 내용';
+
+  // 함수이름: notificationFullSummary
+  // 함수역할: 전체 내용 표시의 현재 값을 번역한다. 매개변수: 없음. 반환값: 표시값.
+  String get notificationFullSummary => isEnglish ? 'Show all' : '모두 표시';
+
+  // 함수이름: notificationTypeOnlySummary
+  // 함수역할: 종류만 표시의 현재 값을 번역한다. 매개변수: 없음. 반환값: 표시값.
+  String get notificationTypeOnlySummary => isEnglish ? 'Type only' : '종류만 표시';
+
   // 함수이름: medicationNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "내 복약 알림" 문구를 제공한다.
   // 매개변수:
@@ -2633,13 +2337,12 @@ class _SettingText {
   String get medicationNotificationsTitle =>
       isEnglish ? 'My medication reminders' : '내 복약 알림';
   // 함수이름: medicationNotificationsDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 시간에 맞춰 내 휴대폰으로 알림을 받습니다." 문구를 제공한다.
+  // 함수역할: 내 복약 알림의 수신 대상을 간단히 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get medicationNotificationsDescription => isEnglish
-      ? 'Receive reminders for your scheduled medication times.'
-      : '복용 시간에 맞춰 내 휴대폰으로 알림을 받습니다.';
+  String get medicationNotificationsDescription =>
+      isEnglish ? 'Your scheduled medication times' : '내 복용 시간 알림';
   // 함수이름: caregiverNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "보호자 알림" 문구를 제공한다.
   // 매개변수:
@@ -2648,13 +2351,12 @@ class _SettingText {
   String get caregiverNotificationsTitle =>
       isEnglish ? 'Caregiver updates' : '보호자 알림';
   // 함수이름: caregiverNotificationsDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "연동된 환자의 복약 상태 알림을 받습니다." 문구를 제공한다.
+  // 함수역할: 보호자 알림의 수신 대상을 간단히 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get caregiverNotificationsDescription => isEnglish
-      ? 'Receive medication updates for linked patients.'
-      : '연동된 환자의 복약 상태 알림을 받습니다.';
+  String get caregiverNotificationsDescription =>
+      isEnglish ? 'Linked patients\' medication status' : '연결된 환자의 복약 상태';
   // 함수이름: chatNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "채팅 알림" 문구를 제공한다.
   // 매개변수:
@@ -2663,13 +2365,12 @@ class _SettingText {
   String get chatNotificationsTitle =>
       isEnglish ? 'Chat notifications' : '채팅 알림';
   // 함수이름: chatNotificationsDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 대화에 새 메시지가 오면 알림을 받습니다." 문구를 제공한다.
+  // 함수역할: 채팅 알림의 수신 대상을 간단히 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get chatNotificationsDescription => isEnglish
-      ? 'Receive notifications for new medication conversations.'
-      : '복약 대화에 새 메시지가 오면 알림을 받습니다.';
+  String get chatNotificationsDescription =>
+      isEnglish ? 'New family messages' : '가족이 보낸 새 메시지';
   // 함수이름: deviceNotificationSettingsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "휴대폰 알림 설정" 문구를 제공한다.
   // 매개변수:
@@ -2678,13 +2379,12 @@ class _SettingText {
   String get deviceNotificationSettingsTitle =>
       isEnglish ? 'Phone notification settings' : '휴대폰 알림 설정';
   // 함수이름: deviceNotificationSettingsDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알림 권한과 휴대폰 잠금 화면 표시를 확인합니다." 문구를 제공한다.
+  // 함수역할: 운영체제 알림 설정에서 확인할 항목을 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get deviceNotificationSettingsDescription => isEnglish
-      ? 'Review notification permission and lock-screen behavior.'
-      : '알림 권한과 휴대폰 잠금 화면 표시를 확인합니다.';
+  String get deviceNotificationSettingsDescription =>
+      isEnglish ? 'App permission and lock-screen display' : '알림 권한과 잠금 화면 표시';
   // 함수이름: deviceNotificationSettingsFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "휴대폰 알림 설정을 열지 못했습니다." 문구를 제공한다.
   // 매개변수:
@@ -2701,13 +2401,13 @@ class _SettingText {
   String get defaultMedicationTimeTitle =>
       isEnglish ? 'Default medication times' : '기본 복약 시간';
   // 함수이름: defaultMedicationTimeDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "새로 등록하는 복약 일정의 처음 시각으로만 사용합니다." 문구를 제공한다.
+  // 함수역할: 기본 시각이 새 일정에만 적용됨을 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get defaultMedicationTimeDescription => isEnglish
-      ? 'Used only as the initial time for newly added medication schedules.'
-      : '새로 등록하는 복약 일정의 처음 시각으로만 사용합니다.';
+      ? 'Applies only to new medication schedules.'
+      : '새로 등록하는 일정에만 적용합니다.';
   // 함수이름: detailedScheduleSettingsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "시간대별 세부 설정" 문구를 제공한다.
   // 매개변수:
@@ -2716,13 +2416,13 @@ class _SettingText {
   String get detailedScheduleSettingsTitle =>
       isEnglish ? 'Schedule-specific settings' : '시간대별 세부 설정';
   // 함수이름: detailedScheduleSettingsDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "오늘의 복약 일정에서 기존 알림 시각을 따로 조정합니다." 문구를 제공한다.
+  // 함수역할: 이미 등록한 일정의 알림 시각을 수정하는 경로를 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get detailedScheduleSettingsDescription => isEnglish
-      ? 'Open today’s medication schedule to adjust existing reminders.'
-      : '오늘의 복약 일정에서 기존 알림 시각을 따로 조정합니다.';
+      ? 'Adjust existing reminders in today\'s schedule.'
+      : '오늘의 일정에서 기존 알림 시간 변경';
   // 함수이름: notificationPrivacyTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "잠금 화면 개인정보" 문구를 제공한다.
   // 매개변수:

@@ -228,8 +228,15 @@ void main() {
 
       expect(find.bySemanticsLabel('뒤로가기'), findsOneWidget);
       expect(find.bySemanticsLabel('저장하기'), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('languageSelector')),
+      );
+      await tester.tap(find.byKey(const ValueKey('languageSelector')));
+      await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('English'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       semantics.dispose();
     });
 
@@ -271,8 +278,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _openDisplayAndVoiceSettings(tester);
-      await tester.tap(find.text('크게'));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('fontSizeSelector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('fontSize-large')));
+      await tester.pumpAndSettle();
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();

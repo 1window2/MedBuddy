@@ -185,15 +185,7 @@ void main() {
 
     await _openDisplayAndVoice(tester);
     expect(find.text('추후 업데이트 예정'), findsNothing);
-    final englishButton = find.ancestor(
-      of: find.text('English'),
-      matching: find.byType(InkWell),
-    );
-    expect(tester.widget<InkWell>(englishButton).onTap, isNotNull);
-
-    await tester.ensureVisible(find.text('English'));
-    await tester.tap(find.text('English'));
-    await tester.pump();
+    await _selectSettingChoice(tester, 'language', 'en');
     expect(find.text('Text Size'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -242,9 +234,7 @@ void main() {
     expect(find.text('Text Size'), findsOneWidget);
     expect(find.text('글씨크기'), findsNothing);
 
-    await tester.ensureVisible(find.text('한국어'));
-    await tester.tap(find.text('한국어'));
-    await tester.pump();
+    await _selectSettingChoice(tester, 'language', 'ko');
 
     expect(find.text('글씨크기'), findsOneWidget);
     expect(find.text('Text Size'), findsNothing);
@@ -377,9 +367,7 @@ void main() {
     );
 
     await _openDisplayAndVoice(tester);
-    await tester.ensureVisible(find.text('빠르게'));
-    await tester.tap(find.text('빠르게'));
-    await tester.pumpAndSettle();
+    await _selectSettingChoice(tester, 'readingSpeed', 'fast');
     await tester.ensureVisible(find.text('음성으로 들어보기'));
     await tester.tap(find.text('음성으로 들어보기'));
     await tester.pump();
@@ -509,8 +497,7 @@ void main() {
     );
 
     await _openDisplayAndVoice(tester);
-    await tester.tap(find.text('크게'));
-    await tester.pump();
+    await _selectSettingChoice(tester, 'fontSize', 'large');
     final previewText = tester.widget<Text>(
       find.text('아스피린 100mg을 하루 3회 식후 30분에 복용하세요.'),
     );
@@ -568,13 +555,10 @@ void main() {
     }
 
     expect(currentScale(), 1.0);
-    await tester.tap(find.text('크게'));
-    await tester.pump();
+    await _selectSettingChoice(tester, 'fontSize', 'large');
     expect(currentScale(), 1.30);
 
-    await tester.ensureVisible(find.text('작게'));
-    await tester.tap(find.text('작게'));
-    await tester.pump();
+    await _selectSettingChoice(tester, 'fontSize', 'small');
     expect(currentScale(), 0.92);
     expect(tester.takeException(), isNull);
   });
@@ -695,9 +679,20 @@ void main() {
     );
 
     await _openDisplayAndVoice(tester);
-    expect(tester.widget<Text>(find.text('작게')).style?.fontSize, 14);
-    expect(tester.widget<Text>(find.text('중간').first).style?.fontSize, 17);
-    expect(tester.widget<Text>(find.text('크게')).style?.fontSize, 23);
+    await tester.tap(find.byKey(const ValueKey('fontSizeSelector')));
+    await tester.pumpAndSettle();
+    // 선택창 안에서 세 크기의 실제 글씨를 비교한다.
+    Text optionLabel(String value) => tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(ValueKey('fontSize-$value')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(optionLabel('small').style?.fontSize, 14);
+    expect(optionLabel('medium').style?.fontSize, 17);
+    expect(optionLabel('large').style?.fontSize, 23);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -906,6 +901,24 @@ void main() {
 // - 메뉴 전환 완료.
 Future<void> _openDisplayAndVoice(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')));
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _selectSettingChoice
+// 함수역할: 현재 값 행을 열고 선택창의 값을 확정한다.
+// 매개변수: tester·항목 키·저장 값. 반환값: 선택 및 미리보기 반영 완료.
+Future<void> _selectSettingChoice(
+  WidgetTester tester,
+  String preference,
+  String value,
+) async {
+  final selector = find.byKey(ValueKey('${preference}Selector'));
+  await tester.ensureVisible(selector);
+  await tester.tap(selector);
+  await tester.pumpAndSettle();
+  final option = find.byKey(ValueKey('$preference-$value'));
+  await tester.ensureVisible(option);
+  await tester.tap(option);
   await tester.pumpAndSettle();
 }
 
