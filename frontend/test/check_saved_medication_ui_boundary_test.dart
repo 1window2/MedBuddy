@@ -52,10 +52,85 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  testWidgets('조회 조건은 현재 값 세 줄로 표시하고 취소하면 기존 조건을 유지한다', (tester) async {
+    await _pumpFilterApp(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('saved-medication-filter-row')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('saved-medication-sort-row')), findsOneWidget);
+    expect(
+      find.byKey(const Key('saved-medication-direction-row')),
+      findsOneWidget,
+    );
+    await _openFilterRow(tester, 'filter');
+    await tester.tap(
+      find.byKey(const Key('saved-medication-filter-option-ended')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saved-medication-filter-close')));
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 복용 중'), findsOneWidget);
+    expect(find.text('진행약'), findsOneWidget);
+    expect(find.text('종료약'), findsNothing);
+  });
+
+  // 함수역할: 검색어와 조회 상태를 모두 통과한 약만 전체 선택 삭제되는지 검증한다.
+  testWidgets('검색한 약만 선택하며 검색어를 바꾸면 숨겨진 선택을 비운다', (tester) async {
+    final model = await _pumpSelectionApp(tester);
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '약 1',
+    );
+    await tester.pumpAndSettle();
+    await _startSavedSelection(tester);
+    await _toggleSavedAll(tester);
+    expect(find.text('1개 선택'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '약 2',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('0개 선택'), findsOneWidget);
+    await _toggleSavedAll(tester);
+    await _deleteSavedSelection(tester);
+    expect(model.deletedIds, [2]);
+  });
+
+  // 함수역할: 검색 결과 부재와 사진 없음이 삭제 동작으로 오해되지 않는지 확인한다.
+  testWidgets('사진 없는 약은 이미지 없음 아이콘이며 빈 검색은 전체 보기로 복구한다', (tester) async {
+    await _pumpSelectionApp(tester);
+    expect(find.byIcon(Icons.image_not_supported_outlined), findsWidgets);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+    expect(find.textContaining('등록일자:'), findsNothing);
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '없는약',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('검색한 약이 없습니다.'), findsOneWidget);
+    tester.testTextInput.hide();
+    await tester.ensureVisible(
+      find.byKey(const Key('saved-medication-show-all')),
+    );
+    await tester.tap(find.byKey(const Key('saved-medication-show-all')));
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 전체'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('saved-medication-search')))
+          .controller!
+          .text,
+      isEmpty,
+    );
+  });
+
   // 함수이름: 공통 제목 테스트
   // 함수역할: 루트 제목의 강조와 정렬 동작의 같은 행 배치를 확인한다.
   // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('루트 제목은 공통 헤더이며 정렬 메뉴가 같은 행에 놓인다', (tester) async {
+  testWidgets('루트 제목은 공통 헤더이며 선택 메뉴만 같은 행에 놓인다', (tester) async {
     await _pumpSelectionApp(tester);
     final header = tester.widget<MedBuddyPageHeader>(
       find.byType(MedBuddyPageHeader),
@@ -70,7 +145,7 @@ void main() {
       (tester.getTopLeft(find.text('저장된 복약 정보')).dy -
               tester
                   .getTopLeft(
-                    find.byKey(const ValueKey('savedMedicationSortModeButton')),
+                    find.byKey(const ValueKey('saved-medication-select')),
                   )
                   .dy)
           .abs(),
@@ -266,11 +341,9 @@ void main() {
     );
     expect(
       tester
-          .widget<IconButton>(
-            find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
-          )
-          .onPressed,
-      isNull,
+          .widget<TextField>(find.byKey(const Key('saved-medication-search')))
+          .enabled,
+      isFalse,
     );
     expect(
       tester
@@ -465,6 +538,8 @@ void main() {
     await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
     await tester.pumpAndSettle();
     expect(find.text('조회 조건'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+    await _openFilterRow(tester, 'filter');
     expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
     expect(
       find.descendant(
@@ -477,6 +552,7 @@ void main() {
       find.byKey(const Key('saved-medication-filter-option-ended')),
     );
     await tester.pumpAndSettle();
+    await _applySavedFilter(tester);
     expect(find.text('조회 조건: 복용 종료'), findsOneWidget);
     expect(find.text('진행약'), findsNothing);
     expect(find.text('종료약'), findsOneWidget);
@@ -535,15 +611,21 @@ void main() {
         small: true,
       );
       expect(tester.takeException(), isNull);
+      await tester.ensureVisible(
+        find.byKey(const Key('saved-medication-filter-selector')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('saved-medication-filter-selector')),
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await _openFilterRow(tester, 'filter');
       final all = find.byKey(const Key('saved-medication-filter-option-all'));
       await tester.ensureVisible(all);
       await tester.tap(all);
       await tester.pumpAndSettle();
+      await _applySavedFilter(tester);
       expect(
         find.text(language == 'ko' ? '조회 조건: 전체' : 'Search filter: All'),
         findsOneWidget,
@@ -777,7 +859,16 @@ void main() {
     await tester.pumpAndSettle();
 
     final imageButton = find.byKey(const ValueKey('savedMedicationImage-1'));
-    await tester.ensureVisible(imageButton);
+    await tester.scrollUntilVisible(
+      imageButton,
+      150,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('saved-medication-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(imageButton);
     await tester.pumpAndSettle();
@@ -887,34 +978,30 @@ void main() {
 
       final newestRegistration = find.text('등록최신약');
       final newestMedicationDate = find.text('복용최신약');
-      expect(find.byTooltip('정렬 기준 설정'), findsOneWidget);
+      expect(find.text('등록일자순 · 최신순'), findsOneWidget);
       expect(find.text('등록일자순'), findsNothing);
       expect(find.text('복용날짜순'), findsNothing);
       expect(
         tester.getTopLeft(newestRegistration).dy,
         lessThan(tester.getTopLeft(newestMedicationDate).dy),
       );
-      final titleTop = tester.getTopLeft(find.text('저장된 복약 정보'));
-      final sortModeTop = tester.getTopLeft(
+      expect(
         find.byKey(const ValueKey('savedMedicationSortModeButton')),
+        findsNothing,
       );
-      final filterCenter = tester.getCenter(
+      expect(
+        find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
+        findsNothing,
+      );
+      await tester.tap(
         find.byKey(const Key('saved-medication-filter-selector')),
       );
-      final sortDirectionCenter = tester.getCenter(
-        find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
-      );
-      expect((titleTop.dy - sortModeTop.dy).abs(), lessThan(1));
-      expect((filterCenter.dy - sortDirectionCenter.dy).abs(), lessThan(1));
-
+      await tester.pumpAndSettle();
+      await _openFilterRow(tester, 'sort');
       await tester.tap(
-        find.byKey(const ValueKey('savedMedicationSortModeButton')),
+        find.byKey(const Key('saved-medication-sort-option-medicationDate')),
       );
-      await tester.pumpAndSettle();
-      expect(find.text('등록일자순'), findsOneWidget);
-      expect(find.text('복용날짜순'), findsOneWidget);
-      await tester.tap(find.text('복용날짜순'));
-      await tester.pumpAndSettle();
+      await _applySavedFilter(tester);
 
       expect(
         tester.getTopLeft(newestMedicationDate).dy,
@@ -922,11 +1009,17 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey('savedMedicationSortDirectionButton')),
+        find.byKey(const Key('saved-medication-filter-selector')),
       );
       await tester.pumpAndSettle();
-
-      expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+      await _openFilterRow(tester, 'direction');
+      final ascending = find.byKey(
+        const Key('saved-medication-direction-option-ascending'),
+      );
+      await tester.ensureVisible(ascending);
+      await tester.tap(ascending);
+      await _applySavedFilter(tester);
+      expect(find.text('복용날짜순 · 오래된순'), findsOneWidget);
       expect(
         tester.getTopLeft(newestRegistration).dy,
         lessThan(tester.getTopLeft(newestMedicationDate).dy),
@@ -997,7 +1090,16 @@ void main() {
 Future<void> _chooseSavedFilter(WidgetTester tester, String mode) async {
   await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
   await tester.pumpAndSettle();
+  await _openFilterRow(tester, 'filter');
   await tester.tap(find.byKey(Key('saved-medication-filter-option-$mode')));
+  await tester.pumpAndSettle();
+  await _applySavedFilter(tester);
+}
+
+// 함수역할: 선택한 조회/정렬 조건을 확정한다. 매개변수: tester. 반환값: 적용 완료.
+Future<void> _applySavedFilter(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('saved-medication-filter-apply')));
   await tester.pumpAndSettle();
 }
 
@@ -1444,5 +1546,14 @@ Future<void> _deleteSavedSelection(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
   await tester.pumpAndSettle();
   await tester.tap(find.text('예'));
+  await tester.pumpAndSettle();
+}
+
+// 함수역할: 현재 값 행을 눌러 해당 조건의 선택창을 연다.
+Future<void> _openFilterRow(WidgetTester tester, String row) async {
+  final finder = find.byKey(ValueKey('saved-medication-$row-row'));
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
   await tester.pumpAndSettle();
 }

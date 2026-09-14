@@ -22,6 +22,23 @@ import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수역할: 실패·누락 응답이 본인 복용약 없음으로 해석되지 않도록 검증한다.
+  for (final payload in [
+    {'success': false, 'data': []},
+    {'success': true, 'data': null},
+  ]) {
+    test('실패하거나 목록이 누락된 조회는 빈 목록을 반환하지 않는다: $payload', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode(payload), 200),
+      );
+      final control = CheckSavedMedication(
+        baseUrl: 'http://medbuddy.test',
+        client: client,
+      );
+      addTearDown(client.close);
+      await expectLater(control.requestSavedMedicationInfo(), throwsStateError);
+    });
+  }
   // Function Name: test callback
   // Description:
   // - Expected behavior: saveMedicationDetail sends patient hash and schedule fields.

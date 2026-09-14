@@ -4,83 +4,96 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 역할: 저장 약품의 복용 상태 필터와 필터별 빈 결과를 제공한다.
 
 // 클래스명: _SavedMedicationFilterControl
-// 역할: 복용 중·종료·전체 약품 선택 필터를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 복용 중·종료·전체 약품 선택 필터 위젯을 구성한다.
-// 속성:
-// - filterMode (_SavedMedicationFilterMode): 저장 약품의 복용 중·종료·전체 표시 기준.
-// - onChanged (ValueChanged<_SavedMedicationFilterMode>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
+// 역할: 복용 상태·날짜 기준·정렬 방향을 한 시트에서 선택하고 적용한다.
+// 속성: 현재 조회값과 onChanged는 소유 화면의 목록/선택 상태에 연결된다.
 class _SavedMedicationFilterControl extends StatelessWidget {
   final _SavedMedicationFilterMode filterMode;
+  final _SavedMedicationSortMode sortMode;
+  final _SavedMedicationSortDirection sortDirection;
   final _SavedMedicationText text;
   final bool enabled;
-  final ValueChanged<_SavedMedicationFilterMode> onChanged;
+  final void Function(
+    _SavedMedicationFilterMode,
+    _SavedMedicationSortMode,
+    _SavedMedicationSortDirection,
+  )
+  onChanged;
 
-  // 함수이름: _SavedMedicationFilterControl
-  // 함수역할: 복용 중·종료·전체 약품 선택 필터에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - filterMode (_SavedMedicationFilterMode): 저장 약품의 복용 중·종료·전체 표시 기준.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - enabled (bool): 삭제 중에는 조건 변경을 막는 조작 상태.
-  // - onChanged (ValueChanged<_SavedMedicationFilterMode>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _SavedMedicationFilterControl 인스턴스.
+  // 함수역할: 현재 조회 조건과 적용 콜백을 받는다. 반환값: 조회 조건 버튼.
   const _SavedMedicationFilterControl({
     required this.filterMode,
+    required this.sortMode,
+    required this.sortDirection,
     required this.text,
     required this.enabled,
     required this.onChanged,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 복용 중·종료·전체 약품 선택 필터 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 복용 중·종료·전체 약품 선택 필터에 쓰는 위젯 트리.
+  // 함수역할: 현재 조건을 표시하고 선택 시트를 연다. 매개변수: context.
   @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      key: const Key('saved-medication-filter-selector'),
-      // 함수역할: 조회 조건을 연다. 매개변수: 없음. 반환값: 조건 선택 완료.
-      onPressed: enabled ? () => _showFilterPicker(context) : null,
-      style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size(0, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        side: const BorderSide(color: MedBuddyColors.outline),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.filter_alt_outlined,
-            color: MedBuddyColors.primaryDark,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text.selectedFilter(filterMode),
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
+  Widget build(BuildContext context) => OutlinedButton(
+    key: const Key('saved-medication-filter-selector'),
+    onPressed: enabled ? () => _showFilterPicker(context) : null,
+    style: OutlinedButton.styleFrom(
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      side: const BorderSide(color: MedBuddyColors.outline),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.filter_alt_outlined,
+          color: MedBuddyColors.primaryDark,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text.selectedFilter(filterMode),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: MedBuddyColors.textStrong,
+                  letterSpacing: 0,
+                ),
               ),
-            ),
+              const SizedBox(height: 2),
+              Text(
+                '${_sortLabel(sortMode)} · ${_directionLabel(sortDirection)}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: MedBuddyColors.textMuted,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
           ),
-          const Icon(
-            Icons.keyboard_arrow_down,
-            color: MedBuddyColors.textMuted,
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+        const Icon(Icons.keyboard_arrow_down, color: MedBuddyColors.textMuted),
+      ],
+    ),
+  );
 
-  // 함수이름: _showFilterPicker
-  // 함수역할: 약국 화면과 같은 선택 시트를 열고 실제 변경만 부모에 전달한다.
-  // 매개변수: context: 필터 버튼 위치. 반환값: 선택 또는 취소 처리 완료.
+  // 함수역할: 날짜 정렬의 기준/방향을 일상적인 문구로 표시한다. 매개변수: 선택값.
+  String _sortLabel(_SavedMedicationSortMode mode) =>
+      mode == _SavedMedicationSortMode.registeredDate
+      ? text.sortByRegisteredDate
+      : text.sortByMedicationDate;
+  String _directionLabel(_SavedMedicationSortDirection direction) =>
+      direction == _SavedMedicationSortDirection.descending
+      ? (text.isEnglish ? 'Newest first' : '최신순')
+      : (text.isEnglish ? 'Oldest first' : '오래된순');
+
+  // 함수역할: 임시 선택을 유지하다 적용할 때만 부모에 전달한다. 취소는 기존 조건을 보존한다.
   Future<void> _showFilterPicker(BuildContext context) async {
-    final selected = await showModalBottomSheet<_SavedMedicationFilterMode>(
+    FocusScope.of(context).unfocus();
+    var filter = filterMode;
+    var sort = sortMode;
+    var direction = sortDirection;
+    final applied = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -88,118 +101,107 @@ class _SavedMedicationFilterControl extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
       ),
-      // 함수역할: 큰 글씨에서는 선택 항목만 스크롤되도록 시트 높이를 제한한다.
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        text.filterTitle,
-                        style: const TextStyle(
-                          color: MedBuddyColors.textStrong,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          text.filterTitle,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: MedBuddyColors.textStrong,
+                            letterSpacing: 0,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      key: const Key('saved-medication-filter-close'),
-                      tooltip: text.close,
-                      onPressed: () => Navigator.pop(sheetContext),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                  child: Column(
-                    children: [
-                      for (final mode in _SavedMedicationFilterMode.values) ...[
-                        if (mode != _SavedMedicationFilterMode.active)
-                          const SizedBox(height: 8),
-                        _buildOption(sheetContext, mode),
-                      ],
+                      IconButton(
+                        key: const Key('saved-medication-filter-close'),
+                        tooltip: text.close,
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (context.mounted && selected != null && selected != filterMode) {
-      onChanged(selected);
-    }
-  }
-
-  // 함수이름: _buildOption
-  // 함수역할: 현재 복용 상태를 라디오 표시·초록 테두리로 강조하고 선택한 값을 시트 결과로 돌려준다.
-  // 매개변수:
-  // - mode (_SavedMedicationFilterMode): 선택한 필터·알림 모드 또는 옵션 종류.
-  // - sheetContext (BuildContext): 선택 결과로 닫을 시트 위치.
-  // 반환값: 복용 중·종료·전체 약품 선택 필터에 쓰는 위젯 트리.
-  Widget _buildOption(
-    BuildContext sheetContext,
-    _SavedMedicationFilterMode mode,
-  ) {
-    final selected = mode == filterMode;
-    return Semantics(
-      checked: selected,
-      inMutuallyExclusiveGroup: true,
-      child: Material(
-        color: selected ? MedBuddyColors.successSurface : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(
-            color: selected ? MedBuddyColors.primary : MedBuddyColors.outline,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: InkWell(
-          key: ValueKey('saved-medication-filter-option-${mode.name}'),
-          borderRadius: BorderRadius.circular(8),
-          // 함수이름: _buildOption.onTap callback
-          // 함수역할: 선택한 복용 상태를 반환하며 시트를 닫는다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          onTap: () => Navigator.pop(sheetContext, mode),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                  color: selected
-                      ? MedBuddyColors.primary
-                      : MedBuddyColors.textSubtle,
+                const Divider(height: 1),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _choiceRow<_SavedMedicationFilterMode>(
+                          context: context,
+                          title: text.isEnglish ? 'Medication status' : '복용 상태',
+                          preferenceKey: 'filter',
+                          value: filter,
+                          values: _SavedMedicationFilterMode.values,
+                          label: text.filterLabel,
+                          onSelected: (value) =>
+                              setSheetState(() => filter = value),
+                        ),
+                        const Divider(height: 1, color: MedBuddyColors.divider),
+                        _choiceRow<_SavedMedicationSortMode>(
+                          context: context,
+                          title: text.isEnglish ? 'Date' : '날짜 기준',
+                          preferenceKey: 'sort',
+                          value: sort,
+                          values: _SavedMedicationSortMode.values,
+                          label: _sortLabel,
+                          onSelected: (value) =>
+                              setSheetState(() => sort = value),
+                        ),
+                        const Divider(height: 1, color: MedBuddyColors.divider),
+                        _choiceRow<_SavedMedicationSortDirection>(
+                          context: context,
+                          title: text.isEnglish ? 'Order' : '표시 순서',
+                          preferenceKey: 'direction',
+                          value: direction,
+                          values: const [
+                            _SavedMedicationSortDirection.descending,
+                            _SavedMedicationSortDirection.ascending,
+                          ],
+                          label: _directionLabel,
+                          onSelected: (value) =>
+                              setSheetState(() => direction = value),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    text.filterLabel(mode),
-                    style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const Key('saved-medication-filter-apply'),
+                      onPressed: () => Navigator.pop(sheetContext, true),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                      child: Text(
+                        text.isEnglish ? 'Apply' : '적용',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -209,7 +211,94 @@ class _SavedMedicationFilterControl extends StatelessWidget {
         ),
       ),
     );
+    if (context.mounted && applied == true) onChanged(filter, sort, direction);
   }
+
+  // 함수역할: 현재 값을 공통 설정 행에 표시하고 해당 항목의 선택지만 연다.
+  // 매개변수: 행 식별자·제목·초안 값·선택지. 반환값: 선택 후 초안만 갱신하는 행.
+  Widget _choiceRow<T extends Enum>({
+    required BuildContext context,
+    required String title,
+    required String preferenceKey,
+    required T value,
+    required List<T> values,
+    required String Function(T) label,
+    required ValueChanged<T> onSelected,
+  }) => MedBuddyPreferenceRow(
+    key: ValueKey('saved-medication-$preferenceKey-row'),
+    title: title,
+    value: label(value),
+    onTap: () async {
+      final selected = await showModalBottomSheet<T>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: MedBuddyColors.surface,
+        builder: (dialogContext) => SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                for (final option in values)
+                  _option(
+                    key: ValueKey(
+                      'saved-medication-$preferenceKey-option-${option.name}',
+                    ),
+                    label: label(option),
+                    selected: option == value,
+                    onTap: () => Navigator.pop(dialogContext, option),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (context.mounted && selected != null) onSelected(selected);
+    },
+  );
+
+  // 함수역할: 단일 선택 상태를 시각 표시와 접근성 정보로 함께 제공한다.
+  // 매개변수: 식별 키·문구·선택 여부·선택 콜백. 반환값: 라디오 형식 행.
+  Widget _option({
+    required Key key,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) => Semantics(
+    checked: selected,
+    inMutuallyExclusiveGroup: true,
+    child: ListTile(
+      key: key,
+      onTap: onTap,
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_off,
+        color: selected ? MedBuddyColors.primary : MedBuddyColors.textMuted,
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
+      selected: selected,
+      selectedColor: MedBuddyColors.primaryDark,
+      selectedTileColor: MedBuddyColors.successSurface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+  );
 }
 
 // 클래스명: _SavedMedicationFilteredEmptyState
@@ -217,6 +306,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
 // 주요 책임: 긴 문구와 큰 글씨에서도 모든 동작을 스크롤로 제공한다.
 // 속성: filterMode는 조회 상태, onShowAll과 onRegister는 실제 화면 동작이다.
 class _SavedMedicationFilteredEmptyState extends StatelessWidget {
+  final bool isSearching;
   final _SavedMedicationFilterMode filterMode;
   final _SavedMedicationText text;
   final VoidCallback? onShowAll;
@@ -226,6 +316,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   // 함수역할: 빈 결과의 조건과 연결 동작을 받는다.
   // 매개변수: filterMode, text, onShowAll, onRegister. 반환값: 빈 결과 위젯.
   const _SavedMedicationFilteredEmptyState({
+    this.isSearching = false,
     required this.filterMode,
     required this.text,
     required this.onShowAll,
@@ -251,7 +342,11 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            text.filteredEmptyMessage(filterMode),
+            isSearching
+                ? (text.isEnglish
+                      ? 'No medications match your search.'
+                      : '검색한 약이 없습니다.')
+                : text.filteredEmptyMessage(filterMode),
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,

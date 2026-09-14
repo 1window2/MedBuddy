@@ -4,6 +4,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../widgets/medbuddy_preference_row.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -80,6 +82,8 @@ enum _SavedMedicationFilterMode { active, ended, all }
 // 속성: _selectedMedicationIds는 선택 ID, _isDeleting은 중복 조작 방지 상태이다.
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   bool _isSelectionMode = false;
   bool _isDeleting = false;
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
@@ -103,6 +107,22 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
       await viewModel.fetchSavedMedicationInfo();
+    });
+  }
+
+  // 함수역할: 검색 입력 자원을 정리한다. 매개변수·반환값: 없음.
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // 함수역할: 검색어를 반영하고 숨겨질 수 있는 선택을 비운다. 매개변수: 입력 문자열.
+  void _changeSearch(String value) {
+    if (_isDeleting) return;
+    setState(() {
+      _searchQuery = value.trim().toLowerCase();
+      _selectedMedicationIds.clear();
     });
   }
 
@@ -136,7 +156,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     final text = _SavedMedicationText(viewModel.userSetting.language);
     final medications = viewModel.savedMedicationInfoList;
     final titleActions = [
-      _buildSortMenu(text),
       IconButton(
         key: const Key('saved-medication-select'),
         tooltip: text.selectionTitle,
@@ -191,6 +210,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                   Expanded(
                     child: CustomScrollView(
                       key: const Key('saved-medication-scroll'),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       slivers: [
                         const SliverToBoxAdapter(child: SizedBox(height: 20)),
                         SliverPadding(
@@ -200,25 +221,60 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 if (medications.isNotEmpty) ...[
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: _SavedMedicationFilterControl(
-                                          filterMode: _filterMode,
-                                          text: text,
-                                          enabled: !_isDeleting,
-                                          onChanged: _changeFilter,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _SavedMedicationSortControl(
-                                        sortDirection: _sortDirection,
-                                        text: text,
-                                        enabled: !_isDeleting,
-                                        onDirectionChanged:
-                                            _changeSortDirection,
-                                      ),
-                                    ],
+                                  TextField(
+                                    key: const Key('saved-medication-search'),
+                                    controller: _searchController,
+                                    enabled: !_isDeleting,
+                                    onChanged: _changeSearch,
+                                    textInputAction: TextInputAction.search,
+                                    onSubmitted: (_) =>
+                                        FocusScope.of(context).unfocus(),
+                                    decoration: InputDecoration(
+                                      hintText: text.isEnglish
+                                          ? 'Search medication name'
+                                          : '약 이름 검색',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIcon: _searchQuery.isEmpty
+                                          ? null
+                                          : IconButton(
+                                              key: const Key(
+                                                'saved-medication-search-clear',
+                                              ),
+                                              tooltip: text.isEnglish
+                                                  ? 'Clear search'
+                                                  : '검색어 지우기',
+                                              onPressed: () {
+                                                _searchController.clear();
+                                                _changeSearch('');
+                                              },
+                                              icon: const Icon(Icons.close),
+                                            ),
+                                      border: const OutlineInputBorder(),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 14,
+                                          ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _SavedMedicationFilterControl(
+                                    filterMode: _filterMode,
+                                    sortMode: _sortMode,
+                                    sortDirection: _sortDirection,
+                                    text: text,
+                                    enabled: !_isDeleting,
+                                    onChanged: (filter, sort, direction) {
+                                      if (_isDeleting) return;
+                                      setState(() {
+                                        if (_filterMode != filter) {
+                                          _selectedMedicationIds.clear();
+                                        }
+                                        _filterMode = filter;
+                                        _sortMode = sort;
+                                        _sortDirection = direction;
+                                      });
+                                    },
                                   ),
                                   const SizedBox(height: 12),
                                 ],
@@ -267,32 +323,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     );
   }
 
-  // 함수이름: _buildSortMenu
-  // 함수역할: 제목의 정렬 기준 메뉴를 만든다. 매개변수: text는 번역 문구. 반환값: 정렬 메뉴.
-  Widget _buildSortMenu(_SavedMedicationText text) {
-    return PopupMenuButton<_SavedMedicationSortMode>(
-      key: const ValueKey('savedMedicationSortModeButton'),
-      tooltip: text.sortSettings,
-      initialValue: _sortMode,
-      enabled: !_isDeleting,
-      onSelected: _changeSortMode,
-      // 함수역할: 등록일·복용일 선택지를 구성한다. 매개변수: context. 반환값: 메뉴 항목.
-      itemBuilder: (context) => [
-        for (final mode in _SavedMedicationSortMode.values)
-          PopupMenuItem(
-            value: mode,
-            child: _SavedMedicationSortMenuItem(
-              label: mode == _SavedMedicationSortMode.registeredDate
-                  ? text.sortByRegisteredDate
-                  : text.sortByMedicationDate,
-              isSelected: _sortMode == mode,
-            ),
-          ),
-      ],
-      icon: const Icon(Icons.tune_rounded),
-    );
-  }
-
   // 함수이름: _startSelection
   // 함수역할: 빈 선택으로 삭제 모드를 연다. 매개변수: 없음. 반환값: 없음.
   void _startSelection() {
@@ -326,33 +356,16 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     if (!_isDeleting) Navigator.maybePop(context);
   }
 
-  // 함수이름: _changeFilter
-  // 함수역할: 실제 조건 변경 시 숨겨지는 선택을 모두 비운다.
-  // 매개변수: mode는 새 조회 조건. 반환값: 없음.
-  void _changeFilter(_SavedMedicationFilterMode mode) {
-    if (_isDeleting || mode == _filterMode) return;
-    setState(() {
-      _filterMode = mode;
-      _selectedMedicationIds.clear();
-    });
-  }
-
   // 함수이름: _showAll
   // 함수역할: 빈 결과에서 전체 목록으로 전환한다. 매개변수: 없음. 반환값: 없음.
-  void _showAll() => _changeFilter(_SavedMedicationFilterMode.all);
-
-  // 함수이름: _changeSortMode
-  // 함수역할: 제목 메뉴의 날짜 기준을 적용한다. 매개변수: mode는 정렬 기준. 반환값: 없음.
-  void _changeSortMode(_SavedMedicationSortMode mode) {
+  void _showAll() {
     if (_isDeleting) return;
-    setState(() => _sortMode = mode);
-  }
-
-  // 함수이름: _changeSortDirection
-  // 함수역할: 날짜 표시 순서를 바꾼다. 매개변수: direction은 정렬 방향. 반환값: 없음.
-  void _changeSortDirection(_SavedMedicationSortDirection direction) {
-    if (_isDeleting) return;
-    setState(() => _sortDirection = direction);
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _filterMode = _SavedMedicationFilterMode.all;
+      _selectedMedicationIds.clear();
+    });
   }
 
   // 함수이름: _visibleMedicationIds
@@ -429,6 +442,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     final filtered = _filterMedicationList(savedMedicationInfoList);
     if (filtered.isEmpty) {
       return _SavedMedicationFilteredEmptyState(
+        isSearching: _searchQuery.isNotEmpty,
         filterMode: _filterMode,
         text: text,
         onShowAll: _isDeleting ? null : _showAll,
@@ -449,6 +463,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       // 매개변수: context는 화면 위치, index는 묶음 순번. 반환값: 날짜별 목록.
       itemBuilder: (context, index) => _SavedMedicationDateCard(
         group: groups[index],
+        showRegisteredDate:
+            _sortMode != _SavedMedicationSortMode.registeredDate,
         text: text,
         userSetting: viewModel.userSetting,
         isSelectionMode: _isSelectionMode,
@@ -493,6 +509,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
         // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
         .where((medication) {
+          if (!medication.itemName.toLowerCase().contains(_searchQuery)) {
+            return false;
+          }
           return switch (_filterMode) {
             _SavedMedicationFilterMode.active => medication.isActiveOn(today),
             _SavedMedicationFilterMode.ended =>

@@ -3,139 +3,6 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 파일명: check_saved_medication_list_widgets.dart
 // 역할: 저장 약품 정렬, 날짜·복용기간 표시 및 상세·사진 진입을 제공한다.
 
-// 클래스명: _SavedMedicationSortControl
-// 역할: 저장 날짜 정렬 방향 선택과 전환을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 저장 날짜 정렬 방향 선택과 전환 위젯을 구성한다.
-// 속성:
-// - sortDirection (_SavedMedicationSortDirection): 날짜 정렬의 오름차순·내림차순 선택.
-// - onDirectionChanged (ValueChanged<_SavedMedicationSortDirection>): 변경한 날짜 정렬 방향을 전달할 콜백.
-class _SavedMedicationSortControl extends StatelessWidget {
-  final _SavedMedicationSortDirection sortDirection;
-  final bool enabled;
-  final _SavedMedicationText text;
-  final ValueChanged<_SavedMedicationSortDirection> onDirectionChanged;
-
-  // 함수이름: _SavedMedicationSortControl
-  // 함수역할: 저장 날짜 정렬 방향 선택과 전환에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - sortDirection (_SavedMedicationSortDirection): 날짜 정렬의 오름차순·내림차순 선택.
-  // - enabled (bool): 삭제 중에는 정렬 전환을 막는다.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - onDirectionChanged (ValueChanged<_SavedMedicationSortDirection>): 변경한 날짜 정렬 방향을 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _SavedMedicationSortControl 인스턴스.
-  const _SavedMedicationSortControl({
-    required this.sortDirection,
-    required this.enabled,
-    required this.text,
-    required this.onDirectionChanged,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 날짜 정렬 방향 선택과 전환 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 날짜 정렬 방향 선택과 전환에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final isAscending =
-        sortDirection == _SavedMedicationSortDirection.ascending;
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: Semantics(
-        button: true,
-        label: isAscending ? text.ascendingOrder : text.descendingOrder,
-        child: IconButton(
-          key: const ValueKey('savedMedicationSortDirectionButton'),
-          tooltip: text.changeSortDirection,
-          style: IconButton.styleFrom(
-            minimumSize: const Size.square(44),
-            maximumSize: const Size.square(44),
-            foregroundColor: MedBuddyColors.primary,
-            backgroundColor: MedBuddyColors.successSurface,
-            side: const BorderSide(color: MedBuddyColors.successBorder),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          onPressed: enabled ? _toggleDirection : null,
-          icon: Icon(
-            isAscending
-                ? Icons.arrow_upward_rounded
-                : Icons.arrow_downward_rounded,
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 함수이름: _toggleDirection
-  // 함수역할: 현재 날짜 정렬 방향의 반대 값을 선택 콜백으로 전달한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _toggleDirection() {
-    final nextDirection =
-        sortDirection == _SavedMedicationSortDirection.descending
-        ? _SavedMedicationSortDirection.ascending
-        : _SavedMedicationSortDirection.descending;
-    onDirectionChanged(nextDirection);
-  }
-}
-
-// 클래스명: _SavedMedicationSortMenuItem
-// 역할: 정렬 방향 이름과 현재 선택 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 정렬 방향 이름과 현재 선택 표시 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
-class _SavedMedicationSortMenuItem extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-
-  // 함수이름: _SavedMedicationSortMenuItem
-  // 함수역할: 정렬 방향 이름과 현재 선택 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
-  // 반환값: 입력 설정이 반영된 _SavedMedicationSortMenuItem 인스턴스.
-  const _SavedMedicationSortMenuItem({
-    required this.label,
-    required this.isSelected,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 정렬 방향 이름과 현재 선택 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 정렬 방향 이름과 현재 선택 표시에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          isSelected ? Icons.check_rounded : Icons.calendar_today_outlined,
-          color: isSelected ? MedBuddyColors.primary : MedBuddyColors.textMuted,
-          size: 20,
-        ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: MedBuddyColors.textStrong,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 // 클래스명: _SavedMedicationNameRow
 // 역할: 약품명·처방일·복용기간과 선택·가이드·사진 동작을 담당한다.
 // 주요 책임:
@@ -146,6 +13,7 @@ class _SavedMedicationSortMenuItem extends StatelessWidget {
 // - isSelectionMode (bool): 일반 조작 대신 첨부·삭제 선택 모드를 사용할지 여부.
 // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
 class _SavedMedicationNameRow extends StatelessWidget {
+  final bool showRegisteredDate;
   final MedicationDetail medication;
   final _SavedMedicationText text;
   final UserSetting userSetting;
@@ -170,6 +38,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
   // - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationNameRow 인스턴스.
   const _SavedMedicationNameRow({
+    required this.showRegisteredDate,
     required this.medication,
     required this.text,
     required this.userSetting,
@@ -193,7 +62,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
     const dateLineLeftPadding = 0.0;
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 124),
+      constraints: BoxConstraints(minHeight: showRegisteredDate ? 124 : 100),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         child: Column(
@@ -247,16 +116,17 @@ class _SavedMedicationNameRow extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 7),
-            Padding(
-              padding: EdgeInsets.only(left: dateLineLeftPadding),
-              child: _MedicationDateLine(
-                label: text.registeredDate,
-                value: _formatMedicationDate(medication.createdDate),
-                fallback: text.noInformation,
-                scale: scale,
+            if (showRegisteredDate)
+              Padding(
+                padding: EdgeInsets.only(left: dateLineLeftPadding),
+                child: _MedicationDateLine(
+                  label: text.registeredDate,
+                  value: _formatMedicationDate(medication.createdDate),
+                  fallback: text.noInformation,
+                  scale: scale,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
+            if (showRegisteredDate) const SizedBox(height: 4),
             Padding(
               padding: EdgeInsets.only(left: dateLineLeftPadding),
               child: _MedicationDateLine(
@@ -624,7 +494,7 @@ class _MedicationImageButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(
-            Icons.close_rounded,
+            Icons.image_not_supported_outlined,
             color: MedBuddyColors.textLight,
             size: 22,
           ),

@@ -212,6 +212,7 @@ class _SelectionDeleteBar extends StatelessWidget {
 // - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
 // - selectedMedicationIds (Set<int>): 첨부 또는 삭제 대상으로 선택한 약품 ID 집합.
 class _SavedMedicationDateCard extends StatelessWidget {
+  final bool showRegisteredDate;
   final _SavedMedicationGroup group;
   final _SavedMedicationText text;
   final UserSetting userSetting;
@@ -239,6 +240,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // - onDeleteRequested (Future<void> Function()): 선택한 약품 또는 날짜 그룹 삭제를 요청할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationDateCard 인스턴스.
   const _SavedMedicationDateCard({
+    required this.showRegisteredDate,
     required this.group,
     required this.text,
     required this.userSetting,
@@ -291,6 +293,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
           const Divider(height: 1, color: MedBuddyColors.divider),
           for (final medication in group.medications) ...[
             _SavedMedicationNameRow(
+              showRegisteredDate: showRegisteredDate,
               medication: medication,
               text: text,
               userSetting: userSetting,

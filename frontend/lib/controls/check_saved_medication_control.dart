@@ -235,12 +235,12 @@ class CheckSavedMedication {
     return fallbackValue.trim();
   }
 
-  // Function Name: requestSavedMedicationInfo
-  // Description: Retrieves the patient's saved medication details, returning an empty list for unsuccessful payloads and surfacing transport or server failures.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<List<MedicationDetail>>: Retrieves the patient's saved medication details, returning an empty list for unsuccessful payloads and surfacing transport or server failures.
+  // 함수이름: requestSavedMedicationInfo
+  // 함수역할: 저장 약 목록을 조회하며 실패하거나 목록이 누락된 응답은 오류로 구분한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<MedicationDetail>>: 성공적으로 조회한 목록. 확인 실패 시 StateError.
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     try {
       final response = await _client
@@ -256,8 +256,9 @@ class CheckSavedMedication {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      if (decodedData['success'] != true) {
-        return [];
+      // 조회 실패를 약이 없는 상태로 표시하지 않도록 응답을 검증한다.
+      if (decodedData['success'] != true || decodedData['data'] is! List) {
+        throw StateError('저장된 복약 정보 응답을 확인하지 못했습니다.');
       }
 
       return _decodeSavedMedicationInfoList(decodedData['data']);
