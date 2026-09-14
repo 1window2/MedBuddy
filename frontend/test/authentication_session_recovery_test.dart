@@ -26,7 +26,9 @@ class _SessionControl extends ChangeNotifier implements AuthenticationControl {
     if (const {
       #configurationFailed, #initializationFailed, #emailVerificationRequired,
       #phoneAuthenticationEnabled, #smsCodeRequired,
-    }.contains(invocation.memberName)) return false;
+    }.contains(invocation.memberName)) {
+      return false;
+    }
     return null;
   }
 }
