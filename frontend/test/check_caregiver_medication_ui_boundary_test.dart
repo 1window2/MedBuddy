@@ -8,6 +8,7 @@ import 'package:medbuddy_frontend/controls/set_caregiver_notification_control.da
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 // 클래스명: _FakeCaregiverMedicationControl
 // 역할: 아침만 완료한 환자 일정을 제공하는 보호자 조회 대역.
@@ -120,6 +121,51 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final width in [320.0, 411.0, 1024.0]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할: 기본 일정과 같은 카드 폭을 유지하고 체크 표시의 내부 공간만 제거하는지 검증한다.
+    // 매개변수: tester는 화면 크기와 위젯 위치를 확인하는 테스트 제어기.
+    // 반환값: 검증 완료. 카드 폭이나 이름 여백이 다르면 테스트가 실패한다.
+    testWidgets('보호자 일정 카드 폭과 이름 여백을 유지한다 ($width)', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 900);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CheckCaregiverMedicationUI(
+            caregiverHash: 'caregiver-a',
+            patientHash: 'patient-a',
+            control: _FakeCaregiverMedicationControl(),
+            notificationControl: _FakeCaregiverNotificationControl(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final medicationName = find.text('테스트정').first;
+      final medicationRow = find
+          .ancestor(of: medicationName, matching: find.byType(InkWell))
+          .first;
+      final card = find
+          .ancestor(of: medicationRow, matching: find.byType(Material))
+          .first;
+      final contentWidth = width.clamp(0.0, MedBuddySpacing.contentMaxWidth);
+      final cardBounds = tester.getRect(card);
+      expect(cardBounds.left, (width - contentWidth) / 2 + 20);
+      expect(cardBounds.width, contentWidth - 40);
+      expect(tester.getSize(medicationRow).width, cardBounds.width);
+      expect(tester.getTopLeft(medicationName).dx, cardBounds.left + 18);
+      expect(find.byIcon(Icons.check_circle_outline), findsNothing);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  }
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 보호자 화면은 환자의 슬롯별 복약 상태와 진행률을 표시한다.
@@ -142,7 +188,21 @@ void main() {
 
     expect(find.text('환자 오늘의 복약 일정'), findsOneWidget);
     expect(find.text('1/3'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+    // 읽기 전용 화면에는 체크 모양을 남기지 않고 완료 취소선과 진행률은 보존한다.
+    expect(find.byIcon(Icons.check_circle_outline), findsNothing);
+    expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
+    final firstMedication = find.text('테스트정').first;
+    expect(
+      tester.widget<Text>(firstMedication).style!.decoration,
+      TextDecoration.lineThrough,
+    );
+    final medicationRow = find
+        .ancestor(of: firstMedication, matching: find.byType(InkWell))
+        .first;
+    expect(
+      tester.getTopLeft(firstMedication).dx,
+      tester.getTopLeft(medicationRow).dx + 18,
+    );
     expect(
       find.byKey(const ValueKey('caregiver-notification-morning')),
       findsOneWidget,

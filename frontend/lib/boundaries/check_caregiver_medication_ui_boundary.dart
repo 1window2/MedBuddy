@@ -297,38 +297,45 @@ class _CheckCaregiverMedicationUIState
       );
     }
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(34, 18, 34, 32),
-      children: [
-        for (final slot in _slots) ...[
-          _CaregiverTimeSlotCard(
-            slot: slot,
-            isEnglish: _isEnglish,
-            userSetting: widget.userSetting,
-            medications: schedules
-                // 함수이름: _buildBody.where callback
-                // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 대해 `schedule.slotKeys.contains(slot.key)` 조건으로 컬렉션 항목을 판별한다.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: MedBuddySpacing.contentMaxWidth,
+        ),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+          children: [
+            for (final slot in _slots) ...[
+              _CaregiverTimeSlotCard(
+                slot: slot,
+                isEnglish: _isEnglish,
+                userSetting: widget.userSetting,
+                medications: schedules
+                    // 함수이름: _buildBody.where callback
+                    // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림에 대해 `schedule.slotKeys.contains(slot.key)` 조건으로 컬렉션 항목을 판별한다.
+                    // 매개변수:
+                    // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+                    // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
+                    .where((schedule) => schedule.slotKeys.contains(slot.key))
+                    .toList(growable: false),
+                notificationSetting: _notificationSettings[slot.key],
+                isNotificationLoading:
+                    _isNotificationLoading ||
+                    _notificationSavingSlotKey == slot.key,
+                // 함수이름: _buildBody.onNotification callback
+                // 함수역할: 알림 설정을 확보한 뒤 선택 시간대의 편집 창을 열고 실제 변경만 저장한다.
                 // 매개변수:
-                // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-                // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-                .where((schedule) => schedule.slotKeys.contains(slot.key))
-                .toList(growable: false),
-            notificationSetting: _notificationSettings[slot.key],
-            isNotificationLoading:
-                _isNotificationLoading ||
-                _notificationSavingSlotKey == slot.key,
-            // 함수이름: _buildBody.onNotification callback
-            // 함수역할: 알림 설정을 확보한 뒤 선택 시간대의 편집 창을 열고 실제 변경만 저장한다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            onNotification: () => _showCaregiverNotificationPopup(slot),
-            onMedicationTap: _openMedicationDetail,
-          ),
-          const SizedBox(height: 16),
-        ],
-      ],
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onNotification: () => _showCaregiverNotificationPopup(slot),
+                onMedicationTap: _openMedicationDetail,
+              ),
+              const SizedBox(height: 16),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1135,16 +1142,6 @@ class _CaregiverMedicationRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
         child: Row(
           children: [
-            Icon(
-              isCompleted
-                  ? Icons.check_circle_outline
-                  : Icons.radio_button_unchecked,
-              color: isCompleted
-                  ? MedBuddyColors.primary
-                  : MedBuddyColors.outline,
-              size: 28,
-            ),
-            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
