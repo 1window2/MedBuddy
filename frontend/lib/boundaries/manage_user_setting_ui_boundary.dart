@@ -3,7 +3,10 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/medbuddy_preference_row.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
@@ -136,6 +139,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _language;
   late String _languageMode;
   late String _timeFormat;
+  late String _homeScheduleSource;
   late bool _medicationNotificationsEnabled;
   late bool _caregiverNotificationsEnabled;
   late bool _chatNotificationsEnabled;
@@ -145,6 +149,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   late String _defaultEveningTime;
   late String _defaultBedtime;
   bool _isSaving = false;
+  // 마지막 저장값과 비교하며 중복 종료 확인을 막는다.
+  late UserSetting _savedSetting;
+  bool _isConfirmingExit = false;
   bool _isPreviewSpeaking = false;
   int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
@@ -158,11 +165,13 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   void initState() {
     super.initState();
+    _savedSetting = widget.initialSetting;
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
     _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
     _languageMode = widget.initialSetting.languageMode;
     _timeFormat = widget.initialSetting.timeFormat;
+    _homeScheduleSource = widget.initialSetting.homeScheduleSource;
     _medicationNotificationsEnabled =
         widget.initialSetting.medicationNotificationsEnabled;
     _caregiverNotificationsEnabled =
@@ -173,6 +182,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     _defaultLunchTime = widget.initialSetting.defaultLunchTime;
     _defaultEveningTime = widget.initialSetting.defaultEveningTime;
     _defaultBedtime = widget.initialSetting.defaultBedtime;
+    _savedSetting = _draftSetting;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -206,6 +216,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       language: _language,
       languageMode: _languageMode,
       timeFormat: _timeFormat,
+      homeScheduleSource: _homeScheduleSource,
       medicationNotificationsEnabled: _medicationNotificationsEnabled,
       caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
       chatNotificationsEnabled: _chatNotificationsEnabled,
@@ -226,7 +237,11 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         textScaler: TextScaler.linear(selectedTextScale),
       ),
       child: PopScope<void>(
-        canPop: _selectedSection == _SettingSection.overview,
+        canPop:
+            _selectedSection == _SettingSection.overview &&
+            !_hasUnsavedChanges &&
+            !_isSaving &&
+            !_isConfirmingExit,
         // 함수이름: build.onPopInvokedWithResult callback
         // 함수역할: 음성 설정에서 나올 때 미리보기를 중지하고 설정 개요를 선택한다.
         // 매개변수:
@@ -235,7 +250,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) {
-            _showSettingsOverview();
+            unawaited(_handleBackRequested());
           }
         },
         child: Scaffold(
@@ -436,7 +451,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               bedtime: _defaultBedtime,
               onTimeRequested: _selectDefaultMedicationTime,
             ),
-            _SettingsPreferenceRow(
+            MedBuddyPreferenceRow(
               key: const ValueKey('medicationScheduleSettingsRow'),
               title: text.detailedScheduleSettingsTitle,
               description: text.detailedScheduleSettingsDescription,
@@ -448,7 +463,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingsSection(
           title: text.notificationDisplayTitle,
           children: [
-            _SettingsPreferenceRow(
+            MedBuddyPreferenceRow(
               key: const ValueKey('notificationPrivacySelector'),
               title: text.notificationContentTitle,
               value: _notificationDetailMode == 'full'
@@ -456,7 +471,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                   : text.notificationTypeOnlySummary,
               onTap: _selectNotificationPrivacy,
             ),
-            _SettingsPreferenceRow(
+            MedBuddyPreferenceRow(
               key: const ValueKey('deviceNotificationSettingsRow'),
               title: text.deviceNotificationSettingsTitle,
               description: text.deviceNotificationSettingsDescription,
@@ -554,13 +569,27 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                       for (final option in options)
                         RadioListTile<String>(
                           key: ValueKey('$preferenceKey-${option.value}'),
-                          contentPadding: EdgeInsets.zero,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
                           value: option.value,
                           toggleable: true,
+                          // 조회 조건과 같은 굵기·색·배경으로 현재 선택값을 강조한다.
+                          selected: option.value == selectedValue,
+                          activeColor: MedBuddyColors.primary,
+                          selectedTileColor: MedBuddyColors.successSurface,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           title: Text(
                             option.label,
                             style: TextStyle(
-                              fontSize: option.labelFontSize ?? 16,
+                              fontSize: option.labelFontSize ?? 17,
+                              fontWeight: FontWeight.w700,
+                              color: option.value == selectedValue
+                                  ? MedBuddyColors.primaryDark
+                                  : MedBuddyColors.textStrong,
+                              letterSpacing: 0,
                               height: 1.35,
                             ),
                           ),
@@ -587,7 +616,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     required List<_SettingOption> options,
     required ValueChanged<String> onSelected,
   }) {
-    return _SettingsPreferenceRow(
+    return MedBuddyPreferenceRow(
       key: ValueKey('${preferenceKey}Selector'),
       title: title,
       value: options
@@ -617,6 +646,23 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingsSection(
           title: text.displaySectionTitle,
           children: [
+            _buildSettingChoice(
+              preferenceKey: 'homeScheduleSource',
+              title: text.isEnglish ? 'Home schedule' : '홈 복약 일정',
+              selectedValue: _homeScheduleSource,
+              options: [
+                _SettingOption(
+                  value: 'self',
+                  label: text.isEnglish ? 'My schedule' : '내 일정',
+                ),
+                _SettingOption(
+                  value: 'patients',
+                  label: text.isEnglish ? 'Linked patients' : '연결된 환자',
+                ),
+              ],
+              onSelected: (value) =>
+                  setState(() => _homeScheduleSource = value),
+            ),
             _buildSettingChoice(
               preferenceKey: 'fontSize',
               title: text.fontSizeTitle,
@@ -844,12 +890,85 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _handleBackRequested() {
+  Future<void> _handleBackRequested() async {
+    if (_isSaving || _isConfirmingExit) return;
+    if (_isPreviewSpeaking) await _stopVoicePreview();
+    if (!mounted) return;
+    if (_hasUnsavedChanges && !await _confirmSettingExit()) return;
+    if (!mounted) return;
     if (_selectedSection == _SettingSection.overview) {
-      Navigator.maybePop(context);
+      // 저장/취소로 변경된 PopScope 조건이 다음 프레임에 반영된 뒤 닫는다.
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) Navigator.maybePop(context);
       return;
     }
     _showSettingsOverview();
+  }
+
+  // 함수역할: 편집값을 마지막 저장값과 비교한다. 반환값: 미저장 변경 여부.
+  bool get _hasUnsavedChanges =>
+      !mapEquals(_draftSetting.toJson(), _savedSetting.toJson());
+
+  // 함수역할: 저장·변경 취소·계속 편집 중 하나를 선택한다. 반환값: 나가기 허용 여부.
+  Future<bool> _confirmSettingExit() async {
+    setState(() => _isConfirmingExit = true);
+    final english = _language == 'en';
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('unsaved-settings-dialog'),
+        scrollable: true,
+        title: Text(english ? 'Save your changes?' : '변경한 설정을 저장할까요?'),
+        content: Text(
+          english
+              ? 'Your changes have not been saved yet.'
+              : '아직 저장하지 않은 변경사항이 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('settings-keep-editing'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(english ? 'Keep editing' : '계속 편집'),
+          ),
+          TextButton(
+            key: const Key('settings-discard-changes'),
+            onPressed: () => Navigator.pop(dialogContext, 'discard'),
+            child: Text(english ? 'Discard changes' : '변경 취소'),
+          ),
+          FilledButton(
+            key: const Key('settings-save-and-leave'),
+            onPressed: () => Navigator.pop(dialogContext, 'save'),
+            child: Text(english ? 'Save' : '저장'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return false;
+    if (choice == 'discard') {
+      setState(() {
+        _fontSize = _savedSetting.fontSizeOption;
+        _readingSpeed = _savedSetting.readingSpeedOption;
+        _language = _savedSetting.language;
+        _languageMode = _savedSetting.languageMode;
+        _timeFormat = _savedSetting.timeFormat;
+        _homeScheduleSource = _savedSetting.homeScheduleSource;
+        _medicationNotificationsEnabled =
+            _savedSetting.medicationNotificationsEnabled;
+        _caregiverNotificationsEnabled =
+            _savedSetting.caregiverNotificationsEnabled;
+        _chatNotificationsEnabled = _savedSetting.chatNotificationsEnabled;
+        _notificationDetailMode = _savedSetting.notificationDetailMode;
+        _defaultMorningTime = _savedSetting.defaultMorningTime;
+        _defaultLunchTime = _savedSetting.defaultLunchTime;
+        _defaultEveningTime = _savedSetting.defaultEveningTime;
+        _defaultBedtime = _savedSetting.defaultBedtime;
+      });
+    } else if (choice == 'save') {
+      await _handleSaveRequested();
+    }
+    if (!mounted) return false;
+    setState(() => _isConfirmingExit = false);
+    return choice != null && !_hasUnsavedChanges;
   }
 
   // 함수이름: _showSettingsOverview
@@ -874,12 +993,13 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 매개변수:
   // - 없음.
   // 반환값: UserSetting: 현재 편집 중인 설정 사본.
-  UserSetting get _draftSetting => widget.initialSetting.copyWith(
+  UserSetting get _draftSetting => _savedSetting.copyWith(
     fontSize: UserSetting.fontSizeFromOption(_fontSize),
     readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
     language: _language,
     languageMode: _languageMode,
     timeFormat: _timeFormat,
+    homeScheduleSource: _homeScheduleSource,
     medicationNotificationsEnabled: _medicationNotificationsEnabled,
     caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
     chatNotificationsEnabled: _chatNotificationsEnabled,
@@ -1136,7 +1256,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() => _isSaving = false);
+      setState(() {
+        _isSaving = false;
+        _savedSetting = saveResult.setting;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -2057,7 +2180,7 @@ class _DefaultMedicationTimePanel extends StatelessWidget {
     return Column(
       children: [
         for (int index = 0; index < entries.length; index++) ...[
-          _SettingsPreferenceRow(
+          MedBuddyPreferenceRow(
             key: ValueKey('defaultMedicationTime-${entries[index].$1}'),
             // 함수이름: build.onTap callback
             // 함수역할: 아침·점심·저녁·취침 전 기본 복약 시각에서 캡처된 작업 `onTimeRequested(entries[index].$1)`을 실행한다.

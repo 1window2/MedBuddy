@@ -14,6 +14,10 @@ import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/controls/manage_chat_list_control.dart';
+import 'package:medbuddy_frontend/controls/check_caregiver_home_control.dart';
+import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.dart';
+import 'package:medbuddy_frontend/entities/caregiver_monitoring_snapshot_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
@@ -86,6 +90,18 @@ class _History extends ManageLinkedChat {
 // 역할: 화면 테스트용 사용자 표시 설정을 고정한다. 속성: setting: 표시 설정.
 class _ViewModel extends MedBuddyViewModel {
   UserSetting setting = const UserSetting();
+  bool hasOwnMedication = false;
+  @override
+  List<MedicationDetail> get savedMedicationInfoList => hasOwnMedication
+      ? const [
+          MedicationDetail(
+            itemName: '본인약',
+            efficacy: '',
+            usageMethod: '',
+            warning: '',
+          ),
+        ]
+      : super.savedMedicationInfoList;
   // 함수이름: _ViewModel
   // 함수역할: 지정 계정의 화면 모델을 만든다. 매개변수: hash: 계정. 반환값: 테스트 화면 모델.
   _ViewModel([String hash = 'caregiver'])
@@ -94,6 +110,23 @@ class _ViewModel extends MedBuddyViewModel {
   // 함수역할: 테스트 설정을 제공한다. 매개변수: 없음. 반환값: 현재 설정.
   @override
   UserSetting get userSetting => setting;
+}
+
+// 클래스명: _HomeMonitoring
+// 역할: 홈 조립 테스트에 활성 환자의 빈 일정을 제공한다.
+class _HomeMonitoring extends CheckCaregiverMedication {
+  int calls = 0;
+  @override
+  Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
+    calls++;
+    return [
+      CaregiverMonitoringSnapshot(
+        link: _link(1),
+        notificationSettings: const {},
+        schedules: const [],
+      ),
+    ];
+  }
 }
 
 // 함수이름: _link
@@ -134,6 +167,70 @@ void _viewport(WidgetTester tester, double width) {
 // 함수이름: main
 // 함수역할: 대화 조회와 동적 탐색 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 함수역할: 홈의 실제 구성에서 설정과 연동 해제에 따라 환자 현황을 표시한다.
+  for (final (source, ownMedication) in [
+    ('self', false),
+    ('self', true),
+    ('patients', false),
+    ('patients', true),
+  ]) {
+    testWidgets('홈은 명시적 일정 선택을 따르고 연결 해제 시 안내한다: $source/$ownMedication', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      _viewport(tester, 390);
+      final links = _Links()..result = [_link(1)];
+      final model = _ViewModel()
+        ..setting = UserSetting(homeScheduleSource: source)
+        ..hasOwnMedication = ownMedication;
+      final api = _HomeMonitoring();
+      addTearDown(model.dispose);
+      addTearDown(api.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+              caregiverHomeFactory: (hash) =>
+                  CheckCaregiverHome(userHash: hash, control: api),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('caregiver-home-summary')),
+        source == 'self' ? findsNothing : findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('homePrescriptionAnalysisCard')),
+        findsOneWidget,
+      );
+      expect(api.calls, source == 'self' ? 0 : 1);
+      if (source == 'patients') {
+        expect(find.text('Patient 1'), findsOneWidget);
+        expect(find.text('오늘 복약 일정이 없습니다'), findsOneWidget);
+      }
+      links.result = [];
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('caregiver-home-summary')),
+        source == 'self' ? findsNothing : findsOneWidget,
+      );
+      if (source == 'patients') {
+        expect(find.text('연결된 환자가 없습니다.'), findsOneWidget);
+        expect(find.byKey(const Key('caregiver-home-link')), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
   TestWidgetsFlutterBinding.ensureInitialized();
   // 함수이름: 초기화 콜백
   // 함수역할: 테스트 기기 저장소를 비운다. 매개변수: 없음. 반환값: 없음.

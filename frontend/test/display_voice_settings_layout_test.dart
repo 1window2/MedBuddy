@@ -12,6 +12,45 @@ import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 // 함수역할: 초안 편집과 음성 제어, 좁은 화면·큰 글씨 회귀 사례를 등록한다.
 // 매개변수·반환값: 없음.
 void main() {
+  // 선택창의 굵은 글씨와 현재 값 강조가 모든 표시 설정에 동일하게 적용된다.
+  testWidgets('값 선택은 굵은 글씨와 초록색 선택 배경으로 통일한다', (tester) async {
+    await _pumpSettings(tester);
+    for (final entry in [
+      ('homeScheduleSource', 'self'),
+      ('fontSize', 'medium'),
+      ('readingSpeed', 'medium'),
+      ('language', 'ko'),
+      ('timeFormat', '24h'),
+    ]) {
+      await _tap(tester, '${entry.$1}Selector');
+      final options = tester.widgetList<RadioListTile<String>>(
+        find.byType(RadioListTile<String>),
+      );
+      expect(options, isNotEmpty);
+      for (final option in options) {
+        final label = option.title! as Text;
+        expect(label.style!.fontWeight, FontWeight.w700);
+        expect(option.selected, option.value == entry.$2);
+        expect(option.activeColor, MedBuddyColors.primary);
+        expect(
+          label.style!.color,
+          option.selected
+              ? MedBuddyColors.primaryDark
+              : MedBuddyColors.textStrong,
+        );
+        expect(option.selectedTileColor, MedBuddyColors.successSurface);
+      }
+      if (entry.$1 == 'fontSize') {
+        expect(
+          options.map((option) => (option.title! as Text).style!.fontSize),
+          [14, 17, 23],
+        );
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+  });
+
   // 네 표시 설정은 최종 저장 시 함께 전달하고 복약 설정은 그대로 유지한다.
   testWidgets('화면과 음성 선택을 함께 저장하며 복약 설정을 유지한다', (tester) async {
     final saves = <UserSetting>[];
@@ -31,12 +70,11 @@ void main() {
     expect(saves, isEmpty);
     expect(find.text('Display & Voice'), findsOneWidget);
     await _tap(tester, 'settingsBackButton');
+    await _tap(tester, 'settings-save-and-leave');
     await _tap(tester, 'settingsDisplayAndVoiceMenu');
     expect(find.text('Large'), findsOneWidget);
     expect(find.text('Fast'), findsOneWidget);
     expect(find.text('AM/PM'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
     expect(saves, hasLength(1));
     expect(saves.single.fontSize, 20);
     expect(saves.single.readingSpeed, 1.2);
@@ -122,6 +160,7 @@ void main() {
     expect(spoken.last.readingSpeedOption, 'slow');
     await _tap(tester, 'settingsBackButton');
     expect(stops, 2);
+    await _tap(tester, 'settings-save-and-leave');
     await _tap(tester, 'settingsDisplayAndVoiceMenu');
     expect(find.text('음성으로 들어보기'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -146,6 +185,7 @@ void main() {
             ),
           );
           for (final entry in [
+            ('homeScheduleSource', 'self'),
             ('fontSize', 'large'),
             ('language', 'system'),
             ('timeFormat', '24h'),
