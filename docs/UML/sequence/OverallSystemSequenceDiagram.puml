@@ -806,6 +806,11 @@ FrontControl -> FrontService : 사용자별 기기 즐겨찾기 조회
 FrontService --> FrontControl : favoriteIds
 FrontControl --> UI : 즐겨찾기 우선 목록과 갱신 상태
 UI --> User : 이름이 있는 마커와 약국 목록 전환 버튼
+opt 약국 목록에서 지도로 복귀
+    User -> UI : 목록 상단을 아래로 드래그 또는 손잡이·지도 버튼 선택
+    UI -> UI : 목록 닫기, 지도 위치·선택·조회 결과 유지
+    note right of UI : 목록 본문 스크롤은 상단 드래그와 분리한다.
+end
 User -> UI : 지도 마커 또는 목록의 약국 선택
 UI -> UI : 선택 위치로 지도 이동 + 하단 정보창 열기
 opt 정보창을 접거나 펼치기

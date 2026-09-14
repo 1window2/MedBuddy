@@ -134,6 +134,7 @@ package "Flutter Frontend" {
         class "NearbyPharmacyMap" as NearbyPharmacyMap <<UI: 지도 지역 검색>> {
             + searchArea: PharmacySearchArea
             + selectedPharmacyId: String?
+            + favoritePharmacyIds: Set<String>
             + bottomInset: double
             + onPharmacySelected(pharmacy): void
             + onSearchAreaRequested(area): Future<bool>
@@ -143,6 +144,13 @@ package "Flutter Frontend" {
         class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<UI: 내부 약국 정보창>> {
             + contentBuilder(context, compact): Widget
             + onExtentChanged(extent): void
+            + createState(): State
+        }
+
+        class "_PharmacyListPanel" as PharmacyListPanel <<UI: 지도 위 약국 목록>> {
+            + header: Widget
+            + child: Widget
+            + onDismissed(): void
             + createState(): State
         }
 
@@ -1539,6 +1547,7 @@ PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
 CheckNearbyPharmacyUI o-- FCheckNearbyPharmacy
 CheckNearbyPharmacyUI *-- NearbyPharmacyMap
 CheckNearbyPharmacyUI *-- PharmacyDetailsSheet : 선택 약국의 접힘·펼침 정보
+CheckNearbyPharmacyUI *-- PharmacyListPanel : 상단 드래그·탭으로 지도 복귀
 NearbyPharmacyMap ..> PharmacySearchArea
 CheckNearbyPharmacyUI o-- PharmacyFavoriteService
 CheckNearbyPharmacyUI o-- PharmacyExternalActionService
