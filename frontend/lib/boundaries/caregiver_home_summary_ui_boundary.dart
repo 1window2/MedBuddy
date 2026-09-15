@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 
 import '../controls/check_caregiver_home_control.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/home_medication_preview.dart';
 
 // 클래스명: CaregiverHomeSummaryUI
 // 역할: 조회 실패·일정 없음·완료 진행률을 구분하고 기존 환자 상세 화면으로 연결한다.
@@ -32,37 +34,31 @@ class CaregiverHomeSummaryUI extends StatelessWidget {
     required this.onPatientRequested,
   });
 
-  // 함수역할: 환자별 이름과 완료 비율을 읽기 쉬운 행으로 표시한다. 매개변수: context.
+  // 함수역할: 연결된 환자별 미리보기를 본인 홈과 같은 양식으로 표시한다. 매개변수: context.
   @override
   Widget build(BuildContext context) => Column(
     key: const Key('caregiver-home-summary'),
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Row(
-        children: [
-          const Icon(Icons.people_outline, color: MedBuddyColors.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              isEnglish ? 'Patient schedules' : '환자의 오늘 복약',
-              style: const TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-                color: MedBuddyColors.textStrong,
-                letterSpacing: 0,
+      if (control.links.isEmpty || hasLinkError)
+        Row(
+          children: [
+            const Icon(Icons.people_outline, color: MedBuddyColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isEnglish ? 'Patient schedules' : '환자의 오늘 복약',
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                  color: MedBuddyColors.textStrong,
+                  letterSpacing: 0,
+                ),
               ),
             ),
-          ),
-          IconButton(
-            key: const Key('caregiver-home-refresh'),
-            tooltip: isEnglish ? 'Refresh' : '새로고침',
-            onPressed: control.isLoading || isLoadingLinks
-                ? null
-                : (onRefreshRequested ?? control.refresh),
-            icon: const Icon(Icons.refresh, color: MedBuddyColors.primaryDark),
-          ),
-        ],
-      ),
+            _refreshButton(),
+          ],
+        ),
       if (control.isLoading || isLoadingLinks)
         const LinearProgressIndicator(minHeight: 2),
       if (control.hasError || hasLinkError)
@@ -98,13 +94,21 @@ class CaregiverHomeSummaryUI extends StatelessWidget {
           ),
       ],
       if (!hasLinkError)
-        for (final link in control.links) _patientRow(link),
+        for (var index = 0; index < control.links.length; index++)
+          Padding(
+            padding: EdgeInsets.only(top: index == 0 ? 0 : 12),
+            child: _patientPreview(context, control.links[index], index == 0),
+          ),
     ],
   );
 
   // 함수역할: 기존 일정의 시간대별 완료 상태를 집계한다. 환자 약을 변경하는 버튼은 제공하지 않는다.
-  // 매개변수: 보호자에게 허용된 연동. 반환값: 환자 현황 행.
-  Widget _patientRow(PatientCaregiverLink link) {
+  // 매개변수: 화면 문맥·허용된 연동·전체 새로고침 표시 여부. 반환값: 읽기 전용 복약 미리보기.
+  Widget _patientPreview(
+    BuildContext context,
+    PatientCaregiverLink link,
+    bool showRefresh,
+  ) {
     final snapshot = control.snapshotFor(link.linkId);
     var total = 0;
     var completed = 0;
@@ -125,67 +129,78 @@ class CaregiverHomeSummaryUI extends StatelessWidget {
         : (isEnglish
               ? '$completed of $total doses taken'
               : '$total회 중 $completed회 복용');
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Material(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: MedBuddyColors.divider),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          key: ValueKey('caregiver-home-patient-${link.linkId}'),
-          onTap: () => onPatientRequested(link),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        patientLabel(link),
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
-                          color: MedBuddyColors.textStrong,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.chevron_right,
-                      color: MedBuddyColors.textMuted,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: MedBuddyColors.textMuted,
-                  ),
-                ),
-                if (snapshot != null && total > 0) ...[
-                  const SizedBox(height: 12),
-                  LinearProgressIndicator(
-                    value: completed / total,
-                    minHeight: 6,
-                    color: MedBuddyColors.primary,
-                    backgroundColor: MedBuddyColors.successSurface,
-                    semanticsLabel: status,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+    final pendingDescription = _pendingDescription(
+      snapshot?.schedules ?? const [],
     );
+    return HomeMedicationPreview(
+      key: ValueKey('caregiver-home-patient-${link.linkId}'),
+      title: patientLabel(link),
+      progressTitle: isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
+      progressLabel: snapshot == null ? '-' : '$completed/$total',
+      progress: snapshot == null && control.isLoading
+          ? null
+          : total == 0
+          ? 0
+          : completed / total,
+      progressSemanticsLabel: status,
+      scheduleTitle: snapshot == null
+          ? status
+          : pendingDescription != null
+          ? (isEnglish ? 'Remaining medication' : '남은 복약 일정')
+          : total == 0
+          ? (isEnglish ? 'No doses scheduled today' : '오늘 복약 일정이 없습니다')
+          : (isEnglish ? 'All doses completed today' : '오늘의 복약을 모두 완료했어요'),
+      scheduleDescription: snapshot == null
+          ? (isEnglish
+                ? 'Check the patient\'s medication status.'
+                : '환자의 복약 상태를 확인해주세요.')
+          : pendingDescription ??
+                (isEnglish ? 'No remaining doses.' : '남은 복약 일정이 없습니다.'),
+      hasPendingMedication: pendingDescription != null,
+      compact: MediaQuery.sizeOf(context).width >= 350,
+      headerAction: showRefresh ? _refreshButton() : null,
+      onTap: () => onPatientRequested(link),
+    );
+  }
+
+  // 함수역할: 목록 전체의 재조회를 제공하되 환자 상세 화면으로 이동하는 탭과 분리한다.
+  Widget _refreshButton() => IconButton(
+    key: const Key('caregiver-home-refresh'),
+    tooltip: isEnglish ? 'Refresh' : '새로고침',
+    onPressed: control.isLoading || isLoadingLinks
+        ? null
+        : (onRefreshRequested ?? control.refresh),
+    icon: const Icon(Icons.refresh, color: MedBuddyColors.primaryDark),
+  );
+
+  // 함수역할: 미완료 시간대와 약 이름을 요약한다. 완료 기록만 조회하므로 알림 시각은 추정하지 않는다.
+  String? _pendingDescription(List<MedicationSchedule> schedules) {
+    for (final slot in medicationScheduleSlotKeys) {
+      final pending = schedules
+          .where(
+            (schedule) =>
+                schedule.slotKeys.contains(slot) &&
+                !schedule.isSlotCompleted(slot),
+          )
+          .toList(growable: false);
+      if (pending.isEmpty) continue;
+      final slotLabel = switch (slot) {
+        'morning' => isEnglish ? 'Morning' : '아침',
+        'lunch' => isEnglish ? 'Lunch' : '점심',
+        'evening' => isEnglish ? 'Evening' : '저녁',
+        _ => isEnglish ? 'Bedtime' : '취침 전',
+      };
+      final name = pending.first.displayNameForLanguage(
+        isEnglish ? 'en' : 'ko',
+      );
+      final additional = pending.length - 1;
+      final medications = additional == 0
+          ? name
+          : isEnglish
+          ? '$name and $additional more'
+          : '$name 외 $additional개';
+      return '$slotLabel · $medications';
+    }
+    return null;
   }
 }

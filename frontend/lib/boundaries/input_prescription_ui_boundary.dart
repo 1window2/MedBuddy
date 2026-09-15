@@ -8,6 +8,7 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/home_medication_preview.dart';
 
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
@@ -1071,210 +1072,58 @@ class _HomeEncouragementPanel extends StatelessWidget {
       nowProvider: nowProvider,
     );
 
-    return Material(
+    return HomeMedicationPreview(
       key: const ValueKey('homeEncouragementPanel'),
-      color: MedBuddyColors.surface,
-      borderRadius: MedBuddyRadii.largeCard,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.largeCard,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          constraints: BoxConstraints(minHeight: compact ? 190 : 260),
-          padding: EdgeInsets.all(compact ? 14 : 24),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.largeCard,
-            border: Border.all(color: MedBuddyColors.cardBorder),
-            boxShadow: MedBuddyShadows.soft,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: compact ? 42 : 46,
-                    height: compact ? 42 : 46,
-                    decoration: BoxDecoration(
-                      color: MedBuddyColors.mint,
-                      borderRadius: BorderRadius.circular(compact ? 14 : 15),
-                    ),
-                    child: Icon(
-                      Icons.favorite_rounded,
-                      color: MedBuddyColors.primaryDark,
-                      size: compact ? 22 : 24,
-                    ),
-                  ),
-                  SizedBox(width: compact ? 11 : 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dashboard.statusMessage,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: compact ? 16 : 17,
-                            height: 1.3,
-                            fontWeight: FontWeight.w800,
-                          ),
+      title: dashboard.statusMessage,
+      progressTitle: isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
+      progressLabel: dashboard.progressLabel,
+      progress: dashboard.progress,
+      scheduleTitle: dashboard.nextMedicationLabel,
+      scheduleDescription: dashboard.nextMedicationGuide,
+      hasPendingMedication: dashboard.hasNextMedication,
+      compact: compact,
+      onTap: onTap,
+      action: dashboard.nextSlotKey != null && onCompleteRequested != null
+          ? SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                key: const ValueKey('homeNextSlotCompletionButton'),
+                onPressed: isCompletionLoading
+                    ? null
+                    : () => onCompleteRequested!(dashboard.nextSlotKey!),
+                icon: isCompletionLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: compact ? 10 : 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
-                      style: const TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    dashboard.progressLabel,
-                    style: const TextStyle(
-                      color: MedBuddyColors.primaryDark,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: compact ? 6 : 9),
-              ClipRRect(
-                borderRadius: MedBuddyRadii.pill,
-                child: LinearProgressIndicator(
-                  value: dashboard.progress,
-                  minHeight: compact ? 7 : 9,
-                  color: MedBuddyColors.primary,
-                  backgroundColor: MedBuddyColors.mint,
-                ),
-              ),
-              SizedBox(height: compact ? 10 : 18),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(compact ? 10 : 16),
-                decoration: BoxDecoration(
-                  color: MedBuddyColors.surfaceSubtle,
-                  borderRadius: MedBuddyRadii.card,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: compact ? 34 : 38,
-                      height: compact ? 34 : 38,
-                      decoration: BoxDecoration(
-                        color: dashboard.hasNextMedication
-                            ? MedBuddyColors.mint
-                            : MedBuddyColors.lavenderSurface,
-                        borderRadius: BorderRadius.circular(compact ? 11 : 13),
-                      ),
-                      child: Icon(
-                        dashboard.hasNextMedication
-                            ? Icons.alarm_outlined
-                            : Icons.event_available_outlined,
-                        color: MedBuddyColors.primaryDark,
-                        size: compact ? 19 : 21,
-                      ),
-                    ),
-                    SizedBox(width: compact ? 10 : 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dashboard.nextMedicationLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: MedBuddyColors.textStrong,
-                              fontSize: compact ? 13 : 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          SizedBox(height: compact ? 2 : 3),
-                          Text(
-                            dashboard.nextMedicationGuide,
-                            style: TextStyle(
-                              color: MedBuddyColors.textMuted,
-                              fontSize: compact ? 11 : 12,
-                              height: 1.35,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: MedBuddyColors.textSubtle,
-                      size: 16,
-                    ),
-                  ],
-                ),
-              ),
-              if (dashboard.nextSlotKey != null &&
-                  onCompleteRequested != null) ...[
-                SizedBox(height: compact ? 10 : 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    key: const ValueKey('homeNextSlotCompletionButton'),
-                    onPressed: isCompletionLoading
-                        ? null
-                        // Function Name: build.onPressed callback
-                        // Description: Supplies `onCompleteRequested!(dashboard.nextSlotKey!)` from the captured state of the home dashboard's medication status and completion encouragement.
-                        // Parameters:
-                        // - None.
-                        // Returns: The value of `onCompleteRequested!(dashboard.nextSlotKey!)`.
-                        : () => onCompleteRequested!(dashboard.nextSlotKey!),
-                    icon: isCompletionLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.done_all_rounded),
-                    label: Text(
-                      isCompletionLoading
-                          ? (isEnglish ? 'Saving...' : '저장 중...')
-                          : (isEnglish ? 'Taken' : '복용했어요'),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: MedBuddyColors.primary
-                          .withValues(alpha: 0.45),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.pill,
-                      ),
-                    ),
+                      )
+                    : const Icon(Icons.done_all_rounded),
+                label: Text(
+                  isCompletionLoading
+                      ? (isEnglish ? 'Saving...' : '저장 중...')
+                      : (isEnglish ? 'Taken' : '복용했어요'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ],
-            ],
-          ),
-        ),
-      ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: MedBuddyColors.primary,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: MedBuddyColors.primary.withValues(
+                    alpha: 0.45,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: MedBuddyRadii.pill,
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 }
