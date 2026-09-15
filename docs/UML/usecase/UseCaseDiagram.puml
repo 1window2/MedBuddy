@@ -20,6 +20,8 @@ actor "운영체제 위치 서비스" as Location
 actor "운영체제 전화 및 지도 앱" as ExternalApp
 actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
 actor "국립중앙의료원\n약국 공공데이터 서비스" as PharmacyAPI
+actor "공휴일 정보 서비스" as HolidayAPI
+actor "네이버 지도 서비스" as NaverMap
 actor "운영 실행 환경" as Ops
 actor "시간 트리거" as Timer
 
@@ -70,7 +72,7 @@ rectangle "메드버디" {
         usecase "UC-24\n데이터 생명주기 정리" as UC24
     }
 
-    package "실험실 편의 기능" {
+    package "약국 조회" {
         usecase "UC-27\n근처 운영 약국 조회" as UC27
     }
 }
@@ -125,6 +127,7 @@ FirebaseAuth -- UC16
 FirebaseAppCheck -- UC15
 
 FCM -- UC13
+FCM -- UC22
 
 MLKit -- UC1
 
@@ -132,12 +135,16 @@ Gemini -- UC1
 Gemini -- UC2
 Gemini -- UC10
 Gemini -- UC20
+Gemini -- UC26
 
 MFDS -- UC2
 MFDS -- UC20
+MFDS -- UC26
 MFDS -- UC23
 
 PharmacyAPI -- UC27
+HolidayAPI -- UC27
+NaverMap -- UC27
 
 Camera -- UC1
 Camera -- UC20
@@ -156,7 +163,11 @@ TTS -- UC11
 TTS -- UC14
 
 Workmanager -- UC12
-Workmanager -- UC22
+
+note right of UC22
+Firebase 인증 mode의 미복약 감지는 서버가 수행한다.
+인증 비활성 개발 mode에만 기기 감시가 남아 있다.
+end note
 
 FCM -- UC28
 
@@ -181,11 +192,8 @@ UC2 <.. UC18 : <<extend>>
 UC1 <.. UC21 : <<extend>>
 UC4C <.. UC22 : <<extend>>
 UC4P <.. UC25 : <<extend>>
-UC26 ..> UC20 : <<include>>
 UC1 <.. UC29 : <<extend>>
 UC20 <.. UC29 : <<extend>>
-UC6 <.. UC28 : <<extend>>
-UC14 <.. UC27 : <<extend>>
-UC14 <.. UC28 : <<extend>>
+UC26 <.. UC29 : <<extend>>
 
 @enduml

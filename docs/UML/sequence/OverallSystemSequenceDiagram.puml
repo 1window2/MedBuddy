@@ -27,11 +27,14 @@ actor "Android Workmanager" as Workmanager
 actor "OS Location Service" as LocationService
 actor "OS Phone / Map App" as ExternalApp
 actor "응급의료기관 약국 API" as PharmacyAPI
+actor "공휴일 정보 API" as HolidayAPI
+actor "Naver Map SDK" as NaverMap
 
 box "Flutter Frontend"
     boundary "UI Layer\nMedBuddyApp\nAuthenticationUI\nHomeScreen\n각 Boundary UI" as UI
     control "AuthenticationControl" as AuthControl
     participant "FirebaseRuntimeService" as FirebaseRuntime
+    participant "ForegroundRecoveryService" as Recovery
     control "MedBuddyViewModel" as ViewModel
     control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
@@ -42,12 +45,13 @@ box "FastAPI Backend"
     participant "API Router\napi.router\napi.pharmacy_router\napi.chat_router" as Router
     participant "AppCheckTokenVerifier" as AppCheckVerifier
     control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nCheckNearbyPharmacy\nManageLinkedChat 등" as BackControl
+    control "QueueMissedDoseAlerts" as MissedControl
     control "ProcessCaregiverAlertOutbox" as OutboxControl
     participant "CaregiverAlertOutboxWorker" as OutboxWorker
     participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager" as BackService
     participant "PillIdentificationCatalogRepository" as Repository
     database "Application Database\nSQLAlchemy" as Database
-    database "Redis Cache" as Redis
+    database "Redis\nCache / 요청 제한 공유 Counter" as Redis
 end box
 
 == 1. 앱 실행 및 사용자 접근 ==
@@ -58,8 +62,10 @@ UI -> UI : AuthenticationGate 초기화 화면 출력
 AuthControl -> FirebaseRuntime : initialize()
 FirebaseRuntime -> FirebaseAuth : Firebase.initializeApp()
 FirebaseAuth --> FirebaseRuntime : Firebase App 준비
-FirebaseRuntime -> FirebaseAppCheck : activate(Play Integrity / Debug provider)
-FirebaseAppCheck --> FirebaseRuntime : App Check 활성화
+opt 앱 검증이 필요한 실행 설정
+    FirebaseRuntime -> FirebaseAppCheck : activate(Play Integrity / Debug provider)
+    FirebaseAppCheck --> FirebaseRuntime : App Check 활성화
+end
 FirebaseRuntime --> AuthControl : 보안 Runtime 초기화 완료
 note over AuthControl,FirebaseRuntime : 운영 Firebase mode 기준 흐름이며 AUTH_MODE=disabled 개발 mode는 Firebase/App Check 초기화를 건너뛰고 local Session을 사용한다.
 AuthControl -> FirebaseAuth : 현재 사용자 조회
@@ -90,18 +96,21 @@ end
 AuthControl -> ApiClient : GET /api/v1/auth/session
 ApiClient -> FirebaseAuth : getIdToken()
 FirebaseAuth --> ApiClient : Firebase ID Token
-ApiClient -> FirebaseAppCheck : getToken()
-FirebaseAppCheck --> ApiClient : App Check Token
-ApiClient -> Router : Authorization: Bearer ID Token\nX-Firebase-AppCheck\nX-MedBuddy-Api-Contract
+opt 앱 검증이 필요한 실행 설정
+    ApiClient -> FirebaseAppCheck : getToken()
+    FirebaseAppCheck --> ApiClient : App Check Token
+end
+ApiClient -> Router : Authorization: Bearer ID Token\n조건부 X-Firebase-AppCheck\nX-MedBuddy-Api-Contract
 Router -> Router : validate Host allowlist and API contract
 alt FIREBASE_APP_CHECK_REQUIRED = true
     Router -> AppCheckVerifier : verifyToken(X-Firebase-AppCheck)
     AppCheckVerifier -> FirebaseAppCheck : Firebase Admin App Check 검증
     FirebaseAppCheck --> AppCheckVerifier : 검증된 App attestation
     AppCheckVerifier --> Router : 검증 완료
-else 개발 환경에서 App Check 비활성
+else 명시적으로 허용된 off-Play beta 또는 개발 설정
     Router -> Router : App Check 검증 생략
 end
+note over ApiClient,Router : 인증된 off-Play beta도 ID Token과 API contract 검증은 유지한다.\nAUTH_MODE=disabled 개발 mode와 구분한다.
 Router -> BackService : OIDCTokenVerifier.verifyIdToken()
 BackService -> FirebaseAuth : Firebase ID Token 검증
 FirebaseAuth --> BackService : 검증된 issuer, subject, 사용자 정보
@@ -124,9 +133,20 @@ alt Firebase or App Check startup exceeds the bounded timeout
 else Firebase identity succeeds but backend session is unavailable
     ApiClient --> AuthControl : timeout or transport error
     AuthControl --> UI : session = null, retain Firebase identity
-    User -> UI : Retry secure session
-    UI -> AuthControl : retryBackendSession()
-    AuthControl -> ApiClient : GET /api/v1/auth/session
+    alt 사용자가 Session 재시도 선택
+        User -> UI : Retry secure session
+        UI -> AuthControl : retryBackendSession()
+        AuthControl -> ApiClient : GET /api/v1/auth/session
+    else 일시적 실패이며 인증 화면이 활성 상태
+        UI -> Recovery : start()
+        loop 복구가 필요하고 화면이 활성 상태
+            Recovery -> UI : 복구 callback
+            UI -> AuthControl : retryBackendSession()
+            AuthControl -> ApiClient : 기존 Firebase identity로 Session 재요청
+            ApiClient --> AuthControl : Session 또는 일시적 실패
+        end
+    end
+    note over UI,Recovery : 권한·계약 오류는 자동 우회하지 않는다.\n화면 비활성 시 중지하며 복약 변경 요청을 재실행하지 않는다.
 end
 
 AuthControl -> FrontService : PushNotificationService.start()
@@ -190,7 +210,7 @@ BackService --> Router : AuthenticatedPrincipal
 Router -> Database : acquire same per-account transaction lock
 note over Router, Database : Every authenticated account request uses this lock before account registration.
 Router -> BackControl : deleteAccountData(userHash, verified subject)
-BackControl -> Database : write tombstone, purge medical data, commit
+BackControl -> Database : tombstone 기록, 복약·연결·해당 연결의 채팅 정리, commit
 BackControl -> FirebaseAuth : Admin delete verified subject
 alt external identity deletion succeeds or was already complete
     BackControl -> Database : mark identity_deleted_at and commit
@@ -292,7 +312,7 @@ end
 == 3. 약 정보 조회 및 분석 결과 생성 ==
 
 User -> UI : 분석 시작 선택
-UI --> User : MedicationScheduleReviewBoundary 출력
+UI --> User : showMedicationScheduleReview()로 일정 검토 화면 출력
 User -> UI : 시작일, 기간, 1일 횟수, 1회 용량과 시간대 확인 또는 수정
 UI -> UI : 날짜 범위와 일정 일관성 검증
 UI -> ViewModel : requestPrescriptionAnalysis()
@@ -394,6 +414,8 @@ end
 == 4. 단일·다중 낱알 약 후보 식별 ==
 
 opt 사용자가 낱알 약 식별을 선택하는 경우
+    User -> UI : 한 장 촬영 또는 알약별 촬영 방식 선택
+    UI --> User : 선택한 방식의 촬영 화면과 사진 입력칸
     alt 단일 낱알 식별
         User -> UI : 앞면 필수 및 선택적 뒷면 이미지 입력
         UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
@@ -410,9 +432,10 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
         ApiClient -> Router : 다중 낱알 이미지 분석 요청
         Router -> BackControl : IdentifyPill.requestMultiplePillIdentification()
         BackControl -> BackService : PillVisionBoundary.extractMultipleVisualFeatures()
-        BackService -> BackService : 구도 보존 전처리 및 좌표/중복 상자 검증
+        BackService -> BackService : 구도 보존 전처리
         BackService -> Gemini : 한 장의 알약 객체와 시각 특징 요청
         Gemini --> BackService : 최대 10개 정규화 상자와 관찰 특징
+        BackService -> BackService : 응답 좌표·개수·중복 상자 검증
         BackControl -> BackService : MFDSPillCatalogBoundary.getCatalog() 1회
         loop 번호가 부여된 각 물리 관찰
             BackControl -> BackControl : 후보 독립 순위화
@@ -461,8 +484,21 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
         ApiClient --> FrontControl : 항목별 후보 또는 실패
     end
     FrontControl --> UI : 입력 순서의 후보와 부분 실패 출력
+    opt 특정 알약의 사진 보완
+        User -> UI : 알약 영역 조정 또는 뒷면 사진 추가
+        UI -> FrontService : PillImageCropService로 선택 영역 보완
+        UI -> FrontControl : IdentifyPill.requestPillIdentification(front, back)
+        FrontControl -> ApiClient : POST /pill-identification/candidates
+        ApiClient -> Router : 해당 알약 재식별 요청
+        Router -> BackControl : 단일 낱알 식별 경로 재사용
+        alt 재식별 성공
+            BackControl --> UI : 해당 알약 후보 갱신
+        else 재식별 실패
+            BackControl --> UI : 기존 후보와 사용자 선택 유지
+        end
+    end
     User -> UI : 실제 약과 일치하는 후보 확인
-    UI --> User : MedicationScheduleReviewBoundary 출력
+    UI --> User : showMedicationScheduleReview()로 일정 검토 화면 출력
     User -> UI : 복용 시작일, 기간, 횟수, 용량과 시간대 확인 또는 수정
     UI -> FrontControl : ResolveDuplicatePillSelectionControl로 동일 품목 확인
     FrontControl --> UI : 중복 품목과 사진 수
@@ -503,7 +539,15 @@ else 시간대 전부 체크 또는 전부 해제
     FrontControl -> ApiClient : PATCH /schedule/slot/{slotKey}/status
     ApiClient -> Router : 시간대 전체 완료 상태 변경
     Router -> BackControl : CheckSchedule.updateMedicationSlotStatus()
+else 홈의 복용했어요 또는 알림의 바로 복용
+    Patient -> UI : 본인 대상 시간대 복용 완료 선택
+    UI -> ViewModel : requestMedicationSlotStatusUpdate(slotKey, true)
+    ViewModel -> FrontControl : CheckSchedule.updateMedicationSlotStatus()
+    FrontControl -> ApiClient : PATCH /schedule/slot/{slotKey}/status\n알림은 expected_schedule_date 전달
+    ApiClient -> Router : 본인 시간대 완료 요청
+    Router -> BackControl : 대상 날짜 검증 후 전체 완료
 end
+note over UI,BackControl : 지난 날짜의 알림은 오늘 기록을 변경하지 않는다.\n홈·알림 완료 후에는 일정 확인을 제공하고, 전체 완료 취소는 일정 화면에서 수행한다.
 BackControl -> Database : medication_completions Upsert와\n신규 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
 Database --> BackControl : commit된 완료 상태와 outbox_id
 BackControl --> Router : 갱신된 MedicationSchedule 목록과\ncommit 이후 completion event
@@ -520,6 +564,10 @@ opt 신규 시간대 완료 Outbox가 생성된 경우
     end
     OutboxControl -> Database : 처리 가능한 Outbox 원자적 선점 및 commit
     Database --> OutboxControl : status = processing
+    OutboxControl -> BackControl : ManageLinkedChat.publish_slot_completion(patient_hash, slot_key)
+    BackControl -> Database : 활성 연결별 멱등 자동 완료 chat record 저장
+    Database --> BackControl : 생성 또는 기존 기록
+    note over BackControl,Database : 자동 완료 기록 저장 자체는 WebSocket broadcast를 호출하지 않는다.
     OutboxControl -> BackControl : DispatchCaregiverAlert.notifySlotCompleted()
     BackControl -> Database : 활성 연결, dose_completed 설정,\n활성 기기 Push Token 조회
     Database --> BackControl : 보호자 알림 대상
@@ -537,7 +585,7 @@ opt 신규 시간대 완료 Outbox가 생성된 경우
         Database --> OutboxControl : commit
     else 전송 실패
         OutboxControl -> Database : attempt_count 증가, last_error와\n지수 backoff available_at 저장
-        alt 최대 8회 미만
+        alt 재시도 가능한 요청
             Database --> OutboxControl : status = failed, worker 재시도 대기
         else 최대 시도 횟수 도달
             Database --> OutboxControl : status = dead_letter
@@ -576,8 +624,22 @@ else 일정 설정창에서 알림 사용을 끄고 저장
     ViewModel -> FrontControl : SetNotification.disableAlarmSetting()
     FrontControl --> ViewModel : 비활성화된 MedicationAlarm
     ViewModel -> FrontService : 해당 시간대의 로컬 알림 취소
-    FrontService -> LocalNotification : 예약 취소
+    FrontService -> LocalNotification : 예약 취소 및 이미 표시된 해당 알림 정리
     ViewModel --> UI : 알림 해제 결과 출력
+end
+
+opt 표시된 복약 알림에서 동작 선택
+    Patient -> LocalNotification : 바로 복용 또는 10분 미루기
+    LocalNotification -> FrontService : 날짜·시간대가 포함된 알림 선택
+    FrontService -> UI : MedicationNotificationSelection
+    alt 지난 날짜의 알림
+        UI --> Patient : 처리하지 않고 일정 확인 안내
+    else 바로 복용
+        ref over UI,Database : Flow 5의 본인 시간대 전체 완료 처리
+    else 10분 미루기
+        UI -> FrontService : 같은 날짜·시간대의 알림 재예약
+        FrontService -> LocalNotification : 10분 뒤 알림, 복용 기록 변경 없음
+    end
 end
 
 loop Android Workmanager 12시간 주기
@@ -591,6 +653,18 @@ loop Android Workmanager 12시간 주기
     FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
     FrontService -> FrontService : 다음 14일의 복용 기간 내 날짜 계산
     FrontService -> LocalNotification : 기존 Slot 교체 및 Rolling Window 보충
+end
+
+opt 홈에서 기기 알림함 확인
+    note right of FrontService : NotificationService / PushNotificationService가\n현재 계정의 SharedPreferences 알림 기록을 저장한다.\n예약 기록은 실제 알림 전달 확인을 뜻하지 않는다.
+    User -> UI : 종 버튼 선택
+    UI -> FrontControl : ManageNotificationInbox 조회·읽음·삭제
+    FrontControl -> FrontService : NotificationInboxStore의 계정별 기기 기록
+    FrontService --> UI : 현재 표시할 알림 목록
+    User -> UI : 알림 선택
+    UI -> FrontService : 기존 알림 이동 처리
+    FrontService --> UI : 복약 일정 / 연결 환자 현황 / 채팅
+    note right of UI : 알림함 읽음·삭제는 원래 채팅·복약 기록을 변경하지 않는다.
 end
 
 == 7. 환자-보호자 연동 및 보호자 조회 ==
@@ -649,9 +723,13 @@ opt 환자 또는 보호자가 연결 상대의 표시 이름 지정
 end
 
 Caregiver -> UI : 연결 환자의 복약 현황 선택
-UI -> FrontControl : ManageCaregiverPatientLocalState.loadLabel(s)
-FrontControl -> FrontService : local 환자 표시 이름 조회
-FrontService --> UI : 저장 이름 또는 기본 표시 이름
+UI -> FrontControl : 활성 연결 목록 조회
+FrontControl -> ApiClient : GET /link/list
+ApiClient -> Router : 현재 계정의 활성 연결 요청
+Router --> FrontControl : 서버 별칭을 포함한 PatientCaregiverLink 목록
+FrontControl -> FrontControl : ManageCaregiverPatientLocalState.loadLabels(caregiverHash, links)
+FrontControl -> FrontService : 서버 별칭으로 local cache 갱신\n기존 연결의 누락 별칭만 cache로 보완
+FrontService --> UI : 서버 별칭 / 보완 cache / 기본 표시 이름
 UI -> FrontControl : CheckCaregiverMedication.requestPatientMedicationInfo()
 FrontControl -> ApiClient : GET /caregiver/medications/{patientHash}
 ApiClient -> Router : 연결 환자 복약 정보 요청
@@ -671,6 +749,15 @@ else 활성 연결이 없음
     Router --> ApiClient : 403 오류
     ApiClient --> FrontControl : 권한 오류
     FrontControl --> UI : 연결이 필요하다는 메시지 출력
+end
+
+opt 보호자 홈 또는 감시 자료 갱신
+    FrontControl -> ApiClient : GET /caregiver/monitoring
+    ApiClient -> Router : 현재 보호자의 통합 snapshot 요청
+    Router -> BackControl : CheckCaregiverMonitoring.requestMonitoringSnapshot()
+    BackControl -> Database : 활성 연결과 환자별 알림 정책·복약 상태 조회
+    BackControl --> UI : 환자별 서버 별칭과 조회된 현황
+    note right of BackControl : 현재 구현은 활성 알림 정책이 있는 환자만\nsnapshot의 오늘 복약 정보를 조회한다.
 end
 
 opt 환자 또는 보호자가 활성 연결 해제
@@ -707,24 +794,52 @@ Router --> ApiClient : 저장 결과
 ApiClient --> FrontControl : CaregiverNotification
 FrontControl --> UI : 알림 정책 반영
 
-loop Foreground Polling 또는 Android Workmanager 주기
-    Workmanager -> FrontService : Background 작업 Trigger
-    FrontService -> FrontControl : 연결, 알림 설정, 환자 일정 조회
-    FrontControl -> ApiClient : 보호자 Monitoring API 요청
-    ApiClient -> Router : 연결 환자별 설정과 일정 요청
-    Router -> BackControl : 연결 검증 및 복약 상태 조회
-    BackControl -> Database : guardian_alert_settings와\nmedication_completions 조회
-    Database --> BackControl : 시간대별 알림 정책과 완료 상태
-    BackControl --> Router : Monitoring Data
-    Router --> ApiClient : Monitoring 응답
-    ApiClient --> FrontService : 환자별 시간대 상태
-
-    alt missed_deadline 시간이 지났고 복약 미완료
-        FrontService -> FrontService : 보호자 기기의 환자 표시 이름 조회
-        FrontService -> LocalNotification : 보호자 미복약 알림 표시
-        LocalNotification --> Caregiver : 환자 미복약 알림
-    else 완료 상태이거나 마감 전
-        FrontService -> FrontService : 다음 점검까지 대기
+alt Firebase 인증 mode
+    loop 서버 Outbox Worker 주기
+        OutboxWorker -> MissedControl : queueDue()
+        MissedControl -> Database : 활성 연결·마감 정책·오늘 미완료 조회
+        opt 마감이 지났고 미완료인 대상
+            MissedControl -> Database : missed_deadline Outbox 멱등 저장 및 commit
+        end
+        OutboxWorker -> OutboxControl : processDue()
+        OutboxControl -> Database : 처리 대상 선점 및 commit
+        opt missed_deadline 이벤트
+            OutboxControl -> BackControl : DispatchCaregiverAlert.notifySlotMissed()
+            BackControl -> Database : 대상 날짜·활성 연결·정책·현재 미완료\n사용자 알림 설정·Push Token 재검증
+            alt 여전히 유효한 미복약 대상
+                BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
+                BackService -> FCM : 보호자 미복약 Push
+                FCM --> Caregiver : 환자 미복약 알림
+            else 이미 완료·연결 해제·정책 변경 또는 지난 날짜
+                BackControl -> BackControl : 전송 생략
+            end
+            alt 처리 성공 또는 대상 없음
+                OutboxControl -> Database : sent 저장
+            else 재시도 가능한 전달 실패
+                OutboxControl -> Database : failed 및 다음 처리 시각 저장
+            else 재시도 한도 도달
+                OutboxControl -> Database : dead_letter 보존
+            end
+        end
+    end
+else 인증 비활성 개발 mode
+    loop Foreground 감시 또는 Android Workmanager 주기
+        Workmanager -> FrontService : 개발용 기기 감시
+        FrontService -> FrontControl : 연결 환자별 정책·일정 조회
+        FrontControl -> ApiClient : GET /caregiver/monitoring
+        ApiClient -> Router : 보호자 snapshot 요청
+        Router --> FrontService : 환자별 정책과 조회된 상태
+        opt 마감이 지났고 미완료인 대상
+            FrontService -> LocalNotification : 기기 중복 방지 후 미복약 알림
+            LocalNotification --> Caregiver : 환자 미복약 알림
+        end
+    end
+end
+opt 보호자가 미복약 알림 선택
+    Caregiver -> UI : 연결 환자의 읽기 전용 복약 현황 확인
+    opt 보호자가 직접 채팅으로 개입
+        Caregiver -> UI : 채팅 열기 및 시간대 확인 요청
+        ref over UI,Database : Flow 13의 보호자 메시지 전송
     end
 end
 
@@ -784,11 +899,17 @@ User -> UI : 약 정보 입력에서 직접 등록 선택
 UI --> User : 약명, 용량·단위, 복용기간, 시간대와 선택 사진 입력 화면
 User -> UI : 필수 정보 입력 및 저장 선택
 UI -> UI : 필수값, 날짜 범위와 시간대 검증
-opt 사용자가 약 사진을 선택한 경우
-    UI -> FrontService : ManualMedicationImageStore.saveImage()
-    FrontService --> UI : 앱 전용 저장 경로
+UI -> ViewModel : saveManualMedication(entry)
+ViewModel -> FrontControl : MedicationSchedule로 약 상세정보 보완 요청
+FrontControl -> ApiClient : 입력 약의 상세정보 보완 조회
+ApiClient -> Router : 기존 약 상세 조회 요청
+Router -> BackControl : CheckMedicationDetail로 공공 약 정보 보완
+BackControl --> FrontControl : 상세정보 또는 조회 실패
+FrontControl --> ViewModel : 상세정보 또는 조회 실패
+opt 상세조회 실패
+    ViewModel -> ViewModel : 직접 입력한 약명·일정으로 저장 정보 구성
 end
-UI -> FrontControl : ManualMedicationEntry를 MedicationSchedule과 저장 요청으로 변환
+ViewModel -> FrontControl : 기존 복약정보 저장 요청
 FrontControl -> ApiClient : 기존 POST /save 계약 재사용
 ApiClient -> Router : 직접 입력 복약정보 저장 요청
 Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
@@ -796,8 +917,14 @@ BackControl -> Database : 같은 환자·등록일·복용과정 중복 검증 �
 Database --> BackControl : 저장 또는 중복 결과
 BackControl --> Router : 저장 또는 중복 결과
 Router --> ApiClient : 저장 응답
-ApiClient --> FrontControl : MedicationSaveResult
-FrontControl --> UI : 저장 결과와 갱신된 일정
+ApiClient --> FrontControl : 저장 약 ID를 포함한 MedicationSaveResult
+FrontControl --> ViewModel : MedicationSaveResult
+opt 저장 성공 또는 중복 결과에 ID가 있고 사진을 선택한 경우
+    ViewModel -> FrontService : ManualMedicationImageStore.saveImage(patientHash, medicationId, sourcePath)
+    FrontService --> ViewModel : 기기 전용 사진 경로 또는 사진 저장 실패
+    note right of FrontService : 원본 사진은 서버로 보내지 않는다.\n사진 저장 실패가 완료된 복약정보 저장을 취소하지 않는다.
+end
+ViewModel --> UI : 저장 결과와 갱신된 일정
 
 == 12. 근처 운영 약국 지도·목록 조회 ==
 
@@ -814,6 +941,13 @@ end
 FrontControl -> ApiClient : GET /pharmacy/nearby?latitude&longitude
 ApiClient -> Router : 인증된 근처 약국 요청
 Router -> BackControl : CheckNearbyPharmacy.requestNearbyPharmacies()
+BackControl -> BackService : PersistentKoreanHolidayLookup.isHoliday()
+opt 공휴일 Cache 갱신 필요
+    BackService -> HolidayAPI : 날짜별 공휴일 정보 요청
+    HolidayAPI --> BackService : 공휴일 자료
+    BackService -> Database : 공휴일 정보와 조회 상태 Cache 저장
+end
+BackService --> BackControl : 공휴일 여부
 BackControl -> Database : 지역 PharmacyCatalog 후보 조회
 alt Catalog 후보가 없음 또는 조회 실패
     BackControl -> BackService : PharmacyLookupBoundary.searchNearby()
@@ -823,11 +957,21 @@ alt Catalog 후보가 없음 또는 조회 실패
 else Catalog 후보 조회 성공
     Database --> BackControl : 주간·공휴일 일정과 출처 갱신 시각
 end
+opt 일자별 약국 운영 자료 갱신 필요
+    BackControl -> BackService : HolidayEmergencyPharmacyAPI.fetchSchedules()
+    BackService -> PharmacyAPI : 공휴일 약국 운영 자료 요청
+    PharmacyAPI --> BackService : 날짜별 운영 일정
+    BackService --> BackControl : 일정 또는 조회 실패
+    BackControl -> Database : 성공 자료 Cache 반영, 실패 시 기존 자료 보완 사용
+end
 BackControl -> BackControl : 거리, 영업 여부, 마감 임박과 다음 영업시각 계산
 BackControl --> FrontControl : 거리순 NearbyPharmacy 목록
 FrontControl -> FrontService : 사용자별 기기 즐겨찾기 조회
 FrontService --> FrontControl : favoriteIds
 FrontControl --> UI : 즐겨찾기 우선 목록과 갱신 상태
+opt Naver 지도 설정이 존재
+    UI -> NaverMap : 앱 내부 지도와 약국 마커 표시
+end
 UI --> User : 이름이 있는 마커와 약국 목록 전환 버튼
 opt 약국 목록에서 지도로 복귀
     User -> UI : 목록 상단을 아래로 드래그 또는 손잡이·지도 버튼 선택
@@ -862,13 +1006,14 @@ opt 사용자가 제한 시간 안에 새로고침 반복
     UI --> User : 추가 호출 없이 남은 대기시간 안내
 end
 
-== 13. 복약 맥락 채팅 실험실 기능 ==
+== 13. 복약 맥락 채팅 ==
 
 User -> UI : 활성 환자-보호자 연결의 채팅 선택
 UI -> FrontControl : ManageLinkedChat.requestHistory(linkId)
 FrontControl -> ApiClient : GET /chat/links/{linkId}/messages
 ApiClient -> Router : Bearer Token과 연결 범위 요청
 Router -> BackControl : ManageLinkedChat.require_active_link()
+note right of BackControl : 일반 채팅은 복용 약이 없어도 가능하다.\n약 관련 입력에만 소유권·복용기간을 별도로 검증한다.
 BackControl -> Database : 활성 연결 검증 및 최근 메시지 조회
 Database --> BackControl : 연결과 ChatMessage 목록
 BackControl --> Router : 복약 문맥 Snapshot을 포함한 채팅 이력
@@ -876,7 +1021,13 @@ Router --> ApiClient : 채팅 이력 응답
 ApiClient --> FrontControl : ChatMessage 목록
 FrontControl --> UI : 채팅 이력 출력
 UI -> FrontService : LinkedChatRealtimeService.start()
-FrontService -> Router : WSS /chat/links/{linkId}/stream
+FrontService -> ApiClient : buildAuthenticationHeaders(streamUri)
+ApiClient --> FrontService : ID Token, API contract, 조건부 App Check Token
+FrontService -> Router : 인증 header와 WSS /chat/links/{linkId}/stream
+Router -> BackService : ID Token과 API contract 검증
+opt Backend에서 App Check 요구
+    Router -> AppCheckVerifier : App Check Token 검증
+end
 Router -> BackControl : 연결 참가자 권한 재검증
 BackControl --> FrontService : WebSocket 연결 승인
 
@@ -927,15 +1078,26 @@ ApiClient -> Router : 채팅 전송 요청
 Router -> BackControl : ManageLinkedChat.send_message()
 BackControl -> Database : 연결·clientMessageId 검증 및 모든 선택 약의 소유권·복용기간 검증 후 저장
 Database --> BackControl : 저장 ChatMessage 또는 기존 중복 응답
-BackControl -> BackService : ChatConnectionManager.broadcast()
-BackService --> UI : 상대 WebSocket에 새 메시지 Event
-alt 상대 사용자가 실시간 연결 중이 아님
-    BackControl -> FCM : 최대 120자 미리보기와 messageKind/slotKey
-    FCM --> User : 채팅 또는 해당 복약 시간대로 이동할 알림
+BackControl --> Router : ChatSendResult
+opt 중복 요청이 아닌 신규 메시지
+    Router -> BackService : ChatConnectionManager.broadcast()
+    BackService --> UI : 상대 WebSocket에 새 메시지 Event
+    Router -> BackService : 수신자 접속 여부와 Push 제한 확인
+    alt 상대 미접속이며 Push 전송 허용
+        Router -> BackControl : BackgroundTasks로 DispatchChatMessageAlert 예약
+        BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
+        BackService -> FCM : 표시 정책에 따른 미리보기와 messageKind/slotKey
+        FCM --> User : 채팅 또는 해당 복약 시간대로 이동할 알림
+    end
 end
+note over Router,BackService : 일반 채팅 Push는 BackgroundTasks이며 caregiver durable Outbox와 별개다.\nWebSocket 연결 Registry는 프로세스 메모리이고 Redis는 요청 제한 Counter로 사용한다.
 opt 환자가 시간대의 모든 약을 완료
-    BackControl -> Database : link/date/slot 멱등 ID로 완료 메시지 저장
-    BackControl -> BackService : 활성 연결에 완료 Event broadcast
+    ref over OutboxControl,Database : Flow 5의 Outbox 처리에서 자동 완료 chat record 생성
+    note over BackControl,Database : publish_slot_completion()은 직접 WebSocket broadcast하지 않는다.
+    UI -> FrontControl : 주기적 채팅 이력 갱신
+    FrontControl -> ApiClient : GET /chat/links/{linkId}/messages
+    ApiClient -> Router : 이력 요청
+    Router --> UI : 자동 완료 기록을 포함한 조회 가능한 이력
 end
 UI -> FrontControl : markRead(throughMessageId)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/read
@@ -950,14 +1112,18 @@ opt 사용자가 메시지를 선택하고 삭제 범위를 확인
     BackControl -> Database : 활성 연결 검증, 선택 Row 잠금
     alt 모두에게서 삭제: 본인 전송 + 서버 기준 24시간 이내
         BackControl -> Database : 본문/복약/약국 Snapshot 제거, Tombstone 저장
-        BackControl -> BackService : 양쪽 참여자에게 삭제 Event
+        BackControl --> Router : 삭제 결과
+        Router -> BackService : 양쪽 참여자에게 삭제 Event
     else 나에게서만 삭제
         BackControl -> Database : 요청 참여자 삭제 시각만 저장
-        BackControl -> BackService : 요청 참여자 기기에만 삭제 Event
+        BackControl --> Router : 삭제 결과
+        Router -> BackService : 요청 참여자 기기에만 삭제 Event
     else 권한/시간/선택 검증 실패
         BackControl --> UI : 전체 요청 거절, 기존 메시지 유지
     end
 end
+
+note over BackService,Database : DataMaintenanceService가 ChatMessageRetentionPolicy에 따라\n보존기간이 지난 채팅을 정리한다.
 
 == 14. 운영 Catalog 주기 갱신 ==
 

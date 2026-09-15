@@ -24,14 +24,18 @@ skinparam rectangle {
 package "Flutter Frontend" as FE #E8F4FF {
   rectangle "App and\nAuthentication" as FE_AUTH #DCEEFF
   rectangle "Prescription\nAnalysis" as FE_RX #DCEEFF
-  rectangle "Medication\nManagement" as FE_MED #DCEEFF
+  rectangle "Medication\nManagement / 직접 등록" as FE_MED #DCEEFF
   rectangle "Caregiver and\nNotifications" as FE_CARE #DCEEFF
   rectangle "Settings and\nAccessibility" as FE_SETTINGS #DCEEFF
+  rectangle "연동 채팅" as FE_CHAT #DCEEFF
+  rectangle "근처 약국" as FE_PHARMACY #DCEEFF
 
   FE_AUTH -[hidden]right-> FE_RX
   FE_RX -[hidden]right-> FE_MED
   FE_MED -[hidden]right-> FE_CARE
   FE_CARE -[hidden]right-> FE_SETTINGS
+  FE_SETTINGS -[hidden]right-> FE_CHAT
+  FE_CHAT -[hidden]right-> FE_PHARMACY
 }
 
 package "FastAPI Backend" as BE #EAF8F0 {
@@ -40,6 +44,8 @@ package "FastAPI Backend" as BE #EAF8F0 {
   rectangle "Medication\nServices" as BE_MED #DDF5E7
   rectangle "Schedule and\nNotification" as BE_SCHEDULE #DDF5E7
   rectangle "Caregiver\nServices" as BE_CARE #DDF5E7
+  rectangle "채팅 저장·권한\n실시간 연결" as BE_CHAT #DDF5E7
+  rectangle "약국·공휴일\n조회" as BE_PHARMACY #DDF5E7
   rectangle "External API\nIntegration" as BE_EXTERNAL #FFF1CC
   database "Persistence" as BE_DB #F8FAFC
 
@@ -57,10 +63,15 @@ FE_MED --> BE_MED
 FE_MED --> BE_SCHEDULE
 FE_CARE --> BE_CARE
 FE_SETTINGS --> BE_API
+FE_CHAT --> BE_CHAT : HTTP / WebSocket
+FE_PHARMACY --> BE_PHARMACY
 
 BE_RX --> BE_EXTERNAL
 BE_MED --> BE_EXTERNAL
 BE_MED --> BE_DB
 BE_SCHEDULE --> BE_DB
 BE_CARE --> BE_DB
+BE_CHAT --> BE_DB
+BE_PHARMACY --> BE_DB
+BE_PHARMACY --> BE_EXTERNAL
 @enduml

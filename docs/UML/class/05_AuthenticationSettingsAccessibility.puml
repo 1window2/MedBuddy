@@ -35,6 +35,7 @@ package "Flutter Frontend" #E8F4FF {
   class AuthenticationUI <<UI>>
   class "AuthenticationControl" as FAuthenticationControl <<Control>>
   class FirebaseRuntimeService <<Service>>
+  class ForegroundRecoveryService <<Service>>
   class AuthenticatedApiClient <<Service>>
   class ManageUserSettingUI <<UI>>
   class "ManageUserSetting" as FManageUserSetting <<Control>>
@@ -61,10 +62,20 @@ cloud "Firebase App Check" as FirebaseAppCheck
 
 AuthenticationGate --> AuthenticationUI
 AuthenticationUI --> FAuthenticationControl
+AuthenticationUI *-- ForegroundRecoveryService : 전경 Session 복구 callback
 FAuthenticationControl --> FirebaseRuntimeService
 FAuthenticationControl --> FirebaseAuth : sign-in and session state
 FirebaseRuntimeService --> FirebaseAuth
 FirebaseRuntimeService --> FirebaseAppCheck
+note bottom of FirebaseRuntimeService
+  Firebase 인증과 App Check는 조건을 분리한다.
+  명시적 off-Play beta는 ID Token 인증을 유지하고
+  App Check만 생략한다. Phone/SMS는 dormant 상태다.
+end note
+note bottom of ForegroundRecoveryService
+  일시적 실패만 복구하며 권한 오류를 우회하지 않는다.
+  복약 변경 요청은 자동 재실행하지 않는다.
+end note
 FAuthenticationControl --> AuthenticatedApiClient
 AppCheckTokenVerifier --> FirebaseAppCheck : Firebase Admin verification
 BAccountDependencies --> OIDCTokenVerifier : ID token verification
@@ -77,6 +88,10 @@ ManageUserSettingUI --> AppLanguageControl
 FManageUserSetting --> BManageUserSetting : settings API
 BManageUserSetting --> DBUserSetting
 BManageUserSetting --> FUserSetting : persisted preferences
+note bottom of FUserSetting
+  알림 종류별 허용·공개 범위, 언어·시간 형식,
+  신규 일정 기본 시각과 홈 조회 대상을 저장한다.
+end note
 
 ManageUserSettingUI --> FRequestVoiceGuide
 FRequestVoiceGuide --> BRequestVoiceGuide : guide text API

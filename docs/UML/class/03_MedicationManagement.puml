@@ -49,7 +49,7 @@ package "FastAPI Backend" #EAF8F0 {
   class MedicationCoursePolicy <<Service>>
   class SavedMedicationRetentionPolicy <<Service>>
   class SavedMedicationRepository <<Service>>
-  class LocalMedicationCatalog <<Service>>
+  class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service>>
   database "saved_medications" as DBSavedMedication <<Database>>
   database "medication_completions" as DBMedicationCompletion <<Database>>
 }
@@ -72,6 +72,13 @@ BCheckSchedule --> SavedMedicationRetentionPolicy
 BCheckSchedule --> SavedMedicationRepository
 BCheckSchedule --> DBSavedMedication
 BCheckSchedule --> DBMedicationCompletion
+
+note bottom of BCheckSchedule
+  개별 약과 시간대 전체 완료·취소를 처리한다.
+  홈·알림은 전체 완료 후 일정 확인으로 연결한다.
+  알림의 대상 날짜를 검사하고 신규 시간대 완료는
+  같은 Transaction에 보호자 Outbox로 기록한다.
+end note
 
 BCheckSavedMedication --> MedicationCoursePolicy
 BCheckSavedMedication --> SavedMedicationRetentionPolicy

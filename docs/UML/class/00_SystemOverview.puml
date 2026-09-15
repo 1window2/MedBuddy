@@ -27,12 +27,13 @@ actor Caregiver as Caregiver
 rectangle "Flutter Frontend\n\nMobile UI and device services" as Frontend #E8F4FF
 rectangle "FastAPI Backend\n\nBusiness rules and secured APIs" as Backend #EAF8F0
 database "PostgreSQL / SQLite\nApplication Data" as Database #F8FAFC
-cloud "External Services\n\nFirebase, MFDS, Gemini" as External #FFF7E6
+cloud "External Services\n\nFirebase, MFDS, Gemini\n약국·공휴일 API, Naver 지도" as External #FFF7E6
 
 Patient --> Frontend : uses
 Caregiver --> Frontend : uses
 Patient -[hidden]right-> Caregiver
-Frontend --> Backend : authenticated HTTPS API
+Frontend --> Backend : authenticated HTTPS API / WebSocket
+Frontend --> External : 앱 인증·지도 SDK
 Backend --> Database : persists and queries
 Backend --> External : verifies and enriches
 Database -[hidden]right-> External
@@ -40,5 +41,7 @@ External --> Frontend : push notifications
 
 legend bottom
   Main presentation view: responsibilities and communication boundaries only
+  채팅 기록은 Application Database, 연결 Registry는 프로세스 메모리에 저장한다.
+  Redis는 Cache·요청 제한 Counter이며 채팅 방송 broker가 아니다.
 endlegend
 @enduml

@@ -18,8 +18,10 @@
   - 약 상세정보, 저장된 복약 정보, 오늘의 복약 일정과 알림 구조를 보여준다.
 - `04_CaregiverNotifications.puml` / `04_CaregiverNotifications.png`
   - 환자·보호자 연동, 조건부 채팅 탭과 대화 목록, 알림 전달과 계정별 로컬 알림함 구조를 보여준다.
+  - 서버의 미복약 감지와 완료·미복약 Outbox 처리, 완료 채팅 기록 생성을 구분한다.
 - `05_AuthenticationSettingsAccessibility.puml` / `05_AuthenticationSettingsAccessibility.png`
   - 인증, 사용자 설정 저장, 언어 및 음성 안내 구조를 보여준다.
+  - Firebase 인증과 App Check 적용 조건, 전경 Session 복구를 구분한다.
 
 ## Usage
 
@@ -45,6 +47,15 @@
 여러 상대 중 선택한 연동을 기존 `LinkedChatUI`로 연결한다. 백엔드의 참여자 권한
 검증과 메시지·복약 데이터 계약은 변경하지 않는다.
 
+일반 채팅은 복용 약이 없어도 가능하며, HTTP 저장 후 Router에서 WebSocket으로 방송한다.
+미접속 상대의 일반 채팅 Push는 BackgroundTasks이고 보호자 알림 Outbox와 별개다.
+Outbox의 자동 완료 메시지 저장 자체는 WebSocket 방송을 수행하지 않는다.
+채팅 기록·약국 자료·Pill Catalog는 Application Database를 사용하며,
+알림함과 직접 등록 사진은 기기에 저장한다. Redis Counter와 프로세스 메모리의
+WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼동하지 않는다.
+
 발표에서는 `00`부터 필요한 기능 다이어그램까지 순서대로 사용하고,
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을
 먼저 수정한 뒤 같은 이름의 `.png`도 다시 생성한다.
+
+이번 beta/v0.2.0 정합성 갱신은 텍스트 원본만 반영했으며, 기존 PNG는 갱신하지 않았다.
