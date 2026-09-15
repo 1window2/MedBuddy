@@ -829,6 +829,120 @@ void main() {
     expect(map.deviceLocation, same(fix));
   });
 
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 거리 안내 자동 숨김 테스트
+    // 함수역할: 4초 뒤 지도 높이가 늘어나고 이후 지역 검색에서 안내가 반복되지 않는지 확인한다.
+    // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+    testWidgets(
+      'map distance guide expires once and frees map space: $language',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 780);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final control = _buildControl();
+        addTearDown(control.dispose);
+        await tester.pumpWidget(
+          _testApp(control, nativeMap: true, language: language),
+        );
+        await tester.pumpAndSettle();
+        final guide = find.text(
+          language == 'en'
+              ? 'Distances are measured from the searched map center.'
+              : '거리는 검색한 지도 중심을 기준으로 표시해요.',
+        );
+        expect(guide, findsNothing);
+        final mapFinder = find.byType(NearbyPharmacyMap);
+        final mapElement = tester.element(mapFinder);
+        const area = PharmacySearchArea(
+          center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+          isMapArea: true,
+        );
+        await tester
+            .widget<NearbyPharmacyMap>(mapFinder)
+            .onSearchAreaRequested!(area);
+        await tester.pumpAndSettle();
+        expect(guide, findsOneWidget);
+        final heightWithGuide = tester.getSize(mapFinder).height;
+        await tester.pump(const Duration(seconds: 3));
+        expect(guide, findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+        expect(guide, findsNothing);
+        expect(tester.getSize(mapFinder).height, greaterThan(heightWithGuide));
+        expect(tester.element(mapFinder), same(mapElement));
+        expect(
+          tester.widget<NearbyPharmacyMap>(mapFinder).searchArea.center,
+          same(area.center),
+        );
+        await tester
+            .widget<NearbyPharmacyMap>(mapFinder)
+            .onSearchAreaRequested!(area);
+        await tester.pumpAndSettle();
+        expect(guide, findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  // 함수이름: 거리 안내 타이머 수명 테스트
+  // 함수역할: 안내 중 화면을 닫으면 타이머를 취소하고 종료된 화면을 갱신하지 않는지 확인한다.
+  // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('closing the pharmacy screen cancels the distance guide timer', (
+    tester,
+  ) async {
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control, nativeMap: true));
+    await tester.pumpAndSettle();
+    await tester
+        .widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap))
+        .onSearchAreaRequested!(
+      const PharmacySearchArea(
+        center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+        isMapArea: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 5));
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 거리 안내와 검색 오류 분리 테스트
+  // 함수역할: 거리 안내 표시 시간이 지나도 이후 검색 실패 안내는 유지되는지 확인한다.
+  // 매개변수: tester: 화면·시간 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('search failure notice survives the distance guide timeout', (
+    tester,
+  ) async {
+    var fail = false;
+    final control = _buildControl(
+      beforeResponse: () async {
+        if (fail) throw StateError('Simulated search failure');
+      },
+    );
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control, nativeMap: true));
+    await tester.pumpAndSettle();
+    const area = PharmacySearchArea(
+      center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+      isMapArea: true,
+    );
+    final mapFinder = find.byType(NearbyPharmacyMap);
+    await tester.widget<NearbyPharmacyMap>(mapFinder).onSearchAreaRequested!(
+      area,
+    );
+    await tester.pumpAndSettle();
+    fail = true;
+    await tester.widget<NearbyPharmacyMap>(mapFinder).onSearchAreaRequested!(
+      area,
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('검색하지 못했어요. 지도를 옮겨 다시 검색하거나 새로고침해주세요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('fallback search never pretends to be the device position', (
     tester,
   ) async {
@@ -843,6 +957,8 @@ void main() {
     );
     expect(map.searchArea.isFallback, isTrue);
     expect(map.deviceLocation, isNull);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.'), findsOneWidget);
   });
   testWidgets(
     'stale background resume refreshes once; brief inactive does not',

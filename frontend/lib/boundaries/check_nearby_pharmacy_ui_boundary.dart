@@ -31,6 +31,7 @@ enum _PharmacyFilter { openNow, lateHours, weekendHoliday, all }
 enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
+const _mapDistanceGuideDuration = Duration(seconds: 4);
 
 // 클래스명: NearbyPharmacySelection
 // 역할: 채팅에 공유할 약국과 사용자의 전화 확인 여부를 함께 반환한다.
@@ -182,6 +183,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   double _detailExtent = _PharmacyDetailsSheet.initialExtent;
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
+  Timer? _mapDistanceGuideTimer;
+  bool _hasShownMapDistanceGuide = false;
+  bool _showMapDistanceGuide = false;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
   String? _selectedPharmacyId;
   DateTime _targetDateTime = DateTime.now();
@@ -259,7 +263,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }
 
   // 함수이름: dispose
-  // 함수역할: _refreshCooldownTimer, _control 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: 새로고침·거리 안내 타이머와 _control을 정리하고 화면 수명 종료 처리를 수행한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -267,6 +271,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
+    _mapDistanceGuideTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
     }
@@ -320,6 +325,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       setState(() {
         _searchArea =
             result.searchArea ?? requestedArea ?? PharmacySearchArea.hongik;
+        _updateMapDistanceGuide();
         if (!_searchArea!.isFallback && !_searchArea!.isMapArea) {
           _deviceLocation = _searchArea!.center;
         } else if (_searchArea!.isFallback) {
@@ -385,6 +391,23 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       }
     }
     return false;
+  }
+
+  // 함수이름: _updateMapDistanceGuide
+  // 함수역할: 검색 성공 상태 갱신 안에서 거리 기준 안내를 화면 진입당 한 번만 시작한다.
+  // 매개변수: 없음. 반환값: 없음. 조회 오류·기본 위치 안내는 자동으로 숨기지 않는다.
+  void _updateMapDistanceGuide() {
+    if (_searchArea?.isMapArea != true) {
+      _mapDistanceGuideTimer?.cancel();
+      _showMapDistanceGuide = false;
+      return;
+    }
+    if (_hasShownMapDistanceGuide) return;
+    _hasShownMapDistanceGuide = true;
+    _showMapDistanceGuide = true;
+    _mapDistanceGuideTimer = Timer(_mapDistanceGuideDuration, () {
+      if (mounted) setState(() => _showMapDistanceGuide = false);
+    });
   }
 
   // 함수이름: _searchMapArea
@@ -884,7 +907,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     return Column(
       children: [
         if (_searchArea!.isFallback ||
-            _searchArea!.isMapArea ||
+            (_searchArea!.isMapArea && _showMapDistanceGuide) ||
             _errorMessage != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
