@@ -145,6 +145,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     super.initState();
     _selectedMedicationIds = {...widget.initialSelectedMedicationIds};
     if (widget.isSelectionMode) {
+      _selectedMedicationIds.retainAll(_selectableMedicationIds);
       return;
     }
     // 함수이름: initState.addPostFrameCallback callback
@@ -168,6 +169,32 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           _revealInitialSlot();
         }
       });
+    });
+  }
+
+  // 함수역할: 선택 목록이 바뀌면 더 이상 표시하지 않는 약의 선택을 제거한다.
+  @override
+  void didUpdateWidget(covariant CheckScheduleUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSelectionMode) {
+      _selectedMedicationIds.retainAll(_selectableMedicationIds);
+    }
+  }
+
+  // 함수역할: 같은 약이 여러 시간대에 있어도 유효한 식별자 하나만 선택 대상으로 계산한다.
+  Set<String> get _selectableMedicationIds => {
+    for (final schedule
+        in widget.selectionSchedules ?? const <MedicationSchedule>[])
+      if (schedule.medicationID.trim().isNotEmpty) schedule.medicationID,
+  };
+
+  // 함수역할: 일부 선택은 전체 선택으로, 전체 선택은 모두 해제로 전환한다. 복용 기록은 변경하지 않는다.
+  void _toggleAllMedicationSelections() {
+    final ids = _selectableMedicationIds;
+    if (ids.isEmpty) return;
+    final allSelected = ids.every(_selectedMedicationIds.contains);
+    setState(() {
+      _selectedMedicationIds = allSelected ? <String>{} : ids;
     });
   }
 
@@ -230,82 +257,111 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final text = _ScheduleText(widget.selectionLanguage);
     final schedules = widget.selectionSchedules ?? const <MedicationSchedule>[];
     final slots = _buildSelectionSlots(schedules);
+    final header = _ScheduleSelectionHeader(
+      text: text,
+      // 함수이름: _buildSelectionScreen.onBackRequested callback
+      // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+      // 매개변수:
+      // - 없음.
+      // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+      onBackRequested: () => Navigator.pop(context),
+    );
+    final selectionControl = _ScheduleSelectionControl(
+      text: text,
+      selectedCount: _selectedMedicationIds.length,
+      totalCount: _selectableMedicationIds.length,
+      onToggleAll: _toggleAllMedicationSelections,
+    );
     return Scaffold(
       backgroundColor: MedBuddyColors.surface,
-      body: Column(
-        children: [
-          _ScheduleSelectionHeader(
-            text: text,
-            // 함수이름: _buildSelectionScreen.onBackRequested callback
-            // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onBackRequested: () => Navigator.pop(context),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(34, 14, 34, 24),
-              children: [
-                for (final slot in slots) ...[
-                  _TimeSlotCard(
-                    text: text,
-                    slot: slot,
-                    userSetting: UserSetting(language: text.language),
-                    reminderSetting: MedicationAlarm.defaults(slot.key),
-                    // 함수이름: _buildSelectionScreen.isCompletedProvider callback
-                    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택의 캡처된 상태에서 `false` 값을 제공한다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: `false`의 값.
-                    isCompletedProvider: (_) => false,
-                    // 함수이름: _buildSelectionScreen.onReminderRequested callback
-                    // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // 큰 글씨나 낮은 화면에서는 상단도 스크롤해 완료 버튼의 공간을 확보한다.
+          final scrollHeader =
+              MediaQuery.textScalerOf(context).scale(1) > 1.6 ||
+              constraints.maxHeight < 600;
+          return Column(
+            children: [
+              if (!scrollHeader) header,
+              if (!scrollHeader) selectionControl,
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    if (scrollHeader) header,
+                    if (scrollHeader) selectionControl,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(34, 14, 34, 24),
+                      child: Column(
+                        children: [
+                          for (final slot in slots) ...[
+                            _TimeSlotCard(
+                              text: text,
+                              slot: slot,
+                              userSetting: UserSetting(language: text.language),
+                              reminderSetting: MedicationAlarm.defaults(
+                                slot.key,
+                              ),
+                              // 함수이름: _buildSelectionScreen.isCompletedProvider callback
+                              // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택의 캡처된 상태에서 `false` 값을 제공한다.
+                              // 매개변수:
+                              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                              // 반환값: `false`의 값.
+                              isCompletedProvider: (_) => false,
+                              // 함수이름: _buildSelectionScreen.onReminderRequested callback
+                              // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+                              // 매개변수:
+                              // - 없음.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              onReminderRequested: () {},
+                              // 함수이름: _buildSelectionScreen.onGuideRequested callback
+                              // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+                              // 매개변수:
+                              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              onGuideRequested: (_) {},
+                              // 함수이름: _buildSelectionScreen.onStatusChanged callback
+                              // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+                              // 매개변수:
+                              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              onStatusChanged: (_, _) async {},
+                              isSelectionMode: true,
+                              // 함수이름: _buildSelectionScreen.isSelectedProvider callback
+                              // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_selectedMedicationIds.contains(schedule.medicationID)`을 실행한다.
+                              // 매개변수:
+                              // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              isSelectedProvider: (schedule) =>
+                                  _selectedMedicationIds.contains(
+                                    schedule.medicationID,
+                                  ),
+                              onSelectionRequested: _toggleMedicationSelection,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _ScheduleSelectionFooter(
+                text: text,
+                selectedCount: _selectedMedicationIds.length,
+                onConfirmRequested: _selectedMedicationIds.isEmpty
+                    ? null
+                    // 함수이름: _buildSelectionScreen.onConfirmRequested callback
+                    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_completeMedicationSelection(context, schedules)`을 실행한다.
                     // 매개변수:
                     // - 없음.
                     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onReminderRequested: () {},
-                    // 함수이름: _buildSelectionScreen.onGuideRequested callback
-                    // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onGuideRequested: (_) {},
-                    // 함수이름: _buildSelectionScreen.onStatusChanged callback
-                    // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onStatusChanged: (_, _) async {},
-                    isSelectionMode: true,
-                    // 함수이름: _buildSelectionScreen.isSelectedProvider callback
-                    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_selectedMedicationIds.contains(schedule.medicationID)`을 실행한다.
-                    // 매개변수:
-                    // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    isSelectedProvider: (schedule) =>
-                        _selectedMedicationIds.contains(schedule.medicationID),
-                    onSelectionRequested: _toggleMedicationSelection,
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ],
-            ),
-          ),
-          _ScheduleSelectionFooter(
-            text: text,
-            selectedCount: _selectedMedicationIds.length,
-            onConfirmRequested: _selectedMedicationIds.isEmpty
-                ? null
-                // 함수이름: _buildSelectionScreen.onConfirmRequested callback
-                // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_completeMedicationSelection(context, schedules)`을 실행한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                : () => _completeMedicationSelection(context, schedules),
-          ),
-        ],
+                    : () => _completeMedicationSelection(context, schedules),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -316,6 +372,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _toggleMedicationSelection(MedicationSchedule schedule) {
+    if (!_selectableMedicationIds.contains(schedule.medicationID)) return;
     // 함수이름: _toggleMedicationSelection.setState callback
     // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_selectedMedicationIds.add(medicationId); _selectedMedicationIds.remove(medicationId)`을 실행한다.
     // 매개변수:
@@ -1197,6 +1254,80 @@ class _ScheduleSelectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+// 클래스명: _ScheduleSelectionControl
+// 역할: 알림함과 같은 전체·일부·미선택 체크박스와 선택 개수를 표시한다.
+class _ScheduleSelectionControl extends StatelessWidget {
+  final _ScheduleText text;
+  final int selectedCount;
+  final int totalCount;
+  final VoidCallback onToggleAll;
+
+  const _ScheduleSelectionControl({
+    required this.text,
+    required this.selectedCount,
+    required this.totalCount,
+    required this.onToggleAll,
+  });
+
+  // 함수역할: 전체 선택 체크박스와 개수를 나란히 배치하고 큰 글씨에서는 줄바꿈한다.
+  @override
+  Widget build(BuildContext context) => Material(
+    color: MedBuddyColors.surfaceSubtle,
+    shape: const Border(bottom: BorderSide(color: MedBuddyColors.divider)),
+    child: CheckboxListTile(
+      key: const Key('schedule-medication-select-all'),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: MedBuddySpacing.pageHorizontal,
+        vertical: 8,
+      ),
+      controlAffinity: ListTileControlAffinity.leading,
+      activeColor: MedBuddyColors.primary,
+      checkColor: MedBuddyColors.surface,
+      checkboxShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+      ),
+      tristate: true,
+      value: selectedCount == 0
+          ? false
+          : selectedCount == totalCount
+          ? true
+          : null,
+      onChanged: totalCount == 0 ? null : (_) => onToggleAll(),
+      title: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 16,
+        runSpacing: 4,
+        children: [
+          Text(
+            text.selectAll,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              letterSpacing: 0,
+              color: MedBuddyColors.textStrong,
+            ),
+          ),
+          Text(
+            text.selectedMedicationCount(selectedCount),
+            key: const Key('schedule-medication-selection-count'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              letterSpacing: 0,
+              color: selectedCount == 0
+                  ? MedBuddyColors.textMuted
+                  : MedBuddyColors.primaryDark,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // 클래스명: _ScheduleSelectionFooter
@@ -2245,6 +2376,8 @@ class _ScheduleText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get selectionTitle => isEnglish ? 'Choose Medications' : '대화할 약 선택';
+  // 함수역할: 다른 선택 화면과 같은 전체 선택 라벨을 제공한다.
+  String get selectAll => isEnglish ? 'Select all' : '전체 선택';
   // 함수이름: selectionDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "메시지에 함께 보낼 약을 하나 이상 선택해주세요." 문구를 제공한다.
   // 매개변수:
