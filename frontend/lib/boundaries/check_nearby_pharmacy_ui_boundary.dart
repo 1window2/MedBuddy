@@ -1565,6 +1565,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _requestDirections(NearbyPharmacy pharmacy) async {
+    ModalRoute<dynamic>? directionsRoute;
+    var didSelect = false;
     final choice = await showModalBottomSheet<_PharmacyDirectionsChoice>(
       context: context,
       useSafeArea: true,
@@ -1575,20 +1577,32 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       // 매개변수:
       // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (sheetContext) => _PharmacyDirectionsSheet(
-        pharmacy: pharmacy,
-        text: _text,
-        // 함수이름: _requestDirections.onSelected callback
-        // 함수역할: `Navigator.of(sheetContext).pop(selected)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-        // 매개변수:
-        // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-        // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-        onSelected: (selected) => Navigator.of(sheetContext).pop(selected),
-      ),
+      builder: (sheetContext) {
+        directionsRoute = ModalRoute.of(sheetContext);
+        return _PharmacyDirectionsSheet(
+          pharmacy: pharmacy,
+          text: _text,
+          // 함수이름: _requestDirections.onSelected callback
+          // 함수역할: `Navigator.of(sheetContext).pop(selected)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+          // 매개변수:
+          // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
+          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+          onSelected: (selected) {
+            // 닫히는 시트를 연속으로 눌러 아래 약국 화면까지 pop하지 않도록 한다.
+            if (didSelect || directionsRoute?.isCurrent != true) return;
+            didSelect = true;
+            Navigator.of(sheetContext).pop(selected);
+          },
+        );
+      },
     );
     if (!mounted || choice == null) {
       return;
     }
+
+    // 시트 종료 애니메이션까지 마친 뒤 외부 앱을 열어 복귀할 약국 화면을 유지한다.
+    await directionsRoute?.completed;
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
 
     if (choice == _PharmacyDirectionsChoice.copyAddress) {
       await _copyPharmacyAddress(pharmacy, copiedAsFallback: false);

@@ -1016,22 +1016,40 @@ void main() {
     final modes = <String?>[];
     await tester.pumpWidget(_testApp(_buildControl(requestedModes: modes)));
     await tester.pumpAndSettle();
-    final map = tester.element(find.byKey(const Key('test-nearby-pharmacy-map')));
+    final map = tester.element(
+      find.byKey(const Key('test-nearby-pharmacy-map')),
+    );
     for (final option in ['lateHours', 'weekendHoliday', 'all', 'openNow']) {
       await tester.tap(find.byKey(const Key('pharmacy-map-filter-selector')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(ValueKey('pharmacy-filter-option-$option')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
-      expect(tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))), same(map));
-      expect(find.byKey(const ValueKey('test-map-marker-open')), findsOneWidget);
-      expect(find.byKey(const ValueKey('test-map-marker-closed')),
-          option == 'all' ? findsOneWidget : findsNothing);
-      expect(find.byKey(const Key('pharmacy-map-search-date')),
-          option == 'openNow' ? findsNothing : findsOneWidget);
+      expect(
+        tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))),
+        same(map),
+      );
+      expect(
+        find.byKey(const ValueKey('test-map-marker-open')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('test-map-marker-closed')),
+        option == 'all' ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.byKey(const Key('pharmacy-map-search-date')),
+        option == 'openNow' ? findsNothing : findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     }
-    expect(modes, ['open_at_time', 'late_hours', 'weekend_holiday', 'all', 'open_at_time']);
+    expect(modes, [
+      'open_at_time',
+      'late_hours',
+      'weekend_holiday',
+      'all',
+      'open_at_time',
+    ]);
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
     expect(find.text('조회 조건: 현재 영업 중'), findsOneWidget);
@@ -1221,6 +1239,75 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  for (final fromDetails in [false, true]) {
+    testWidgets('길찾기 연속 선택과 외부 앱 복귀가 약국 화면을 닫지 않는다: $fromDetails', (
+      tester,
+    ) async {
+      final navigator = GlobalKey<NavigatorState>();
+      final launched = <Uri>[];
+      final control = _buildControl(
+        uriLauncher: (uri) async {
+          launched.add(uri);
+          return true;
+        },
+      );
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          home: const Scaffold(body: Text('test-home')),
+        ),
+      );
+      unawaited(
+        navigator.currentState!.push(
+          MaterialPageRoute<void>(
+            builder: (_) => CheckNearbyPharmacyUI(
+              userSetting: const UserSetting(language: 'ko'),
+              control: control,
+              mapBuilder: _buildTestMap,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      if (fromDetails) {
+        await tester.tap(find.byKey(const Key('pharmacy-card-open')));
+        await tester.pumpAndSettle();
+      }
+      final directions = find.byKey(const Key('pharmacy-directions-open'));
+      await tester.ensureVisible(directions);
+      await tester.tap(directions);
+      await tester.pumpAndSettle();
+      final choice = tester.widget<ListTile>(
+        find.descendant(
+          of: find.byKey(const Key('directions-choice-google-maps')),
+          matching: find.byType(ListTile),
+        ),
+      );
+      // 같은 선택창이 닫히는 동안 이미 전달된 두 번째 탭도 재현한다.
+      choice.onTap!();
+      choice.onTap!();
+      await tester.pumpAndSettle();
+      expect(launched, hasLength(1));
+      expect(find.byType(CheckNearbyPharmacyUI), findsOneWidget);
+      expect(find.text('test-home'), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          Key(fromDetails ? 'pharmacy-detail-sheet' : 'pharmacy-list-panel'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('test-home'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('길찾기는 실행 방법을 묻고 주소 복사를 지원한다', (tester) async {
     String? copiedAddress;
     await tester.pumpWidget(

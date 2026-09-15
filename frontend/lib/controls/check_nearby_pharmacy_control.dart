@@ -139,7 +139,8 @@ class CheckNearbyPharmacy {
            * - item (NearbyPharmacy): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 두 필수 필드가 비어 있지 않으면 true.
-           */ (item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty,
+           */
+            (item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty,
           )
           .toList(growable: false);
       return NearbyPharmacySearchResult(
@@ -213,6 +214,7 @@ class CheckNearbyPharmacy {
   Future<bool> requestDirections(NearbyPharmacy pharmacy) async {
     return _externalActionService.requestDirections(
       name: pharmacy.name,
+      address: pharmacy.address,
       latitude: pharmacy.latitude,
       longitude: pharmacy.longitude,
     );
@@ -240,6 +242,8 @@ class CheckNearbyPharmacy {
   // - Future<bool>: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
   Future<bool> requestGoogleMapDirections(NearbyPharmacy pharmacy) {
     return _externalActionService.requestGoogleMapDirections(
+      name: pharmacy.name,
+      address: pharmacy.address,
       latitude: pharmacy.latitude,
       longitude: pharmacy.longitude,
     );

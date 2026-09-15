@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
+import 'package:medbuddy_frontend/services/pharmacy_external_action_service.dart';
 
 // 클래스명: _FakeLocationBoundary
 // 역할: 약국 검색에 고정 좌표와 설정 이동 성공을 제공하는 위치 대역.
@@ -176,16 +177,21 @@ void main() {
       launchedUris.last.queryParameters['q'],
       '37.5666000,126.9781000(메드버디약국)',
     );
+    expect(await control.requestGoogleMapDirections(pharmacy), isTrue);
+    expect(launchedUris.last.queryParameters, {
+      'api': '1',
+      'destination': '메드버디약국 서울특별시',
+    });
   });
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: directions fall back to coordinate-based web directions.
+  // - Expected behavior: fallback directions retain the pharmacy name.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test('directions fall back to coordinate-based web directions', () async {
+  test('directions fall back to named web directions', () async {
     Uri? launchedUri;
     final control = CheckNearbyPharmacy(
       locationBoundary: _FakeLocationBoundary(),
@@ -226,8 +232,46 @@ void main() {
     expect(await control.requestDirections(pharmacy), isTrue);
     expect(launchedUri?.host, 'www.google.com');
     expect(launchedUri?.path, '/maps/dir/');
-    expect(launchedUri?.queryParameters['destination'], '37.5666,126.9781');
+    expect(launchedUri?.queryParameters['destination'], '메드버디약국');
   });
+
+  // 함수역할: 이름·주소의 공백과 특수문자를 보존하고 목적지 정보가 없는 경우만 좌표를 사용한다.
+  for (final input in [
+    (
+      name: '  봄&건강+약국  ',
+      address: ' 서울 마포구 홍익로 1, 1층 (서교동) ',
+      expected: '봄&건강+약국 서울 마포구 홍익로 1, 1층 (서교동)',
+    ),
+    (name: '약국', address: '  ', expected: '약국'),
+    (name: '  ', address: '서울 마포구 홍익로 1', expected: '서울 마포구 홍익로 1'),
+    (name: '  ', address: ' ', expected: '37.5,126.9'),
+  ]) {
+    test('Google 목적지와 웹 대체 경로: ${input.expected}', () async {
+      final launched = <Uri>[];
+      final service = PharmacyExternalActionService(
+        uriLauncher: (uri) async {
+          launched.add(uri);
+          return uri.scheme == 'https';
+        },
+      );
+      expect(
+        await service.requestDirections(
+          name: input.name,
+          address: input.address,
+          latitude: 37.5,
+          longitude: 126.9,
+        ),
+        isTrue,
+      );
+      expect(launched, hasLength(2));
+      expect(launched.last.host, 'www.google.com');
+      expect(launched.last.path, '/maps/dir/');
+      expect(launched.last.queryParameters, {
+        'api': '1',
+        'destination': input.expected,
+      });
+    });
+  }
 
   // 함수이름: test 콜백
   // 함수역할:

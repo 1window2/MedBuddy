@@ -42,22 +42,22 @@ class PharmacyExternalActionService {
     PharmacyClipboardWriter? clipboardWriter,
   }) : _uriLauncher =
            uriLauncher ??
-           (/* 함수이름: callback 콜백
+           ( /* 함수이름: callback 콜백
             * 함수역할: 전화 또는 지도 URI를 외부 애플리케이션으로 연다.
             * 매개변수:
             * - uri (Uri): 검증하거나 외부 앱으로 열 대상 URI
             * 반환값:
             * - 외부 앱 실행 성공 여부를 완료하는 Future.
-            */(uri) => launchUrl(uri, mode: LaunchMode.externalApplication)),
+            */ (uri) => launchUrl(uri, mode: LaunchMode.externalApplication)),
        _clipboardWriter =
            clipboardWriter ??
-           (/* 함수이름: callback 콜백
+           ( /* 함수이름: callback 콜백
             * 함수역할: 약국 주소 등의 텍스트를 시스템 클립보드에 기록한다.
             * 매개변수:
             * - text (String): 인식·정규화·마스킹·읽기에 사용할 문구
             * 반환값:
             * - 클립보드 기록 완료 Future.
-            */(text) => Clipboard.setData(ClipboardData(text: text)));
+            */ (text) => Clipboard.setData(ClipboardData(text: text)));
 
   // 함수이름: _tryLaunch
   // 함수역할: 외부 앱이 없거나 플랫폼 호출이 실패해도 화면까지 예외가 전파되지 않게 한다.
@@ -88,15 +88,17 @@ class PharmacyExternalActionService {
   }
 
   // 함수이름: requestDirections
-  // 함수역할: 설치된 지도 앱 선택을 먼저 요청하고 실패하면 Google 웹 지도로 보완한다.
+  // 함수역할: 설치된 지도 앱 선택을 먼저 요청하고 실패하면 약국명·주소를 Google 지도로 전달한다.
   // 매개변수:
   // - name (String): 표시하거나 길찾기에 사용할 약국 이름
+  // - address (String): 동명 약국 구분에 사용할 주소
   // - latitude (double): WGS84 위도(도 단위)
   // - longitude (double): WGS84 경도(도 단위)
   // 반환값:
   // - 길찾기 앱 또는 웹 지도 실행 요청의 성공 여부
   Future<bool> requestDirections({
     required String name,
+    String address = '',
     required double latitude,
     required double longitude,
   }) async {
@@ -107,7 +109,12 @@ class PharmacyExternalActionService {
     )) {
       return true;
     }
-    return requestGoogleMapDirections(latitude: latitude, longitude: longitude);
+    return requestGoogleMapDirections(
+      name: name,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+    );
   }
 
   // 함수이름: requestInstalledMapDirections
@@ -130,21 +137,29 @@ class PharmacyExternalActionService {
   }
 
   // 함수이름: requestGoogleMapDirections
-  // 함수역할: 지도 앱이 없어도 브라우저에서 열 수 있는 Google 길찾기를 요청한다.
+  // 함수역할: 약국명과 주소로 Google 길찾기를 요청하며 둘 다 없을 때만 좌표를 사용한다.
   // 매개변수:
+  // - name (String), address (String): 목적지 이름과 동명 약국을 구분할 주소
   // - latitude (double): WGS84 위도(도 단위)
   // - longitude (double): WGS84 경도(도 단위)
   // 반환값:
   // - Google 지도 또는 브라우저 실행 요청의 성공 여부
   Future<bool> requestGoogleMapDirections({
+    required String name,
+    String address = '',
     required double latitude,
     required double longitude,
   }) {
-    final coordinate = '$latitude,$longitude';
+    final destination = [
+      name.trim(),
+      address.trim(),
+    ].where((part) => part.isNotEmpty).join(' ');
     return _tryLaunch(
       Uri.https('www.google.com', '/maps/dir/', {
         'api': '1',
-        'destination': coordinate,
+        'destination': destination.isEmpty
+            ? '$latitude,$longitude'
+            : destination,
       }),
     );
   }

@@ -855,13 +855,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   // 함수이름: _openPharmacyDirections
-  // 함수역할: 공유 약국의 이름과 좌표로 길찾기를 요청하고 실패를 안내한다.
+  // 함수역할: 공유 약국의 이름·주소·좌표로 길찾기를 요청하고 실패를 안내한다.
   // 매개변수:
   // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _openPharmacyDirections(ChatPharmacyContext pharmacy) async {
     final succeeded = await _pharmacyActionService.requestDirections(
       name: pharmacy.name,
+      address: pharmacy.address,
       latitude: pharmacy.latitude,
       longitude: pharmacy.longitude,
     );
