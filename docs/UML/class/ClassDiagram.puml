@@ -83,6 +83,8 @@ package "Flutter Frontend" {
         }
 
         class "CheckScheduleUI" as CheckScheduleUI <<UI: 오늘 복약 일정>> {
+            + selection(schedules, language, selectedMedicationIds): CheckScheduleUI
+            + isSelectionMode: bool
             + createState(): State
         }
 
@@ -191,6 +193,14 @@ package "Flutter Frontend" {
             + control: CheckCaregiverHome
             + patientLabel(link): String
             + onPatientRequested(link): void
+            + build(context): Widget
+        }
+
+        class "HomeMedicationPreview" as HomeMedicationPreview <<UI: 공통 홈 복약 미리보기>> {
+            + progress: double?
+            + scheduleTitle: String
+            + scheduleDescription: String
+            + action: Widget?
             + build(context): Widget
         }
 
@@ -497,7 +507,8 @@ package "Flutter Frontend" {
 
         class "PharmacyExternalActionService" as PharmacyExternalActionService <<Service: 약국 외부 동작 검증>> {
             + requestPhoneCall(telephone): Future<bool>
-            + requestDirections(name, latitude, longitude): Future<bool>
+            + requestDirections(name, address, latitude, longitude): Future<bool>
+            + requestGoogleMapDirections(name, address, latitude, longitude): Future<bool>
             + requestMapAttribution(): Future<bool>
         }
 
@@ -1532,6 +1543,8 @@ HomeScreen *-- CheckCaregiverHome
 HomeScreen ..> CaregiverHomeSummaryUI
 HomeScreen ..> CheckCaregiverMedicationUI : 활성 환자 상세
 CaregiverHomeSummaryUI --> CheckCaregiverHome
+InputPrescriptionUI ..> HomeMedicationPreview : 본인 일정 + 복용 처리
+CaregiverHomeSummaryUI ..> HomeMedicationPreview : 환자별 읽기 전용 요약
 CheckCaregiverHome ..> FCheckCaregiverMedication : 통합 현황 재사용
 CheckCaregiverHome ..> FCaregiverMonitoringSnapshot
 HomeScreen *-- MedBuddyBottomNavigationUI
@@ -1589,7 +1602,7 @@ CheckCaregiverMedicationUI ..> LinkedChatUI
 LinkedChatUI o-- FManageLinkedChat
 LinkedChatUI o-- LinkedChatRealtimeService
 LinkedChatUI o-- PharmacyExternalActionService
-LinkedChatUI ..> CheckScheduleUI : 일정형 약 선택 화면 재사용
+LinkedChatUI ..> CheckScheduleUI : 개별·전체 선택 후 첨부 목록 반환\n복용 기록 변경 없음
 LinkedChatUI ..> CheckMedicationDetailUI : 권한 검증 후 상세 열기
 CheckCaregiverMedicationUI ..> ManageCaregiverPatientLocalState
 ManageUserSettingUI --> FAuthenticationControl

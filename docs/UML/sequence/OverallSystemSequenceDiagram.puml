@@ -846,8 +846,12 @@ opt 정보창 닫기
     UI -> UI : 선택 해제, 지도 탐색 위치 유지
 end
 User -> UI : 전화 또는 길찾기 선택
-UI -> FrontService : 검증된 전화번호 또는 약국명·좌표 전달
-FrontService -> ExternalApp : 운영체제 앱 열기
+UI -> UI : 길찾기 선택은 한 번만 처리\n선택 창 종료 후 약국 화면 유지
+UI -> FrontService : 검증된 전화번호 또는 약국명·주소·좌표 전달
+FrontService -> ExternalApp : 전화 또는 지도 앱 열기\nGoogle 목적지는 이름+주소 (없으면 좌표)
+opt 외부 앱에서 MedBuddy로 복귀
+    ExternalApp --> UI : 기존 약국 목록 또는 지도 정보창 유지
+end
 opt 사용자가 연동 채팅에 약국 공유
     UI -> ApiClient : pharmacyId와 공유 유형 전송
     ApiClient -> Router : 구조화 채팅 전송
@@ -877,9 +881,16 @@ Router -> BackControl : 연결 참가자 권한 재검증
 BackControl --> FrontService : WebSocket 연결 승인
 
 opt 메시지에 약 문맥 첨부
-    User -> UI : 오늘 일정형 화면에서 환자의 활성 복용 약 여러 개 선택
-    UI -> FrontControl : selectMedicationContexts(medicationIds)
-    FrontControl --> UI : 선택 약 목록과 개별 해제 상태
+    User -> UI : 대화할 약 선택 화면 열기
+    UI -> UI : 기존 첨부 ID로 임시 선택 초기화
+    User -> UI : 개별 선택 또는 전체 선택·해제
+    UI -> UI : 유효 ID별 중복 제거\n선택 개수·전체·일부 선택 표시
+    alt 선택 완료
+        UI -> UI : 선택 목록을 채팅 작성 화면에 반영
+    else 뒤로가기 또는 취소
+        UI -> UI : 기존 채팅 첨부 유지
+    end
+    note right of UI : 복용 기록 변경·메시지 전송 없음\n실제 전송 시 서버 검증 유지
 end
 opt 시간대 확인 요청, 약 부족·불편 또는 약국 공유
     User -> UI : 구조화 동작 선택
