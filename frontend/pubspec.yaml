@@ -24,7 +24,7 @@ dependencies:
   provider: ^6.1.2
   shared_preferences: ^2.3.3
   timezone: ^0.11.1
-  workmanager: ^0.10.9
+  workmanager: ^0.10.10
 
 dev_dependencies:
   flutter_test:
