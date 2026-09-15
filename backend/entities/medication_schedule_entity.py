@@ -1,5 +1,5 @@
-# 파일명: medication_schedule_entity.py
-# 역할: OCR 복약 일정과 사용자 확인 시간대를 표현하는 엔티티를 정의한다.
+# File Name: medication_schedule_entity.py
+# Role: Defines OCR and saved-medication schedules with ordered dose-slot normalization and compatibility aliases.
 
 import json
 from datetime import date
@@ -12,10 +12,9 @@ DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY = MEDICATION_SCHEDULE_SLOT_KEYS[0]
 
 # Function Name: medication_schedule_slot_keys_for_frequency
 # Description:
-# - Maps a daily medication frequency count to the schedule slots used by
-#   MedicationSchedule, MedicationAlarm, and MedicationCompletion.
+# - Maps a daily medication frequency count to the schedule slots used by MedicationSchedule, MedicationAlarm, and MedicationCompletion.
 # Parameters:
-# - frequency_count: Parsed daily medication frequency count.
+# - frequency_count (int): Parsed daily medication frequency count.
 # Returns:
 # - Ordered list of schedule slot keys.
 def medication_schedule_slot_keys_for_frequency(frequency_count: int) -> list[str]:
@@ -31,11 +30,11 @@ def medication_schedule_slot_keys_for_frequency(frequency_count: int) -> list[st
     return [DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY]
 
 
-# 함수명: normalize_medication_schedule_slot_keys
-# 역할:
+# 함수이름: normalize_medication_schedule_slot_keys
+# 함수역할:
 # - 외부 입력의 복약 시간대 키를 지원 순서에 맞는 중복 없는 목록으로 정규화한다.
 # 매개변수:
-# - values: 문자열 시간대 키 목록
+# - values (object): 문자열 시간대 키 목록
 # 반환값:
 # - morning, lunch, evening, bedtime 순서의 유효한 시간대 목록
 def normalize_medication_schedule_slot_keys(
@@ -55,9 +54,13 @@ def normalize_medication_schedule_slot_keys(
     ]
 
 
-# 함수명: decode_medication_schedule_slot_keys
-# 역할:
-# - DB에 JSON 문자열로 저장된 사용자 확인 복약 시간대를 안전하게 읽는다.
+# 함수이름: decode_medication_schedule_slot_keys
+# 함수역할:
+# - DB의 JSON 시간대 목록을 읽고 지원 순서로 정리한다.
+# 매개변수:
+# - raw_value (str | None): 저장된 사용자 확인 복용 시간대 JSON 표현.
+# 반환값:
+# - 유효한 시간대 목록; 잘못된 JSON이나 비목록 값은 빈 목록.
 def decode_medication_schedule_slot_keys(raw_value: str | None) -> list[str]:
     try:
         decoded = json.loads(raw_value or "[]")
@@ -66,9 +69,13 @@ def decode_medication_schedule_slot_keys(raw_value: str | None) -> list[str]:
     return normalize_medication_schedule_slot_keys(decoded)
 
 
-# 함수명: encode_medication_schedule_slot_keys
-# 역할:
-# - 사용자 확인 복약 시간대 목록을 DB 저장용 JSON 문자열로 변환한다.
+# 함수이름: encode_medication_schedule_slot_keys
+# 함수역할:
+# - 사용자 확인 시간대를 정규화해 공백 없는 JSON 목록으로 저장한다.
+# 매개변수:
+# - values (object): 정규화할 사용자 확인 시간대 목록 입력.
+# 반환값:
+# - 순서와 중복이 정리된 시간대 JSON 문자열.
 def encode_medication_schedule_slot_keys(values: object) -> str:
     return json.dumps(
         normalize_medication_schedule_slot_keys(values),
@@ -77,23 +84,24 @@ def encode_medication_schedule_slot_keys(values: object) -> str:
     )
 
 
-# Class Name: MedicationSchedule
-# Role: Represents one medication schedule or one extracted medication candidate.
-# Responsibilities:
-#   - Carry medication schedule fields defined in the class diagram.
-#   - Validate and serialize schedule data crossing the control/API boundary.
-# Attributes:
-#   - masked_prescription_text: Masked prescription text.
-#   - created_date: Date when the medication schedule was created.
-#   - medication_id: Medication identifier.
-#   - medication_name: Medication name.
-#   - dosage: Dose per administration.
-#   - intake_time: Intake frequency or time label.
-#   - medcation_status: Medication completion status. The misspelling follows the diagram.
-#   - patient_id: Patient identifier.
-#   - medication_time: Total medication duration or time count.
-#   - slot_statuses: Completion state keyed by time slot for today's schedule.
-#   - completed_slot_keys: Completed time-slot keys for client compatibility.
+# 클래스명: MedicationSchedule
+# 역할:
+# - OCR 복약 후보와 환자별 일정을 표현하고 API 별칭·시간대별 완료 상태를 직렬화한다.
+# 주요 책임:
+# - 기존 UML·API 필드 별칭을 수용하고 전체 완료 상태와 사용자 확인·완료 시간대 목록을 함께 전달한다.
+# 속성:
+# - masked_prescription_text (str): 개인정보가 제거된 처방전 텍스트.
+# - created_date (date | None): 일정 또는 복약 스냅샷의 생성 날짜.
+# - medication_id (str): OCR 후보 또는 저장된 복약 일정의 약품 식별자.
+# - medication_name (str): 약품 표시 이름.
+# - dosage (str): 한 번에 복용할 용량.
+# - intake_time (str): 일일 복용 횟수 또는 시간 설명.
+# - medcation_status (bool): 전체 복용 완료 상태; 철자는 UML 계약을 따른다.
+# - patient_id (str): 일정에 포함된 환자 식별자.
+# - medication_time (str): 전체 복용 기간 또는 횟수 정보.
+# - slot_statuses (dict[str, bool]): 복용 시간대별 완료 여부.
+# - completed_slot_keys (list[str]): 이미 완료한 복용 시간대 목록.
+# - schedule_slot_keys (list[str]): 사용자가 확인한 morning, lunch, evening, bedtime 복용 시간대 목록.
 class MedicationSchedule(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 

@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import '../entities/prescription_camera_guide_entity.dart';
 
@@ -20,17 +21,24 @@ class PrescriptionFrameAnalyzer {
   static const double _minimumDocumentCoverage = 0.18;
   static const double _maximumDocumentCoverage = 0.82;
 
+  // 함수이름: PrescriptionFrameAnalyzer
+  // 함수역할: 저해상도 밝기 격자로 문서 점유율을 판정하는 무상태 프레임 분석기를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - PrescriptionFrameAnalyzer: 초기화된 인스턴스.
   const PrescriptionFrameAnalyzer();
 
   // 함수이름: analyze
-  // 함수역할:
-  // - 카메라 밝기 평면에서 가장 큰 밝은 문서 후보를 찾고 촬영 거리를 판정한다.
+  // 함수역할: 카메라 밝기 평면에서 가장 큰 밝은 문서 후보를 찾고 촬영 거리를 판정한다.
   // 매개변수:
-  // - luminanceBytes: 카메라 프레임의 밝기 평면 바이트
-  // - width: 원본 프레임 너비
-  // - height: 원본 프레임 높이
-  // - bytesPerRow: 원본 프레임 한 행의 바이트 수
-  // - bytesPerPixel: 밝기 픽셀 하나가 차지하는 바이트 수
+  // - luminanceBytes (Uint8List): 카메라 프레임의 밝기 평면 바이트
+  // - width (int): 원본 프레임 너비
+  // - height (int): 원본 프레임 높이
+  // - bytesPerRow (int): 원본 프레임 한 행의 바이트 수
+  // - bytesPerPixel (int): 밝기 픽셀 하나가 차지하는 바이트 수
+  // - normalizedRegion (Rect): 원본 또는 표시 이미지의 0~1 정규화 처리 영역
+  // - rotationDegrees (int): 표시 프레임과 원본 센서의 회전 차이(도)
   // 반환값:
   // - 문서 점유율과 거리 상태가 포함된 촬영 가이드 결과
   PrescriptionCameraGuideResult analyze({
@@ -39,6 +47,8 @@ class PrescriptionFrameAnalyzer {
     required int height,
     required int bytesPerRow,
     required int bytesPerPixel,
+    Rect normalizedRegion = const Rect.fromLTWH(0, 0, 1, 1),
+    int rotationDegrees = 0,
   }) {
     if (luminanceBytes.isEmpty ||
         width <= 0 ||
@@ -54,6 +64,8 @@ class PrescriptionFrameAnalyzer {
       height: height,
       bytesPerRow: bytesPerRow,
       bytesPerPixel: bytesPerPixel,
+      normalizedRegion: normalizedRegion,
+      rotationDegrees: rotationDegrees,
     );
     final range = _readLuminanceRange(sample);
     if (range.maximum - range.minimum < 24) {
@@ -67,14 +79,22 @@ class PrescriptionFrameAnalyzer {
     }
 
     final documentCoverage = candidate.boundingBoxCoverage;
-    if (documentCoverage < _minimumDocumentCoverage) {
+    final analyzesGuideRegion =
+        normalizedRegion.width < 0.99 || normalizedRegion.height < 0.99;
+    final minimumCoverage = analyzesGuideRegion
+        ? 0.24
+        : _minimumDocumentCoverage;
+    if (documentCoverage < minimumCoverage) {
       return PrescriptionCameraGuideResult(
         status: PrescriptionCameraGuideStatus.tooFar,
         documentCoverage: documentCoverage,
       );
     }
-    if (documentCoverage > _maximumDocumentCoverage ||
-        candidate.touchedEdgeCount >= 3) {
+    final isTooClose = analyzesGuideRegion
+        ? documentCoverage > 0.995 && candidate.pixelCoverage > 0.94
+        : documentCoverage > _maximumDocumentCoverage ||
+              candidate.touchedEdgeCount >= 3;
+    if (isTooClose) {
       return PrescriptionCameraGuideResult(
         status: PrescriptionCameraGuideStatus.tooClose,
         documentCoverage: documentCoverage,
@@ -87,18 +107,49 @@ class PrescriptionFrameAnalyzer {
     );
   }
 
+  // 함수이름: _createLuminanceSample
+  // 함수역할: 가이드 영역의 표시 좌표를 센서 회전과 행·픽셀 stride에 맞게 원본 위치로 바꾸어 48×64 밝기 샘플을 추출한다.
+  // 매개변수:
+  // - luminanceBytes (Uint8List): 원본 카메라 프레임의 밝기 평면 바이트
+  // - width (int): 원본 이미지의 너비(픽셀)
+  // - height (int): 원본 이미지의 높이(픽셀)
+  // - bytesPerRow (int): 원본 밝기 평면의 행 간 바이트 간격
+  // - bytesPerPixel (int): 원본 밝기 평면의 픽셀 간 바이트 간격
+  // - normalizedRegion (Rect): 원본 또는 표시 이미지의 0~1 정규화 처리 영역
+  // - rotationDegrees (int): 표시 프레임과 원본 센서의 회전 차이(도)
+  // 반환값:
+  // - Uint8List: 가이드 영역의 표시 좌표를 센서 회전과 행·픽셀 stride에 맞게 원본 위치로 바꾸어 48×64 밝기 샘플을 추출한다.
   Uint8List _createLuminanceSample({
     required Uint8List luminanceBytes,
     required int width,
     required int height,
     required int bytesPerRow,
     required int bytesPerPixel,
+    required Rect normalizedRegion,
+    required int rotationDegrees,
   }) {
     final sample = Uint8List(_sampleWidth * _sampleHeight);
     for (var sampleY = 0; sampleY < _sampleHeight; sampleY += 1) {
-      final sourceY = sampleY * (height - 1) ~/ (_sampleHeight - 1);
+      final normalizedY =
+          normalizedRegion.top +
+          normalizedRegion.height * sampleY / (_sampleHeight - 1);
       for (var sampleX = 0; sampleX < _sampleWidth; sampleX += 1) {
-        final sourceX = sampleX * (width - 1) ~/ (_sampleWidth - 1);
+        final normalizedX =
+            normalizedRegion.left +
+            normalizedRegion.width * sampleX / (_sampleWidth - 1);
+        final rawPosition = _mapDisplayedPointToRawFrame(
+          normalizedX,
+          normalizedY,
+          rotationDegrees,
+        );
+        final sourceX = (rawPosition.dx * (width - 1)).round().clamp(
+          0,
+          width - 1,
+        );
+        final sourceY = (rawPosition.dy * (height - 1)).round().clamp(
+          0,
+          height - 1,
+        );
         final sourceIndex = sourceY * bytesPerRow + sourceX * bytesPerPixel;
         if (sourceIndex < luminanceBytes.length) {
           sample[sampleY * _sampleWidth + sampleX] =
@@ -109,6 +160,33 @@ class PrescriptionFrameAnalyzer {
     return sample;
   }
 
+  // 함수이름: _mapDisplayedPointToRawFrame
+  // 함수역할: 표시 좌표를 90·180·270도 회전에 대응하는 원본 정규화 좌표로 역변환한다.
+  // 매개변수:
+  // - displayedX (double): 화면에서의 정규화된 점 좌표
+  // - displayedY (double): 화면에서의 정규화된 점 좌표
+  // - rotationDegrees (int): 표시 프레임과 원본 센서의 회전 차이(도)
+  // 반환값:
+  // - Offset: 표시 좌표를 90·180·270도 회전에 대응하는 원본 정규화 좌표로 역변환한다.
+  Offset _mapDisplayedPointToRawFrame(
+    double displayedX,
+    double displayedY,
+    int rotationDegrees,
+  ) {
+    return switch (rotationDegrees % 360) {
+      90 => Offset(displayedY, 1 - displayedX),
+      180 => Offset(1 - displayedX, 1 - displayedY),
+      270 => Offset(1 - displayedY, displayedX),
+      _ => Offset(displayedX, displayedY),
+    };
+  }
+
+  // 함수이름: _readLuminanceRange
+  // 함수역할: 샘플의 최소·최대 밝기를 찾아 문서 구분에 필요한 명암 차이를 판단할 자료를 만든다.
+  // 매개변수:
+  // - sample (Uint8List): 48×64 격자로 축소한 밝기 샘플
+  // 반환값:
+  // - _LuminanceRange: 샘플의 최소·최대 밝기를 찾아 문서 구분에 필요한 명암 차이를 판단할 자료를 만든다.
   _LuminanceRange _readLuminanceRange(Uint8List sample) {
     var minimum = 255;
     var maximum = 0;
@@ -123,6 +201,12 @@ class PrescriptionFrameAnalyzer {
     return _LuminanceRange(minimum: minimum, maximum: maximum);
   }
 
+  // 함수이름: _calculateOtsuThreshold
+  // 함수역할: 밝기 히스토그램의 클래스 간 분산이 최대인 Otsu 임계값을 구하고 90~220 범위로 제한한다.
+  // 매개변수:
+  // - sample (Uint8List): 48×64 격자로 축소한 밝기 샘플
+  // 반환값:
+  // - int: 밝기 히스토그램의 클래스 간 분산이 최대인 Otsu 임계값을 구하고 90~220 범위로 제한한다.
   int _calculateOtsuThreshold(Uint8List sample) {
     final histogram = List<int>.filled(256, 0);
     for (final value in sample) {
@@ -163,6 +247,13 @@ class PrescriptionFrameAnalyzer {
     return threshold.clamp(90, 220);
   }
 
+  // 함수이름: _findLargestBrightRegion
+  // 함수역할: 임계값보다 밝은 미방문 픽셀에서 연결 영역을 수집하고 픽셀 수가 가장 큰 문서 후보를 선택한다.
+  // 매개변수:
+  // - sample (Uint8List): 48×64 격자로 축소한 밝기 샘플
+  // - threshold (int): 밝은 문서 픽셀을 구분할 밝기 임계값
+  // 반환값:
+  // - _BrightRegion?: 임계값보다 밝은 미방문 픽셀에서 연결 영역을 수집하고 픽셀 수가 가장 큰 문서 후보를 선택한다.
   _BrightRegion? _findLargestBrightRegion(Uint8List sample, int threshold) {
     final visited = Uint8List(sample.length);
     _BrightRegion? largestRegion;
@@ -185,6 +276,15 @@ class PrescriptionFrameAnalyzer {
     return largestRegion;
   }
 
+  // 함수이름: _collectBrightRegion
+  // 함수역할: 상하좌우 연결 픽셀을 너비 우선으로 방문하며 픽셀 수와 경계 상자를 집계한다.
+  // 매개변수:
+  // - sample (Uint8List): 48×64 격자로 축소한 밝기 샘플
+  // - visited (Uint8List): 연결 영역 탐색의 방문 여부 배열
+  // - startIndex (int): 연결 영역 탐색을 시작할 샘플 인덱스
+  // - threshold (int): 밝은 문서 픽셀을 구분할 밝기 임계값
+  // 반환값:
+  // - _BrightRegion: 상하좌우 연결 픽셀을 너비 우선으로 방문하며 픽셀 수와 경계 상자를 집계한다.
   _BrightRegion _collectBrightRegion({
     required Uint8List sample,
     required Uint8List visited,
@@ -252,6 +352,17 @@ class PrescriptionFrameAnalyzer {
     );
   }
 
+  // 함수이름: _visitNeighbor
+  // 함수역할: 샘플 경계 안의 미방문 밝은 이웃만 방문 표시 후 탐색 큐에 추가한다.
+  // 매개변수:
+  // - sample (Uint8List): 48×64 격자로 축소한 밝기 샘플
+  // - visited (Uint8List): 연결 영역 탐색의 방문 여부 배열
+  // - pendingIndexes (Queue<int>): 밝은 연결 영역 탐색 대기 인덱스 큐
+  // - x (int): 방문할 이웃의 샘플 격자 좌표
+  // - y (int): 방문할 이웃의 샘플 격자 좌표
+  // - threshold (int): 밝은 문서 픽셀을 구분할 밝기 임계값
+  // 반환값:
+  // - 없음.
   void _visitNeighbor({
     required Uint8List sample,
     required Uint8List visited,
@@ -272,13 +383,37 @@ class PrescriptionFrameAnalyzer {
   }
 }
 
+// 클래스명: _LuminanceRange
+// 역할: 밝기 샘플의 최솟값과 최댓값을 함께 보관한다.
+// 주요 책임:
+// - 명암 차이가 부족한 프레임을 문서 탐색에서 제외할 기준을 제공한다.
+// 속성:
+// - minimum (int): 샘플의 최대·최소 밝기
+// - maximum (int): 샘플의 최대·최소 밝기
 class _LuminanceRange {
   final int minimum;
   final int maximum;
 
+  // 함수이름: _LuminanceRange
+  // 함수역할: 프레임 샘플의 최소·최대 밝기를 명암 범위로 묶는다.
+  // 매개변수:
+  // - minimum (int): 샘플의 최대·최소 밝기
+  // - maximum (int): 샘플의 최대·최소 밝기
+  // 반환값:
+  // - _LuminanceRange: 초기화된 인스턴스.
   const _LuminanceRange({required this.minimum, required this.maximum});
 }
 
+// 클래스명: _BrightRegion
+// 역할: 문서 후보의 연결 픽셀 수와 샘플 좌표 경계를 보관한다.
+// 주요 책임:
+// - 픽셀·경계 상자 점유율과 닿은 화면 가장자리 수를 거리 판정에 제공한다.
+// 속성:
+// - pixelCount (int): 연결된 밝은 픽셀의 개수
+// - minimumX (int): 밝은 연결 영역의 샘플 격자 경계
+// - maximumX (int): 밝은 연결 영역의 샘플 격자 경계
+// - minimumY (int): 밝은 연결 영역의 샘플 격자 경계
+// - maximumY (int): 밝은 연결 영역의 샘플 격자 경계
 class _BrightRegion {
   final int pixelCount;
   final int minimumX;
@@ -286,6 +421,16 @@ class _BrightRegion {
   final int minimumY;
   final int maximumY;
 
+  // 함수이름: _BrightRegion
+  // 함수역할: 연결된 밝은 픽셀 수와 최소·최대 x·y 경계를 문서 후보 통계로 묶는다.
+  // 매개변수:
+  // - pixelCount (int): 연결된 밝은 픽셀의 개수
+  // - minimumX (int): 밝은 연결 영역의 샘플 격자 경계
+  // - maximumX (int): 밝은 연결 영역의 샘플 격자 경계
+  // - minimumY (int): 밝은 연결 영역의 샘플 격자 경계
+  // - maximumY (int): 밝은 연결 영역의 샘플 격자 경계
+  // 반환값:
+  // - _BrightRegion: 초기화된 인스턴스.
   const _BrightRegion({
     required this.pixelCount,
     required this.minimumX,
@@ -294,11 +439,23 @@ class _BrightRegion {
     required this.maximumY,
   });
 
+  // 함수이름: pixelCoverage
+  // 함수역할: 전체 48×64 샘플 중 후보의 밝은 연결 픽셀이 차지하는 비율을 계산한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - double: 전체 48×64 샘플 중 후보의 밝은 연결 픽셀이 차지하는 비율을 계산한다.
   double get pixelCoverage =>
       pixelCount /
       (PrescriptionFrameAnalyzer._sampleWidth *
           PrescriptionFrameAnalyzer._sampleHeight);
 
+  // 함수이름: boundingBoxCoverage
+  // 함수역할: 후보의 양 끝 픽셀을 포함한 경계 상자 면적을 전체 샘플 면적으로 나눈 점유율을 계산한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - double: 후보의 양 끝 픽셀을 포함한 경계 상자 면적을 전체 샘플 면적으로 나눈 점유율을 계산한다.
   double get boundingBoxCoverage {
     final width = maximumX - minimumX + 1;
     final height = maximumY - minimumY + 1;
@@ -308,6 +465,12 @@ class _BrightRegion {
             PrescriptionFrameAnalyzer._sampleHeight);
   }
 
+  // 함수이름: touchedEdgeCount
+  // 함수역할: 후보 경계가 샘플의 왼쪽·오른쪽·위쪽·아래쪽 중 몇 가장자리에 닿는지 계산한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - int: 후보 경계가 샘플의 왼쪽·오른쪽·위쪽·아래쪽 중 몇 가장자리에 닿는지 계산한다.
   int get touchedEdgeCount {
     var count = 0;
     if (minimumX == 0) {

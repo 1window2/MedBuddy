@@ -1,5 +1,6 @@
 # File Name: test_request_voice_guide_control.py
-# Role: Verifies medication voice guide text generation.
+# Role: Regression coverage for localized voice-guide content, field ordering, and unsupported
+#   languages.
 
 import sys
 import unittest
@@ -15,10 +16,35 @@ from controls.request_voice_guide_control import RequestVoiceGuide  # noqa: E402
 from entities.medication_detail_entity import MedicationDetail  # noqa: E402
 
 
+# Class Name: RequestVoiceGuideTest
+# Role: Voice-guide tests verifying concise Korean/English narration from medication details.
+# Responsibilities:
+# - Orders Korean medication, usage, and warning labels while excluding efficacy and
+#   dose-schedule fields from narration.
+# - Orders English Medication, How to take, and Warning sections without efficacy or
+#   additional-guide content.
+# - Rejects unsupported voice-guide languages with HTTP 400.
+# Attributes:
+# - control (RequestVoiceGuide): Use-case control under test, isolated from production state.
 class RequestVoiceGuideTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates a voice-guide control for each localization case.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.control = RequestVoiceGuide()
 
+    # Function Name: test_request_voice_guide_returns_korean_labeled_text
+    # Description:
+    # - Orders Korean medication, usage, and warning labels while excluding efficacy and
+    #   dose-schedule fields from narration.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_request_voice_guide_returns_korean_labeled_text(self) -> None:
         medication_detail = MedicationDetail(
             item_name="Test tablet",
@@ -44,6 +70,14 @@ class RequestVoiceGuideTest(unittest.TestCase):
         self.assertLess(text.index("약 이름"), text.index("복용 방법"))
         self.assertLess(text.index("복용 방법"), text.index("주의사항"))
 
+    # Function Name: test_request_voice_guide_returns_english_labeled_text
+    # Description:
+    # - Orders English Medication, How to take, and Warning sections without efficacy or
+    #   additional-guide content.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_request_voice_guide_returns_english_labeled_text(self) -> None:
         medication_detail = MedicationDetail(
             item_name="Test tablet",
@@ -65,6 +99,13 @@ class RequestVoiceGuideTest(unittest.TestCase):
         self.assertLess(text.index("Medication"), text.index("How to take"))
         self.assertLess(text.index("How to take"), text.index("Warning"))
 
+    # Function Name: test_invalid_language_is_rejected
+    # Description:
+    # - Rejects unsupported voice-guide languages with HTTP 400.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_invalid_language_is_rejected(self) -> None:
         medication_detail = MedicationDetail(
             item_name="Test tablet",

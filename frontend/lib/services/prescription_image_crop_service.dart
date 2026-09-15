@@ -7,13 +7,26 @@ import 'package:image/image.dart' as image_library;
 // 파일명: prescription_image_crop_service.dart
 // 역할: 촬영한 원본 사진에서 화면 가이드 안쪽만 남긴 OCR 입력 이미지를 만든다.
 
-// 클래스명: PrescriptionImageCropService
-// 역할: EXIF 방향을 반영한 뒤 정규화된 가이드 좌표로 이미지를 안전하게 자른다.
+// Class Name: PrescriptionImageCropService
+// Role: Produces OCR input by cropping the captured image to the displayed prescription guide.
+// Responsibilities:
+// - Apply EXIF orientation, clamp crop coordinates, write the derived JPEG, and attempt cleanup of raw captures and failed partial outputs.
 class PrescriptionImageCropService {
+  // 함수이름: PrescriptionImageCropService
+  // 함수역할: 촬영 파일의 방향 보정·가이드 자르기 및 원본 정리를 수행할 무상태 서비스를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - PrescriptionImageCropService: 초기화된 인스턴스.
   const PrescriptionImageCropService();
 
-  // 함수명: cropToGuide
-  // 역할: 촬영 원본을 올바른 방향으로 회전한 뒤 가이드 영역만 JPEG로 저장한다.
+  // Function Name: cropToGuide
+  // Description: Applies EXIF orientation and writes the bounded guide crop as JPEG. Always attempts raw-capture cleanup and attempts to remove the derived output if processing or raw cleanup fails.
+  // Parameters:
+  // - sourceImage (XFile): App-owned raw capture to crop to the guide.
+  // - normalizedGuideRect (Rect): Normalized zero-to-one crop region of the orientation-corrected image consumed by this service.
+  // Returns:
+  // - Future<XFile>: the derived guide JPEG after successful raw-capture cleanup; processing and nonsuppressed cleanup errors propagate.
   Future<XFile> cropToGuide({
     required XFile sourceImage,
     required Rect normalizedGuideRect,
@@ -65,10 +78,13 @@ class PrescriptionImageCropService {
     return XFile(croppedFile.path);
   }
 
-  // 함수명: _deleteIfPresent
-  // 역할:
-  // - 촬영 원본 또는 실패 중 생성된 파생 파일을 존재할 때만 삭제한다.
-  // - 주 처리 오류를 보존해야 하는 롤백 경로에서는 삭제 오류를 선택적으로 무시한다.
+  // Function Name: _deleteIfPresent
+  // Description: Deletes a capture or partial output only when present, optionally suppressing cleanup errors so the original processing failure is preserved.
+  // Parameters:
+  // - file (File?): Capture or derived file to remove when present.
+  // - ignoreErrors (bool): Whether cleanup errors should be suppressed to preserve the original failure.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> _deleteIfPresent(File? file, {bool ignoreErrors = false}) async {
     if (file == null) {
       return;
@@ -84,6 +100,14 @@ class PrescriptionImageCropService {
     }
   }
 
+  // 함수이름: _pixelCropRect
+  // 함수역할: 정규화 경계를 0~1로 제한하고 바깥쪽으로 픽셀 반올림해 이미지 내부의 최소 1픽셀 자르기 영역을 만든다.
+  // 매개변수:
+  // - normalizedRect (Rect): 방향 보정된 이미지에서 자를 영역의 0~1 정규화 좌표
+  // - width (int): 원본 이미지의 너비(픽셀)
+  // - height (int): 원본 이미지의 높이(픽셀)
+  // 반환값:
+  // - Rect: 이미지 픽셀 경계 안에 제한된 자르기 사각형으로, 너비와 높이가 각각 최소 1픽셀이다.
   Rect _pixelCropRect(Rect normalizedRect, int width, int height) {
     final safeRect = Rect.fromLTRB(
       normalizedRect.left.clamp(0.0, 1.0),

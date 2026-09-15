@@ -2,65 +2,104 @@
 
 ## Status
 
-- Scope frozen: 2026-07-20
-- Release-preparation review: 2026-08-27
-- Stable baseline: `v0.1.0-beta`
-- Active maintenance branch: `beta/v0.1.1`
-- Target release tag: `v0.1.1-beta`
+- Scope review: 2026-09-01
+- Stable functional baseline: `v0.1.1-beta`
+- Active development branch: `beta/v0.2.0`
+- Target release tag: `v0.2.0-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
 
-This document is the release boundary for the v0.1.1 maintenance beta. New
-feature ideas do not enter this branch unless they close a safety, security,
-data-integrity, accessibility, or release-operability gap.
-
-Automated source verification continues while no Android physical device is
-available. Physical-device and two-device checklist items remain unchecked and
-are explicitly deferred; they are not represented as passed. This accepted
-deferral does not block code preparation, merge review, or the v0.1.1
-publication decision, but it remains a recorded release risk until the device
-pass is completed.
+This document is the release boundary for the v0.2.0 Android beta. Features
+outside the list below do not enter the release without an explicit scope
+review covering safety, privacy, data integrity, and release operability.
 
 ## Functional Scope Included
 
-The following implemented flows are frozen for beta hardening:
+The following implemented flows are in v0.2.0 verification:
 
 1. Prescription and pill-envelope image input, on-device Korean OCR,
    best-effort privacy filtering, bounded medication-name correction, OCR
-   result editing and manual recovery of omitted medication rows,
+   result editing, adaptive portrait/landscape camera guidance, app-owned image
+   cropping, OCR-row editing and manual recovery of omitted medications,
    prescription-date and schedule-slot confirmation, row-preserving
    medication detail lookup, partial-failure review and unresolved-row retry,
-   actionable technical-failure recovery, and saved-medication creation with
+   actionable technical-failure recovery, schedule review for start date,
+   duration, frequency, dose and slots, and saved-medication creation with
    post-save navigation.
-2. Saved-medication listing, detail guidance, image enrichment, deletion, and
-   medication-course retention, with active/completed filtering and
-   registration- or medication-date sorting in either direction.
-3. Today's schedule generation, per-slot completion, progress display, local
-   medication reminders, notification-to-schedule navigation, next-dose home
-   summaries, completion undo, and reminder setup or cancellation feedback.
+2. Saved-medication listing, detail guidance, image enrichment, shared
+   full-screen image inspection, deletion, and medication-course retention,
+   with active/completed filtering and registration- or medication-date
+   sorting in either direction.
+3. Today's schedule generation, per-medication completion and atomic whole-slot
+   check/uncheck, progress display, local medication reminders,
+   notification-to-schedule navigation, next-dose home summaries, tappable
+   medication-image inspection, completion undo, and reminder setup or
+   cancellation feedback.
 4. Medication voice guidance in the order medication name, administration
    method, and cautions.
-5. User display, language, and reading-speed settings.
+5. User notification, display, language, and reading-speed
+   settings, including independent medication/caregiver/chat notification
+   switches, Android notification settings access, defaults for newly created
+   schedule slots, lock-screen detail policy, device/Korean/English language,
+   12/24-hour time display, immediate preview, in-place saving, and a fixed back
+   control that remains available while settings content scrolls.
 6. Patient-caregiver code linking, linked-patient per-slot schedule views,
    unlinking, per-slot caregiver notification preferences, Firebase
-   dose-completion delivery, and background missed-deadline checks.
+   dose-completion delivery, and idempotent server-scheduled missed-deadline
+   delivery with a local/demo Android fallback.
 7. Patient-scoped health recommendations.
-8. Experimental loose-pill candidate identification with explicit user
-   confirmation and no automatic medication save.
+8. Default single- and multi-pill candidate identification with explicit user
+   confirmation, up to ten separately photographed pills, bounded two-request
+   concurrency, bounded request-limit retry that preserves completed results,
+   per-pill partial failure, and schedule review before save. One-photo detection
+   supports tie-aware candidate expansion, per-pill original-region reanalysis,
+   user-paired back photos, and explicit uncertainty instead of probability-like
+   percentages. See [pill identification review](MedBuddy%20-%20Pill%20Identification%20Review.md).
+9. Direct medication entry with optional app-owned local image, dose and unit,
+   start/end dates, and schedule slots using the shared saved-medication model.
+10. Nearby-pharmacy lookup using foreground location, backend-held
+    public-data credentials, one explained filter selector, an attributed in-app
+    Naver Map view with named markers and synchronized card/marker selection.
+    Selection opens a content-sized, collapsible detail sheet while retaining
+    map exploration and the list switch; overlapping names are decluttered at
+    wider zoom levels. It also includes device-scoped
+    favorites, closing-soon and next-opening status, source-freshness metadata,
+    refresh cooldown, validated phone launch, user-selected installed-map or
+    Google directions, address-copy fallback, and authorized pharmacy sharing
+    into linked chat.
+11. Linked medication chat for active patient-caregiver links, with
+    active-medication multi-selection through a schedule-style
+    medication picker, individually removable medication contexts,
+    authorized medication-detail navigation, authenticated REST history,
+    WebSocket updates, idempotent retries, read state, bounded recipient
+    notification previews, server-verified schedule-slot cards, caregiver check
+    requests, automatic slot-completion events, medication shortage/discomfort
+    context, pharmacy snapshots, participant-specific quick replies, and patient
+    navigation from a schedule card to the matching slot in today's schedule.
+
+다중 알약 식별·근처 약국·채팅은 별도 실험실 설정 없이 제공하며, 환경설정에서
+실험실 메뉴를 제거한다. 채팅 탭은 활성 연동이 있을 때만 표시한다. 구형 실험실
+저장값은 무시하되 글씨 크기·언어·알림 등 기존 사용자 설정은 유지한다.
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-08-27: P0 controls and release configuration
+Implementation status as of 2026-09-09: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
 token management, dose-completion push delivery, persisted per-slot caregiver
 settings, and tested recovery and feedback paths for the medication workflow.
+The v0.2.0 source also includes direct medication entry, bounded multi-pill
+identification, schedule review, guided-camera cropping, backend-mediated
+nearby-pharmacy lookup, structured medication-context chat, and idempotent
+adoption of compatible pre-existing pharmacy tables. The two new
+network features remain disabled by default through laboratory settings.
 The self-hosted FastAPI/PostgreSQL/Redis stack, public HTTPS ingress, protected
-host secrets, scheduled server-side missed-deadline delivery, signed
-physical-device testing, backup/restore, and operational abuse-control
-validation remain release gates. Historical Google Cloud workflows are disabled.
+host secrets, and scheduled server-side missed-deadline delivery are present in
+source. Deployment of the latest revision, signed physical-device testing,
+backup/restore, and operational abuse-control validation remain release gates.
+Historical Google Cloud workflows are disabled.
 
 ### P0: Identity and Transport Security
 
@@ -80,7 +119,8 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   production database.
 - Define retention, deletion, consent, and incident-response behavior for
   de-identified prescription text, loose-pill images processed externally,
-  medication data, and push tokens.
+  optional manual-entry images, medication and chat data, transient location
+  queries, and push tokens.
 - Add structured, redacted operational logs, health checks, request tracing,
   timeout metrics, and error-rate monitoring.
 - Run Redis only on the private Compose network and verify that fail-closed
@@ -88,18 +128,33 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
 - Seed and validate the shared PostgreSQL medication and pill-reference catalog
   before routing traffic to a new API revision.
 - Verify backup and restore procedures before accepting real user data.
-- Complete scheduled server-side delivery for missed-deadline alerts and
-  validate dose-completion FCM delivery on two physical devices. Local Android
-  background checks remain a beta fallback, not proof of remote delivery.
+- Deploy and validate scheduled server-side missed-deadline alerts plus
+  dose-completion FCM delivery on two physical devices. Local Android
+  background checks are restricted to local/demo authentication mode and are
+  not proof of remote delivery.
+- Verify chat history retention, unread/read transitions, WebSocket reconnect,
+  idempotent send retries, revoked-link denial, structured-context server
+  reconstruction for every selected medication, one completion event per
+  link/date/slot, participant-specific quick replies, patient-only schedule-card
+  navigation, and notification routing to the requested schedule slot.
+- Verify that pharmacy coordinates are not persisted or logged and that public
+  data refresh limits are enforced at both frontend and backend boundaries.
+  Confirm that favorites remain device scoped and that external actions reject
+  malformed telephone, coordinate, and attribution values.
 
 ### P1: Release Verification
 
 - Run backend and Flutter unit/widget suites on every pull request. Automated
   frontend coverage includes compact viewports, large system text, semantic
   labels, app pause/resume, scroll reachability, network recovery, OCR-review
-  manual row recovery, partial medication-lookup recovery, post-save
-  navigation, saved-list filtering and sorting,
+  recovery, post-save navigation, saved-list filtering and sorting,
   dose-completion undo, and reminder result feedback.
+- Automated frontend coverage must also include manual-entry validation,
+  schedule review, multi-pill partial failure, camera-guide layout/cropping,
+  pharmacy permission, cooldown, favorite, freshness, and external-action
+  states; the explained pharmacy filter selector; linked-chat multi-medication
+  context, role-specific replies, schedule navigation, and lifecycle; laboratory
+  feature visibility; and health-recommendation bottom reachability.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.
@@ -109,9 +164,13 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   that automated widget tests cannot prove. Untested physical-device items
   remain release gates.
 - Add two-device Android smoke tests for link, schedule, reminder, and
-  caregiver flows.
+  caregiver flows, including linked medication chat and recipient notifications.
 - Validate prescription and loose-pill latency, timeout, offline, malformed
-  response, and external-service failure paths.
+  response, partial-failure, and external-service failure paths.
+- Validate nearby-pharmacy permission denial, disabled location service, empty
+  result, missing map configuration, map tile failure, card/marker selection
+  synchronization, favorites, freshness, attribution, holiday-hours disclaimer,
+  repeated refresh, call, directions, and chat-sharing paths.
 
 ## Explicitly Out of Scope
 
@@ -119,28 +178,31 @@ validation remain release gates. Historical Google Cloud workflows are disabled.
   notification behavior.
 - Automatic diagnosis or medication selection from a loose-pill image.
 - Replacing the current pill-attribute boundary with a new local vision model.
-- New health recommendation, pharmacy, commerce, or social features.
+- Embedded turn-by-turn navigation, pharmacy inventory guarantees, or automatic
+  claims that a pharmacy is open without user confirmation.
+- General-purpose social messaging, group chat, attachments, or unlinked chat;
+  v0.2.0 chat is limited to an active link and active medication context.
 - Any feature that bypasses the BCE control layer or introduces a second API
-  path around `api.router`.
+  path around the medication, pharmacy, or chat routers and shared dependencies.
 
 ## Beta Exit Criteria
 
-Except for the explicitly accepted physical-device deferral above, the v0.1.1
-maintenance beta may be published only when all of the following are true:
+The v0.2.0 beta may be published only when all of the following are true:
 
 - P0 identity, authorization, HTTPS, and signing requirements are complete.
 - Release configuration has no clear-text, demo-scope, debug-signing, or local
   host fallback.
 - Database migrations and rollback are tested from a clean database and from
-  the latest alpha schema.
+  the v0.1.1 schema, including linked-chat tables and medication context.
 - CI is green for backend tests, Flutter analysis/tests, CodeQL, dependency
   validation, and Android release compilation.
-- The security and privacy review covers all external AI/public-data calls.
-- Physical-device smoke testing remains a post-publication follow-up for this
-  candidate and must not be represented as completed.
+- The security and privacy review covers all external AI/public-data calls,
+  manual-entry images, location queries, chat storage, and notification payloads.
+- A signed artifact passes physical-device smoke testing on supported Android
+  versions.
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
 
-Release-candidate changes, deferred verification, and the required
-post-publication merge-forward procedure are recorded in
-[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md).
+The completed v0.1.1 baseline is recorded in
+[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md); v0.2.0 release-candidate
+changes and verification evidence must be recorded before publication.

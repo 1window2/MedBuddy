@@ -29,6 +29,11 @@ skinparam classBackgroundColor<<External>> #FFF7E6
 skinparam classBorderColor<<External>> #D97706
 
 package "Flutter Frontend" #E8F4FF {
+  class HomeScreen <<UI>>
+  class ChatListUI <<UI>>
+  class LinkedChatUI <<UI>>
+  class ManageChatList <<Control>>
+  class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
@@ -38,12 +43,18 @@ package "Flutter Frontend" #E8F4FF {
   class CaregiverPatientLocalStateService <<Service>>
   class PushNotificationService <<Service>>
   class NotificationService <<Service>>
+  class NotificationInboxUI <<UI>>
+  class ManageNotificationInbox <<Control>>
+  class NotificationInboxStore <<Service>>
+  class NotificationInboxEntry
 }
 
 package "FastAPI Backend" #EAF8F0 {
   class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control>>
   class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control>>
   class "CheckSchedule" as BCheckSchedule <<Control>>
+  class "ManageLinkedChat" as BManageLinkedChat <<Control>>
+  class QueueMissedDoseAlerts <<Control>>
   class DispatchCaregiverAlert <<Control>>
   class ProcessCaregiverAlertOutbox <<Control>>
   class CaregiverAlertOutboxWorker <<Service>>
@@ -57,11 +68,32 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+HomeScreen --> ManageChatList : active connections
+HomeScreen --> NotificationInboxUI : bell / unread badge
+HomeScreen --> ManageNotificationInbox : lifecycle / unread count
+NotificationInboxUI --> ManageNotificationInbox : list / read / delete
+ManageNotificationInbox --> NotificationInboxStore : per-account local history
+ManageNotificationInbox --> ManageChatList : current peer names
+NotificationInboxStore --> NotificationInboxEntry
+NotificationService --> NotificationInboxStore : local alerts / reminder events
+PushNotificationService --> NotificationInboxStore : recipient-scoped push
+NotificationInboxUI --> NotificationService : existing navigation handler
+HomeScreen --> ChatListUI : conditional chat tab
+ChatListUI --> LinkedChatUI : selected conversation
+ChatListUI --> ManageChatList
+ManageChatList --> FLinkPatientCaregiver
+ManageChatList --> ManageCaregiverPatientLocalState
+ManageChatList --> ManageLinkedChat : latest messages
+LinkedChatUI --> ManageLinkedChat
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification
 CheckCaregiverMedicationUI --> ManageCaregiverPatientLocalState
 ManageCaregiverPatientLocalState --> CaregiverPatientLocalStateService
+note bottom of ManageCaregiverPatientLocalState
+  활성 연결의 서버 별칭을 기기 cache에 반영한다.
+  별칭 정보가 없는 구형 연결만 cache로 보완한다.
+end note
 
 FLinkPatientCaregiver --> BLinkPatientCaregiver : link API
 FCheckCaregiverMedication --> BCheckCaregiverMedication : patient status API
@@ -74,7 +106,14 @@ BCheckCaregiverMedication --> BCheckSchedule : reads schedule
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
 DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
 CaregiverAlertOutboxWorker --> ProcessCaregiverAlertOutbox : retry due events
+CaregiverAlertOutboxWorker --> QueueMissedDoseAlerts : 서버 미복약 검사
+QueueMissedDoseAlerts --> BCheckSchedule : 현재 미완료 확인
+QueueMissedDoseAlerts --> DBPatientCaregiverLink
+QueueMissedDoseAlerts --> DBCaregiverNotification
+QueueMissedDoseAlerts --> DBCaregiverAlertOutbox : missed_deadline
 ProcessCaregiverAlertOutbox --> DispatchCaregiverAlert
+ProcessCaregiverAlertOutbox --> BManageLinkedChat : 완료 chat record 저장, 직접 방송 없음
+DispatchCaregiverAlert --> BCheckSchedule : 미복약 전송 전 재검증
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken
 DispatchCaregiverAlert --> FCM
@@ -82,7 +121,14 @@ FCM --> PushNotificationService
 PushNotificationService --> NotificationService
 
 note bottom of DispatchCaregiverAlert
-  Medication completion is delivered through
-  a retryable outbox instead of direct best-effort push.
+  Firebase 인증 mode의 완료·미복약 알림은
+  durable Outbox에서 재검증·전송·재시도한다.
+  한도 도달 시 dead_letter를 보존한다.
+  기기 미복약 감지는 인증 비활성 개발 mode용이다.
+end note
+note bottom of NotificationInboxStore
+  Per-account device history, not a server mailbox.
+  Chat previews follow content-visibility settings.
+  Reminder entries represent scheduled events.
 end note
 @enduml

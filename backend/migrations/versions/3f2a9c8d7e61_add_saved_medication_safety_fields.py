@@ -1,3 +1,5 @@
+# File Name: 3f2a9c8d7e61_add_saved_medication_safety_fields.py
+# Role: Adds the safety guidance returned by medication detail lookup to saved medication snapshots so reopening a saved item retains the same guidance.
 """Persist saved medication safety guidance.
 
 Revision ID: 3f2a9c8d7e61
@@ -18,8 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 # Function Name: upgrade
 # Description:
-# - Adds the safety guidance returned by medication detail lookup to saved
-#   medication snapshots so reopening a saved item retains the same guidance.
+# - Adds the safety guidance returned by medication detail lookup to saved medication snapshots so reopening a saved item retains the same guidance.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def upgrade() -> None:
@@ -32,6 +35,8 @@ def upgrade() -> None:
 # Function Name: downgrade
 # Description:
 # - Removes the saved medication safety guidance columns.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def downgrade() -> None:

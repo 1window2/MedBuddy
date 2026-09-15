@@ -8,11 +8,23 @@ import '../entities/recognized_text_region_entity.dart';
 // 역할: 처방전 원본이 기기를 벗어나기 전에 한글 OCR과 개인정보 제거를 수행한다.
 
 // 클래스명: LocalPrescriptionOcrResult
-// 역할: 서버에 보낼 비식별 텍스트와 화면에 표시할 로컬 OCR 영역을 묶는다.
+// 역할: 서버 전송용 비식별 텍스트와 로컬 미리보기 영역을 묶는다.
+// 주요 책임:
+// - 원본 개인정보를 보내지 않고 약품 강조와 민감정보 마스킹 좌표를 함께 전달한다.
+// 속성:
+// - maskedText (String): 개인정보가 제거된 처방전 OCR 텍스트
+// - regions (List<RecognizedTextRegion>): 로컬 OCR의 문구 및 개인정보 마스킹 영역
 class LocalPrescriptionOcrResult {
   final String maskedText;
   final List<RecognizedTextRegion> regions;
 
+  // 함수이름: LocalPrescriptionOcrResult
+  // 함수역할: 개인정보를 제거한 전송 텍스트와 로컬 화면용 OCR 영역을 하나의 인식 결과로 묶는다.
+  // 매개변수:
+  // - maskedText (String): 개인정보가 제거된 처방전 OCR 텍스트
+  // - regions (List<RecognizedTextRegion>): 로컬 OCR의 문구 및 개인정보 마스킹 영역
+  // 반환값:
+  // - LocalPrescriptionOcrResult: 초기화된 인스턴스.
   const LocalPrescriptionOcrResult({
     required this.maskedText,
     required this.regions,
@@ -20,8 +32,16 @@ class LocalPrescriptionOcrResult {
 }
 
 // 클래스명: PrescriptionLocalOcrBoundary
-// 역할: 이미지 입력 제어 계층이 구체적인 ML Kit 구현과 분리되도록 계약을 정의한다.
+// 역할: 이미지 입력 Control이 사용할 로컬 인식·마스킹 계약이다.
+// 주요 책임:
+// - ML Kit 구현에 의존하지 않고 파일 경로에서 비식별 텍스트와 미리보기 영역을 얻도록 한다.
 abstract interface class PrescriptionLocalOcrBoundary {
+  // 함수이름: recognizeAndMask
+  // 함수역할: 로컬 처방전 파일에서 개인정보를 제거한 텍스트와 미리보기 영역을 얻는 비동기 인식 계약을 제공한다.
+  // 매개변수:
+  // - imagePath (String): 기기에서 읽을 원본 이미지 경로
+  // 반환값:
+  // - Future<LocalPrescriptionOcrResult>: 로컬 처방전 파일에서 개인정보를 제거한 텍스트와 미리보기 영역을 얻는 비동기 인식 계약을 제공한다.
   Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath);
 }
 
@@ -31,12 +51,22 @@ abstract interface class PrescriptionLocalOcrBoundary {
 // - 한글 OCR을 외부 서버 전송 전에 수행한다.
 // - 환자 식별 라벨과 주민번호·연락처·이메일 패턴을 민감정보로 분류한다.
 // - 민감정보 줄은 서버 전송 텍스트에서 제외하고 미리보기에는 마스킹 영역만 남긴다.
+// 속성:
+// - _textRecognizer (TextRecognizer): 기기 내 한글 OCR 인식기
+// - _privacyFilter (PrescriptionPrivacyFilter): OCR 개인정보 라벨·식별자 제거 규칙
 class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
   static const int _maximumPreviewRegions = 80;
 
   final TextRecognizer _textRecognizer;
   final PrescriptionPrivacyFilter _privacyFilter;
 
+  // 함수이름: PrescriptionLocalOcrService
+  // 함수역할: 한글 텍스트 인식기와 개인정보 필터를 주입하거나 기본 로컬 구현으로 구성한다.
+  // 매개변수:
+  // - textRecognizer (TextRecognizer?): 기기 내 한글 OCR 인식기
+  // - privacyFilter (PrescriptionPrivacyFilter?): OCR 개인정보 라벨·식별자 제거 규칙
+  // 반환값:
+  // - PrescriptionLocalOcrService: 초기화된 인스턴스.
   PrescriptionLocalOcrService({
     TextRecognizer? textRecognizer,
     PrescriptionPrivacyFilter? privacyFilter,
@@ -45,11 +75,10 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
            TextRecognizer(script: TextRecognitionScript.korean),
        _privacyFilter = privacyFilter ?? const PrescriptionPrivacyFilter();
 
-  // 함수명: recognizeAndMask
-  // 역할:
-  // - 이미지에서 텍스트와 좌표를 읽고 민감정보가 제거된 결과를 반환한다.
+  // 함수이름: recognizeAndMask
+  // 함수역할: 이미지에서 텍스트와 좌표를 읽고 민감정보가 제거된 결과를 반환한다.
   // 매개변수:
-  // - imagePath: 카메라 또는 갤러리에서 선택한 로컬 이미지 경로
+  // - imagePath (String): 카메라 또는 갤러리에서 선택한 로컬 이미지 경로
   // 반환값:
   // - 비식별 OCR 텍스트와 화면 표시 영역
   @override
@@ -100,9 +129,12 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     );
   }
 
-  // 함수명: _readImageSize
-  // 역할:
-  // - OCR 픽셀 좌표를 화면 공통 좌표로 변환할 수 있도록 이미지 크기를 읽는다.
+  // 함수이름: _readImageSize
+  // 함수역할: OCR 픽셀 좌표를 화면 공통 좌표로 변환할 수 있도록 이미지 크기를 읽는다.
+  // 매개변수:
+  // - imagePath (String): 기기에서 읽을 원본 이미지 경로
+  // 반환값:
+  // - Future<ui.Size>: OCR 픽셀 좌표를 화면 공통 좌표로 변환할 수 있도록 이미지 크기를 읽는다.
   Future<ui.Size> _readImageSize(String imagePath) async {
     final bytes = await ui.ImmutableBuffer.fromFilePath(imagePath);
     final descriptor = await ui.ImageDescriptor.encoded(bytes);
@@ -114,12 +146,27 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     }
   }
 
+  // 함수이름: _categoryForSafeText
+  // 함수역할: 안전한 문구에 조제·처방 날짜 라벨이 있으면 날짜 영역으로, 없으면 일반 인식 영역으로 분류한다.
+  // 매개변수:
+  // - text (String): 인식·정규화·마스킹·읽기에 사용할 문구
+  // 반환값:
+  // - String: 안전한 문구에 조제·처방 날짜 라벨이 있으면 날짜 영역으로, 없으면 일반 인식 영역으로 분류한다.
   String _categoryForSafeText(String text) {
     return PrescriptionPrivacyFilter.prescriptionDateLabelPattern.hasMatch(text)
         ? 'prescription_date'
         : 'recognized_text';
   }
 
+  // 함수이름: _toRegion
+  // 함수역할: 양의 이미지·영역 크기를 확인하고 픽셀 경계를 0~1000 좌표로 제한해 유효한 미리보기 영역만 만든다.
+  // 매개변수:
+  // - text (String): 인식·정규화·마스킹·읽기에 사용할 문구
+  // - bounds (ui.Rect): OCR이 인식한 원본 픽셀 경계
+  // - imageSize (ui.Size): OCR 픽셀 좌표 정규화에 사용할 원본 크기
+  // - category (String): 약품·날짜·개인정보 등 OCR 영역 분류
+  // 반환값:
+  // - RecognizedTextRegion?: 양의 이미지·영역 크기를 확인하고 픽셀 경계를 0~1000 좌표로 제한해 유효한 미리보기 영역만 만든다.
   RecognizedTextRegion? _toRegion({
     required String text,
     required ui.Rect bounds,
@@ -146,9 +193,12 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     return region.isValid ? region : null;
   }
 
-  // 함수명: dispose
-  // 역할:
-  // - ML Kit 네이티브 텍스트 인식 자원을 해제한다.
+  // 함수이름: dispose
+  // 함수역할: ML Kit 네이티브 텍스트 인식 자원을 해제한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> dispose() async {
     await _textRecognizer.close();
   }
@@ -191,13 +241,18 @@ class PrescriptionPrivacyFilter {
     r'(조제\s*일자|조제\s*일|처방\s*일자|처방\s*일)',
   );
 
+  // 함수이름: PrescriptionPrivacyFilter
+  // 함수역할: 개인정보 라벨과 식별자 패턴으로 로컬 OCR 문구를 검사하는 무상태 필터를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - PrescriptionPrivacyFilter: 초기화된 인스턴스.
   const PrescriptionPrivacyFilter();
 
-  // 함수명: containsSensitiveInformation
-  // 역할:
-  // - 한 줄에 개인정보 라벨이나 직접 식별자 패턴이 포함됐는지 판별한다.
+  // 함수이름: containsSensitiveInformation
+  // 함수역할: 한 줄에 개인정보 라벨이나 직접 식별자 패턴이 포함됐는지 판별한다.
   // 매개변수:
-  // - text: 기기 OCR이 인식한 한 줄
+  // - text (String): 기기 OCR이 인식한 한 줄
   // 반환값:
   // - 민감정보가 포함되면 true
   bool containsSensitiveInformation(String text) {
@@ -208,22 +263,20 @@ class PrescriptionPrivacyFilter {
         _emailPattern.hasMatch(text);
   }
 
-  // 함수명: shouldMaskFollowingLine
-  // 역할:
-  // - 개인정보 라벨만 단독으로 인식돼 실제 값이 다음 줄에 있을 가능성을 판별한다.
+  // 함수이름: shouldMaskFollowingLine
+  // 함수역할: 개인정보 라벨만 단독으로 인식돼 실제 값이 다음 줄에 있을 가능성을 판별한다.
   // 매개변수:
-  // - text: 기기 OCR이 인식한 한 줄
+  // - text (String): 기기 OCR이 인식한 한 줄
   // 반환값:
   // - 다음 줄까지 제거해야 하면 true
   bool shouldMaskFollowingLine(String text) {
     return _standaloneSensitiveLabelPattern.hasMatch(text);
   }
 
-  // 함수명: maskInlineIdentifiers
-  // 역할:
-  // - 문자열 안의 주민등록번호·연락처·이메일을 원문이 남지 않도록 치환한다.
+  // 함수이름: maskInlineIdentifiers
+  // 함수역할: 문자열 안의 주민등록번호·연락처·이메일을 원문이 남지 않도록 치환한다.
   // 매개변수:
-  // - text: 정리할 OCR 문자열
+  // - text (String): 정리할 OCR 문자열
   // 반환값:
   // - 직접 식별자가 대체 문구로 바뀐 문자열
   String maskInlineIdentifiers(String text) {

@@ -1,3 +1,6 @@
+# File Name: test_postgres_catalog_sync.py
+# Role: Optional PostgreSQL integration coverage for advisory locks and transactional catalog
+#   visibility.
 """PostgreSQL integration checks for shared catalog publication."""
 
 import os
@@ -26,6 +29,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# Function Name: test_postgresql_advisory_lock_excludes_overlapping_catalog_jobs
+# Description:
+# - Requires a second PostgreSQL catalog job to fail while the first holds the advisory lock.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_postgresql_advisory_lock_excludes_overlapping_catalog_jobs() -> None:
     first_session = SessionLocal()
     second_session = SessionLocal()
@@ -42,6 +52,14 @@ def test_postgresql_advisory_lock_excludes_overlapping_catalog_jobs() -> None:
         first_session.close()
 
 
+# Function Name: test_postgresql_catalog_replacement_becomes_visible_only_after_commit
+# Description:
+# - Keeps the old catalog visible to another session until replacement commit, then exposes only
+#   the new catalog.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_postgresql_catalog_replacement_becomes_visible_only_after_commit() -> None:
     writer = SessionLocal()
     reader = SessionLocal()

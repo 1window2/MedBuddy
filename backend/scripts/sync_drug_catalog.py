@@ -1,10 +1,11 @@
 # File Name: sync_drug_catalog.py
-# Role: Synchronizes Korean public medication APIs into the shared catalog.
+# Role: Synchronizes shared basic, approval and pill-reference catalogs with guarded transactional publication and reconciliation.
 
 import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
+from dataclasses import asdict
 import json
 import logging
 import math
@@ -30,7 +31,12 @@ from boundaries.pill_identification_boundary import MFDSPillAPI
 from core.database import SessionLocal
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
-from entities.pill_identification_entity import PillIdentificationReference
+from entities.pill_identification_entity import (
+    PillCatalogDownloadReport,
+    PillCatalogReconciliationReport,
+    PillCatalogSnapshot,
+    PillIdentificationReference,
+)
 from repositories.pill_identification_catalog_repository import (
     PillIdentificationCatalogRepository,
 )
@@ -40,10 +46,20 @@ logger = logging.getLogger(__name__)
 _CATALOG_SYNC_ADVISORY_LOCK_ID = 0x4D45444255444459
 
 
+# Class Name: CatalogSyncAlreadyRunningError
+# Role:
+# - Raised when another PostgreSQL catalog synchronization owns the lock.
+# Responsibilities:
+# - Stop competing PostgreSQL workers from publishing overlapping catalog generations.
 class CatalogSyncAlreadyRunningError(RuntimeError):
     """Raised when another PostgreSQL catalog synchronization owns the lock."""
 
 
+# Class Name: CatalogSyncIncompleteError
+# Role:
+# - Raised when an upstream catalog response would publish partial data.
+# Responsibilities:
+# - Abort publication when pagination, volume or identifier reconciliation would replace a complete catalog with incomplete data.
 class CatalogSyncIncompleteError(RuntimeError):
     """Raised when an upstream catalog response would publish partial data."""
 
@@ -52,6 +68,13 @@ _CATALOG_VOLUME_GUARD_MINIMUM_BASELINE = 10
 _CATALOG_VOLUME_GUARD_RETENTION_RATIO = 0.80
 
 
+# Function Name: _configure_logging
+# Description:
+# - Configures catalog logs without exposing credential-bearing request URLs.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def _configure_logging() -> None:
     """Configures catalog logs without exposing credential-bearing request URLs."""
 
@@ -63,6 +86,13 @@ def _configure_logging() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
+# Function Name: _exclusive_catalog_sync_lock
+# Description:
+# - Serializes the entire PostgreSQL catalog job with an advisory lock and releases it when the context exits.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Yields None while the synchronization lock is held; raises when another worker owns it.
 @contextmanager
 def _exclusive_catalog_sync_lock(db: Session) -> Iterator[None]:
     """Serializes the complete catalog job across PostgreSQL-backed workers."""
@@ -97,16 +127,24 @@ def _exclusive_catalog_sync_lock(db: Session) -> Iterator[None]:
 
 
 # Class Name: _DrugCatalogStore
-# Role: Internal persistence helper for shared drug catalog synchronization.
+# Role:
+# - Internal persistence helper for shared drug catalog synchronization.
 # Responsibilities:
-#   - Upsert e약은요 and approval API records into the shared database.
-#   - Preserve raw API payloads for traceability.
-#   - Keep table-specific normalization in one sync-only helper.
+# - Upsert e약은요 and approval API records into the shared database.
+# - Preserve raw API payloads for traceability.
+# - Keep table-specific normalization in one sync-only helper.
 # Attributes:
-#   - db: SQLAlchemy Session used for persistence operations.
+# - db (Session): SQLAlchemy Session used for persistence operations.
 class _DrugCatalogStore:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
 
+    # Function Name: __init__
+    # Description:
+    # - Binds catalog upserts, pruning and reconciliation counts to one shared transaction session.
+    # Parameters:
+    # - db (Session): SQLAlchemy session for this unit of work.
+    # Returns:
+    # - None.
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -114,7 +152,9 @@ class _DrugCatalogStore:
     # Description:
     # - Inserts or updates e약은요 records from public API payloads.
     # Parameters:
-    # - items: Raw public API item dictionaries.
+    # - items (list[dict[str, Any]]): Raw public API item dictionaries.
+    # - commit (bool): Whether this operation owns the transaction commit.
+    # - sync_token (str | None): Unique marker for rows observed in the current complete refresh.
     # Returns:
     # - Number of rows processed.
     def upsert_basic_items(
@@ -179,7 +219,9 @@ class _DrugCatalogStore:
     # Description:
     # - Inserts or updates detailed approval records from public API payloads.
     # Parameters:
-    # - items: Raw public API item dictionaries.
+    # - items (list[dict[str, Any]]): Raw public API item dictionaries.
+    # - commit (bool): Whether this operation owns the transaction commit.
+    # - sync_token (str | None): Unique marker for rows observed in the current complete refresh.
     # Returns:
     # - Number of rows processed.
     def upsert_approval_items(
@@ -254,13 +296,11 @@ class _DrugCatalogStore:
 
     # Function Name: prune_basic_items_not_seen
     # Description:
-    # - Deletes basic-catalog rows that were not observed during a successful
-    #   complete refresh identified by sync_token.
-    # - Participates in the caller's transaction so a later dataset failure
-    #   restores the previously published catalog.
+    # - Deletes basic-catalog rows that were not observed during a successful complete refresh identified by sync_token.
+    # - Participates in the caller's transaction so a later dataset failure restores the previously published catalog.
     # Parameters:
-    # - sync_token: Unique marker assigned to every row observed by this refresh.
-    # - commit: Whether this method owns the transaction commit.
+    # - sync_token (str): Unique marker assigned to every row observed by this refresh.
+    # - commit (bool): Whether this method owns the transaction commit.
     # Returns:
     # - Number of obsolete rows deleted.
     def prune_basic_items_not_seen(
@@ -287,13 +327,11 @@ class _DrugCatalogStore:
 
     # Function Name: prune_approval_items_not_seen
     # Description:
-    # - Deletes approval-catalog rows that were not observed during a successful
-    #   complete refresh identified by sync_token.
-    # - Participates in the caller's transaction so a later dataset failure
-    #   restores the previously published catalog.
+    # - Deletes approval-catalog rows that were not observed during a successful complete refresh identified by sync_token.
+    # - Participates in the caller's transaction so a later dataset failure restores the previously published catalog.
     # Parameters:
-    # - sync_token: Unique marker assigned to every row observed by this refresh.
-    # - commit: Whether this method owns the transaction commit.
+    # - sync_token (str): Unique marker assigned to every row observed by this refresh.
+    # - commit (bool): Whether this method owns the transaction commit.
     # Returns:
     # - Number of obsolete rows deleted.
     def prune_approval_items_not_seen(
@@ -321,11 +359,20 @@ class _DrugCatalogStore:
     # Function Name: count_basic
     # Description:
     # - Counts locally stored e약은요 rows.
+    # Parameters:
+    # - None.
     # Returns:
     # - Row count.
     def count_basic(self) -> int:
         return self.db.query(_DrugBasicInfo).count()
 
+    # Function Name: count_basic_seen
+    # Description:
+    # - Counts basic drug records marked as observed by the current refresh token.
+    # Parameters:
+    # - sync_token (str): Unique marker for rows observed in the current complete refresh.
+    # Returns:
+    # - Number of distinct persisted basic-catalog rows seen by that refresh.
     def count_basic_seen(self, sync_token: str) -> int:
         return (
             self.db.query(_DrugBasicInfo)
@@ -336,11 +383,20 @@ class _DrugCatalogStore:
     # Function Name: count_approval
     # Description:
     # - Counts locally stored approval detail rows.
+    # Parameters:
+    # - None.
     # Returns:
     # - Row count.
     def count_approval(self) -> int:
         return self.db.query(_DrugApprovalInfo).count()
 
+    # Function Name: count_approval_seen
+    # Description:
+    # - Counts approval records marked as observed by the current refresh token.
+    # Parameters:
+    # - sync_token (str): Unique marker for rows observed in the current complete refresh.
+    # Returns:
+    # - Number of distinct persisted approval rows seen by that refresh.
     def count_approval_seen(self, sync_token: str) -> int:
         return (
             self.db.query(_DrugApprovalInfo)
@@ -348,9 +404,23 @@ class _DrugCatalogStore:
             .count()
         )
 
+    # Function Name: count_pill_identification
+    # Description:
+    # - Counts persisted shared pill-identification reference products.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Number of pill-reference rows.
     def count_pill_identification(self) -> int:
         return self.db.query(PillIdentificationReference).count()
 
+    # Function Name: has_complete_seed
+    # Description:
+    # - Requires nonempty basic, approval and pill-reference tables before treating bootstrap as complete.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - True when all three shared drug catalogs contain rows.
     def has_complete_seed(self) -> bool:
         return all(
             count > 0
@@ -365,13 +435,23 @@ class _DrugCatalogStore:
     # Description:
     # - Normalizes medication names for stable local lookup.
     # Parameters:
-    # - name: Raw medication name.
+    # - name (str): Raw medication name.
     # Returns:
     # - Normalized lowercase name without whitespace.
     @classmethod
     def normalize_name(cls, name: str) -> str:
         return cls._WHITESPACE_PATTERN.sub("", name).strip().lower()
 
+    # Function Name: _resolve_basic_target
+    # Description:
+    # - Reuses a batch or stored basic record by product ID, using name identity only when the upstream ID is absent.
+    # Parameters:
+    # - item_seq (str): Canonical MFDS product identifier.
+    # - normalized_item_name (str): Normalized product name used for catalog identity matching.
+    # - batch_targets_by_seq (dict[str, _DrugBasicInfo]): Per-batch identity map keyed by canonical product ID.
+    # - batch_targets_by_name (dict[str, _DrugBasicInfo]): Per-batch identity map for records matched by normalized product name.
+    # Returns:
+    # - Existing basic row, or None when an insert is required.
     def _resolve_basic_target(
         self,
         item_seq: str,
@@ -401,6 +481,16 @@ class _DrugCatalogStore:
             )
         return None
 
+    # Function Name: _resolve_approval_target
+    # Description:
+    # - Reuses a batch or stored approval record by product ID, falling back to normalized name only without an ID.
+    # Parameters:
+    # - item_seq (str): Canonical MFDS product identifier.
+    # - normalized_item_name (str): Normalized product name used for catalog identity matching.
+    # - batch_targets_by_seq (dict[str, _DrugApprovalInfo]): Per-batch identity map keyed by canonical product ID.
+    # - batch_targets_by_name (dict[str, _DrugApprovalInfo]): Per-batch identity map for records matched by normalized product name.
+    # Returns:
+    # - Existing approval row, or None when an insert is required.
     def _resolve_approval_target(
         self,
         item_seq: str,
@@ -430,6 +520,14 @@ class _DrugCatalogStore:
             )
         return None
 
+    # Function Name: _read_text
+    # Description:
+    # - Reads a public API field with case-insensitive alias fallback and trims its text.
+    # Parameters:
+    # - item (dict[str, Any]): Original public drug API record.
+    # - key (str): Payload field name to read.
+    # Returns:
+    # - Trimmed field value, or an empty string when absent.
     def _read_text(self, item: dict[str, Any], key: str) -> str:
         value = item.get(key)
         if value is None:
@@ -443,6 +541,14 @@ class _DrugCatalogStore:
             return ""
         return str(value).strip()
 
+    # Function Name: _read_first_text
+    # Description:
+    # - Searches public API field aliases in order and selects the first nonblank value.
+    # Parameters:
+    # - item (dict[str, Any]): Original public drug API record.
+    # - keys (list[str]): Field aliases searched in priority order.
+    # Returns:
+    # - First available field text, or an empty string.
     def _read_first_text(self, item: dict[str, Any], keys: list[str]) -> str:
         for key in keys:
             value = self._read_text(item, key)
@@ -450,26 +556,49 @@ class _DrugCatalogStore:
                 return value
         return ""
 
+    # Function Name: _dump_raw_json
+    # Description:
+    # - Stores the original public API record as compact JSON without escaping Korean text.
+    # Parameters:
+    # - item (dict[str, Any]): Original public drug API record.
+    # Returns:
+    # - Compact raw-payload JSON for traceability.
     def _dump_raw_json(self, item: dict[str, Any]) -> str:
         return json.dumps(item, ensure_ascii=False, separators=(",", ":"))
 
 
 # Class Name: DrugCatalogSyncJob
-# Role: Control class for public drug API to shared DB synchronization.
+# Role:
+# - Control class for public drug API to shared DB synchronization.
 # Responsibilities:
-#   - Fetch paginated e약은요 records.
-#   - Fetch paginated approval detail records.
-#   - Upsert fetched records into the local catalog tables.
+# - Fetch paginated e약은요 records.
+# - Fetch paginated approval detail records.
+# - Upsert fetched records into the local catalog tables.
 # Attributes:
-#   - store: _DrugCatalogStore used for shared persistence.
-#   - public_drug_small_api: eDrug API boundary used for basic catalog pages.
-#   - public_drug_large_api: Approval API boundary used for complete catalog pages.
-#   - page_size: Number of API rows fetched per request.
-#   - start_page: First API page to request.
-#   - max_pages: Optional page cap for smoke tests or partial syncs.
-#   - max_retries: Number of retry attempts for transient public API failures.
-#   - retry_delay_seconds: Delay between retry attempts.
+# - store (_DrugCatalogStore): _DrugCatalogStore used for shared persistence.
+# - public_drug_small_api (PublicDrugSmallAPI): eDrug API boundary used for basic catalog pages.
+# - public_drug_large_api (PublicDrugLargeAPI): Approval API boundary used for complete catalog pages.
+# - page_size (int): Number of API rows fetched per request.
+# - start_page (int): First API page to request.
+# - max_pages (int | None): Optional page cap for smoke tests or partial syncs.
+# - max_retries (int): Number of retry attempts for transient public API failures.
+# - retry_delay_seconds (float): Delay between retry attempts.
 class DrugCatalogSyncJob:
+    # Function Name: __init__
+    # Description:
+    # - Binds all catalog sources and persistence together with page/retry bounds and an initially absent pill reconciliation report.
+    # Parameters:
+    # - store (_DrugCatalogStore): Persistence adapter for the shared drug catalog tables.
+    # - public_drug_small_api (PublicDrugSmallAPI): Basic public drug-information API boundary.
+    # - public_drug_large_api (PublicDrugLargeAPI): Detailed drug-approval document API boundary.
+    # - pill_catalog_api (MFDSPillAPI): Upstream MFDS pill-reference catalog source.
+    # - page_size (int): Maximum number of upstream rows requested per page.
+    # - start_page (int): First upstream page included in the synchronization.
+    # - max_pages (int | None): Optional page cap for deliberately partial refreshes.
+    # - max_retries (int): Retry bound for transient upstream failures.
+    # - retry_delay_seconds (float): Delay between retries in seconds.
+    # Returns:
+    # - None.
     def __init__(
         self,
         store: _DrugCatalogStore,
@@ -491,10 +620,15 @@ class DrugCatalogSyncJob:
         self.max_pages = max_pages
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
+        self.last_pill_reconciliation_report: (
+            PillCatalogReconciliationReport | None
+        ) = None
 
     # Function Name: sync_basic
     # Description:
     # - Synchronizes the full e약은요 API dataset into drug_basic_infos.
+    # Parameters:
+    # - commit (bool): Whether this operation owns the transaction commit.
     # Returns:
     # - Number of rows processed.
     async def sync_basic(self, *, commit: bool = True) -> int:
@@ -532,6 +666,8 @@ class DrugCatalogSyncJob:
     # Function Name: sync_approval
     # Description:
     # - Synchronizes the full approval detail API dataset into drug_approval_infos.
+    # Parameters:
+    # - commit (bool): Whether this operation owns the transaction commit.
     # Returns:
     # - Number of rows processed.
     async def sync_approval(self, *, commit: bool = True) -> int:
@@ -566,18 +702,72 @@ class DrugCatalogSyncJob:
                 self.store.db.rollback()
             raise
 
+    # Function Name: sync_pill_identification
+    # Description:
+    # - Replaces the shared pill catalog only after snapshot, persisted-ID and volume checks, committing only when requested.
+    # Parameters:
+    # - commit (bool): Whether this operation owns the transaction commit.
+    # Returns:
+    # - Accepted product count; failures clear the report and roll back when this method owns the transaction.
     async def sync_pill_identification(self, *, commit: bool = True) -> int:
         previous_count = self.store.count_pill_identification()
         try:
-            catalog = await self.pill_catalog_api.requestCatalog()
+            request_snapshot = getattr(
+                self.pill_catalog_api,
+                "requestCatalogSnapshot",
+                None,
+            )
+            if callable(request_snapshot):
+                snapshot = await request_snapshot()
+                catalog = list(snapshot.entries)
+            else:
+                catalog = await self.pill_catalog_api.requestCatalog()
+                snapshot = PillCatalogSnapshot(
+                    entries=tuple(catalog),
+                    report=PillCatalogDownloadReport(
+                        advertised_rows=len(catalog),
+                        fetched_rows=len(catalog),
+                        valid_rows=len(catalog),
+                        accepted_unique_rows=len(catalog),
+                        rejected_rows=0,
+                        duplicate_rows=0,
+                        page_count=1,
+                        response_bytes=0,
+                    ),
+                )
             if not catalog:
                 raise CatalogSyncIncompleteError(
                     "The pill-identification catalog returned no rows."
                 )
-            PillIdentificationCatalogRepository(self.store.db).replace_all(
+            repository = PillIdentificationCatalogRepository(self.store.db)
+            repository.replace_all(
                 catalog,
                 commit=False,
             )
+            expected_item_sequences = {entry.item_seq for entry in catalog}
+            persisted_item_sequences = repository.list_item_sequences()
+            missing_item_sequences = (
+                expected_item_sequences - persisted_item_sequences
+            )
+            unexpected_item_sequences = (
+                persisted_item_sequences - expected_item_sequences
+            )
+            reconciliation_report = PillCatalogReconciliationReport(
+                source=snapshot.report,
+                kpic_product_floor=getattr(
+                    self.pill_catalog_api,
+                    "minimum_catalog_rows",
+                    len(catalog),
+                ),
+                persisted_rows=len(persisted_item_sequences),
+                missing_persisted_rows=len(missing_item_sequences),
+                unexpected_persisted_rows=len(unexpected_item_sequences),
+            )
+            if not reconciliation_report.is_publishable:
+                raise CatalogSyncIncompleteError(
+                    "The pill-identification catalog failed identifier-set "
+                    "reconciliation."
+                )
             self._validate_refresh_volume(
                 dataset_name="알약 식별정보",
                 previous_count=previous_count,
@@ -585,12 +775,25 @@ class DrugCatalogSyncJob:
             )
             if commit:
                 self.store.db.commit()
+            self.last_pill_reconciliation_report = reconciliation_report
+            logger.info(
+                "pill catalog reconciliation: %s",
+                json.dumps(asdict(reconciliation_report), separators=(",", ":")),
+            )
             return len(catalog)
         except Exception:
+            self.last_pill_reconciliation_report = None
             if commit:
                 self.store.db.rollback()
             raise
 
+    # Function Name: sync_all
+    # Description:
+    # - Synchronizes basic, approval and pill catalogs as one atomic publication transaction.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Processed counts keyed by basic, approval and pill.
     async def sync_all(self) -> dict[str, int]:
         """Synchronizes every catalog as one caller-owned transaction."""
 
@@ -606,6 +809,13 @@ class DrugCatalogSyncJob:
             self.store.db.rollback()
             raise
 
+    # Function Name: _is_complete_dataset_sync
+    # Description:
+    # - Checks whether the requested run starts at page one without a page cap.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - True only for an uncapped complete-dataset refresh.
     @property
     def _is_complete_dataset_sync(self) -> bool:
         """Returns whether this job covers every page from the first page."""
@@ -614,13 +824,11 @@ class DrugCatalogSyncJob:
 
     # Function Name: _validate_refresh_volume
     # Description:
-    # - Rejects a full refresh that would replace a populated catalog with a
-    #   sharply smaller result, even when the upstream response is internally
-    #   consistent and returns HTTP success.
+    # - Rejects a full refresh that would replace a populated catalog with a sharply smaller result, even when the upstream response is internally consistent and returns HTTP success.
     # Parameters:
-    # - dataset_name: Human-readable catalog name for the error message.
-    # - previous_count: Row count before the refresh transaction started.
-    # - refreshed_count: Distinct rows observed in the candidate refresh.
+    # - dataset_name (str): Human-readable catalog name for the error message.
+    # - previous_count (int): Row count before the refresh transaction started.
+    # - refreshed_count (int): Distinct rows observed in the candidate refresh.
     # Returns:
     # - None when the candidate volume is safe to publish.
     @staticmethod
@@ -642,6 +850,15 @@ class DrugCatalogSyncJob:
                 f"the existing {previous_count}-row catalog."
             )
 
+    # Function Name: _sync_pages
+    # Description:
+    # - Fetches and persists pages with retry support, rejecting premature empty pages before the advertised end.
+    # Parameters:
+    # - dataset_name (str): Catalog label used in progress logs and validation errors.
+    # - fetch_page (Callable[[int, int], Awaitable[tuple[list[dict[str, Any]], int]]]): Async callback accepting page number and size and returning items plus advertised count.
+    # - upsert_items (Callable[[list[dict[str, Any]]], int]): Page persistence callback returning the number of processed rows.
+    # Returns:
+    # - Total processed rows up to the advertised end, empty terminal page or explicit page cap.
     async def _sync_pages(
         self,
         dataset_name: str,
@@ -707,6 +924,15 @@ class DrugCatalogSyncJob:
 
         return processed_total
 
+    # Function Name: _fetch_page_with_retry
+    # Description:
+    # - Retries a failed upstream page after the configured delay and re-raises when its retry budget is exhausted.
+    # Parameters:
+    # - dataset_name (str): Catalog label used in progress logs and validation errors.
+    # - page_no (int): One-based upstream page number to fetch.
+    # - fetch_page (Callable[[int, int], Awaitable[tuple[list[dict[str, Any]], int]]]): Async callback accepting page number and size and returning items plus advertised count.
+    # Returns:
+    # - Page records and the upstream advertised total row count.
     async def _fetch_page_with_retry(
         self,
         dataset_name: str,
@@ -732,12 +958,26 @@ class DrugCatalogSyncJob:
 
         return [], 0
 
+    # Function Name: _resolve_total_pages
+    # Description:
+    # - Rounds the advertised row count up by page size; nonpositive totals remain unknown.
+    # Parameters:
+    # - total_count (int): Total row count advertised by the upstream API.
+    # Returns:
+    # - Positive page count, or None when no usable total is advertised.
     def _resolve_total_pages(self, total_count: int) -> int | None:
         if total_count <= 0:
             return None
         return max(1, math.ceil(total_count / self.page_size))
 
 
+# Function Name: parse_args
+# Description:
+# - Parses catalog selection and bootstrap options and validates page and retry bounds.
+# Parameters:
+# - None.
+# Returns:
+# - Validated command-line namespace; invalid bounds terminate through argparse.
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Synchronize public drug API datasets into shared catalog tables.",
@@ -797,6 +1037,13 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+# Function Name: main
+# Description:
+# - Configures clients and logging, acquires the catalog lock, runs the selected synchronization and closes the transport and session.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 async def main() -> None:
     args = parse_args()
     _configure_logging()

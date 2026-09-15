@@ -1,3 +1,6 @@
+// File Name: build.gradle.kts
+// Role: Configures the Android application, release signing and bundled OCR dependencies.
+
 plugins {
     id("com.android.application")
     id("kotlin-android")

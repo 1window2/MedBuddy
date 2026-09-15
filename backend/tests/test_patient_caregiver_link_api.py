@@ -1,3 +1,6 @@
+# File Name: test_patient_caregiver_link_api.py
+# Role: Regression coverage for the patient-caregiver link lifecycle across separate HTTP
+#   clients.
 import asyncio
 import os
 import sys
@@ -18,6 +21,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 from api.dependencies import (  # noqa: E402
+    get_authenticated_principal,
     get_authorization_control,
     get_link_patient_caregiver_control,
     get_registered_principal,
@@ -34,7 +38,21 @@ from entities.authenticated_principal_entity import (  # noqa: E402
 )
 
 
+# Class Name: _UnavailableRedis
+# Role: Redis double that forces the local fallback path without making a network connection.
+# Responsibilities:
+# - Raises an intentional Redis connection error for every atomic quota request.
+# - Accepts client cleanup without side effects because the Redis double owns no connection.
 class _UnavailableRedis:
+    # Function Name: eval
+    # Description:
+    # - Raises an intentional Redis connection error for every atomic quota request.
+    # Parameters:
+    # - script (str): Lua script combining quota increment and expiry.
+    # - number_of_keys (int): Number of Redis keys preceding the Lua arguments.
+    # - *keys_and_args (object): Redis keys and Lua arguments captured in call order.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     async def eval(
         self,
         script: str,
@@ -44,10 +62,26 @@ class _UnavailableRedis:
         del script, number_of_keys, keys_and_args
         raise ConnectionError("Redis is intentionally unavailable in this test.")
 
+    # Function Name: aclose
+    # Description:
+    # - Accepts client cleanup without side effects because the Redis double owns no
+    #   connection.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def aclose(self) -> None:
         return None
 
 
+# Function Name: test_patient_and_caregiver_clients_complete_link_lifecycle
+# Description:
+# - Runs separate patient and caregiver clients through code creation, link registration, shared
+#   listing, and unlink removal.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
     engine = create_engine(
         "sqlite://",
@@ -61,6 +95,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         bind=engine,
     )
 
+    # Function Name: override_link_control
+    # Description:
+    # - Yields a linking control with a fresh test session and closes the session after
+    #   dependency cleanup.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Yields a linking control; closes its request session afterward.
     def override_link_control() -> Generator[LinkPatientCaregiver, None, None]:
         db: Session = session_factory()
         try:
@@ -68,6 +110,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         finally:
             db.close()
 
+    # Function Name: override_authorization_control
+    # Description:
+    # - Yields an authorization control with an isolated request session and closes it after
+    #   use.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Yields an authorization control; closes its request session afterward.
     def override_authorization_control() -> Generator[AuthorizationControl, None, None]:
         db: Session = session_factory()
         try:
@@ -92,6 +142,14 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
         AuthenticatedPrincipal.development_principal
     )
 
+    # Function Name: run_link_lifecycle
+    # Description:
+    # - Requires both device clients to see the same active link, then empty lists after a
+    #   successful caregiver unlink.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     async def run_link_lifecycle() -> None:
         async with (
             httpx.AsyncClient(
@@ -135,6 +193,55 @@ def test_patient_and_caregiver_clients_complete_link_lifecycle() -> None:
             assert caregiver_links.status_code == 200
             assert patient_links.json()["data"] == [link]
             assert caregiver_links.json()["data"] == [link]
+
+            alias_url = f"/api/v1/medication/link/{link['id']}/caregiver-alias"
+            # 환자 소유 범위에서만 보호자 별칭을 변경하며 다른 쪽 별칭은 유지한다.
+            for actor in ("caregiver-device", "another-patient"):
+                rejected = await caregiver_device.patch(
+                    alias_url, params={"user_hash": actor}, json={"caregiver_alias": "딸"}
+                )
+                assert rejected.status_code == 404
+            for body in ({}, {"caregiver_alias": "가" * 21}, {"caregiver_alias": None}):
+                invalid = await patient_device.patch(
+                    alias_url, params={"user_hash": "patient-device"}, json=body
+                )
+                assert invalid.status_code == 422
+
+            # 함수이름: authenticated_patient
+            # 함수역할: 인증 모드에서 계정 바꿔치기를 검증할 환자 주체를 제공한다.
+            # 매개변수: 없음. 반환값: 인증된 환자 주체.
+            authenticated_hash = "patient-device"
+
+            def authenticated_patient() -> AuthenticatedPrincipal:
+                return AuthenticatedPrincipal(
+                    subject=authenticated_hash, issuer="test", user_hash=authenticated_hash
+                )
+
+            app.dependency_overrides[get_authenticated_principal] = authenticated_patient
+            try:
+                spoofed = await patient_device.patch(
+                    alias_url, params={"user_hash": "another-patient"},
+                    json={"caregiver_alias": "딸"},
+                )
+                # 인증 모드에서는 임의 query 값을 무시하고 토큰 소유자만 사용한다.
+                assert spoofed.status_code == 200
+                assert spoofed.json()["data"]["patient_hash"] == "patient-device"
+                for alias in ("딸", ""):
+                    saved = await patient_device.patch(
+                        alias_url, params={"user_hash": "patient-device"},
+                        json={"caregiver_alias": alias},
+                    )
+                    assert saved.status_code == 200
+                    assert saved.json()["data"]["caregiver_alias"] == alias
+                    assert saved.json()["data"]["patient_alias"] is None
+                authenticated_hash = "another-patient"
+                rejected = await patient_device.patch(
+                    alias_url, params={"user_hash": "patient-device"},
+                    json={"caregiver_alias": "침범"},
+                )
+                assert rejected.status_code == 404
+            finally:
+                app.dependency_overrides.pop(get_authenticated_principal, None)
 
             unlink_response = await caregiver_device.delete(
                 f"/api/v1/medication/link/{link['id']}",

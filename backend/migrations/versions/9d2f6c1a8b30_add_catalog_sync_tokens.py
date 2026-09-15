@@ -1,3 +1,5 @@
+# File Name: 9d2f6c1a8b30_add_catalog_sync_tokens.py
+# Role: Adds nullable refresh-generation markers used to prune records that have disappeared from a successfully fetched complete MFDS dataset.
 """Add full-refresh markers to medication catalog rows.
 
 Revision ID: 9d2f6c1a8b30
@@ -19,8 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 # Function Name: upgrade
 # Description:
-# - Adds nullable refresh-generation markers used to prune records that have
-#   disappeared from a successfully fetched complete MFDS dataset.
+# - Adds nullable refresh-generation markers used to prune records that have disappeared from a successfully fetched complete MFDS dataset.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def upgrade() -> None:
@@ -49,6 +52,8 @@ def upgrade() -> None:
 # Function Name: downgrade
 # Description:
 # - Removes the refresh-generation indexes and columns.
+# Parameters:
+# - None.
 # Returns:
 # - None.
 def downgrade() -> None:

@@ -1,3 +1,6 @@
+# File Name: test_pill_identification_catalog_repository.py
+# Role: Regression coverage for persistent pill catalogs, transaction ownership, refresh
+#   serialization, and outage fallback.
 import asyncio
 import os
 import sys
@@ -31,6 +34,16 @@ from repositories.pill_identification_catalog_repository import (
 )
 
 
+# Function Name: _entry
+# Description:
+# - Builds a yellow round-pill catalog entry with selected identity and fixed two-sided
+#   imprints.
+# Parameters:
+# - item_seq (str): Authoritative product code identifying the medication.
+# - item_name (str): Product name in the authoritative or saved medication record.
+# Returns:
+# - PillCatalogEntry: Synthetic authoritative catalog record with the requested identity and
+#   matching fields.
 def _entry(item_seq: str, item_name: str) -> PillCatalogEntry:
     return PillCatalogEntry(
         item_seq=item_seq,
@@ -42,6 +55,14 @@ def _entry(item_seq: str, item_name: str) -> PillCatalogEntry:
     )
 
 
+# Function Name: db
+# Description:
+# - Yields a shared-connection in-memory pill-reference session and closes that session after
+#   each test.
+# Parameters:
+# - None.
+# Returns:
+# - Yields the pill-reference Session and closes it during fixture cleanup.
 @pytest.fixture
 def db() -> Session:
     engine = create_engine(
@@ -57,18 +78,34 @@ def db() -> Session:
         session.close()
 
 
+# Function Name: test_repository_replaces_and_reads_complete_catalog
+# Description:
+# - Replaces the complete catalog, reads codes in order, and reports freshness only when the
+#   minimum row count is met.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 def test_repository_replaces_and_reads_complete_catalog(db: Session) -> None:
     repository = PillIdentificationCatalogRepository(db)
 
     repository.replace_all([_entry("1", "첫번째정"), _entry("2", "두번째정")])
 
     assert [entry.item_seq for entry in repository.list_all()] == ["1", "2"]
+    assert repository.list_item_sequences() == {"1", "2"}
     assert repository.is_fresh(
         minimum_rows=2,
         max_age=timedelta(minutes=1),
     )
 
 
+# Function Name: test_repository_requires_every_catalog_row_to_be_fresh
+# Description:
+# - Marks a catalog stale when any required row is older than the freshness allowance.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 def test_repository_requires_every_catalog_row_to_be_fresh(db: Session) -> None:
     repository = PillIdentificationCatalogRepository(db)
     repository.replace_all([_entry("1", "old"), _entry("2", "new")])
@@ -84,10 +121,27 @@ def test_repository_requires_every_catalog_row_to_be_fresh(db: Session) -> None:
     )
 
 
+# Function Name: test_reference_entity_is_isolated_from_core_medication_metadata
+# Description:
+# - Requires the pill reference entity to participate in the application's shared SQLAlchemy
+#   metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_reference_entity_is_isolated_from_core_medication_metadata() -> None:
     assert PillIdentificationReference.metadata is Base.metadata
 
 
+# Function Name: test_repository_rolls_back_failed_replacement
+# Description:
+# - Rolls back a repository-owned replacement failure and preserves the previous catalog.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 def test_repository_rolls_back_failed_replacement(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -95,6 +149,14 @@ def test_repository_rolls_back_failed_replacement(
     repository = PillIdentificationCatalogRepository(db)
     repository.replace_all([_entry("1", "기존정")])
 
+    # Function Name: fail_insert
+    # Description:
+    # - Raises an insert failure to exercise repository-owned transaction rollback.
+    # Parameters:
+    # - *_args (object): Positional interface arguments; ignored by this test double.
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     def fail_insert(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("insert failed")
 
@@ -106,6 +168,16 @@ def test_repository_rolls_back_failed_replacement(
     assert [entry.item_seq for entry in repository.list_all()] == ["1"]
 
 
+# Function Name: test_repository_leaves_caller_owned_transaction_for_caller_rollback
+# Description:
+# - Leaves a caller-owned transaction unrolled back after replacement failure so the caller can
+#   restore the previous catalog.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 def test_repository_leaves_caller_owned_transaction_for_caller_rollback(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -115,11 +187,27 @@ def test_repository_leaves_caller_owned_transaction_for_caller_rollback(
     original_rollback = db.rollback
     rollback_calls = 0
 
+    # Function Name: count_rollback
+    # Description:
+    # - Counts rollback calls and forwards them to the original session rollback
+    #   implementation.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def count_rollback() -> None:
         nonlocal rollback_calls
         rollback_calls += 1
         original_rollback()
 
+    # Function Name: fail_insert
+    # Description:
+    # - Raises an insert failure while the caller owns the surrounding transaction.
+    # Parameters:
+    # - *_args (object): Positional interface arguments; ignored by this test double.
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     def fail_insert(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("insert failed")
 
@@ -134,6 +222,14 @@ def test_repository_leaves_caller_owned_transaction_for_caller_rollback(
     assert [entry.item_seq for entry in repository.list_all()] == ["1"]
 
 
+# Function Name: test_catalog_boundary_uses_stale_cache_during_outage
+# Description:
+# - Serves a complete stale catalog during an outage, suppresses retries during backoff, and
+#   retries after the delay expires.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_uses_stale_cache_during_outage(db: Session) -> None:
     PillIdentificationCatalogRepository(db).replace_all([_entry("1", "기존정")])
@@ -148,12 +244,35 @@ async def test_catalog_boundary_uses_stale_cache_during_outage(db: Session) -> N
     )
     db.commit()
 
+    # Class Name: _UnavailableCatalogAPI
+    # Role: Catalog API double that counts refresh attempts and always fails upstream
+    #   access.
+    # Responsibilities:
+    # - Counts the refresh and raises an upstream connection error.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
+    # - refresh_attempts (int): Number of remote catalog refreshes actually attempted.
     class _UnavailableCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: __init__
+        # Description:
+        # - Starts the failed-refresh attempt counter at zero.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - None.
         def __init__(self) -> None:
             self.refresh_attempts = 0
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Counts the refresh and raises an upstream connection error.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - No normal result; raises the configured failure described above.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             self.refresh_attempts += 1
             raise ConnectionError("upstream unavailable")
@@ -179,13 +298,37 @@ async def test_catalog_boundary_uses_stale_cache_during_outage(db: Session) -> N
     assert catalog_api.refresh_attempts == 2
 
 
+# Function Name: test_catalog_boundary_rejects_incomplete_stale_cache
+# Description:
+# - Rejects an incomplete stale catalog when the upstream API is also unavailable.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_rejects_incomplete_stale_cache(db: Session) -> None:
     PillIdentificationCatalogRepository(db).replace_all([_entry("1", "partial")])
 
+    # Class Name: _UnavailableCatalogAPI
+    # Role: Unavailable catalog API double used to test minimum-row requirements for stale
+    #   fallback.
+    # Responsibilities:
+    # - Raises an upstream connection error so incomplete cached data cannot be
+    #   supplemented.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _UnavailableCatalogAPI:
         minimum_catalog_rows = 2
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Raises an upstream connection error so incomplete cached data cannot be
+        #   supplemented.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - No normal result; raises the configured failure described above.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             raise ConnectionError("upstream unavailable")
 
@@ -198,13 +341,36 @@ async def test_catalog_boundary_rejects_incomplete_stale_cache(db: Session) -> N
         await boundary.getCatalog()
 
 
+# Function Name: test_production_catalog_boundary_never_refreshes_inline
+# Description:
+# - Serves the production shared catalog without attempting an inline remote refresh.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_production_catalog_boundary_never_refreshes_inline(db: Session) -> None:
     PillIdentificationCatalogRepository(db).replace_all([_entry("1", "shared")])
 
+    # Class Name: _UnexpectedCatalogAPI
+    # Role: Catalog API double that fails the test if production code attempts an inline
+    #   refresh.
+    # Responsibilities:
+    # - Raises AssertionError on remote refresh to enforce the production cache-only path.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _UnexpectedCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Raises AssertionError on remote refresh to enforce the production cache-only
+        #   path.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - No normal result; raises the configured failure described above.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             raise AssertionError("production API must not refresh the shared catalog")
 
@@ -220,16 +386,50 @@ async def test_production_catalog_boundary_never_refreshes_inline(db: Session) -
     assert [entry.item_seq for entry in catalog] == ["1"]
 
 
+# Function Name: test_catalog_boundary_bounds_concurrent_failed_refresh_waiters
+# Description:
+# - Bounds concurrent refresh waiters, returns catalog-unavailable errors to all, and starts
+#   only one slow refresh.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_bounds_concurrent_failed_refresh_waiters(
     db: Session,
 ) -> None:
+    # Class Name: _SlowUnavailableCatalogAPI
+    # Role: Slow catalog API double measuring coalesced refresh attempts under a short
+    #   deadline.
+    # Responsibilities:
+    # - Counts the refresh and waits before returning an empty catalog, allowing the
+    #   boundary timeout to fire.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
+    # - refresh_attempts (int): Number of remote catalog refreshes actually attempted.
     class _SlowUnavailableCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: __init__
+        # Description:
+        # - Initializes the slow-refresh attempt counter.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - None.
         def __init__(self) -> None:
             self.refresh_attempts = 0
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Counts the refresh and waits before returning an empty catalog, allowing the
+        #   boundary timeout to fire.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - list[PillCatalogEntry]: Configured replacement pill entries; empty or
+        #   delayed in the corresponding failure scenarios.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             self.refresh_attempts += 1
             await asyncio.sleep(1)
@@ -254,15 +454,42 @@ async def test_catalog_boundary_bounds_concurrent_failed_refresh_waiters(
     assert catalog_api.refresh_attempts == 1
 
 
+# Function Name: test_catalog_boundary_serves_stale_cache_on_refresh_timeout
+# Description:
+# - Serves an existing stale in-memory catalog when a remote refresh times out and marks the
+#   result stale.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_serves_stale_cache_on_refresh_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stale_catalog = [_entry("1", "stale")]
 
+    # Class Name: _SlowCatalogAPI
+    # Role: Catalog API double that returns remote data only after a delay beyond the
+    #   boundary deadline.
+    # Responsibilities:
+    # - Waits before supplying a replacement entry to exercise stale fallback on refresh
+    #   timeout.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _SlowCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Waits before supplying a replacement entry to exercise stale fallback on
+        #   refresh timeout.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - list[PillCatalogEntry]: Configured replacement pill entries; empty or
+        #   delayed in the corresponding failure scenarios.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             await asyncio.sleep(1)
             return [_entry("2", "remote")]
@@ -283,15 +510,42 @@ async def test_catalog_boundary_serves_stale_cache_on_refresh_timeout(
     assert boundary._catalog_is_stale is True
 
 
+# Function Name: test_catalog_boundary_cancellation_does_not_trigger_refresh_backoff
+# Description:
+# - Propagates caller cancellation without recording a refresh failure or activating retry
+#   backoff.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_cancellation_does_not_trigger_refresh_backoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     refresh_started = asyncio.Event()
 
+    # Class Name: _WaitingCatalogAPI
+    # Role: Catalog API double that signals refresh start and waits indefinitely for
+    #   cancellation.
+    # Responsibilities:
+    # - Signals the active refresh, then waits without completing so the caller can cancel
+    #   it.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _WaitingCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Signals the active refresh, then waits without completing so the caller can
+        #   cancel it.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - list[PillCatalogEntry]: Configured replacement pill entries; empty or
+        #   delayed in the corresponding failure scenarios.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             refresh_started.set()
             await asyncio.Event().wait()
@@ -315,6 +569,15 @@ async def test_catalog_boundary_cancellation_does_not_trigger_refresh_backoff(
     assert boundary._last_refresh_failure_at == 0.0
 
 
+# Function Name: test_catalog_boundary_serializes_cache_io_before_remote_refresh
+# Description:
+# - Serializes slow persistent-cache inspection across concurrent requests and reuses recovered
+#   data without remote refresh.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_serializes_cache_io_before_remote_refresh(
     monkeypatch: pytest.MonkeyPatch,
@@ -323,9 +586,25 @@ async def test_catalog_boundary_serializes_cache_io_before_remote_refresh(
     release_worker = threading.Event()
     load_attempts = 0
 
+    # Class Name: _UnusedCatalogAPI
+    # Role: Catalog API double that fails if refresh bypasses an unfinished persistent-cache
+    #   read.
+    # Responsibilities:
+    # - Raises AssertionError if remote refresh starts before cache inspection has resolved.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _UnusedCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Raises AssertionError if remote refresh starts before cache inspection has
+        #   resolved.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - No normal result; raises the configured failure described above.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             raise AssertionError("catalog refresh must wait for cache inspection")
 
@@ -334,6 +613,15 @@ async def test_catalog_boundary_serializes_cache_io_before_remote_refresh(
         refresh_timeout_seconds=0.05,
     )
 
+    # Function Name: slow_load
+    # Description:
+    # - Counts cache loads, signals worker start, and waits for release before returning a
+    #   recovered fresh catalog.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - tuple[bool, list[PillCatalogEntry]]: (True, entries): a fresh recovered catalog
+    #   after the worker is released.
     def slow_load() -> tuple[bool, list[PillCatalogEntry]]:
         nonlocal load_attempts
         load_attempts += 1
@@ -360,14 +648,44 @@ async def test_catalog_boundary_serializes_cache_io_before_remote_refresh(
     assert load_attempts == 1
 
 
+# Function Name: test_catalog_boundary_backs_off_after_failed_refresh
+# Description:
+# - Suppresses repeated remote refresh attempts after failure while continuing to report catalog
+#   unavailability.
+# Parameters:
+# - db (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_backs_off_after_failed_refresh(db: Session) -> None:
+    # Class Name: _UnavailableCatalogAPI
+    # Role: Catalog API double counting failures for retry-backoff assertions.
+    # Responsibilities:
+    # - Counts and fails each actual upstream refresh attempt.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
+    # - refresh_attempts (int): Number of remote catalog refreshes actually attempted.
     class _UnavailableCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: __init__
+        # Description:
+        # - Starts the refresh-failure counter at zero for the backoff test.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - None.
         def __init__(self) -> None:
             self.refresh_attempts = 0
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Counts and fails each actual upstream refresh attempt.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - No normal result; raises the configured failure described above.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             self.refresh_attempts += 1
             raise ConnectionError("upstream unavailable")
@@ -386,13 +704,38 @@ async def test_catalog_boundary_backs_off_after_failed_refresh(db: Session) -> N
     assert catalog_api.refresh_attempts == 1
 
 
+# Function Name: test_catalog_boundary_serves_remote_data_when_cache_io_fails
+# Description:
+# - Returns available remote catalog data even when persistent-cache I/O fails.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_boundary_serves_remote_data_when_cache_io_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Class Name: _AvailableCatalogAPI
+    # Role: Available catalog API double supplying a complete remote fallback entry.
+    # Responsibilities:
+    # - Returns one remote pill reference to keep identification available despite cache
+    #   failure.
+    # Attributes:
+    # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
+    #   completeness guard.
     class _AvailableCatalogAPI:
         minimum_catalog_rows = 1
 
+        # Function Name: requestCatalog
+        # Description:
+        # - Returns one remote pill reference to keep identification available despite
+        #   cache failure.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - list[PillCatalogEntry]: Configured replacement pill entries; empty or
+        #   delayed in the corresponding failure scenarios.
         async def requestCatalog(self) -> list[PillCatalogEntry]:
             return [_entry("1", "remote")]
 
@@ -400,6 +743,14 @@ async def test_catalog_boundary_serves_remote_data_when_cache_io_fails(
         catalog_api=_AvailableCatalogAPI(),  # type: ignore[arg-type]
     )
 
+    # Function Name: fail_cache
+    # Description:
+    # - Raises a cache I/O error to exercise the independent remote-data path.
+    # Parameters:
+    # - *_args (object): Positional interface arguments; ignored by this test double.
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     def fail_cache(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("cache unavailable")
 
@@ -411,6 +762,13 @@ async def test_catalog_boundary_serves_remote_data_when_cache_io_fails(
     assert [entry.item_seq for entry in catalog] == ["1"]
 
 
+# Function Name: anyio_backend
+# Description:
+# - Selects asyncio for repository-backed asynchronous catalog tests.
+# Parameters:
+# - None.
+# Returns:
+# - str: 'asyncio', the event loop backend selected for the test.
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

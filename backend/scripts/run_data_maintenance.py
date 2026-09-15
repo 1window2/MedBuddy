@@ -5,6 +5,13 @@ from core.database import SessionLocal
 from services.data_maintenance import DataMaintenanceService
 
 
+# 함수이름: main
+# 함수역할:
+# - 별도 DB 세션에서 데이터 보관 정리를 한 번 실행하고 삭제 집계를 출력한 뒤 세션을 닫는다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음.
 def main() -> None:
     db = SessionLocal()
     try:

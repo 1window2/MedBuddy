@@ -1,5 +1,5 @@
 # File Name: medication_detail_entity.py
-# Role: Entity/DTO definitions for medication detail information.
+# Role: Defines medication detail fields, API aliases and localized voice-guide text extraction.
 
 from typing import Optional
 
@@ -10,20 +10,21 @@ from core.database import Base
 
 
 # Class Name: MedicationDetail
-# Role: Represents medication detail information shown to the user.
+# Role:
+# - Represents medication detail information shown to the user.
 # Responsibilities:
-#   - Carry efficacy, usage, warning, source, and optional guide text.
+# - Carry efficacy, usage, warning, source, and optional guide text.
 # Attributes:
-#   - item_seq: Canonical public product identifier shared by MFDS datasets.
-#   - item_name: Public medication item name.
-#   - efficacy: Medication efficacy summary.
-#   - usage_method: Medication use method summary.
-#   - warning: Medication warning summary.
-#   - dosage_per_time: Optional dose per administration from prescription analysis.
-#   - daily_frequency: Optional daily frequency from prescription analysis.
-#   - total_days: Optional total medication days from prescription analysis.
-#   - source: Data source label.
-#   - ai_guide: Optional AI-generated patient guide.
+# - item_seq (str): Canonical public product identifier shared by MFDS datasets.
+# - item_name (str): Public medication item name.
+# - efficacy (str): Medication efficacy summary.
+# - usage_method (str): Medication use method summary.
+# - warning (str): Medication warning summary.
+# - dosage_per_time (str): Optional dose per administration from prescription analysis.
+# - daily_frequency (str): Optional daily frequency from prescription analysis.
+# - total_days (str): Optional total medication days from prescription analysis.
+# - source (str): Data source label.
+# - ai_guide (Optional[str]): Optional AI-generated patient guide.
 class MedicationDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -43,9 +44,23 @@ class MedicationDetail(BaseModel):
     source: str = "e약은요"
     ai_guide: Optional[str] = None
 
+    # Function Name: getMedicationDetail
+    # Description:
+    # - Serializes medication details using the API compatibility aliases.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Aliased medication detail dictionary.
     def getMedicationDetail(self) -> dict[str, object]:
         return self.model_dump(by_alias=True)
 
+    # Function Name: getVoiceGuideText
+    # Description:
+    # - Joins nonblank medication name, usage and warning fields with Korean or English speech labels.
+    # Parameters:
+    # - language (str): Requested Korean or English content language.
+    # Returns:
+    # - Newline-separated voice-guide text; empty when all source fields are blank.
     def getVoiceGuideText(self, language: str = "ko") -> str:
         normalized_language = (language or "").strip().lower()
         labels = (
@@ -62,15 +77,16 @@ class MedicationDetail(BaseModel):
 
 
 # Class Name: _DrugBasicInfo
-# Role: Internal SQLAlchemy entity for locally mirrored e약은요 records.
+# Role:
+# - Internal SQLAlchemy entity for locally mirrored e약은요 records.
 # Responsibilities:
-#   - Store public medication records fetched from the e약은요 API.
-#   - Preserve the raw API payload for traceability and refresh validation.
+# - Store public medication records fetched from the e약은요 API.
+# - Preserve the raw API payload for traceability and refresh validation.
 # Attributes:
-#   - item_seq: Public API item sequence identifier.
-#   - item_name: Original medication item name.
-#   - normalized_item_name: Search-normalized medication name.
-#   - raw_json: Original public API payload.
+# - item_seq (String): Public API item sequence identifier.
+# - item_name (String): Original medication item name.
+# - normalized_item_name (String): Search-normalized medication name.
+# - raw_json (Text): Original public API payload.
 class _DrugBasicInfo(Base):
     __tablename__ = "drug_basic_infos"
 
@@ -92,17 +108,18 @@ class _DrugBasicInfo(Base):
 
 
 # Class Name: _DrugApprovalInfo
-# Role: Internal SQLAlchemy entity for locally mirrored detailed approval records.
+# Role:
+# - Internal SQLAlchemy entity for locally mirrored detailed approval records.
 # Responsibilities:
-#   - Store raw approval documents fetched from the public approval API.
-#   - Store generated patient-facing summaries after first use.
+# - Store raw approval documents fetched from the public approval API.
+# - Store generated patient-facing summaries after first use.
 # Attributes:
-#   - item_seq: Public item identifier or product standard code.
-#   - item_name: Original medication item name.
-#   - normalized_item_name: Search-normalized medication name.
-#   - efficacy_doc: Raw approval efficacy document.
-#   - use_method_doc: Raw approval usage document.
-#   - warning_doc: Raw approval warning document.
+# - item_seq (String): Public item identifier or product standard code.
+# - item_name (String): Original medication item name.
+# - normalized_item_name (String): Search-normalized medication name.
+# - efficacy_doc (Text): Raw approval efficacy document.
+# - use_method_doc (Text): Raw approval usage document.
+# - warning_doc (Text): Raw approval warning document.
 class _DrugApprovalInfo(Base):
     __tablename__ = "drug_approval_infos"
 

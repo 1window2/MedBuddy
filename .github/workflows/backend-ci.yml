@@ -1,3 +1,6 @@
+# File Name: backend-ci.yml
+# Role: Checks backend behavior and PostgreSQL migration compatibility on branch updates.
+
 name: FastAPI CI
 
 on:

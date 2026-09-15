@@ -1,0 +1,101 @@
+# 파일명: nearby_pharmacy_entity.py
+# 역할: 근처 약국 조회 과정에서 사용하는 비영속 도메인 모델을 정의한다.
+
+"""근처 약국 조회 과정에서 사용하는 비영속 도메인 모델."""
+
+from dataclasses import dataclass, field
+from datetime import date, datetime
+
+
+# 클래스명: PharmacyLocationRecord
+# 역할:
+# - 공공데이터 약국 API 응답에서 필요한 위치·영업 정보만 보관한다.
+# 주요 책임:
+# - 오늘·전날 운영 시간과 좌표·공식 지정 근거를 보존해 영업 상태 계산에 제공한다.
+# 속성:
+# - pharmacy_id (str): 공공 약국 식별자.
+# - name (str): 공공 약국 표시 이름.
+# - address (str): 약국 도로명·소재지 주소.
+# - telephone (str): 약국 문의 전화번호.
+# - latitude (float): 약국 위치의 위도(도).
+# - longitude (float): 약국 위치의 경도(도).
+@dataclass(frozen=True, slots=True)
+class PharmacyLocationRecord:
+    pharmacy_id: str
+    name: str
+    address: str
+    telephone: str
+    latitude: float
+    longitude: float
+    distance_km: float | None
+    start_time: str
+    end_time: str
+    previous_start_time: str = ""
+    previous_end_time: str = ""
+    schedule_source: str = "nemc_weekly_report"
+    schedule_is_date_specific: bool = False
+    official_designations: dict[str, object] = field(default_factory=dict)
+    weekly_hours: dict[str, tuple[str, str]] | None = None
+    source_updated_at: datetime | None = None
+
+
+# 클래스명: NearbyPharmacy
+# 역할:
+# - 사용자에게 보여줄 거리와 현재 영업 상태가 계산된 약국 정보를 표현한다.
+# 주요 책임:
+# - 거리·영업 여부·야간 지정과 운영 자료의 출처·최신성을 화면에 전달한다.
+# 속성:
+# - pharmacy_id (str): 공공 약국 식별자.
+# - name (str): 공공 약국 표시 이름.
+# - address (str): 약국 도로명·소재지 주소.
+# - telephone (str): 약국 문의 전화번호.
+# - latitude (float): 약국 위치의 위도(도).
+# - longitude (float): 약국 위치의 경도(도).
+@dataclass(frozen=True, slots=True)
+class NearbyPharmacy:
+    pharmacy_id: str
+    name: str
+    address: str
+    telephone: str
+    latitude: float
+    longitude: float
+    distance_km: float
+    today_open_time: str | None
+    today_close_time: str | None
+    is_open_now: bool | None
+    is_24_hours: bool
+    is_open_late: bool = False
+    has_weekend_or_holiday_hours: bool = False
+    is_public_holiday: bool = False
+    is_official_late_night: bool = False
+    designation_source_name: str | None = None
+    designation_source_url: str | None = None
+    designation_verified_at: date | None = None
+    designation_is_stale: bool = False
+    schedule_date: date | None = None
+    schedule_source: str = "nemc_weekly_report"
+    schedule_is_date_specific: bool = False
+    minutes_until_close: int | None = None
+    next_open_at: str | None = None
+    source_updated_at: str | None = None
+    source_name: str = "National Emergency Medical Center"
+
+
+# Class Name: NearbyPharmacySearchResult
+# Role:
+# - Pharmacy matches plus the freshness and fallback state used to build them.
+# Responsibilities:
+# - Keep matched pharmacies together with effective search time and catalog/holiday fallback evidence.
+# Attributes:
+# - search_mode (str): Requested pharmacy opening-hours or official-designation filter.
+# - target_datetime (datetime): Resolved opening-hours reference time in the application time zone.
+@dataclass(frozen=True, slots=True)
+class NearbyPharmacySearchResult:
+    """Pharmacy matches plus the freshness and fallback state used to build them."""
+
+    data: list[NearbyPharmacy]
+    search_mode: str
+    target_datetime: datetime
+    catalog_updated_at: datetime | None
+    catalog_is_stale: bool
+    holiday_schedule_status: str

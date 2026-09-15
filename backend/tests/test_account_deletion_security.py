@@ -1,5 +1,5 @@
 # File Name: test_account_deletion_security.py
-# Role: Regression coverage for recent-authenticated, transaction-safe deletion.
+# Role: Regression coverage for recent authentication and transaction-safe account deletion.
 
 from datetime import UTC, datetime, timedelta
 import os
@@ -34,16 +34,44 @@ from entities.health_recommendation_cache_entity import (
 from entities.user_account_entity import _UserAccount
 
 
+# Class Name: _RecordingIdentityDeletionBoundary
+# Role: Firebase identity-deletion double that retains the verified subjects requested for
+#   removal.
+# Responsibilities:
+# - Records the external Firebase subject without deleting a real identity.
+# Attributes:
+# - subjects (list[str]): External Firebase subjects recorded across deletion attempts.
 class _RecordingIdentityDeletionBoundary:
     """Records the verified Firebase subject used by account deletion."""
 
+    # Function Name: __init__
+    # Description:
+    # - Starts an empty subject history so each deletion can be checked independently.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.subjects: list[str] = []
 
+    # Function Name: deleteIdentity
+    # Description:
+    # - Records the external Firebase subject without deleting a real identity.
+    # Parameters:
+    # - subject (str): Verified external Firebase user identifier.
+    # Returns:
+    # - None.
     def deleteIdentity(self, subject: str) -> None:
         self.subjects.append(subject)
 
 
+# 함수이름: test_sqlite_account_registration_releases_write_lock
+# 함수역할:
+# - 계정 등록 후 두 번째 SQLite 세션이 즉시 쓰기 트랜잭션을 시작하고 등록 행을 읽을 수 있는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - 없음 (None).
 def test_sqlite_account_registration_releases_write_lock() -> None:
     """사용자 확인 뒤 다른 초기 조회가 SQLite 잠금에 막히지 않는다."""
 
@@ -102,6 +130,14 @@ def _principal(
     return AuthenticatedPrincipal.from_verified_claims(claims)
 
 
+# Function Name: test_recent_authentication_is_required_before_permanent_deletion
+# Description:
+# - Accepts fresh authentication but requires a 401 Bearer challenge for stale or missing
+#   auth_time.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_recent_authentication_is_required_before_permanent_deletion() -> None:
     now = datetime.now(UTC)
     fresh = _principal(now - timedelta(seconds=30))
@@ -116,6 +152,13 @@ def test_recent_authentication_is_required_before_permanent_deletion() -> None:
         assert denied.value.headers == {"WWW-Authenticate": "Bearer"}
 
 
+# Function Name: test_anonymous_guest_deletion_has_an_explicit_freshness_exception
+# Description:
+# - Allows an anonymous guest to delete its account despite an old authentication timestamp.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_anonymous_guest_deletion_has_an_explicit_freshness_exception() -> None:
     guest = _principal(
         datetime.now(UTC) - timedelta(days=30),
@@ -126,6 +169,14 @@ def test_anonymous_guest_deletion_has_an_explicit_freshness_exception() -> None:
     assert get_recently_authenticated_principal(guest) is guest
 
 
+# Function Name: test_invalid_firebase_auth_time_is_rejected
+# Description:
+# - Requires malformed Firebase auth_time claims to raise ValueError before a principal is
+#   created.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_invalid_firebase_auth_time_is_rejected() -> None:
     with pytest.raises(ValueError, match="auth_time"):
         AuthenticatedPrincipal.from_verified_claims(
@@ -137,6 +188,14 @@ def test_invalid_firebase_auth_time_is_rejected() -> None:
         )
 
 
+# Function Name: test_account_lock_orders_inflight_write_before_deletion
+# Description:
+# - Requires deletion to wait for an in-flight write, purge the committed medical row, and
+#   delete the verified Firebase subject without worker failures.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_account_lock_orders_inflight_write_before_deletion() -> None:
     database_fd, database_path_value = tempfile.mkstemp(
         prefix="medbuddy-account-deletion-",
@@ -166,6 +225,14 @@ def test_account_lock_orders_inflight_write_before_deletion() -> None:
     # Step 1: The writer holds the same account transaction lock used by requests.
     # Step 2: Deletion attempts the lock and waits instead of purging concurrently.
     # Step 3: The writer commits, then deletion acquires the lock and purges the row.
+    # Function Name: write_medical_row
+    # Description:
+    # - Holds the account lock until deletion is attempted, then commits a medical row;
+    #   captures worker errors and rolls back on failure.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def write_medical_row() -> None:
         try:
             _lock_account_operation(writer_session, user_hash)
@@ -185,6 +252,14 @@ def test_account_lock_orders_inflight_write_before_deletion() -> None:
             failures.append(exc)
             writer_session.rollback()
 
+    # Function Name: delete_account
+    # Description:
+    # - Waits for the writer, acquires its account lock, and records the deletion result;
+    #   captures worker errors and rolls back on failure.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def delete_account() -> None:
         try:
             if not writer_locked.wait(timeout=2):

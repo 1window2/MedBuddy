@@ -1,5 +1,6 @@
-# 파일명: test_check_schedule_control.py
-# 역할: 오늘의 복약 일정 조회와 복약 완료 상태 변경 control을 검증한다.
+# File Name: test_check_schedule_control.py
+# Role: Regression coverage for patient-scoped schedules, dose completion, transactional outbox
+#   events, and legacy schema compatibility.
 
 import sys
 import tempfile
@@ -36,10 +37,31 @@ from entities.saved_medication_entity import (  # noqa: E402
 )
 
 
+# 클래스명: _CompletionEventRecorder
+# 역할: 복약 완료 알림의 환자와 시간대를 기록하는 테스트용 이벤트 경계다.
+# 주요 책임:
+# - 완료된 환자 해시와 시간대 키를 한 이벤트로 기록한다.
+# 속성:
+# - events (list[dict[str, str]]): 복약 완료 알림으로 기록한 환자·시간대 쌍.
 class _CompletionEventRecorder:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 복약 완료 알림 이력을 빈 목록으로 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def __init__(self) -> None:
         self.events: list[dict[str, str]] = []
 
+    # 함수이름: notifySlotCompleted
+    # 함수역할:
+    # - 완료된 환자 해시와 시간대 키를 한 이벤트로 기록한다.
+    # 매개변수:
+    # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
+    # - slot_key (str): 복약 시간대 키 또는 약 전체 상태 변경을 뜻하는 None.
+    # 반환값:
+    # - 없음 (None).
     def notifySlotCompleted(
         self,
         *,
@@ -54,7 +76,29 @@ class _CompletionEventRecorder:
         )
 
 
+# Class Name: CheckScheduleTest
+# Role: Database-backed schedule tests covering treatment windows, dose transitions, and
+#   completion-event atomicity.
+# Responsibilities:
+# - Persists and refreshes a medication with configurable course dates, dose slots, and legacy
+#   completion state.
+# - Requires UML-named completion attributes to map correctly to the persisted medication,
+#   patient, date, slot, and completion fields.
+# - Adds required completion fields, deduplicates legacy rows with default ownership and slot
+#   values, and rejects a duplicate completion key.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - control (CheckSchedule): Use-case control under test, isolated from production state.
 class CheckScheduleTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an isolated medication/completion database and schedule control using the
+    #   current schemas.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -71,10 +115,37 @@ class CheckScheduleTest(unittest.TestCase):
         self.db = session_factory()
         self.control = CheckSchedule(self.db)
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the schedule session and disposes its database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: _saved_medication
+    # Description:
+    # - Persists and refreshes a medication with configurable course dates, dose slots, and
+    #   legacy completion state.
+    # Parameters:
+    # - patient_hash (str): Patient owner identifying the medication or linked-data scope.
+    # - item_name (str): Product name in the authoritative or saved medication record.
+    # - created_date (date | None): Original saved-medication date; None uses today's date.
+    # - prescription_date (date | None): Course start/prescription date; None uses the
+    #   fixture's default.
+    # - total_days (str | None): Prescribed course-duration label, possibly unknown.
+    # - daily_frequency (str | None): Prescription dose-frequency label.
+    # - schedule_slot_keys (str): Confirmed dose slots, encoded as JSON when the storage
+    #   helper expects text.
+    # - medication_status (bool): Requested complete or incomplete state.
+    # - medication_status_date (date | None): Date associated with the legacy completion
+    #   flag.
+    # Returns:
+    # - _SavedMedication: Persisted and refreshed medication row, including its generated
+    #   ID.
     def _saved_medication(
         self,
         *,
@@ -83,6 +154,8 @@ class CheckScheduleTest(unittest.TestCase):
         created_date: date | None = None,
         prescription_date: date | None = None,
         total_days: str | None = "7 days",
+        daily_frequency: str | None = "3 times",
+        schedule_slot_keys: str = "[]",
         medication_status: bool = False,
         medication_status_date: date | None = None,
     ) -> _SavedMedication:
@@ -95,8 +168,9 @@ class CheckScheduleTest(unittest.TestCase):
             use_method="usage",
             warning_message="warning",
             dosage_per_time="1 tablet",
-            daily_frequency="3 times",
+            daily_frequency=daily_frequency,
             total_days=total_days,
+            schedule_slot_keys=schedule_slot_keys,
             medication_status=medication_status,
             medication_status_date=medication_status_date,
             ai_guide="guide",
@@ -107,6 +181,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         return medication
 
+    # Function Name: test_today_schedule_is_scoped_and_filters_expired_medications
+    # Description:
+    # - Returns only the requested patient's active medication, using prescription dates for
+    #   eligibility while retaining original save dates and images.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_today_schedule_is_scoped_and_filters_expired_medications(self) -> None:
         today = application_today()
         old_saved_date = today - timedelta(days=20)
@@ -145,6 +227,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
 
+    # Function Name: test_schedule_window_includes_future_starting_course
+    # Description:
+    # - Includes a future-starting course within the fourteen-day window and returns its
+    #   exact start and end bounds.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_schedule_window_includes_future_starting_course(self) -> None:
         today = application_today()
         future_medication = self._saved_medication(
@@ -182,6 +272,14 @@ class CheckScheduleTest(unittest.TestCase):
             str(future_medication.id),
         )
 
+    # Function Name: test_status_update_is_scoped_by_patient_hash
+    # Description:
+    # - Rejects cross-patient completion updates with 404 and persists today's completed
+    #   status for the owner.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_status_update_is_scoped_by_patient_hash(self) -> None:
         medication = self._saved_medication(patient_hash="patient-b")
 
@@ -205,6 +303,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(medication.medication_status)
         self.assertEqual(medication.medication_status_date, application_today())
 
+    # Function Name: test_slot_status_update_only_marks_requested_dose
+    # Description:
+    # - Completes only the requested morning dose, leaving the overall medication incomplete
+    #   and other slots untouched.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_slot_status_update_only_marks_requested_dose(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
 
@@ -234,6 +340,136 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(completions[0].slot_key, "morning")
         self.assertTrue(completions[0].completed)
 
+    # Function Name: test_whole_slot_update_is_atomic_scoped_and_reversible
+    # Description:
+    # - Completes and reverses every medication in one patient's slot atomically, emits one
+    #   outbox event, and leaves another patient's rows untouched.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_stale_notification_cannot_complete_today(self) -> None:
+        """Reject a mismatched reminder day before writing completion or outbox rows."""
+        self._saved_medication(patient_hash="patient-a", item_name="tablet")
+        for delta in (-1, 1):
+            with self.assertRaises(HTTPException) as raised:
+                self.control.updateMedicationSlotStatus(
+                    "morning", True, "patient-a",
+                    expected_schedule_date=application_today() + timedelta(days=delta),
+                )
+            self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
+
+    def test_whole_slot_update_is_atomic_scoped_and_reversible(self) -> None:
+        first_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="first-tablet",
+        )
+        second_medication = self._saved_medication(
+            patient_hash="patient-a",
+            item_name="second-tablet",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+        other_patient_medication = self._saved_medication(
+            patient_hash="patient-b",
+            item_name="other-patient-tablet",
+        )
+        event_recorder = _CompletionEventRecorder()
+        control = CheckSchedule(
+            self.db,
+            completion_event_boundary=event_recorder,
+        )
+
+        completed_response = control.updateMedicationSlotStatus(
+            "morning",
+            True,
+            "patient-a",
+            expected_schedule_date=application_today(),
+        )
+
+        self.assertTrue(completed_response["success"])
+        self.assertEqual(
+            {schedule["medication_id"] for schedule in completed_response["data"]},
+            {str(first_medication.id), str(second_medication.id)},
+        )
+        self.assertTrue(
+            all(
+                schedule["slot_statuses"]["morning"]
+                for schedule in completed_response["data"]
+            )
+        )
+        self.assertEqual(
+            event_recorder.events,
+            [{"patient_hash": "patient-a", "slot_key": "morning"}],
+        )
+        completion_events = control.consumeCompletionEvents()
+        self.assertEqual(len(completion_events), 1)
+        self.assertIsInstance(completion_events[0]["outbox_id"], int)
+
+        unchecked_response = control.updateMedicationSlotStatus(
+            "morning",
+            False,
+            "patient-a",
+        )
+
+        self.assertTrue(
+            all(
+                not schedule["slot_statuses"]["morning"]
+                for schedule in unchecked_response["data"]
+            )
+        )
+        self.assertEqual(control.consumeCompletionEvents(), [])
+        self.db.refresh(other_patient_medication)
+        self.assertFalse(other_patient_medication.medication_status)
+        other_patient_completions = (
+            self.db.query(_MedicationCompletion)
+            .filter(
+                _MedicationCompletion.saved_medication_id
+                == other_patient_medication.id
+            )
+            .all()
+        )
+        self.assertEqual(other_patient_completions, [])
+
+    # Function Name: test_whole_slot_update_rejects_invalid_or_empty_slot
+    # Description:
+    # - Rejects an unknown whole-slot key with 400 and a valid but empty slot with 404.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_whole_slot_update_rejects_invalid_or_empty_slot(self) -> None:
+        self._saved_medication(
+            patient_hash="patient-a",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+
+        with self.assertRaises(HTTPException) as invalid_context:
+            self.control.updateMedicationSlotStatus(
+                "after-midnight",
+                True,
+                "patient-a",
+            )
+        self.assertEqual(invalid_context.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as empty_context:
+            self.control.updateMedicationSlotStatus(
+                "bedtime",
+                True,
+                "patient-a",
+            )
+        self.assertEqual(empty_context.exception.status_code, 404)
+
+    # 함수이름: test_completion_event_is_emitted_only_when_slot_becomes_fully_completed
+    # 함수역할:
+    # - 시간대의 마지막 약이 완료될 때만 대기 상태 outbox 이벤트를 한 번 만들고 부분 완료·반복 완료에는 알림을 만들지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_completion_event_is_emitted_only_when_slot_becomes_fully_completed(
         self,
     ) -> None:
@@ -294,6 +530,14 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.assertEqual(control.consumeCompletionEvents(), [])
 
+    # Function Name: test_two_sessions_reuse_one_completion_outbox_event
+    # Description:
+    # - Requires concurrent sessions creating the same completion event to finish without
+    #   errors and return one shared outbox row ID.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_two_sessions_reuse_one_completion_outbox_event(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "outbox-concurrency.db"
@@ -302,6 +546,17 @@ class CheckScheduleTest(unittest.TestCase):
                 connect_args={"check_same_thread": False, "timeout": 10},
             )
 
+            # Function Name: enable_concurrent_writes
+            # Description:
+            # - Enables SQLite WAL and a ten-second busy timeout so competing test
+            #   sessions can serialize writes.
+            # Parameters:
+            # - dbapi_connection (sqlite3.Connection): SQLite driver connection
+            #   configured for concurrent writes.
+            # - _record (ConnectionRecord): SQLAlchemy connection-pool record;
+            #   unused by the SQLite setup hook.
+            # Returns:
+            # - None.
             @event.listens_for(engine, "connect")
             def enable_concurrent_writes(dbapi_connection, _record) -> None:
                 cursor = dbapi_connection.cursor()
@@ -321,6 +576,13 @@ class CheckScheduleTest(unittest.TestCase):
             errors: list[Exception] = []
 
             # 두 요청이 같은 이벤트를 동시에 만들더라도 DB 고유 키가 한 행만 남긴다.
+            # 함수이름: insert_same_event
+            # 함수역할:
+            # - 두 작업을 동시에 시작하여 같은 고유 이벤트 키로 생성·조회한 행 ID를 기록하고 실패 시 롤백 후 오류를 수집한다.
+            # 매개변수:
+            # - 없음.
+            # 반환값:
+            # - 없음 (None).
             def insert_same_event() -> None:
                 session = session_factory()
                 try:
@@ -357,6 +619,13 @@ class CheckScheduleTest(unittest.TestCase):
                 verification_session.close()
                 engine.dispose()
 
+    # Function Name: test_completion_transition_is_computed_before_transaction_commit
+    # Description:
+    # - Requires both before/after slot-state reads to occur before transaction commit.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_completion_transition_is_computed_before_transaction_commit(
         self,
     ) -> None:
@@ -368,10 +637,32 @@ class CheckScheduleTest(unittest.TestCase):
         completion_state_reads: list[bool] = []
         original_reader = self.control._slot_completion_states_for_patient
 
+        # Function Name: mark_commit
+        # Description:
+        # - Marks the transaction as committed for the ordering assertions in the
+        #   surrounding test.
+        # Parameters:
+        # - _session (object): Session passed to the after-commit listener; the callback
+        #   records only timing.
+        # Returns:
+        # - None.
         def mark_commit(_session: object) -> None:
             nonlocal commit_completed
             commit_completed = True
 
+        # Function Name: tracked_reader
+        # Description:
+        # - Records whether commit has occurred before delegating to the original
+        #   slot-state reader.
+        # Parameters:
+        # - patient_hash (str): Patient owner identifying the medication or linked-data
+        #   scope.
+        # - schedule_date (date): Calendar day whose dose-completion states are queried.
+        # - slot_keys (list[str]): Medication slots included in the completion-state
+        #   lookup.
+        # Returns:
+        # - dict[str, bool]: Original per-slot completion states, unchanged by
+        #   instrumentation.
         def tracked_reader(
             patient_hash: str,
             schedule_date: date,
@@ -395,6 +686,14 @@ class CheckScheduleTest(unittest.TestCase):
 
         self.assertEqual(completion_state_reads, [False, False])
 
+    # Function Name: test_medication_completion_preserves_uml_entity_names
+    # Description:
+    # - Requires UML-named completion attributes to map correctly to the persisted
+    #   medication, patient, date, slot, and completion fields.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_medication_completion_preserves_uml_entity_names(self) -> None:
         schedule_date = application_today()
         completed_at = datetime(2026, 1, 1, 8, 0)
@@ -421,6 +720,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(row.slot_key, "morning")
         self.assertTrue(row.completed)
 
+    # Function Name: test_all_slots_complete_sets_legacy_row_status
+    # Description:
+    # - Sets the legacy overall completion flag only after morning, lunch, and evening are
+    #   all complete.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_all_slots_complete_sets_legacy_row_status(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
 
@@ -440,6 +747,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         self.assertTrue(medication.medication_status)
 
+    # Function Name: test_unchecking_one_slot_clears_legacy_row_status
+    # Description:
+    # - Clears overall completion when lunch is unchecked while preserving completed morning
+    #   and evening slots.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_unchecking_one_slot_clears_legacy_row_status(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
         self.control.updateMedicationStatus(medication.id, True, "patient-a")
@@ -459,6 +774,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         self.assertFalse(medication.medication_status)
 
+    # Function Name: test_slot_update_preserves_other_legacy_completed_slots
+    # Description:
+    # - Preserves other completed legacy slots when one slot is unchecked and clears the
+    #   legacy overall flag.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_slot_update_preserves_other_legacy_completed_slots(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
@@ -481,6 +804,13 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.refresh(medication)
         self.assertFalse(medication.medication_status)
 
+    # Function Name: test_invalid_slot_key_is_rejected
+    # Description:
+    # - Rejects a slot absent from the medication's configured schedule with HTTP 400.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_invalid_slot_key_is_rejected(self) -> None:
         medication = self._saved_medication(patient_hash="patient-a")
 
@@ -494,6 +824,13 @@ class CheckScheduleTest(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
 
+    # Function Name: test_previous_day_completion_does_not_mark_today_complete
+    # Description:
+    # - Does not carry yesterday's legacy completion flag into today's schedule.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_previous_day_completion_does_not_mark_today_complete(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
@@ -507,6 +844,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
         self.assertFalse(response["data"][0]["medication_status"])
 
+    # Function Name: test_today_schedule_batches_completion_lookup
+    # Description:
+    # - Loads completion states for two medications using one batched SELECT rather than
+    #   per-medication queries.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_today_schedule_batches_completion_lookup(self) -> None:
         first_medication = self._saved_medication(
             patient_hash="patient-a",
@@ -537,6 +882,24 @@ class CheckScheduleTest(unittest.TestCase):
         self.db.commit()
         completion_select_count = 0
 
+        # Function Name: count_completion_select
+        # Description:
+        # - Counts only SELECT statements against medication_completions to measure
+        #   schedule-query batching.
+        # Parameters:
+        # - _connection (object): SQLAlchemy connection passed to the query listener.
+        #   Unused by this double.
+        # - _cursor (object): Database cursor supplied to the SQL event listener. Unused
+        #   by this double.
+        # - statement (str): SQL statement inspected for query shape or count.
+        # - _parameters (object): Bound SQL parameters supplied to the event listener.
+        #   Unused by this double.
+        # - _context (object): SQL execution context supplied to the query listener.
+        #   Unused by this double.
+        # - _executemany (bool): SQL event flag indicating batch execution. Unused by
+        #   this double.
+        # Returns:
+        # - None.
         def count_completion_select(
             _connection: object,
             _cursor: object,
@@ -571,6 +934,13 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertEqual(len(response["data"]), 2)
         self.assertEqual(completion_select_count, 1)
 
+    # Function Name: test_empty_patient_hash_falls_back_to_default_hash
+    # Description:
+    # - Uses the default patient scope when the requested hash contains only whitespace.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_empty_patient_hash_falls_back_to_default_hash(self) -> None:
         medication = self._saved_medication(patient_hash=DEFAULT_PATIENT_HASH)
 
@@ -579,6 +949,14 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
 
+    # Function Name: test_completion_schema_upgrade_hardens_legacy_table
+    # Description:
+    # - Adds required completion fields, deduplicates legacy rows with default ownership and
+    #   slot values, and rejects a duplicate completion key.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_completion_schema_upgrade_hardens_legacy_table(self) -> None:
         legacy_engine = create_engine(
             "sqlite:///:memory:",
