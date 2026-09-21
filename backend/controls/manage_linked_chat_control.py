@@ -444,6 +444,7 @@ class ManageLinkedChat:
     def record_medication_taken(
         self, *, link_id: int, sender_hash: str, client_message_id: str,
         schedule_date: date, slot_key: str, medication_ids: list[int],
+        commit: bool = True, allow_historical: bool = False,
     ) -> tuple[ChatSendResult, list[dict[str, str | int]]]:
         """Commit explicit dose confirmations and their chat message together.
 
@@ -477,8 +478,12 @@ class ManageLinkedChat:
                 expected_schedule_date=schedule_date,
                 selected_medication_ids=confirmation["medication_ids"],
                 commit=False,
+                allow_historical=allow_historical,
             )
-            slot_context = self._find_slot_context(patient_hash=sender_hash, slot_key=slot_key)
+            slot_context = next(
+                item for item in self._schedule_contexts_for_patient(sender_hash, schedule_date)
+                if item["slot_key"] == slot_key
+            )
             medications = [
                 item for item in slot_context["medications"]
                 if item["medication_id"] in confirmation["medication_ids"]
@@ -501,9 +506,14 @@ class ManageLinkedChat:
                 },
             )
             self.message_repository.add(row)
-            self.db.commit()
-            self.db.refresh(row)
+            if commit:
+                self.db.commit()
+                self.db.refresh(row)
+            else:
+                self.db.flush()
         except IntegrityError:
+            if not commit:
+                raise
             self.db.rollback()
             existing = self.message_repository.find_client_request(
                 link_id=link_id, sender_hash=sender_hash,
@@ -725,9 +735,10 @@ class ManageLinkedChat:
     def _schedule_contexts_for_patient(
         self,
         patient_hash: str,
+        schedule_date: date | None = None,
     ) -> list[dict[str, object]]:
         """활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다."""
-        today = application_today()
+        today = schedule_date or application_today()
         medications = self._active_medications(patient_hash, today)
         medication_ids = [int(item.id) for item in medications if item.id is not None]
         completion_rows = (

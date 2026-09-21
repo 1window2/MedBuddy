@@ -280,6 +280,7 @@ class CheckSchedule:
         expected_schedule_date: date | None = None,
         selected_medication_ids: list[int] | None = None,
         commit: bool = True,
+        allow_historical: bool = False,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
@@ -290,8 +291,11 @@ class CheckSchedule:
                 detail="Unsupported medication schedule slot.",
             )
 
-        today = application_today()
-        if expected_schedule_date is not None and expected_schedule_date != today:
+        current_day = application_today()
+        today = expected_schedule_date if allow_historical and expected_schedule_date else current_day
+        if not current_day - timedelta(days=30) <= today <= current_day:
+            raise HTTPException(status_code=409, detail="Dose date is outside the sync window.")
+        if not allow_historical and expected_schedule_date is not None and expected_schedule_date != today:
             raise HTTPException(
                 status_code=409,
                 detail="The reminder date no longer matches today's schedule.",
@@ -364,10 +368,9 @@ class CheckSchedule:
                     medication,
                     today,
                 )
-                medication.medication_status = self._all_slots_completed(
-                    slot_statuses
-                )
-                medication.medication_status_date = today
+                if today == current_day:
+                    medication.medication_status = self._all_slots_completed(slot_statuses)
+                    medication.medication_status_date = today
             current_slot_completion_states = (
                 self._slot_completion_states_for_patient(
                     normalized_patient_hash,
@@ -382,6 +385,9 @@ class CheckSchedule:
                 previous_slot_completion_states=previous_slot_completion_states,
                 current_slot_completion_states=current_slot_completion_states,
             )
+            # Historical uploads are records, not a new "just taken" alert.
+            if today != current_day:
+                completion_events = []
             for completion_event in completion_events:
                 outbox_row = self._get_or_create_completion_outbox(
                     event_key=str(completion_event["event_key"]),

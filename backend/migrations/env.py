@@ -14,6 +14,7 @@ from entities import device_push_token_entity  # noqa: F401
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
+from entities import dose_sync_operation_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401

@@ -11,6 +11,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from pydantic import BaseModel, Field
@@ -54,6 +55,8 @@ from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
+from controls.sync_dose_control import SyncDose
+from schemas.dose_sync import DoseSyncRequest
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
@@ -77,6 +80,7 @@ from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from core.database import SessionLocal
+from core.application_clock import application_today
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
@@ -562,6 +566,37 @@ def update_medication_slot_status(
             int(completion_event["outbox_id"]),
         )
     return response
+
+
+@router.post("/schedule/completion-operations")
+async def sync_dose_operation(
+    payload: DoseSyncRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    patient_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    check_schedule: CheckSchedule = Depends(get_check_schedule),
+) -> dict[str, object]:
+    """Accept explicit offline intake changes only for the signed-in owner."""
+    owner = authorization.resolvePatientScope(principal, patient_hash, allow_caregiver=False)
+    if not principal.authentication_disabled and patient_hash and patient_hash != owner:
+        raise HTTPException(status_code=403, detail="The queued dose belongs to another account.")
+    if payload.link_id is not None:
+        from api.chat_router import _enforce_chat_daily_quota
+        await _enforce_chat_daily_quota(request=request, user_hash=owner)
+    events, chat_result = SyncDose(check_schedule.db).apply(owner, payload)
+    for event in events:
+        background_tasks.add_task(_process_caregiver_completion_alert, int(event["outbox_id"]))
+    if chat_result is not None:
+        from api.chat_router import _publish_saved_message
+        await _publish_saved_message(payload.link_id, chat_result, request, background_tasks)
+    return {
+        "success": True,
+        "operation_id": payload.operation_id,
+        "schedule_date": application_today().isoformat(),
+        "data": check_schedule.requestTodayMedicationSchedule(owner)["data"],
+    }
 
 
 # 함수이름: update_medication_status
