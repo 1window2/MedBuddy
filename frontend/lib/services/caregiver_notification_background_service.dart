@@ -19,6 +19,9 @@ import 'authenticated_api_client.dart';
 import 'caregiver_notification_monitor_service.dart';
 import 'firebase_runtime_service.dart';
 import 'medication_reminder_background_service.dart';
+import 'dose_sync_service.dart';
+import 'dose_sync_background_service.dart';
+import 'dose_outbox_store.dart';
 import 'notification_service.dart';
 
 const String caregiverNotificationBackgroundTask =
@@ -42,13 +45,15 @@ Future<User?> _restoreBackgroundFirebaseUser() async {
   try {
     return await firebaseAuth
         .idTokenChanges()
-        .firstWhere(/* 함수이름: firstWhere 콜백
+        .firstWhere(
+          /* 함수이름: firstWhere 콜백
          * 함수역할: 복원된 인증 스트림에서 실제 Firebase 사용자가 나타날 때까지 기다린다.
          * 매개변수:
          * - user (User?): 현재 또는 새로 복원된 Firebase 사용자
          * 반환값:
          * - 사용자가 null이 아니면 true.
-         */(user) => user != null)
+         */ (user) => user != null,
+        )
         .timeout(_backgroundAuthRestoreTimeout);
   } on TimeoutException {
     return null;
@@ -70,8 +75,9 @@ void caregiverNotificationCallbackDispatcher() {
    * - inputData (Map<String, dynamic>?): 작업에 저장된 API 주소와 환자·보호자 범위
    * 반환값:
    * - 작업 성공·무시 여부는 true, 인증 또는 실행 실패는 false로 완료하는 Future.
-   */(taskName, inputData) async {
+   */ (taskName, inputData) async {
     if (taskName != caregiverNotificationBackgroundTask &&
+        taskName != doseSyncBackgroundTask &&
         taskName != medicationReminderBackgroundTask) {
       return true;
     }
@@ -89,6 +95,24 @@ void caregiverNotificationCallbackDispatcher() {
         }
         await currentUser.getIdToken();
         authenticatedClient = AuthenticatedApiClient();
+      }
+      if (taskName == doseSyncBackgroundTask) {
+        final owner = inputData?['patient_hash']?.toString() ?? '';
+        if (owner.isEmpty) return true;
+        final store = await DoseOutboxStore.open();
+        if (!await store.isActive(owner)) return true;
+        authenticatedClient ??= AuthenticatedApiClient();
+        final sync = DoseSyncService(
+          owner: owner,
+          client: authenticatedClient,
+          openStore: () async => store,
+        );
+        try {
+          await sync.drain();
+          return sync.pendingCount == 0 || sync.hasBlocked;
+        } finally {
+          sync.dispose();
+        }
       }
       await NotificationService.instance.initialize();
       if (taskName == medicationReminderBackgroundTask) {
@@ -122,7 +146,8 @@ void caregiverNotificationCallbackDispatcher() {
          * - 없음.
          * 반환값:
          * - 정규화된 저장 언어 코드.
-         */() => language,
+         */ () =>
+            language,
         requestPermission: false,
         monitorCompletionTransitions:
             AuthConfig.mode != AuthenticationMode.firebase,

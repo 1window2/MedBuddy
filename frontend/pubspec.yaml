@@ -11,6 +11,7 @@ environment:
 
 dependencies:
   camera: ^0.12.0+2
+  cryptography: ^2.8.1
   firebase_app_check: ^0.4.7
   firebase_auth: ^6.6.1
   firebase_core: ^4.14.0
@@ -20,6 +21,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_local_notifications: ^22.3.0
+  flutter_secure_storage: ^11.2.0
   flutter_tts: ^4.2.5
   geolocator: ^14.0.3
   google_mlkit_text_recognition: ^0.16.0
@@ -30,12 +32,14 @@ dependencies:
   path_provider: ^2.1.5
   provider: ^6.1.2
   shared_preferences: ^2.3.3
+  sqflite: ^2.4.2
   timezone: ^0.11.1
   url_launcher: ^6.3.2
   workmanager: ^0.10.9
   flutter_naver_map: 1.4.4
 
 dev_dependencies:
+  sqflite_common_ffi: ^2.4.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

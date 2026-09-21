@@ -35,6 +35,7 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/foreground_recovery_service.dart';
+import '../widgets/dose_sync_status.dart';
 import '../services/notification_inbox_store.dart';
 import '../controls/manage_notification_inbox_control.dart';
 import '../boundaries/notification_inbox_ui_boundary.dart';
@@ -600,11 +601,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
-        bottomNavigationBar: MedBuddyBottomNavigationUI(
-          selectedDestination: _selectedDestination,
-          showChat: showChat,
-          language: viewModel.userSetting.language,
-          onDestinationSelected: _selectDestination,
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (viewModel.doseSync case final sync?)
+              DoseSyncStatus(
+                service: sync,
+                isEnglish: viewModel.userSetting.language == 'en',
+              ),
+            MedBuddyBottomNavigationUI(
+              selectedDestination: _selectedDestination,
+              showChat: showChat,
+              language: viewModel.userSetting.language,
+              onDestinationSelected: _selectDestination,
+            ),
+          ],
         ),
       ),
     );
@@ -682,7 +693,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       medicationReminderSettings: viewModel.medicationReminderSettings,
       todayMedicationCompletedCount: todayMedicationProgress.completedCount,
       todayMedicationTotalCount: todayMedicationProgress.totalCount,
-      isTodayScheduleLoading: viewModel.isTodayScheduleLoading,
+      isTodayScheduleLoading:
+          viewModel.isTodayScheduleLoading &&
+          viewModel.todayMedicationScheduleList.isEmpty,
       // 함수이름: _buildHomeInput.onPrescriptionScanRequested callback
       // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `_requestGuidedPrescriptionImage(context, viewModel)`을 실행한다.
       // 매개변수:

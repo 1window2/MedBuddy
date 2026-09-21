@@ -35,6 +35,7 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/dose_sync_service.dart';
 import '../services/medication_reminder_background_service.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/notification_service.dart';
@@ -117,8 +118,6 @@ class SavedMedicationBatchDeleteResult {
   // - bool: Whether any selected medication failed to delete.
   bool get hasFailures => failureCount > 0;
 }
-
-
 
 // 클래스명: MedBuddyViewModel
 // 역할: 처방전 인식, 약품 분석, 복약 정보 저장, 일정 조회, 설정 저장 흐름을 관리한다.
@@ -369,13 +368,15 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - int: Counts recognized medication entries with recorded name corrections.
   int get correctedPrescriptionMedicationCount {
     return _recognizedMedicationScheduleList
-        .where(/* Function Name: where callback
+        .where(
+          /* Function Name: where callback
          * Description: Selects prescription schedules whose recognized medication name has been corrected.
          * Parameters:
          * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
          * Returns:
          * - Whether this schedule has a name correction.
-         */(schedule) => schedule.hasNameCorrection)
+         */ (schedule) => schedule.hasNameCorrection,
+        )
         .length;
   }
 
@@ -662,6 +663,33 @@ class MedBuddyViewModel extends ChangeNotifier {
         manageAccount ??
         ManageAccount(userHash: this.patientHash, client: _apiClient);
   }
+
+  DoseSyncService? doseSync;
+
+  // Production injects a durable queue; isolated view-model tests may omit it.
+  void attachDoseSync(DoseSyncService service) {
+    doseSync = service;
+    service.addListener(_onDoseSyncChanged);
+    unawaited(
+      service.start().catchError((Object _) {
+        _statusMessage = _isEnglishSetting
+            ? 'Could not open local dose storage.'
+            : '기기 복용 기록 저장소를 열지 못했습니다.';
+        _notifyViewModelListeners(MedBuddyFeature.schedule);
+      }),
+    );
+  }
+
+  void _onDoseSyncChanged() {
+    final sync = doseSync;
+    if (_isDisposed || sync == null) return;
+    _todayScheduleEpoch++;
+    _activeTodayScheduleLoadEpoch = null;
+    _isTodayScheduleLoading = false;
+    _todayMedicationScheduleList = sync.schedules;
+    _notifyViewModelListeners(MedBuddyFeature.schedule);
+  }
+
   // 함수이름: _notifyViewModelListeners
   // 함수역할: 기능별 ViewModel 확장에서 상태 변경을 화면에 알릴 수 있도록 ChangeNotifier 호출을 중계한다.
   // 매개변수:
@@ -694,6 +722,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    doseSync?.removeListener(_onDoseSyncChanged);
+    doseSync?.dispose();
     for (final updates in _featureUpdates.values) {
       updates.dispose();
     }

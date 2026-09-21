@@ -53,6 +53,14 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   Future<void> _loadTodayMedicationSchedule(
     Future<List<MedicationSchedule>> Function() loader,
   ) async {
+    int? cacheRevision;
+    if (doseSync != null) {
+      try {
+        cacheRevision = await doseSync!.cacheRevision();
+      } catch (_) {
+        // Online reads remain available when local persistence is unavailable.
+      }
+    }
     final loadEpoch = ++_todayScheduleEpoch;
     _activeTodayScheduleLoadEpoch = loadEpoch;
     _isTodayScheduleLoading = true;
@@ -64,12 +72,25 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       if (loadEpoch != _todayScheduleEpoch) {
         return;
       }
-      _todayMedicationScheduleList = scheduleList;
+      if (doseSync != null) {
+        try {
+          await doseSync!.cacheSchedules(
+            scheduleList,
+            expectedRevision: cacheRevision,
+          );
+        } catch (_) {
+          // A local storage failure must not hide a successful online read.
+          // Dose writes still fail closed when they cannot be persisted.
+        }
+      }
+      if (loadEpoch != _todayScheduleEpoch) return;
+      _todayMedicationScheduleList =
+          doseSync?.project(scheduleList) ?? scheduleList;
       _hasTodayScheduleLoadError = false;
       _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
       if (loadEpoch == _todayScheduleEpoch) {
-        _todayMedicationScheduleList = const [];
+        _todayMedicationScheduleList = doseSync?.schedules ?? const [];
         _lastTodayScheduleLoadSucceeded = false;
         _statusMessage = UserFacingErrorMessage.resolve(
           error,
@@ -79,7 +100,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       }
     } catch (_) {
       if (loadEpoch == _todayScheduleEpoch) {
-        _todayMedicationScheduleList = const [];
+        _todayMedicationScheduleList = doseSync?.schedules ?? const [];
         _lastTodayScheduleLoadSucceeded = false;
         _statusMessage = _isEnglishSetting
             ? 'Could not load today\'s medication schedule.'
@@ -118,13 +139,13 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   }
 
   // 함수이름: requestMedicationDoseStatusUpdate
-  // 함수역할: 복약 완료 상태를 백엔드 일정 상태 변경 API로 저장한다. slotKey를 함께 전달해 하루 여러 번 복용하는 약의 완료 상태를 분리한다.
+  // 함수역할: 시간대별 복용 기록을 기기에 먼저 저장하고 서버 전송을 예약한다. 큐가 없는 실행 환경은 기존 API 경로를 사용한다.
   // 매개변수:
   // - slotKey (String): 상태를 변경할 시간대 키
   // - schedule (MedicationSchedule): 상태를 변경할 복약 일정
   // - medicationStatus (bool): 새 완료 상태
   // 반환값:
-  // - 백엔드 갱신에 성공하면 True
+  // - 기기 저장(큐가 없으면 서버 갱신)에 성공하면 True. 서버 전송 완료 여부는 큐 상태로 구분한다.
   Future<bool> requestMedicationDoseStatusUpdate(
     String slotKey,
     MedicationSchedule schedule,
@@ -138,18 +159,36 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   }
 
   // Function Name: requestMedicationSlotStatusUpdate
-  // Description: Checks or unchecks every active medication in one time slot through one atomic backend request. Replaces only schedules returned by the scoped update while preserving the rest of today's locally loaded schedule.
+  // Description: Durably queues the visible medicines in a slot, restoring cached data first for notification entry. Without a queue, uses the existing atomic server update.
   // Parameters:
   // - slotKey (String): Time slot whose medications should be updated together.
   // - medicationStatus (bool): Completion state applied to the full slot.
   // - expectedScheduleDate (String?): Optional original dose day checked by the server.
   // Returns:
-  // - True when the backend update and local state replacement succeed.
+  // - True after durable local acceptance (or a server update without a queue).
   Future<bool> requestMedicationSlotStatusUpdate(
     String slotKey,
     bool medicationStatus, {
     String? expectedScheduleDate,
   }) async {
+    if (doseSync != null) {
+      try {
+        // A notification can arrive before the home screen restores its cache.
+        await doseSync!.initialize();
+        if (!doseSync!.hasCache) await fetchTodayMedicationSchedule();
+        if (!doseSync!.hasCache) return false;
+      } catch (_) {
+        return false;
+      }
+      return _queueDoseStatus(
+        _todayMedicationScheduleList
+            .where((s) => s.slotKeys.contains(slotKey))
+            .toList(),
+        slotKey,
+        medicationStatus,
+        scheduleDate: expectedScheduleDate,
+      );
+    }
     try {
       final updatedSchedules = await checkSchedule.updateMedicationSlotStatus(
         slotKey,
@@ -162,13 +201,16 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       };
       _todayScheduleEpoch += 1;
       _todayMedicationScheduleList = _todayMedicationScheduleList
-          .map(/* Function Name: map callback
+          .map(
+            /* Function Name: map callback
            * Description: Replaces a schedule with its refreshed ID match while retaining schedules absent from the update set.
            * Parameters:
            * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
            * Returns:
            * - The refreshed schedule or the unchanged original.
-           */(schedule) => updatedById[schedule.medicationID] ?? schedule)
+           */
+            (schedule) => updatedById[schedule.medicationID] ?? schedule,
+          )
           .toList(growable: false);
       _notifyViewModelListeners(MedBuddyFeature.schedule);
       return true;
@@ -204,6 +246,19 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     if (medicationSchedule.medicationID.trim().isEmpty) {
       return false;
     }
+    if (doseSync != null) {
+      final slots = slotKey == null ? medicationSchedule.slotKeys : [slotKey];
+      for (final slot in slots) {
+        if (!await _queueDoseStatus(
+          [medicationSchedule],
+          slot,
+          medicationStatus,
+        )) {
+          return false;
+        }
+      }
+      return true;
+    }
 
     try {
       final updatedSchedule = await checkSchedule.updateMedicationStatus(
@@ -238,6 +293,43 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not update the medication status.'
           : '복약 상태를 업데이트하지 못했습니다.';
+      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      return false;
+    }
+  }
+
+  Future<bool> _queueDoseStatus(
+    List<MedicationSchedule> schedules,
+    String slotKey,
+    bool completed, {
+    String? scheduleDate,
+  }) async {
+    try {
+      final ids = schedules
+          .map((s) => int.tryParse(s.medicationID))
+          .whereType<int>()
+          .toList();
+      if (ids.isEmpty || ids.length != schedules.length) return false;
+      final saved = await doseSync!.record(
+        medicationIds: ids,
+        slotKey: slotKey,
+        completed: completed,
+        scheduleDate: scheduleDate,
+        medicationNames: schedules.map((s) => s.medicationName).toList(),
+      );
+      _statusMessage = saved
+          ? (_isEnglishSetting
+                ? 'Saved on this device. Waiting to sync.'
+                : '기기에 기록했습니다. 서버 전송 대기 중입니다.')
+          : (_isEnglishSetting
+                ? 'Please reload today\'s schedule before recording a dose.'
+                : '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.');
+      if (!saved) _notifyViewModelListeners(MedBuddyFeature.schedule);
+      return saved;
+    } catch (_) {
+      _statusMessage = _isEnglishSetting
+          ? 'Could not save the dose on this device.'
+          : '기기에 복용 기록을 저장하지 못했습니다. 다시 시도해주세요.';
       _notifyViewModelListeners(MedBuddyFeature.schedule);
       return false;
     }

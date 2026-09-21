@@ -16,6 +16,7 @@ import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/dose_sync_status.dart';
 import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
@@ -442,6 +443,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                 ? () => Navigator.pop(context)
                 : null,
           ),
+          if (widget.showBackButton && viewModel.doseSync != null)
+            DoseSyncStatus(
+              service: viewModel.doseSync!,
+              isEnglish: viewModel.userSetting.language == 'en',
+            ),
           Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
             _HealthRecommendationFooter(
@@ -472,7 +478,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       );
     }
 
-    if (viewModel.hasTodayScheduleLoadError) {
+    if (viewModel.hasTodayScheduleLoadError &&
+        viewModel.todayMedicationScheduleList.isEmpty) {
       return _ScheduleLoadErrorState(
         text: text,
         message: text.scheduleLoadFailed,

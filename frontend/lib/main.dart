@@ -24,6 +24,8 @@ import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
 import 'services/linked_chat_notification_monitor_service.dart';
 import 'services/medication_reminder_background_service.dart';
+import 'services/dose_sync_service.dart';
+import 'services/dose_sync_background_service.dart';
 import 'services/naver_map_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
@@ -31,8 +33,6 @@ import 'theme/medbuddy_text_scale.dart';
 import 'viewmodels/medbuddy_view_model.dart';
 import 'viewmodels/medbuddy_feature_updates.dart';
 import 'views/home_screen.dart';
-
-
 
 // Function Name: main
 // Description: Initializes Flutter and portrait orientation, attempts map and background setup, starts authentication and language state, runs the app, and then initializes notifications with reported bootstrap failures.
@@ -282,13 +282,15 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
       _openLinkedChatRouteName = null;
-      _navigatorKey.currentState?.popUntil(/* Function Name: popUntil callback
+      _navigatorKey.currentState?.popUntil(
+        /* Function Name: popUntil callback
        * Description: Stops account-transition navigation cleanup at the root route.
        * Parameters:
        * - route (Route<dynamic>): Route currently examined by the navigator.
        * Returns:
        * - Whether this route is the navigator's first route.
-       */(route) => route.isFirst);
+       */ (route) => route.isFirst,
+      );
       return;
     }
     final pendingSelection = _pendingNotificationSelection;
@@ -326,6 +328,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
 
     if (userHash == null || userHash.isEmpty) {
+      unawaited(DoseSyncBackgroundScheduler.suspend().catchError((_) {}));
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
       unawaited(MedicationReminderBackgroundScheduler.cancel());
       return;
@@ -340,7 +343,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - 없음.
        * 반환값:
        * - 현재 앱 언어 코드.
-       */() => _appLanguageControl.language,
+       */ () =>
+          _appLanguageControl.language,
     );
     _pushNotificationService = pushService;
     unawaited(pushService.start());
@@ -399,7 +403,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - 없음.
        * 반환값:
        * - 현재 앱 언어 코드.
-       */() => _appLanguageControl.language,
+       */ () =>
+          _appLanguageControl.language,
       pollingInterval: AuthConfig.mode == AuthenticationMode.firebase
           ? const Duration(minutes: 1)
           : CaregiverNotificationMonitorService.defaultPollingInterval,
@@ -412,7 +417,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - hasCaregiverLinks (bool): 현재 사용자의 활성 보호자 연동 존재 여부
        * 반환값:
        * - 없음; 동기화는 별도로 진행한다.
-       */(hasCaregiverLinks) {
+       */ (hasCaregiverLinks) {
         unawaited(
           _synchronizeBackgroundCaregiverMonitoring(
             userHash,
@@ -456,8 +461,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       return;
     }
     try {
-      if (hasCaregiverLinks &&
-          AuthConfig.mode != AuthenticationMode.firebase) {
+      if (hasCaregiverLinks && AuthConfig.mode != AuthenticationMode.firebase) {
         await CaregiverNotificationBackgroundScheduler.register(userHash);
       } else {
         await CaregiverNotificationBackgroundScheduler.cancel();
@@ -492,20 +496,22 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       if (navigator != null) {
         _openSchedule(navigator, initialSlotKey: selection.slotKey);
       } else {
-        WidgetsBinding.instance.addPostFrameCallback(/* 함수이름: addPostFrameCallback 콜백
+        WidgetsBinding.instance.addPostFrameCallback(
+          /* 함수이름: addPostFrameCallback 콜백
          * 함수역할: 내비게이터가 준비된 다음 프레임에 선택한 복약 시간대 화면을 연다.
          * 매개변수:
          * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
          * 반환값:
          * - 없음.
-         */(_) {
-          if (mounted && _navigatorKey.currentState != null) {
-            _openSchedule(
-              _navigatorKey.currentState!,
-              initialSlotKey: selection.slotKey,
-            );
-          }
-        });
+         */ (_) {
+            if (mounted && _navigatorKey.currentState != null) {
+              _openSchedule(
+                _navigatorKey.currentState!,
+                initialSlotKey: selection.slotKey,
+              );
+            }
+          },
+        );
       }
       return;
     }
@@ -519,17 +525,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         _openLinkedChat(navigator, linkId);
         return;
       }
-      WidgetsBinding.instance.addPostFrameCallback(/* 함수이름: addPostFrameCallback 콜백
+      WidgetsBinding.instance.addPostFrameCallback(
+        /* 함수이름: addPostFrameCallback 콜백
        * 함수역할: 다음 프레임에 화면이 유지되어 있으면 선택한 가족 채팅을 연다.
        * 매개변수:
        * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
        * 반환값:
        * - 없음.
-       */(_) {
-        if (mounted && _navigatorKey.currentState != null) {
-          _openLinkedChat(_navigatorKey.currentState!, linkId);
-        }
-      });
+       */ (_) {
+          if (mounted && _navigatorKey.currentState != null) {
+            _openLinkedChat(_navigatorKey.currentState!, linkId);
+          }
+        },
+      );
       return;
     }
     final patientHash = selection.patientHash?.trim() ?? '';
@@ -541,21 +549,23 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       _openCaregiverSchedule(navigator, patientHash);
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback(/* 함수이름: addPostFrameCallback 콜백
+    WidgetsBinding.instance.addPostFrameCallback(
+      /* 함수이름: addPostFrameCallback 콜백
      * 함수역할: 다음 프레임까지 화면과 내비게이터가 유효하면 선택한 환자 복약 화면을 연다.
      * 매개변수:
      * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
      * 반환값:
      * - 없음.
-     */(_) {
-      if (!mounted) {
-        return;
-      }
-      final mountedNavigator = _navigatorKey.currentState;
-      if (mountedNavigator != null) {
-        _openCaregiverSchedule(mountedNavigator, patientHash);
-      }
-    });
+     */ (_) {
+        if (!mounted) {
+          return;
+        }
+        final mountedNavigator = _navigatorKey.currentState;
+        if (mountedNavigator != null) {
+          _openCaregiverSchedule(mountedNavigator, patientHash);
+        }
+      },
+    );
   }
 
   // Function Name: _handleMedicationNotificationActionWhenReady
@@ -569,17 +579,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   ) {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) {
-      WidgetsBinding.instance.addPostFrameCallback(/* Function Name: addPostFrameCallback callback
+      WidgetsBinding.instance.addPostFrameCallback(
+        /* Function Name: addPostFrameCallback callback
        * Description: Retries a medication-notification action after the next frame while the app state remains mounted.
        * Parameters:
        * - _ (Duration): Unused event value supplied by the enclosing callback contract.
        * Returns:
        * - No return value.
-       */(_) {
-        if (mounted) {
-          _handleMedicationNotificationActionWhenReady(selection);
-        }
-      });
+       */ (_) {
+          if (mounted) {
+            _handleMedicationNotificationActionWhenReady(selection);
+          }
+        },
+      );
       return;
     }
     unawaited(_performMedicationNotificationAction(navigator, selection));
@@ -609,14 +621,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     if (!selection.isForDate(DateTime.now())) {
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
-          content: Text(isEnglish
-              ? 'This reminder is out of date. Please check today’s schedule.'
-              : '지난 날짜의 알림입니다. 오늘의 복약 일정을 확인해 주세요.'),
+          content: Text(
+            isEnglish
+                ? 'This reminder is out of date. Please check today’s schedule.'
+                : '지난 날짜의 알림입니다. 오늘의 복약 일정을 확인해 주세요.',
+          ),
         ),
       );
       return;
     }
-    final scheduleDate = selection.scheduleDate!.toIso8601String().split('T').first;
+    final scheduleDate = selection.scheduleDate!
+        .toIso8601String()
+        .split('T')
+        .first;
 
     switch (selection.action) {
       case MedicationNotificationAction.markSlotTaken:
@@ -666,25 +683,25 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
       SnackBar(
-        content: Text(
-          switch (selection.action) {
-            MedicationNotificationAction.markSlotTaken => succeeded
+        content: Text(switch (selection.action) {
+          MedicationNotificationAction.markSlotTaken =>
+            succeeded
                 ? (isEnglish
                       ? 'The scheduled medications were marked as taken.'
                       : '예정된 약을 모두 복용 완료로 기록했습니다.')
                 : (isEnglish
                       ? 'Could not save medication completion.'
                       : '복약 완료를 저장하지 못했습니다.'),
-            MedicationNotificationAction.snoozeTenMinutes => succeeded
+          MedicationNotificationAction.snoozeTenMinutes =>
+            succeeded
                 ? (isEnglish
                       ? 'We will remind you again in 10 minutes.'
                       : '10분 후 다시 알려드릴게요.')
                 : (isEnglish
                       ? 'Could not schedule another reminder.'
                       : '다시 알림을 예약하지 못했습니다.'),
-            MedicationNotificationAction.open => '',
-          },
-        ),
+          MedicationNotificationAction.open => '',
+        }),
         duration: Duration(seconds: canReview ? 5 : 2),
         persist: false,
         action: canReview
@@ -696,7 +713,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                  * - None.
                  * Returns:
                  * - No return value; opens schedule navigation without a status write.
-                 */() {
+                 */ () {
                   _openSchedule(navigator, initialSlotKey: slotKey);
                 },
               )
@@ -736,17 +753,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
              * 반환값:
              * - 초기 시간대가 적용된 복약 일정 화면.
-             */(context) =>
+             */ (context) =>
                 CheckScheduleUI(initialSlotKey: initialSlotKey),
           ),
         )
-        .whenComplete(/* Function Name: whenComplete callback
+        .whenComplete(
+          /* Function Name: whenComplete callback
          * Description: Clears the schedule-route-open guard after that route closes.
          * Parameters:
          * - None.
          * Returns:
          * - The assigned false guard value.
-         */() => _isScheduleRouteOpen = false);
+         */ () => _isScheduleRouteOpen = false,
+        );
   }
 
   // 함수이름: _openCaregiverSchedule
@@ -786,7 +805,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
              * 반환값:
              * - 보호자용 환자 복약 화면.
-             */(context) => CheckCaregiverMedicationUI(
+             */ (context) => CheckCaregiverMedicationUI(
               caregiverHash: session.userHash,
               patientHash: patientHash,
               userSetting: UserSetting(language: _appLanguageControl.language),
@@ -799,7 +818,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
          * - 없음.
          * 반환값:
          * - 없음.
-         */() {
+         */ () {
           if (_openCaregiverScheduleRouteName == routeName) {
             _openCaregiverScheduleRouteName = null;
           }
@@ -842,7 +861,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
              * 반환값:
              * - 선택한 가족 연결의 채팅 화면.
-             */(context) => LinkedChatUI(
+             */ (context) => LinkedChatUI(
               linkId: linkId,
               currentUserHash: session.userHash,
               userSetting: UserSetting(language: _appLanguageControl.language),
@@ -855,7 +874,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
          * - 없음.
          * 반환값:
          * - 없음.
-         */() {
+         */ () {
           if (_openLinkedChatRouteName == routeName) {
             _openLinkedChatRouteName = null;
           }
@@ -889,7 +908,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
          * - _ (Widget?): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
          * 반환값:
          * - 인증 상태·언어·테마가 적용된 앱 위젯 트리.
-         */(context, authentication, appLanguage, _) {
+         */ (context, authentication, appLanguage, _) {
           final session = authentication.session;
           final application = MaterialApp(
             navigatorKey: _navigatorKey,
@@ -905,7 +924,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - child (Widget?): 접근성 배율을 전달할 하위 화면
              * 반환값:
              * - 사용자 글자 배율을 적용하는 앱 래퍼.
-             */(context, child) {
+             */ (context, child) {
               if (session == null) {
                 return MedBuddyTextScale(
                   userSetting: UserSetting(language: appLanguage.language),
@@ -922,7 +941,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                  * - _ (Widget?): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
                  * 반환값:
                  * - 현재 사용자 설정을 반영한 글자 배율 위젯.
-                 */(context, _) => MedBuddyTextScale(
+                 */ (context, _) => MedBuddyTextScale(
                   userSetting: viewModel.userSetting,
                   child: child ?? const SizedBox.shrink(),
                 ),
@@ -949,13 +968,23 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - _ (BuildContext): Unused event value supplied by the enclosing callback contract.
              * Returns:
              * - The view model owned by the session provider.
-             */(_) {
+             */ (_) {
               final viewModel =
                   widget.viewModelFactory?.call() ??
                   MedBuddyViewModel(
                     patientHash: session.userHash,
                     apiClient: authentication.apiClient,
                   );
+              if (widget.viewModelFactory == null) {
+                viewModel.attachDoseSync(
+                  DoseSyncService(
+                    owner: session.userHash,
+                    client: authentication.apiClient,
+                    scheduleWork: () =>
+                        DoseSyncBackgroundScheduler.register(session.userHash),
+                  ),
+                );
+              }
               unawaited(_loadUserSettingAndSyncLanguage(viewModel));
               return viewModel;
             },

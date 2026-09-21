@@ -188,6 +188,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     await MedicationReminderBackgroundScheduler.cancel();
     await notificationService.cancelAllMedicationReminders();
     await manageAccount.deleteAccountData();
+    await doseSync?.deleteAccountData();
     clearAnalysisResult();
     _savedMedicationInfoList = [];
     _todayMedicationScheduleList = [];

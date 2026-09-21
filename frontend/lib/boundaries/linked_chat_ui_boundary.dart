@@ -19,6 +19,8 @@ import '../services/linked_chat_realtime_service.dart';
 import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../services/dose_sync_service.dart';
+import '../widgets/dose_sync_status.dart';
 import '../widgets/medbuddy_page_header.dart';
 
 // 클래스명: LinkedChatUI
@@ -363,7 +365,21 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         if (_medicationContexts.isEmpty) {
-          _sendErrorMessage = _text.medicationLoadFailed;
+          final sync = context.read<MedBuddyViewModel?>()?.doseSync;
+          if (_isPatient && sync != null && sync.hasCache) {
+            _medicationContexts = [
+              for (final s in sync.schedules)
+                ChatMedicationContext(
+                  medicationId: int.parse(s.medicationID),
+                  medicationName: s.medicationName,
+                  dosagePerTime: s.dosage,
+                  scheduleSlotKeys: s.slotKeys,
+                  imageUrl: s.imageUrl ?? '',
+                ),
+            ];
+          } else {
+            _sendErrorMessage = _text.medicationLoadFailed;
+          }
         }
       });
     }
@@ -773,9 +789,32 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       _sendErrorMessage = null;
     });
     try {
-      final contexts = await _control.requestScheduleContexts(
-        linkId: widget.linkId,
-      );
+      final sync = viewModel?.doseSync;
+      final contexts = sync != null && sync.hasCache
+          ? [
+              for (final slot in medicationScheduleSlotKeys)
+                ChatScheduleContext(
+                  scheduleDate: doseScheduleDay(DateTime.now()),
+                  slotKey: slot,
+                  alarmTime: '',
+                  alarmEnabled: false,
+                  completedCount: 0,
+                  totalCount: sync.schedules
+                      .where((s) => s.slotKeys.contains(slot))
+                      .length,
+                  medications: [
+                    for (final s in sync.schedules.where(
+                      (s) => s.slotKeys.contains(slot),
+                    ))
+                      ChatMedicationContext(
+                        medicationId: int.parse(s.medicationID),
+                        medicationName: s.medicationName,
+                        dosagePerTime: s.dosage,
+                      ),
+                  ],
+                ),
+            ]
+          : await _control.requestScheduleContexts(linkId: widget.linkId);
       if (!mounted) return;
       final selectedIds = selectedMedications
           .map((item) => item.medicationId)
@@ -818,6 +857,29 @@ class _LinkedChatUIState extends State<LinkedChatUI>
             ..sort();
       final signature =
           '${chosen.scheduleDate}:${chosen.slotKey}:${medicationIds.join(',')}';
+      if (sync != null) {
+        final saved = await sync.record(
+          medicationIds: medicationIds,
+          slotKey: chosen.slotKey,
+          completed: true,
+          scheduleDate: chosen.scheduleDate,
+          linkId: widget.linkId,
+          medicationNames: selectedMedications
+              .where((m) => medicationIds.contains(m.medicationId))
+              .map((m) => m.medicationName)
+              .toList(),
+        );
+        if (!saved) throw StateError('Dose was not queued.');
+        if (mounted) {
+          setState(() {
+            _selectedMedicationContexts = _selectedMedicationContexts
+                .where((m) => !medicationIds.contains(m.medicationId))
+                .toList();
+            _sendErrorMessage = null;
+          });
+        }
+        return;
+      }
       final requestId = _pendingTakenRequests.putIfAbsent(
         signature,
         _createClientMessageId,
@@ -1720,6 +1782,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (context.read<MedBuddyViewModel?>()?.doseSync case final sync?)
+              DoseSyncStatus(service: sync, isEnglish: _text.isEnglish),
             if (_selectedMedicationContexts.isNotEmpty) ...[
               SizedBox(
                 height: selectedMedicationCardHeight,
