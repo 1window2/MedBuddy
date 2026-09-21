@@ -1,3 +1,5 @@
+// 파일명: dose_sync_service_test.dart
+// 역할: 오프라인 복용 기록의 암호화 보존, 순차 재전송과 날짜·계정 격리를 검증한다.
 // Real SQLite/crypto regressions; no production accounts or dose records.
 import 'dart:async';
 import 'dart:convert';
@@ -15,6 +17,9 @@ import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
+// 함수이름: main
+// 함수역할: 실제 암호화 저장소를 사용한 대기 기록 보존·재전송·계정 격리 테스트를 등록한다.
+// 매개변수: 없음. 반환값: 없음.
 void main() {
   sqfliteFfiInit();
   late Database db;
@@ -28,6 +33,9 @@ void main() {
     scheduleSlotKeys: ['morning'],
     slotStatuses: {'morning': false},
   );
+  // 함수이름: op
+  // 함수역할: 고정 날짜의 아침 복용 요청을 만들어 완료와 취소를 같은 일정으로 검사한다.
+  // 매개변수: id: 요청 식별자, completed: 완료 또는 취소 여부. 반환값: 전송 대기열에 넣을 요청 데이터.
   Map<String, dynamic> op(String id, {bool completed = true}) => {
     'operation_id': id,
     'schedule_date': '2026-09-21',
@@ -37,6 +45,9 @@ void main() {
     'medication_names': ['private-dose-name'],
   };
 
+  // 함수이름: setUp
+  // 함수역할: 테스트마다 임시 SQLite DB와 별도 암호화 키를 만들고 테스트 계정을 활성화한다.
+  // 매개변수: 없음. 반환값: 테스트 저장소 준비 Future.
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('dose-outbox-test-');
     db = await databaseFactoryFfi.openDatabase(
@@ -50,6 +61,9 @@ void main() {
     store = DoseOutboxStore(db, key);
     await store.activate('patient-a');
   });
+  // 함수이름: tearDown
+  // 함수역할: 테스트 DB 연결을 닫고 해당 테스트의 임시 디렉터리를 정리한다.
+  // 매개변수: 없음. 반환값: 정리 완료 Future.
   tearDown(() async {
     await db.close();
     await directory.delete(recursive: true);
@@ -58,6 +72,10 @@ void main() {
   // Both foreground read boundaries must reject yesterday's delayed response,
   // then recover on an explicit same-day refresh without queueing any writes.
   for (final summary in [false, true]) {
+    // Function Name: midnight delayed-read test
+    // Description: Verify both read endpoints reject a response crossing midnight, then recover on a same-day refresh.
+    // Parameters: None; summary selects the read endpoint.
+    // Returns: Completion of asynchronous assertions.
     test(
       'midnight rejects delayed ${summary ? "summary" : "schedule"} reads',
       () async {
@@ -136,6 +154,9 @@ void main() {
 
   // Initialization may block behind storage work; reject an expired request day
   // after it completes instead of stamping the snapshot with a new date.
+  // Function Name: initialization midnight test
+  // Parameters: None.
+  // Returns: Completion of asynchronous assertions.
   test('cache rejects a read that expires during initialization', () async {
     var current = now;
     final opened = Completer<DoseOutboxStore>();
@@ -161,6 +182,9 @@ void main() {
 
   // A durable write finishing after midnight must not advance the in-memory
   // date, which otherwise permits recording today's dose from yesterday's data.
+  // Function Name: persistence midnight test
+  // Parameters: None.
+  // Returns: Completion of asynchronous assertions.
   test(
     'midnight during persistence cannot enable current-day writes',
     () async {
@@ -200,6 +224,9 @@ void main() {
 
   // Widget publication is asynchronous too; a day change here must not publish
   // stale foreground state, even though the old dated snapshot was persisted.
+  // Function Name: publication midnight test
+  // Parameters: None.
+  // Returns: Completion of asynchronous assertions.
   test(
     'midnight during cache publication preserves the original date',
     () async {
@@ -241,6 +268,9 @@ void main() {
     },
   );
 
+  // 함수이름: 암호화 기록 재시작 복구 테스트
+  // 함수역할: DB를 다시 열어도 대기 요청·일정을 복구하되 다른 계정이나 잘못된 암호화 키로는 읽을 수 없는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'encrypted queue and cached schedule survive a database reopen',
     () async {
@@ -271,6 +301,9 @@ void main() {
     },
   );
 
+  // 함수이름: 전송 작업 소유권 테스트
+  // 함수역할: 동시에 한 작업자만 요청을 처리하고 만료된 작업자의 완료 통지가 재시도 요청을 지우지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'leases serialize workers and stale acknowledgments cannot delete retries',
     () async {
@@ -304,6 +337,9 @@ void main() {
     },
   );
 
+  // 함수이름: 오프라인 완료·취소 순서 테스트
+  // 함수역할: 재시작과 날짜 변경 뒤에도 완료·취소를 원래 날짜와 순서대로 전송하고 전날 일정을 오늘 화면에 적용하지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'offline taken and undo survive restart and sync in original date order',
     () async {
@@ -373,6 +409,9 @@ void main() {
     },
   );
 
+  // 함수이름: 거부 기록 재시도 테스트
+  // 함수역할: 서버가 거부한 요청 뒤의 작업을 보류하고 명시적 재시도 성공 시 순서대로 처리하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'blocked records stay visible and hold later writes until explicit retry',
     () async {
@@ -411,6 +450,9 @@ void main() {
     },
   );
 
+  // 함수이름: 계정별 대기 기록 삭제 테스트
+  // 함수역할: 한 계정의 기록을 지워도 다른 계정의 전송 대기 기록이 유지되는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('account deletion clears only that account', () async {
     await store.enqueue('patient-a', op('account-a-operation'));
     await store.activate('patient-b');
@@ -420,6 +462,9 @@ void main() {
     expect(await store.pending('patient-b'), hasLength(1));
   });
 
+  // 함수이름: 오래된 응답 덮어쓰기 방지 테스트
+  // 함수역할: 만료된 작업자의 응답과 이전 버전의 조회 결과가 최신 승인 캐시를 덮어쓰지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'stale reads and expired workers cannot overwrite an acknowledged undo',
     () async {
@@ -448,6 +493,9 @@ void main() {
     },
   );
 
+  // 함수이름: 거부 요청 폐기 조건 테스트
+  // 함수역할: 아직 대기 중인 요청은 보존하고 서버가 거부한 요청만 명시적으로 폐기할 수 있는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('only rejected entries can be discarded', () async {
     await store.enqueue('patient-a', op('pending'));
     await store.discardRejected('patient-a', 'pending');
@@ -458,6 +506,9 @@ void main() {
     expect(await store.pending('patient-a'), isEmpty);
   });
 
+  // 함수이름: 기준일 만료 기록 테스트
+  // 함수역할: 날짜가 지난 캐시로 새 날짜의 기록을 만들지 않으며 원래 날짜를 명시한 선택만 그 날짜로 대기열에 저장하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('an expired schedule is never recorded as a new day dose', () async {
     var current = now;
     final client = MockClient(
