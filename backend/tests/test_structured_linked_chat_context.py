@@ -273,6 +273,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(pharmacy["today_hours"], "09:00 - 21:00")
         self.assertEqual(pharmacy["telephone"], "02-1234-5678")
 
+    # 함수이름: _record_taken
+    # 함수역할: 선택한 아침 약의 명시적 복용 확인 요청을 만들고 사례별 입력을 적용한다.
+    # 매개변수: overrides: 기본 요청에서 바꿀 필드. 반환값: 복용 확인 처리 결과.
     def _record_taken(self, **overrides):
         """Create an explicit confirmation without changing the normal chat API."""
         arguments = dict(
@@ -283,6 +286,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         arguments.update(overrides)
         return self.chat.record_medication_taken(**arguments)
 
+    # 함수이름: test_chat_confirmation_updates_only_selected_dose_and_returns_progress
+    # 함수역할: 선택 약만 완료되고 미선택 약을 포함한 전체 진행률이 정확히 반환되는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_chat_confirmation_updates_only_selected_dose_and_returns_progress(self):
         other = self._save_medication()
         result, events = self._record_taken()
@@ -297,6 +303,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
                          [(self.medication.id, "morning", True)])
         self.assertNotEqual(other.id, self.medication.id)
 
+    # 함수이름: test_full_confirmation_reuses_outbox_without_duplicate_chat
+    # 함수역할: 시간대 전체 완료 시 알림은 생성하되 알림 발행 과정에서 확인 채팅이 중복되지 않는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_full_confirmation_reuses_outbox_without_duplicate_chat(self):
         result, events = self._record_taken()
         self.assertEqual(len(events), 1)
@@ -305,6 +314,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(self.chat.publish_slot_completion(patient_hash="patient-a", slot_key="morning"), 0)
         self.assertEqual(self.db.query(_ChatMessage).count(), 1)
 
+    # 함수이름: test_retry_does_not_reapply_a_later_undo
+    # 함수역할: 복용 취소 뒤 채팅 확인을 재전송해도 기존 메시지를 반환하고 취소 상태를 유지하는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_retry_does_not_reapply_a_later_undo(self):
         first, _ = self._record_taken()
         CheckSchedule(self.db).updateMedicationSlotStatus("morning", False, "patient-a")
@@ -314,12 +326,18 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(events, [])
         self.assertFalse(self.db.query(_MedicationCompletion).one().completed)
 
+    # 함수이름: test_confirmation_rejects_changed_idempotency_payload
+    # 함수역할: 같은 요청 식별자로 다른 시간대의 복용 확인을 보내면 409로 거부하는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_confirmation_rejects_changed_idempotency_payload(self):
         self._record_taken()
         with self.assertRaises(HTTPException) as error:
             self._record_taken(slot_key="evening")
         self.assertEqual(error.exception.status_code, 409)
 
+    # 함수이름: test_confirmation_rejects_caregiver_stale_date_and_invalid_selection
+    # 함수역할: 보호자·무효 연동·지난 날짜·미래 날짜·잘못된 약 선택을 거부하고 기록과 채팅을 남기지 않는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_confirmation_rejects_caregiver_stale_date_and_invalid_selection(self):
         for overrides, expected in [
             ({"sender_hash": "caregiver-a"}, 403),
@@ -336,6 +354,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
         self.assertEqual(self.db.query(_ChatMessage).count(), 0)
 
+    # 함수이름: test_chat_failure_rolls_back_dose_and_outbox
+    # 함수역할: 확인 채팅 저장 실패 시 복용 기록과 보호자 알림도 함께 롤백되는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_chat_failure_rolls_back_dose_and_outbox(self):
         with patch.object(self.chat.message_repository, "add", side_effect=RuntimeError("failed")):
             with self.assertRaises(RuntimeError):
@@ -344,6 +365,9 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
         self.assertEqual(self.db.query(_ChatMessage).count(), 0)
 
+    # 함수이름: test_ordinary_taken_text_never_records_a_dose
+    # 함수역할: 일반 메시지에 '먹었어요'라고 적어도 명시적 복용 확인 없이 기록이 바뀌지 않는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
     def test_ordinary_taken_text_never_records_a_dose(self):
         self.chat.send_message(
             link_id=self.link_id, sender_hash="patient-a", client_message_id="ordinary-text-001",
