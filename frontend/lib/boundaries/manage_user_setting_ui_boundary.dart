@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../services/dose_home_widget_service.dart';
 
 import '../widgets/medbuddy_preference_row.dart';
 
@@ -477,6 +478,29 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               description: text.deviceNotificationSettingsDescription,
               onTap: _openDeviceNotificationSettings,
             ),
+            if (DoseHomeWidget.supported)
+              MedBuddyPreferenceRow(
+                key: const ValueKey('addDoseHomeWidget'),
+                title: text.isEnglish
+                    ? 'Add medication widget'
+                    : '홈 화면 복약 위젯 추가',
+                onTap: () async {
+                  var supported = false;
+                  try {
+                    supported = await DoseHomeWidget.pin();
+                  } catch (_) {}
+                  if (!mounted || supported) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        text.isEnglish
+                            ? 'Add MedBuddy from your home screen widget list.'
+                            : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ],

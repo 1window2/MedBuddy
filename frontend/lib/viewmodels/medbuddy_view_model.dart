@@ -36,6 +36,7 @@ import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/dose_sync_service.dart';
+import '../services/dose_home_widget_service.dart';
 import '../services/medication_reminder_background_service.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/notification_service.dart';
@@ -375,7 +376,8 @@ class MedBuddyViewModel extends ChangeNotifier {
          * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
          * Returns:
          * - Whether this schedule has a name correction.
-         */ (schedule) => schedule.hasNameCorrection,
+         */
+          (schedule) => schedule.hasNameCorrection,
         )
         .length;
   }
@@ -699,6 +701,23 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _notifyViewModelListeners([MedBuddyFeature? feature]) {
     if (_isDisposed) {
       return;
+    }
+    if (doseSync != null &&
+        (feature == MedBuddyFeature.userSetting ||
+            feature == MedBuddyFeature.reminder)) {
+      unawaited(
+        DoseHomeWidget.publish(
+          owner: patientHash,
+          configuration: {
+            'language': _userSetting.language,
+            'hide_names': _userSetting.notificationDetailMode != 'full',
+            'alarms': {
+              for (final entry in _medicationReminderSettings.entries)
+                entry.key: entry.value.timeLabel,
+            },
+          },
+        ).catchError((_) => null),
+      );
     }
     if (feature == null) {
       for (final updates in _featureUpdates.values) {

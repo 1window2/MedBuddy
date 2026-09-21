@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:home_widget/home_widget.dart';
 
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
@@ -26,6 +27,7 @@ import 'services/linked_chat_notification_monitor_service.dart';
 import 'services/medication_reminder_background_service.dart';
 import 'services/dose_sync_service.dart';
 import 'services/dose_sync_background_service.dart';
+import 'services/dose_home_widget_service.dart';
 import 'services/naver_map_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
@@ -59,6 +61,7 @@ Future<void> main() async {
   }
   try {
     await CaregiverNotificationBackgroundScheduler.initialize();
+    await DoseHomeWidget.initialize();
   } catch (error, stackTrace) {
     FlutterError.reportError(
       FlutterErrorDetails(
@@ -170,6 +173,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   PushNotificationService? _pushNotificationService;
   String? _monitoredUserHash;
   int _monitorGeneration = 0;
+  StreamSubscription<Uri?>? _widgetClicks;
 
   // Function Name: initState
   // Description: Resolves injected or owned root controls, installs authentication and notification listeners, and starts monitors for the current session.
@@ -190,6 +194,26 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
     _synchronizeCaregiverNotificationMonitor();
+    if (DoseHomeWidget.supported) {
+      _widgetClicks = HomeWidget.widgetClicked.listen(_openHomeWidget);
+      unawaited(
+        HomeWidget.initiallyLaunchedFromHomeWidget().then(_openHomeWidget),
+      );
+    }
+  }
+
+  void _openHomeWidget(Uri? uri) {
+    if (!mounted ||
+        uri?.scheme != 'medbuddy-widget' ||
+        uri?.host != 'schedule') {
+      return;
+    }
+    _handleNotificationSelection(
+      MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: uri?.queryParameters['slot'],
+      ),
+    );
   }
 
   // 함수이름: dispose
@@ -200,6 +224,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // - 없음.
   @override
   void dispose() {
+    unawaited(_widgetClicks?.cancel());
     _monitorGeneration += 1;
     _caregiverNotificationMonitor?.dispose();
     unawaited(_linkedChatNotificationMonitor?.dispose());
@@ -224,6 +249,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _prepareSessionEnd() async {
+    await DoseSyncBackgroundScheduler.suspend();
+    await DoseHomeWidget.clear();
     final reminderCleanup = widget.sessionReminderCleanup;
     if (reminderCleanup != null) {
       await reminderCleanup();
@@ -289,7 +316,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - route (Route<dynamic>): Route currently examined by the navigator.
        * Returns:
        * - Whether this route is the navigator's first route.
-       */ (route) => route.isFirst,
+       */
+        (route) => route.isFirst,
       );
       return;
     }
@@ -328,6 +356,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
 
     if (userHash == null || userHash.isEmpty) {
+      unawaited(DoseHomeWidget.clear().catchError((_) {}));
       unawaited(DoseSyncBackgroundScheduler.suspend().catchError((_) {}));
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
       unawaited(MedicationReminderBackgroundScheduler.cancel());
@@ -503,7 +532,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
          * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
          * 반환값:
          * - 없음.
-         */ (_) {
+         */
+          (_) {
             if (mounted && _navigatorKey.currentState != null) {
               _openSchedule(
                 _navigatorKey.currentState!,
@@ -532,7 +562,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
        * 반환값:
        * - 없음.
-       */ (_) {
+       */
+        (_) {
           if (mounted && _navigatorKey.currentState != null) {
             _openLinkedChat(_navigatorKey.currentState!, linkId);
           }
@@ -556,7 +587,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
      * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
      * 반환값:
      * - 없음.
-     */ (_) {
+     */
+      (_) {
         if (!mounted) {
           return;
         }
@@ -586,7 +618,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
        * - _ (Duration): Unused event value supplied by the enclosing callback contract.
        * Returns:
        * - No return value.
-       */ (_) {
+       */
+        (_) {
           if (mounted) {
             _handleMedicationNotificationActionWhenReady(selection);
           }
@@ -764,7 +797,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
          * - None.
          * Returns:
          * - The assigned false guard value.
-         */ () => _isScheduleRouteOpen = false,
+         */
+          () => _isScheduleRouteOpen = false,
         );
   }
 
@@ -982,6 +1016,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                     client: authentication.apiClient,
                     scheduleWork: () =>
                         DoseSyncBackgroundScheduler.register(session.userHash),
+                    onStateChanged: () =>
+                        DoseHomeWidget.publish(owner: session.userHash),
                   ),
                 );
               }

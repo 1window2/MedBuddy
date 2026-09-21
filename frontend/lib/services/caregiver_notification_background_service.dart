@@ -20,6 +20,7 @@ import 'caregiver_notification_monitor_service.dart';
 import 'firebase_runtime_service.dart';
 import 'medication_reminder_background_service.dart';
 import 'dose_sync_service.dart';
+import 'dose_home_widget_service.dart';
 import 'dose_sync_background_service.dart';
 import 'dose_outbox_store.dart';
 import 'notification_service.dart';
@@ -52,7 +53,8 @@ Future<User?> _restoreBackgroundFirebaseUser() async {
          * - user (User?): 현재 또는 새로 복원된 Firebase 사용자
          * 반환값:
          * - 사용자가 null이 아니면 true.
-         */ (user) => user != null,
+         */
+          (user) => user != null,
         )
         .timeout(_backgroundAuthRestoreTimeout);
   } on TimeoutException {
@@ -109,6 +111,7 @@ void caregiverNotificationCallbackDispatcher() {
         );
         try {
           await sync.drain();
+          await DoseHomeWidget.refreshInBackground();
           return sync.pendingCount == 0 || sync.hasBlocked;
         } finally {
           sync.dispose();

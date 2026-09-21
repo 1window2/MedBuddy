@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp"
+    android:background="@drawable/dose_widget_background">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="나의 복약 일정" android:textColor="#007E5E" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_count" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#007E5E" android:textStyle="bold" android:textSize="14sp" android:paddingHorizontal="8dp" />
+        <ImageButton android:id="@+id/widget_refresh" android:layout_width="40dp" android:layout_height="40dp"
+            android:src="@android:drawable/ic_popup_sync" android:tint="#007E5E" android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="새로고침" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/widget_content" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="MedBuddy" android:textColor="#25272B" android:textSize="21sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_details" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#595D65" android:textSize="14sp" android:layout_marginTop="4dp" android:maxLines="2" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_warning" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#765710" android:textSize="11sp" android:maxLines="2" android:visibility="gone" />
+    </LinearLayout>
+    <ProgressBar android:id="@+id/widget_progress" style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="8dp"
+        android:progressTint="#009C70" android:progressBackgroundTint="#D0F5E5" />
+    <TextView android:id="@+id/widget_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginVertical="8dp" android:textColor="#595D65" android:textSize="11sp" android:maxLines="2" android:ellipsize="end" />
+    <Button android:id="@+id/widget_take" android:layout_width="match_parent" android:layout_height="48dp"
+        android:background="@drawable/dose_widget_button" android:textColor="#FFFFFF" android:textSize="17sp"
+        android:textStyle="bold" android:textAllCaps="false" android:text="일정 열기" android:padding="4dp" />
+</LinearLayout>

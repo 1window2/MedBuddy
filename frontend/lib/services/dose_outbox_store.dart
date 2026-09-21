@@ -5,6 +5,9 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqflite/sqflite.dart';
+import '../entities/dose_widget_state.dart';
+
+part 'dose_widget_store.dart';
 
 // 클래스명: DoseOutboxStore
 // 역할: 계정별 기록과 캐시를 암호화하고 저장·전송·응답 반영 순서를 보장한다.
@@ -325,6 +328,11 @@ class DoseOutboxStore {
         'metadata',
         where: 'name = ?',
         whereArgs: ['revision:$token'],
+      );
+      await tx.delete(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['widget:$token'],
       );
     });
   }
