@@ -3,6 +3,7 @@
 //   reminder rollback.
 
 import 'dart:async';
+import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -1596,6 +1597,7 @@ class _FakeNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    CaregiverAlertContext? alertContext,
     String? historyUserHash,
     bool recordHistory = true,
     required int id,

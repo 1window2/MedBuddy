@@ -23,6 +23,12 @@ from entities.caregiver_notification_entity import (
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
 
+def missed_event_key(caregiver_hash: str, patient_hash: str, schedule_date, slot_key: str) -> str:
+    """Return the stable original missed-dose identity, independent of deliveries."""
+    source = f"missed_deadline:{caregiver_hash}:{patient_hash}:{schedule_date.isoformat()}:{slot_key}"
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
 # Class Name: QueueMissedDoseAlerts
 # Role: Finds due caregiver deadlines and persists durable delivery work.
 # Responsibilities:
@@ -105,16 +111,9 @@ class QueueMissedDoseAlerts:
                     pending_by_patient_slot[pending_key] = is_incomplete
                 if not is_incomplete:
                     continue
-                event_source = (
-                    "missed_deadline:"
-                    f"{caregiver_hash}:{patient_hash}:"
-                    f"{schedule_date.isoformat()}:{slot_key}"
-                )
                 if self._insert_event(
                     {
-                        "event_key": hashlib.sha256(
-                            event_source.encode("utf-8")
-                        ).hexdigest(),
+                        "event_key": missed_event_key(caregiver_hash, patient_hash, schedule_date, slot_key),
                         "event_type": CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
                         "caregiver_hash": caregiver_hash,
                         "patient_hash": patient_hash,

@@ -58,6 +58,7 @@ class ChatMessageCreate(BaseModel):
     )
     slot_key: str | None = Field(default=None, max_length=20)
     pharmacy_id: str | None = Field(default=None, max_length=32)
+    source_alert_id: int | None = Field(default=None, ge=1)
 
     # 함수이름: normalize_body
     # 함수역할:

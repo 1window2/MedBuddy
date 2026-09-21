@@ -12,6 +12,35 @@ from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
 
 
+def test_caregiver_action_capability_preserves_existing_device_tokens(tmp_path: Path) -> None:
+    url = f"sqlite:///{(tmp_path / 'caregiver-actions.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "7c3d9e1f5a20")
+    engine = create_engine(url)
+    users = Table("user_accounts", MetaData(), autoload_with=engine)
+    tokens = Table("device_push_tokens", MetaData(), autoload_with=engine)
+    now = datetime(2026, 9, 21)
+    try:
+        with engine.begin() as connection:
+            connection.execute(users.insert().values(user_hash="caregiver", created_at=now, updated_at=now))
+            connection.execute(tokens.insert().values(user_hash="caregiver", token="preserve-existing-token",
+                platform="android", enabled=True, created_at=now, updated_at=now))
+        command.upgrade(config, "head")
+        current = Table("device_push_tokens", MetaData(), autoload_with=engine)
+        with engine.connect() as connection:
+            row = connection.execute(select(current)).mappings().one()
+            assert row["token"] == "preserve-existing-token"
+            assert row["enabled"]
+            assert not row["supports_caregiver_actions"]
+        command.downgrade(config, "7c3d9e1f5a20")
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.execute(select(tokens.c.token)).scalar_one() == "preserve-existing-token"
+    finally:
+        engine.dispose()
+
+
 # 함수이름: test_chat_deletion_upgrade_preserves_existing_content_and_round_trips
 # 함수역할:
 # - 채팅 삭제 컬럼을 추가하고 다운그레이드·재적용해도 기존 메시지 본문이 보존되는지 검증한다.

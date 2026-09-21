@@ -177,12 +177,27 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         patient_hash: str,
         slot_key: str,
         schedule_date: date,
+        alert_context: dict[str, str] | None = None,
     ) -> PushDeliveryResult:
+        if not self.isMissedSlotActionable(
+            caregiver_hash=caregiver_hash, patient_hash=patient_hash,
+            slot_key=slot_key, schedule_date=schedule_date,
+        ):
+            return PushDeliveryResult(success_count=0)
+        return self._send_missed_notification(
+            caregiver_hash=caregiver_hash, patient_hash=patient_hash,
+            slot_key=slot_key, alert_context=alert_context,
+        )
+
+    def isMissedSlotActionable(
+        self, *, caregiver_hash: str, patient_hash: str, slot_key: str, schedule_date: date,
+    ) -> bool:
+        """Share date, link, preference and completion checks with notification actions."""
         current_time = application_now()
         if schedule_date != current_time.date():
-            return PushDeliveryResult(success_count=0)
+            return False
         if not self.link_repository.has_active_pair(caregiver_hash, patient_hash):
-            return PushDeliveryResult(success_count=0)
+            return False
         setting = (
             self.db.query(_CaregiverNotification)
             .filter(
@@ -193,7 +208,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             .first()
         )
         if setting is None:
-            return PushDeliveryResult(success_count=0)
+            return False
         slot_setting = decode_slot_settings(setting.slot_settings).get(slot_key)
         if (
             slot_setting is None
@@ -201,19 +216,27 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             != CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE
             or not self._deadline_has_passed(current_time, slot_setting)
         ):
-            return PushDeliveryResult(success_count=0)
+            return False
         if not CheckSchedule(self.db).isMedicationSlotIncomplete(
             patient_hash=patient_hash,
             schedule_date=schedule_date,
             slot_key=slot_key,
         ):
-            return PushDeliveryResult(success_count=0)
+            return False
 
         user_setting = self._user_setting(caregiver_hash)
         if user_setting is not None and not bool(
             user_setting.caregiver_notifications_enabled
         ):
-            return PushDeliveryResult(success_count=0)
+            return False
+        return True
+
+    def _send_missed_notification(
+        self, *, caregiver_hash: str, patient_hash: str, slot_key: str,
+        alert_context: dict[str, str] | None,
+    ) -> PushDeliveryResult:
+        """Keep old devices on OS notifications; opt-in devices render action data."""
+        user_setting = self._user_setting(caregiver_hash)
         token_rows = (
             self.db.query(_DevicePushToken)
             .filter(
@@ -250,21 +273,32 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                 if is_english
                 else "연동된 환자의 복약 상태를 확인해 주세요."
             )
-        result = self.push_boundary.send_notification(
-            tokens=[str(row.token) for row in token_rows],
-            title=title,
-            body=body,
-            data={
+        base_data = {
                 "type": "caregiver_slot_missed",
                 "recipient_hash": caregiver_hash,
                 "language": "en" if is_english else "ko",
                 "patient_hash": patient_hash,
                 "slot_key": slot_key,
-            },
+        }
+        results = []
+        for supports_actions in (False, True):
+            tokens = [str(row.token) for row in token_rows
+                      if bool(row.supports_caregiver_actions and alert_context) == supports_actions]
+            if not tokens:
+                continue
+            data = dict(base_data)
+            if supports_actions:
+                data.update(alert_context or {})
+                data.update(action_version="1", title=title, body=body)
+            result = self.push_boundary.send_notification(tokens=tokens, title=title, body=body, data=data)
+            results.append(result)
+            if result.invalid_tokens:
+                self._disable_invalid_tokens(result.invalid_tokens)
+        return PushDeliveryResult(
+            success_count=sum(result.success_count for result in results),
+            invalid_tokens=tuple(token for result in results for token in result.invalid_tokens),
+            retryable_failure_count=sum(result.retryable_failure_count for result in results),
         )
-        if result.invalid_tokens:
-            self._disable_invalid_tokens(result.invalid_tokens)
-        return result
 
     # 함수이름: _deadline_has_passed
     # 함수역할: 저장된 시·분을 현재 날짜의 마감 시각으로 조합해 경과 여부를 검사한다.

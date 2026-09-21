@@ -12,6 +12,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/medication_alarm_entity.dart';
+import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/notification_inbox_entity.dart';
 import 'notification_inbox_store.dart';
 
@@ -29,7 +30,7 @@ enum MedicationNotificationDestination {
 // Role: Distinguishes opening a reminder, completing its slot, and snoozing for ten minutes.
 // Responsibilities:
 // - Preserve the selected system-notification action for application dispatch.
-enum MedicationNotificationAction { open, markSlotTaken, snoozeTenMinutes }
+enum MedicationNotificationAction { open, markSlotTaken, snoozeTenMinutes, caregiverSnooze, caregiverRequestCheck }
 
 // Class Name: MedicationNotificationSelection
 // Role: Carries a notification destination and its scoped navigation or action arguments.
@@ -51,6 +52,7 @@ class MedicationNotificationSelection {
   final int? notificationId;
   final MedicationNotificationAction action;
   final DateTime? scheduleDate;
+  final CaregiverAlertContext? caregiverAlert;
 
   // Function Name: MedicationNotificationSelection
   // Description: Captures a parsed notification destination with optional patient, link, slot, and notification identifiers plus the selected action.
@@ -72,6 +74,7 @@ class MedicationNotificationSelection {
     this.notificationId,
     this.action = MedicationNotificationAction.open,
     this.scheduleDate,
+    this.caregiverAlert,
   });
 
   // Function Name: isForDate
@@ -112,6 +115,8 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
   static const String markSlotTakenActionId = 'medbuddy_mark_slot_taken';
   static const String snoozeTenMinutesActionId = 'medbuddy_snooze_10_minutes';
+  static const String caregiverSnoozeActionId = 'medbuddy_caregiver_snooze';
+  static const String caregiverChatActionId = 'medbuddy_caregiver_chat';
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
@@ -256,6 +261,20 @@ class NotificationService {
     String? actionId,
     int? notificationId,
   }) {
+    if (payload?.startsWith('caregiver-v1:') ?? false) {
+      final alert = CaregiverAlertContext.fromPayload(payload!);
+      if (alert == null) return null;
+      return MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.caregiverSchedule,
+        patientHash: alert.patientHash, slotKey: alert.slotKey, linkId: alert.linkId,
+        scheduleDate: DateTime.parse(alert.scheduleDate), caregiverAlert: alert,
+        action: switch (actionId) {
+          caregiverSnoozeActionId => MedicationNotificationAction.caregiverSnooze,
+          caregiverChatActionId => MedicationNotificationAction.caregiverRequestCheck,
+          _ => MedicationNotificationAction.open,
+        },
+      );
+    }
     final segments = payload?.split(':') ?? const <String>[];
     if ((segments.length == 3 || segments.length == 4) &&
         segments[0] == 'schedule' &&
@@ -354,6 +373,7 @@ class NotificationService {
   @visibleForTesting
   static bool isSessionNotificationPayload(String? payload) {
     return payload?.startsWith('schedule:') == true ||
+        payload?.startsWith('caregiver-v1:') == true ||
         payload?.startsWith('caregiver:') == true ||
         payload?.startsWith('chat:') == true;
   }
@@ -883,6 +903,7 @@ class NotificationService {
     String language = 'ko',
     String? historyUserHash,
     bool recordHistory = true,
+    CaregiverAlertContext? alertContext,
   }) async {
     final owner = historyUserHash ?? _historyUserHash;
     await initialize();
@@ -905,12 +926,18 @@ class NotificationService {
               : '연동된 환자의 복약 완료 및 미복용 상태 알림',
           importance: Importance.high,
           priority: Priority.high,
+          actions: alertContext == null ? null : [
+            AndroidNotificationAction(caregiverSnoozeActionId,
+                isEnglish ? 'Remind in 10 min' : '10분 후 다시 알림', showsUserInterface: true),
+            AndroidNotificationAction(caregiverChatActionId,
+                isEnglish ? 'Send chat request' : '채팅으로 알림', showsUserInterface: true),
+          ],
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      payload: patientHash == null || patientHash.trim().isEmpty
+      payload: alertContext?.payload ?? (patientHash == null || patientHash.trim().isEmpty
           ? null
-          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}'),
     );
     if (recordHistory && patientHash != null && patientHash.trim().isNotEmpty) {
       await _recordInbox(
@@ -924,7 +951,7 @@ class NotificationService {
               ? 'Medication update'
               : '복약 상태 알림',
           body: visibleBody,
-          payload: 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+          payload: alertContext?.payload ?? 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
           category: NotificationInboxCategory.medication,
           occurredAt: DateTime.now(),
         ),

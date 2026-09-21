@@ -151,13 +151,16 @@ class FirebasePushNotificationBoundary:
             response = messaging.send_each_for_multicast(
                 messaging.MulticastMessage(
                     tokens=token_batch,
-                    notification=messaging.Notification(title=title, body=body),
+                    notification=(None if data.get("type") == "caregiver_slot_missed"
+                                  and data.get("action_version") == "1"
+                                  else messaging.Notification(title=title, body=body)),
                     data=data,
                     android=messaging.AndroidConfig(
                         priority="high",
-                        notification=messaging.AndroidNotification(
+                        notification=(None if data.get("type") == "caregiver_slot_missed"
+                                      and data.get("action_version") == "1" else messaging.AndroidNotification(
                             channel_id="medbuddy_caregiver_updates",
-                        ),
+                        )),
                     ),
                 ),
                 app=self._app,

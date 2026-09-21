@@ -2,6 +2,7 @@
 // 역할: 일정 조회·알림 설정의 저장과 취소·기존 화면 배치·복약 완료를 검증한다.
 
 import 'package:flutter/material.dart';
+import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
@@ -552,6 +553,7 @@ class _SuccessfulNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    CaregiverAlertContext? alertContext,
     String? historyUserHash,
     bool recordHistory = true,
     required int id,
@@ -748,6 +750,7 @@ class _FailingNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    CaregiverAlertContext? alertContext,
     String? historyUserHash,
     bool recordHistory = true,
     required int id,

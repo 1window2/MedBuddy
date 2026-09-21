@@ -223,6 +223,7 @@ class ManageLinkedChat {
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
+    int? sourceAlertId,
   }) async {
     final normalizedMedicationIds = medicationIds
         .where(
@@ -254,6 +255,7 @@ class ManageLinkedChat {
               'medication_ids': normalizedMedicationIds,
             'slot_key': ?slotKey,
             'pharmacy_id': ?pharmacyId,
+            'source_alert_id': ?sourceAlertId,
           }),
         )
         .timeout(_requestTimeout);

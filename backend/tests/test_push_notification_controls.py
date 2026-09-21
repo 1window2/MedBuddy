@@ -291,6 +291,34 @@ class PushNotificationControlTest(unittest.TestCase):
     # - None.
     # Returns:
     # - None.
+    def test_action_capable_missed_is_data_only_but_other_notifications_are_unchanged(self) -> None:
+        boundary = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
+        boundary._app = object()
+        response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
+        with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast", return_value=response) as send:
+            for payload in (
+                {"type": "caregiver_slot_missed", "action_version": "1"},
+                {"type": "caregiver_slot_missed"},
+                {"type": "linked_chat_message"},
+                {"type": "caregiver_slot_completed"},
+            ):
+                boundary.send_notification(tokens=["test-token"], title="title", body="body", data=payload)
+                message = send.call_args.args[0]
+                if payload.get("action_version") == "1":
+                    self.assertIsNone(message.notification)
+                    self.assertIsNone(message.android.notification)
+                else:
+                    self.assertEqual(message.notification.title, "title")
+                    self.assertIsNotNone(message.android.notification)
+
+    def test_device_capability_is_opt_in_and_resets_for_legacy_registration(self) -> None:
+        control = ManagePushToken(self.db)
+        token = "capability-test-device-token-12345"
+        control.registerPushToken("user-a", token, "android", True)
+        self.assertTrue(self.db.query(_DevicePushToken).filter_by(token=token).one().supports_caregiver_actions)
+        control.registerPushToken("user-a", token, "android")
+        self.assertFalse(self.db.query(_DevicePushToken).filter_by(token=token).one().supports_caregiver_actions)
+
     def test_fcm_permanent_token_error_is_disabled_without_retry(self) -> None:
         malformed_token = "malformed-fcm-token-value-1234"
         throttled_token = "throttled-fcm-token-value-1234"

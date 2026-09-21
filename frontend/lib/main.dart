@@ -17,6 +17,7 @@ import 'boundaries/authentication_ui_boundary.dart';
 import 'composition/linked_chat_notification_monitor_factory.dart';
 import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
+import 'controls/caregiver_alert_action_control.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
@@ -45,6 +46,7 @@ import 'views/home_screen.dart';
 // - Future<void>: asynchronous completion without a result payload.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerMedBuddyPushBackgroundHandler();
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
   ]);
@@ -552,6 +554,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void _navigateForNotificationWhenReady(
     MedicationNotificationSelection selection,
   ) {
+    if (selection.caregiverAlert != null &&
+        selection.action != MedicationNotificationAction.open) {
+      _handleCaregiverActionWhenReady(selection);
+      return;
+    }
     if (selection.destination == MedicationNotificationDestination.schedule) {
       if (selection.action != MedicationNotificationAction.open) {
         _handleMedicationNotificationActionWhenReady(selection);
@@ -634,6 +641,58 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         }
       },
     );
+  }
+
+  final Set<String> _caregiverActionsInFlight = {};
+
+  void _handleCaregiverActionWhenReady(MedicationNotificationSelection selection) {
+    if (_navigatorKey.currentState == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _handleCaregiverActionWhenReady(selection);
+      });
+      return;
+    }
+    unawaited(_performCaregiverAction(selection));
+  }
+
+  Future<void> _performCaregiverAction(MedicationNotificationSelection selection) async {
+    final alert = selection.caregiverAlert;
+    final session = _authenticationControl.session;
+    final navigator = _navigatorKey.currentState;
+    if (alert == null || session == null || navigator == null) return;
+    final key = '${alert.eventId}:${selection.action.name}';
+    if (!_caregiverActionsInFlight.add(key)) return;
+    final language = navigator.context.read<MedBuddyViewModel>().userSetting.language;
+    final english = language == 'en';
+    var success = false;
+    try {
+      final action = switch (selection.action) {
+        MedicationNotificationAction.caregiverSnooze => CaregiverAlertAction.snooze,
+        MedicationNotificationAction.caregiverRequestCheck => CaregiverAlertAction.requestCheck,
+        _ => null,
+      };
+      if (action == null) return;
+      await CaregiverAlertActionControl(
+        userHash: session.userHash, client: _authenticationControl.apiClient,
+      ).execute(alert, action, language: language);
+      success = true;
+    } catch (_) {
+      // A timeout can hide a successful commit. Retrying the same event is safe.
+    } finally {
+      _caregiverActionsInFlight.remove(key);
+    }
+    if (!mounted || !identical(_authenticationControl.session, session) || !navigator.mounted) return;
+    ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(SnackBar(
+      content: Text(success
+        ? selection.action == MedicationNotificationAction.caregiverSnooze
+          ? (english ? 'Reminder requested. We will check again in 10 minutes.' : '재알림을 접수했습니다. 10분 후 미복약 여부를 다시 확인합니다.')
+          : (english ? 'Schedule check request sent.' : '복약 일정 확인 요청을 보냈습니다.')
+        : (english ? 'Could not confirm this action. Please retry.' : '처리 결과를 확인하지 못했습니다. 다시 시도해 주세요.')),
+      action: success ? null : SnackBarAction(
+        label: english ? 'Retry' : '재시도',
+        onPressed: () => _handleCaregiverActionWhenReady(selection),
+      ),
+    ));
   }
 
   // Function Name: _handleMedicationNotificationActionWhenReady
@@ -742,6 +801,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         }
         break;
       case MedicationNotificationAction.open:
+      case MedicationNotificationAction.caregiverSnooze:
+      case MedicationNotificationAction.caregiverRequestCheck:
         return;
     }
 
@@ -769,7 +830,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                 : (isEnglish
                       ? 'Could not schedule another reminder.'
                       : '다시 알림을 예약하지 못했습니다.'),
-          MedicationNotificationAction.open => '',
+          MedicationNotificationAction.open ||
+          MedicationNotificationAction.caregiverSnooze ||
+          MedicationNotificationAction.caregiverRequestCheck => '',
         }),
         duration: Duration(seconds: canReview ? 5 : 2),
         persist: false,

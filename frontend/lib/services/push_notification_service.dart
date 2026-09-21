@@ -11,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/notification_inbox_entity.dart';
+import '../entities/caregiver_alert_context_entity.dart';
+import 'caregiver_alert_delivery_service.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
 import 'notification_service.dart';
@@ -112,8 +114,19 @@ Future<void> recordPushNotificationHistory(
 // 함수역할: 앱 비활성 중 수신된 푸시도 같은 계정 알림함에 기록한다.
 // 매개변수: message. 반환값: 기록 완료. Firebase API는 사용하지 않는다.
 @pragma('vm:entry-point')
-Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) =>
-    recordPushNotificationHistory(message);
+Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
+  if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+    await CaregiverAlertDeliveryService.display(message.data);
+    return;
+  }
+  await recordPushNotificationHistory(message);
+}
+
+void registerMedBuddyPushBackgroundHandler() {
+  if (AuthConfig.mode == AuthenticationMode.firebase) {
+    FirebaseMessaging.onBackgroundMessage(medBuddyPushBackgroundHandler);
+  }
+}
 
 // 클래스명: PushNotificationService
 // 역할: 서버 푸시 등록과 전경 보호자 알림 표시를 앱 생명주기에 맞춰 처리한다.
@@ -405,7 +418,8 @@ class PushNotificationService {
         .post(
           Uri.parse(ApiConfig.pushTokenUrl),
           headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'token': normalizedToken, 'platform': 'android'}),
+          body: jsonEncode({'token': normalizedToken, 'platform': 'android',
+            'supports_caregiver_actions': true}),
         )
         .timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -421,6 +435,11 @@ class PushNotificationService {
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
+    if (message.data['recipient_hash'] != userHash) return;
+    if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+      await CaregiverAlertDeliveryService.display(message.data);
+      return;
+    }
     final language = _languageProvider();
     await recordPushNotificationHistory(
       message,
@@ -484,6 +503,12 @@ class PushNotificationService {
   // 반환값:
   // - 없음.
   void _handleOpenedMessage(RemoteMessage message) {
+    if (message.data['recipient_hash'] != userHash) return;
+    final alert = CaregiverAlertContext.fromData(message.data);
+    if (alert != null) {
+      NotificationService.handleNotificationPayload(alert.payload);
+      return;
+    }
     unawaited(
       recordPushNotificationHistory(
         message,

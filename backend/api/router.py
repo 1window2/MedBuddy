@@ -81,6 +81,10 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from core.database import SessionLocal
 from core.application_clock import application_today
+from core.database import get_db
+from core.config import settings
+from sqlalchemy.orm import Session
+from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 from schemas.medication import (
     MedicationRequest,
     MedicationResponse,
@@ -217,7 +221,34 @@ def register_push_token(
         principal.user_hash,
         request.token,
         request.platform,
+        request.supports_caregiver_actions,
     )
+
+
+@router.post("/caregiver-alerts/{alert_id}/snooze")
+def snooze_caregiver_alert(
+    alert_id: int, user_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Schedule one follow-up under the authenticated recipient's authority."""
+    caregiver = authorization.resolveOwnUserHash(principal, user_hash)
+    return ManageCaregiverAlert(db).snooze(alert_id, caregiver)
+
+
+@router.get("/caregiver-alerts/local-deliveries")
+def local_caregiver_alert_deliveries(
+    user_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Read server-released deliveries without pretending local tests use FCM."""
+    if settings.AUTH_MODE != "disabled" or settings.APP_ENV == "production":
+        raise HTTPException(404, "Not found.")
+    caregiver = authorization.resolveOwnUserHash(principal, user_hash)
+    return {"success": True, "data": ManageCaregiverAlert(db).localDeliveries(caregiver)}
 
 
 # 함수이름: unregister_push_token

@@ -11,6 +11,8 @@ from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_caregiver_alert_control import ManageCaregiverAlert
+from fastapi import HTTPException
 from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
@@ -198,11 +200,16 @@ class ProcessCaregiverAlertOutbox:
             elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
                 if row.caregiver_hash is None or row.schedule_date is None:
                     raise ValueError("Missed-dose outbox event is incomplete.")
+                try:
+                    alert_context = ManageCaregiverAlert(self.db).context(row)
+                except HTTPException:
+                    alert_context = None
                 delivery_result = dispatcher.notifySlotMissed(
                     caregiver_hash=str(row.caregiver_hash),
                     patient_hash=str(row.patient_hash),
                     slot_key=str(row.slot_key),
                     schedule_date=row.schedule_date,
+                    alert_context=alert_context,
                 )
             else:
                 raise ValueError("Unsupported caregiver outbox event type.")

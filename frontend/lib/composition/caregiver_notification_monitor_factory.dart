@@ -11,6 +11,10 @@ import '../controls/set_caregiver_notification_control.dart';
 import '../services/api_config.dart';
 import '../services/caregiver_notification_monitor_service.dart';
 import '../services/notification_service.dart';
+import '../controls/caregiver_alert_action_control.dart';
+import '../services/auth_config.dart';
+import '../services/authenticated_api_client.dart';
+import '../services/caregiver_alert_delivery_service.dart';
 
 
 
@@ -77,9 +81,27 @@ class CaregiverNotificationMonitorFactory {
       useRemotePersistence: false,
     );
 
+    final deliveryClient = client ?? AuthenticatedApiClient();
+    final actions = CaregiverAlertActionControl(
+      userHash: caregiverHash, client: deliveryClient, baseUrl: baseUrl,
+    );
     return CaregiverNotificationMonitorService(
       caregiverHash: caregiverHash,
-      loadMonitoringSnapshots: medicationControl.requestMonitoringSnapshot,
+      loadMonitoringSnapshots: () async {
+        final snapshots = await medicationControl.requestMonitoringSnapshot();
+        if (AuthConfig.mode == AuthenticationMode.disabled && monitorMissedDeadlines) {
+          try {
+            for (final alert in await actions.requestLocalDeliveries()) {
+              await CaregiverAlertDeliveryService.display({
+                ...alert.toData(), 'language': languageProvider?.call() ?? 'ko',
+              });
+            }
+          } catch (error) {
+            debugPrint('Local caregiver deliveries could not be loaded: $error');
+          }
+        }
+        return snapshots;
+      },
       loadLinks: linkControl.requestLinkScreen,
       loadSettings: /* 함수이름: loadSettings 콜백
        * 함수역할: 환자별 보호자 알림 모드와 지연 설정을 조회한다.
@@ -141,7 +163,8 @@ class CaregiverNotificationMonitorFactory {
       idlePollingInterval: idlePollingInterval,
       requestPermission: requestPermission,
       monitorCompletionTransitions: monitorCompletionTransitions,
-      monitorMissedDeadlines: monitorMissedDeadlines,
+      // Missed deadlines are decided by the server in both live and demo modes.
+      monitorMissedDeadlines: false,
       languageProvider: languageProvider,
       onCaregiverStatusChanged: onCaregiverStatusChanged,
       onDispose: /* 함수이름: onDispose 콜백
@@ -155,6 +178,7 @@ class CaregiverNotificationMonitorFactory {
         settingControl.dispose();
         medicationControl.dispose();
         userSettingControl.dispose();
+        if (client == null) deliveryClient.close();
       },
     );
   }

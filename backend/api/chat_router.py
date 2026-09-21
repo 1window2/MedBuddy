@@ -255,6 +255,7 @@ async def post_chat_message(
         message_kind=payload.message_kind,
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,
+        source_alert_id=payload.source_alert_id,
     )
     return await _publish_saved_message(link_id, result, request, background_tasks)
 

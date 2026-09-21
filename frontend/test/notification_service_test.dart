@@ -2,6 +2,7 @@
 // Role: Regression coverage for notification routing, cold starts, dose actions, and sign-out cleanup.
 
 import 'package:flutter/material.dart';
+import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -239,6 +240,7 @@ class _NoopNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showCaregiverAlert({
+    CaregiverAlertContext? alertContext,
     String? historyUserHash,
     bool recordHistory = true,
     required int id,

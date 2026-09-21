@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
@@ -348,10 +349,24 @@ class ManageLinkedChat:
         slot_key: str | None = None,
         pharmacy_id: str | None = None,
         allow_internal: bool = False,
+        source_alert_id: int | None = None,
     ) -> ChatSendResult:
         """메시지를 한 번만 저장하고 상대 사용자 식별자를 반환한다."""
         link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
         recipient_hash = self._other_participant(link, sender_hash)
+        alert = None
+        if source_alert_id is None and client_message_id.startswith("missed_chat_"):
+            raise HTTPException(400, "This client message namespace requires a caregiver alert.")
+        if source_alert_id is not None:
+            if message_kind != CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST:
+                raise HTTPException(400, "Only slot check requests may reference a caregiver alert.")
+            alert_control = ManageCaregiverAlert(self.db)
+            alert, root, alert_link = alert_control.requireSource(source_alert_id, sender_hash)
+            if (alert_link.id != link_id or alert.patient_hash != link.patient_hash
+                    or alert.slot_key != slot_key):
+                raise HTTPException(400, "The caregiver alert does not match this schedule.")
+            # One chat request for the original missed case, across every snooze cycle.
+            client_message_id = f"missed_chat_{root.id}"
         existing = self.message_repository.find_client_request(
             link_id=link_id,
             sender_hash=sender_hash,
@@ -364,6 +379,8 @@ class ManageLinkedChat:
                 created=False,
             )
 
+        if alert is not None:
+            alert_control.requireActionable(alert)
         selected_medication_ids: list[int] = []
         for selected_id in [medication_id, *(medication_ids or [])]:
             if selected_id is not None and selected_id not in selected_medication_ids:
@@ -390,6 +407,9 @@ class ManageLinkedChat:
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
         )
+        if alert is not None:
+            context_payload["schedule_context"]["schedule_date"] = alert.schedule_date.isoformat()
+            context_payload["source_alert_id"] = int(root.id)
         if medications:
             context_payload = dict(context_payload or {})
             context_payload["medication_contexts"] = [

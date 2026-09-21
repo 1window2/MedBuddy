@@ -45,6 +45,7 @@ class ManagePushToken:
         user_hash: str,
         token: str,
         platform: str,
+        supports_caregiver_actions: bool = False,
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         normalized_token = token.strip()
@@ -67,6 +68,7 @@ class ManagePushToken:
             push_token.platform = normalized_platform
             push_token.enabled = True
 
+        push_token.supports_caregiver_actions = supports_caregiver_actions
         self.db.commit()
         self.db.refresh(push_token)
         return {
