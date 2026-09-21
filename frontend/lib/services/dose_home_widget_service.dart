@@ -162,7 +162,11 @@ class DoseHomeWidget {
       ).requestTodayMedicationSchedule();
       // A request crossing midnight must not relabel yesterday's response.
       if (day == doseWidgetDay(DateTime.now())) {
-        await sync.cacheSchedules(schedules, expectedRevision: revision);
+        await sync.cacheSchedules(
+          schedules,
+          scheduleDate: day,
+          expectedRevision: revision,
+        );
       }
       await publish(owner: owner);
     } catch (_) {

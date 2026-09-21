@@ -109,13 +109,22 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return _store!.cacheRevision(owner);
   }
 
+  // Function Name: cacheSchedules
+  // Description: Cache a same-day read without relabeling it across async work.
+  // Parameters: schedules - server snapshot; scheduleDate - day at request start;
+  //   expectedRevision - optional guard against intervening sync receipts.
+  // Returns: Completion, or StateError if the snapshot has already expired.
   Future<void> cacheSchedules(
     List<MedicationSchedule> schedules, {
+    required String scheduleDate,
     int? expectedRevision,
   }) async {
     await initialize();
+    if (scheduleDate != doseScheduleDay(clock())) {
+      throw StateError('The medication schedule has expired. Please refresh.');
+    }
     final saved = await _store!.saveCache(owner, {
-      'date': doseScheduleDay(clock()),
+      'date': scheduleDate,
       'schedules': schedules.map((s) => s.toJson()).toList(),
     }, expectedRevision: expectedRevision);
     if (!saved) {
@@ -123,7 +132,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     _confirmed = schedules;
-    _cacheDate = doseScheduleDay(clock());
+    _cacheDate = scheduleDate;
     operations = await _store!.pending(owner);
     await _publishState();
   }

@@ -1,4 +1,5 @@
 // Real SQLite/crypto regressions; no production accounts or dose records.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +11,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
+import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
+import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 void main() {
   sqfliteFfiInit();
@@ -50,6 +54,192 @@ void main() {
     await db.close();
     await directory.delete(recursive: true);
   });
+
+  // Both foreground read boundaries must reject yesterday's delayed response,
+  // then recover on an explicit same-day refresh without queueing any writes.
+  for (final summary in [false, true]) {
+    test(
+      'midnight rejects delayed ${summary ? "summary" : "schedule"} reads',
+      () async {
+        var current = DateTime.utc(2026, 9, 21, 14, 59, 59);
+        final started = Completer<void>();
+        final response = Completer<http.Response>();
+        var delayed = true;
+        final client = MockClient((_) async {
+          if (delayed) {
+            started.complete();
+            return response.future;
+          }
+          return http.Response(
+            jsonEncode({
+              'data': [medication.toJson()],
+            }),
+            200,
+          );
+        });
+        final service = DoseSyncService(
+          owner: 'patient-a',
+          client: client,
+          openStore: () async => store,
+          clock: () => current,
+        );
+        await service.initialize();
+        final viewModel = MedBuddyViewModel(
+          checkSchedule: CheckSchedule(
+            patientHash: 'patient-a',
+            client: client,
+          ),
+          checkTodayMedicationInfo: CheckTodayMedicationInfo(
+            patientHash: 'patient-a',
+            client: client,
+          ),
+        )..doseSync = service;
+        addTearDown(viewModel.dispose);
+        addTearDown(client.close);
+        final load = summary
+            ? viewModel.fetchTodayMedicationInfo
+            : viewModel.fetchTodayMedicationSchedule;
+        final pending = load();
+        await started.future;
+        current = current.add(const Duration(seconds: 2));
+        response.complete(
+          http.Response(
+            jsonEncode({
+              'data': [medication.toJson()],
+            }),
+            200,
+          ),
+        );
+        await pending;
+        expect(viewModel.hasTodayScheduleLoadError, isTrue);
+        expect(viewModel.isTodayScheduleLoading, isFalse);
+        expect(viewModel.todayMedicationScheduleList, isEmpty);
+        expect(service.hasCache, isFalse);
+        expect(await store.readCache('patient-a'), isNull);
+        expect(
+          await service.record(
+            medicationIds: [91],
+            slotKey: 'morning',
+            completed: true,
+          ),
+          isFalse,
+        );
+        expect(await store.pending('patient-a'), isEmpty);
+        delayed = false;
+        await load();
+        expect(viewModel.hasTodayScheduleLoadError, isFalse);
+        expect(viewModel.todayMedicationScheduleList, hasLength(1));
+        expect((await store.readCache('patient-a'))!['date'], '2026-09-22');
+      },
+    );
+  }
+
+  // Initialization may block behind storage work; reject an expired request day
+  // after it completes instead of stamping the snapshot with a new date.
+  test('cache rejects a read that expires during initialization', () async {
+    var current = now;
+    final opened = Completer<DoseOutboxStore>();
+    final client = MockClient((_) async => http.Response('{}', 500));
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () => opened.future,
+      clock: () => current,
+    );
+    addTearDown(service.dispose);
+    addTearDown(client.close);
+    final pending = service.cacheSchedules([
+      medication,
+    ], scheduleDate: doseScheduleDay(current));
+    final rejected = expectLater(pending, throwsStateError);
+    current = current.add(const Duration(days: 1));
+    opened.complete(store);
+    await rejected;
+    expect(service.hasCache, isFalse);
+    expect(await store.readCache('patient-a'), isNull);
+  });
+
+  // A durable write finishing after midnight must not advance the in-memory
+  // date, which otherwise permits recording today's dose from yesterday's data.
+  test(
+    'midnight during persistence cannot enable current-day writes',
+    () async {
+      var current = now;
+      final delayedStore = _MidnightStore(db, key, () {
+        current = now.add(const Duration(days: 1));
+      });
+      final client = MockClient((_) async => http.Response('{}', 500));
+      final service = DoseSyncService(
+        owner: 'patient-a',
+        client: client,
+        openStore: () async => delayedStore,
+        clock: () => current,
+      );
+      addTearDown(service.dispose);
+      addTearDown(client.close);
+      await service.cacheSchedules([
+        medication,
+      ], scheduleDate: doseScheduleDay(now));
+      expect(service.hasCache, isFalse);
+      expect(service.schedules, isEmpty);
+      expect(
+        (await store.readCache('patient-a'))!['date'],
+        doseScheduleDay(now),
+      );
+      expect(
+        await service.record(
+          medicationIds: [91],
+          slotKey: 'morning',
+          completed: true,
+        ),
+        isFalse,
+      );
+      expect(await store.pending('patient-a'), isEmpty);
+    },
+  );
+
+  // Widget publication is asynchronous too; a day change here must not publish
+  // stale foreground state, even though the old dated snapshot was persisted.
+  test(
+    'midnight during cache publication preserves the original date',
+    () async {
+      var current = now;
+      var crossMidnight = false;
+      final client = MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': [medication.toJson()],
+          }),
+          200,
+        ),
+      );
+      final service = DoseSyncService(
+        owner: 'patient-a',
+        client: client,
+        openStore: () async => store,
+        clock: () => current,
+        onStateChanged: () async {
+          if (crossMidnight) current = now.add(const Duration(days: 1));
+        },
+      );
+      await service.initialize();
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      )..doseSync = service;
+      addTearDown(viewModel.dispose);
+      addTearDown(client.close);
+      crossMidnight = true;
+      await viewModel.fetchTodayMedicationSchedule();
+      expect(viewModel.hasTodayScheduleLoadError, isTrue);
+      expect(viewModel.todayMedicationScheduleList, isEmpty);
+      expect(service.schedules, isEmpty);
+      expect(service.hasCache, isFalse);
+      expect(
+        (await store.readCache('patient-a'))!['date'],
+        doseScheduleDay(now),
+      );
+    },
+  );
 
   test(
     'encrypted queue and cached schedule survive a database reopen',
@@ -138,7 +328,9 @@ void main() {
         clock: () => now,
       );
       await service.initialize(activate: true);
-      await service.cacheSchedules([medication]);
+      await service.cacheSchedules([
+        medication,
+      ], scheduleDate: doseScheduleDay(now));
       await service.record(
         medicationIds: [91],
         slotKey: 'morning',
@@ -280,7 +472,9 @@ void main() {
     addTearDown(service.dispose);
     addTearDown(client.close);
     await service.initialize(activate: true);
-    await service.cacheSchedules([medication]);
+    await service.cacheSchedules([
+      medication,
+    ], scheduleDate: doseScheduleDay(now));
     current = now.add(const Duration(days: 1));
     expect(
       await service.record(
@@ -305,4 +499,37 @@ void main() {
     expect(service.operations.single['schedule_date'], '2026-09-21');
     expect(service.schedules, isEmpty);
   });
+}
+
+// Class Name: _MidnightStore
+// Role: Advance the test clock after a real encrypted cache write completes.
+// Responsibilities: Expose the persistence await boundary deterministically.
+// Attributes: onSaved - simulated clock change, without changing stored data.
+class _MidnightStore extends DoseOutboxStore {
+  final void Function() onSaved;
+
+  // Function Name: _MidnightStore
+  // Description: Bind the real test database/key and the post-save callback.
+  // Parameters: db/key - encrypted test store; onSaved - clock advancement.
+  // Returns: A store that retains normal database behavior.
+  _MidnightStore(super.db, super.key, this.onSaved);
+
+  // Function Name: saveCache
+  // Description: Save normally, then simulate midnight before returning.
+  // Parameters: owner/cache/expectedRevision - unchanged persistence inputs.
+  // Returns: The underlying revision guard's result.
+  @override
+  Future<bool> saveCache(
+    String owner,
+    Map<String, dynamic> cache, {
+    int? expectedRevision,
+  }) async {
+    final saved = await super.saveCache(
+      owner,
+      cache,
+      expectedRevision: expectedRevision,
+    );
+    onSaved();
+    return saved;
+  }
 }

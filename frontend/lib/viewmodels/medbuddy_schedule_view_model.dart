@@ -67,15 +67,22 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
     _hasTodayScheduleLoadError = false;
     _notifyViewModelListeners(MedBuddyFeature.schedule);
 
+    final requestDay = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
     try {
       final scheduleList = await loader();
       if (loadEpoch != _todayScheduleEpoch) {
         return;
       }
+      if (requestDay != doseScheduleDay(doseSync?.clock() ?? DateTime.now())) {
+        throw StateError(
+          'The medication schedule has expired. Please refresh.',
+        );
+      }
       if (doseSync != null) {
         try {
           await doseSync!.cacheSchedules(
             scheduleList,
+            scheduleDate: requestDay,
             expectedRevision: cacheRevision,
           );
         } catch (_) {
@@ -84,6 +91,12 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
         }
       }
       if (loadEpoch != _todayScheduleEpoch) return;
+      // Storage and widget publication can also cross the application midnight.
+      if (requestDay != doseScheduleDay(doseSync?.clock() ?? DateTime.now())) {
+        throw StateError(
+          'The medication schedule has expired. Please refresh.',
+        );
+      }
       _todayMedicationScheduleList =
           doseSync?.project(scheduleList) ?? scheduleList;
       _hasTodayScheduleLoadError = false;
