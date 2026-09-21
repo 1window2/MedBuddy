@@ -30,7 +30,12 @@ const _other = PatientCaregiverLink(
 );
 
 // 함수역할: 보호자 전용 홈의 진입과 표시 상태를 검증한다.
+// 함수이름: main
+// 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 함수이름: 보호자 연동 범위 테스트
+  // 함수역할: 현재 보호자의 활성 연동만 조회하고 다른 계정의 결과와 환자 역할의 보호자 조회를 제외하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('활성 보호자 연동만 조회하고 다른 계정의 응답은 버린다', () async {
     final api = _Monitoring();
     final control = CheckCaregiverHome(userHash: 'owner', control: api);
@@ -56,6 +61,9 @@ void main() {
     expect(api.calls, 1);
   });
 
+  // 함수이름: 조회 실패·복구 테스트
+  // 함수역할: 통신 실패를 빈 일정과 구분하며 재조회 성공 후 오류 상태가 해제되는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('조회 실패를 일정 없음과 구분하고 재시도 시 복원한다', () async {
     final api = _Monitoring();
     final control = CheckCaregiverHome(userHash: 'owner', control: api);
@@ -74,6 +82,9 @@ void main() {
     expect(control.snapshotFor(1), isNotNull);
   });
 
+  // 함수이름: 지연 응답 무효화 테스트
+  // 함수역할: 연동 해제나 컨트롤 종료 뒤 도착한 조회 결과가 환자 목록을 복원하지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('연동 해제 중 도착한 응답과 종료된 계정의 응답을 버린다', () async {
     final api = _Monitoring()
       ..gate = Completer<List<CaregiverMonitoringSnapshot>>();
@@ -99,6 +110,9 @@ void main() {
   });
 
   for (final scale in [1.0, 2.0]) {
+    // 함수이름: 환자 요약 접근성 테스트
+    // 함수역할: 큰 글씨에서도 별칭·진행률과 일정 상세 진입이 유지되고 보호자에게 복용 버튼이 표시되지 않는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('환자 별칭·진행률·상세 진입은 큰 글씨에서도 유지된다: $scale', (tester) async {
       tester.view.physicalSize = const Size(320, 700);
       tester.view.devicePixelRatio = 1;
@@ -161,6 +175,9 @@ void main() {
   }
 
   for (final scale in [1.0, 2.0]) {
+    // 함수이름: 환자·시간대 탐색 분리 테스트
+    // 함수역할: 이름 옆 화살표는 환자를 바꾸고 카드 슬라이드는 시간대만 바꾸며 화면 밖 환자와 혼동하지 않는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('환자는 이름 옆 화살표로만 바꾸고 슬라이드는 시간대만 전환한다: $scale', (tester) async {
       tester.view.physicalSize = const Size(320, 800);
       tester.view.devicePixelRatio = 1;
@@ -375,6 +392,9 @@ void main() {
     }
   }
 
+  // 함수이름: 환자 요약 상태 구분 테스트
+  // 함수역할: 조회 전·빈 일정·모두 완료·통신 실패를 서로 다른 문구와 동작으로 표시하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('조회 전·일정 없음·모두 완료·실패를 구분한다', (tester) async {
     final api = _Monitoring();
     final control = CheckCaregiverHome(userHash: 'owner', control: api);
@@ -452,6 +472,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 영문 시간대 요약 테스트
+  // 함수역할: 큰 영문 글씨에서도 완료 수와 약 이름을 간단히 표시하고 불필요한 탭이나 복용 버튼이 생기지 않는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('영문과 큰 글씨에서도 시간대별 완료 수와 약 이름을 간단히 요약한다', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -520,6 +543,8 @@ void main() {
 }
 
 // 함수역할: 시간대별 일부 완료를 포함하는 오늘 복약 조회 대역을 만든다.
+// 함수이름: _snapshot
+// 매개변수: link: 조회 결과에 포함할 환자 연동. 반환값: 아침만 완료된 세 시간대의 환자 조회 결과.
 CaregiverMonitoringSnapshot _snapshot(PatientCaregiverLink link) =>
     CaregiverMonitoringSnapshot(
       link: link,
@@ -540,6 +565,9 @@ class _Monitoring extends CheckCaregiverMedication {
   bool failure = false;
   List<CaregiverMonitoringSnapshot>? snapshots;
   Completer<List<CaregiverMonitoringSnapshot>>? gate;
+  // 함수이름: requestMonitoringSnapshot
+  // 함수역할: 조회 횟수를 기록하고 지정한 응답·실패·지연으로 계정 전환 경합을 재현한다.
+  // 매개변수: 없음. 반환값: 환자 조회 결과 Future; 실패 설정 시 StateError.
   @override
   Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
     calls++;

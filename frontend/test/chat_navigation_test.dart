@@ -91,6 +91,9 @@ class _History extends ManageLinkedChat {
 class _ViewModel extends MedBuddyViewModel {
   UserSetting setting = const UserSetting();
   bool hasOwnMedication = false;
+  // 함수이름: savedMedicationInfoList
+  // 함수역할: 본인 약의 유무만 바꿔 홈 일정 출처가 약 보유 여부에 좌우되지 않는지 검사한다.
+  // 매개변수: 없음. 반환값: 본인 약 한 건 또는 기본 저장 약 목록.
   @override
   List<MedicationDetail> get savedMedicationInfoList => hasOwnMedication
       ? const [
@@ -116,6 +119,9 @@ class _ViewModel extends MedBuddyViewModel {
 // 역할: 홈 조립 테스트에 활성 환자의 빈 일정을 제공한다.
 class _HomeMonitoring extends CheckCaregiverMedication {
   int calls = 0;
+  // 함수이름: requestMonitoringSnapshot
+  // 함수역할: 조회 횟수를 기록하고 활성 환자의 빈 일정을 제공한다.
+  // 매개변수: 없음. 반환값: 테스트 환자 조회 결과 Future.
   @override
   Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
     calls++;
@@ -174,6 +180,9 @@ void main() {
     ('patients', false),
     ('patients', true),
   ]) {
+    // 함수이름: 홈 일정 출처 테스트
+    // 함수역할: 명시한 일정 출처를 본인 약 유무와 관계없이 따르고 환자 연결이 해제되면 연결 안내로 바뀌는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('홈은 명시적 일정 선택을 따르고 연결 해제 시 안내한다: $source/$ownMedication', (
       tester,
     ) async {

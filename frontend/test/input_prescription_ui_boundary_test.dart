@@ -133,6 +133,10 @@ class _HomeReminderViewModel extends MedBuddyViewModel {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: home completion review test
+  // Description: Opening the schedule after a home completion refreshes it without undoing the recorded slot.
+  // Parameters: tester - widget rendering and interaction harness.
+  // Returns: Completion of asynchronous assertions; mismatches fail the test.
   testWidgets('home bulk completion offers review without resetting the slot', (
     tester,
   ) async {
