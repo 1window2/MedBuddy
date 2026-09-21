@@ -41,7 +41,7 @@ jobs:
       run: python3 ../scripts/check_release_metadata.py
 
     - name: Package Get
-      run: flutter pub get
+      run: flutter pub get --enforce-lockfile
 
     - name: Dart Code Analysis
       run: flutter analyze --no-pub

@@ -224,16 +224,28 @@ python scripts/sync_drug_catalog.py --dataset approval --page-size 500 --start-p
 
 ### Frontend Setup
 
+Use **Flutter 3.41.5 (stable)**, matching both CI and the signed Android release
+workflow. The application commits `frontend/pubspec.lock`; do not delete it or
+regenerate it with a different SDK to work around a resolution failure.
+
 Open another terminal from the repository root:
 
 ```powershell
 cd frontend
-flutter pub get
+flutter --version
+flutter pub get --enforce-lockfile
 flutter devices
 flutter run -d "[your-device-id]"
 ```
 
 Use the device id shown by `flutter devices`.
+
+For an intentional dependency change, use Flutter 3.41.5, run `flutter pub get`
+without enforcement, review and commit the lockfile diff, then verify
+`flutter pub get --enforce-lockfile`, `flutter analyze --no-pub`, and
+`flutter test --no-pub`. SDK upgrades must update both workflow pins and the
+lockfile together. CI and signed builds reject dependency drift rather than
+silently resolving different versions.
 
 The Android application defaults to the production API endpoint:
 
