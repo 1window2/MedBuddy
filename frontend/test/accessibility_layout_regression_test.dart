@@ -404,7 +404,7 @@ void main() {
           );
           expect(dashboardScrollable, findsAtLeastNWidgets(1));
           final guidance = tester.renderObject<RenderParagraph>(
-            find.textContaining('시간에 맞춰 챙겨드세요.'),
+            find.textContaining('· 미복용').first,
           );
           expect(guidance.didExceedMaxLines, isFalse);
           final dashboardRect = tester.getRect(
@@ -522,7 +522,7 @@ void main() {
         expect(find.text('약 등록·식별'), findsOneWidget);
         expect(find.text('근처 운영 약국'), findsOneWidget);
         await tester.drag(
-          find.byType(SingleChildScrollView),
+          find.byKey(const ValueKey('homeDashboardScrollView')),
           const Offset(0, -300),
         );
         await tester.pumpAndSettle();

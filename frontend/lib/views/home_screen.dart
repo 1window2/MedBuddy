@@ -32,6 +32,7 @@ import '../controls/authentication_control.dart';
 import '../controls/manage_chat_list_control.dart';
 import '../controls/check_caregiver_home_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
@@ -55,6 +56,7 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 class HomeScreen extends StatefulWidget {
   final ManageChatList Function(String userHash)? chatListFactory;
   final CheckCaregiverHome Function(String userHash)? caregiverHomeFactory;
+  final DateTime Function()? nowProvider;
   // 함수이름: HomeScreen
   // 함수역할: 처방 흐름과 하단 탐색을 관리하는 홈 화면을 생성한다.
   // 매개변수: key: 위젯 식별자, chatListFactory: 계정별 채팅 목록 Control의 선택적 생성 경계.
@@ -63,6 +65,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     this.chatListFactory,
     this.caregiverHomeFactory,
+    this.nowProvider,
   });
 
   // Function Name: createState
@@ -711,6 +714,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
       medicationReminderSettings: viewModel.medicationReminderSettings,
+      nowProvider: widget.nowProvider,
       todayMedicationCompletedCount: todayMedicationProgress.completedCount,
       todayMedicationTotalCount: todayMedicationProgress.totalCount,
       isTodayScheduleLoading:
@@ -777,13 +781,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onTodayScheduleRequested: () {
         _selectDestination(MedBuddyDestination.schedule);
       },
-      // Function Name: _buildHomeInput.onNextMedicationCompleteRequested callback
-      // Description: Prevents overlapping home slot updates, marks the slot complete, and offers schedule review after success.
+      // Function Name: _buildHomeInput.onMedicationSlotStatusRequested callback
+      // Description: Saves completion or cancellation of the selected slot and reports success to the preview.
       // Parameters:
       // - slotKey (inferred by callback contract): Key identifying morning, lunch, evening, or bedtime.
-      // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-      onNextMedicationCompleteRequested: (slotKey) =>
-          _completeHomeMedicationSlot(viewModel, slotKey),
+      // - completed (bool): Whether to mark the selected slot taken.
+      // Returns: Whether the requested state was saved.
+      onMedicationSlotStatusRequested: (slotKey, completed) =>
+          _updateHomeMedicationSlot(viewModel, slotKey, completed),
       isNextMedicationCompletionLoading: _updatingHomeMedicationSlotKey != null,
       // Function Name: _buildHomeInput.onHealthRecommendationRequested callback
       // Description: Connects the active screen selected by prescription flow and navigation destination to the captured operation `Navigator.push(context, MaterialPageRoute(builder: (context) => const HealthRecommendationUI())); MaterialPageRoute(builder: (context) => const HealthRecommendationUI())`.
@@ -912,20 +917,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) unawaited(_refreshChatList());
   }
 
-  // Function Name: _completeHomeMedicationSlot
-  // Description: Prevents overlapping home slot updates, marks the slot complete, and offers schedule review after success.
+  // Function Name: _updateHomeMedicationSlot
+  // Description: Saves completion or cancellation through the existing sync path and offers schedule review after success.
   // Parameters:
   // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
   // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
-  Future<void> _completeHomeMedicationSlot(
+  // - completed (bool): Completion state to save for the selected slot.
+  // Returns: True when the requested state was durably accepted.
+  Future<bool> _updateHomeMedicationSlot(
     MedBuddyViewModel viewModel,
     String slotKey,
+    bool completed,
   ) async {
     if (_updatingHomeMedicationSlotKey != null) {
-      return;
+      return false;
     }
-    // Function Name: _completeHomeMedicationSlot.setState callback
+    // 응답 도착 시각이 아니라 사용자가 기록 버튼을 누른 시각을 기준으로 판단한다.
+    final pressedAt = widget.nowProvider?.call() ?? DateTime.now();
+    final defaultTime = viewModel.userSetting
+        .defaultTimeForSlot(slotKey)
+        .split(':');
+    final alarm =
+        viewModel.medicationReminderSettings[slotKey] ??
+        MedicationAlarm.defaults(
+          slotKey,
+          hour: int.tryParse(defaultTime.first),
+          minute: defaultTime.length > 1 ? int.tryParse(defaultTime[1]) : null,
+        );
+    final scheduledAt = DateTime(
+      pressedAt.year,
+      pressedAt.month,
+      pressedAt.day,
+      alarm.hour,
+      alarm.minute,
+    );
+    // 두 시간은 조기 기록 안내를 표시하는 기준이며 복용 가능 시간을 뜻하지 않는다.
+    final needsTimingGuidance =
+        completed &&
+        (pressedAt.isAfter(scheduledAt) ||
+            scheduledAt.difference(pressedAt) > const Duration(hours: 2));
+    // Function Name: _updateHomeMedicationSlot.setState callback
     // Description: Updates the local input or request state for the active screen selected by prescription flow and navigation destination: `_updatingHomeMedicationSlotKey = slotKey`.
     // Parameters:
     // - None.
@@ -933,12 +964,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _updatingHomeMedicationSlotKey = slotKey);
     final success = await viewModel.requestMedicationSlotStatusUpdate(
       slotKey,
-      true,
+      completed,
     );
     if (!mounted) {
-      return;
+      return false;
     }
-    // Function Name: _completeHomeMedicationSlot.setState callback
+    // Function Name: _updateHomeMedicationSlot.setState callback
     // Description: Updates the local input or request state for the active screen selected by prescription flow and navigation destination: `_updatingHomeMedicationSlotKey = null`.
     // Parameters:
     // - None.
@@ -949,25 +980,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .toLowerCase()
         .startsWith('en');
     final messenger = ScaffoldMessenger.of(context);
+    final savedMessage = completed
+        ? (isEnglish ? 'Marked as taken.' : '예정된 약을 모두 복용 완료로 기록했습니다.')
+        : (isEnglish
+              ? 'Medication completion was cancelled.'
+              : '해당 시간대의 복용 기록을 취소했습니다.');
+    final missedDoseGuidance = isEnglish
+        ? 'Check your prescription guidance before taking a missed dose.'
+        : '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.';
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
-          success
-              ? (isEnglish
-                    ? 'The scheduled medications were marked as taken.'
-                    : '예정된 약을 모두 복용 완료로 기록했습니다.')
-              : (isEnglish
-                    ? 'Could not save medication completion.'
-                    : '복약 완료를 저장하지 못했습니다.'),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .4,
+          ),
+          child: SingleChildScrollView(
+            key: const Key('home-dose-record-notice'),
+            child: Text(
+              success
+                  ? needsTimingGuidance
+                        ? '$savedMessage\n$missedDoseGuidance'
+                        : savedMessage
+                  : (isEnglish
+                        ? 'Could not save the medication status.'
+                        : '복약 상태를 저장하지 못했습니다.'),
+            ),
+          ),
         ),
-        duration: Duration(seconds: success ? 5 : 2),
+        duration: Duration(
+          seconds: success ? (needsTimingGuidance ? 8 : 5) : 2,
+        ),
         persist: false,
         action: success
             ? SnackBarAction(
-                label: isEnglish ? 'Review schedule' : '일정 확인',
-                // Function Name: _completeHomeMedicationSlot.onPressed callback
-                // Description: Opens individual-dose review without clearing completion records from before the bulk action.
+                label: isEnglish ? 'View' : '일정 확인',
+                // Function Name: _updateHomeMedicationSlot.onPressed callback
+                // Description: Opens individual-dose review without changing other completion records.
                 // Parameters:
                 // - None.
                 // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
@@ -978,6 +1027,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : null,
       ),
     );
+    return success;
   }
 
   // 함수이름: _openPatientCaregiverLink

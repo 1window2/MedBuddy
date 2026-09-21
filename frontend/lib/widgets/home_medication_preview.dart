@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: HomeMedicationPreview
-// 역할: 진행률과 일정 안내를 표시한다. 복용 처리는 본인 화면에서 전달한 action만 제공한다.
+// 역할: 진행률과 일정 요약을 표시하고 화면별 조회·복용 동작을 배치한다.
 class HomeMedicationPreview extends StatelessWidget {
   final String title;
   final String progressTitle;
@@ -19,6 +19,9 @@ class HomeMedicationPreview extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? headerAction;
   final Widget? action;
+  final Widget? titleLeading;
+  final Widget? titleTrailing;
+  final Widget? scheduleContent;
 
   const HomeMedicationPreview({
     super.key,
@@ -34,7 +37,84 @@ class HomeMedicationPreview extends StatelessWidget {
     this.onTap,
     this.headerAction,
     this.action,
+    this.titleLeading,
+    this.titleTrailing,
+    this.scheduleContent,
   });
+
+  Widget _heart() => Container(
+    key: const Key('home-preview-heart'),
+    width: compact ? 42 : 46,
+    height: compact ? 42 : 46,
+    decoration: BoxDecoration(
+      color: MedBuddyColors.mint,
+      borderRadius: BorderRadius.circular(compact ? 14 : 15),
+    ),
+    child: Icon(
+      Icons.favorite_rounded,
+      color: MedBuddyColors.primaryDark,
+      size: compact ? 22 : 24,
+    ),
+  );
+
+  Widget _titleGroup() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ?titleLeading,
+      Flexible(
+        child: Text(
+          title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: compact ? 16 : 17,
+            height: 1.3,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      ?titleTrailing,
+    ],
+  );
+
+  Widget _header(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final heartWidth = compact ? 42.0 : 46.0;
+      final gap = compact ? 11.0 : 13.0;
+      final controlsWidth =
+          (titleLeading == null ? 0.0 : 48.0) +
+          (titleTrailing == null ? 0.0 : 48.0) +
+          (headerAction == null ? 0.0 : 48.0);
+      final minimumNameWidth =
+          MediaQuery.textScalerOf(context).scale(compact ? 16 : 17) * 4;
+      final separateTitle =
+          (titleLeading != null || titleTrailing != null) &&
+          constraints.maxWidth - heartWidth - gap - controlsWidth <
+              minimumNameWidth;
+      // 좁은 화면의 큰 글씨에서는 이름과 양옆 화살표를 함께 다음 줄에 배치한다.
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: separateTitle
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [_heart(), const Spacer(), ?headerAction]),
+                  const SizedBox(height: 4),
+                  _titleGroup(),
+                ],
+              )
+            : Row(
+                children: [
+                  _heart(),
+                  SizedBox(width: gap),
+                  Expanded(child: _titleGroup()),
+                  ?headerAction,
+                ],
+              ),
+      );
+    },
+  );
 
   // 함수역할: 환자 화면의 간격과 글꼴을 유지하면서 선택적 조회·복용 동작을 배치한다.
   @override
@@ -56,38 +136,7 @@ class HomeMedicationPreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: compact ? 42 : 46,
-                  height: compact ? 42 : 46,
-                  decoration: BoxDecoration(
-                    color: MedBuddyColors.mint,
-                    borderRadius: BorderRadius.circular(compact ? 14 : 15),
-                  ),
-                  child: Icon(
-                    Icons.favorite_rounded,
-                    color: MedBuddyColors.primaryDark,
-                    size: compact ? 22 : 24,
-                  ),
-                ),
-                SizedBox(width: compact ? 11 : 13),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: compact ? 16 : 17,
-                      height: 1.3,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                ?headerAction,
-              ],
-            ),
+            _header(context),
             SizedBox(height: compact ? 10 : 20),
             Row(
               children: [
@@ -124,71 +173,14 @@ class HomeMedicationPreview extends StatelessWidget {
               ),
             ),
             SizedBox(height: compact ? 10 : 18),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(compact ? 10 : 16),
-              decoration: BoxDecoration(
-                color: MedBuddyColors.surfaceSubtle,
-                borderRadius: MedBuddyRadii.card,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: compact ? 34 : 38,
-                    height: compact ? 34 : 38,
-                    decoration: BoxDecoration(
-                      color: hasPendingMedication
-                          ? MedBuddyColors.mint
-                          : MedBuddyColors.lavenderSurface,
-                      borderRadius: BorderRadius.circular(compact ? 11 : 13),
-                    ),
-                    child: Icon(
-                      hasPendingMedication
-                          ? Icons.alarm_outlined
-                          : Icons.event_available_outlined,
-                      color: MedBuddyColors.primaryDark,
-                      size: compact ? 19 : 21,
-                    ),
-                  ),
-                  SizedBox(width: compact ? 10 : 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          scheduleTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: compact ? 13 : 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: compact ? 2 : 3),
-                        Text(
-                          scheduleDescription,
-                          style: TextStyle(
-                            color: MedBuddyColors.textMuted,
-                            fontSize: compact ? 11 : 12,
-                            height: 1.35,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: MedBuddyColors.textSubtle,
-                      size: 16,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            scheduleContent ??
+                HomeMedicationSummary(
+                  title: scheduleTitle,
+                  description: scheduleDescription,
+                  hasPendingMedication: hasPendingMedication,
+                  compact: compact,
+                  showDetailsArrow: onTap != null,
+                ),
             if (action != null) ...[
               SizedBox(height: compact ? 10 : 14),
               action!,
@@ -196,6 +188,97 @@ class HomeMedicationPreview extends StatelessWidget {
           ],
         ),
       ),
+    ),
+  );
+}
+
+// 역할: 홈 미리보기에서 사용하는 기존 아이콘과 간단한 요약 배치를 공유한다.
+class HomeMedicationSummary extends StatelessWidget {
+  final String title;
+  final String description;
+  final bool hasPendingMedication;
+  final bool compact;
+  final bool showDetailsArrow;
+  final int? descriptionMaxLines;
+
+  const HomeMedicationSummary({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.hasPendingMedication,
+    this.compact = false,
+    this.showDetailsArrow = false,
+    this.descriptionMaxLines,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: EdgeInsets.all(compact ? 10 : 16),
+    decoration: BoxDecoration(
+      color: MedBuddyColors.surfaceSubtle,
+      borderRadius: MedBuddyRadii.card,
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: compact ? 34 : 38,
+          height: compact ? 34 : 38,
+          decoration: BoxDecoration(
+            color: hasPendingMedication
+                ? MedBuddyColors.mint
+                : MedBuddyColors.lavenderSurface,
+            borderRadius: BorderRadius.circular(compact ? 11 : 13),
+          ),
+          child: Icon(
+            hasPendingMedication
+                ? Icons.alarm_outlined
+                : Icons.event_available_outlined,
+            color: MedBuddyColors.primaryDark,
+            size: compact ? 19 : 21,
+          ),
+        ),
+        SizedBox(width: compact ? 10 : 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: compact ? 13 : 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: compact ? 2 : 3),
+              Text(
+                description,
+                maxLines: descriptionMaxLines,
+                overflow: descriptionMaxLines == null
+                    ? null
+                    : TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: MedBuddyColors.textMuted,
+                  fontSize: compact ? 11 : 12,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (showDetailsArrow) ...[
+          const SizedBox(width: 8),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: MedBuddyColors.textSubtle,
+            size: 16,
+          ),
+        ],
+      ],
     ),
   );
 }

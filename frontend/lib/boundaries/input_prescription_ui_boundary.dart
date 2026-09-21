@@ -9,6 +9,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
+import '../widgets/home_medication_slot_pager.dart';
 
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
@@ -40,8 +41,8 @@ class InputPrescriptionUI extends StatelessWidget {
   final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
   final VoidCallback? onTodayScheduleRequested;
-  final Future<void> Function(String slotKey)?
-  onNextMedicationCompleteRequested;
+  final Future<bool> Function(String slotKey, bool completed)?
+  onMedicationSlotStatusRequested;
   final bool isNextMedicationCompletionLoading;
   final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onHealthRecommendationRequested;
@@ -68,7 +69,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식의 알약 식별을 여는 콜백.
   // - onManualMedicationRequested (VoidCallback?): Callback opening manual medication and schedule entry.
   // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
-  // - onNextMedicationCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - onMedicationSlotStatusRequested (Future<bool> Function(String, bool)?): Updates the selected dose slot and returns whether the change was saved.
   // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
   // - onNearbyPharmacyRequested (VoidCallback?): Callback opening nearby-pharmacy search.
   // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
@@ -91,7 +92,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onPillIdentificationRequested,
     this.onManualMedicationRequested,
     required this.onTodayScheduleRequested,
-    this.onNextMedicationCompleteRequested,
+    this.onMedicationSlotStatusRequested,
     this.isNextMedicationCompletionLoading = false,
     this.onNearbyPharmacyRequested,
     required this.onHealthRecommendationRequested,
@@ -121,7 +122,7 @@ class InputPrescriptionUI extends StatelessWidget {
       onPillIdentificationRequested = null,
       onManualMedicationRequested = null,
       onTodayScheduleRequested = null,
-      onNextMedicationCompleteRequested = null,
+      onMedicationSlotStatusRequested = null,
       isNextMedicationCompletionLoading = false,
       onNearbyPharmacyRequested = null,
       onHealthRecommendationRequested = null,
@@ -198,8 +199,8 @@ class InputPrescriptionUI extends StatelessWidget {
                                   nowProvider: nowProvider,
                                   compact: useCompactDashboard,
                                   onTap: onTodayScheduleRequested,
-                                  onCompleteRequested:
-                                      onNextMedicationCompleteRequested,
+                                  onStatusUpdateRequested:
+                                      onMedicationSlotStatusRequested,
                                   isCompletionLoading:
                                       isNextMedicationCompletionLoading,
                                 ),
@@ -1021,7 +1022,8 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final bool compact;
   final DateTime Function()? nowProvider;
   final VoidCallback? onTap;
-  final Future<void> Function(String slotKey)? onCompleteRequested;
+  final Future<bool> Function(String slotKey, bool completed)?
+  onStatusUpdateRequested;
   final bool isCompletionLoading;
 
   // Function Name: _HomeEncouragementPanel
@@ -1036,7 +1038,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   // - compact (bool): Whether compact card or header layout is used.
   // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
   // - onTap (VoidCallback?): Callback executing the item's documented primary action.
-  // - onCompleteRequested (Future<void> Function(String slotKey)?): Callback requesting completion of the next or selected dose slot.
+  // - onStatusUpdateRequested (Future<bool> Function(String, bool)?): Saves completion or cancellation of the selected dose slot.
   // - isCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
   // Returns: Initialized _HomeEncouragementPanel instance.
   const _HomeEncouragementPanel({
@@ -1049,12 +1051,12 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.compact = false,
     this.nowProvider,
     this.onTap,
-    this.onCompleteRequested,
+    this.onStatusUpdateRequested,
     this.isCompletionLoading = false,
   });
 
   // 함수이름: build
-  // 함수역할: 복약 현황과 다음 일정을 표시하고 안내 문구를 생략 없이 줄바꿈해 보여준다.
+  // 함수역할: 복약 진행률과 시간대별 간단한 요약을 표시하고 선택한 시간대를 기록한다.
   // 매개변수: context (BuildContext): 접근성 배율과 화면 테마를 제공하는 문맥.
   // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
   @override
@@ -1083,47 +1085,17 @@ class _HomeEncouragementPanel extends StatelessWidget {
       hasPendingMedication: dashboard.hasNextMedication,
       compact: compact,
       onTap: onTap,
-      action: dashboard.nextSlotKey != null && onCompleteRequested != null
-          ? SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                key: const ValueKey('homeNextSlotCompletionButton'),
-                onPressed: isCompletionLoading
-                    ? null
-                    : () => onCompleteRequested!(dashboard.nextSlotKey!),
-                icon: isCompletionLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.done_all_rounded),
-                label: Text(
-                  isCompletionLoading
-                      ? (isEnglish ? 'Saving...' : '저장 중...')
-                      : (isEnglish ? 'Taken' : '복용했어요'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: MedBuddyColors.primary,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: MedBuddyColors.primary.withValues(
-                    alpha: 0.45,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: MedBuddyRadii.pill,
-                  ),
-                ),
-              ),
-            )
-          : null,
+      scheduleContent: HomeMedicationSlotPager(
+        schedules: schedules,
+        reminderSettings: reminderSettings,
+        isEnglish: isEnglish,
+        isLoading: isLoading,
+        initialSlotKey: dashboard.nextSlotKey,
+        compact: compact,
+        onStatusUpdateRequested: onStatusUpdateRequested,
+        isCompletionLoading: isCompletionLoading,
+        onDetailsRequested: onTap,
+      ),
     );
   }
 }

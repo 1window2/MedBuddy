@@ -2,6 +2,8 @@
 // Role: Regression coverage for home actions, shell navigation, accessibility, and dose-dashboard
 //   priorities.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:flutter/rendering.dart';
@@ -27,11 +29,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 // - Count each schedule read while keeping the destination empty.
 // Attributes:
 // - requestCount (int): Number of intercepted control requests.
+// - slotWrites/writtenSlots: Completion states and slot keys passed to writes.
+// - failWrites/writeGate: Simulated failure and optional delayed response.
 class _CountingCheckSchedule extends CheckSchedule {
   int requestCount = 0;
   final List<bool> slotWrites = [];
+  final List<String> writtenSlots = [];
+  bool failWrites = false;
+  Completer<void>? writeGate;
 
-  // Record whole-slot writes so navigation can be checked for accidental resets.
+  // Function Name: updateMedicationSlotStatus
+  // Description: Record the requested slot/state and simulate failure or delay.
+  // Parameters: slotKey/medicationStatus - requested write; expectedScheduleDate
+  //   is accepted for interface compatibility and is not used by this stub.
+  // Returns: An empty snapshot after the gate opens; throws when failWrites is set.
   @override
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
@@ -39,6 +50,9 @@ class _CountingCheckSchedule extends CheckSchedule {
     String? expectedScheduleDate,
   }) async {
     slotWrites.add(medicationStatus);
+    writtenSlots.add(slotKey);
+    if (failWrites) throw StateError('test update failure');
+    if (writeGate != null) await writeGate!.future;
     return const [];
   }
 
@@ -79,6 +93,37 @@ class _CountingCheckSavedMedication extends CheckSavedMedication {
   }
 }
 
+// 클래스명: _HomeReminderViewModel
+// 역할: 홈 기록 안내가 사용하는 사용자 기본 시각과 개별 알림 시각을 고정한다.
+// 주요 책임: 저장소를 조회하지 않고 테스트별 일정 시각을 제공한다.
+// 속성: setting: 사용자 기본 설정, reminders: 시간대별 실제 알림 설정.
+class _HomeReminderViewModel extends MedBuddyViewModel {
+  final UserSetting setting;
+  final Map<String, MedicationAlarm> reminders;
+
+  // 함수이름: _HomeReminderViewModel
+  // 함수역할: 저장 대역과 예정 시각을 주입해 안내 조건을 재현한다.
+  // 매개변수: checkSchedule: 저장 대역, setting/reminders: 비교할 예정 시각.
+  // 반환값: 시각 설정을 고정한 테스트용 ViewModel.
+  _HomeReminderViewModel({
+    required super.checkSchedule,
+    this.setting = const UserSetting(),
+    this.reminders = const {},
+  });
+
+  // 함수이름: userSetting
+  // 함수역할: 기본 시각 및 언어를 테스트 설정으로 고정한다.
+  // 매개변수: 없음. 반환값: 주입한 사용자 설정.
+  @override
+  UserSetting get userSetting => setting;
+
+  // 함수이름: medicationReminderSettings
+  // 함수역할: 기본 시각보다 우선하는 시간대별 알림 설정을 제공한다.
+  // 매개변수: 없음. 반환값: 주입한 알림 설정 맵.
+  @override
+  Map<String, MedicationAlarm> get medicationReminderSettings => reminders;
+}
+
 // Function Name: main
 // Description:
 // - Register regression cases for home actions, shell navigation, accessibility, and dose-dashboard
@@ -103,7 +148,7 @@ void main() {
     );
     tester
         .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
-        .onNextMedicationCompleteRequested!('morning');
+        .onMedicationSlotStatusRequested!('morning', true);
     await tester.pumpAndSettle();
     expect(schedule.slotWrites, [true]);
     expect(find.text('실행 취소'), findsNothing);
@@ -113,6 +158,369 @@ void main() {
     expect(schedule.slotWrites, [true]);
     expect(tester.takeException(), isNull);
   });
+
+  for (final fail in [false, true]) {
+    // 함수이름: 홈 시간대 취소 테스트
+    // 함수역할: 취소 대상과 저장 결과 전달을 확인하고 실패해도 처리 중 상태가 해제되는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    testWidgets('홈 복용 취소는 선택 시간대만 기존 저장 경로에 전달한다: $fail', (tester) async {
+      _setViewport(tester, const Size(390, 844));
+      final schedule = _CountingCheckSchedule()..failWrites = fail;
+      final viewModel = MedBuddyViewModel(checkSchedule: schedule);
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      final saved = await tester
+          .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+          .onMedicationSlotStatusRequested!('evening', false);
+      await tester.pumpAndSettle();
+      expect(saved, !fail);
+      expect(schedule.slotWrites, [false]);
+      expect(schedule.writtenSlots, ['evening']);
+      expect(
+        find.text(fail ? '복약 상태를 저장하지 못했습니다.' : '해당 시간대의 복용 기록을 취소했습니다.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+            .isNextMedicationCompletionLoading,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final scenario in [
+    (
+      name: '예정 시각 두 시간 초과 전',
+      minute: 15 * 60 + 59,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '예정 시각 정확히 두 시간 전',
+      minute: 16 * 60,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '예정 시각 두 시간 이내 전',
+      minute: 16 * 60 + 1,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '변경한 기본 시각보다 두 시간 초과 전',
+      minute: 17 * 60 + 29,
+      defaultTime: '19:30',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '조기 안내도 개별 알림 시각 우선',
+      minute: 17 * 60,
+      defaultTime: '20:00',
+      alarmHour: 18,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '꺼진 개별 알림 시각보다 두 시간 초과 전',
+      minute: 17 * 60 + 59,
+      defaultTime: '18:00',
+      alarmHour: 20,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '이른 기록 저장 실패',
+      minute: 15 * 60 + 59,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: true,
+      warning: false,
+    ),
+    (
+      name: '이른 복용 취소',
+      minute: 15 * 60 + 59,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: false,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '예정 시각 전',
+      minute: 17 * 60 + 59,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '예정 시각 정각',
+      minute: 18 * 60,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '예정 시각 이후',
+      minute: 18 * 60 + 1,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '변경한 기본 시각 이전',
+      minute: 18 * 60 + 30,
+      defaultTime: '19:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '변경한 기본 시각 이후',
+      minute: 19 * 60 + 1,
+      defaultTime: '19:00',
+      alarmHour: null,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '개별 알림 시각 우선',
+      minute: 19 * 60,
+      defaultTime: '18:00',
+      alarmHour: 20,
+      completed: true,
+      fail: false,
+      warning: false,
+    ),
+    (
+      name: '알림 꺼짐에도 복약 시각 적용',
+      minute: 17 * 60 + 1,
+      defaultTime: '18:00',
+      alarmHour: 17,
+      completed: true,
+      fail: false,
+      warning: true,
+    ),
+    (
+      name: '늦은 기록 저장 실패',
+      minute: 20 * 60,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: true,
+      fail: true,
+      warning: false,
+    ),
+    (
+      name: '늦은 복용 취소',
+      minute: 20 * 60,
+      defaultTime: '18:00',
+      alarmHour: null,
+      completed: false,
+      fail: false,
+      warning: false,
+    ),
+  ]) {
+    // 함수이름: 기록 시각별 안내 테스트
+    // 함수역할: 실제 알림 시각의 우선순위와 두 시간 경계를 확인하며 취소·실패에는 주의 문구가 없는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    testWidgets('저장 완료 알림의 놓친 복약 안내: ${scenario.name}', (tester) async {
+      _setViewport(tester, const Size(390, 844));
+      final schedule = _CountingCheckSchedule()..failWrites = scenario.fail;
+      final viewModel = _HomeReminderViewModel(
+        checkSchedule: schedule,
+        setting: UserSetting(defaultEveningTime: scenario.defaultTime),
+        reminders: scenario.alarmHour == null
+            ? const {}
+            : {
+                'evening': MedicationAlarm(
+                  slotKey: 'evening',
+                  hour: scenario.alarmHour!,
+                  minute: 0,
+                  enabled: false,
+                ),
+              },
+      );
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            home: HomeScreen(
+              nowProvider: () => DateTime(
+                2026,
+                9,
+                22,
+                scenario.minute ~/ 60,
+                scenario.minute % 60,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('놓친 복약은'), findsNothing);
+      final saved = await tester
+          .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+          .onMedicationSlotStatusRequested!('evening', scenario.completed);
+      await tester.pumpAndSettle();
+      expect(saved, !scenario.fail);
+      final snackbar = tester.widget<SnackBar>(find.byType(SnackBar));
+      final message = tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const Key('home-dose-record-notice')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data!;
+      expect(message.contains('놓친 복약은'), scenario.warning);
+      if (scenario.warning) {
+        expect(
+          message,
+          '예정된 약을 모두 복용 완료로 기록했습니다.\n'
+          '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.',
+        );
+        expect(snackbar.duration, const Duration(seconds: 8));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: 늦은 응답의 안내 기준 테스트
+  // 함수역할: 저장 중 예정 시각을 지나도 정상 시각에 누른 기록을 늦은 기록으로 바꾸지 않는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('응답이 늦어져도 버튼을 누른 시각으로 주의 문구를 판단한다', (tester) async {
+    final gate = Completer<void>();
+    final schedule = _CountingCheckSchedule()..writeGate = gate;
+    final viewModel = _HomeReminderViewModel(checkSchedule: schedule);
+    addTearDown(viewModel.dispose);
+    var now = DateTime(2026, 9, 22, 17, 59);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(home: HomeScreen(nowProvider: () => now)),
+      ),
+    );
+    final saving = tester
+        .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+        .onMedicationSlotStatusRequested!('evening', true);
+    await tester.pump();
+    now = DateTime(2026, 9, 22, 18, 1);
+    gate.complete();
+    await saving;
+    await tester.pumpAndSettle();
+    expect(find.textContaining('놓친 복약은'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 조기 기록의 지연 응답 테스트
+  // 함수역할: 저장 중 조기 안내 경계를 지나더라도 버튼을 누를 때 필요했던 안내를 유지하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('이른 기록도 저장 응답이 아닌 버튼을 누른 시각으로 안내한다', (tester) async {
+    final gate = Completer<void>();
+    final schedule = _CountingCheckSchedule()..writeGate = gate;
+    final viewModel = _HomeReminderViewModel(checkSchedule: schedule);
+    addTearDown(viewModel.dispose);
+    var now = DateTime(2026, 9, 22, 15, 59);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(home: HomeScreen(nowProvider: () => now)),
+      ),
+    );
+    final saving = tester
+        .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+        .onMedicationSlotStatusRequested!('evening', true);
+    await tester.pump();
+    now = DateTime(2026, 9, 22, 16, 1);
+    gate.complete();
+    expect(await saving, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('놓친 복약은'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 기록 안내 접근성 테스트
+    // 함수역할: 큰 글씨와 한국어·영어에서도 안내 전체를 스크롤로 읽을 수 있는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    testWidgets('큰 글씨에서도 저장 알림의 주의 문구가 잘리지 않는다: $language', (tester) async {
+      _setViewport(tester, const Size(320, 700));
+      final viewModel = _HomeReminderViewModel(
+        checkSchedule: _CountingCheckSchedule(),
+        setting: UserSetting(language: language),
+      );
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: HomeScreen(nowProvider: () => DateTime(2026, 9, 22, 19)),
+          ),
+        ),
+      );
+      await tester
+          .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+          .onMedicationSlotStatusRequested!('evening', true);
+      await tester.pumpAndSettle();
+      final text = find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.textContaining(
+          language == 'ko' ? '놓친 복약은' : 'Check your prescription guidance',
+        ),
+      );
+      expect(text, findsOneWidget);
+      expect(
+        tester.renderObject<RenderParagraph>(text).didExceedMaxLines,
+        isFalse,
+      );
+      final notice = find.byKey(const Key('home-dose-record-notice'));
+      expect(tester.getRect(notice).top, greaterThanOrEqualTo(0));
+      expect(tester.getRect(notice).bottom, lessThanOrEqualTo(700));
+      await tester.drag(notice, const Offset(0, -1000));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(text).bottom,
+        lessThanOrEqualTo(tester.getRect(notice).bottom + 1),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // 함수이름: 약 등록·식별 진입 테스트
   // 함수역할: 중복 카드 없이 공통 메뉴에서 처방전·알약 식별·직접 등록에 접근하는지 확인한다.
@@ -920,6 +1328,7 @@ void main() {
                         find.byKey(const ValueKey('homeEncouragementPanel')),
                       )
                       .height,
+                  // 시간대를 넘겨도 기존의 작은 홈 미리보기 크기를 유지한다.
                   lessThan(260),
                 );
               }
@@ -1025,7 +1434,8 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('Lunch 12:00 · LunchMed'), findsOneWidget);
+    expect(find.text('Lunch · Not taken'), findsOneWidget);
+    expect(find.text('12:00 · LunchMed'), findsOneWidget);
     expect(find.textContaining('점심 12:00'), findsNothing);
   });
 
@@ -1075,19 +1485,20 @@ void main() {
       ),
     );
 
-    expect(find.text('다음 복약 일정'), findsOneWidget);
+    expect(find.text('점심 · 미복용'), findsOneWidget);
     expect(find.text('다음 복약 알림'), findsNothing);
-    expect(find.textContaining('점심 12:00 · 약A 외 1개'), findsOneWidget);
+    expect(find.text('12:00 · 약A 외 1개'), findsOneWidget);
+    expect(find.text('약B'), findsNothing);
   });
 
   for (final viewport in const [Size(320, 640), Size(390, 844)]) {
     for (final scale in const [1.0, 1.3, 2.0]) {
       for (final language in const ['ko', 'en']) {
-        // 함수이름: 미복용 안내 줄바꿈 테스트
-        // 함수역할: 긴 약 이름과 주의 문구가 큰 글씨에서도 잘리지 않고 완료 버튼 위에 배치되는지 확인한다.
+        // 함수이름: 시간대 요약 배치 테스트
+        // 함수역할: 긴 약 이름을 두 줄 안에 요약하고 큰 글씨에서도 완료 버튼과 겹치지 않는지 확인한다.
         // 매개변수: tester (WidgetTester): 화면 배치와 상호작용 검증 도구.
         // 반환값: 화면 크기·배율·언어별 검증을 마치는 Future<void>.
-        testWidgets('overdue guidance wraps fully $viewport $scale $language', (
+        testWidgets('slot summary stays compact $viewport $scale $language', (
           tester,
         ) async {
           _setViewport(tester, viewport);
@@ -1121,27 +1532,25 @@ void main() {
                 // 함수역할: 아침 복약 시간이 지난 상황을 고정한다.
                 // 매개변수: 없음. 반환값: 테스트 기준 시각.
                 nowProvider: () => DateTime(2026, 1, 1, 23),
-                // 함수이름: onNextMedicationCompleteRequested 콜백
+                // 함수이름: onMedicationSlotStatusRequested 콜백
                 // 함수역할: 안내 아래 완료 버튼으로 전달되는 시간대를 기록한다.
-                // 매개변수: slotKey (String): 완료할 복약 시간대. 반환값: 기록 완료.
-                onNextMedicationCompleteRequested: (slotKey) async {
+                // 매개변수: slotKey, completed: 저장할 시간대와 완료 상태. 반환값: 저장 성공.
+                onMedicationSlotStatusRequested: (slotKey, completed) async {
                   completedSlot = slotKey;
+                  expect(completed, isTrue);
+                  return true;
                 },
               ),
             ),
           );
           await tester.pumpAndSettle();
-          final guidance = language == 'ko'
-              ? '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.'
-              : 'Check your prescription guidance before taking a missed dose.';
-          final guide = find.textContaining(guidance);
+          final guide = find.textContaining('Long medication name 100mg');
           expect(guide, findsOneWidget);
           final label = tester.widget<Text>(guide);
-          expect(label.maxLines, isNull);
-          expect(label.overflow, isNot(TextOverflow.ellipsis));
+          expect(label.maxLines, 2);
+          expect(label.overflow, TextOverflow.ellipsis);
           expect(label.textScaler, isNull);
           final paragraph = tester.renderObject<RenderParagraph>(guide);
-          expect(paragraph.didExceedMaxLines, isFalse);
           expect(paragraph.textScaler.scale(12), closeTo(12 * scale, 0.01));
           final panel = tester.getRect(
             find.byKey(const ValueKey('homeEncouragementPanel')),
@@ -1209,8 +1618,8 @@ void main() {
     );
 
     expect(find.text('미복용한 약을 확인해주세요'), findsOneWidget);
-    expect(find.text('미복용 확인'), findsOneWidget);
-    expect(find.textContaining('임의로 추가 복용하지 말고'), findsOneWidget);
+    expect(find.text('아침 · 미복용'), findsOneWidget);
+    expect(find.text('08:00 · 아침약'), findsOneWidget);
     expect(find.textContaining('늦지 않게 복용하세요.'), findsNothing);
     expect(find.text('오늘도 복약을 꾸준히 이어가고 있어요'), findsNothing);
   });
@@ -1258,15 +1667,18 @@ void main() {
           // Returns:
           // - DateTime from DateTime(2026, 1, 1, 10).
           nowProvider: () => DateTime(2026, 1, 1, 10),
-          // Function Name: onNextMedicationCompleteRequested callback
+          // Function Name: onMedicationSlotStatusRequested callback
           // Description:
           // - Capture the slot completed by the dashboard's large next-dose action.
           // Parameters:
           // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime.
+          // - completed (bool): Requested completion state.
           // Returns:
-          // - Future<void>; stores the completed slot key.
-          onNextMedicationCompleteRequested: (slotKey) async {
+          // - Future<bool>; stores the selected slot and reports success.
+          onMedicationSlotStatusRequested: (slotKey, completed) async {
             completedSlotKey = slotKey;
+            expect(completed, isTrue);
+            return true;
           },
         ),
       ),
@@ -1337,8 +1749,9 @@ void main() {
       ),
     );
 
-    expect(find.text('다음 복약 알림'), findsOneWidget);
-    expect(find.textContaining('점심 12:00 · 점심약'), findsOneWidget);
+    expect(find.byKey(const Key('home-slot-page-lunch')), findsOneWidget);
+    expect(find.text('점심 · 미복용'), findsOneWidget);
+    expect(find.text('12:00 · 점심약'), findsOneWidget);
     expect(find.textContaining('아침 08:00 · 아침약'), findsNothing);
     expect(find.textContaining('임의로 추가 복용하지 말고'), findsNothing);
   });
@@ -1369,7 +1782,7 @@ void _setViewport(WidgetTester tester, Size size) {
 // - completedCount (int): Completed-dose count displayed in the dashboard.
 // - totalCount (int): Total scheduled dose count shown in the dashboard.
 // - nowProvider (DateTime Function()?): Dashboard clock override for due-dose ordering.
-// - onNextMedicationCompleteRequested (Future<void> Function(String slotKey)?): Optional callback for
+// - onMedicationSlotStatusRequested (Future<bool> Function(String, bool)?): Optional callback for
 //   completing the next due slot.
 // Returns:
 // - The configured InputPrescriptionUI with inert unrelated navigation callbacks.
@@ -1380,7 +1793,8 @@ InputPrescriptionUI _home({
   int completedCount = 0,
   int totalCount = 0,
   DateTime Function()? nowProvider,
-  Future<void> Function(String slotKey)? onNextMedicationCompleteRequested,
+  Future<bool> Function(String slotKey, bool completed)?
+  onMedicationSlotStatusRequested,
 }) {
   return InputPrescriptionUI(
     statusMessage: '',
@@ -1390,7 +1804,7 @@ InputPrescriptionUI _home({
     todayMedicationCompletedCount: completedCount,
     todayMedicationTotalCount: totalCount,
     nowProvider: nowProvider,
-    onNextMedicationCompleteRequested: onNextMedicationCompleteRequested,
+    onMedicationSlotStatusRequested: onMedicationSlotStatusRequested,
     // Function Name: onPrescriptionScanRequested callback
     // Description:
     // - Keep prescription camera navigation available in the fixture without performing the action.
