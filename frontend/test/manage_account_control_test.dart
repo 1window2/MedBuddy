@@ -92,4 +92,121 @@ void main() {
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('user_setting_usr_test_font_size'), 'large');
   });
+
+  // Function Name: scopedPreferences
+  // Description: Creates representative keys using the existing account-owned storage formats.
+  // Parameters:
+  // - owner (String): Account hash used in each preference namespace.
+  // Returns:
+  // - Map<String, Object>: Settings, reminders, favorites, links, and inbox records.
+  Map<String, Object> scopedPreferences(String owner) => {
+    for (final setting in const [
+      'font_size',
+      'reading_speed',
+      'language',
+      'language_mode',
+      'time_format',
+      'home_schedule_source',
+      'medication_notifications_enabled',
+      'caregiver_notifications_enabled',
+      'chat_notifications_enabled',
+      'notification_detail_mode',
+      'default_morning_time',
+      'default_lunch_time',
+      'default_evening_time',
+      'default_bedtime',
+      'nearby_pharmacy_lab_enabled',
+      'linked_medication_chat_lab_enabled',
+      'multi_pill_identification_lab_enabled',
+    ])
+      'user_setting_${owner}_$setting': 'cached',
+    for (final slot in const ['morning', 'lunch', 'evening', 'bedtime']) ...{
+      'medbuddy_medication_reminder_patient_${owner}_$slot': 'legacy',
+      'medbuddy_medication_reminder_patient_${owner}_${owner}_$slot': 'current',
+    },
+    'medbuddy.favorite_pharmacy_ids.$owner': <String>['pharmacy-1'],
+    'caregiver_linked_patients.$owner': <String>['patient-1'],
+    'caregiver_patient_label.$owner.patient-1': 'Family',
+    'caregiver_alert.$owner.patient-1.morning.snapshot_data': '{}',
+    for (final kind in const ['entry', 'read', 'hidden'])
+      'notification_inbox_v1.${Uri.encodeComponent(owner)}.$kind.notice-1':
+          'cached',
+  };
+
+  // Function Name: test callback
+  // Description: Removes only the exact owner, even when another hash shares its prefix, suffix, or an underscore-delimited segment.
+  // Parameters: None.
+  // Returns: Future<void>; completes when other accounts and unscoped values remain intact.
+  test(
+    'similar hashes and references in another owner namespace are preserved',
+    () async {
+      final owned = scopedPreferences('usr_test');
+      final preserved = <String, Object>{
+        for (final other in const [
+          'usr_test2',
+          'xusr_test',
+          'usr_test_extra',
+          'usr_test_font_size',
+        ])
+          ...scopedPreferences(other),
+        'caregiver_patient_label.usr_other.usr_test': 'Patient',
+        'caregiver_alert.usr_other.usr_test.morning.mode': 'all',
+        'notification_inbox_v1.usr_other.entry.usr_test': 'message',
+        'unrelated_usr_test_cache': 'keep',
+        'user_setting_font_size': 18,
+        'medbuddy_medication_reminder_morning': '08:00',
+        'medbuddy.favorite_pharmacy_ids': <String>['shared'],
+        'medbuddy_app_language': 'ko',
+        'notification_inbox_active_user': 'usr_test',
+      };
+      SharedPreferences.setMockInitialValues({...owned, ...preserved});
+      // Function Name: MockClient callback
+      // Description: Authorizes deletion without contacting the account server.
+      // Parameters: request (http.Request), unused request.
+      // Returns: HTTP 200 response.
+      final client = MockClient(
+        (request) async => http.Response('{"success":true}', 200),
+      );
+      addTearDown(client.close);
+      await ManageAccount(
+        userHash: '  usr_test  ',
+        client: client,
+      ).deleteAccountData();
+      final preferences = await SharedPreferences.getInstance();
+      for (final key in owned.keys) {
+        expect(preferences.containsKey(key), isFalse, reason: key);
+      }
+      expect(preferences.getKeys(), preserved.keys.toSet());
+      for (final entry in preserved.entries) {
+        expect(preferences.get(entry.key), entry.value, reason: entry.key);
+      }
+    },
+  );
+
+  // Function Name: test callback
+  // Description: Treats hash punctuation literally and uses the inbox's URI-encoded owner scope.
+  // Parameters: None.
+  // Returns: Future<void>; completes when only the requested account's keys are removed.
+  test(
+    'literal and URI-encoded account scopes do not match similar names',
+    () async {
+      final owned = scopedPreferences('usr.test+id@demo');
+      final preserved = scopedPreferences('usrXtest+id@demo');
+      SharedPreferences.setMockInitialValues({...owned, ...preserved});
+      // Function Name: MockClient callback
+      // Description: Authorizes deletion without real account changes.
+      // Parameters: request (http.Request), unused request.
+      // Returns: HTTP 200 response.
+      final client = MockClient(
+        (request) async => http.Response('{"success":true}', 200),
+      );
+      addTearDown(client.close);
+      await ManageAccount(
+        userHash: 'usr.test+id@demo',
+        client: client,
+      ).deleteAccountData();
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getKeys(), preserved.keys.toSet());
+    },
+  );
 }
