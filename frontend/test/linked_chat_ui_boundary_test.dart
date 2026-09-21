@@ -224,6 +224,83 @@ class _RetryChatControl extends ManageLinkedChat {
   }) async {}
 }
 
+// 명시적 복용 확인 요청만 기록하고 일반 메시지 전송과 구분하는 대역.
+class _TakenChatControl extends _RetryChatControl {
+  final List<String> takenRequestIds = [];
+  final List<List<int>> takenMedicationIds = [];
+  final List<String> takenSlotKeys = [];
+  final bool failFirstTaken;
+  final Completer<void>? saveGate;
+
+  _TakenChatControl({
+    this.failFirstTaken = false,
+    this.saveGate,
+    List<ChatScheduleContext>? contexts,
+  }) : super(
+         failFirstSend: false,
+         scheduleContexts:
+             contexts ??
+             const [
+               ChatScheduleContext(
+                 scheduleDate: '2026-09-21',
+                 slotKey: 'morning',
+                 alarmTime: '08:00',
+                 alarmEnabled: true,
+                 completedCount: 0,
+                 totalCount: 2,
+                 medications: [
+                   ChatMedicationContext(
+                     medicationId: 91,
+                     medicationName: '테스트정',
+                     dosagePerTime: '1정',
+                   ),
+                   ChatMedicationContext(
+                     medicationId: 93,
+                     medicationName: '선택하지 않은 약',
+                     dosagePerTime: '1정',
+                   ),
+                 ],
+               ),
+             ],
+       );
+
+  @override
+  Future<ChatMedicationTakenResult> recordMedicationTaken({
+    required int linkId,
+    required String clientMessageId,
+    required String scheduleDate,
+    required String slotKey,
+    required List<int> medicationIds,
+  }) async {
+    expect(scheduleDate, '2026-09-21');
+    takenSlotKeys.add(slotKey);
+    takenRequestIds.add(clientMessageId);
+    takenMedicationIds.add(medicationIds);
+    if (failFirstTaken && takenRequestIds.length == 1) {
+      throw StateError('offline');
+    }
+    if (saveGate != null) await saveGate!.future;
+    return ChatMedicationTakenResult(
+      message: ChatMessage(
+        messageId: 100,
+        linkId: linkId,
+        senderHash: 'patient-a',
+        clientMessageId: clientMessageId,
+        body: '아침 테스트정 복용을 기록했습니다.',
+        createdAt: DateTime.utc(2026, 9, 21),
+      ),
+      schedules: const [
+        MedicationSchedule(
+          medicationID: '91',
+          medicationName: '테스트정',
+          scheduleSlotKeys: ['morning'],
+          slotStatuses: {'morning': true},
+        ),
+      ],
+    );
+  }
+}
+
 // 클래스명: _ChatScheduleControl
 // 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
 // 주요 책임:
@@ -453,6 +530,203 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets(
+    'taken records immediately once and updates the shared schedule',
+    (tester) async {
+      final gate = Completer<void>();
+      final control = _TakenChatControl(saveGate: gate);
+      final realtime = _FakeRealtimeService();
+      final viewModel = MedBuddyViewModel(
+        patientHash: 'patient-a',
+        checkSchedule: _ChatScheduleControl(),
+        setNotification: _ChatSetNotification(),
+      );
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+              initialMedicationContexts: const [
+                ChatMedicationContext(
+                  medicationId: 91,
+                  medicationName: '테스트정',
+                  dosagePerTime: '1정',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.pump();
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.text('선택하지 않은 약'), findsNothing);
+      expect(control.takenRequestIds, hasLength(1));
+      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.pump();
+      expect(control.takenRequestIds, hasLength(1));
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(control.takenSlotKeys, ['morning']);
+      expect(control.takenMedicationIds, [
+        [91],
+      ]);
+      expect(control.sendAttempts, 0);
+      expect(
+        viewModel.todayMedicationScheduleList.single.isSlotCompleted('morning'),
+        isTrue,
+      );
+      expect(find.text('아침 테스트정 복용을 기록했습니다.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  testWidgets(
+    'failed immediate dose save retries the same ID at large text size',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final control = _TakenChatControl(failFirstTaken: true);
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(1.6),
+            ),
+            child: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+      );
+      await tester.pumpAndSettle();
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+        await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(BottomSheet), findsNothing);
+      }
+      expect(control.takenRequestIds.length, 2);
+      expect(control.takenRequestIds.toSet().length, 1);
+      expect(control.sendAttempts, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  testWidgets(
+    'multiple dose slots save on slot tap and cancellation never records',
+    (tester) async {
+      final control = _TakenChatControl(
+        contexts: [
+          for (final slotKey in ['morning', 'evening'])
+            ChatScheduleContext(
+              scheduleDate: '2026-09-21',
+              slotKey: slotKey,
+              alarmTime: slotKey == 'morning' ? '08:00' : '18:00',
+              alarmEnabled: true,
+              completedCount: 0,
+              totalCount: 1,
+              medications: const [
+                ChatMedicationContext(
+                  medicationId: 91,
+                  medicationName: '테스트정',
+                  dosagePerTime: '1정',
+                ),
+              ],
+            ),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.pumpAndSettle();
+      expect(find.text('복용한 시간대'), findsOneWidget);
+      expect(find.text('기록하고 보내기'), findsNothing);
+      expect(control.takenRequestIds, isEmpty);
+      await tester.tap(find.byTooltip('취소').last);
+      await tester.pumpAndSettle();
+      expect(control.takenRequestIds, isEmpty);
+      await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('takenSlot:evening')));
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(control.takenSlotKeys, ['evening']);
+      expect(control.takenMedicationIds, [
+        [91],
+      ]);
+      expect(control.sendAttempts, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 선택한 메시지를 나에게서 삭제한 뒤 오래된 조회가 돌아와도 삭제 상태와 선택하지 않은 기존 메시지를 유지하는지 검증한다.
@@ -954,7 +1228,7 @@ void main() {
     expect(find.text('약이 부족해요'), findsOneWidget);
     expect(find.text('먹고 나서 불편해요'), findsOneWidget);
 
-    final takenReply = find.widgetWithText(ActionChip, '먹었어요');
+    final takenReply = find.widgetWithText(ActionChip, '지금은 못 먹어요');
     await tester.ensureVisible(takenReply);
     await tester.tap(takenReply);
     await tester.pumpAndSettle();
@@ -965,7 +1239,7 @@ void main() {
     ]);
     expect(control.messageKinds, [ChatMessageKind.text]);
     expect(control.slotKeys, [null]);
-    expect(find.text('테스트정, 저녁정 먹었어요.'), findsOneWidget);
+    expect(find.text('테스트정, 저녁정 지금은 못 먹어요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

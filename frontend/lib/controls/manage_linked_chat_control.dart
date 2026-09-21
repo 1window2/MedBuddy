@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../entities/chat_message_entity.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/auth_config.dart';
@@ -19,6 +20,17 @@ import '../services/authenticated_api_client.dart';
 // 반환값:
 // - String: 채팅 REST 하위 경로를 배포 환경의 전체 주소로 바꾸는 URL 구성 계약이다.
 typedef ChatUrlBuilder = String Function(String path);
+
+// 서버에서 함께 저장한 메시지와 현재 일정 상태를 전달한다.
+class ChatMedicationTakenResult {
+  final ChatMessage message;
+  final List<MedicationSchedule> schedules;
+
+  const ChatMedicationTakenResult({
+    required this.message,
+    required this.schedules,
+  });
+}
 
 // 클래스명: ManageLinkedChat
 // 역할: 인증된 연동 참여자의 채팅 REST 요청을 조정한다.
@@ -85,13 +97,15 @@ class ManageLinkedChat {
     }
     return rawMessages
         .whereType<Map>()
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 연결 채팅 응답 항목을 메시지 모델로 변환한다.
          * 매개변수:
          * - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
          * - 메시지 본문과 복약 문맥을 담은 채팅 메시지.
-         */(item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)))
+         */ (item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList(growable: false);
   }
 
@@ -211,13 +225,15 @@ class ManageLinkedChat {
     String? pharmacyId,
   }) async {
     final normalizedMedicationIds = medicationIds
-        .where(/* 함수이름: where 콜백
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 채팅 약 참조에 사용할 수 있는 양의 약 ID만 남긴다.
          * 매개변수:
          * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
          * 반환값:
          * - ID가 양수이면 true.
-         */(id) => id > 0)
+         */ (id) => id > 0,
+        )
         .toSet()
         .toList(growable: false);
     final primaryMedicationId =
@@ -249,6 +265,45 @@ class ManageLinkedChat {
     return ChatMessage.fromJson(Map<String, dynamic>.from(rawMessage));
   }
 
+  // 함수역할: 명시적으로 확인한 날짜·시간대·약만 기록하며 재시도 ID를 유지한다.
+  // 반환값: 서버가 함께 저장한 메시지와 오늘 일정의 최신 상태.
+  Future<ChatMedicationTakenResult> recordMedicationTaken({
+    required int linkId,
+    required String clientMessageId,
+    required String scheduleDate,
+    required String slotKey,
+    required List<int> medicationIds,
+  }) async {
+    final response = await _client
+        .post(
+          _buildUri('/links/$linkId/medication-taken'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'client_message_id': clientMessageId,
+            'schedule_date': scheduleDate,
+            'slot_key': slotKey,
+            'medication_ids': medicationIds,
+          }),
+        )
+        .timeout(_requestTimeout);
+    final decoded = _decodeSuccessfulResponse(response, '복용 기록을 저장하지 못했습니다.');
+    final message = decoded['data'];
+    final schedules = decoded['schedules'];
+    if (message is! Map || schedules is! List) {
+      throw StateError('복용 기록 응답 형식이 올바르지 않습니다.');
+    }
+    return ChatMedicationTakenResult(
+      message: ChatMessage.fromJson(Map<String, dynamic>.from(message)),
+      schedules: schedules
+          .map(
+            (item) => MedicationSchedule.fromScheduleJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
   // 함수이름: deleteMessages
   // 함수역할: 1~50개의 양수 메시지 ID를 검증하고 개인·공유 삭제 범위로 요청한 뒤 서버의 전체 삭제 확인을 요구한다.
   // 매개변수:
@@ -264,13 +319,15 @@ class ManageLinkedChat {
   }) async {
     if (messageIds.isEmpty ||
         messageIds.length > 50 ||
-        messageIds.any(/* 함수이름: any 콜백
+        messageIds.any(
+          /* 함수이름: any 콜백
          * 함수역할: 요청의 참조 ID 중 서버 식별자로 사용할 수 없는 값이 있는지 확인한다.
          * 매개변수:
          * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
          * 반환값:
          * - ID가 1보다 작으면 true.
-         */(id) => id < 1)) {
+         */ (id) => id < 1,
+        )) {
       throw ArgumentError('Select between 1 and 50 messages.');
     }
     final response = await _client

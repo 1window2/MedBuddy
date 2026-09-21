@@ -153,6 +153,7 @@ class ChatMedicationContext {
 // - canRequestCheck (bool): 해당 시간대의 복약 확인 요청 가능 여부
 // - medications (List<ChatMedicationContext>): 공유 복약 시간대에 포함된 약 문맥 목록
 class ChatScheduleContext {
+  final String scheduleDate;
   final String slotKey;
   final String alarmTime;
   final bool alarmEnabled;
@@ -174,6 +175,7 @@ class ChatScheduleContext {
   // 반환값:
   // - ChatScheduleContext: 초기화된 인스턴스.
   const ChatScheduleContext({
+    this.scheduleDate = '',
     required this.slotKey,
     required this.alarmTime,
     required this.alarmEnabled,
@@ -197,6 +199,7 @@ class ChatScheduleContext {
     }
     final rawMedications = json['medications'];
     return ChatScheduleContext(
+      scheduleDate: ChatMessage._readString(json['schedule_date']),
       slotKey: slotKey,
       alarmTime: ChatMessage._readString(json['alarm_time']),
       alarmEnabled: json['alarm_enabled'] == true,

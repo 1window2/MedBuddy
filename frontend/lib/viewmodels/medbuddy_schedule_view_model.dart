@@ -8,6 +8,18 @@ part of 'medbuddy_view_model.dart';
 // Responsibilities:
 // - Reject stale load generations, merge server-updated schedules, and publish loading and failure state to schedule listeners.
 extension MedBuddyScheduleViewModel on MedBuddyViewModel {
+  // 함수역할: 채팅의 복용 기록 응답을 홈·일정에 즉시 반영하고 이전 조회를 무효화한다.
+  // 매개변수: schedules: 서버가 확인한 오늘 전체 일정. 반환값: 없음.
+  void applyConfirmedTodaySchedules(List<MedicationSchedule> schedules) {
+    _todayScheduleEpoch += 1;
+    _activeTodayScheduleLoadEpoch = null;
+    _todayMedicationScheduleList = List.unmodifiable(schedules);
+    _isTodayScheduleLoading = false;
+    _hasTodayScheduleLoadError = false;
+    _lastTodayScheduleLoadSucceeded = true;
+    _notifyViewModelListeners(MedBuddyFeature.schedule);
+  }
+
   // 함수이름: fetchTodayMedicationSchedule
   // 함수역할: 오늘 기준으로 복용해야 하는 약 일정을 서버에서 가져온다.
   // 매개변수:

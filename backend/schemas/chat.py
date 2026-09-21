@@ -3,6 +3,7 @@
 
 """환자·보호자 채팅 API 요청 DTO를 정의한다."""
 
+from datetime import date
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -13,6 +14,19 @@ from entities.chat_message_entity import (
     MAX_CHAT_MEDICATION_CONTEXTS,
 )
 from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
+
+
+class ChatMedicationTaken(BaseModel):
+    """Explicit patient confirmation; ordinary chat text never updates doses."""
+
+    client_message_id: str = Field(
+        min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    schedule_date: date
+    slot_key: Literal["morning", "lunch", "evening", "bedtime"]
+    medication_ids: list[Annotated[int, Field(gt=0)]] = Field(
+        min_length=1, max_length=MAX_CHAT_MEDICATION_CONTEXTS,
+    )
 
 
 # 클래스명: ChatMessageCreate

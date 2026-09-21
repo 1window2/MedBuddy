@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
+from controls.check_schedule_control import CheckSchedule
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
@@ -440,6 +441,88 @@ class ManageLinkedChat:
             created=True,
         )
 
+    def record_medication_taken(
+        self, *, link_id: int, sender_hash: str, client_message_id: str,
+        schedule_date: date, slot_key: str, medication_ids: list[int],
+    ) -> tuple[ChatSendResult, list[dict[str, str | int]]]:
+        """Commit explicit dose confirmations and their chat message together.
+
+        Only the linked patient may write. A retried request returns its original
+        message without reapplying a dose that the patient may since have undone.
+        """
+        link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
+        if sender_hash != str(link.patient_hash):
+            raise HTTPException(status_code=403, detail="Only the patient may record a dose.")
+        confirmation = {
+            "schedule_date": schedule_date.isoformat(),
+            "slot_key": slot_key,
+            "medication_ids": sorted(set(medication_ids)),
+        }
+        existing = self.message_repository.find_client_request(
+            link_id=link_id, sender_hash=sender_hash,
+            client_message_id=client_message_id,
+        )
+        if existing is not None:
+            if (existing.context_payload or {}).get("completion_confirmation") != confirmation:
+                raise HTTPException(status_code=409, detail="Confirmation request has changed.")
+            return ChatSendResult(
+                message=self._message_for_user(existing, link, sender_hash),
+                recipient_hash=str(link.caregiver_hash), created=False,
+            ), []
+
+        schedule = CheckSchedule(self.db)
+        try:
+            schedule.updateMedicationSlotStatus(
+                slot_key, True, sender_hash,
+                expected_schedule_date=schedule_date,
+                selected_medication_ids=confirmation["medication_ids"],
+                commit=False,
+            )
+            slot_context = self._find_slot_context(patient_hash=sender_hash, slot_key=slot_key)
+            medications = [
+                item for item in slot_context["medications"]
+                if item["medication_id"] in confirmation["medication_ids"]
+            ]
+            slot_name = {"morning": "아침", "lunch": "점심", "evening": "저녁", "bedtime": "취침 전"}[slot_key]
+            names = ", ".join(item["medication_name"] for item in medications)
+            row = _ChatMessage(
+                link_id=link_id, sender_hash=sender_hash,
+                client_message_id=client_message_id,
+                body=f"{schedule_date.isoformat()} {slot_name} · {names} 복용을 기록했습니다.",
+                message_kind=(
+                    CHAT_MESSAGE_KIND_SLOT_COMPLETION
+                    if slot_context["completed_count"] == slot_context["total_count"]
+                    else CHAT_MESSAGE_KIND_TEXT
+                ),
+                context_payload={
+                    "schedule_context": slot_context,
+                    "medication_contexts": medications,
+                    "completion_confirmation": confirmation,
+                },
+            )
+            self.message_repository.add(row)
+            self.db.commit()
+            self.db.refresh(row)
+        except IntegrityError:
+            self.db.rollback()
+            existing = self.message_repository.find_client_request(
+                link_id=link_id, sender_hash=sender_hash,
+                client_message_id=client_message_id,
+            )
+            if existing is None or (existing.context_payload or {}).get("completion_confirmation") != confirmation:
+                raise HTTPException(status_code=409, detail="Confirmation could not be saved.")
+            return ChatSendResult(
+                message=self._message_for_user(existing, link, sender_hash),
+                recipient_hash=str(link.caregiver_hash), created=False,
+            ), []
+        except Exception:
+            self.db.rollback()
+            raise
+        return ChatSendResult(
+            message=ChatMessage.from_row(row),
+            recipient_hash=str(link.caregiver_hash), created=True,
+        ), schedule.consumeCompletionEvents()
+
     # 함수이름: publish_slot_completion
     # 함수역할:
     # - 한 시간대의 약을 모두 복용하면 모든 활성 보호자 채팅에 완료 기록을 남긴다.
@@ -461,6 +544,22 @@ class ManageLinkedChat:
         today = application_today()
         created_count = 0
         for link in self.link_repository.list_active_for_patient(patient_hash):
+            # A full-slot chat confirmation already conveys this event in the
+            # initiating conversation. Other linked caregivers still receive it.
+            confirmations = self.db.query(_ChatMessage).filter(
+                _ChatMessage.link_id == int(link.id),
+                _ChatMessage.sender_hash == patient_hash,
+                _ChatMessage.message_kind == CHAT_MESSAGE_KIND_SLOT_COMPLETION,
+                _ChatMessage.context_payload["completion_confirmation"]["schedule_date"].as_string() == today.isoformat(),
+                _ChatMessage.context_payload["completion_confirmation"]["slot_key"].as_string() == slot_key,
+            ).all()
+            if any(
+                row.context_payload["schedule_context"]["total_count"] > 0
+                and row.context_payload["schedule_context"]["completed_count"]
+                == row.context_payload["schedule_context"]["total_count"]
+                for row in confirmations
+            ):
+                continue
             result = self.send_message(
                 link_id=int(link.id),
                 sender_hash=patient_hash,
@@ -686,6 +785,7 @@ class ManageLinkedChat:
             response.append(
                 {
                     "slot_key": slot_key,
+                    "schedule_date": today.isoformat(),
                     "alarm_time": f"{hour:02d}:{minute:02d}",
                     "alarm_enabled": bool(alarm.enabled) if alarm is not None else False,
                     "completed_count": completed_count[slot_key],

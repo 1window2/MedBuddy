@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
@@ -17,6 +18,7 @@ import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_realtime_service.dart';
 import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../viewmodels/medbuddy_view_model.dart';
 import '../widgets/medbuddy_page_header.dart';
 
 // 클래스명: LinkedChatUI
@@ -115,6 +117,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   String? _sendErrorMessage;
   bool _isLoading = true;
   bool _isSending = false;
+  bool _isChoosingTaken = false;
+  final Map<String, String> _pendingTakenRequests = {};
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
@@ -713,7 +717,11 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _sendQuickReply(_ChatQuickReply reply) async {
     final medications = _selectedMedicationContexts;
-    if (medications.isEmpty || _isSending) {
+    if (medications.isEmpty || _isSending || _isChoosingTaken) {
+      return;
+    }
+    if (_isPatient && reply == _ChatQuickReply.taken) {
+      await _recordSelectedMedicationTaken(medications);
       return;
     }
     final messageKind = _isPatient
@@ -749,6 +757,103 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         reply == _ChatQuickReply.shortage &&
         mounted) {
       await _showPharmacySelector(medications: medications);
+    }
+  }
+
+  // 함수역할: 서버 일정에서 날짜·시간대·선택 약을 확인한 뒤 기록과 메시지를 함께 저장한다.
+  // 재시도는 같은 ID를 유지하고, 일반 채팅 본문은 복용 기록으로 해석하지 않는다.
+  Future<void> _recordSelectedMedicationTaken(
+    List<ChatMedicationContext> selectedMedications,
+  ) async {
+    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    final viewModel = context.read<MedBuddyViewModel?>();
+    setState(() {
+      _isChoosingTaken = true;
+      _isSending = true;
+      _sendErrorMessage = null;
+    });
+    try {
+      final contexts = await _control.requestScheduleContexts(
+        linkId: widget.linkId,
+      );
+      if (!mounted) return;
+      final selectedIds = selectedMedications
+          .map((item) => item.medicationId)
+          .toSet();
+      final eligible = contexts
+          .where(
+            (slot) =>
+                slot.scheduleDate.isNotEmpty &&
+                slot.medications.any(
+                  (item) => selectedIds.contains(item.medicationId),
+                ),
+          )
+          .toList(growable: false);
+      if (eligible.isEmpty) {
+        setState(() => _sendErrorMessage = _text.noConfirmableSchedule);
+        return;
+      }
+      // 시간대가 하나면 즉시 저장한다. 여러 시간대는 추측하지 않고 선택만 받는다.
+      ChatScheduleContext? chosen = eligible.singleOrNull;
+      if (chosen == null) {
+        setState(() => _isSending = false);
+        chosen = await showModalBottomSheet<ChatScheduleContext>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => _TakenSlotSelector(
+            contexts: eligible,
+            selectedIds: selectedIds,
+            text: _text,
+          ),
+        );
+      }
+      if (chosen == null || !mounted) return;
+      setState(() => _isSending = true);
+      final medicationIds =
+          chosen.medications
+              .where((item) => selectedIds.contains(item.medicationId))
+              .map((item) => item.medicationId)
+              .toList()
+            ..sort();
+      final signature =
+          '${chosen.scheduleDate}:${chosen.slotKey}:${medicationIds.join(',')}';
+      final requestId = _pendingTakenRequests.putIfAbsent(
+        signature,
+        _createClientMessageId,
+      );
+      final result = await _control.recordMedicationTaken(
+        linkId: widget.linkId,
+        clientMessageId: requestId,
+        scheduleDate: chosen.scheduleDate,
+        slotKey: chosen.slotKey,
+        medicationIds: medicationIds,
+      );
+      // The response is authoritative even if the user left the chat meanwhile.
+      if (viewModel != null &&
+          viewModel.patientHash == widget.currentUserHash) {
+        viewModel.applyConfirmedTodaySchedules(result.schedules);
+      }
+      if (!mounted) return;
+      _pendingTakenRequests.remove(signature);
+      setState(() {
+        _messages = _mergeMessages(_messages, [result.message]);
+        _selectedMedicationContexts = _selectedMedicationContexts
+            .where((item) => !medicationIds.contains(item.medicationId))
+            .toList();
+        _sendErrorMessage = null;
+      });
+      _scrollToLatest();
+      await _refreshScheduleContexts();
+    } catch (_) {
+      if (mounted) setState(() => _sendErrorMessage = _text.takenSaveFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _isChoosingTaken = false;
+        });
+      }
     }
   }
 
@@ -1916,6 +2021,134 @@ class _QuickReplyBar extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 채팅에 연결할 복약 일정 요약 선택 위젯을 구성한다.
 // 속성:
 // - contexts (List<ChatScheduleContext>): 채팅에 첨부하거나 선택할 초기 복약 맥락 목록.
+// 역할: 여러 시간대 중 기록할 항목을 누르면 별도 확인 없이 선택을 반환한다.
+class _TakenSlotSelector extends StatelessWidget {
+  final List<ChatScheduleContext> contexts;
+  final Set<int> selectedIds;
+  final _LinkedChatText text;
+
+  const _TakenSlotSelector({
+    required this.contexts,
+    required this.selectedIds,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      text.takenSlotTitle,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: text.cancel,
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: contexts.map((slot) {
+                      final medications = slot.medications.where(
+                        (item) => selectedIds.contains(item.medicationId),
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            key: ValueKey('takenSlot:${slot.slotKey}'),
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () => Navigator.pop(context, slot),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: const Icon(
+                                      Icons.schedule_outlined,
+                                      color: MedBuddyColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${text.slotLabel(slot.slotKey)} ${slot.alarmTime}',
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          slot.scheduleDate,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        for (final medication in medications)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 4,
+                                            ),
+                                            child: Text(
+                                              '${medication.medicationName} · ${medication.dosagePerTime}',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ScheduleContextSelector extends StatelessWidget {
   final List<ChatScheduleContext> contexts;
   final _LinkedChatText text;
@@ -2989,6 +3222,15 @@ class _LinkedChatText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get cancel => isEnglish ? 'Cancel' : '취소';
+
+  String get takenSlotTitle =>
+      isEnglish ? 'Which dose did you take?' : '복용한 시간대';
+  String get noConfirmableSchedule => isEnglish
+      ? 'No current schedule was found for the selected medication.'
+      : '선택한 약의 오늘 일정을 찾지 못했습니다. 약 목록을 다시 확인해주세요.';
+  String get takenSaveFailed => isEnglish
+      ? 'Could not confirm the record. Check your connection and try again.'
+      : '복용 기록의 저장을 확인하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.';
   // 함수이름: selectMessage
   // 함수역할: 현재 언어와 입력값에 맞춰 "메시지 선택" 문구를 제공한다.
   // 매개변수:

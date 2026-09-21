@@ -30,14 +30,16 @@ from api.dependencies import (
     verify_app_check_token,
 )
 from controls.authorization_control import AuthorizationControl
+from controls.check_schedule_control import CheckSchedule
 from controls.dispatch_chat_message_alert_control import DispatchChatMessageAlert
-from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
+from controls.process_caregiver_alert_outbox_control import ProcessCaregiverAlertOutbox
 from core.config import settings
 from core.database import SessionLocal
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from schemas.chat import ChatMessageCreate, ChatMessageDelete, ChatReadUpdate
+from schemas.chat import ChatMedicationTaken, ChatMessageCreate, ChatMessageDelete, ChatReadUpdate
 from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
@@ -254,6 +256,54 @@ async def post_chat_message(
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,
     )
+    return await _publish_saved_message(link_id, result, request, background_tasks)
+
+
+@router.post("/links/{link_id}/medication-taken")
+async def record_chat_medication_taken(
+    link_id: int,
+    payload: ChatMedicationTaken,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user_hash: str = DEFAULT_PATIENT_HASH,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    chat: ManageLinkedChat = Depends(get_manage_linked_chat),
+) -> dict[str, object]:
+    """Record only the patient's explicitly confirmed dose and publish its receipt."""
+    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    await _enforce_chat_daily_quota(request=request, user_hash=authorized_user_hash)
+    result, completion_events = chat.record_medication_taken(
+        link_id=link_id, sender_hash=authorized_user_hash,
+        client_message_id=payload.client_message_id,
+        schedule_date=payload.schedule_date, slot_key=payload.slot_key,
+        medication_ids=payload.medication_ids,
+    )
+    for event in completion_events:
+        background_tasks.add_task(_process_completion_alert, int(event["outbox_id"]))
+    # Return current state on retries too, rather than the historical message's
+    # snapshot, so a later correction is never visually changed back to taken.
+    schedules = CheckSchedule(chat.db).requestTodayMedicationSchedule(authorized_user_hash)["data"]
+    response = await _publish_saved_message(link_id, result, request, background_tasks)
+    return {**response, "schedules": schedules}
+
+
+def _process_completion_alert(outbox_id: int) -> None:
+    """Dispatch a committed completion; the durable worker retries failures."""
+    with SessionLocal() as db:
+        try:
+            ProcessCaregiverAlertOutbox(
+                db=db, push_boundary=get_push_notification_boundary(),
+            ).processOne(outbox_id)
+        except Exception as exc:
+            logger.warning("Chat completion dispatch failed: %s", type(exc).__name__)
+
+
+async def _publish_saved_message(
+    link_id: int, result: ChatSendResult, request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict[str, object]:
+    """Share the same post-commit delivery path for text and dose receipts."""
     response_message = result.message.to_response_dict()
     if result.created:
         manager = get_chat_connection_manager(request)

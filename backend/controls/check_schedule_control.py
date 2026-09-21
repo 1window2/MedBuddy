@@ -266,6 +266,9 @@ class CheckSchedule:
     # - medication_status (bool): Completion state applied to every medication.
     # - patient_hash (str | None): Patient ownership key used to scope the update.
     # - expected_schedule_date (date | None): Reject a delayed action for another day.
+    # - selected_medication_ids (list[int] | None): Restrict a chat confirmation to selected medicines.
+    # - commit (bool): False lets an internal caller commit the dose and its receipt together;
+    #   that caller must dispatch consumed completion events only after committing.
     # Returns:
     # - API-compatible list of every updated medication schedule.
     def updateMedicationSlotStatus(
@@ -275,6 +278,8 @@ class CheckSchedule:
         patient_hash: str | None = None,
         *,
         expected_schedule_date: date | None = None,
+        selected_medication_ids: list[int] | None = None,
+        commit: bool = True,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
@@ -304,6 +309,21 @@ class CheckSchedule:
                 status_code=404,
                 detail="No active medications exist in this schedule slot.",
             )
+
+        # A chat confirmation scopes the same atomic writer to explicitly
+        # selected medicines. The caller owns the transaction when commit=False.
+        if selected_medication_ids is not None:
+            selected_ids = set(selected_medication_ids)
+            available_ids = {int(medication.id) for medication in medications}
+            if not selected_ids or not selected_ids.issubset(available_ids):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Selected medications no longer match this schedule slot.",
+                )
+            medications = [
+                medication for medication in medications
+                if int(medication.id) in selected_ids
+            ]
 
         target_slot_keys = [normalized_slot_key]
         previous_slot_completion_states = self._slot_completion_states_for_patient(
@@ -371,9 +391,12 @@ class CheckSchedule:
                 )
                 self.db.flush()
                 completion_event["outbox_id"] = int(outbox_row.id)
-            self.db.commit()
-            for medication in medications:
-                self.db.refresh(medication)
+            if commit:
+                self.db.commit()
+                for medication in medications:
+                    self.db.refresh(medication)
+            else:
+                self.db.flush()
         except HTTPException:
             self.db.rollback()
             raise
@@ -389,7 +412,8 @@ class CheckSchedule:
             ) from exc
 
         self._pending_completion_events.extend(completion_events)
-        self._notify_completion_event_boundary(completion_events)
+        if commit:
+            self._notify_completion_event_boundary(completion_events)
         return {
             "success": True,
             "message": "Medication slot status was updated.",

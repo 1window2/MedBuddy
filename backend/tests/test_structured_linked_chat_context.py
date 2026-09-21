@@ -5,6 +5,7 @@
 
 import sys
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,6 +19,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from controls.manage_linked_chat_control import ManageLinkedChat  # noqa: E402
+from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.chat_message_entity import (  # noqa: E402
@@ -29,6 +31,7 @@ from entities.chat_message_entity import (  # noqa: E402
     _ChatMessage,
 )
 from entities.medication_completion_entity import _MedicationCompletion  # noqa: E402
+from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox  # noqa: E402
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 
@@ -269,6 +272,84 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(pharmacy["name"], "메드버디약국")
         self.assertEqual(pharmacy["today_hours"], "09:00 - 21:00")
         self.assertEqual(pharmacy["telephone"], "02-1234-5678")
+
+    def _record_taken(self, **overrides):
+        """Create an explicit confirmation without changing the normal chat API."""
+        arguments = dict(
+            link_id=self.link_id, sender_hash="patient-a",
+            client_message_id="taken-request-001", schedule_date=application_today(),
+            slot_key="morning", medication_ids=[int(self.medication.id)],
+        )
+        arguments.update(overrides)
+        return self.chat.record_medication_taken(**arguments)
+
+    def test_chat_confirmation_updates_only_selected_dose_and_returns_progress(self):
+        other = self._save_medication()
+        result, events = self._record_taken()
+        self.assertTrue(result.created)
+        context = result.message.context_payload
+        self.assertEqual(context["schedule_context"]["completed_count"], 1)
+        self.assertEqual(context["schedule_context"]["total_count"], 2)
+        self.assertEqual(context["completion_confirmation"]["medication_ids"], [self.medication.id])
+        self.assertEqual(events, [])
+        rows = self.db.query(_MedicationCompletion).all()
+        self.assertEqual([(row.saved_medication_id, row.slot_key, row.completed) for row in rows],
+                         [(self.medication.id, "morning", True)])
+        self.assertNotEqual(other.id, self.medication.id)
+
+    def test_full_confirmation_reuses_outbox_without_duplicate_chat(self):
+        result, events = self._record_taken()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 1)
+        self.assertEqual(result.message.message_kind, CHAT_MESSAGE_KIND_SLOT_COMPLETION)
+        self.assertEqual(self.chat.publish_slot_completion(patient_hash="patient-a", slot_key="morning"), 0)
+        self.assertEqual(self.db.query(_ChatMessage).count(), 1)
+
+    def test_retry_does_not_reapply_a_later_undo(self):
+        first, _ = self._record_taken()
+        CheckSchedule(self.db).updateMedicationSlotStatus("morning", False, "patient-a")
+        second, events = self._record_taken()
+        self.assertFalse(second.created)
+        self.assertEqual(first.message.message_id, second.message.message_id)
+        self.assertEqual(events, [])
+        self.assertFalse(self.db.query(_MedicationCompletion).one().completed)
+
+    def test_confirmation_rejects_changed_idempotency_payload(self):
+        self._record_taken()
+        with self.assertRaises(HTTPException) as error:
+            self._record_taken(slot_key="evening")
+        self.assertEqual(error.exception.status_code, 409)
+
+    def test_confirmation_rejects_caregiver_stale_date_and_invalid_selection(self):
+        for overrides, expected in [
+            ({"sender_hash": "caregiver-a"}, 403),
+            ({"sender_hash": "unlinked-user"}, 404),
+            ({"schedule_date": application_today() - timedelta(days=1)}, 409),
+            ({"schedule_date": application_today() + timedelta(days=1)}, 409),
+            ({"medication_ids": [self.medication.id, 999999]}, 409),
+            ({"medication_ids": []}, 409),
+        ]:
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(HTTPException) as error:
+                    self._record_taken(**overrides)
+                self.assertEqual(error.exception.status_code, expected)
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+        self.assertEqual(self.db.query(_ChatMessage).count(), 0)
+
+    def test_chat_failure_rolls_back_dose_and_outbox(self):
+        with patch.object(self.chat.message_repository, "add", side_effect=RuntimeError("failed")):
+            with self.assertRaises(RuntimeError):
+                self._record_taken()
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
+        self.assertEqual(self.db.query(_ChatMessage).count(), 0)
+
+    def test_ordinary_taken_text_never_records_a_dose(self):
+        self.chat.send_message(
+            link_id=self.link_id, sender_hash="patient-a", client_message_id="ordinary-text-001",
+            body="먹었어요", medication_ids=[self.medication.id],
+        )
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
 
     # 함수이름: _save_medication
     # 함수역할:

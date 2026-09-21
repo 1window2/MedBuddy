@@ -35,6 +35,47 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  test(
+    'dose confirmation uses a dedicated endpoint with original date and selected IDs',
+    () async {
+      final control = ManageLinkedChat(
+        userHash: 'patient-a',
+        chatUrlBuilder: (path) => '$baseUrl$path',
+        client: MockClient((request) async {
+          expect(request.url.path, '/api/v1/chat/links/17/medication-taken');
+          expect(request.method, 'POST');
+          expect(jsonDecode(request.body), {
+            'client_message_id': 'taken-request-01',
+            'schedule_date': '2026-09-21',
+            'slot_key': 'morning',
+            'medication_ids': [91],
+          });
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'message_id': 1,
+              'link_id': 17,
+              'sender_hash': 'patient-a',
+              'client_message_id': 'taken-request-01',
+              'body': '복용을 기록했습니다.',
+              'created_at': '2026-09-21T00:00:00Z',
+            },
+            'schedules': [],
+          }, 200);
+        }),
+      );
+      final result = await control.recordMedicationTaken(
+        linkId: 17,
+        clientMessageId: 'taken-request-01',
+        scheduleDate: '2026-09-21',
+        slotKey: 'morning',
+        medicationIds: [91],
+      );
+      expect(result.message.body, '복용을 기록했습니다.');
+      control.dispose();
+    },
+  );
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 채팅 삭제 요청이 명시적인 메시지 식별자와 삭제 범위를 전달하고 서버 거절을 오류로 보고하는지 검증한다.
