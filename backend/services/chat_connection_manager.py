@@ -4,9 +4,10 @@
 """프로세스 안에서 환자·보호자 채팅 WebSocket 연결을 관리한다."""
 
 import asyncio
+import math
 from collections import defaultdict
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 
 # 클래스명: ChatConnectionManager
@@ -18,6 +19,7 @@ from fastapi import WebSocket
 # - _connections (dict): 연동 ID와 사용자 해시별 WebSocket 집합.
 # - _max_connections_per_user (int): 한 연동에서 사용자별 연결 상한.
 # - _lock (asyncio.Lock): 연결 목록 변경과 조회를 보호하는 잠금.
+# - _send_timeout_seconds (float): Finite deadline for each send and close.
 class ChatConnectionManager:
     """연동과 사용자별 WebSocket을 추적하고 실시간 이벤트를 방송한다."""
 
@@ -26,9 +28,16 @@ class ChatConnectionManager:
     # - 사용자별 연결 상한을 저장하고 연동별 연결 사전과 비동기 잠금을 준비한다.
     # 매개변수:
     # - max_connections_per_user (int): 한 연동에서 사용자 한 명이 동시에 유지할 수 있는 최대 연결 수.
+    # - send_timeout_seconds (float): Positive finite transport-write deadline.
     # 반환값:
     # - 없음; 초기 연결 목록은 비어 있다.
-    def __init__(self, max_connections_per_user: int = 3) -> None:
+    def __init__(
+        self, max_connections_per_user: int = 3, *, send_timeout_seconds: float = 5.0,
+    ) -> None:
+        """Initialize the registry with a finite deadline for transport writes."""
+        if not math.isfinite(send_timeout_seconds) or send_timeout_seconds <= 0:
+            raise ValueError("send_timeout_seconds must be finite and positive")
+        self._send_timeout_seconds = send_timeout_seconds
         self._max_connections_per_user = max_connections_per_user
         self._connections: dict[int, dict[str, set[WebSocket]]] = defaultdict(
             # 함수이름: 연동별 연결 사전 생성 람다
@@ -62,15 +71,12 @@ class ChatConnectionManager:
         await websocket.accept()
         async with self._lock:
             user_connections = self._connections[link_id][user_hash]
-            if len(user_connections) >= self._max_connections_per_user:
-                await websocket.close(code=4429)
-                if not user_connections:
-                    self._connections[link_id].pop(user_hash, None)
-                if not self._connections[link_id]:
-                    self._connections.pop(link_id, None)
-                return False
-            user_connections.add(websocket)
-            return True
+            if len(user_connections) < self._max_connections_per_user:
+                user_connections.add(websocket)
+                return True
+        # A slow transport must never hold the process-wide registry lock.
+        await self._close_transport(websocket, code=4429)
+        return False
 
     # 함수이름: disconnect
     # 함수역할:
@@ -132,15 +138,41 @@ class ChatConnectionManager:
                 if recipient_hash is None or user_hash == recipient_hash
                 for websocket in sockets
             ]
-        failed: list[tuple[str, WebSocket]] = []
-        for user_hash, websocket in targets:
-            try:
-                await websocket.send_json(event)
-            except (RuntimeError, OSError):
-                failed.append((user_hash, websocket))
-        for user_hash, websocket in failed:
+        await asyncio.gather(*(
+            self._deliver(link_id=link_id, user_hash=user_hash, websocket=websocket, event=event)
+            for user_hash, websocket in targets
+        ))
+
+    # Function Name: _deliver
+    # Description: Send independently with a deadline; remove failed sockets before
+    # the caller checks presence for push fallback. Task cancellation propagates.
+    # Parameters: link_id/user_hash: Registry scope; websocket: Target; event: JSON event.
+    # Returns: None; expected transport failures are isolated from persisted writes.
+    async def _deliver(
+        self, *, link_id: int, user_hash: str, websocket: WebSocket,
+        event: dict[str, object],
+    ) -> None:
+        try:
+            await asyncio.wait_for(
+                websocket.send_json(event), timeout=self._send_timeout_seconds,
+            )
+        except (TimeoutError, WebSocketDisconnect, RuntimeError, OSError):
             await self.disconnect(
                 link_id=link_id,
                 user_hash=user_hash,
                 websocket=websocket,
             )
+            await self._close_transport(websocket, code=1011)
+
+    # Function Name: _close_transport
+    # Description: Attempt transport cleanup without blocking registry operations
+    # or allowing an already-disconnected socket to fail an HTTP response.
+    # Parameters: websocket: Transport to close; code: WebSocket close status.
+    # Returns: None; expected close failures and timeouts are ignored.
+    async def _close_transport(self, websocket: WebSocket, *, code: int) -> None:
+        try:
+            await asyncio.wait_for(
+                websocket.close(code=code), timeout=self._send_timeout_seconds,
+            )
+        except (TimeoutError, WebSocketDisconnect, RuntimeError, OSError):
+            pass

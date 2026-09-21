@@ -925,6 +925,7 @@ package "FastAPI Backend" {
             + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
             + updateMedicationSlotStatus(patient_hash, slot_key, status): dict
+            + is_medication_slot_complete(patient_hash, schedule_date, slot_key): bool
         }
 
         class "CheckTodayMedicationInfo" as BCheckTodayMedicationInfo <<Control: 오늘 복약 요약>> {
@@ -1194,6 +1195,8 @@ package "FastAPI Backend" {
             연결 Registry와 방송 대상은 프로세스 메모리에 있다.
             Redis는 Cache·요청 제한 공유 Counter이며
             채팅 DB나 WebSocket broker가 아니다.
+            Broadcasts use independent bounded writes.
+            Failed sockets are removed before push fallback.
         end note
 
         class "CaregiverAlertOutboxWorker" as CaregiverAlertOutboxWorker <<Service: 알림 아웃박스 작업자>> {
@@ -1998,6 +2001,7 @@ DispatchCaregiverAlert --> DBDevicePushToken
 DispatchCaregiverAlert --> DBUserSetting : 알림 허용·표시 정책
 DispatchCaregiverAlert ..> BCheckSchedule : 전송 전 현재 미완료 재검증
 ProcessCaregiverAlertOutbox --> DBCaregiverAlertOutbox
+ProcessCaregiverAlertOutbox ..> BCheckSchedule : recheck dated completion before delivery
 ProcessCaregiverAlertOutbox *-- DispatchCaregiverAlert
 ProcessCaregiverAlertOutbox ..> BManageLinkedChat : 완료 이벤트의 자동 chat record 저장, 방송 없음
 CaregiverAlertOutboxWorker *-- ProcessCaregiverAlertOutbox

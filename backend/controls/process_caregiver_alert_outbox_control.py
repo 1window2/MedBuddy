@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
+from controls.check_schedule_control import CheckSchedule
 from controls.manage_linked_chat_control import ManageLinkedChat
+from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
@@ -168,6 +170,22 @@ class ProcessCaregiverAlertOutbox:
                 row.event_type or CAREGIVER_ALERT_EVENT_DOSE_COMPLETED
             )
             if event_type == CAREGIVER_ALERT_EVENT_DOSE_COMPLETED:
+                # Never reinterpret an old or undated event as today's dose.
+                reason = None
+                if row.schedule_date != application_today():
+                    reason = "StaleOrUndatedCompletion"
+                elif not CheckSchedule(self.db).is_medication_slot_complete(
+                    patient_hash=str(row.patient_hash),
+                    schedule_date=row.schedule_date,
+                    slot_key=str(row.slot_key),
+                ):
+                    reason = "CompletionNoLongerCurrent"
+                if reason is not None:
+                    row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+                    row.processing_started_at = None
+                    row.last_error = reason
+                    self.db.commit()
+                    return "skipped"
                 # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
                 ManageLinkedChat(self.db).publish_slot_completion(
                     patient_hash=str(row.patient_hash),

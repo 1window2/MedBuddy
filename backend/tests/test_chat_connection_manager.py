@@ -3,12 +3,14 @@
 
 """채팅 WebSocket 인증과 연결 관리자의 실시간 방송을 검증한다."""
 
+import asyncio
 import sys
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import AsyncMock
 
-from fastapi import HTTPException, WebSocket
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -86,6 +88,87 @@ class _FakeWebSocket:
 # - 사용자별 연결 상한을 넘는 소켓을 수락하지 않고 4429 코드로 종료하는지 검증한다.
 # - 호환 계약의 소켓 인증은 허용하지만 계약 불일치는 HTTP 409로 거절하는지 검증한다.
 class ChatConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
+    # Function Name: test_slow_recipient_does_not_delay_healthy_delivery
+    # Description: Healthy recipients receive events while a stalled send times out;
+    # the failed connection is removed so HTTP callers can fall back to push.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    async def test_slow_recipient_does_not_delay_healthy_delivery(self) -> None:
+        manager = ChatConnectionManager(send_timeout_seconds=0.2)
+        slow, healthy = _FakeWebSocket(), _FakeWebSocket()
+        waiting = asyncio.Event()
+        delivered = asyncio.Event()
+
+        async def stalled_send(event: dict[str, object]) -> None:
+            """Hold a transport send until cancellation, without recording delivery."""
+            await waiting.wait()
+
+        async def healthy_send(event: dict[str, object]) -> None:
+            """Record delivery and signal the test without waiting for the slow peer."""
+            healthy.events.append(event)
+            delivered.set()
+
+        slow.send_json = stalled_send
+        healthy.send_json = healthy_send
+        await manager.connect(link_id=17, user_hash="slow", websocket=cast(WebSocket, slow))
+        await manager.connect(link_id=17, user_hash="healthy", websocket=cast(WebSocket, healthy))
+        event = {"type": "chat_message"}
+        task = asyncio.create_task(manager.broadcast(link_id=17, event=event))
+        try:
+            await asyncio.wait_for(delivered.wait(), timeout=0.1)
+            self.assertFalse(task.done())
+            await asyncio.wait_for(task, timeout=1)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        self.assertEqual(healthy.events, [event])
+        self.assertFalse(await manager.is_user_connected(link_id=17, user_hash="slow"))
+        self.assertEqual(slow.closed_code, 1011)
+        self.assertTrue(await manager.is_user_connected(link_id=17, user_hash="healthy"))
+
+    # Function Name: test_disconnected_transport_does_not_fail_broadcast
+    # Description: Starlette disconnect errors remove dead sockets without failing
+    # a persisted-message response or preventing delivery to other recipients.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    async def test_disconnected_transport_does_not_fail_broadcast(self) -> None:
+        manager = ChatConnectionManager()
+        dead, healthy = _FakeWebSocket(), _FakeWebSocket()
+        dead.send_json = AsyncMock(side_effect=WebSocketDisconnect(code=1006))
+        await manager.connect(link_id=17, user_hash="dead", websocket=cast(WebSocket, dead))
+        await manager.connect(link_id=17, user_hash="healthy", websocket=cast(WebSocket, healthy))
+        event = {"type": "chat_message"}
+        await manager.broadcast(link_id=17, event=event)
+        self.assertEqual(healthy.events, [event])
+        self.assertFalse(await manager.is_user_connected(link_id=17, user_hash="dead"))
+
+    # Function Name: test_rejected_close_does_not_hold_registry_lock
+    # Description: A stalled connection-limit rejection cannot block all registry
+    # operations, and closing that transport has a deadline.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    async def test_rejected_close_does_not_hold_registry_lock(self) -> None:
+        manager = ChatConnectionManager(max_connections_per_user=1, send_timeout_seconds=0.2)
+        first, rejected = _FakeWebSocket(), _FakeWebSocket()
+        closing = asyncio.Event()
+
+        async def stalled_close(code: int = 1000) -> None:
+            """Signal entry into the simulated transport close and wait for cancellation."""
+            closing.set()
+            await asyncio.Event().wait()
+
+        rejected.close = stalled_close
+        await manager.connect(link_id=17, user_hash="patient", websocket=cast(WebSocket, first))
+        task = asyncio.create_task(manager.connect(link_id=17, user_hash="patient", websocket=cast(WebSocket, rejected)))
+        try:
+            await asyncio.wait_for(closing.wait(), timeout=1)
+            connected = await asyncio.wait_for(manager.is_user_connected(link_id=17, user_hash="patient"), timeout=0.1)
+            self.assertTrue(connected)
+            self.assertFalse(await asyncio.wait_for(task, timeout=1))
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     # 함수이름: test_private_delete_event_does_not_reach_peer
     # 함수역할:
     # - 개인 삭제 이벤트가 요청자 소켓에만 전달되고 연동 상대에게는 노출되지 않는지 검증한다.

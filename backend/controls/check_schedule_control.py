@@ -232,6 +232,7 @@ class CheckSchedule:
                     event_key=str(completion_event["event_key"]),
                     patient_hash=normalized_patient_hash,
                     slot_key=str(completion_event["slot_key"]),
+                    schedule_date=today,
                 )
                 self.db.flush()
                 completion_event["outbox_id"] = int(outbox_row.id)
@@ -366,6 +367,7 @@ class CheckSchedule:
                     event_key=str(completion_event["event_key"]),
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
+                    schedule_date=today,
                 )
                 self.db.flush()
                 completion_event["outbox_id"] = int(outbox_row.id)
@@ -460,11 +462,13 @@ class CheckSchedule:
         event_key: str,
         patient_hash: str,
         slot_key: str,
+        schedule_date: date | None = None,
     ) -> _CaregiverAlertOutbox:
         values = {
             "event_key": event_key,
             "patient_hash": patient_hash,
             "slot_key": slot_key,
+            "schedule_date": schedule_date or application_today(),
         }
         dialect_name = self.db.get_bind().dialect.name
         if dialect_name == "postgresql":
@@ -497,7 +501,7 @@ class CheckSchedule:
     # - values (dict[str, str]): 추가할 완료 이벤트의 중복 키·환자·시간대 필드.
     # 반환값:
     # - 없음.
-    def _insert_outbox_with_savepoint(self, values: dict[str, str]) -> None:
+    def _insert_outbox_with_savepoint(self, values: dict[str, str | date]) -> None:
         try:
             with self.db.begin_nested():
                 self.db.add(_CaregiverAlertOutbox(**values))
@@ -580,6 +584,18 @@ class CheckSchedule:
             [normalized_slot_key],
         )
         return not completion_state.get(normalized_slot_key, False)
+
+    # Function Name: is_medication_slot_complete
+    # Description: Recheck that a nonempty active slot remains fully completed
+    # before publishing a deferred completion event.
+    # Parameters: patient_hash: Owner; schedule_date: Dose day; slot_key: Dose slot.
+    # Returns: True only when every active medication in the slot is complete.
+    def is_medication_slot_complete(
+        self, *, patient_hash: str, schedule_date: date, slot_key: str,
+    ) -> bool:
+        return self._slot_completion_states_for_patient(
+            normalize_patient_hash(patient_hash), schedule_date, [slot_key],
+        ).get(slot_key, False)
 
     # 함수이름: _slot_completion_states_for_patient
     # 함수역할:

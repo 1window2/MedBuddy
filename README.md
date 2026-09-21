@@ -79,7 +79,7 @@
 
 ## Roadmap
 
-1. **v0.2.0 beta verification:** Validate direct entry, multi-pill partial failure, schedule review, the multi-pill laboratory toggle, pharmacy location states, medication-context chat, and two-device notification behavior on supported Android devices.
+1. **v0.2.0 beta verification:** Finish physical reboot/offline recovery, two-device caregiver/chat checks, and measured prescription/pill recognition validation. Direct entry, multi-pill review, pharmacy navigation, and chat are implemented; see the [current roadmap assessment](docs/qa/v0.2.0-2026-09-21-architecture-review.md) for evidence and remaining gates.
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,
@@ -98,7 +98,7 @@ MedBuddy is implemented around the project UML diagrams and follows a Boundary-C
 - Backend medication, pharmacy, and chat routers remain thin boundary adapters around cohesive controls.
 
 The implementation-grounded class view is maintained in
-[`docs/MedBuddy - Class Diagram.md`](docs/MedBuddy%20-%20Class%20Diagram.md).
+[`docs/UML/class/README.md`](docs/UML/class/README.md).
 The frozen Android beta boundary and planned security architecture are defined
 in [`docs/MedBuddy - Beta Scope.md`](docs/MedBuddy%20-%20Beta%20Scope.md) and
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).

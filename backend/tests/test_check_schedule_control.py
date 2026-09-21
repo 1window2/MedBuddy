@@ -407,6 +407,10 @@ class CheckScheduleTest(unittest.TestCase):
         completion_events = control.consumeCompletionEvents()
         self.assertEqual(len(completion_events), 1)
         self.assertIsInstance(completion_events[0]["outbox_id"], int)
+        outbox_row = self.db.get(
+            _CaregiverAlertOutbox, int(completion_events[0]["outbox_id"]),
+        )
+        self.assertEqual(outbox_row.schedule_date, application_today())
 
         unchecked_response = control.updateMedicationSlotStatus(
             "morning",
@@ -511,6 +515,7 @@ class CheckScheduleTest(unittest.TestCase):
             int(completion_events[0]["outbox_id"]),
         )
         self.assertIsNotNone(outbox_row)
+        self.assertEqual(outbox_row.schedule_date, application_today())
         self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_PENDING)
         control.updateMedicationStatus(
             second_medication.id,

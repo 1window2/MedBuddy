@@ -3,7 +3,7 @@
 
 import sys
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -29,6 +29,8 @@ from controls.process_caregiver_alert_outbox_control import (  # noqa: E402
     ProcessCaregiverAlertOutbox,
 )
 from core.database import Base  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
+from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.caregiver_notification_entity import (  # noqa: E402
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -408,8 +410,10 @@ class PushNotificationControlTest(unittest.TestCase):
     # 반환값:
     # - 없음 (None).
     def test_outbox_marks_successful_delivery_as_sent(self) -> None:
+        self._completed_slot("morning")
         row = _CaregiverAlertOutbox(
             event_key="event-success",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="morning",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -445,8 +449,10 @@ class PushNotificationControlTest(unittest.TestCase):
     # 반환값:
     # - 없음 (None).
     def test_outbox_retries_after_partial_push_delivery(self) -> None:
+        self._completed_slot("lunch")
         row = _CaregiverAlertOutbox(
             event_key="event-partial-delivery",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="lunch",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -482,8 +488,10 @@ class PushNotificationControlTest(unittest.TestCase):
     # 반환값:
     # - 없음 (None).
     def test_outbox_reschedules_failed_delivery(self) -> None:
+        self._completed_slot("evening")
         row = _CaregiverAlertOutbox(
             event_key="event-failure",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="evening",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -519,8 +527,10 @@ class PushNotificationControlTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_outbox_dead_letters_after_retry_budget_is_exhausted(self) -> None:
+        self._completed_slot("bedtime")
         row = _CaregiverAlertOutbox(
             event_key="event-retry-exhausted",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="bedtime",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -556,6 +566,79 @@ class PushNotificationControlTest(unittest.TestCase):
 
         self.assertEqual(due_result, {"sent": 0, "failed": 0, "skipped": 0})
         notify.assert_not_called()
+
+    # Function Name: _completed_slot
+    # Description: Persist a real, active completed dose for outbox delivery tests.
+    # Parameters: slot_key: Slot to complete.
+    # Returns: Saved fixture medication.
+    def _completed_slot(self, slot_key: str) -> _SavedMedication:
+        row = _SavedMedication(
+            patient_hash="patient-a", item_name="test-only-tablet",
+            created_date=application_today(), total_days="7 days",
+            schedule_slot_keys=f'["{slot_key}"]',
+            medication_status=True, medication_status_date=application_today(),
+        )
+        self.db.add(row)
+        self.db.commit()
+        return row
+
+    # Function Name: test_outbox_suppresses_stale_future_and_undated_completion
+    # Description: Delayed work cannot create today's chat or push from another
+    # day's event, even if today's slot happens to be complete.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    def test_outbox_suppresses_stale_future_and_undated_completion(self) -> None:
+        self._completed_slot("morning")
+        for offset in (-1, 1, None):
+            with self.subTest(offset=offset):
+                row = _CaregiverAlertOutbox(
+                    event_key=f"stale-{offset}", patient_hash="patient-a",
+                    slot_key="morning",
+                    schedule_date=(application_today() + timedelta(days=offset)
+                                   if offset is not None else None),
+                )
+                self.db.add(row)
+                self.db.commit()
+                with patch.object(DispatchCaregiverAlert, "notifySlotCompleted") as notify, patch(
+                    "controls.process_caregiver_alert_outbox_control.ManageLinkedChat.publish_slot_completion"
+                ) as publish:
+                    result = ProcessCaregiverAlertOutbox(self.db, _RecordingPushBoundary()).processOne(row.id)
+                self.assertEqual(result, "skipped")
+                self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+                self.assertEqual(row.last_error, "StaleOrUndatedCompletion")
+                self.assertIsNone(row.sent_at)
+                notify.assert_not_called()
+                publish.assert_not_called()
+
+    # Function Name: test_outbox_suppresses_corrected_or_deleted_completion
+    # Description: Reversing or deleting a dose before delivery suppresses its
+    # queued completion claim without changing the patient's correction.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    def test_outbox_suppresses_corrected_or_deleted_completion(self) -> None:
+        medication = self._completed_slot("morning")
+        medication.medication_status = False
+        self.db.commit()
+        for deleted in (False, True):
+            with self.subTest(deleted=deleted):
+                if deleted:
+                    self.db.delete(medication)
+                    self.db.commit()
+                row = _CaregiverAlertOutbox(
+                    event_key=f"corrected-{deleted}", patient_hash="patient-a",
+                    slot_key="morning", schedule_date=application_today(),
+                )
+                self.db.add(row)
+                self.db.commit()
+                with patch.object(DispatchCaregiverAlert, "notifySlotCompleted") as notify, patch(
+                    "controls.process_caregiver_alert_outbox_control.ManageLinkedChat.publish_slot_completion"
+                ) as publish:
+                    result = ProcessCaregiverAlertOutbox(self.db, _RecordingPushBoundary()).processOne(row.id)
+                self.assertEqual(result, "skipped")
+                self.assertEqual(row.last_error, "CompletionNoLongerCurrent")
+                self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+                notify.assert_not_called()
+                publish.assert_not_called()
 
 
 if __name__ == "__main__":

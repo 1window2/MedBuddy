@@ -1,5 +1,11 @@
 # MedBuddy Release TODO
 
+Current implementation, verification evidence, and remaining work are summarized
+in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
+Individual physical checks below remain open unless their exact scope has evidence;
+the September 13 slot-specific cancellation pass does not close global-toggle or
+account-cleanup acceptance.
+
 ## v0.2.0 release blocker: restore Firebase App Check with Play Integrity
 
 **Status:** Deferred only for direct-install functionality testing. This item
