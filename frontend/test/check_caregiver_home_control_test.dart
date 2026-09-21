@@ -132,11 +132,16 @@ void main() {
         ),
       );
       expect(find.text('엄마'), findsOneWidget);
+      expect(
+        find.byKey(const Key('caregiver-patient-page-indicator')),
+        findsNothing,
+      );
       expect(find.byType(HomeMedicationPreview), findsOneWidget);
       expect(find.text('오늘의 복약 진행률'), findsOneWidget);
       expect(find.text('1/3'), findsOneWidget);
-      expect(find.text('남은 복약 일정'), findsOneWidget);
-      expect(find.text('점심 · 약'), findsOneWidget);
+      expect(find.byKey(const Key('home-slot-page-lunch')), findsOneWidget);
+      expect(find.text('약'), findsOneWidget);
+      expect(find.text('점심 · 미복용'), findsOneWidget);
       final progress = tester.widget<LinearProgressIndicator>(
         find.byType(LinearProgressIndicator),
       );
@@ -149,79 +154,226 @@ void main() {
             .action,
         isNull,
       );
-      await tester.tap(find.byKey(const Key('caregiver-home-patient-1')));
+      await tester.tap(find.text('엄마'));
       expect(selected, _link);
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('환자가 여러 명이어도 각 진행률과 상세 진입을 유지한다', (tester) async {
-    const second = PatientCaregiverLink(
-      linkId: 3,
-      patientId: 'second',
-      caregiverId: 'owner',
-      patientHash: 'second',
-      caregiverHash: 'owner',
-      patientAlias: '아빠',
-      linkStatus: true,
-    );
-    final api = _Monitoring()
-      ..snapshots = [_snapshot(_link), _snapshot(second)];
-    final control = CheckCaregiverHome(userHash: 'owner', control: api);
-    addTearDown(control.dispose);
-    addTearDown(api.dispose);
-    control.updateLinks([_link, second]);
-    await control.refresh();
-    PatientCaregiverLink? selected;
-    var refreshes = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: AnimatedBuilder(
-              animation: control,
-              builder: (context, _) => CaregiverHomeSummaryUI(
-                control: control,
-                isEnglish: false,
-                patientLabel: (link) => link.patientAlias!,
-                onPatientRequested: (link) => selected = link,
-                onRefreshRequested: () => refreshes++,
+  for (final scale in [1.0, 2.0]) {
+    testWidgets('환자는 이름 옆 화살표로만 바꾸고 슬라이드는 시간대만 전환한다: $scale', (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const second = PatientCaregiverLink(
+        linkId: 3,
+        patientId: 'second',
+        caregiverId: 'owner',
+        patientHash: 'second',
+        caregiverHash: 'owner',
+        patientAlias: '아빠',
+        linkStatus: true,
+      );
+      final api = _Monitoring()
+        ..snapshots = [_snapshot(_link), _snapshot(second)];
+      final control = CheckCaregiverHome(userHash: 'owner', control: api);
+      addTearDown(control.dispose);
+      addTearDown(api.dispose);
+      control.updateLinks([_link, second]);
+      await control.refresh();
+      PatientCaregiverLink? selected;
+      var refreshes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AnimatedBuilder(
+                animation: control,
+                builder: (context, _) => CaregiverHomeSummaryUI(
+                  control: control,
+                  isEnglish: false,
+                  patientLabel: (link) => link.patientAlias!,
+                  onPatientRequested: (link) => selected = link,
+                  onRefreshRequested: () => refreshes++,
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    expect(find.byType(HomeMedicationPreview), findsOneWidget);
-    expect(find.text('1/3'), findsOneWidget);
-    expect(find.text('1 / 2'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('caregiver-home-refresh')));
-    expect(refreshes, 1);
-    expect(selected, isNull);
-    await tester.drag(
-      find.byKey(const Key('caregiver-patient-pager')),
-      const Offset(-180, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('2 / 2'), findsOneWidget);
-    expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
-    await tester.tap(find.byKey(const Key('caregiver-home-patient-3')));
-    expect(selected, second);
-    await tester.tap(find.byKey(const Key('caregiver-patient-previous')));
-    await tester.pumpAndSettle();
-    expect(find.text('1 / 2'), findsOneWidget);
-    expect(find.byType(FilledButton), findsNothing);
-    control.updateLinks([second, _link]);
-    await tester.pumpAndSettle();
-    expect(find.text('2 / 2'), findsOneWidget);
-    expect(find.byKey(const Key('caregiver-home-patient-1')), findsOneWidget);
-    control.updateLinks([second]);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('caregiver-home-patient-3')), findsOneWidget);
-    expect(find.byKey(const Key('caregiver-patient-next')), findsNothing);
-    expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      expect(find.byType(HomeMedicationPreview), findsOneWidget);
+      expect(find.text('1/3'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+      expect(find.text('1 / 2'), findsNothing);
+      expect(find.text('2 / 2'), findsNothing);
+      final indicator = find.byKey(
+        const Key('caregiver-patient-page-indicator'),
+      );
+      expect(indicator, findsNothing);
+      final previous = find.byKey(const Key('caregiver-patient-previous'));
+      final next = find.byKey(const Key('caregiver-patient-next'));
+      expect(tester.widget<IconButton>(previous).onPressed, isNull);
+      expect(tester.widget<IconButton>(next).onPressed, isNotNull);
+      expect(
+        find.descendant(of: find.byType(HomeMedicationPreview), matching: next),
+        findsOneWidget,
+      );
+      expect(tester.getSize(previous), const Size(48, 48));
+      expect(tester.getSize(next), const Size(48, 48));
+      final cardRect = tester.getRect(find.byType(HomeMedicationPreview));
+      final titleRect = tester.getRect(find.text('엄마'));
+      expect(tester.getRect(previous).right, lessThanOrEqualTo(titleRect.left));
+      expect(tester.getRect(next).left, greaterThanOrEqualTo(titleRect.right));
+      expect(tester.getRect(previous).right, closeTo(titleRect.left, .01));
+      expect(tester.getRect(next).left, closeTo(titleRect.right, .01));
+      expect(tester.getCenter(previous).dy, closeTo(titleRect.center.dy, .01));
+      expect(tester.getCenter(next).dy, closeTo(titleRect.center.dy, .01));
+      expect(cardRect.contains(tester.getRect(next).bottomRight), isTrue);
+      await tester.tap(find.byKey(const Key('caregiver-home-refresh')));
+      expect(refreshes, 1);
+      expect(selected, isNull);
+      // 아래 시간대 탐색은 상위 환자 넘김 제스처로 전달하지 않는다.
+      final slotPager = find.byKey(const Key('home-medication-slot-pager'));
+      for (var step = 0; step < 3; step++) {
+        await tester.drag(slotPager, const Offset(-180, 0));
+        await tester.pumpAndSettle();
+        expect(find.text('엄마'), findsOneWidget);
+      }
+      expect(find.byKey(const Key('home-slot-page-bedtime')), findsOneWidget);
+      expect(find.byType(FilledButton), findsNothing);
+      await tester.ensureVisible(find.text('엄마'));
+      await tester.drag(find.text('엄마'), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('엄마'), findsOneWidget);
+      expect(find.byKey(const Key('home-slot-page-bedtime')), findsOneWidget);
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(previous).onPressed, isNotNull);
+      expect(tester.widget<IconButton>(next).onPressed, isNull);
+      expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
+      await tester.tap(find.text('아빠'));
+      expect(selected, second);
+      selected = null;
+      await tester.tap(previous);
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      expect(find.text('엄마'), findsOneWidget);
+      expect(find.byType(FilledButton), findsNothing);
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      expect(find.byKey(const Key('caregiver-home-patient-3')), findsOneWidget);
+      await tester.drag(find.text('아빠'), const Offset(180, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('아빠'), findsOneWidget);
+      await tester.tap(previous);
+      await tester.pumpAndSettle();
+      expect(find.text('엄마'), findsOneWidget);
+      control.updateLinks([second, _link]);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(next).onPressed, isNull);
+      expect(find.byKey(const Key('caregiver-home-patient-1')), findsOneWidget);
+      control.updateLinks([second]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('caregiver-home-patient-3')), findsOneWidget);
+      expect(indicator, findsNothing);
+      expect(previous, findsNothing);
+      expect(next, findsNothing);
+      expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final width in [320.0, 390.0, 800.0]) {
+    for (final scale in [1.0, 2.0]) {
+      // 함수이름: 보호자 제목 반응형 배치 테스트
+      // 함수역할: 기본 크기에서는 카드 높이를 유지하고 좁은 화면의 큰 글씨에서는 잘림 없이 줄바꿈하는지 검증한다.
+      // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+      testWidgets('하트와 이름 양옆 화살표는 화면 폭과 글씨 크기에 맞게 배치된다: $width, $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        // 함수이름: showPreview
+        // 함수역할: 같은 제목과 진행률에서 환자 전환 버튼의 유무만 바꿔 배치를 비교한다.
+        // 매개변수: navigation: 화살표·새로고침 표시 여부. 반환값: 화면 갱신 완료.
+        Future<void> showPreview({required bool navigation}) =>
+            tester.pumpWidget(
+              MaterialApp(
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: Scaffold(
+                  body: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: HomeMedicationPreview(
+                      title: '환자',
+                      progressTitle: '오늘의 복약 진행률',
+                      progressLabel: '1/3',
+                      progress: 1 / 3,
+                      scheduleTitle: '남은 복약 일정',
+                      scheduleDescription: '점심 · 테스트 약',
+                      hasPendingMedication: true,
+                      compact: width >= 350,
+                      onTap: () {},
+                      titleLeading: navigation
+                          ? IconButton(
+                              tooltip: '이전 환자',
+                              onPressed: () {},
+                              icon: const Icon(Icons.chevron_left),
+                            )
+                          : null,
+                      titleTrailing: navigation
+                          ? IconButton(
+                              tooltip: '다음 환자',
+                              onPressed: () {},
+                              icon: const Icon(Icons.chevron_right),
+                            )
+                          : null,
+                      headerAction: navigation
+                          ? IconButton(
+                              tooltip: '새로고침',
+                              onPressed: () {},
+                              icon: const Icon(Icons.refresh),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+            );
+        await showPreview(navigation: false);
+        final patientSize = tester.getSize(find.byType(HomeMedicationPreview));
+        await showPreview(navigation: true);
+        final caregiverSize = tester.getSize(
+          find.byType(HomeMedicationPreview),
+        );
+        expect(caregiverSize.width, patientSize.width);
+        expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+        if ((width >= 390 && scale == 1) || width >= 800) {
+          expect(caregiverSize, patientSize);
+        } else {
+          expect(
+            caregiverSize.height,
+            greaterThanOrEqualTo(patientSize.height),
+          );
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('조회 전·일정 없음·모두 완료·실패를 구분한다', (tester) async {
     final api = _Monitoring();
@@ -245,12 +397,12 @@ void main() {
       ),
     );
     expect(find.text('-'), findsOneWidget);
-    expect(find.text('복약 현황 확인 필요'), findsOneWidget);
+    expect(find.textContaining('복약 현황 확인 필요'), findsOneWidget);
 
     api.gate = Completer<List<CaregiverMonitoringSnapshot>>();
     final loading = control.refresh();
     await tester.pump();
-    expect(find.text('복약 현황 확인 중'), findsOneWidget);
+    expect(find.textContaining('복약 현황 확인 중'), findsOneWidget);
     expect(find.text('0/0'), findsNothing);
     expect(
       tester
@@ -268,7 +420,7 @@ void main() {
     await loading;
     await tester.pump();
     expect(find.text('0/0'), findsOneWidget);
-    expect(find.text('오늘 복약 일정이 없습니다'), findsOneWidget);
+    expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
 
     api.gate = null;
     api.snapshots = [
@@ -287,7 +439,7 @@ void main() {
     await control.refresh();
     await tester.pump();
     expect(find.text('3/3'), findsOneWidget);
-    expect(find.text('오늘의 복약을 모두 완료했어요'), findsOneWidget);
+    expect(find.text('아침 · 복용 완료'), findsOneWidget);
     expect(find.text('남은 복약 일정'), findsNothing);
 
     api.failure = true;
@@ -300,7 +452,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('영문과 큰 글씨에서 긴 이름·추가 약 개수를 표시하고 완료한 약은 제외한다', (tester) async {
+  testWidgets('영문과 큰 글씨에서도 시간대별 완료 수와 약 이름을 간단히 요약한다', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -357,15 +509,12 @@ void main() {
       ),
     );
     expect(find.text('1/3'), findsOneWidget);
-    expect(find.text('Remaining medication'), findsOneWidget);
-    expect(
-      find.text(
-        'Morning · A very long medication name for a narrow screen and 1 more',
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('Completed medicine'), findsNothing);
-    expect(find.text('Taken'), findsNothing);
+    expect(find.byKey(const Key('home-slot-page-morning')), findsOneWidget);
+    expect(find.text('Morning · 1/3 taken'), findsOneWidget);
+    expect(find.text('Completed medicine +2 more'), findsOneWidget);
+    expect(find.text('Second medicine'), findsNothing);
+    expect(find.byType(TabBar), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -7,6 +7,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
+import '../widgets/home_medication_slot_pager.dart';
 
 // 클래스명: CaregiverHomeSummaryUI
 // 역할: 조회 실패·일정 없음·완료 진행률을 구분하고 기존 환자 상세 화면으로 연결한다.
@@ -40,7 +41,6 @@ class CaregiverHomeSummaryUI extends StatefulWidget {
 
 class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   int? _selectedLinkId;
-  double _drag = 0;
   int _direction = 1;
   CheckCaregiverHome get control => widget.control;
   bool get isEnglish => widget.isEnglish;
@@ -73,77 +73,46 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
     });
   }
 
-  // 카드 높이는 내용에 맞추고 가로 제스처만 받아 홈의 세로 스크롤을 유지한다.
+  // 환자는 이름 양옆 화살표로만 전환하고 슬라이드는 내부 시간대 요약에 맡긴다.
   Widget _patientPager(BuildContext context) {
     final index = _index;
     final links = control.links;
     _selectedLinkId = links[index].linkId;
-    return Column(
-      children: [
-        GestureDetector(
-          key: const Key('caregiver-patient-pager'),
-          onHorizontalDragStart: (_) => _drag = 0,
-          onHorizontalDragUpdate: (details) => _drag += details.delta.dx,
-          onHorizontalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0;
-            if (_drag.abs() >= 40 || velocity.abs() >= 250) {
-              _select(
-                index + ((_drag.abs() >= 40 ? _drag : velocity) < 0 ? 1 : -1),
-              );
-            }
-          },
-          child: ClipRect(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: Offset(_direction * .12, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: _patientPreview(context, links[index], true),
-            ),
+    return ClipRect(
+      key: const Key('caregiver-patient-pager'),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(_direction * .12, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
           ),
         ),
-        if (links.length > 1)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                key: const Key('caregiver-patient-previous'),
-                tooltip: isEnglish ? 'Previous patient' : '이전 환자',
-                onPressed: index > 0 ? () => _select(index - 1) : null,
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Semantics(
-                liveRegion: true,
-                label: isEnglish
-                    ? 'Patient ${index + 1} of ${links.length}'
-                    : '환자 ${links.length}명 중 ${index + 1}번째',
-                child: ExcludeSemantics(
-                  child: Text(
-                    '${index + 1} / ${links.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-              IconButton(
-                key: const Key('caregiver-patient-next'),
-                tooltip: isEnglish ? 'Next patient' : '다음 환자',
-                onPressed: index < links.length - 1
-                    ? () => _select(index + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-      ],
+        child: _patientPreview(context, links[index], true),
+      ),
     );
   }
+
+  // 이름 양옆에서 환자를 전환해 카드 아래에 별도 표시 영역을 만들지 않는다.
+  Widget _patientNavigationButton({required bool previous}) => IconButton(
+    key: Key(
+      previous ? 'caregiver-patient-previous' : 'caregiver-patient-next',
+    ),
+    tooltip: previous
+        ? (isEnglish ? 'Previous patient' : '이전 환자')
+        : (isEnglish ? 'Next patient' : '다음 환자'),
+    onPressed: (previous ? _index > 0 : _index < control.links.length - 1)
+        ? () => _select(_index + (previous ? -1 : 1))
+        : null,
+    constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+    padding: EdgeInsets.zero,
+    color: MedBuddyColors.primaryDark,
+    icon: Icon(previous ? Icons.chevron_left : Icons.chevron_right),
+  );
 
   // 함수역할: 연결된 환자별 미리보기를 본인 홈과 같은 양식으로 표시한다. 매개변수: context.
   @override
@@ -265,6 +234,21 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
       hasPendingMedication: pendingDescription != null,
       compact: MediaQuery.sizeOf(context).width >= 350,
       headerAction: showRefresh ? _refreshButton() : null,
+      titleLeading: control.links.length > 1
+          ? _patientNavigationButton(previous: true)
+          : null,
+      titleTrailing: control.links.length > 1
+          ? _patientNavigationButton(previous: false)
+          : null,
+      scheduleContent: HomeMedicationSlotPager(
+        schedules: snapshot?.schedules ?? const [],
+        isEnglish: isEnglish,
+        isLoading: snapshot == null && control.isLoading,
+        compact: MediaQuery.sizeOf(context).width >= 350,
+        hasError: snapshot == null && !control.isLoading,
+        showDetailsButton: true,
+        onDetailsRequested: () => onPatientRequested(link),
+      ),
       onTap: () => onPatientRequested(link),
     );
   }

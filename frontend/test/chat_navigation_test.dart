@@ -214,7 +214,7 @@ void main() {
       expect(api.calls, source == 'self' ? 0 : 1);
       if (source == 'patients') {
         expect(find.text('Patient 1'), findsOneWidget);
-        expect(find.text('오늘 복약 일정이 없습니다'), findsOneWidget);
+        expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
       }
       links.result = [];
       await tester.pump(const Duration(seconds: 15));
