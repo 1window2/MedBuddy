@@ -178,25 +178,48 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: CaregiverHomeSummaryUI(
-              control: control,
-              isEnglish: false,
-              patientLabel: (link) => link.patientAlias!,
-              onPatientRequested: (link) => selected = link,
-              onRefreshRequested: () => refreshes++,
+            child: AnimatedBuilder(
+              animation: control,
+              builder: (context, _) => CaregiverHomeSummaryUI(
+                control: control,
+                isEnglish: false,
+                patientLabel: (link) => link.patientAlias!,
+                onPatientRequested: (link) => selected = link,
+                onRefreshRequested: () => refreshes++,
+              ),
             ),
           ),
         ),
       ),
     );
-    expect(find.byType(HomeMedicationPreview), findsNWidgets(2));
-    expect(find.text('1/3'), findsNWidgets(2));
+    expect(find.byType(HomeMedicationPreview), findsOneWidget);
+    expect(find.text('1/3'), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget);
     await tester.tap(find.byKey(const Key('caregiver-home-refresh')));
     expect(refreshes, 1);
     expect(selected, isNull);
+    await tester.drag(
+      find.byKey(const Key('caregiver-patient-pager')),
+      const Offset(-180, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
+    expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
     await tester.tap(find.byKey(const Key('caregiver-home-patient-3')));
     expect(selected, second);
+    await tester.tap(find.byKey(const Key('caregiver-patient-previous')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 2'), findsOneWidget);
     expect(find.byType(FilledButton), findsNothing);
+    control.updateLinks([second, _link]);
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
+    expect(find.byKey(const Key('caregiver-home-patient-1')), findsOneWidget);
+    control.updateLinks([second]);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('caregiver-home-patient-3')), findsOneWidget);
+    expect(find.byKey(const Key('caregiver-patient-next')), findsNothing);
+    expect(find.byKey(const Key('caregiver-home-patient-1')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

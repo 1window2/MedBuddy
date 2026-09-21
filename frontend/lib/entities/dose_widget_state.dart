@@ -1,4 +1,4 @@
-// A home-screen projection of the account's own doses, never a caregiver write.
+// Home-screen projections keep caregiver viewing separate from dose writes.
 import 'dart:math';
 
 import 'medication_alarm_entity.dart';
@@ -63,10 +63,14 @@ class DoseWidgetState {
     required Map<String, dynamic> previous,
     required DateTime now,
     Map<String, dynamic>? configuration,
+    bool readOnly = false,
   }) {
     final config =
         configuration ??
         Map<String, dynamic>.from(previous['config'] as Map? ?? {});
+    if (config['source'] == 'patients' && !readOnly) {
+      return _patients(owner, previous, now, config);
+    }
     final oldView = previous['view'] as Map? ?? {};
     final english = config['language'] == 'en';
     String tr(String ko, String en) => english ? en : ko;
@@ -92,6 +96,7 @@ class DoseWidgetState {
     String time(String slot) =>
         alarms[slot]?.toString() ?? MedicationAlarm.defaults(slot).timeLabel;
     int minute(String slot) {
+      if (readOnly) return medicationScheduleSlotKeys.indexOf(slot);
       final parts = time(slot).split(':');
       return (int.tryParse(parts.first) ?? 0) * 60 +
           (int.tryParse(parts.last) ?? 0);
@@ -142,12 +147,13 @@ class DoseWidgetState {
               .toSet()
               .toList()
             ..sort();
-      final signature = '${completed ? 'cancel:' : ''}$day:$pageSlot:${ids.join(',')}';
+      final signature =
+          '${completed ? 'cancel:' : ''}$day:$pageSlot:${ids.join(',')}';
       final oldAction = completed
           ? oldCancels[pageSlot] as Map?
           : oldTakes[pageSlot] as Map? ??
-          (legacyTake?['slot'] == pageSlot ? legacyTake : null);
-      if (ids.isNotEmpty && !blocked) {
+                (legacyTake?['slot'] == pageSlot ? legacyTake : null);
+      if (!readOnly && ids.isNotEmpty && !blocked) {
         (completed ? cancels : takes)[pageSlot] = {
           'token': oldAction?['signature'] == signature
               ? oldAction!['token']
@@ -166,7 +172,9 @@ class DoseWidgetState {
       pages.add({
         'slot': pageSlot,
         'label': label(pageSlot),
-        'heading': '${label(pageSlot)} ${time(pageSlot)}',
+        'heading': readOnly
+            ? label(pageSlot)
+            : '${label(pageSlot)} ${time(pageSlot)}',
         'details': config['hide_names'] == true
             ? tr(
                 '복용 완료 $pageDone개 · 미복용 ${remaining.length}개',
@@ -184,7 +192,11 @@ class DoseWidgetState {
                   })
                   .join('\n'),
         'completed': completed,
-        'action': pageAction == null ? 'open' : completed ? 'cancel' : 'take',
+        'action': pageAction == null
+            ? 'open'
+            : completed
+            ? 'cancel'
+            : 'take',
         'token': pageAction?['token'] ?? '',
         'button': pageAction == null
             ? tr('일정 열기', 'Open schedule')
@@ -192,7 +204,9 @@ class DoseWidgetState {
             ? tr('복용 취소', 'Undo dose')
             : tr('복용했어요', 'Taken'),
         'overdue':
-            !completed && minute(pageSlot) < local.hour * 60 + local.minute,
+            !readOnly &&
+            !completed &&
+            minute(pageSlot) < local.hour * 60 + local.minute,
       });
     }
     final take = takes[slot];
@@ -211,13 +225,16 @@ class DoseWidgetState {
     final view = <String, dynamic>{
       'language': english ? 'en' : 'ko',
       'date': day,
-      'date_label': tr('${local.month}월 ${local.day}일 ($weekday)', '${local.month}/${local.day} ($weekday)'),
+      'date_label': tr(
+        '${local.month}월 ${local.day}일 ($weekday)',
+        '${local.month}/${local.day} ($weekday)',
+      ),
       'utc_offset_minutes': doseWidgetUtcOffset,
       'title': tr('나의 복약 일정', 'My medication'),
       'heading': !current
           ? tr('오늘 일정을 불러와주세요', 'Refresh today\'s schedule')
           : slot != null
-          ? '${label(slot)} ${time(slot)}'
+          ? (readOnly ? label(slot) : '${label(slot)} ${time(slot)}')
           : total == 0
           ? tr('등록된 복약 일정이 없어요', 'No medication scheduled')
           : tr('오늘 복약 기록 완료', 'Today\'s doses recorded'),
@@ -234,10 +251,16 @@ class DoseWidgetState {
           ? tr('복용했어요', 'Taken')
           : tr('일정 열기', 'Open schedule'),
       'expires': midnight.millisecondsSinceEpoch,
-      'overdue': slot != null && minute(slot) < local.hour * 60 + local.minute,
+      'overdue':
+          !readOnly &&
+          slot != null &&
+          minute(slot) < local.hour * 60 + local.minute,
       'pages': pages,
       // 날짜·계정이 바뀌면 이전 위젯의 조회 위치를 재사용하지 않는다.
-      'navigation_key': previous['owner'] == owner && oldView['date'] == day
+      'navigation_key':
+          previous['owner'] == owner &&
+              oldView['date'] == day &&
+              (previous['config'] as Map?)?['source'] == config['source']
           ? oldView['navigation_key'] ?? newWidgetActionToken()
           : newWidgetActionToken(),
     };
@@ -247,6 +270,77 @@ class DoseWidgetState {
       'take': take,
       'takes': takes,
       'cancels': cancels,
+      'view': view,
+    });
+  }
+
+  // Patient snapshots never share the owner's outbox, alarms or action tokens.
+  static DoseWidgetState _patients(
+    String owner,
+    Map<String, dynamic> previous,
+    DateTime now,
+    Map<String, dynamic> config,
+  ) {
+    final base = DoseWidgetState.build(
+      owner: owner,
+      cache: null,
+      operations: [],
+      previous: previous,
+      now: now,
+      configuration: config,
+      readOnly: true,
+    );
+    final english = config['language'] == 'en';
+    String tr(String ko, String en) => english ? en : ko;
+    final cache = previous['patient_cache'] as Map?;
+    final current = cache?['date'] == doseWidgetDay(now);
+    final patients = <Map<String, dynamic>>[];
+    if (current) {
+      for (final entry
+          in (cache?['patients'] as List? ?? []).whereType<Map>()) {
+        final ready = entry['schedules'] is List;
+        final state = DoseWidgetState.build(
+          owner: owner,
+          cache: ready
+              ? {'date': cache!['date'], 'schedules': entry['schedules']}
+              : null,
+          operations: [],
+          previous: {},
+          now: now,
+          configuration: config,
+          readOnly: true,
+        );
+        patients.add({
+          ...state.view,
+          'patient_key': entry['key'],
+          'title': entry['alias'],
+          'counts_known': ready,
+          'status': cache?['failed'] == true
+              ? tr('최근 조회 기준 · 새로고침 필요', 'Last loaded status · Refresh needed')
+              : tr('환자가 기록한 복약 상태', 'Doses recorded by the patient'),
+          'action': 'open',
+          'token': '',
+        });
+      }
+    }
+    final view = {
+      ...base.view,
+      'source': 'patients',
+      'title': tr('환자의 복약 일정', 'Patient medication'),
+      'heading': !current || cache?['failed'] == true
+          ? tr('환자 일정을 새로고침해주세요', 'Refresh patient schedules')
+          : tr('연결된 환자가 없습니다', 'No linked patients'),
+      'details': '',
+      'status': '',
+      'action': 'refresh',
+      'token': '',
+      'button': tr('새로고침', 'Refresh'),
+      'patients': patients,
+    };
+    return DoseWidgetState({
+      ...base.data,
+      'patient_cache': cache,
+      'patient_revision': previous['patient_revision'],
       'view': view,
     });
   }

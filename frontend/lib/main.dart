@@ -28,6 +28,7 @@ import 'services/medication_reminder_background_service.dart';
 import 'services/dose_sync_service.dart';
 import 'services/dose_sync_background_service.dart';
 import 'services/dose_home_widget_service.dart';
+import 'services/dose_outbox_store.dart';
 import 'services/naver_map_config.dart';
 import 'services/push_notification_service.dart';
 import 'theme/medbuddy_theme.dart';
@@ -202,12 +203,43 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
   }
 
-  void _openHomeWidget(Uri? uri) {
-    if (!mounted ||
-        uri?.scheme != 'medbuddy-widget' ||
-        uri?.host != 'schedule') {
+  Uri? _pendingWidgetUri;
+
+  Future<void> _openHomeWidget(Uri? uri) async {
+    if (!mounted || uri?.scheme != 'medbuddy-widget') {
       return;
     }
+    if (uri?.host == 'patient-schedule') {
+      final session = _authenticationControl.session;
+      if (session == null) {
+        _pendingWidgetUri = uri;
+        return;
+      }
+      try {
+        final store = await DoseOutboxStore.open();
+        final patient = await store.resolveWidgetPatient(
+          owner: session.userHash,
+          patientKey: uri!.queryParameters['patient'] ?? '',
+          navigationKey: uri.queryParameters['context'] ?? '',
+          now: DateTime.now(),
+        );
+        if (!mounted ||
+            patient == null ||
+            _authenticationControl.session?.userHash != session.userHash) {
+          return;
+        }
+        _handleNotificationSelection(
+          MedicationNotificationSelection(
+            destination: MedicationNotificationDestination.caregiverSchedule,
+            patientHash: patient,
+          ),
+        );
+      } catch (_) {
+        // An expired or signed-out widget cannot open another account's data.
+      }
+      return;
+    }
+    if (uri?.host != 'schedule') return;
     _handleNotificationSelection(
       MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
@@ -305,6 +337,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void _handleAuthenticationChange() {
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
+      _pendingWidgetUri = null;
       _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
@@ -321,6 +354,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       );
       return;
     }
+    final widgetUri = _pendingWidgetUri;
+    _pendingWidgetUri = null;
+    if (widgetUri != null) unawaited(_openHomeWidget(widgetUri));
     final pendingSelection = _pendingNotificationSelection;
     if (pendingSelection == null) {
       return;

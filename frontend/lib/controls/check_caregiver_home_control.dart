@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
+import '../entities/dose_widget_state.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import 'check_caregiver_medication_control.dart';
 
@@ -20,6 +21,24 @@ class CheckCaregiverHome extends ChangeNotifier {
   bool _disposed = false;
   int _generation = 0;
   DateTime? updatedAt;
+  String? snapshotDay;
+
+  // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
+  Map<String, dynamic> get widgetCache => {
+    'date': doseWidgetDay(DateTime.now()),
+    'failed': hasError,
+    'patients': [
+      for (final link in _links)
+        {
+          'link': link.toJson(),
+          'schedules': snapshotDay == doseWidgetDay(DateTime.now())
+              ? _snapshots[link.linkId]?.schedules
+                    .map((s) => s.toJson())
+                    .toList()
+              : null,
+        },
+    ],
+  };
 
   // 함수역할: 계정과 기존 환자 조회 기능을 연결한다. 주입 Control은 호출자가 소유한다.
   CheckCaregiverHome({
@@ -65,12 +84,17 @@ class CheckCaregiverHome extends ChangeNotifier {
   Future<void> refresh() async {
     if (_disposed || isLoading || _links.isEmpty) return;
     final generation = _generation;
+    final day = doseWidgetDay(DateTime.now());
     isLoading = true;
     notifyListeners();
     try {
       hasError = false;
       final received = await _control.requestMonitoringSnapshot();
-      if (_disposed || generation != _generation) return;
+      if (_disposed ||
+          generation != _generation ||
+          day != doseWidgetDay(DateTime.now())) {
+        return;
+      }
       _snapshots = {
         for (final snapshot in received)
           if (snapshot.link.linkStatus &&
@@ -83,6 +107,7 @@ class CheckCaregiverHome extends ChangeNotifier {
             snapshot.link.linkId!: snapshot,
       };
       updatedAt = DateTime.now();
+      snapshotDay = day;
     } catch (_) {
       if (_disposed || generation != _generation) return;
       hasError = true;

@@ -24,8 +24,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.SimpleTimeZone
 
-// Native receiver only journals opaque taps and renders. Dose ownership
-// and idempotency are validated atomically in the encrypted Dart store.
+// 클래스명: DoseWidgetProvider
+// 역할: 불투명 클릭 토큰을 보관하고 위젯을 표시한다.
+// 복약 소유권과 중복 요청 검증은 암호화된 Dart 저장소의 트랜잭션에서 처리한다.
 class DoseWidgetProvider : HomeWidgetProvider() {
     // 함수이름: onReceive
     // 함수역할: 조회는 즉시 전환하고 복용·취소 요청은 토큰 검증 후 백그라운드 처리한다.
@@ -37,10 +38,28 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         }
         val data = HomeWidgetPlugin.getData(context)
         val kind = intent.data?.host ?: return
-        if (kind == "page") {
+        if (kind == "patient") {
             synchronized(lock) {
                 val state = json(data.getString(STATE, "{}"))
                 val id = intent.data?.getQueryParameter("widget")?.toIntOrNull() ?: return
+                val key = intent.data?.getQueryParameter("context") ?: return
+                val patient = intent.data?.getQueryParameter("patient") ?: return
+                val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(
+                    ComponentName(context, DoseWidgetProvider::class.java))
+                if (id !in ids || key != state.optString("navigation_key") ||
+                    System.currentTimeMillis() >= state.optLong("expires") ||
+                    patients(state).none { it.optString("patient_key") == patient }) return
+                data.edit().putString(patientKey(id), JSONObject()
+                    .put("context", key).put("patient", patient).toString())
+                    .remove(pageKey(id)).commit()
+            }
+            renderAll(context)
+            return
+        }
+        if (kind == "page") {
+            synchronized(lock) {
+                val id = intent.data?.getQueryParameter("widget")?.toIntOrNull() ?: return
+                val state = patientState(json(data.getString(STATE, "{}")), data, id)
                 val slot = intent.data?.getQueryParameter("slot") ?: return
                 val key = intent.data?.getQueryParameter("context") ?: return
                 val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(
@@ -60,6 +79,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val token = intent.data?.getQueryParameter("token") ?: return
             synchronized(lock) {
                 val state = json(data.getString(STATE, "{}"))
+                if (state.optString("source") == "patients") return
                 val page = (pages(state) + state).firstOrNull {
                     it.optString("token") == token && it.optString("action") == kind
                 }
@@ -101,7 +121,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
     // 매개변수: context 실행 환경, ids 제거된 위젯 번호. 반환값: 없음.
     override fun onDeleted(context: Context, ids: IntArray) {
         val edit = HomeWidgetPlugin.getData(context).edit()
-        for (id in ids) edit.remove(pageKey(id))
+        for (id in ids) edit.remove(pageKey(id)).remove(patientKey(id))
         edit.apply()
         super.onDeleted(context, ids)
     }
@@ -136,8 +156,12 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         // 이전 버전의 되돌리기 화면은 다음 일정으로 새로고침한다.
         val expired = System.currentTimeMillis() >= state.optLong("expires", 0L) ||
             state.optString("action") == "undo"
-        val pages = if (known && !expired) pages(state) else emptyList()
+        val rootState = state
         for (id in ids) {
+            val state = if (!expired) patientState(rootState, data, id) else rootState
+            val patients = if (!expired) patients(rootState) else emptyList()
+            val patientIndex = patients.indexOfFirst { it.optString("patient_key") == state.optString("patient_key") }
+            val pages = if (known && !expired) pages(state) else emptyList()
             val selection = json(data.getString(pageKey(id), "{}"))
             val selected = if (selection.optString("context") == state.optString("navigation_key"))
                 pages.indexOfFirst { it.optString("slot") == selection.optString("slot") } else -1
@@ -146,7 +170,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val page = pages.getOrNull(index) ?: state
             val cancelling = known && !expired && page.optString("action") == "cancel"
             val open = HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java,
-                Uri.Builder().scheme("medbuddy-widget").authority("schedule")
+                Uri.Builder().scheme("medbuddy-widget").authority(
+                    if (state.optString("source") == "patients") "patient-schedule" else "schedule")
+                    .appendQueryParameter("patient", state.optString("patient_key"))
+                    .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
             val views = RemoteViews(context.packageName, R.layout.dose_home_widget)
             // 작은 위젯이나 큰 글씨에서도 제목·버튼이 약 목록에 밀려 잘리지 않게 한다.
@@ -164,6 +191,20 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_refresh, action(context, "refresh", ""))
             views.setContentDescription(R.id.widget_refresh, tr("새로고침", "Refresh"))
             views.setTextViewText(R.id.widget_title, state.optString("title", tr("나의 복약 일정", "My medication")))
+            views.setContentDescription(R.id.widget_title, state.optString("title") +
+                if (patients.size > 1) ", ${patientIndex + 1}/${patients.size}" else "")
+            views.setViewVisibility(R.id.widget_count, if (patients.size > 1) View.GONE else View.VISIBLE)
+            for ((button, targetIndex) in listOf(R.id.widget_patient_previous to patientIndex - 1,
+                R.id.widget_patient_next to patientIndex + 1)) {
+                val target = patients.getOrNull(targetIndex)
+                views.setViewVisibility(button, if (patients.size > 1) View.VISIBLE else View.GONE)
+                views.setBoolean(button, "setEnabled", target != null)
+                views.setFloat(button, "setAlpha", if (target != null) 1f else .3f)
+                views.setContentDescription(button, if (button == R.id.widget_patient_previous)
+                    tr("이전 환자", "Previous patient") else tr("다음 환자", "Next patient"))
+                if (target != null) views.setOnClickPendingIntent(button, patientAction(context, id,
+                    target.optString("patient_key"), rootState.optString("navigation_key")))
+            }
             // 갱신이 지연돼도 날짜는 앱의 복약 기준 시간대로 오늘을 표시한다.
             val dateFormat = SimpleDateFormat(if (english) "M/d (EEE)" else "M월 d일 (EEE)",
                 if (english) Locale.ENGLISH else Locale.KOREAN)
@@ -176,13 +217,14 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 else -> page.optString("heading")
             })
             views.setTextViewText(R.id.widget_details, if (known && !expired) page.optString("details") else "")
-            views.setTextViewText(R.id.widget_count, if (known) "${state.optInt("done")}/${state.optInt("total")}" else "")
+            val count = if (state.optBoolean("counts_known", true)) "${state.optInt("done")}/${state.optInt("total")}" else "-"
+            views.setTextViewText(R.id.widget_count, if (known) count else "")
             views.setProgressBar(R.id.widget_progress, state.optInt("total", 1).coerceAtLeast(1), state.optInt("done"), false)
             views.setTextViewText(R.id.widget_status, when {
                 pending -> tr("기기에 저장 중", "Saving on device")
-                !known -> tr("로그인 후 본인 일정을 표시합니다", "Sign in to view your own doses")
+                !known -> tr("로그인 후 일정을 표시합니다", "Sign in to view schedules")
                 expired -> tr("지난 일정은 기록하지 않아요", "Old schedules cannot be recorded")
-                else -> state.optString("status")
+                else -> (if (patients.size > 1) "$count · " else "") + state.optString("status")
             })
             views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
             views.setViewVisibility(R.id.widget_warning, if (page.optBoolean("overdue") && !expired) View.VISIBLE else View.GONE)
@@ -228,7 +270,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             views.setBoolean(R.id.widget_take, "setEnabled", !pending)
             views.setOnClickPendingIntent(R.id.widget_take, when {
                 !known -> open
-                expired -> action(context, "refresh", "")
+                expired || page.optString("action") == "refresh" -> action(context, "refresh", "")
                 page.optString("action") in listOf("take", "cancel") ->
                     action(context, page.optString("action"), page.optString("token"), id)
                 else -> open
@@ -246,6 +288,33 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         private const val LAST_WAKE = "dose_widget_last_wake"
         private val lock = Any()
         private fun pageKey(id: Int) = "dose_widget_page_$id"
+        private fun patientKey(id: Int) = "dose_widget_patient_$id"
+        private fun patients(state: JSONObject): List<JSONObject> {
+            if (state.optString("source") != "patients") return emptyList()
+            val items = state.optJSONArray("patients") ?: return emptyList()
+            return (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+        }
+        // Each widget retains its patient independently; removed links fall back safely.
+        private fun patientState(root: JSONObject, data: SharedPreferences, id: Int): JSONObject {
+            val patients = patients(root)
+            val selection = json(data.getString(patientKey(id), "{}"))
+            val selected = if (selection.optString("context") == root.optString("navigation_key"))
+                patients.firstOrNull { it.optString("patient_key") == selection.optString("patient") } else null
+            val patient = selected ?: patients.firstOrNull() ?: return root
+            val result = JSONObject(root.toString())
+            for (key in patient.keys()) result.put(key, patient.get(key))
+            result.put("navigation_key", root.optString("navigation_key") + ":" + patient.optString("patient_key"))
+            return result
+        }
+        private fun patientAction(context: Context, id: Int, patient: String, key: String): PendingIntent {
+            val intent = Intent(context, DoseWidgetProvider::class.java).apply {
+                action = ACTION
+                data = Uri.Builder().scheme("medbuddy-widget").authority("patient")
+                    .appendQueryParameter("widget", id.toString()).appendQueryParameter("patient", patient)
+                    .appendQueryParameter("context", key).build()
+            }
+            return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
         // 함수이름: pages / 함수역할: 표시 가능한 시간대 페이지를 읽는다.
         // 매개변수: state 위젯 상태. 반환값: 시간대 순서의 표시 데이터.
         private fun pages(state: JSONObject): List<JSONObject> {

@@ -1,5 +1,6 @@
-// Android presentation bridge. Only opaque action tokens cross PendingIntents;
-// account ownership and medication IDs stay in the encrypted dose store.
+// 파일명: dose_home_widget_service.dart
+// 역할: 암호화된 복약 상태를 Android 위젯에 전달하고 백그라운드 요청을 처리한다.
+// PendingIntent에는 불투명 토큰만 전달하며 계정과 약 ID는 암호화 저장소에 둔다.
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:home_widget/home_widget.dart';
 
 import '../controls/check_schedule_control.dart';
+import '../controls/check_caregiver_medication_control.dart';
 import '../entities/dose_widget_state.dart';
 import 'auth_config.dart';
 import 'authenticated_api_client.dart';
@@ -23,6 +25,8 @@ Future<void> doseHomeWidgetCallback(Uri? uri) async {
   await DoseHomeWidget.refreshInBackground();
 }
 
+// 클래스명: DoseHomeWidget
+// 역할: 위젯 상태 발행·새로고침·추가를 연결하며 본인 기록과 환자 조회를 분리한다.
 class DoseHomeWidget {
   static const provider = 'com.example.medbuddy_frontend.DoseWidgetProvider';
   static const stateKey = 'dose_widget_state';
@@ -35,11 +39,16 @@ class DoseHomeWidget {
     }
   }
 
-  // Native Android journals taps before waking Flutter. A killed background
-  // process is recovered here on the next widget, app or periodic refresh.
+  // 함수이름: publish
+  // 함수역할: Android에 먼저 저장한 클릭을 검증·반영하고 최신 위젯 상태를 발행한다.
+  // 매개변수: owner - 계정, configuration - 표시 설정, patientCache - 환자 조회 결과,
+  //           expectedPatientRevision - 조회 당시 버전. 반환값: 발행 상태 또는 null.
+  // 도중 종료된 요청도 다음 위젯·앱·주기 갱신에서 같은 토큰으로 이어서 처리한다.
   static Future<DoseWidgetState?> publish({
     String? owner,
     Map<String, dynamic>? configuration,
+    Map<String, dynamic>? patientCache,
+    String? expectedPatientRevision,
   }) async {
     if (!supported) return null;
     final store = await DoseOutboxStore.open();
@@ -57,6 +66,7 @@ class DoseHomeWidget {
         now: DateTime.now(),
         action: entry['action']?.toString(),
         actionToken: token,
+        configuration: configuration,
       );
       handled.add(token);
     }
@@ -64,6 +74,8 @@ class DoseHomeWidget {
       owner: owner,
       now: DateTime.now(),
       configuration: configuration,
+      patientCache: patientCache,
+      expectedPatientRevision: expectedPatientRevision,
     );
     if (state == null && owner != null) return null;
     await HomeWidget.saveWidgetData<String>(
@@ -98,7 +110,50 @@ class DoseHomeWidget {
       client = AuthenticatedApiClient();
       sync = DoseSyncService(owner: owner, client: client);
       await sync.drain();
-      await publish(owner: owner);
+      final current = await publish(owner: owner);
+      if (current == null) return;
+      if ((current.data['config'] as Map?)?['source'] == 'patients') {
+        final day = doseWidgetDay(DateTime.now());
+        final revision = current.data['patient_revision'] as String?;
+        try {
+          final snapshots = await CheckCaregiverMedication(
+            caregiverHash: owner,
+            client: client,
+          ).requestMonitoringSnapshot();
+          if (day == doseWidgetDay(DateTime.now())) {
+            await publish(
+              owner: owner,
+              expectedPatientRevision: revision,
+              patientCache: {
+                'date': day,
+                'patients': [
+                  for (final snapshot in snapshots)
+                    {
+                      'link': snapshot.link.toJson(),
+                      'schedules': snapshot.schedules
+                          .map((s) => s.toJson())
+                          .toList(),
+                    },
+                ],
+              },
+            );
+          }
+        } catch (_) {
+          final cached = current.data['patient_cache'] as Map?;
+          await publish(
+            owner: owner,
+            expectedPatientRevision: revision,
+            patientCache: {
+              'date': day,
+              'failed': true,
+              'patients': cached?['date'] == day
+                  ? (cached?['patients'] ?? [])
+                  : [],
+            },
+          );
+        }
+        return;
+      }
       final revision = await sync.cacheRevision();
       final day = doseWidgetDay(DateTime.now());
       final schedules = await CheckSchedule(

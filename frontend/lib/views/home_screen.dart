@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../services/dose_home_widget_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -170,6 +171,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _caregiverHome?.updateLinks(
       _chatList?.hasError == true ? const [] : _chatList?.links ?? const [],
     );
+    if (_chatList?.isLoading == false) _publishCaregiverWidget();
     setState(
       // 함수이름: 연동 상태 갱신 콜백
       // 함수역할: 연동 없는 채팅 탭의 방문·선택 상태를 해제한다.
@@ -204,7 +206,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             'patients' &&
         (ModalRoute.of(context)?.isCurrent ?? false)) {
       await _caregiverHome?.refresh();
+      _publishCaregiverWidget();
     }
+  }
+
+  // 앱에서 확인한 연동 해제·별칭·복약 상태도 위젯에 즉시 반영한다.
+  void _publishCaregiverWidget() {
+    final control = _caregiverHome;
+    if (!mounted || control == null || _homeScheduleSource != 'patients') {
+      return;
+    }
+    unawaited(
+      DoseHomeWidget.publish(
+        owner: control.userHash,
+        patientCache: {
+          ...control.widgetCache,
+          'failed': control.hasError || _chatList?.hasError == true,
+        },
+      ).catchError((_) => null),
+    );
   }
 
   // 함수이름: _startChatRefresh

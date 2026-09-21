@@ -707,16 +707,24 @@ class MedBuddyViewModel extends ChangeNotifier {
             feature == MedBuddyFeature.reminder)) {
       unawaited(
         DoseHomeWidget.publish(
-          owner: patientHash,
-          configuration: {
-            'language': _userSetting.language,
-            'hide_names': _userSetting.notificationDetailMode != 'full',
-            'alarms': {
-              for (final entry in _medicationReminderSettings.entries)
-                entry.key: entry.value.timeLabel,
-            },
-          },
-        ).catchError((_) => null),
+              owner: patientHash,
+              configuration: {
+                'language': _userSetting.language,
+                'source': _userSetting.homeScheduleSource,
+                'hide_names': _userSetting.notificationDetailMode != 'full',
+                'alarms': {
+                  for (final entry in _medicationReminderSettings.entries)
+                    entry.key: entry.value.timeLabel,
+                },
+              },
+            )
+            .then((state) async {
+              if (state?.view['source'] == 'patients') {
+                await DoseHomeWidget.refreshInBackground();
+              }
+              return state;
+            })
+            .catchError((_) => null),
       );
     }
     if (feature == null) {

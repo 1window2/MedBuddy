@@ -11,7 +11,7 @@ import '../widgets/home_medication_preview.dart';
 // 클래스명: CaregiverHomeSummaryUI
 // 역할: 조회 실패·일정 없음·완료 진행률을 구분하고 기존 환자 상세 화면으로 연결한다.
 // 속성: control은 조회 상태, patientLabel은 별칭, onPatientRequested는 읽기 전용 상세 진입이다.
-class CaregiverHomeSummaryUI extends StatelessWidget {
+class CaregiverHomeSummaryUI extends StatefulWidget {
   final CheckCaregiverHome control;
   final bool isEnglish;
   final VoidCallback? onLinkRequested;
@@ -33,6 +33,117 @@ class CaregiverHomeSummaryUI extends StatelessWidget {
     required this.patientLabel,
     required this.onPatientRequested,
   });
+
+  @override
+  State<CaregiverHomeSummaryUI> createState() => _CaregiverHomeSummaryUIState();
+}
+
+class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
+  int? _selectedLinkId;
+  double _drag = 0;
+  int _direction = 1;
+  CheckCaregiverHome get control => widget.control;
+  bool get isEnglish => widget.isEnglish;
+  bool get isLoadingLinks => widget.isLoadingLinks;
+  bool get hasLinkError => widget.hasLinkError;
+  VoidCallback? get onLinkRequested => widget.onLinkRequested;
+  VoidCallback? get onRefreshRequested => widget.onRefreshRequested;
+  String patientLabel(PatientCaregiverLink link) => widget.patientLabel(link);
+  void onPatientRequested(PatientCaregiverLink link) =>
+      widget.onPatientRequested(link);
+
+  @override
+  void didUpdateWidget(CaregiverHomeSummaryUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.control.userHash != control.userHash) _selectedLinkId = null;
+  }
+
+  int get _index {
+    final found = control.links.indexWhere(
+      (link) => link.linkId == _selectedLinkId,
+    );
+    return found < 0 ? 0 : found;
+  }
+
+  void _select(int index) {
+    if (index < 0 || index >= control.links.length || index == _index) return;
+    setState(() {
+      _direction = index > _index ? 1 : -1;
+      _selectedLinkId = control.links[index].linkId;
+    });
+  }
+
+  // 카드 높이는 내용에 맞추고 가로 제스처만 받아 홈의 세로 스크롤을 유지한다.
+  Widget _patientPager(BuildContext context) {
+    final index = _index;
+    final links = control.links;
+    _selectedLinkId = links[index].linkId;
+    return Column(
+      children: [
+        GestureDetector(
+          key: const Key('caregiver-patient-pager'),
+          onHorizontalDragStart: (_) => _drag = 0,
+          onHorizontalDragUpdate: (details) => _drag += details.delta.dx,
+          onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (_drag.abs() >= 40 || velocity.abs() >= 250) {
+              _select(
+                index + ((_drag.abs() >= 40 ? _drag : velocity) < 0 ? 1 : -1),
+              );
+            }
+          },
+          child: ClipRect(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: Offset(_direction * .12, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: _patientPreview(context, links[index], true),
+            ),
+          ),
+        ),
+        if (links.length > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                key: const Key('caregiver-patient-previous'),
+                tooltip: isEnglish ? 'Previous patient' : '이전 환자',
+                onPressed: index > 0 ? () => _select(index - 1) : null,
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Semantics(
+                liveRegion: true,
+                label: isEnglish
+                    ? 'Patient ${index + 1} of ${links.length}'
+                    : '환자 ${links.length}명 중 ${index + 1}번째',
+                child: ExcludeSemantics(
+                  child: Text(
+                    '${index + 1} / ${links.length}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const Key('caregiver-patient-next'),
+                tooltip: isEnglish ? 'Next patient' : '다음 환자',
+                onPressed: index < links.length - 1
+                    ? () => _select(index + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
 
   // 함수역할: 연결된 환자별 미리보기를 본인 홈과 같은 양식으로 표시한다. 매개변수: context.
   @override
@@ -93,12 +204,7 @@ class CaregiverHomeSummaryUI extends StatelessWidget {
             label: Text(isEnglish ? 'Link a patient' : '환자 연결'),
           ),
       ],
-      if (!hasLinkError)
-        for (var index = 0; index < control.links.length; index++)
-          Padding(
-            padding: EdgeInsets.only(top: index == 0 ? 0 : 12),
-            child: _patientPreview(context, control.links[index], index == 0),
-          ),
+      if (!hasLinkError && control.links.isNotEmpty) _patientPager(context),
     ],
   );
 

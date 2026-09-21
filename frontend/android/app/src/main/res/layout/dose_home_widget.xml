@@ -4,12 +4,18 @@
     android:orientation="vertical" android:padding="16dp"
     android:background="@drawable/dose_widget_background">
     <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:gravity="center_vertical">
+        <ImageButton android:id="@+id/widget_patient_previous" android:layout_width="48dp" android:layout_height="48dp"
+            android:src="@drawable/dose_widget_previous" android:padding="10dp" android:visibility="gone"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="이전 환자" />
         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
             <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="나의 복약 일정" android:textColor="#007E5E" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
             <TextView android:id="@+id/widget_date" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:textColor="#595D65" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
+        <ImageButton android:id="@+id/widget_patient_next" android:layout_width="48dp" android:layout_height="48dp"
+            android:src="@drawable/dose_widget_next" android:padding="10dp" android:visibility="gone"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="다음 환자" />
         <TextView android:id="@+id/widget_count" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:textColor="#007E5E" android:textStyle="bold" android:textSize="14sp" android:paddingHorizontal="8dp" />
         <ImageButton android:id="@+id/widget_refresh" android:layout_width="48dp" android:layout_height="48dp"

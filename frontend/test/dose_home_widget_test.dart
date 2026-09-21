@@ -66,6 +66,183 @@ void main() {
     await db.close();
     await directory.delete(recursive: true);
   });
+
+  Map<String, dynamic> patient(
+    int id, {
+    String alias = '엄마',
+    String caregiver = 'patient-a',
+    bool active = true,
+    List<MedicationSchedule>? schedules,
+  }) => {
+    'link': {
+      'link_id': id,
+      'patient_hash': 'linked-$id',
+      'caregiver_hash': caregiver,
+      'patient_alias': alias,
+      'link_status': active,
+    },
+    'schedules': (schedules ?? [medication]).map((s) => s.toJson()).toList(),
+  };
+  Future<DoseWidgetState> patients(
+    List<Map<String, dynamic>> entries, {
+    String? revision,
+    bool failed = false,
+  }) async => (await store.updateWidget(
+    owner: 'patient-a',
+    now: now,
+    patientCache: {
+      'date': doseWidgetDay(now),
+      'patients': entries,
+      'failed': failed,
+    },
+    expectedPatientRevision: revision,
+  ))!;
+
+  test(
+    'patient setting uses read-only linked schedules, not owner doses or alarms',
+    () async {
+      final own = await state();
+      await tap(own);
+      await state(
+        config: {
+          'source': 'patients',
+          'alarms': {'morning': '19:55'},
+        },
+      );
+      final result = await patients([patient(1), patient(2, alias: '아빠')]);
+      final views = result.view['patients'] as List;
+      expect(views.map((p) => p['title']), ['엄마', '아빠']);
+      expect(views.first['done'], 0);
+      expect(views.first['heading'], '아침');
+      expect(result.data['takes'], isEmpty);
+      expect(result.data['cancels'], isEmpty);
+      for (final p in views) {
+        for (final page in p['pages'] as List) {
+          expect(page['action'], 'open');
+          expect(page['token'], isEmpty);
+          expect(page['overdue'], false);
+        }
+      }
+      expect((await store.pending('patient-a')).length, 1);
+    },
+  );
+
+  test('changing source rejects the old own-dose action atomically', () async {
+    final own = await state();
+    final result = (await store.updateWidget(
+      owner: 'patient-a',
+      now: now,
+      action: 'take',
+      actionToken: own.view['token'],
+      configuration: {'source': 'patients'},
+    ))!;
+    expect(await store.pending('patient-a'), isEmpty);
+    await tap(own);
+    expect(await store.pending('patient-a'), isEmpty);
+    final back = await state(config: {'source': 'self'});
+    expect(back.view['token'], isNot(own.view['token']));
+    expect(back.view['navigation_key'], isNot(result.view['navigation_key']));
+  });
+
+  test(
+    'patient keys survive alias changes and reorder but not unlink or day change',
+    () async {
+      await state(config: {'source': 'patients'});
+      final first = await patients([patient(1), patient(2)]);
+      final key = (first.view['patients'] as List).first['patient_key'];
+      final reordered = await patients([patient(2), patient(1, alias: '어머니')]);
+      expect((reordered.view['patients'] as List).last['patient_key'], key);
+      expect((reordered.view['patients'] as List).last['title'], '어머니');
+      Future<String?> resolve({DateTime? at, String owner = 'patient-a'}) =>
+          store.resolveWidgetPatient(
+            owner: owner,
+            patientKey: key,
+            navigationKey: first.view['navigation_key'],
+            now: at ?? now,
+          );
+      expect(await resolve(), 'linked-1');
+      expect(await resolve(owner: 'another-account'), isNull);
+      await patients([patient(2)]);
+      expect(await resolve(), isNull);
+      final linkedAgain = await patients([patient(1)]);
+      expect(
+        (linkedAgain.view['patients'] as List).first['patient_key'],
+        isNot(key),
+      );
+      expect(
+        (await state(at: now.add(const Duration(days: 1)))).view['patients'],
+        isEmpty,
+      );
+      expect(await resolve(at: now.add(const Duration(days: 1))), isNull);
+    },
+  );
+
+  test(
+    'patient refresh discards stale responses after unlink or source change',
+    () async {
+      await state(config: {'source': 'patients'});
+      final before = await patients([patient(1)]);
+      final revision = before.data['patient_revision'] as String;
+      await patients([]);
+      final stale = await patients([patient(1)], revision: revision);
+      expect(stale.view['patients'], isEmpty);
+      await state(config: {'source': 'self'});
+      final self = await patients([patient(1)], revision: revision);
+      expect(self.view['patients'], isNull);
+    },
+  );
+
+  test(
+    'only active owned links appear; failed query is not empty success',
+    () async {
+      await state(config: {'source': 'patients'});
+      final filtered = await patients([
+        patient(1),
+        patient(1),
+        patient(2, caregiver: 'foreign'),
+        patient(3, active: false),
+        patient(0),
+      ]);
+      expect((filtered.view['patients'] as List).length, 1);
+      final failed = await patients([], failed: true);
+      expect(failed.view['heading'], '환자 일정을 새로고침해주세요');
+      expect((await patients([])).view['heading'], '연결된 환자가 없습니다');
+    },
+  );
+
+  test(
+    'patient privacy and complete doses stay read-only and encrypted',
+    () async {
+      await state(config: {'source': 'patients', 'hide_names': true});
+      final result = await patients([
+        patient(
+          1,
+          schedules: [
+            medication.copyWith(
+              slotStatuses: {'morning': true, 'evening': true},
+            ),
+          ],
+        ),
+      ]);
+      final view = (result.view['patients'] as List).single;
+      expect(view['done'], 2);
+      expect(jsonEncode(view), isNot(contains('private medicine')));
+      expect((view['pages'] as List).every((p) => p['action'] == 'open'), true);
+      final rows = await db.query('metadata');
+      expect(jsonEncode(rows), isNot(contains('linked-1')));
+      expect(jsonEncode(rows), isNot(contains('엄마')));
+      await store.activate('other');
+      expect(
+        await store.resolveWidgetPatient(
+          owner: 'patient-a',
+          patientKey: view['patient_key'],
+          navigationKey: result.view['navigation_key'],
+          now: now,
+        ),
+        isNull,
+      );
+    },
+  );
   test('recording immediately shows the next remaining slot', () async {
     final before = await state();
     expect(before.view['heading'], '아침 08:00');
@@ -85,6 +262,26 @@ void main() {
     expect(after.view['status'], contains('전송 대기'));
     expect(op['operation_id'].toString().length, lessThanOrEqualTo(64));
   });
+
+  test(
+    'missing patient schedules are distinct from an empty schedule',
+    () async {
+      await state(config: {'source': 'patients'});
+      final missing = await patients([
+        {...patient(1, alias: ''), 'schedules': null},
+      ]);
+      final view = (missing.view['patients'] as List).single;
+      expect(view['counts_known'], false);
+      expect(view['pages'], isEmpty);
+      expect(view['title'], '환자 ED-1');
+      final empty = await patients([patient(1, schedules: [])]);
+      expect((empty.view['patients'] as List).single['counts_known'], true);
+      expect(
+        (empty.view['patients'] as List).single['heading'],
+        '등록된 복약 일정이 없어요',
+      );
+    },
+  );
   test('duplicate taps and different widgets share one operation', () async {
     final before = await state();
     expect((await state()).view['token'], before.view['token']);
@@ -450,74 +647,109 @@ void main() {
   );
 
   // 모든 복약을 기록한 뒤에도 각 시간대의 약과 완료 여부를 다시 볼 수 있다.
-  test('all completed slots retain cancellation but no completion tokens', () async {
-    await cache(
-      schedules: [
-        medication.copyWith(slotStatuses: {'morning': true, 'evening': true}),
-      ],
-    );
-    final value = await state();
-    final pages = (value.view['pages'] as List).cast<Map>();
-    expect(pages, hasLength(2));
-    expect(pages.every((page) => page['completed'] == true), isTrue);
-    expect(pages.every((page) => page['action'] == 'cancel'), isTrue);
-    expect(pages.every((page) => page['token'] != ''), isTrue);
-    expect(value.data['takes'], isEmpty);
-    expect(value.data['cancels'], hasLength(2));
-    expect(value.view['heading'], '오늘 복약 기록 완료');
-  });
+  test(
+    'all completed slots retain cancellation but no completion tokens',
+    () async {
+      await cache(
+        schedules: [
+          medication.copyWith(slotStatuses: {'morning': true, 'evening': true}),
+        ],
+      );
+      final value = await state();
+      final pages = (value.view['pages'] as List).cast<Map>();
+      expect(pages, hasLength(2));
+      expect(pages.every((page) => page['completed'] == true), isTrue);
+      expect(pages.every((page) => page['action'] == 'cancel'), isTrue);
+      expect(pages.every((page) => page['token'] != ''), isTrue);
+      expect(value.data['takes'], isEmpty);
+      expect(value.data['cancels'], hasLength(2));
+      expect(value.view['heading'], '오늘 복약 기록 완료');
+    },
+  );
 
   // 함수역할: 지정 시간대의 표시 데이터를 실제 버튼 입력과 같은 형태로 감싼다.
   // 매개변수: value 전체 상태, slot 조회 시간대. 반환값: 해당 페이지의 동작·토큰.
   DoseWidgetState page(DoseWidgetState value, String slot) => DoseWidgetState({
-    'view': (value.view['pages'] as List).cast<Map>().singleWhere((p) => p['slot'] == slot),
+    'view': (value.view['pages'] as List).cast<Map>().singleWhere(
+      (p) => p['slot'] == slot,
+    ),
   });
 
   // 날짜 표시는 기기 UTC 날짜가 아닌 복약 기준일에 맞추고 언어 설정을 따른다.
-  test('date label follows the medication timezone and language at midnight', () async {
-    expect((await state()).view['date_label'], '9월 21일 (월)');
-    final english = await state(config: {'language': 'en'});
-    expect(english.view['date_label'], '9/21 (Mon)');
-    final tomorrow = await state(at: DateTime.utc(2026, 9, 21, 15), config: {'language': 'ko'});
-    expect(tomorrow.view['date'], '2026-09-22');
-    expect(tomorrow.view['date_label'], '9월 22일 (화)');
-    expect(tomorrow.view['utc_offset_minutes'], doseWidgetUtcOffset);
-  });
+  test(
+    'date label follows the medication timezone and language at midnight',
+    () async {
+      expect((await state()).view['date_label'], '9월 21일 (월)');
+      final english = await state(config: {'language': 'en'});
+      expect(english.view['date_label'], '9/21 (Mon)');
+      final tomorrow = await state(
+        at: DateTime.utc(2026, 9, 21, 15),
+        config: {'language': 'ko'},
+      );
+      expect(tomorrow.view['date'], '2026-09-22');
+      expect(tomorrow.view['date_label'], '9월 22일 (화)');
+      expect(tomorrow.view['utc_offset_minutes'], doseWidgetUtcOffset);
+    },
+  );
 
   // 취소를 중복 수신하거나 재복용 뒤 이전 취소를 수신해도 새 기록에 적용하지 않는다.
-  test('duplicate cancellation and stale tokens cannot undo a later completion', () async {
-    final before = await state();
-    final taken = (await tap(before))!;
-    final cancel = page(taken, 'morning');
-    expect(page(await state(), 'morning').view['token'], cancel.view['token']);
-    final cancelled = (await tap(cancel))!;
-    await tap(cancel);
-    expect(await store.pending('patient-a'), hasLength(2));
-    final retake = page(cancelled, 'morning');
-    expect(retake.view['token'], isNot(before.view['token']));
-    await tap(retake);
-    final replay = (await tap(cancel))!;
-    expect(replay.view['done'], 1);
-    expect(page(replay, 'morning').view['token'], isNot(cancel.view['token']));
-    expect((await store.pending('patient-a')).map((op) => op['completed']), [true, false, true]);
-  });
+  test(
+    'duplicate cancellation and stale tokens cannot undo a later completion',
+    () async {
+      final before = await state();
+      final taken = (await tap(before))!;
+      final cancel = page(taken, 'morning');
+      expect(
+        page(await state(), 'morning').view['token'],
+        cancel.view['token'],
+      );
+      final cancelled = (await tap(cancel))!;
+      await tap(cancel);
+      expect(await store.pending('patient-a'), hasLength(2));
+      final retake = page(cancelled, 'morning');
+      expect(retake.view['token'], isNot(before.view['token']));
+      await tap(retake);
+      final replay = (await tap(cancel))!;
+      expect(replay.view['done'], 1);
+      expect(
+        page(replay, 'morning').view['token'],
+        isNot(cancel.view['token']),
+      );
+      expect((await store.pending('patient-a')).map((op) => op['completed']), [
+        true,
+        false,
+        true,
+      ]);
+    },
+  );
 
   // 완료/취소 토큰은 서로 바꿔서 사용할 수 없다.
   test('action kind is bound to its token', () async {
     final before = await state();
-    await store.updateWidget(now: now, action: 'cancel', actionToken: before.view['token']);
+    await store.updateWidget(
+      now: now,
+      action: 'cancel',
+      actionToken: before.view['token'],
+    );
     expect(await store.pending('patient-a'), isEmpty);
     final taken = (await tap(before))!;
-    await store.updateWidget(now: now, action: 'take', actionToken: page(taken, 'morning').view['token']);
+    await store.updateWidget(
+      now: now,
+      action: 'take',
+      actionToken: page(taken, 'morning').view['token'],
+    );
     expect(await store.pending('patient-a'), hasLength(1));
   });
 
   // 자정 이후에는 이전 날짜의 완료 기록도 위젯으로 수정하지 않는다.
-  test('yesterday cancellation does not write or change the operation date', () async {
-    final taken = (await tap(await state()))!;
-    await tap(page(taken, 'morning'), at: DateTime.utc(2026, 9, 21, 15));
-    expect(await store.pending('patient-a'), hasLength(1));
-  });
+  test(
+    'yesterday cancellation does not write or change the operation date',
+    () async {
+      final taken = (await tap(await state()))!;
+      await tap(page(taken, 'morning'), at: DateTime.utc(2026, 9, 21, 15));
+      expect(await store.pending('patient-a'), hasLength(1));
+    },
+  );
 
   // 다른 계정으로 바뀌거나 로그아웃하면 완료된 페이지의 취소 토큰도 거부한다.
   test('cancel token cannot survive an account switch or logout', () async {
@@ -532,39 +764,63 @@ void main() {
   });
 
   // 새 약이 추가되거나 기존 약이 삭제·미완료로 변경되면 오래된 전체 취소를 거부한다.
-  test('cancel checks the complete displayed medication set and prior status', () async {
-    final completed = medication.copyWith(slotStatuses: {'morning': true, 'evening': false});
-    for (final changed in <List<MedicationSchedule>>[
-      [],
-      [medication],
-      [completed, completed.copyWith(medicationID: '92')],
-      [completed, medication.copyWith(medicationID: '92')],
-    ]) {
-      await cache(schedules: [completed]);
-      final cancel = page(await state(), 'morning');
-      await cache(schedules: changed);
-      await tap(cancel);
-      expect(await store.pending('patient-a'), isEmpty);
-    }
-  });
+  test(
+    'cancel checks the complete displayed medication set and prior status',
+    () async {
+      final completed = medication.copyWith(
+        slotStatuses: {'morning': true, 'evening': false},
+      );
+      for (final changed in <List<MedicationSchedule>>[
+        [],
+        [medication],
+        [completed, completed.copyWith(medicationID: '92')],
+        [completed, medication.copyWith(medicationID: '92')],
+      ]) {
+        await cache(schedules: [completed]);
+        final cancel = page(await state(), 'morning');
+        await cache(schedules: changed);
+        await tap(cancel);
+        expect(await store.pending('patient-a'), isEmpty);
+      }
+    },
+  );
 
   // 앱에서 완료한 시간대의 모든 약을 취소하되 다른 시간대의 기록은 유지한다.
-  test('server-completed slot cancels all its medicines and retains other slots', () async {
-    final completed = medication.copyWith(slotStatuses: {'morning': true, 'evening': true});
-    await cache(schedules: [completed, completed.copyWith(medicationID: '92')]);
-    final result = (await tap(page(await state(), 'morning')))!;
-    expect(result.view['done'], 2);
-    expect(page(result, 'evening').view['completed'], isTrue);
-    final op = (await store.pending('patient-a')).single;
-    expect(op['medication_ids'], [91, 92]);
-    expect(op['completed'], false);
-  });
+  test(
+    'server-completed slot cancels all its medicines and retains other slots',
+    () async {
+      final completed = medication.copyWith(
+        slotStatuses: {'morning': true, 'evening': true},
+      );
+      await cache(
+        schedules: [
+          completed,
+          completed.copyWith(medicationID: '92'),
+        ],
+      );
+      final result = (await tap(page(await state(), 'morning')))!;
+      expect(result.view['done'], 2);
+      expect(page(result, 'evening').view['completed'], isTrue);
+      final op = (await store.pending('patient-a')).single;
+      expect(op['medication_ids'], [91, 92]);
+      expect(op['completed'], false);
+    },
+  );
 
   // 서버가 거부한 기록이 있으면 위젯에서 추가 취소하지 않고 앱 확인으로 유도한다.
   test('blocked sync rejects cancellation and removes action tokens', () async {
     final taken = (await tap(await state()))!;
-    final op = (await store.claim('patient-a', 'test-lease', now.millisecondsSinceEpoch))!;
-    await store.finish('patient-a', op['operation_id'], 'test-lease', blocked: true);
+    final op = (await store.claim(
+      'patient-a',
+      'test-lease',
+      now.millisecondsSinceEpoch,
+    ))!;
+    await store.finish(
+      'patient-a',
+      op['operation_id'],
+      'test-lease',
+      blocked: true,
+    );
     final blocked = (await tap(page(taken, 'morning')))!;
     expect(await store.pending('patient-a'), hasLength(1));
     expect(page(blocked, 'morning').view['action'], 'open');
@@ -587,13 +843,30 @@ void main() {
       if (!online) throw const SocketException('offline');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       uploaded.add(body);
-      return http.Response(jsonEncode({
-        'operation_id': body['operation_id'],
-        'schedule_date': '2026-09-21',
-        'data': [medication.copyWith(slotStatuses: {'morning': body['completed'], 'evening': false}).toJson()],
-      }), 200);
+      return http.Response(
+        jsonEncode({
+          'operation_id': body['operation_id'],
+          'schedule_date': '2026-09-21',
+          'data': [
+            medication
+                .copyWith(
+                  slotStatuses: {
+                    'morning': body['completed'],
+                    'evening': false,
+                  },
+                )
+                .toJson(),
+          ],
+        }),
+        200,
+      );
     });
-    final sync = DoseSyncService(owner: 'patient-a', client: client, openStore: () async => store, clock: () => now);
+    final sync = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
     try {
       await sync.drain();
       expect(sync.pendingCount, 3);
