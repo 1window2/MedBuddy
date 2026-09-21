@@ -28,10 +28,15 @@ const _allKey = Key('schedule-medication-select-all');
 const _countKey = Key('schedule-medication-selection-count');
 const _doneKey = Key('scheduleMedicationSelectionConfirm');
 
+// 함수이름: _all
+// 함수역할: 전체 선택 항목의 체크 상태와 활성 여부를 읽을 수 있도록 실제 위젯을 찾는다.
+// 매개변수: tester: 화면 검증 도구. 반환값: 전체 선택 체크 항목.
 CheckboxListTile _all(WidgetTester tester) =>
     tester.widget<CheckboxListTile>(find.byKey(_allKey));
 
 // 함수역할: 실제 첨부 선택 화면에 언어·큰 글씨 설정을 적용한다.
+// 함수이름: _selectionApp
+// 매개변수: schedules: 표시할 일정, selected: 초기 약·시간대 선택, language: 언어, scale: 글자 배율. 반환값: 선택 화면을 감싼 테스트 앱.
 Widget _selectionApp({
   List<MedicationSchedule> schedules = _medications,
   Map<String, Set<String>> selected = const {},
@@ -49,7 +54,13 @@ Widget _selectionApp({
   ),
 );
 
+// 함수이름: main
+// 함수역할: 약·시간대별 선택, 취소와 접근성 테스트를 등록한다.
+// 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 함수이름: 전체·일부 선택 전환 테스트
+  // 함수역할: 같은 약의 시간대별 선택을 독립적으로 계산하고 선택 조작이 기존 복용 상태를 바꾸지 않는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('전체 선택은 약/시간대별로 계산하고 다른 시간대의 선택을 유지한다', (tester) async {
     await tester.pumpWidget(_selectionApp());
     await tester.pumpAndSettle();
@@ -84,6 +95,9 @@ void main() {
   });
 
   for (final confirm in [true, false]) {
+    // 함수이름: 선택 결과 반환·취소 테스트
+    // 함수역할: 완료하면 약별 시간대를 합친 복사본을 반환하고 뒤로가면 선택을 버리는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('전체 선택 반환과 뒤로가기 취소: confirm=$confirm', (tester) async {
       List<MedicationSchedule>? result;
       var returned = false;
@@ -141,6 +155,9 @@ void main() {
     });
   }
 
+  // 함수이름: 선택 목록 정합성 테스트
+  // 함수역할: 초기 선택의 무효 식별자를 걸러내고 일정이 바뀌면 삭제된 약의 선택도 제거하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('초기 선택에서 없는 ID를 제외하고 목록 변경 시 제거된 약을 선택에서 뺀다', (tester) async {
     await tester.pumpWidget(
       _selectionApp(
@@ -162,6 +179,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 선택 불가 상태 테스트
+  // 함수역할: 일정이 없거나 약 식별자가 비어 있으면 전체 선택과 완료 버튼이 비활성화되는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('빈 목록과 빈 ID만 있는 목록에서는 전체 선택과 완료가 비활성화된다', (tester) async {
     for (final schedules in <List<MedicationSchedule>>[
       [],
@@ -191,6 +211,9 @@ void main() {
 
   for (final language in ['ko', 'en']) {
     for (final scale in [1.0, 1.6, 2.0]) {
+      // 함수이름: 선택 화면 접근성 테스트
+      // 함수역할: 한국어·영어와 큰 글씨에서 굵기·색상·선택 수를 유지하고 스크롤로 선택 도구에 접근할 수 있는지 검증한다.
+      // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
       testWidgets('다른 선택 화면의 굵은 글꼴과 접근 가능한 선택 도구: $language $scale', (
         tester,
       ) async {

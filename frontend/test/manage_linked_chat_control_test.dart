@@ -35,6 +35,9 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  // 함수이름: 복용 확인 전용 요청 테스트
+  // 함수역할: 일반 채팅 전송과 구분된 API에 원래 날짜·시간대·선택 약·요청 식별자를 전달하고 확인 메시지를 파싱하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test(
     'dose confirmation uses a dedicated endpoint with original date and selected IDs',
     () async {

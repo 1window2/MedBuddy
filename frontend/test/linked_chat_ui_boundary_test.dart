@@ -227,6 +227,10 @@ class _RetryChatControl extends ManageLinkedChat {
 }
 
 // 명시적 복용 확인 요청만 기록하고 일반 메시지 전송과 구분하는 대역.
+// 클래스명: _TakenChatControl
+// 역할: 복용 확인 요청의 대상과 재시도 식별자를 수집한다.
+// 주요 책임: 선택 시간대와 부분 실패·중복 입력을 검증할 응답을 제공한다.
+// 속성: takenRequestIds·takenMedicationIds·takenSlotKeys: 수집 요청, 실패 플래그·saveGate: 응답 제어.
 class _TakenChatControl extends _RetryChatControl {
   final List<String> takenRequestIds = [];
   final List<List<int>> takenMedicationIds = [];
@@ -237,6 +241,9 @@ class _TakenChatControl extends _RetryChatControl {
   bool _eveningFailed = false;
   final Completer<void>? saveGate;
 
+  // 함수이름: _TakenChatControl
+  // 함수역할: 초기 일정과 실패·지연 조건을 지정해 선택 시간대 복용 확인의 재시도를 재현한다.
+  // 매개변수: failFirstTaken: 첫 기록 실패, multiSlotMedication: 다중 시간대 약, failEveningOnce: 저녁 첫 실패, saveGate: 저장 대기, contexts: 일정 문맥. 반환값: 복용 확인 테스트 대역.
   _TakenChatControl({
     this.failFirstTaken = false,
     this.multiSlotMedication = false,
@@ -271,6 +278,9 @@ class _TakenChatControl extends _RetryChatControl {
              ],
        );
 
+  // 함수이름: requestMedicationContexts
+  // 함수역할: 다중 시간대 설정이면 같은 약에 아침·저녁 시간대를 제공해 선택 범위 보존을 검사한다.
+  // 매개변수: linkId: 조회할 연동 식별자. 반환값: 채팅에서 선택할 약 문맥 목록 Future.
   @override
   Future<List<ChatMedicationContext>> requestMedicationContexts({
     required int linkId,
@@ -285,6 +295,9 @@ class _TakenChatControl extends _RetryChatControl {
     ];
   }
 
+  // 함수이름: recordMedicationTaken
+  // 함수역할: 원래 날짜를 확인하고 요청·약·시간대를 수집하며 지정한 실패·대기 후 완료 응답을 제공한다.
+  // 매개변수: linkId: 연동, clientMessageId: 요청 식별자, scheduleDate: 기준일, slotKey: 시간대, medicationIds: 선택 약. 반환값: 확인 메시지와 갱신 일정 Future; 실패 조건이면 StateError.
   @override
   Future<ChatMedicationTakenResult> recordMedicationTaken({
     required int linkId,
@@ -326,15 +339,18 @@ class _TakenChatControl extends _RetryChatControl {
   }
 }
 
-// 클래스명: _ChatScheduleControl
-// 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
-// 주요 책임:
-// - 채팅의 저녁 복약 카드가 이동할 일정 한 건을 제공한다.
 // Records the exact dose handed to the offline queue without platform storage.
+// 클래스명: _ChatDoseSyncService
+// 역할: 채팅에서 선택한 복용 요청을 실제 저장소 없이 수집한다.
+// 주요 책임: 캐시가 있는 경로를 재현하고 원래 날짜·시간대·연동 전달을 검증한다.
+// 속성: requests: 대기열에 전달된 약 식별자·시간대·날짜·연동 목록.
 class _ChatDoseSyncService extends DoseSyncService {
   final requests =
       <({List<int> ids, String slot, String? date, int? linkId})>[];
 
+  // 함수이름: _ChatDoseSyncService
+  // 함수역할: 플랫폼 저장소 없이 테스트 계정과 고정 시각으로 복용 동기화 대역을 초기화한다.
+  // 매개변수: client: 실제 통신을 대신할 HTTP 클라이언트. 반환값: 요청을 수집하는 동기화 대역.
   _ChatDoseSyncService(http.Client client)
     : super(
         owner: 'patient-a',
@@ -342,9 +358,15 @@ class _ChatDoseSyncService extends DoseSyncService {
         clock: () => DateTime.utc(2026, 9, 21, 3),
       );
 
+  // 함수이름: hasCache
+  // 함수역할: 채팅이 로컬 저장 경로를 선택하도록 일정 캐시가 있다고 알린다.
+  // 매개변수: 없음. 반환값: 항상 true.
   @override
   bool get hasCache => true;
 
+  // 함수이름: schedules
+  // 함수역할: 하나의 약이 아침·저녁에 등장하는 일정을 제공해 정확한 시간대 선택을 검사한다.
+  // 매개변수: 없음. 반환값: 테스트 일정 목록.
   @override
   List<MedicationSchedule> get schedules => const [
     MedicationSchedule(
@@ -357,6 +379,9 @@ class _ChatDoseSyncService extends DoseSyncService {
     ),
   ];
 
+  // 함수이름: record
+  // 함수역할: 완료 여부와 약명을 확인하고 대기열에 전달될 약·시간대·날짜·연동을 복사해 보관한다.
+  // 매개변수: medicationIds: 약 목록, slotKey: 시간대, completed: 완료 여부, scheduleDate: 기준일, linkId: 연동, medicationNames: 약명. 반환값: 저장 수락을 나타내는 true Future.
   @override
   Future<bool> record({
     required List<int> medicationIds,
@@ -378,6 +403,10 @@ class _ChatDoseSyncService extends DoseSyncService {
   }
 }
 
+// 클래스명: _ChatScheduleControl
+// 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
+// 주요 책임:
+// - 채팅의 저녁 복약 카드가 이동할 일정 한 건을 제공한다.
 class _ChatScheduleControl extends CheckSchedule {
   // 함수이름: requestTodayMedicationSchedule
   // 함수역할:
@@ -603,6 +632,9 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: 선택 시간대 오프라인 저장 테스트
+  // 함수역할: 저녁 약을 선택하면 추가 확인창 없이 원래 날짜·연동·시간대를 대기열에 전달하고 별도 채팅 요청은 보내지 않는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('selected evening dose goes straight to the offline queue', (
     tester,
   ) async {
@@ -662,6 +694,9 @@ void main() {
     control.dispose();
   });
 
+  // 함수이름: 즉시 복용 확인 중복 방지 테스트
+  // 함수역할: 저장 중 반복 입력에도 선택 약을 한 번만 기록하고 완료 응답을 공용 일정과 확인 메시지에 반영하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets(
     'taken records immediately once and updates the shared schedule',
     (tester) async {
@@ -736,6 +771,9 @@ void main() {
     },
   );
 
+  // 함수이름: 큰 글씨 복용 재시도 테스트
+  // 함수역할: 좁은 화면·큰 글씨에서 추가 확인창 없이 재시도하며 실패한 요청 식별자를 재사용하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets(
     'failed immediate dose save retries the same ID at large text size',
     (tester) async {
@@ -791,6 +829,9 @@ void main() {
   );
 
   for (final mode in ['morning', 'evening', 'both', 'partial', 'changed']) {
+    // 함수이름: 선택 시간대 보존·부분 재시도 테스트
+    // 함수역할: 선택을 다시 열어도 시간대를 보존하고 일정 변경 시 기록을 거부하며 부분 실패 시 실패한 시간대만 같은 식별자로 재시도하는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('selected dose slots are preserved without another prompt: $mode', (
       tester,
     ) async {
