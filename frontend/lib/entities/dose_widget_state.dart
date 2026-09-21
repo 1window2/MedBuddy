@@ -52,10 +52,10 @@ class DoseWidgetState {
   }
 
   // 함수이름: DoseWidgetState.build
-  // 함수역할: 저장된 일정과 전송 대기 기록을 합쳐 시간순 첫 미완료 일정을 표시한다.
+  // 함수역할: 저장된 일정과 전송 대기 기록을 합쳐 시간대별 조회·복용·취소 상태를 만든다.
   // 매개변수: owner 계정, cache 일정, operations 대기 기록, previous 이전 토큰,
   //   now 기준 시각, configuration 표시 설정.
-  // 반환값: 다음 일정 또는 오늘 기록 완료 상태. 이전 되돌리기 표시는 유지하지 않는다.
+  // 반환값: 오늘 날짜와 시간대 페이지. 복용은 미완료 약, 취소는 완료 시간대의 약에 연결한다.
   factory DoseWidgetState.build({
     required String owner,
     required Map<String, dynamic>? cache,
@@ -67,10 +67,14 @@ class DoseWidgetState {
     final config =
         configuration ??
         Map<String, dynamic>.from(previous['config'] as Map? ?? {});
+    final oldView = previous['view'] as Map? ?? {};
     final english = config['language'] == 'en';
     String tr(String ko, String en) => english ? en : ko;
     final day = doseWidgetDay(now);
     final local = doseWidgetLocalTime(now);
+    final weekday = (english
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : ['월', '화', '수', '목', '금', '토', '일'])[local.weekday - 1];
     final midnight = DateTime.utc(
       local.year,
       local.month,
@@ -93,47 +97,105 @@ class DoseWidgetState {
           (int.tryParse(parts.last) ?? 0);
     }
 
+    final slots = medicationScheduleSlotKeys
+        .where((slot) => schedules.any((s) => s.slotKeys.contains(slot)))
+        .toList();
     final pendingSlots =
-        medicationScheduleSlotKeys
+        slots
             .where(
               (slot) => schedules.any(
                 (s) => s.slotKeys.contains(slot) && !s.isSlotCompleted(slot),
               ),
             )
             .toList()
-          ..sort((a, b) => minute(a).compareTo(minute(b)));
+          ..sort((a, b) {
+            final order = minute(a).compareTo(minute(b));
+            return order != 0
+                ? order
+                : medicationScheduleSlotKeys
+                      .indexOf(a)
+                      .compareTo(medicationScheduleSlotKeys.indexOf(b));
+          });
     // 완료 기록은 로컬 전송 대기 상태에도 반영되어 다음 시간대로 바로 넘어간다.
     final slot = pendingSlots.firstOrNull;
-    final medications = schedules
-        .where((s) => s.slotKeys.contains(slot) && !s.isSlotCompleted(slot!))
-        .toList();
-    final ids =
-        medications
-            .map((s) => int.tryParse(s.medicationID))
-            .whereType<int>()
-            .toSet()
-            .toList()
-          ..sort();
-    final signature = '$day:$slot:${ids.join(',')}';
-    final oldTake = Map<String, dynamic>.from(previous['take'] as Map? ?? {});
-    final take = slot == null || ids.isEmpty || blocked
-        ? null
-        : <String, dynamic>{
-            'token': oldTake['signature'] == signature
-                ? oldTake['token']
-                : newWidgetActionToken(),
-            'signature': signature,
-            'date': day,
-            'slot': slot,
-            'ids': ids,
-            'names': medications
-                .map((m) => m.displayNameForLanguage(english ? 'en' : 'ko'))
-                .toList(),
-          };
     final labels = english
         ? ['Morning', 'Lunch', 'Evening', 'Bedtime']
         : ['아침', '점심', '저녁', '취침 전'];
     String label(String key) => labels[medicationScheduleSlotKeys.indexOf(key)];
+    final takes = <String, Map<String, dynamic>>{};
+    final cancels = <String, Map<String, dynamic>>{};
+    final pages = <Map<String, dynamic>>[];
+    final oldTakes = previous['takes'] as Map? ?? {};
+    final oldCancels = previous['cancels'] as Map? ?? {};
+    final legacyTake = previous['take'] as Map?;
+    for (final pageSlot in slots) {
+      final all = schedules
+          .where((s) => s.slotKeys.contains(pageSlot))
+          .toList();
+      final remaining = all.where((s) => !s.isSlotCompleted(pageSlot)).toList();
+      final completed = remaining.isEmpty;
+      final targets = completed ? all : remaining;
+      final ids =
+          targets
+              .map((s) => int.tryParse(s.medicationID))
+              .whereType<int>()
+              .toSet()
+              .toList()
+            ..sort();
+      final signature = '${completed ? 'cancel:' : ''}$day:$pageSlot:${ids.join(',')}';
+      final oldAction = completed
+          ? oldCancels[pageSlot] as Map?
+          : oldTakes[pageSlot] as Map? ??
+          (legacyTake?['slot'] == pageSlot ? legacyTake : null);
+      if (ids.isNotEmpty && !blocked) {
+        (completed ? cancels : takes)[pageSlot] = {
+          'token': oldAction?['signature'] == signature
+              ? oldAction!['token']
+              : newWidgetActionToken(),
+          'signature': signature,
+          'date': day,
+          'slot': pageSlot,
+          'ids': ids,
+          'names': targets
+              .map((m) => m.displayNameForLanguage(english ? 'en' : 'ko'))
+              .toList(),
+        };
+      }
+      final pageDone = all.length - remaining.length;
+      final pageAction = completed ? cancels[pageSlot] : takes[pageSlot];
+      pages.add({
+        'slot': pageSlot,
+        'label': label(pageSlot),
+        'heading': '${label(pageSlot)} ${time(pageSlot)}',
+        'details': config['hide_names'] == true
+            ? tr(
+                '복용 완료 $pageDone개 · 미복용 ${remaining.length}개',
+                '$pageDone taken · ${remaining.length} not taken',
+              )
+            : all
+                  .map((m) {
+                    final name = m.displayNameForLanguage(
+                      english ? 'en' : 'ko',
+                    );
+                    final taken = m.isSlotCompleted(pageSlot)
+                        ? tr('복용 완료', 'Taken')
+                        : tr('미복용', 'Not taken');
+                    return '$name · $taken';
+                  })
+                  .join('\n'),
+        'completed': completed,
+        'action': pageAction == null ? 'open' : completed ? 'cancel' : 'take',
+        'token': pageAction?['token'] ?? '',
+        'button': pageAction == null
+            ? tr('일정 열기', 'Open schedule')
+            : completed
+            ? tr('복용 취소', 'Undo dose')
+            : tr('복용했어요', 'Taken'),
+        'overdue':
+            !completed && minute(pageSlot) < local.hour * 60 + local.minute,
+      });
+    }
+    final take = takes[slot];
     final names = (take?['names'] as List? ?? []).cast<String>();
     final details = config['hide_names'] == true
         ? tr('복약 일정 ${names.length}개', '${names.length} scheduled medicines')
@@ -149,6 +211,8 @@ class DoseWidgetState {
     final view = <String, dynamic>{
       'language': english ? 'en' : 'ko',
       'date': day,
+      'date_label': tr('${local.month}월 ${local.day}일 ($weekday)', '${local.month}/${local.day} ($weekday)'),
+      'utc_offset_minutes': doseWidgetUtcOffset,
       'title': tr('나의 복약 일정', 'My medication'),
       'heading': !current
           ? tr('오늘 일정을 불러와주세요', 'Refresh today\'s schedule')
@@ -171,11 +235,18 @@ class DoseWidgetState {
           : tr('일정 열기', 'Open schedule'),
       'expires': midnight.millisecondsSinceEpoch,
       'overdue': slot != null && minute(slot) < local.hour * 60 + local.minute,
+      'pages': pages,
+      // 날짜·계정이 바뀌면 이전 위젯의 조회 위치를 재사용하지 않는다.
+      'navigation_key': previous['owner'] == owner && oldView['date'] == day
+          ? oldView['navigation_key'] ?? newWidgetActionToken()
+          : newWidgetActionToken(),
     };
     return DoseWidgetState({
       'owner': owner,
       'config': config,
       'take': take,
+      'takes': takes,
+      'cancels': cancels,
       'view': view,
     });
   }
