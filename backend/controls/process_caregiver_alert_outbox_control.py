@@ -2,10 +2,13 @@
 # 역할: DB에 보존된 보호자 알림 요청을 안전하게 선점하고 전송한다.
 
 import logging
+import re
+import sqlite3
 from datetime import timedelta
 
 from sqlalchemy import or_, update
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import DBAPIError
 
 from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
@@ -31,6 +34,21 @@ logger = logging.getLogger(__name__)
 _PROCESSING_TIMEOUT = timedelta(minutes=5)
 _MAX_RETRY_DELAY_SECONDS = 15 * 60
 _MAX_DELIVERY_ATTEMPTS = 8
+
+
+def _delivery_error_summary(exc: Exception) -> str:
+    """Expose schema diagnostics without logging SQL parameters, tokens or patient data."""
+    summary = type(exc).__name__
+    if isinstance(exc, DBAPIError):
+        original = exc.orig
+        code = getattr(original, "sqlstate", None) or getattr(original, "sqlite_errorname", None)
+        if code and re.fullmatch(r"[A-Z0-9_]+", str(code)):
+            summary += f" [{code}]"
+        if isinstance(original, sqlite3.OperationalError) and re.fullmatch(
+            r"no such (?:column|table): [A-Za-z_][A-Za-z0-9_.]*", str(original)
+        ):
+            summary += f": {original}; check Alembic migrations"
+    return summary[:500]
 
 
 # 클래스명: _RetryablePushDeliveryError
@@ -240,7 +258,7 @@ class ProcessCaregiverAlertOutbox:
                 row.status = CAREGIVER_ALERT_STATUS_FAILED
                 row.available_at = utc_now() + timedelta(seconds=retry_seconds)
             row.processing_started_at = None
-            row.last_error = type(exc).__name__[:500]
+            row.last_error = _delivery_error_summary(exc)
             self.db.commit()
             logger.warning(
                 "Caregiver alert outbox delivery failed "
@@ -248,6 +266,6 @@ class ProcessCaregiverAlertOutbox:
                 outbox_id,
                 row.attempt_count,
                 attempts_exhausted,
-                type(exc).__name__,
+                row.last_error,
             )
             return "failed"

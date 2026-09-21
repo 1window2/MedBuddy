@@ -6,11 +6,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from alembic.config import Config
-from alembic.migration import MigrationContext
-from alembic.script import ScriptDirectory
 from alembic.util.exc import CommandError
 from fastapi import FastAPI, HTTPException
 from redis.asyncio import Redis
@@ -36,7 +32,8 @@ from boundaries.firebase_admin_boundary import verify_firebase_admin_credentials
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.config import settings
 from core.api_contract import ApiContractMiddleware
-from core.database import Base, SessionLocal, engine
+from core.database import SessionLocal, engine
+from core.schema_initialization import prepare_database_schema, verify_database_revision
 from core.request_limits import RequestBodyLimitMiddleware
 from core.request_rate_limits import (
     DEFAULT_RATE_LIMIT_RULES,
@@ -57,20 +54,11 @@ from entities import pharmacy_catalog_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401
-from entities.caregiver_alert_outbox_entity import (
-    ensure_caregiver_alert_outbox_schema,
-)
-from entities.caregiver_notification_entity import ensure_caregiver_notification_schema
-from entities.medication_completion_entity import ensure_medication_completion_schema
-from entities.medication_alarm_entity import ensure_medication_alarm_schema
-from entities.saved_medication_entity import ensure_saved_medication_schema
-from entities.user_setting_entity import ensure_user_setting_schema
 from services.data_maintenance import PeriodicDataMaintenanceRunner
 from services.caregiver_alert_outbox_worker import CaregiverAlertOutboxWorker
 from services.chat_connection_manager import ChatConnectionManager
 
 
-_BACKEND_ROOT = Path(__file__).resolve().parent
 _READINESS_CACHE_TTL_SECONDS = 5.0
 _READINESS_EXCEPTIONS = (
     SQLAlchemyError,
@@ -150,12 +138,7 @@ class _ReadinessProbeCache:
 # Returns:
 # - None.
 def _verify_database_revision(connection: object) -> None:
-    alembic_config = Config(str(_BACKEND_ROOT / "alembic.ini"))
-    script = ScriptDirectory.from_config(alembic_config)
-    expected_heads = set(script.get_heads())
-    current_heads = set(MigrationContext.configure(connection).get_current_heads())
-    if current_heads != expected_heads:
-        raise RuntimeError("Database migration revision does not match Alembic head.")
+    verify_database_revision(connection)
 
 
 # Function Name: _verify_catalog_seed
@@ -182,7 +165,7 @@ def _verify_catalog_seed(connection: object) -> None:
 
 # Function Name: _verify_database_dependencies
 # Description:
-# - Checks database connectivity and, in production, migration revision and catalog seed readiness.
+# - Checks connectivity and migration revision in every environment, plus production catalog seeds.
 # Parameters:
 # - None.
 # Returns:
@@ -190,8 +173,8 @@ def _verify_catalog_seed(connection: object) -> None:
 def _verify_database_dependencies() -> None:
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
+        _verify_database_revision(connection)
         if settings.APP_ENV == "production":
-            _verify_database_revision(connection)
             _verify_catalog_seed(connection)
 
 
@@ -290,22 +273,14 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # Function Name: create_app
 # Description:
-# - Wires routers, payload and rate limits, contract metadata, trusted hosts and shared state, with optional local schema compatibility setup.
+# - Verifies schema before workers start and wires routers, limits, security and shared state.
 # Parameters:
 # - None.
 # Returns:
 # - Configured FastAPI application.
 def create_app() -> FastAPI:
     configure_logging()
-    if settings.AUTO_CREATE_SCHEMA:
-        Base.metadata.create_all(bind=engine)
-        if engine.dialect.name == "sqlite":
-            ensure_saved_medication_schema(engine)
-            ensure_medication_completion_schema(engine)
-            ensure_medication_alarm_schema(engine)
-            ensure_caregiver_notification_schema(engine)
-            ensure_caregiver_alert_outbox_schema(engine)
-            ensure_user_setting_schema(engine)
+    prepare_database_schema(engine, auto_create=settings.AUTO_CREATE_SCHEMA)
     app = FastAPI(
         title="MedBuddy API",
         version="0.1.0-beta",

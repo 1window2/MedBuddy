@@ -401,6 +401,53 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.complete()
         self.assertEqual(self.actions.localDeliveries("caregiver-a"), [])
 
+    def test_migration_alone_recovers_missing_capability_and_local_snooze_delivery(self):
+        from alembic import command
+        from alembic.config import Config
+        from boundaries.push_notification_boundary import DisabledPushNotificationBoundary
+
+        # Reproduce a legacy create_all database with no FCM tokens, as in disabled auth.
+        root_id = self.root.id
+        self.db.query(_DevicePushToken).delete()
+        self.root.status = "pending"
+        self.db.commit()
+        self.db.close()
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE device_push_tokens DROP COLUMN supports_caregiver_actions")
+        processor = ProcessCaregiverAlertOutbox(self.db, DisabledPushNotificationBoundary())
+        with patch("controls.process_caregiver_alert_outbox_control.utc_now", return_value=self.now):
+            with self.assertLogs("controls.process_caregiver_alert_outbox_control", level="WARNING") as logs:
+                self.assertEqual(processor.processOne(root_id), "failed")
+        self.assertIn("no such column: device_push_tokens.supports_caregiver_actions", logs.output[0])
+        self.assertNotIn("SELECT", logs.output[0])
+        self.assertNotIn("caregiver-a", logs.output[0])
+        self.assertEqual(self.actions.localDeliveries("caregiver-a"), [])
+        self.db.close()
+
+        # Adopt only this known test fixture's baseline, then use the real migration.
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        with self.engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.stamp(config, "a6e2d903bc71")
+            command.upgrade(config, "head")
+
+        retry_time = self.now + timedelta(seconds=20)
+        with patch("controls.process_caregiver_alert_outbox_control.utc_now", return_value=retry_time), \
+             patch("controls.manage_caregiver_alert_control.utc_now", return_value=retry_time):
+            self.assertEqual(processor.processOne(root_id), "sent")
+            self.assertEqual(len(self.actions.localDeliveries("caregiver-a")), 1)
+            first = self.actions.snooze(root_id, "caregiver-a")
+            self.assertFalse(self.actions.snooze(root_id, "caregiver-a")["created"])
+            child_id = first["data"]["alert_id"]
+            self.assertEqual(processor.processOne(child_id), "skipped")
+        due = retry_time + timedelta(minutes=10)
+        with patch("controls.process_caregiver_alert_outbox_control.utc_now", return_value=due), \
+             patch("controls.manage_caregiver_alert_control.utc_now", return_value=due):
+            self.assertEqual(processor.processOne(child_id), "sent")
+            self.assertEqual(len(self.actions.localDeliveries("caregiver-a")), 2)
+            self.assertTrue(self.actions.snooze(child_id, "caregiver-a")["created"])
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+
     def test_partial_delivery_failure_still_allows_received_notification_action(self):
         self.root.status = "failed"
         self.root.attempt_count = 1

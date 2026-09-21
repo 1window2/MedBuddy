@@ -186,6 +186,30 @@ form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
 optional saved-medication image enrichment must be disabled. The experimental
 loose-pill flow still requires the MFDS identification catalog.
 
+DB 초기화 및 갱신 정책:
+
+- `AUTO_CREATE_SCHEMA=true`는 **빈 DB만** Alembic `head`로 초기화한다.
+  기존 DB에 `create_all()`이나 임의의 컬럼 보정을 적용하지 않는다.
+- 이미 Alembic으로 관리되는 DB는 Backend/worker를 중지하고 백업한 뒤,
+  `backend/`에서 아래 명령으로 갱신한다. 개발·staging·production 모두 같은
+  migration 체인을 사용하며, 운영에서는 `AUTO_CREATE_SCHEMA=false`를 유지한다.
+
+```powershell
+python -m alembic current
+python -m alembic heads
+python -m alembic upgrade head
+```
+
+- 기존 테이블은 있지만 `alembic_version`이 없는 구형 로컬 DB는 자동 변환하지 않는다.
+  먼저 SQLite backup API로 WAL까지 포함한 일관된 백업을 만들고, 복사본의
+  테이블·컬럼·제약조건·데이터 무결성을 특정 migration revision과 대조한다.
+  확인된 baseline에만 `alembic stamp <검증한_revision>`을 수행하고
+  `alembic upgrade head`를 적용해 데이터 보존을 확인한 후 실제 DB에 적용한다.
+  다른 DB의 revision을 그대로 사용하거나 `stamp head`로 누락된 migration을
+  건너뛰지 않는다. DB 삭제·수동 `ALTER TABLE`은 필요하지 않다.
+- 앱은 migration revision 및 ORM 필수 컬럼 불일치 시 worker 시작 전에 중단한다.
+  따라서 `AUTO_CREATE_SCHEMA=true`도 기존 DB의 migration을 대체하지 않는다.
+
 Start the API server:
 
 ```powershell

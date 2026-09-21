@@ -7,9 +7,84 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, MetaData, Table, select
 from datetime import datetime
+import pytest
+
+from core.schema_initialization import prepare_database_schema, verify_database_revision
 
 from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
+
+
+def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'bootstrap.db').as_posix()}")
+    try:
+        prepare_database_schema(engine, auto_create=True)
+        prepare_database_schema(engine, auto_create=True)
+        with engine.connect() as connection:
+            verify_database_revision(connection)
+        assert "supports_caregiver_actions" in {
+            column["name"] for column in inspect(engine).get_columns("device_push_tokens")
+        }
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("auto_create", [False, True])
+def test_unversioned_database_is_rejected_without_changing_data_or_schema(
+    tmp_path: Path, auto_create: bool,
+) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'legacy.db').as_posix()}")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("CREATE TABLE device_push_tokens (id INTEGER PRIMARY KEY, token TEXT)")
+            connection.exec_driver_sql("INSERT INTO device_push_tokens VALUES (1, 'preserved')")
+        with pytest.raises(RuntimeError, match="no Alembic revision"):
+            prepare_database_schema(engine, auto_create=auto_create)
+        assert inspect(engine).get_table_names() == ["device_push_tokens"]
+        with engine.connect() as connection:
+            assert connection.exec_driver_sql("SELECT * FROM device_push_tokens").all() == [(1, "preserved")]
+    finally:
+        engine.dispose()
+
+
+def test_old_revision_requires_explicit_upgrade_and_never_create_all(tmp_path: Path) -> None:
+    url = f"sqlite:///{(tmp_path / 'old-revision.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "a6e2d903bc71")
+    engine = create_engine(url)
+    try:
+        with pytest.raises(RuntimeError, match="alembic upgrade head"):
+            prepare_database_schema(engine, auto_create=True)
+        assert "supports_caregiver_actions" not in {
+            column["name"] for column in inspect(engine).get_columns("device_push_tokens")
+        }
+        command.upgrade(config, "head")
+        prepare_database_schema(engine, auto_create=False)
+    finally:
+        engine.dispose()
+
+
+def test_matching_revision_does_not_hide_missing_orm_column(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'drift.db').as_posix()}")
+    try:
+        prepare_database_schema(engine, auto_create=True)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE device_push_tokens DROP COLUMN supports_caregiver_actions")
+        with pytest.raises(RuntimeError, match="device_push_tokens.supports_caregiver_actions"):
+            prepare_database_schema(engine, auto_create=True)
+    finally:
+        engine.dispose()
+
+
+def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'manual.db').as_posix()}")
+    try:
+        with pytest.raises(RuntimeError, match="no Alembic revision"):
+            prepare_database_schema(engine, auto_create=False)
+        assert inspect(engine).get_table_names() == []
+    finally:
+        engine.dispose()
 
 
 def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
