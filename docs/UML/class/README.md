@@ -22,6 +22,9 @@
 - `05_AuthenticationSettingsAccessibility.puml` / `05_AuthenticationSettingsAccessibility.png`
   - 인증, 사용자 설정 저장, 언어 및 음성 안내 구조를 보여준다.
   - Firebase 인증과 App Check 적용 조건, 전경 Session 복구를 구분한다.
+- `06_DoseSyncAndWidget.puml` / `06_DoseSyncAndWidget.png`
+  - 암호화된 복약 전송 큐와 서버 처리 영수증, 홈 위젯의 연결 구조를 보여준다.
+  - 본인 복용 기록과 연결 환자의 읽기 전용 조회를 분리한다.
 
 ## Usage
 
@@ -50,6 +53,11 @@
 일반 채팅은 복용 약이 없어도 가능하며, HTTP 저장 후 Router에서 WebSocket으로 방송한다.
 미접속 상대의 일반 채팅 Push는 BackgroundTasks이고 보호자 알림 Outbox와 별개다.
 Outbox의 자동 완료 메시지 저장 자체는 WebSocket 방송을 수행하지 않는다.
+환자의 `먹었어요`는 선택한 약·시간대·날짜를 기기에 먼저 저장하고 서버의 복약
+기록과 채팅 영수증을 함께 갱신한다. 응답 전까지 전송 대기를 표시하며 같은 요청을
+재전송해도 중복 기록하지 않는다. 일반 채팅 문구로 복용 여부를 추정하지 않는다.
+앱 홈과 위젯은 `홈 복약 일정` 설정을 공유한다. 환자가 여러 명이면 앱은 좌우
+슬라이드·화살표, 위젯은 별칭 옆 화살표로 전환하며 보호자가 복용 상태를 변경할 수 없다.
 채팅 기록·약국 자료·Pill Catalog는 Application Database를 사용하며,
 알림함과 직접 등록 사진은 기기에 저장한다. Redis Counter와 프로세스 메모리의
 WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼동하지 않는다.
@@ -58,4 +66,6 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을
 먼저 수정한 뒤 같은 이름의 `.png`도 다시 생성한다.
 
-이번 beta/v0.2.0 정합성 갱신은 텍스트 원본만 반영했으며, 기존 PNG는 갱신하지 않았다.
+기존 beta/v0.2.0 정합성 갱신은 텍스트 원본만 반영했다. 2026-09-21에는 새 `06`
+클래스 그림과 복약 동기화·홈 위젯·전체 시스템 시퀀스 PNG를 원본에서 생성했다.
+그 밖의 기존 PNG는 최신 텍스트 원본과 차이가 있을 수 있다.

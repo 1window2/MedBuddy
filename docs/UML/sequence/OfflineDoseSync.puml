@@ -1,0 +1,36 @@
+@startuml
+title Offline Medication Completion Sync
+actor Patient
+participant "Home / Schedule / Chat" as UI
+participant DoseSyncService as Sync
+database "Encrypted device outbox" as Local
+participant "Android WorkManager" as Worker
+participant "Completion API" as API
+database "Server DB" as DB
+
+Patient -> UI: Taken / undo
+UI -> Sync: Explicit IDs, slot, original date, state
+Sync -> Local: Persist operation ID + encrypted payload
+Local --> Sync: Durable save
+Sync --> UI: Local state + pending indicator
+Sync -> Worker: Schedule connected work
+note over Local, Worker: Queue survives process death; account-scoped leases serialize senders
+Worker -> Sync: Restore authenticated session and drain
+Sync -> Local: Claim earliest pending operation
+Sync -> API: Same operation ID on every retry
+API -> DB: Begin transaction; insert unique receipt
+alt New valid operation
+  API -> DB: Update original day's dose + optional chat + current-day alert outbox
+  API -> DB: Commit
+else Previously accepted operation
+  API -> DB: Read receipt; do not reapply dose
+else Date / ownership / schedule rejected
+  API -> DB: Rollback
+  API --> Sync: Rejection
+  Sync -> Local: Retain for review; pause later changes
+end
+API --> Sync: Receipt + today's authoritative schedule
+Sync -> Local: Atomically cache response and remove claimed operation
+Sync --> UI: Remove pending indicator
+note over API, DB: Historical sync never checks today's dose or emits a fresh completion alert
+@enduml

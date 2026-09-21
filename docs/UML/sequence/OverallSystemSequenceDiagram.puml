@@ -35,6 +35,8 @@ box "Flutter Frontend"
     control "AuthenticationControl" as AuthControl
     participant "FirebaseRuntimeService" as FirebaseRuntime
     participant "ForegroundRecoveryService" as Recovery
+    participant "DoseSyncService" as DoseSync
+    database "DoseOutboxStore\n계정별 암호화 SQLite" as DoseStore
     control "MedBuddyViewModel" as ViewModel
     control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
@@ -528,33 +530,33 @@ ViewModel --> UI : CheckScheduleUI 출력
 alt 개별 약 복약 완료 또는 취소
     Patient -> UI : 특정 약의 복약 완료 상태 선택
     UI -> ViewModel : requestMedicationDoseStatusUpdate(slotKey, schedule)
-    ViewModel -> FrontControl : CheckSchedule.updateMedicationStatus()
-    FrontControl -> ApiClient : PATCH /schedule/{id}/status
-    ApiClient -> Router : 개별 시간대 완료 상태 변경
-    Router -> BackControl : CheckSchedule.updateMedicationStatus()
 else 시간대 전부 체크 또는 전부 해제
     Patient -> UI : 시간대 전체 상태 Toggle 선택
     UI -> ViewModel : requestMedicationSlotStatusUpdate(slotKey, status)
-    ViewModel -> FrontControl : CheckSchedule.updateMedicationSlotStatus()
-    FrontControl -> ApiClient : PATCH /schedule/slot/{slotKey}/status
-    ApiClient -> Router : 시간대 전체 완료 상태 변경
-    Router -> BackControl : CheckSchedule.updateMedicationSlotStatus()
 else 홈의 복용했어요 또는 알림의 바로 복용
     Patient -> UI : 본인 대상 시간대 복용 완료 선택
     UI -> ViewModel : requestMedicationSlotStatusUpdate(slotKey, true)
-    ViewModel -> FrontControl : CheckSchedule.updateMedicationSlotStatus()
-    FrontControl -> ApiClient : PATCH /schedule/slot/{slotKey}/status\n알림은 expected_schedule_date 전달
-    ApiClient -> Router : 본인 시간대 완료 요청
-    Router -> BackControl : 대상 날짜 검증 후 전체 완료
 end
-note over UI,BackControl : 지난 날짜의 알림은 오늘 기록을 변경하지 않는다.\n홈·알림 완료 후에는 일정 확인을 제공하고, 전체 완료 취소는 일정 화면에서 수행한다.
-BackControl -> Database : medication_completions Upsert와\n신규 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
+ViewModel -> DoseSync : record(표시한 약 ID, 시간대, 원래 날짜, 복용 여부)
+DoseSync -> DoseStore : 요청 ID와 변경 내용 영속 저장
+DoseStore --> DoseSync : 기기 저장 완료
+DoseSync --> UI : 즉시 상태 반영 + 전송 대기
+DoseSync -> Workmanager : 연결 시 전송 예약
+Workmanager -> DoseSync : 인증 세션 복원 후 drain()
+DoseSync -> DoseStore : 활성 계정의 첫 요청 선점
+DoseSync -> ApiClient : POST /schedule/completion-operations\n재시도에도 같은 operation_id
+ApiClient -> Router : 인증된 본인 기록만 요청
+Router -> BackControl : SyncDose.apply()\n처음 받은 요청만 CheckSchedule에 적용
+note over UI,BackControl : 원래 날짜의 기록만 변경한다. 지연된 기록은 최대 30일까지 복구하며\n과거 기록으로 오늘의 복용 상태나 새 완료 알림을 만들지 않는다.\n기존 PATCH API는 호환 경로로 유지한다.
+BackControl -> Database : 처리 영수증 + medication_completions Upsert와\n신규 당일 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
 Database --> BackControl : commit된 완료 상태와 outbox_id
 BackControl --> Router : 갱신된 MedicationSchedule 목록과\ncommit 이후 completion event
-Router --> ApiClient : 완료 처리 결과
-ApiClient --> FrontControl : 완료 상태
-FrontControl --> ViewModel : 시간대 상태 갱신
-ViewModel --> UI : 완료 상태 반영
+Router --> ApiClient : 처리 영수증과 오늘의 서버 일정
+ApiClient --> DoseSync : 요청 ID 검증 가능한 응답
+DoseSync -> DoseStore : 캐시 저장과 선점 요청 제거를 원자적으로 반영
+DoseSync --> UI : 서버 저장 완료
+ref over UI,Database : 상세 재시도·거부·계정 전환: OfflineDoseSync.puml
+ref over UI,Database : 위젯 본인 기록 / 연결 환자 읽기 전용: HomeDoseWidget.puml
 
 opt 신규 시간대 완료 Outbox가 생성된 경우
     par 응답 이후 FastAPI BackgroundTasks
@@ -1033,9 +1035,9 @@ BackControl --> FrontService : WebSocket 연결 승인
 
 opt 메시지에 약 문맥 첨부
     User -> UI : 대화할 약 선택 화면 열기
-    UI -> UI : 기존 첨부 ID로 임시 선택 초기화
+    UI -> UI : 기존 약 ID·시간대·날짜로 임시 선택 초기화
     User -> UI : 개별 선택 또는 전체 선택·해제
-    UI -> UI : 유효 ID별 중복 제거\n선택 개수·전체·일부 선택 표시
+    UI -> UI : 약 ID·시간대 쌍별 중복 제거\n선택 개수·전체·일부 선택 표시
     alt 선택 완료
         UI -> UI : 선택 목록을 채팅 작성 화면에 반영
     else 뒤로가기 또는 취소
@@ -1067,7 +1069,17 @@ opt 선택 약 또는 이전 메시지의 약 카드 상세보기
     Database --> BackControl : MedicationDetail
     BackControl --> UI : 권한이 확인된 공통 약 상세정보
 end
-opt 역할별 추천 문구 사용
+opt 환자가 선택한 약에 먹었어요 선택
+    Patient -> UI : 먹었어요
+    UI -> DoseSync : 선택한 약·시간대·날짜·linkId로 record()
+    DoseSync -> DoseStore : 시간대별 요청을 기기에 먼저 저장
+    DoseSync --> UI : 기기 저장 및 전송 대기\n성공한 시간대만 선택에서 제거
+    DoseSync -> Router : 인증된 completion-operations 요청
+    Router -> BackControl : SyncDose.apply() -> ManageLinkedChat.record_medication_taken()
+    BackControl -> Database : 환자 본인·연결·일정 검증\n복약 변경과 채팅 영수증을 한 Transaction에 저장
+    note over UI,Database : 이미 선택한 시간대를 다시 묻지 않는다.\n일반 채팅 문구나 보호자 메시지는 복용 기록을 변경하지 않는다.\n요청 재전송은 중복 채팅·복용 기록을 만들지 않는다.
+end
+opt 나머지 역할별 추천 문구 사용
     User -> UI : 환자 또는 보호자용 추천 문구 선택
     UI --> User : 수정 가능한 입력 문구 제공
 end
