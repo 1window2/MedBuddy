@@ -34,7 +34,7 @@ import 'medication_image_viewer_boundary.dart';
 class CheckScheduleUI extends StatefulWidget {
   final List<MedicationSchedule>? selectionSchedules;
   final String selectionLanguage;
-  final Set<String> initialSelectedMedicationIds;
+  final Map<String, Set<String>> initialSelectedMedicationSlots;
   final String? initialSlotKey;
   final bool showBackButton;
 
@@ -51,7 +51,7 @@ class CheckScheduleUI extends StatefulWidget {
     this.showBackButton = true,
   }) : selectionSchedules = null,
        selectionLanguage = 'ko',
-       initialSelectedMedicationIds = const {};
+       initialSelectedMedicationSlots = const {};
 
   // Function Name: CheckScheduleUI.selection
   // Description: Initializes today's per-slot dose completion, reminders, and attachment selection with the supplied configuration.
@@ -59,16 +59,16 @@ class CheckScheduleUI extends StatefulWidget {
   // - key (Key?): Widget identity used to distinguish elements and preserve state.
   // - schedules (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
   // - language (String): Language code selecting visible wording.
-  // - selectedMedicationIds (Set<String>): Medication IDs selected for attachment or deletion.
+  // - selectedMedicationSlots: Selected dose slots, indexed by medication ID.
   // Returns: Initialized CheckScheduleUI instance.
   const CheckScheduleUI.selection({
     super.key,
     required List<MedicationSchedule> schedules,
     required String language,
-    Set<String> selectedMedicationIds = const {},
+    Map<String, Set<String>> selectedMedicationSlots = const {},
   }) : selectionSchedules = schedules,
        selectionLanguage = language,
-       initialSelectedMedicationIds = selectedMedicationIds,
+       initialSelectedMedicationSlots = selectedMedicationSlots,
        initialSlotKey = null,
        showBackButton = true;
 
@@ -96,7 +96,7 @@ class CheckScheduleUI extends StatefulWidget {
 // - Selects schedule loading, failure, or empty states and connects completion and reminder actions to slot cards.
 // Attributes:
 // - _slotKeys (Map<String, GlobalKey>): Dose-slot keys assigned to the medication.
-// - _selectedMedicationIds (Set<String>): Medication IDs selected for attachment or deletion.
+// - _selectedDoses: Independent medication/slot selections for chat attachment.
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
   static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
@@ -135,7 +135,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   };
   final Set<String> _updatingEntireSlotKeys = <String>{};
   bool _didRevealInitialSlot = false;
-  late Set<String> _selectedMedicationIds;
+  late Set<({String medicationId, String slotKey})> _selectedDoses;
   // 함수이름: initState
   // 함수역할: 초기 선택 ID를 복사하고 일반 모드에서는 일정을 갱신한 뒤 요청 시간대를 드러낸다.
   // 매개변수:
@@ -144,9 +144,13 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   @override
   void initState() {
     super.initState();
-    _selectedMedicationIds = {...widget.initialSelectedMedicationIds};
+    _selectedDoses = {
+      for (final entry in widget.initialSelectedMedicationSlots.entries)
+        for (final slot in entry.value)
+          (medicationId: entry.key, slotKey: slot),
+    };
     if (widget.isSelectionMode) {
-      _selectedMedicationIds.retainAll(_selectableMedicationIds);
+      _selectedDoses.retainAll(_selectableDoses);
       return;
     }
     // 함수이름: initState.addPostFrameCallback callback
@@ -178,24 +182,26 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   void didUpdateWidget(covariant CheckScheduleUI oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelectionMode) {
-      _selectedMedicationIds.retainAll(_selectableMedicationIds);
+      _selectedDoses.retainAll(_selectableDoses);
     }
   }
 
-  // 함수역할: 같은 약이 여러 시간대에 있어도 유효한 식별자 하나만 선택 대상으로 계산한다.
-  Set<String> get _selectableMedicationIds => {
+  // 같은 약의 아침/저녁은 별도 선택이며, 같은 약/시간대의 중복 데이터만 합친다.
+  Set<({String medicationId, String slotKey})> get _selectableDoses => {
     for (final schedule
         in widget.selectionSchedules ?? const <MedicationSchedule>[])
-      if (schedule.medicationID.trim().isNotEmpty) schedule.medicationID,
+      if (schedule.medicationID.trim().isNotEmpty)
+        for (final slot in _selectionSlotKeys(schedule))
+          (medicationId: schedule.medicationID, slotKey: slot),
   };
 
   // 함수역할: 일부 선택은 전체 선택으로, 전체 선택은 모두 해제로 전환한다. 복용 기록은 변경하지 않는다.
   void _toggleAllMedicationSelections() {
-    final ids = _selectableMedicationIds;
+    final ids = _selectableDoses;
     if (ids.isEmpty) return;
-    final allSelected = ids.every(_selectedMedicationIds.contains);
+    final allSelected = ids.every(_selectedDoses.contains);
     setState(() {
-      _selectedMedicationIds = allSelected ? <String>{} : ids;
+      _selectedDoses = allSelected ? {} : ids;
     });
   }
 
@@ -269,8 +275,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
     final selectionControl = _ScheduleSelectionControl(
       text: text,
-      selectedCount: _selectedMedicationIds.length,
-      totalCount: _selectableMedicationIds.length,
+      selectedCount: _selectedDoses.length,
+      totalCount: _selectableDoses.length,
       onToggleAll: _toggleAllMedicationSelections,
     );
     return Scaffold(
@@ -330,15 +336,20 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                               onStatusChanged: (_, _) async {},
                               isSelectionMode: true,
                               // 함수이름: _buildSelectionScreen.isSelectedProvider callback
-                              // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_selectedMedicationIds.contains(schedule.medicationID)`을 실행한다.
+                              // 함수역할: 같은 약이라도 현재 카드의 시간대 선택만 표시한다.
                               // 매개변수:
                               // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
                               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                               isSelectedProvider: (schedule) =>
-                                  _selectedMedicationIds.contains(
-                                    schedule.medicationID,
+                                  _selectedDoses.contains((
+                                    medicationId: schedule.medicationID,
+                                    slotKey: slot.key,
+                                  )),
+                              onSelectionRequested: (schedule) =>
+                                  _toggleMedicationSelection(
+                                    schedule,
+                                    slot.key,
                                   ),
-                              onSelectionRequested: _toggleMedicationSelection,
                             ),
                             const SizedBox(height: 16),
                           ],
@@ -350,8 +361,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               ),
               _ScheduleSelectionFooter(
                 text: text,
-                selectedCount: _selectedMedicationIds.length,
-                onConfirmRequested: _selectedMedicationIds.isEmpty
+                selectedCount: _selectedDoses.length,
+                onConfirmRequested: _selectedDoses.isEmpty
                     ? null
                     // 함수이름: _buildSelectionScreen.onConfirmRequested callback
                     // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_completeMedicationSelection(context, schedules)`을 실행한다.
@@ -368,27 +379,27 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   }
 
   // 함수이름: _toggleMedicationSelection
-  // 함수역할: 같은 약이 여러 시간대에 보여도 약 식별자 하나를 기준으로 선택 상태를 바꾼다.
+  // 함수역할: 누른 약/시간대만 바꾸고 같은 약의 다른 시간대 선택은 유지한다.
   // 매개변수:
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _toggleMedicationSelection(MedicationSchedule schedule) {
-    if (!_selectableMedicationIds.contains(schedule.medicationID)) return;
+  void _toggleMedicationSelection(MedicationSchedule schedule, String slotKey) {
+    final dose = (medicationId: schedule.medicationID, slotKey: slotKey);
+    if (!_selectableDoses.contains(dose)) return;
     // 함수이름: _toggleMedicationSelection.setState callback
-    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `_selectedMedicationIds.add(medicationId); _selectedMedicationIds.remove(medicationId)`을 실행한다.
+    // 함수역할: 해당 복용 항목의 선택 여부를 반전한다.
     // 매개변수:
     // - 없음.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     setState(() {
-      final medicationId = schedule.medicationID;
-      if (!_selectedMedicationIds.add(medicationId)) {
-        _selectedMedicationIds.remove(medicationId);
+      if (!_selectedDoses.add(dose)) {
+        _selectedDoses.remove(dose);
       }
     });
   }
 
   // 함수이름: _completeMedicationSelection
-  // 함수역할: 화면에 표시된 순서를 유지하면서 중복 없이 선택한 약 목록을 채팅 화면으로 반환한다.
+  // 함수역할: 약은 중복 없이 반환하되 각 약에서 선택한 시간대만 함께 전달한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // - schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
@@ -399,13 +410,24 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   ) {
     final selectedById = <String, MedicationSchedule>{};
     for (final schedule in schedules) {
-      if (_selectedMedicationIds.contains(schedule.medicationID)) {
+      final selectedSlots = [
+        for (final slot in medicationScheduleSlotKeys)
+          if (_selectedDoses.contains((
+            medicationId: schedule.medicationID,
+            slotKey: slot,
+          )))
+            slot,
+      ];
+      if (selectedSlots.isNotEmpty) {
         // 함수이름: _completeMedicationSelection.putIfAbsent callback
         // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택의 새 키의 초기값을 `schedule` 규칙으로 계산한다.
         // 매개변수:
         // - 없음.
         // 반환값: 컬렉션 연산에 전달할 새 키의 초기값.
-        selectedById.putIfAbsent(schedule.medicationID, () => schedule);
+        selectedById.putIfAbsent(
+          schedule.medicationID,
+          () => schedule.copyWith(scheduleSlotKeys: selectedSlots),
+        );
       }
     }
     Navigator.pop<List<MedicationSchedule>>(
@@ -1601,6 +1623,7 @@ class _TimeSlotCard extends StatelessWidget {
             else
               for (final schedule in slot.medications)
                 _MedicationScheduleRow(
+                  selectionSlotKey: slot.key,
                   text: text,
                   schedule: schedule,
                   isCompleted: isCompletedProvider(schedule),
@@ -1645,6 +1668,7 @@ class _TimeSlotCard extends StatelessWidget {
 // - onGuideRequested (VoidCallback): Callback opening medication details or dosage guidance.
 // - onStatusChanged (Future<void> Function(bool medicationStatus)): Callback reporting a medication's dose-completion change.
 class _MedicationScheduleRow extends StatelessWidget {
+  final String selectionSlotKey;
   final _ScheduleText text;
   final MedicationSchedule schedule;
   final bool isCompleted;
@@ -1669,6 +1693,7 @@ class _MedicationScheduleRow extends StatelessWidget {
   // - onSelectionRequested (VoidCallback?): Callback reporting the changed value or selection state to the owning screen.
   // Returns: Initialized _MedicationScheduleRow instance.
   const _MedicationScheduleRow({
+    required this.selectionSlotKey,
     required this.text,
     required this.schedule,
     required this.isCompleted,
@@ -1690,7 +1715,7 @@ class _MedicationScheduleRow extends StatelessWidget {
     return Container(
       key: isSelectionMode
           ? ValueKey(
-              'scheduleMedicationSelectionOption_${schedule.medicationID}',
+              'scheduleMedicationSelectionOption_${selectionSlotKey}_${schedule.medicationID}',
             )
           : null,
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),

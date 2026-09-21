@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
+import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
@@ -230,10 +231,15 @@ class _TakenChatControl extends _RetryChatControl {
   final List<List<int>> takenMedicationIds = [];
   final List<String> takenSlotKeys = [];
   final bool failFirstTaken;
+  final bool multiSlotMedication;
+  final bool failEveningOnce;
+  bool _eveningFailed = false;
   final Completer<void>? saveGate;
 
   _TakenChatControl({
     this.failFirstTaken = false,
+    this.multiSlotMedication = false,
+    this.failEveningOnce = false,
     this.saveGate,
     List<ChatScheduleContext>? contexts,
   }) : super(
@@ -265,6 +271,20 @@ class _TakenChatControl extends _RetryChatControl {
        );
 
   @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async {
+    final medications = await super.requestMedicationContexts(linkId: linkId);
+    return [
+      for (final medication in medications)
+        if (multiSlotMedication && medication.medicationId == 91)
+          medication.withScheduleSlots(['morning', 'evening'])
+        else
+          medication,
+    ];
+  }
+
+  @override
   Future<ChatMedicationTakenResult> recordMedicationTaken({
     required int linkId,
     required String clientMessageId,
@@ -276,13 +296,17 @@ class _TakenChatControl extends _RetryChatControl {
     takenSlotKeys.add(slotKey);
     takenRequestIds.add(clientMessageId);
     takenMedicationIds.add(medicationIds);
+    if (failEveningOnce && slotKey == 'evening' && !_eveningFailed) {
+      _eveningFailed = true;
+      throw StateError('evening request failed');
+    }
     if (failFirstTaken && takenRequestIds.length == 1) {
       throw StateError('offline');
     }
     if (saveGate != null) await saveGate!.future;
     return ChatMedicationTakenResult(
       message: ChatMessage(
-        messageId: 100,
+        messageId: 100 + takenRequestIds.length,
         linkId: linkId,
         senderHash: 'patient-a',
         clientMessageId: clientMessageId,
@@ -305,6 +329,54 @@ class _TakenChatControl extends _RetryChatControl {
 // 역할: 채팅 일정 카드가 이동할 저녁 복약 일정을 제공한다.
 // 주요 책임:
 // - 채팅의 저녁 복약 카드가 이동할 일정 한 건을 제공한다.
+// Records the exact dose handed to the offline queue without platform storage.
+class _ChatDoseSyncService extends DoseSyncService {
+  final requests =
+      <({List<int> ids, String slot, String? date, int? linkId})>[];
+
+  _ChatDoseSyncService(http.Client client)
+    : super(
+        owner: 'patient-a',
+        client: client,
+        clock: () => DateTime.utc(2026, 9, 21, 3),
+      );
+
+  @override
+  bool get hasCache => true;
+
+  @override
+  List<MedicationSchedule> get schedules => const [
+    MedicationSchedule(
+      medicationID: '91',
+      medicationName: '테스트정',
+      dosage: '1정',
+      intakeTime: '1회',
+      medicationTime: 2,
+      scheduleSlotKeys: ['morning', 'evening'],
+    ),
+  ];
+
+  @override
+  Future<bool> record({
+    required List<int> medicationIds,
+    required String slotKey,
+    required bool completed,
+    String? scheduleDate,
+    int? linkId,
+    List<String> medicationNames = const [],
+  }) async {
+    expect(completed, isTrue);
+    expect(medicationNames, ['테스트정']);
+    requests.add((
+      ids: List<int>.of(medicationIds),
+      slot: slotKey,
+      date: scheduleDate,
+      linkId: linkId,
+    ));
+    return true;
+  }
+}
+
 class _ChatScheduleControl extends CheckSchedule {
   // 함수이름: requestTodayMedicationSchedule
   // 함수역할:
@@ -530,6 +602,65 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('selected evening dose goes straight to the offline queue', (
+    tester,
+  ) async {
+    final client = MockClient((_) async => http.Response('{}', 200));
+    addTearDown(client.close);
+    final sync = _ChatDoseSyncService(client);
+    final control = _TakenChatControl(multiSlotMedication: true);
+    final realtime = _FakeRealtimeService();
+    final viewModel = MedBuddyViewModel(
+      patientHash: 'patient-a',
+      checkSchedule: _ChatScheduleControl(),
+      setNotification: _ChatSetNotification(),
+    )..doseSync = sync;
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.pumpAndSettle();
+    final evening = find.byKey(
+      const ValueKey('scheduleMedicationSelectionOption_evening_91'),
+    );
+    await tester.ensureVisible(evening);
+    await tester.pumpAndSettle();
+    await tester.tap(evening);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+    await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(sync.requests, hasLength(1));
+    expect(sync.requests.single.ids, [91]);
+    expect(sync.requests.single.slot, 'evening');
+    expect(sync.requests.single.date, '2026-09-21');
+    expect(sync.requests.single.linkId, 17);
+    expect(control.takenRequestIds, isEmpty);
+    expect(control.sendAttempts, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
   testWidgets(
     'taken records immediately once and updates the shared schedule',
     (tester) async {
@@ -567,7 +698,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+        find.byKey(
+          const ValueKey('scheduleMedicationSelectionOption_morning_91'),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -630,7 +763,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+        find.byKey(
+          const ValueKey('scheduleMedicationSelectionOption_morning_91'),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -654,28 +789,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'multiple dose slots save on slot tap and cancellation never records',
-    (tester) async {
+  for (final mode in ['morning', 'evening', 'both', 'partial', 'changed']) {
+    testWidgets('selected dose slots are preserved without another prompt: $mode', (
+      tester,
+    ) async {
+      final contexts = [
+        for (final slotKey in ['morning', 'evening'])
+          ChatScheduleContext(
+            scheduleDate: '2026-09-21',
+            slotKey: slotKey,
+            alarmTime: slotKey == 'morning' ? '08:00' : '18:00',
+            alarmEnabled: true,
+            completedCount: 0,
+            totalCount: 1,
+            medications: const [
+              ChatMedicationContext(
+                medicationId: 91,
+                medicationName: '테스트정',
+                dosagePerTime: '1정',
+              ),
+            ],
+          ),
+      ];
       final control = _TakenChatControl(
-        contexts: [
-          for (final slotKey in ['morning', 'evening'])
-            ChatScheduleContext(
-              scheduleDate: '2026-09-21',
-              slotKey: slotKey,
-              alarmTime: slotKey == 'morning' ? '08:00' : '18:00',
-              alarmEnabled: true,
-              completedCount: 0,
-              totalCount: 1,
-              medications: const [
-                ChatMedicationContext(
-                  medicationId: 91,
-                  medicationName: '테스트정',
-                  dosagePerTime: '1정',
-                ),
-              ],
-            ),
-        ],
+        contexts: contexts,
+        multiSlotMedication: true,
+        failEveningOnce: mode == 'partial',
       );
       final realtime = _FakeRealtimeService();
       await tester.pumpWidget(
@@ -692,40 +831,76 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
-      );
-      await tester.pumpAndSettle();
+      final slots = mode == 'both' || mode == 'partial'
+          ? ['morning', 'evening']
+          : [mode == 'evening' ? 'evening' : 'morning'];
+      for (final slot in slots) {
+        final row = find.byKey(
+          ValueKey('scheduleMedicationSelectionOption_${slot}_91'),
+        );
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(
         find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
       );
       await tester.pumpAndSettle();
+
+      // Reopening must restore the exact dose choices, not all slots of that drug.
+      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const Key('schedule-medication-selection-count')),
+            )
+            .data,
+        '${slots.length}개 선택',
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      if (mode == 'changed') {
+        final old = contexts.first;
+        contexts[0] = ChatScheduleContext(
+          scheduleDate: '2026-09-22',
+          slotKey: old.slotKey,
+          alarmTime: old.alarmTime,
+          alarmEnabled: true,
+          completedCount: 0,
+          totalCount: 1,
+          medications: old.medications,
+        );
+      }
       await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
       await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
       await tester.pumpAndSettle();
-      expect(find.text('복용한 시간대'), findsOneWidget);
+      expect(find.text('복용한 시간대'), findsNothing);
       expect(find.text('기록하고 보내기'), findsNothing);
-      expect(control.takenRequestIds, isEmpty);
-      await tester.tap(find.byTooltip('취소').last);
-      await tester.pumpAndSettle();
-      expect(control.takenRequestIds, isEmpty);
-      await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
-      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('takenSlot:evening')));
-      await tester.pumpAndSettle();
       expect(find.byType(BottomSheet), findsNothing);
-      expect(control.takenSlotKeys, ['evening']);
-      expect(control.takenMedicationIds, [
-        [91],
-      ]);
+      expect(control.takenSlotKeys, mode == 'changed' ? isEmpty : slots);
+      if (mode == 'changed') {
+        expect(find.text('선택한 복약 일정이 변경되었습니다. 약을 다시 선택해주세요.'), findsOneWidget);
+      } else {
+        expect(control.takenMedicationIds, everyElement([91]));
+      }
+      if (mode == 'partial') {
+        // The successful morning must not be sent again, and retry keeps its ID.
+        await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+        await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+        await tester.pumpAndSettle();
+        expect(control.takenSlotKeys, ['morning', 'evening', 'evening']);
+        expect(control.takenRequestIds[1], control.takenRequestIds[2]);
+      }
       expect(control.sendAttempts, 0);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await realtime.dispose();
       control.dispose();
-    },
-  );
+    });
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -1000,7 +1175,9 @@ void main() {
     expect(find.text('대화할 약 선택'), findsOneWidget);
     expect(find.text('아침'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      find.byKey(
+        const ValueKey('scheduleMedicationSelectionOption_morning_91'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -1208,11 +1385,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      find.byKey(
+        const ValueKey('scheduleMedicationSelectionOption_morning_91'),
+      ),
     );
     await tester.pumpAndSettle();
     final secondMedication = find.byKey(
-      const ValueKey('scheduleMedicationSelectionOption_92'),
+      const ValueKey('scheduleMedicationSelectionOption_evening_92'),
     );
     await tester.drag(find.byType(ListView).last, const Offset(0, -320));
     await tester.pumpAndSettle();
@@ -1276,7 +1455,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey('scheduleMedicationSelectionOption_91')),
+      find.byKey(
+        const ValueKey('scheduleMedicationSelectionOption_morning_91'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(

@@ -54,7 +54,8 @@ enum ChatMessageKind {
        * - 없음.
        * 반환값:
        * - 일반 텍스트 메시지 종류.
-       */() => ChatMessageKind.text,
+       */ () =>
+          ChatMessageKind.text,
     );
   }
 }
@@ -94,6 +95,16 @@ class ChatMedicationContext {
     this.scheduleSlotKeys = const [],
   });
 
+  // 선택한 시간대만 바꾸며 약의 표시 정보는 유지한다.
+  ChatMedicationContext withScheduleSlots(List<String> slots) =>
+      ChatMedicationContext(
+        medicationId: medicationId,
+        medicationName: medicationName,
+        imageUrl: imageUrl,
+        dosagePerTime: dosagePerTime,
+        scheduleSlotKeys: List.unmodifiable(slots),
+      );
+
   // 함수이름: ChatMedicationContext.fromJson
   // 함수역할: 서버가 검증한 활성 복약정보를 채팅에서 선택 가능한 약 정보로 변환한다.
   // 매개변수:
@@ -127,13 +138,15 @@ class ChatMedicationContext {
     }
     const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
     return value
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 시간대 항목을 공백 없는 소문자 문자열로 정규화한다.
          * 매개변수:
          * - item (dynamic): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
          * - 정규화된 시간대 키 또는 빈 문자열.
-         */(item) => item?.toString().trim().toLowerCase() ?? '')
+         */ (item) => item?.toString().trim().toLowerCase() ?? '',
+        )
         .where(supportedKeys.contains)
         .toSet()
         .toList(growable: false);
@@ -581,13 +594,16 @@ class ChatMessage {
       final context = ChatMedicationContext.fromJson(
         Map<String, dynamic>.from(item),
       );
-      contextsById.putIfAbsent(context.medicationId, /* 함수이름: putIfAbsent 콜백
+      contextsById.putIfAbsent(
+        context.medicationId,
+        /* 함수이름: putIfAbsent 콜백
        * 함수역할: 같은 약 키가 아직 없을 때 최초 채팅 약 문맥을 보존한다.
        * 매개변수:
        * - 없음.
        * 반환값:
        * - 중복 제거 목록에 사용할 약 문맥.
-       */() => context);
+       */ () => context,
+      );
     }
     return contextsById.values.toList(growable: false);
   }

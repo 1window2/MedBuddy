@@ -1,5 +1,5 @@
 // 파일명: chat_medication_selection_test.dart
-// 역할: 채팅 첨부 약의 전체·일부 선택, 중복 제거, 취소와 큰 글씨 배치를 검증한다.
+// 역할: 약/시간대별 전체·일부 선택, 선택 복원, 취소와 큰 글씨 배치를 검증한다.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
@@ -34,7 +34,7 @@ CheckboxListTile _all(WidgetTester tester) =>
 // 함수역할: 실제 첨부 선택 화면에 언어·큰 글씨 설정을 적용한다.
 Widget _selectionApp({
   List<MedicationSchedule> schedules = _medications,
-  Set<String> selected = const {},
+  Map<String, Set<String>> selected = const {},
   String language = 'ko',
   double scale = 1,
 }) => MaterialApp(
@@ -45,12 +45,12 @@ Widget _selectionApp({
   home: CheckScheduleUI.selection(
     schedules: schedules,
     language: language,
-    selectedMedicationIds: selected,
+    selectedMedicationSlots: selected,
   ),
 );
 
 void main() {
-  testWidgets('전체 선택은 중복 시간대와 중복 ID를 한 개로 계산하고 일부 선택을 반영한다', (tester) async {
+  testWidgets('전체 선택은 약/시간대별로 계산하고 다른 시간대의 선택을 유지한다', (tester) async {
     await tester.pumpWidget(_selectionApp());
     await tester.pumpAndSettle();
     expect(_all(tester).value, isFalse);
@@ -58,18 +58,18 @@ void main() {
     await tester.tap(find.byKey(_allKey));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '2개 선택');
+    expect(tester.widget<Text>(find.byKey(_countKey)).data, '4개 선택');
     expect(
       tester.widget<FilledButton>(find.byKey(_doneKey)).onPressed,
       isNotNull,
     );
 
     await tester.tap(
-      find.byKey(const Key('scheduleMedicationSelectionOption_11')).first,
+      find.byKey(const Key('scheduleMedicationSelectionOption_morning_11')),
     );
     await tester.pumpAndSettle();
     expect(_all(tester).value, isNull);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '1개 선택');
+    expect(tester.widget<Text>(find.byKey(_countKey)).data, '3개 선택');
     await tester.tap(find.byKey(_allKey));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
@@ -99,7 +99,9 @@ void main() {
                       builder: (_) => const CheckScheduleUI.selection(
                         schedules: _medications,
                         language: 'ko',
-                        selectedMedicationIds: {'11'},
+                        selectedMedicationSlots: {
+                          '11': {'morning'},
+                        },
                       ),
                     ),
                   );
@@ -125,7 +127,13 @@ void main() {
       expect(returned, isTrue);
       if (confirm) {
         expect(result!.map((schedule) => schedule.medicationID), ['11', '22']);
-        expect(identical(result!.first, _medications.first), isTrue);
+        expect(result!.first.scheduleSlotKeys, [
+          'morning',
+          'evening',
+          'bedtime',
+        ]);
+        expect(result!.last.scheduleSlotKeys, ['lunch']);
+        expect(_medications.first.scheduleSlotKeys, ['morning', 'evening']);
       } else {
         expect(result, isNull);
       }
@@ -135,15 +143,22 @@ void main() {
 
   testWidgets('초기 선택에서 없는 ID를 제외하고 목록 변경 시 제거된 약을 선택에서 뺀다', (tester) async {
     await tester.pumpWidget(
-      _selectionApp(selected: {'11', '22', 'missing', ''}),
+      _selectionApp(
+        selected: {
+          '11': {'morning', 'evening', 'bedtime'},
+          '22': {'lunch'},
+          'missing': {'morning'},
+          '': {'morning'},
+        },
+      ),
     );
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '2개 선택');
+    expect(tester.widget<Text>(find.byKey(_countKey)).data, '4개 선택');
     await tester.pumpWidget(_selectionApp(schedules: [_medications.first]));
     await tester.pumpAndSettle();
     expect(_all(tester).value, isTrue);
-    expect(tester.widget<Text>(find.byKey(_countKey)).data, '1개 선택');
+    expect(tester.widget<Text>(find.byKey(_countKey)).data, '2개 선택');
     expect(tester.takeException(), isNull);
   });
 
@@ -153,7 +168,14 @@ void main() {
       [const MedicationSchedule(medicationName: '식별자 없는 약', medicationID: ' ')],
     ]) {
       await tester.pumpWidget(
-        _selectionApp(schedules: schedules, selected: {'', ' ', 'missing'}),
+        _selectionApp(
+          schedules: schedules,
+          selected: {
+            '': {'morning'},
+            ' ': {'morning'},
+            'missing': {'morning'},
+          },
+        ),
       );
       await tester.pumpAndSettle();
       expect(_all(tester).value, isFalse);
@@ -198,7 +220,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           tester.widget<Text>(find.byKey(_countKey)).data,
-          language == 'en' ? '2 selected' : '2개 선택',
+          language == 'en' ? '4 selected' : '4개 선택',
         );
         await tester.drag(find.byType(ListView), const Offset(0, -240));
         await tester.pumpAndSettle();

@@ -113,6 +113,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
+  String? _selectedMedicationScheduleDate;
   LinkedChatConnectionState _connectionState =
       LinkedChatConnectionState.connecting;
   String? _errorMessage;
@@ -331,27 +332,27 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         return;
       }
       // 함수이름: _refreshMedicationContexts.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_medicationContexts = medications; _selectedMedicationContexts = medications.where((item) => selectedIds.contains(item.medicationId)...`로 갱신한다.
+      // 함수역할: 약 정보를 갱신하되 사용자가 고른 시간대를 전체 시간대로 넓히지 않는다.
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _medicationContexts = medications;
-        final selectedIds = _selectedMedicationContexts
-            // 함수이름: _refreshMedicationContexts.map callback
-            // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `item.medicationId` 규칙으로 계산한다.
-            // 매개변수:
-            // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-            // 반환값: 컬렉션 연산에 전달할 변환값.
-            .map((item) => item.medicationId)
-            .toSet();
+        final selectedSlots = {
+          for (final item in _selectedMedicationContexts)
+            item.medicationId: item.scheduleSlotKeys,
+        };
         _selectedMedicationContexts = medications
             // 함수이름: _refreshMedicationContexts.where callback
-            // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `selectedIds.contains(item.medicationId)` 조건으로 컬렉션 항목을 판별한다.
+            // 함수역할: 선택된 약의 최신 표시 정보에 원래 선택 시간대를 결합한다.
             // 매개변수:
             // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
             // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-            .where((item) => selectedIds.contains(item.medicationId))
+            .where((item) => selectedSlots.containsKey(item.medicationId))
+            .map(
+              (item) =>
+                  item.withScheduleSlots(selectedSlots[item.medicationId]!),
+            )
             .toList(growable: false);
       });
     } catch (_) {
@@ -776,13 +777,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     }
   }
 
-  // 함수역할: 서버 일정에서 날짜·시간대·선택 약을 확인한 뒤 기록과 메시지를 함께 저장한다.
-  // 재시도는 같은 ID를 유지하고, 일반 채팅 본문은 복용 기록으로 해석하지 않는다.
+  // 선택 화면에서 정한 날짜/시간대/약 조합을 그대로 기록한다.
+  // 시간대별 성공 항목만 선택에서 빼므로 부분 실패 시 미처리 항목만 재시도한다.
   Future<void> _recordSelectedMedicationTaken(
     List<ChatMedicationContext> selectedMedications,
   ) async {
     if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
     final viewModel = context.read<MedBuddyViewModel?>();
+    final selectedDate = _selectedMedicationScheduleDate;
     setState(() {
       _isChoosingTaken = true;
       _isSending = true;
@@ -794,7 +796,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           ? [
               for (final slot in medicationScheduleSlotKeys)
                 ChatScheduleContext(
-                  scheduleDate: doseScheduleDay(DateTime.now()),
+                  scheduleDate: doseScheduleDay(sync.clock()),
                   slotKey: slot,
                   alarmTime: '',
                   alarmEnabled: false,
@@ -816,95 +818,97 @@ class _LinkedChatUIState extends State<LinkedChatUI>
             ]
           : await _control.requestScheduleContexts(linkId: widget.linkId);
       if (!mounted) return;
-      final selectedIds = selectedMedications
-          .map((item) => item.medicationId)
-          .toSet();
-      final eligible = contexts
-          .where(
-            (slot) =>
-                slot.scheduleDate.isNotEmpty &&
-                slot.medications.any(
-                  (item) => selectedIds.contains(item.medicationId),
-                ),
-          )
-          .toList(growable: false);
-      if (eligible.isEmpty) {
+      final requests = <({ChatScheduleContext slot, List<int> ids})>[];
+      for (final slotKey in medicationScheduleSlotKeys) {
+        final ids =
+            selectedMedications
+                .where((m) => m.scheduleSlotKeys.contains(slotKey))
+                .map((m) => m.medicationId)
+                .toSet()
+                .toList()
+              ..sort();
+        if (ids.isEmpty) continue;
+        final slot = contexts
+            .where(
+              (slot) =>
+                  slot.slotKey == slotKey && slot.scheduleDate == selectedDate,
+            )
+            .firstOrNull;
+        final availableIds =
+            slot?.medications.map((m) => m.medicationId).toSet() ?? <int>{};
+        // Validate all selections before writing; never substitute another dose/day.
+        if (slot == null || !ids.every(availableIds.contains)) {
+          setState(() => _sendErrorMessage = _text.selectionScheduleChanged);
+          return;
+        }
+        requests.add((slot: slot, ids: ids));
+      }
+      if (requests.isEmpty) {
         setState(() => _sendErrorMessage = _text.noConfirmableSchedule);
         return;
       }
-      // 시간대가 하나면 즉시 저장한다. 여러 시간대는 추측하지 않고 선택만 받는다.
-      ChatScheduleContext? chosen = eligible.singleOrNull;
-      if (chosen == null) {
-        setState(() => _isSending = false);
-        chosen = await showModalBottomSheet<ChatScheduleContext>(
-          context: context,
-          isScrollControlled: true,
-          showDragHandle: true,
-          builder: (_) => _TakenSlotSelector(
-            contexts: eligible,
-            selectedIds: selectedIds,
-            text: _text,
-          ),
-        );
-      }
-      if (chosen == null || !mounted) return;
-      setState(() => _isSending = true);
-      final medicationIds =
-          chosen.medications
-              .where((item) => selectedIds.contains(item.medicationId))
-              .map((item) => item.medicationId)
-              .toList()
-            ..sort();
-      final signature =
-          '${chosen.scheduleDate}:${chosen.slotKey}:${medicationIds.join(',')}';
-      if (sync != null) {
-        final saved = await sync.record(
-          medicationIds: medicationIds,
-          slotKey: chosen.slotKey,
-          completed: true,
-          scheduleDate: chosen.scheduleDate,
-          linkId: widget.linkId,
-          medicationNames: selectedMedications
-              .where((m) => medicationIds.contains(m.medicationId))
-              .map((m) => m.medicationName)
-              .toList(),
-        );
-        if (!saved) throw StateError('Dose was not queued.');
-        if (mounted) {
-          setState(() {
-            _selectedMedicationContexts = _selectedMedicationContexts
-                .where((m) => !medicationIds.contains(m.medicationId))
-                .toList();
-            _sendErrorMessage = null;
-          });
+      for (final request in requests) {
+        final slot = request.slot;
+        final medicationIds = request.ids;
+        final signature =
+            '${slot.scheduleDate}:${slot.slotKey}:${medicationIds.join(',')}';
+        if (sync != null) {
+          final saved = await sync.record(
+            medicationIds: medicationIds,
+            slotKey: slot.slotKey,
+            completed: true,
+            scheduleDate: slot.scheduleDate,
+            linkId: widget.linkId,
+            medicationNames: selectedMedications
+                .where((m) => medicationIds.contains(m.medicationId))
+                .map((m) => m.medicationName)
+                .toList(),
+          );
+          if (!saved) throw StateError('Dose was not queued.');
+        } else {
+          final requestId = _pendingTakenRequests.putIfAbsent(
+            signature,
+            _createClientMessageId,
+          );
+          final result = await _control.recordMedicationTaken(
+            linkId: widget.linkId,
+            clientMessageId: requestId,
+            scheduleDate: slot.scheduleDate,
+            slotKey: slot.slotKey,
+            medicationIds: medicationIds,
+          );
+          if (viewModel != null &&
+              viewModel.patientHash == widget.currentUserHash) {
+            viewModel.applyConfirmedTodaySchedules(result.schedules);
+          }
+          _pendingTakenRequests.remove(signature);
+          if (mounted) {
+            setState(
+              () => _messages = _mergeMessages(_messages, [result.message]),
+            );
+          }
         }
-        return;
+        if (!mounted) return;
+        setState(() {
+          _selectedMedicationContexts = [
+            for (final medication in _selectedMedicationContexts)
+              if (!medicationIds.contains(medication.medicationId))
+                medication
+              else if (medication.scheduleSlotKeys.any(
+                (s) => s != slot.slotKey,
+              ))
+                medication.withScheduleSlots(
+                  medication.scheduleSlotKeys
+                      .where((s) => s != slot.slotKey)
+                      .toList(),
+                ),
+          ];
+          if (_selectedMedicationContexts.isEmpty) {
+            _selectedMedicationScheduleDate = null;
+          }
+          _sendErrorMessage = null;
+        });
       }
-      final requestId = _pendingTakenRequests.putIfAbsent(
-        signature,
-        _createClientMessageId,
-      );
-      final result = await _control.recordMedicationTaken(
-        linkId: widget.linkId,
-        clientMessageId: requestId,
-        scheduleDate: chosen.scheduleDate,
-        slotKey: chosen.slotKey,
-        medicationIds: medicationIds,
-      );
-      // The response is authoritative even if the user left the chat meanwhile.
-      if (viewModel != null &&
-          viewModel.patientHash == widget.currentUserHash) {
-        viewModel.applyConfirmedTodaySchedules(result.schedules);
-      }
-      if (!mounted) return;
-      _pendingTakenRequests.remove(signature);
-      setState(() {
-        _messages = _mergeMessages(_messages, [result.message]);
-        _selectedMedicationContexts = _selectedMedicationContexts
-            .where((item) => !medicationIds.contains(item.medicationId))
-            .toList();
-        _sendErrorMessage = null;
-      });
       _scrollToLatest();
       await _refreshScheduleContexts();
     } catch (_) {
@@ -1049,6 +1053,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     if (_medicationContexts.isEmpty || _isSending) {
       return;
     }
+    final sync = context.read<MedBuddyViewModel?>()?.doseSync;
+    final selectionDate = sync != null && sync.hasCache
+        ? doseScheduleDay(sync.clock())
+        : _scheduleContexts
+                  .map((s) => s.scheduleDate)
+                  .where((date) => date.isNotEmpty)
+                  .firstOrNull ??
+              doseScheduleDay(DateTime.now());
     final medicationsById = {
       for (final medication in _medicationContexts)
         medication.medicationId: medication,
@@ -1080,14 +1092,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         builder: (context) => CheckScheduleUI.selection(
           schedules: selectionSchedules,
           language: widget.userSetting.language,
-          selectedMedicationIds: _selectedMedicationContexts
-              // 함수이름: _showMedicationSelector.map callback
-              // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `item.medicationId.toString()` 규칙으로 계산한다.
-              // 매개변수:
-              // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-              // 반환값: 컬렉션 연산에 전달할 변환값.
-              .map((item) => item.medicationId.toString())
-              .toSet(),
+          selectedMedicationSlots: {
+            for (final item in _selectedMedicationContexts)
+              item.medicationId.toString(): item.scheduleSlotKeys.toSet(),
+          },
         ),
       ),
     );
@@ -1100,7 +1108,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // 매개변수:
         // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
         // 반환값: 컬렉션 연산에 전달할 변환값.
-        .map((item) => medicationsById[int.tryParse(item.medicationID)])
+        .map(
+          (item) => medicationsById[int.tryParse(item.medicationID)]
+              ?.withScheduleSlots(item.scheduleSlotKeys),
+        )
         .whereType<ChatMedicationContext>()
         .toList(growable: false);
     // 함수이름: _showMedicationSelector.setState callback
@@ -1110,6 +1121,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _selectedMedicationContexts = selected;
+      _selectedMedicationScheduleDate = selected.isEmpty ? null : selectionDate;
       _sendErrorMessage = null;
       _clearPendingRequest();
     });
@@ -1610,8 +1622,24 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                   ),
                 ),
               ),
-            Expanded(child: _buildMessageArea()),
-            if (!_isSelectingMessages) _buildComposer(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Column(
+                  children: [
+                    Expanded(child: _buildMessageArea()),
+                    if (!_isSelectingMessages)
+                      // Keep messages visible when large text or the keyboard
+                      // makes the selected doses and retry message taller.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: constraints.maxHeight * 0.7,
+                        ),
+                        child: SingleChildScrollView(child: _buildComposer()),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1770,10 +1798,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 연동 사용자 메시지와 복약 관련 첨부에 쓰는 위젯 트리.
   Widget _buildComposer() {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final selectedMedicationCardHeight = (66 + (textScale - 1) * 34)
-        .clamp(66.0, 94.0)
-        .toDouble();
+    final textScaler = MediaQuery.textScalerOf(context);
+    // Reserve one name line and two slot/dose lines, including accessibility scaling.
+    final selectedMedicationCardHeight = max(
+      66.0,
+      textScaler.scale(14) * 1.4 + textScaler.scale(12) * 1.4 * 2 + 24,
+    );
     return Material(
       color: Colors.white,
       elevation: 8,
@@ -2086,132 +2116,6 @@ class _QuickReplyBar extends StatelessWidget {
 // 속성:
 // - contexts (List<ChatScheduleContext>): 채팅에 첨부하거나 선택할 초기 복약 맥락 목록.
 // 역할: 여러 시간대 중 기록할 항목을 누르면 별도 확인 없이 선택을 반환한다.
-class _TakenSlotSelector extends StatelessWidget {
-  final List<ChatScheduleContext> contexts;
-  final Set<int> selectedIds;
-  final _LinkedChatText text;
-
-  const _TakenSlotSelector({
-    required this.contexts,
-    required this.selectedIds,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.78,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      text.takenSlotTitle,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: text.cancel,
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: contexts.map((slot) {
-                      final medications = slot.medications.where(
-                        (item) => selectedIds.contains(item.medicationId),
-                      );
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          child: InkWell(
-                            key: ValueKey('takenSlot:${slot.slotKey}'),
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => Navigator.pop(context, slot),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: const Icon(
-                                      Icons.schedule_outlined,
-                                      color: MedBuddyColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${text.slotLabel(slot.slotKey)} ${slot.alarmTime}',
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          slot.scheduleDate,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        for (final medication in medications)
-                                          Padding(
-                                            padding: const EdgeInsets.only(
-                                              bottom: 4,
-                                            ),
-                                            child: Text(
-                                              '${medication.medicationName} · ${medication.dosagePerTime}',
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _ScheduleContextSelector extends StatelessWidget {
   final List<ChatScheduleContext> contexts;
@@ -2843,18 +2747,28 @@ class _SelectedMedicationContext extends StatelessWidget {
                             style: const TextStyle(
                               color: MedBuddyColors.textStrong,
                               fontSize: 14,
+                              height: 1.4,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0,
                             ),
                           ),
-                          if (medication.dosagePerTime.isNotEmpty)
+                          if (medication.dosagePerTime.isNotEmpty ||
+                              medication.scheduleSlotKeys.isNotEmpty)
                             Text(
-                              text.dose(medication.dosagePerTime),
-                              maxLines: 1,
+                              [
+                                if (medication.scheduleSlotKeys.isNotEmpty)
+                                  medication.scheduleSlotKeys
+                                      .map(text.slotLabel)
+                                      .join('·'),
+                                if (medication.dosagePerTime.isNotEmpty)
+                                  text.dose(medication.dosagePerTime),
+                              ].join(' · '),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: MedBuddyColors.textMuted,
                                 fontSize: 12,
+                                height: 1.4,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0,
                               ),
@@ -3287,8 +3201,9 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get cancel => isEnglish ? 'Cancel' : '취소';
 
-  String get takenSlotTitle =>
-      isEnglish ? 'Which dose did you take?' : '복용한 시간대';
+  String get selectionScheduleChanged => isEnglish
+      ? 'The selected schedule has changed. Please select the medication again.'
+      : '선택한 복약 일정이 변경되었습니다. 약을 다시 선택해주세요.';
   String get noConfirmableSchedule => isEnglish
       ? 'No current schedule was found for the selected medication.'
       : '선택한 약의 오늘 일정을 찾지 못했습니다. 약 목록을 다시 확인해주세요.';
