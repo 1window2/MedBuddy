@@ -12,6 +12,27 @@ from entities.chat_message_entity import _ChatMessage
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord
 
 
+def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
+    from alembic.script import ScriptDirectory
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    assert ScriptDirectory.from_config(config).get_heads() == ["f8a2c6d901be"]
+    for revision in ("a6e2d903bc71", "e4a19c7b520d"):
+        url = f"sqlite:///{(tmp_path / f'{revision}.db').as_posix()}"
+        config.attributes["database_url"] = url
+        command.upgrade(config, revision)
+        command.upgrade(config, "head")
+        engine = create_engine(url)
+        try:
+            assert inspect(engine).has_table("dose_sync_operations")
+            assert "supports_caregiver_actions" in {
+                item["name"] for item in inspect(engine).get_columns("device_push_tokens")
+            }
+            command.downgrade(config, revision)
+            command.upgrade(config, "head")
+        finally:
+            engine.dispose()
+
+
 def test_caregiver_action_capability_preserves_existing_device_tokens(tmp_path: Path) -> None:
     url = f"sqlite:///{(tmp_path / 'caregiver-actions.db').as_posix()}"
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))

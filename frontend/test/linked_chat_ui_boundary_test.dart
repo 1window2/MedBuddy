@@ -163,6 +163,7 @@ class _RetryChatControl extends ManageLinkedChat {
   // - 성공 시 선택 약 문맥이 포함된 메시지; 첫 실패 조건이면 StateError.
   @override
   Future<ChatMessage> sendMessage({
+    int? sourceAlertId,
     required int linkId,
     required String clientMessageId,
     required String body,

@@ -24,7 +24,9 @@ class CaregiverAlertDeliveryService {
       final preferences = await SharedPreferences.getInstance();
       await preferences.reload();
       if (preferences.getString(NotificationInboxStore.activeUserKey) != alert.recipientHash ||
-          preferences.getBool(key) == true) return false;
+          preferences.getBool(key) == true) {
+        return false;
+      }
       final language = data['language'] == 'en' ? 'en' : 'ko';
       final detailed = preferences.getString(
         'user_setting_${alert.recipientHash}_notification_detail_mode',

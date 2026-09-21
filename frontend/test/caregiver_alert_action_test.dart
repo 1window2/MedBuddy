@@ -122,11 +122,13 @@ void main() {
     MedicationNotificationSelection? selected;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      if (call.method == 'getNotificationAppLaunchDetails') return {
+      if (call.method == 'getNotificationAppLaunchDetails') {
+        return {
         'notificationLaunchedApp': true,
         'notificationResponse': {'notificationResponseType': 1, 'id': 1,
           'actionId': NotificationService.caregiverChatActionId, 'payload': context().payload},
-      };
+        };
+      }
       return true;
     });
     NotificationService.setNotificationSelectionHandler((value) => selected = value);

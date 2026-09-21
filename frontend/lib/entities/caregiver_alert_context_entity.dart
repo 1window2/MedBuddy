@@ -35,7 +35,9 @@ class CaregiverAlertContext {
         !const {'morning', 'lunch', 'evening', 'bedtime'}.contains(value('slot_key')) ||
         value('patient_hash').isEmpty || value('recipient_hash').isEmpty ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(value('event_id')) ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(value('source_event_id'))) return null;
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(value('source_event_id'))) {
+      return null;
+    }
     return CaregiverAlertContext(
       alertId: alert, sourceAlertId: source, linkId: link,
       eventId: value('event_id'), sourceEventId: value('source_event_id'),
