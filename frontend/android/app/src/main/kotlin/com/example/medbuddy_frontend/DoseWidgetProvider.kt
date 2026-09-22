@@ -171,7 +171,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val cancelling = known && !expired && page.optString("action") == "cancel"
             val open = HomeWidgetLaunchIntent.getActivity(context, MainActivity::class.java,
                 Uri.Builder().scheme("medbuddy-widget").authority(
-                    if (state.optString("source") == "patients") "patient-schedule" else "schedule")
+                    if (!known) "sign-in" else if (state.optString("source") == "patients") "patient-schedule" else "schedule")
                     .appendQueryParameter("patient", state.optString("patient_key"))
                     .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
@@ -182,18 +182,23 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val height = manager.getAppWidgetOptions(id).getInt(heightOption, 300)
             val largeText = context.resources.configuration.fontScale > 1.15f
             val compact = height < 340 || largeText
-            views.setInt(R.id.widget_heading, "setMaxLines", if (compact) 1 else 2)
+            views.setInt(R.id.widget_heading, "setMaxLines", if (known && compact) 1 else 2)
             val detailLines = if (height < 300 || (largeText && (height < 340 || page.optBoolean("overdue")))) 1 else if (compact) 2 else 3
-            views.setInt(R.id.widget_details, "setMaxLines", detailLines)
+            views.setInt(R.id.widget_details, "setMaxLines", if (known) detailLines else 2)
             views.setInt(R.id.widget_warning, "setMaxLines", if (compact) 1 else 2)
             views.setInt(R.id.widget_status, "setMaxLines", if (compact) 1 else 2)
             views.setOnClickPendingIntent(R.id.widget_content, open)
             views.setOnClickPendingIntent(R.id.widget_refresh, action(context, "refresh", ""))
             views.setContentDescription(R.id.widget_refresh, tr("새로고침", "Refresh"))
-            views.setTextViewText(R.id.widget_title, state.optString("title", tr("나의 복약 일정", "My medication")))
-            views.setContentDescription(R.id.widget_title, state.optString("title") +
+            // 계정 정보가 없는 상태는 조회 실패와 구분하고 로그인만 안내한다.
+            views.setViewVisibility(R.id.widget_refresh, if (known) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.widget_progress, if (known) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.widget_status, if (known) View.VISIBLE else View.GONE)
+            val title = if (known) state.optString("title", tr("나의 복약 일정", "My medication")) else "MedBuddy"
+            views.setTextViewText(R.id.widget_title, title)
+            views.setContentDescription(R.id.widget_title, title +
                 if (patients.size > 1) ", ${patientIndex + 1}/${patients.size}" else "")
-            views.setViewVisibility(R.id.widget_count, if (patients.size > 1) View.GONE else View.VISIBLE)
+            views.setViewVisibility(R.id.widget_count, if (!known || patients.size > 1) View.GONE else View.VISIBLE)
             for ((button, targetIndex) in listOf(R.id.widget_patient_previous to patientIndex - 1,
                 R.id.widget_patient_next to patientIndex + 1)) {
                 val target = patients.getOrNull(targetIndex)
@@ -212,11 +217,15 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             views.setTextViewText(R.id.widget_date, if (!expired && state.has("date_label"))
                 state.optString("date_label") else dateFormat.format(Date()))
             views.setTextViewText(R.id.widget_heading, when {
-                !known -> tr("MedBuddy를 열어주세요", "Open MedBuddy")
+                !known -> tr("로그인이 필요해요", "Please sign in")
                 expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
                 else -> page.optString("heading")
             })
-            views.setTextViewText(R.id.widget_details, if (known && !expired) page.optString("details") else "")
+            views.setTextViewText(R.id.widget_details, when {
+                !known -> tr("로그인하면 복약 일정을 볼 수 있어요.", "Sign in to view your medication schedule.")
+                !expired -> page.optString("details")
+                else -> ""
+            })
             val count = if (state.optBoolean("counts_known", true)) "${state.optInt("done")}/${state.optInt("total")}" else "-"
             views.setTextViewText(R.id.widget_count, if (known) count else "")
             views.setProgressBar(R.id.widget_progress, state.optInt("total", 1).coerceAtLeast(1), state.optInt("done"), false)
@@ -252,8 +261,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     target.optString("slot"), state.optString("navigation_key")))
             }
             views.setTextViewText(R.id.widget_take, when {
+                !known -> tr("로그인하기", "Sign in")
                 pending -> tr("저장 중", "Saving")
-                !known -> tr("앱 열기", "Open app")
                 expired -> tr("새로고침", "Refresh")
                 else -> page.optString("button", tr("일정 열기", "Open schedule"))
             })
@@ -261,13 +270,14 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 R.drawable.dose_widget_cancel_button else R.drawable.dose_widget_button)
             views.setTextColor(R.id.widget_take, Color.parseColor(if (cancelling) "#007E5E" else "#FFFFFF"))
             views.setContentDescription(R.id.widget_take, when {
+                !known -> tr("MedBuddy 로그인하기", "Sign in to MedBuddy")
                 pending -> tr("저장 중", "Saving")
                 cancelling -> "${page.optString("label")} " + tr("복용 기록 취소", "undo dose record")
                 known && !expired && page.optString("action") == "take" ->
                     "${page.optString("label")} " + tr("복용했어요", "mark as taken")
                 else -> null
             })
-            views.setBoolean(R.id.widget_take, "setEnabled", !pending)
+            views.setBoolean(R.id.widget_take, "setEnabled", !known || !pending)
             views.setOnClickPendingIntent(R.id.widget_take, when {
                 !known -> open
                 expired || page.optString("action") == "refresh" -> action(context, "refresh", "")
@@ -278,7 +288,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             manager.updateAppWidget(id, views)
         }
         // Recover a killed callback and refresh the day without a polling loop.
-        if ((pending || expired) && System.currentTimeMillis() - data.getLong(LAST_WAKE, 0L) > 5000) wake(context, data)
+        if (known && (pending || expired) && System.currentTimeMillis() - data.getLong(LAST_WAKE, 0L) > 5000) wake(context, data)
     }
 
     companion object {
