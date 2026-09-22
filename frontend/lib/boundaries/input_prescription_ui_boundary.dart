@@ -35,6 +35,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final bool isTodayScheduleLoading;
   // 본인 복용약이 없는 보호자에게만 전달하는 가족 복약 현황이다.
   final Widget? caregiverSummary;
+  final Widget? caregiverScheduleHint;
   final DateTime Function()? nowProvider;
   final VoidCallback? onPrescriptionScanRequested;
   final VoidCallback? onPrescriptionGalleryRequested;
@@ -86,6 +87,7 @@ class InputPrescriptionUI extends StatelessWidget {
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
     this.caregiverSummary,
+    this.caregiverScheduleHint,
     this.nowProvider,
     required this.onPrescriptionScanRequested,
     required this.onPrescriptionGalleryRequested,
@@ -116,6 +118,7 @@ class InputPrescriptionUI extends StatelessWidget {
       todayMedicationTotalCount = 0,
       isTodayScheduleLoading = false,
       caregiverSummary = null,
+      caregiverScheduleHint = null,
       nowProvider = null,
       onPrescriptionScanRequested = null,
       onPrescriptionGalleryRequested = null,
@@ -204,6 +207,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                   isCompletionLoading:
                                       isNextMedicationCompletionLoading,
                                 ),
+                            ?caregiverScheduleHint,
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
                               // 함수이름: 빠른 기능 영역 builder

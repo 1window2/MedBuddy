@@ -710,6 +710,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return InputPrescriptionUI(
       caregiverSummary: _buildCaregiverSummary(viewModel),
+      caregiverScheduleHint:
+          viewModel.userSetting.homeScheduleSource == 'self' &&
+              _chatList?.hasError == false &&
+              (_caregiverHome?.links.isNotEmpty ?? false)
+          ? ListTile(
+              key: const Key('caregiver-home-source-hint'),
+              leading: const Icon(Icons.people_outline),
+              title: Text(viewModel.userSetting.language == 'en'
+                  ? 'View linked patient schedules'
+                  : '연결된 환자 일정 보기'),
+              subtitle: Text(viewModel.userSetting.language == 'en'
+                  ? 'Change Home schedule from “My schedule” to “Linked patients”.'
+                  : '홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openUserSettings(
+                context,
+                viewModel,
+                initiallyShowDisplayAndVoice: true,
+              ),
+            )
+          : null,
       statusMessage: viewModel.statusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
@@ -1064,8 +1085,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Returns: None; updates state or performs the documented action.
   Future<void> _openUserSettings(
     BuildContext context,
-    MedBuddyViewModel viewModel,
-  ) async {
+    MedBuddyViewModel viewModel, {
+    bool initiallyShowDisplayAndVoice = false,
+  }) async {
     final authenticationControl = context.read<AuthenticationControl>();
     final appLanguageControl = context.read<AppLanguageControl>();
 
@@ -1090,6 +1112,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Returns: Widget subtree for the described layout or fallback.
         builder: (context) => ManageUserSettingUI(
           initialSetting: viewModel.userSetting,
+          initiallyShowDisplayAndVoice: initiallyShowDisplayAndVoice,
           authenticationControl: authenticationControl,
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
           // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => const CheckScheduleUI())); MaterialPageRoute(builder: (context) => const CheckScheduleUI())`을 실행한다.

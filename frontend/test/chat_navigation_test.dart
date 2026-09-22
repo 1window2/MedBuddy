@@ -11,12 +11,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/chat_list_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/authentication_control.dart';
+import 'package:medbuddy_frontend/controls/app_language_control.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/controls/manage_chat_list_control.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_home_control.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.dart';
-import 'package:medbuddy_frontend/entities/caregiver_monitoring_snapshot_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
@@ -119,19 +121,20 @@ class _ViewModel extends MedBuddyViewModel {
 // 역할: 홈 조립 테스트에 활성 환자의 빈 일정을 제공한다.
 class _HomeMonitoring extends CheckCaregiverMedication {
   int calls = 0;
-  // 함수이름: requestMonitoringSnapshot
+  // 함수이름: requestPatientMedicationInfo
   // 함수역할: 조회 횟수를 기록하고 활성 환자의 빈 일정을 제공한다.
   // 매개변수: 없음. 반환값: 테스트 환자 조회 결과 Future.
   @override
-  Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
+  Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
+    required String patientHash,
+  }) async {
     calls++;
-    return [
-      CaregiverMonitoringSnapshot(
-        link: _link(1),
-        notificationSettings: const {},
-        schedules: const [],
-      ),
-    ];
+    return (
+      caregiverHash: 'caregiver',
+      patientHash: patientHash,
+      savedMedications: const <Never>[],
+      todayMedicationScheduleList: const <Never>[],
+    );
   }
 }
 
@@ -193,11 +196,19 @@ void main() {
         ..setting = UserSetting(homeScheduleSource: source)
         ..hasOwnMedication = ownMedication;
       final api = _HomeMonitoring();
+      final authentication = AuthenticationControl.development();
+      final language = AppLanguageControl(loadPersisted: false);
       addTearDown(model.dispose);
       addTearDown(api.dispose);
+      addTearDown(authentication.dispose);
+      addTearDown(language.dispose);
       await tester.pumpWidget(
-        ChangeNotifierProvider<MedBuddyViewModel>.value(
-          value: model,
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<MedBuddyViewModel>.value(value: model),
+            ChangeNotifierProvider<AuthenticationControl>.value(value: authentication),
+            ChangeNotifierProvider<AppLanguageControl>.value(value: language),
+          ],
           child: MaterialApp(
             home: HomeScreen(
               chatListFactory: (hash) => ManageChatList(
@@ -221,13 +232,60 @@ void main() {
         findsOneWidget,
       );
       expect(api.calls, source == 'self' ? 0 : 1);
+      expect(
+        find.byKey(const Key('caregiver-home-source-hint')),
+        source == 'self' ? findsOneWidget : findsNothing,
+      );
+      expect(model.userSetting.homeScheduleSource, source);
+      if (source == 'self') {
+        expect(find.text('홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'),
+            findsOneWidget);
+        await tester.ensureVisible(find.byKey(const Key('caregiver-home-source-hint')));
+        await tester.tap(find.byKey(const Key('caregiver-home-source-hint')));
+        await tester.pumpAndSettle();
+        expect(find.byType(ManageUserSettingUI), findsOneWidget);
+        expect(find.text('화면 및 음성'), findsOneWidget);
+        expect(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')), findsNothing);
+        final sourceSelector = find.byKey(const ValueKey('homeScheduleSourceSelector'));
+        expect(sourceSelector, findsOneWidget);
+        expect(find.descendant(of: sourceSelector, matching: find.text('내 일정')),
+            findsOneWidget);
+        expect(tester.widget<ManageUserSettingUI>(find.byType(ManageUserSettingUI))
+            .initialSetting.homeScheduleSource, 'self');
+        // Only an explicit selection changes the draft; navigation never saves it.
+        for (final (value, label) in [('patients', '연결된 환자'), ('self', '내 일정')]) {
+          await tester.ensureVisible(sourceSelector);
+          await tester.tap(sourceSelector);
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(ValueKey('homeScheduleSource-$value')));
+          await tester.pumpAndSettle();
+          expect(find.descendant(of: sourceSelector, matching: find.text(label)),
+              findsOneWidget);
+          expect(model.userSetting.homeScheduleSource, 'self');
+        }
+        await Navigator.of(tester.element(find.byType(ManageUserSettingUI))).maybePop();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')), findsOneWidget);
+        await Navigator.of(tester.element(find.byType(ManageUserSettingUI))).maybePop();
+        await tester.pumpAndSettle();
+        expect(model.userSetting.homeScheduleSource, 'self');
+        expect(api.calls, 0);
+      }
       if (source == 'patients') {
         expect(find.text('Patient 1'), findsOneWidget);
         expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
+        final previousCalls = api.calls;
+        await tester.tap(find.byKey(const ValueKey('bottomNavigation-chat')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+        await tester.pumpAndSettle();
+        expect(api.calls, greaterThan(previousCalls));
+        expect(find.text('Patient 1'), findsOneWidget);
       }
       links.result = [];
       await tester.pump(const Duration(seconds: 15));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('caregiver-home-source-hint')), findsNothing);
       expect(
         find.byKey(const Key('caregiver-home-summary')),
         source == 'self' ? findsNothing : findsOneWidget,

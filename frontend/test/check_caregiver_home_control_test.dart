@@ -1,8 +1,11 @@
 // 파일명: check_caregiver_home_control_test.dart
 // 역할: 보호자 홈의 계정·연동 범위, 오류와 진행률을 검증한다.
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/caregiver_home_summary_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_home_control.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.dart';
@@ -33,6 +36,78 @@ const _other = PatientCaregiverLink(
 // 함수이름: main
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  test('알림이 꺼져 있어도 홈은 상세 화면과 같은 환자 일정을 조회한다', () async {
+    final paths = <String>[];
+    final client = MockClient((request) async {
+      paths.add(request.url.path);
+      expect(request.url.queryParameters['caregiver_hash'], 'owner');
+      // The monitoring API deliberately omits schedules when all alerts are off.
+      final monitoring = request.url.path.endsWith('/monitoring');
+      return http.Response(jsonEncode({
+        'success': true,
+        'data': monitoring ? {
+          'patients': [{
+            'link': _link.toJson(),
+            'notification_settings': [],
+            'today_medication_info': {'schedules': []},
+          }],
+        } : {
+          'caregiver_hash': 'owner',
+          'patient_hash': 'patient',
+          'saved_medications': [],
+          'today_medication_info': {'schedules': [{
+            'medication_id': '1',
+            'patient_hash': 'patient',
+            'medication_name': 'Scheduled medicine',
+            'schedule_slot_keys': ['morning', 'lunch', 'evening'],
+          }]},
+        },
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = CheckCaregiverMedication(
+      caregiverHash: 'owner', baseUrl: 'http://medbuddy.test', client: client,
+    );
+    final control = CheckCaregiverHome(userHash: 'owner', control: api);
+    addTearDown(control.dispose);
+    addTearDown(client.close);
+    final detail = await api.requestPatientMedicationInfo(patientHash: 'patient');
+    control.updateLinks([_link]);
+    await control.refresh();
+    expect(control.hasError, isFalse);
+    expect(control.snapshotFor(1)?.schedules, hasLength(1));
+    expect(control.snapshotFor(1)!.schedules.single.slotKeys,
+        detail.todayMedicationScheduleList.single.slotKeys);
+    expect(paths, ['/caregiver/medications/patient', '/caregiver/medications/patient']);
+    expect(control.hasError, isFalse);
+  });
+
+  for (final scope in [
+    (caregiver: 'someone', patient: 'patient'),
+    (caregiver: 'owner', patient: 'other'),
+  ]) {
+    test('상세 응답의 보호자와 환자 범위가 다르면 오류로 표시한다: $scope', () async {
+      final client = MockClient((request) async => http.Response(jsonEncode({
+        'data': {
+          'caregiver_hash': scope.caregiver,
+          'patient_hash': scope.patient,
+          'saved_medications': [],
+          'today_medication_info': {'schedules': []},
+        },
+      }), 200));
+      final api = CheckCaregiverMedication(
+        caregiverHash: 'owner', baseUrl: 'http://medbuddy.test', client: client,
+      );
+      final control = CheckCaregiverHome(userHash: 'owner', control: api);
+      addTearDown(control.dispose);
+      addTearDown(client.close);
+      control.updateLinks([_link]);
+      await control.refresh();
+      expect(control.hasError, isTrue);
+      expect(control.isLoading, isFalse);
+      expect(control.snapshotFor(1), isNull);
+    });
+  }
+
   // 함수이름: 보호자 연동 범위 테스트
   // 함수역할: 현재 보호자의 활성 연동만 조회하고 다른 계정의 결과와 환자 역할의 보호자 조회를 제외하는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
@@ -565,15 +640,24 @@ class _Monitoring extends CheckCaregiverMedication {
   bool failure = false;
   List<CaregiverMonitoringSnapshot>? snapshots;
   Completer<List<CaregiverMonitoringSnapshot>>? gate;
-  // 함수이름: requestMonitoringSnapshot
+  // 함수이름: requestPatientMedicationInfo
   // 함수역할: 조회 횟수를 기록하고 지정한 응답·실패·지연으로 계정 전환 경합을 재현한다.
-  // 매개변수: 없음. 반환값: 환자 조회 결과 Future; 실패 설정 시 StateError.
+  // 매개변수: patientHash: 조회할 환자. 반환값: 환자 조회 결과 Future; 실패 설정 시 StateError.
   @override
-  Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
+  Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
+    required String patientHash,
+  }) async {
     calls++;
     if (failure) throw StateError('offline');
-    return gate != null
-        ? gate!.future
+    final results = gate != null
+        ? await gate!.future
         : snapshots ?? [_snapshot(_link), _snapshot(_other)];
+    final snapshot = results.firstWhere((s) => s.patientHash == patientHash);
+    return (
+      caregiverHash: snapshot.link.caregiverHash,
+      patientHash: snapshot.patientHash,
+      savedMedications: const <Never>[],
+      todayMedicationScheduleList: snapshot.schedules,
+    );
   }
 }

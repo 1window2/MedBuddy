@@ -89,7 +89,23 @@ class CheckCaregiverHome extends ChangeNotifier {
     notifyListeners();
     try {
       hasError = false;
-      final received = await _control.requestMonitoringSnapshot();
+      // 알림 감시는 알림이 꺼진 환자의 일정을 생략하므로 상세 조회를 재사용한다.
+      final received = await Future.wait(
+        _links.map((link) async {
+          final info = await _control.requestPatientMedicationInfo(
+            patientHash: link.patientHash,
+          );
+          if (info.caregiverHash != userHash ||
+              info.patientHash != link.patientHash) {
+            throw StateError('Caregiver medication response scope mismatch.');
+          }
+          return CaregiverMonitoringSnapshot(
+            link: link,
+            notificationSettings: const {},
+            schedules: info.todayMedicationScheduleList,
+          );
+        }),
+      );
       if (_disposed ||
           generation != _generation ||
           day != doseWidgetDay(DateTime.now())) {

@@ -60,6 +60,7 @@ typedef ExtendedUserSettingSaver =
 // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
+  final bool initiallyShowDisplayAndVoice;
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
   final Future<void> Function()? onDeleteAccountRequested;
@@ -80,6 +81,7 @@ class ManageUserSettingUI extends StatefulWidget {
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - initialSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - initiallyShowDisplayAndVoice (bool): 설정값 변경 없이 화면 및 음성 화면으로 바로 진입한다.
   // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
   // - onSettingSaveRequested (Future<UserSettingSaveResult> Function({required String fontSizeOption, required String readingSpeedOption, required String language})): 편집한 사용자 설정을 저장하고 동기화 결과를 반환할 콜백.
   // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
@@ -93,6 +95,7 @@ class ManageUserSettingUI extends StatefulWidget {
   const ManageUserSettingUI({
     super.key,
     required this.initialSetting,
+    this.initiallyShowDisplayAndVoice = false,
     required this.authenticationControl,
     required this.onSettingSaveRequested,
     this.onSignOutRequested,
@@ -166,6 +169,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   void initState() {
     super.initState();
+    if (widget.initiallyShowDisplayAndVoice) {
+      _selectedSection = _SettingSection.displayAndVoice;
+    }
     _savedSetting = widget.initialSetting;
     _fontSize = widget.initialSetting.fontSizeOption;
     _readingSpeed = widget.initialSetting.readingSpeedOption;
