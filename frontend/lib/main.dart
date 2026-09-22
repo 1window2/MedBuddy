@@ -177,6 +177,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   String? _monitoredUserHash;
   int _monitorGeneration = 0;
   StreamSubscription<Uri?>? _widgetClicks;
+  String? _pendingEmailVerification;
 
   // Function Name: initState
   // Description: Resolves injected or owned root controls, installs authentication and notification listeners, and starts monitors for the current session.
@@ -194,6 +195,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _authenticationControl.setBeforeSignOut(_prepareSessionEnd);
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
+    _pendingEmailVerification = _authenticationControl.emailVerificationRequired
+        ? _authenticationControl.signedInEmail
+        : null;
     _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
     _synchronizeCaregiverNotificationMonitor();
@@ -337,6 +341,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // 반환값:
   // - 없음.
   void _handleAuthenticationChange() {
+    _notifyEmailVerificationCompleted();
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
       _pendingWidgetUri = null;
@@ -365,6 +370,41 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
     _pendingNotificationSelection = null;
     _navigateForNotificationWhenReady(pendingSelection);
+  }
+
+  // 인증 화면이 사라져도 성공 안내가 보이도록 새 홈 화면이 그려진 뒤 한 번만 표시한다.
+  void _notifyEmailVerificationCompleted() {
+    final control = _authenticationControl;
+    if (control.emailVerificationRequired) {
+      _pendingEmailVerification = control.signedInEmail;
+      return;
+    }
+    if (control.signedInEmail != _pendingEmailVerification) {
+      _pendingEmailVerification = null;
+      return;
+    }
+    final session = control.session;
+    if (_pendingEmailVerification == null ||
+        session == null ||
+        !session.authenticated ||
+        !session.emailVerified) {
+      return;
+    }
+    _pendingEmailVerification = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || control.session?.userHash != session.userHash) return;
+      final context = _navigatorKey.currentContext;
+      if (context == null) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            _appLanguageControl.language == 'en'
+                ? 'Email verified. You are now signed in.'
+                : '이메일 인증이 완료되어 로그인했습니다.',
+          ),
+        ),
+      );
+    });
   }
 
   // 함수이름: _synchronizeCaregiverNotificationMonitor

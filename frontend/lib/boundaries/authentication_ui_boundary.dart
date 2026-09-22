@@ -1,5 +1,7 @@
 // File Name: authentication_ui_boundary.dart
 // Role: UI boundaries and helpers for sign-in, account creation, and email or SMS verification.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../controls/app_language_control.dart';
@@ -68,7 +70,8 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   @override
   void initState() {
     super.initState();
-    _foreground = WidgetsBinding.instance.lifecycleState == null ||
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _sessionRecovery = ForegroundRecoveryService(() async {
       if (!widget.control.shouldAutoRetryBackendSession) return true;
@@ -77,8 +80,8 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       return !widget.control.shouldAutoRetryBackendSession;
     });
     WidgetsBinding.instance.addObserver(this);
-    widget.control.addListener(_scheduleSessionRecovery);
-    _scheduleSessionRecovery();
+    widget.control.addListener(_handleAuthenticationChanged);
+    _handleAuthenticationChanged();
     _ownsLanguageControl = widget.languageControl == null;
     _languageControl =
         widget.languageControl ?? AppLanguageControl(loadPersisted: false);
@@ -92,7 +95,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   // Returns: None; updates state or performs the documented action.
   @override
   void dispose() {
-    widget.control.removeListener(_scheduleSessionRecovery);
+    widget.control.removeListener(_handleAuthenticationChanged);
     WidgetsBinding.instance.removeObserver(this);
     _sessionRecovery.dispose();
     _emailController.dispose();
@@ -108,10 +111,10 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   void didUpdateWidget(covariant AuthenticationUI oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.control != widget.control) {
-      oldWidget.control.removeListener(_scheduleSessionRecovery);
+      oldWidget.control.removeListener(_handleAuthenticationChanged);
       _sessionRecovery.stop();
-      widget.control.addListener(_scheduleSessionRecovery);
-      _scheduleSessionRecovery();
+      widget.control.addListener(_handleAuthenticationChanged);
+      _handleAuthenticationChanged();
     }
   }
 
@@ -119,13 +122,15 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
     if (!_foreground) _sessionRecovery.stop();
-    _scheduleSessionRecovery();
+    _handleAuthenticationChanged();
   }
 
-  void _scheduleSessionRecovery() {
+  // Navigator가 유지하는 로그인 화면도 처리 중 상태와 인증 오류를 직접 갱신한다.
+  void _handleAuthenticationChanged() {
     // Auth notifications can arrive during a build: defer the retry mutation.
     Future.microtask(() {
       if (!mounted) return;
+      setState(() {});
       if (_foreground && widget.control.shouldAutoRetryBackendSession) {
         _sessionRecovery.start();
       } else {
@@ -147,7 +152,9 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       isEnglish: text.isEnglish,
     );
     if (control.initializationFailed) {
-      return Scaffold(
+      return _AuthenticationScaffold(
+        languageControl: _languageControl,
+        isBusy: control.isBusy,
         body: SafeArea(
           child: Center(
             child: Padding(
@@ -156,8 +163,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    errorMessage ??
-                        'MedBuddy secure services are temporarily unavailable.',
+                    errorMessage ?? text.servicesUnavailable,
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18),
                   ),
@@ -170,7 +176,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                         ? null
                         : control.retryInitialization,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Retry secure startup'),
+                    label: Text(text.retryStartup),
                   ),
                 ],
               ),
@@ -180,13 +186,15 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       );
     }
     if (control.configurationFailed) {
-      return Scaffold(
+      return _AuthenticationScaffold(
+        languageControl: _languageControl,
+        isBusy: control.isBusy,
         body: SafeArea(
           child: Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
               child: Text(
-                errorMessage ?? 'MedBuddy authentication is unavailable.',
+                errorMessage ?? text.servicesUnavailable,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 18),
               ),
@@ -196,14 +204,20 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       );
     }
     if (control.emailVerificationRequired) {
-      return _EmailVerificationView(control: control);
+      return _EmailVerificationView(
+        control: control,
+        languageControl: _languageControl,
+        onSignedOut: _showSignInAfterVerification,
+      );
     }
     if (control.smsCodeRequired &&
         control.smsChallengePurpose != SmsChallengePurpose.mfaEnrollment) {
-      return _SmsCodeView(control: control);
+      return _SmsCodeView(control: control, languageControl: _languageControl);
     }
 
-    return Scaffold(
+    return _AuthenticationScaffold(
+      languageControl: _languageControl,
+      isBusy: control.isBusy,
       body: SafeArea(
         child: Stack(
           children: [
@@ -397,7 +411,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                                 ? null
                                 : _startPhoneSignIn,
                             icon: const Icon(Icons.sms_outlined),
-                            label: const Text('Continue with phone'),
+                            label: Text(text.continueWithPhone),
                           ),
                         ],
                         const SizedBox(height: 8),
@@ -409,20 +423,6 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                       ],
                     ),
                   ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              right: 8,
-              child: Semantics(
-                label: text.changeLanguage,
-                button: true,
-                child: IconButton(
-                  key: const Key('authentication-language-toggle'),
-                  tooltip: text.changeLanguage,
-                  onPressed: _toggleLanguage,
-                  icon: const Icon(Icons.language),
                 ),
               ),
             ),
@@ -481,13 +481,11 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     }
   }
 
-  // Function Name: _toggleLanguage
-  // Description: Requests a Korean/English language toggle from the language controller.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
-  Future<void> _toggleLanguage() async {
-    await _languageControl.toggleLanguage();
+  // 인증에서 돌아오면 가입 모드와 비밀번호만 비우고 입력한 이메일·언어는 유지한다.
+  void _showSignInAfterVerification() {
+    if (!mounted) return;
+    _passwordController.clear();
+    setState(() => _createAccount = false);
   }
 
   // Function Name: _submit
@@ -503,6 +501,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       await widget.control.createAccount(
         email: _emailController.text,
         password: _passwordController.text,
+        language: _languageControl.language,
       );
       return;
     }
@@ -518,15 +517,22 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   // - None.
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _sendPasswordReset() async {
-    final sent = await widget.control.sendPasswordReset(_emailController.text);
+    final sent = await widget.control.sendPasswordReset(
+      _emailController.text,
+      language: _languageControl.language,
+    );
     if (!mounted || !sent) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Password reset instructions were sent by email.'),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            _AuthenticationText(_languageControl.language).passwordResetSent,
+          ),
+        ),
+      );
   }
 
   // Function Name: _startPhoneSignIn
@@ -535,6 +541,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   // - None.
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _startPhoneSignIn() async {
+    final text = _AuthenticationText(_languageControl.language);
     final phoneController = TextEditingController(text: '+82');
     final phoneNumber = await showDialog<String>(
       context: context,
@@ -544,14 +551,14 @@ class _AuthenticationUIState extends State<AuthenticationUI>
       // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
       // Returns: Widget subtree for the described layout or fallback.
       builder: (context) => AlertDialog(
-        title: const Text('Phone sign-in'),
+        title: Text(text.phoneSignIn),
         content: TextField(
           controller: phoneController,
           autofocus: true,
           keyboardType: TextInputType.phone,
           autofillHints: const [AutofillHints.telephoneNumber],
-          decoration: const InputDecoration(
-            labelText: 'International phone number',
+          decoration: InputDecoration(
+            labelText: text.phoneNumber,
             hintText: '+821012345678',
           ),
         ),
@@ -563,7 +570,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
             // - None.
             // Returns: No callback payload; any selection is delivered through the route result.
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(text.cancel),
           ),
           FilledButton(
             // Function Name: _startPhoneSignIn.onPressed callback
@@ -572,7 +579,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
             // - None.
             // Returns: No callback payload; any selection is delivered through the route result.
             onPressed: () => Navigator.pop(context, phoneController.text),
-            child: const Text('Send code'),
+            child: Text(text.sendCode),
           ),
         ],
       ),
@@ -805,6 +812,153 @@ class _AuthenticationText {
   // - None.
   // Returns: The formatted display text or identifier described above.
   String get continueLabel => _isEnglish ? 'Continue' : '계속';
+
+  // 인증 중간 화면도 로그인 화면과 같은 언어를 사용한다.
+  String get verifyEmail => _isEnglish ? 'Verify your email' : '이메일을 인증해 주세요';
+  String verificationEmailSent(String? email) => _isEnglish
+      ? 'A verification email was sent to ${email ?? 'your email address'}.'
+      : '${email ?? '입력한 이메일 주소'}로 인증 메일을 보냈어요.';
+  String get automaticEmailVerification => _isEnglish
+      ? 'Open the link in your email, then return to the app to sign in automatically.'
+      : '메일의 인증 링크를 누른 뒤 앱으로 돌아오면 자동으로 로그인됩니다.';
+  String get checkEmailVerification =>
+      _isEnglish ? 'Check verification status' : '인증 상태 다시 확인';
+  String get checkingEmailVerification =>
+      _isEnglish ? 'Checking verification…' : '인증 확인 중…';
+  String get backToSignIn => _isEnglish ? 'Back to sign in' : '로그인 화면으로 돌아가기';
+  String get resendEmail =>
+      _isEnglish ? 'Resend verification email' : '인증 메일 다시 보내기';
+  String get passwordResetSent => _isEnglish
+      ? 'Password reset instructions were sent by email.'
+      : '비밀번호 재설정 메일을 보냈습니다.';
+  String get servicesUnavailable => _isEnglish
+      ? 'MedBuddy secure services are temporarily unavailable.'
+      : '지금은 로그인 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+  String get retryStartup => _isEnglish ? 'Retry secure startup' : '다시 연결';
+  String get continueWithPhone =>
+      _isEnglish ? 'Continue with phone' : '전화번호로 계속하기';
+  String get phoneSignIn => _isEnglish ? 'Phone sign-in' : '전화번호로 로그인';
+  String get phoneNumber =>
+      _isEnglish ? 'International phone number' : '전화번호 (국가번호 포함)';
+  String get sendCode => _isEnglish ? 'Send code' : '인증번호 보내기';
+  String get enterCode =>
+      _isEnglish ? 'Enter verification code' : '인증번호를 입력해 주세요';
+  String codeSent(String? phone) => _isEnglish
+      ? 'A code was sent to ${phone ?? 'your phone'}.'
+      : '${phone ?? '입력한 전화번호'}로 인증번호를 보냈습니다.';
+  String get smsCode => _isEnglish ? 'SMS code' : '문자 인증번호';
+  String get verify => _isEnglish ? 'Verify' : '인증하기';
+}
+
+// 인증 단계가 바뀌어도 언어 버튼 위치를 유지하고 본문과 겹치지 않게 한다.
+class _AuthenticationScaffold extends StatelessWidget {
+  final AppLanguageControl languageControl;
+  final bool isBusy;
+  final Widget body;
+  final VoidCallback? onBack;
+
+  const _AuthenticationScaffold({
+    required this.languageControl,
+    required this.isBusy,
+    required this.body,
+    this.onBack,
+  });
+
+  // 언어 아이콘을 누를 때만 선택창을 열고, 닫기만 하면 기존 설정을 유지한다.
+  Future<void> _selectLanguage(BuildContext context) async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: MedBuddyColors.surface,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(
+                header: true,
+                child: const Text(
+                  '언어 / Language',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(height: 16),
+              RadioGroup<String>(
+                groupValue: languageControl.language,
+                onChanged: (value) => Navigator.pop(sheetContext, value),
+                child: Column(
+                  children: [
+                    for (final option in const {
+                      'ko': '한국어',
+                      'en': 'English',
+                    }.entries)
+                      RadioListTile<String>(
+                        key: ValueKey('authentication-language-${option.key}'),
+                        value: option.key,
+                        selected: languageControl.language == option.key,
+                        activeColor: MedBuddyColors.primary,
+                        selectedTileColor: MedBuddyColors.successSurface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        title: Text(
+                          option.value,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!context.mounted || selected == null) return;
+    await languageControl.setLanguage(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                if (onBack != null)
+                  IconButton(
+                    key: const Key('authentication-back'),
+                    tooltip: _AuthenticationText(
+                      languageControl.language,
+                    ).backToSignIn,
+                    onPressed: isBusy ? null : onBack,
+                    icon: const Icon(Icons.arrow_back),
+                  ),
+                const Spacer(),
+                IconButton(
+                  key: const Key('authentication-language-toggle'),
+                  tooltip: '언어 / Language',
+                  onPressed: isBusy ? null : () => _selectLanguage(context),
+                  icon: const Icon(Icons.language),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: body),
+        ],
+      ),
+    ),
+  );
 }
 
 // Class Name: _SmsCodeView
@@ -815,13 +969,15 @@ class _AuthenticationText {
 // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
 class _SmsCodeView extends StatefulWidget {
   final AuthenticationControl control;
+  final AppLanguageControl languageControl;
 
   // Function Name: _SmsCodeView
   // Description: Initializes six-digit SMS code entry, verification, and cancellation with the supplied configuration.
   // Parameters:
   // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
+  // - languageControl (AppLanguageControl): Language shared with sign-in and account creation.
   // Returns: Initialized _SmsCodeView instance.
-  const _SmsCodeView({required this.control});
+  const _SmsCodeView({required this.control, required this.languageControl});
 
   // Function Name: createState
   // Description: Creates the state object that coordinates six-digit SMS code entry, verification, and cancellation.
@@ -858,7 +1014,13 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
   @override
   Widget build(BuildContext context) {
     final control = widget.control;
-    return Scaffold(
+    final text = _AuthenticationText(widget.languageControl.language);
+    final errorMessage = control.errorMessageForLanguage(
+      isEnglish: text.isEnglish,
+    );
+    return _AuthenticationScaffold(
+      languageControl: widget.languageControl,
+      isBusy: control.isBusy,
       body: _ScrollableAuthenticationBody(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -870,15 +1032,14 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
               color: MedBuddyColors.primary,
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Enter verification code',
+            Text(
+              text.enterCode,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Text(
-              'A code was sent to '
-              '${control.smsDestination ?? 'your phone'}.',
+              text.codeSent(control.smsDestination),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
@@ -888,14 +1049,14 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
               keyboardType: TextInputType.number,
               autofillHints: const [AutofillHints.oneTimeCode],
               maxLength: 6,
-              decoration: const InputDecoration(
-                labelText: 'SMS code',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: text.smsCode,
+                border: const OutlineInputBorder(),
               ),
             ),
-            if (control.errorMessage != null)
+            if (errorMessage != null)
               Text(
-                control.errorMessage!,
+                errorMessage,
                 style: const TextStyle(color: Colors.redAccent),
               ),
             const SizedBox(height: 16),
@@ -908,11 +1069,11 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
                   // - None.
                   // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
                   : () => control.submitSmsCode(_codeController.text),
-              child: const Text('Verify'),
+              child: Text(text.verify),
             ),
             TextButton(
               onPressed: control.isBusy ? null : control.cancelSmsChallenge,
-              child: const Text('Cancel'),
+              child: Text(text.cancel),
             ),
           ],
         ),
@@ -927,15 +1088,99 @@ class _SmsCodeViewState extends State<_SmsCodeView> {
 // - 부모가 전달한 표시값과 동작을 반영해 인증 메일 재전송과 이메일 인증 상태 재확인 위젯을 구성한다.
 // 속성:
 // - control (AuthenticationControl): 화면의 조회·변경 요청을 처리할 컨트롤러.
-class _EmailVerificationView extends StatelessWidget {
+class _EmailVerificationView extends StatefulWidget {
   final AuthenticationControl control;
+  final AppLanguageControl languageControl;
+  final VoidCallback onSignedOut;
 
   // Function Name: _EmailVerificationView
   // Description: Initializes verification-email resending and email verification status checks with the supplied configuration.
   // Parameters:
   // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
+  // - languageControl (AppLanguageControl): Language used for both the screen and email dispatch.
+  // - onSignedOut (VoidCallback): Restores the sign-in form after successful sign-out.
   // Returns: Initialized _EmailVerificationView instance.
-  const _EmailVerificationView({required this.control});
+  const _EmailVerificationView({
+    required this.control,
+    required this.languageControl,
+    required this.onSignedOut,
+  });
+
+  @override
+  State<_EmailVerificationView> createState() => _EmailVerificationViewState();
+}
+
+// 인증 재확인만 진행 표시로 구분하고, 로그인 복귀 실패는 같은 화면에서 안내한다.
+class _EmailVerificationViewState extends State<_EmailVerificationView>
+    with WidgetsBindingObserver {
+  bool _checkingVerification = false;
+  Timer? _verificationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleVerificationChecks();
+  }
+
+  @override
+  void dispose() {
+    _verificationTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 다른 기기에서 메일을 인증해도 감지하되, 백그라운드에서는 조회하지 않는다.
+  void _scheduleVerificationChecks() {
+    _verificationTimer?.cancel();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    _verificationTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_checkAutomatically()),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _verificationTimer?.cancel();
+    if (state == AppLifecycleState.resumed) {
+      _scheduleVerificationChecks();
+      unawaited(_checkAutomatically());
+    }
+  }
+
+  // 수동 확인·재전송과 요청을 겹치지 않고 미인증 결과는 조용히 유지한다.
+  Future<void> _checkAutomatically() async {
+    if (!mounted ||
+        widget.control.isBusy ||
+        !widget.control.emailVerificationRequired ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    await widget.control.refreshEmailVerification(showPendingMessage: false);
+  }
+
+  Future<void> _checkVerification() async {
+    if (widget.control.isBusy || _checkingVerification) return;
+    setState(() => _checkingVerification = true);
+    try {
+      await widget.control.refreshEmailVerification();
+    } finally {
+      if (mounted) setState(() => _checkingVerification = false);
+    }
+  }
+
+  // 계정은 삭제하지 않고 세션만 종료한다. 실패 안내는 컨트롤러가 제공한다.
+  Future<void> _returnToSignIn() async {
+    if (widget.control.isBusy) return;
+    try {
+      await widget.control.signOut();
+      widget.onSignedOut();
+    } on StateError {
+      // 로그아웃 실패 시 인증 화면과 오류 안내를 유지한다.
+    }
+  }
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 인증 메일 재전송과 이메일 인증 상태 재확인 화면을 구성한다.
@@ -944,7 +1189,16 @@ class _EmailVerificationView extends StatelessWidget {
   // 반환값: 인증 메일 재전송과 이메일 인증 상태 재확인에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final control = widget.control;
+    final languageControl = widget.languageControl;
+    final text = _AuthenticationText(languageControl.language);
+    final errorMessage = control.errorMessageForLanguage(
+      isEnglish: text.isEnglish,
+    );
+    return _AuthenticationScaffold(
+      languageControl: languageControl,
+      isBusy: control.isBusy,
+      onBack: _returnToSignIn,
       body: _ScrollableAuthenticationBody(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -956,41 +1210,57 @@ class _EmailVerificationView extends StatelessWidget {
               color: MedBuddyColors.primary,
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Verify your email',
+            Text(
+              text.verifyEmail,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Text(
-              'A verification link was sent to '
-              '${control.signedInEmail ?? 'your email address'}.',
+              text.verificationEmailSent(control.signedInEmail),
               textAlign: TextAlign.center,
             ),
-            if (control.errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(text.automaticEmailVerification, textAlign: TextAlign.center),
+            if (errorMessage != null) ...[
               const SizedBox(height: 12),
-              Text(
-                control.errorMessage!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.redAccent),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  errorMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
             ],
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: control.isBusy
-                  ? null
-                  : control.refreshEmailVerification,
-              child: const Text('I verified my email'),
+            // 자동 로그인이 기본이며 재확인은 실패에 대비한 보조 동작으로 남긴다.
+            Align(
+              child: TextButton.icon(
+                key: const Key('email-verification-check'),
+                onPressed: control.isBusy ? null : _checkVerification,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                icon: _checkingVerification
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 20),
+                label: Text(
+                  _checkingVerification
+                      ? text.checkingEmailVerification
+                      : text.checkEmailVerification,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ),
             TextButton(
               onPressed: control.isBusy
                   ? null
-                  : control.resendEmailVerification,
-              child: const Text('Resend verification email'),
-            ),
-            TextButton(
-              onPressed: control.isBusy ? null : control.signOut,
-              child: const Text('Use another account'),
+                  : () => control.resendEmailVerification(
+                      language: languageControl.language,
+                    ),
+              child: Text(text.resendEmail),
             ),
           ],
         ),

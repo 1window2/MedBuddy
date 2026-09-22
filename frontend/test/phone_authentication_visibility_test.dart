@@ -8,7 +8,7 @@ import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dar
 import 'package:medbuddy_frontend/controls/app_language_control.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   // Function Name: testWidgets callback
   // Description:
   // - Expected behavior: phone sign-in is hidden in the default beta build.
@@ -42,12 +43,12 @@ void main() {
 
   // Function Name: testWidgets callback
   // Description:
-  // - Expected behavior: authentication globe toggles Korean and English globally.
+  // - Expected behavior: the authentication globe opens a language picker and the selection updates the app.
   // Parameters:
   // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  testWidgets('authentication globe toggles Korean and English globally', (
+  testWidgets('authentication globe opens the Korean and English picker', (
     tester,
   ) async {
     final control = AuthenticationControl.development();
@@ -68,6 +69,10 @@ void main() {
     expect(find.text('회원가입 없이 계속하기'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('authentication-language-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(languageControl.language, 'ko');
+    await tester.tap(find.byKey(const Key('authentication-language-en')));
     await tester.pumpAndSettle();
 
     expect(find.text('Sign in'), findsNWidgets(2));

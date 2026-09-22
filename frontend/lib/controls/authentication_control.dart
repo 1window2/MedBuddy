@@ -16,6 +16,7 @@ import '../services/authenticated_api_client.dart';
 import '../services/backend_session_failure.dart';
 import '../services/firebase_runtime_service.dart';
 import '../services/user_facing_error_message.dart';
+import 'app_language_control.dart';
 
 // Class Name: SmsChallengePurpose
 // Role: Distinguishes phone sign-in, MFA sign-in, and MFA enrollment challenges.
@@ -136,7 +137,7 @@ class AuthenticationControl extends ChangeNotifier
   Object? _backendSessionError;
 
   // 함수이름: errorMessageForLanguage
-  // 함수역할: 서버 세션 연결 오류를 로그인 화면의 현재 언어에 맞는 안내로 변환한다. 버전 계약 불일치는 앱 업데이트가 필요하다는 구체적인 행동을 안내한다.
+  // 함수역할: 인증·서버 세션 오류를 현재 선택 언어로 표시하며, 언어를 바꾸어도 이미 발생한 오류를 다시 번역한다.
   // 매개변수:
   // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
   // 반환값:
@@ -147,7 +148,56 @@ class AuthenticationControl extends ChangeNotifier
     }
     final backendSessionError = _backendSessionError;
     if (backendSessionError == null) {
-      return _errorMessage;
+      if (isEnglish) return _errorMessage;
+      return switch (_errorMessage) {
+        'Enter a valid email address.' => '올바른 이메일 주소를 입력해 주세요.',
+        'Enter your email address first.' => '먼저 이메일 주소를 입력해 주세요.',
+        'The email or password is incorrect.' => '이메일 또는 비밀번호가 올바르지 않습니다.',
+        'An account already uses this email address.' =>
+          '이미 가입된 이메일입니다. 로그인하거나 비밀번호를 재설정해 주세요.',
+        'Use a stronger password with at least six characters.' =>
+          '비밀번호는 6자 이상으로 설정해 주세요.',
+        'Too many attempts. Please wait and try again.' =>
+          '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+        'Check your network connection and try again.' =>
+          '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+        'Email verification is not complete yet. Open the link in your email, then try again.' =>
+          '아직 인증되지 않았어요. 메일의 인증 링크를 누른 뒤 다시 확인해 주세요.',
+        'No signed-in user is available.' => '로그인 정보가 없습니다. 다시 로그인해 주세요.',
+        'Your secure session expired. Please sign in again.' =>
+          '로그인 정보가 만료되었습니다. 다시 로그인해 주세요.',
+        'This sign-in method belongs to another account. Sign out first to use it.' =>
+          '다른 계정에 연결된 로그인 방법입니다. 먼저 로그아웃해 주세요.',
+        'This sign-in method is not enabled yet.' => '아직 사용할 수 없는 로그인 방법입니다.',
+        'Google sign-in was not completed.' =>
+          'Google 로그인을 완료하지 못했습니다. 다시 시도해 주세요.',
+        'Authentication timed out. Check the network and try again.' =>
+          '연결 시간이 초과되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+        'Authentication state could not be refreshed.' =>
+          '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.',
+        'MedBuddy authentication is not configured correctly.' =>
+          '로그인 설정에 문제가 있습니다. 관리자에게 문의해 주세요.',
+        'MedBuddy could not initialize its secure services. Check the network and retry.' =>
+          '로그인 서비스를 시작하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+        'Phone authentication is unavailable in this beta build.' ||
+        'SMS verification is unavailable in this beta build.' =>
+          '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
+        'Use an international phone number such as +821012345678.' ||
+        'Enter a valid international phone number.' =>
+          '국가번호를 포함한 올바른 전화번호를 입력해 주세요.',
+        'Request a new SMS code first.' => '먼저 문자 인증번호를 요청해 주세요.',
+        'Enter the six-digit SMS code.' => '문자로 받은 6자리 인증번호를 입력해 주세요.',
+        'The SMS verification code is incorrect.' => '문자 인증번호가 올바르지 않습니다.',
+        'The SMS quota is exhausted. Try again later.' =>
+          '문자 발송 한도를 초과했습니다. 나중에 다시 시도해 주세요.',
+        'Sign out and sign in again before changing MFA.' =>
+          '인증 설정을 바꾸려면 로그아웃한 뒤 다시 로그인해 주세요.',
+        'Sign in with a verified email account before enabling MFA.' =>
+          '먼저 이메일 인증을 완료한 계정으로 로그인해 주세요.',
+        'No supported SMS second factor is available.' =>
+          '사용할 수 있는 추가 문자 인증 방법이 없습니다.',
+        _ => '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
+      };
     }
     return resolveBackendSessionError(
       backendSessionError,
@@ -282,11 +332,11 @@ class AuthenticationControl extends ChangeNotifier
   // Function Name: AuthenticationControl._
   // Description: Creates the authenticated API client with a live Firebase token provider and unauthorized-session cleanup callback.
   // Parameters:
-  // - None.
+  // - client (AuthenticatedApiClient?): Optional owned client for isolated tests.
   // Returns:
   // - AuthenticationControl: the initialized instance.
-  AuthenticationControl._() {
-    apiClient = AuthenticatedApiClient(
+  AuthenticationControl._({AuthenticatedApiClient? client}) {
+    apiClient = client ?? AuthenticatedApiClient(
       tokenProvider: /* Function Name: tokenProvider callback
        * Description: Fetches the current Firebase user's ID token for authenticated API requests.
        * Parameters:
@@ -307,6 +357,18 @@ class AuthenticationControl extends ChangeNotifier
   factory AuthenticationControl.development() {
     final control = AuthenticationControl._();
     control._session = _createLocalSession();
+    control._isInitializing = false;
+    return control;
+  }
+
+  // 실제 계정·메일·서버 요청 없이 인증 흐름을 검증한다. 주입 클라이언트도 dispose에서 닫는다.
+  @visibleForTesting
+  factory AuthenticationControl.withFirebaseAuth(
+    FirebaseAuth firebaseAuth, {
+    AuthenticatedApiClient? apiClient,
+  }) {
+    final control = AuthenticationControl._(client: apiClient);
+    control._firebaseAuth = firebaseAuth;
     control._isInitializing = false;
     return control;
   }
@@ -739,11 +801,13 @@ class AuthenticationControl extends ChangeNotifier
   // Parameters:
   // - email (String): Email used for sign-in, verification, or password reset.
   // - password (String): Password for the email account.
+  // - language (String): Selected app language for the verification email; defaults to Korean.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> createAccount({
     required String email,
     required String password,
+    String language = 'ko',
   }) async {
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
      * Description: Links email credentials to an anonymous account or creates a new account, then sends email verification and synchronizes it.
@@ -767,6 +831,10 @@ class AuthenticationControl extends ChangeNotifier
           password: password,
         )).user;
       }
+      // Apply the requested language inside the serialized operation, before dispatch.
+      await firebaseAuth.setLanguageCode(
+        AppLanguageControl.normalizeLanguage(language),
+      );
       await account?.sendEmailVerification();
       await _synchronizeUser(account);
     });
@@ -776,9 +844,10 @@ class AuthenticationControl extends ChangeNotifier
   // Description: Rejects blank email input and sends a password-reset email through the guarded authentication flow.
   // Parameters:
   // - email (String): Email used for sign-in, verification, or password reset.
+  // - language (String): Selected app language for the password-reset email.
   // Returns:
   // - Future<bool>: Rejects blank email input and sends a password-reset email through the guarded authentication flow.
-  Future<bool> sendPasswordReset(String email) async {
+  Future<bool> sendPasswordReset(String email, {String language = 'ko'}) async {
     final normalizedEmail = email.trim();
     if (normalizedEmail.isEmpty) {
       _setError('Enter your email address first.');
@@ -791,10 +860,12 @@ class AuthenticationControl extends ChangeNotifier
      * - None.
      * Returns:
      * - Completion of password-reset email dispatch.
-     */() async {
-      await _requireFirebaseAuth().sendPasswordResetEmail(
-        email: normalizedEmail,
+     */ () async {
+      final firebaseAuth = _requireFirebaseAuth();
+      await firebaseAuth.setLanguageCode(
+        AppLanguageControl.normalizeLanguage(language),
       );
+      await firebaseAuth.sendPasswordResetEmail(email: normalizedEmail);
       sent = true;
     });
     return sent;
@@ -803,21 +874,25 @@ class AuthenticationControl extends ChangeNotifier
   // Function Name: resendEmailVerification
   // Description: Sends another verification email for the current user and surfaces missing-session or provider failures.
   // Parameters:
-  // - None.
+  // - language (String): Current app language, including changes made after signup.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> resendEmailVerification() async {
+  Future<void> resendEmailVerification({String language = 'ko'}) async {
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
      * Description: Requires a current Firebase user before resending their email-verification message.
      * Parameters:
      * - None.
      * Returns:
      * - Completion of verification-email dispatch.
-     */() async {
-      final user = _requireFirebaseAuth().currentUser;
+     */ () async {
+      final firebaseAuth = _requireFirebaseAuth();
+      final user = firebaseAuth.currentUser;
       if (user == null) {
         throw StateError('No signed-in user is available.');
       }
+      await firebaseAuth.setLanguageCode(
+        AppLanguageControl.normalizeLanguage(language),
+      );
       await user.sendEmailVerification();
     });
   }
@@ -825,10 +900,10 @@ class AuthenticationControl extends ChangeNotifier
   // Function Name: refreshEmailVerification
   // Description: Reloads the Firebase user, refreshes the token after successful verification, and retries backend session synchronization.
   // Parameters:
-  // - None.
+  // - showPendingMessage (bool): Whether an unverified result should display manual-check guidance.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> refreshEmailVerification() async {
+  Future<void> refreshEmailVerification({bool showPendingMessage = true}) async {
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
      * Description: Reloads email-verification status, refreshes the token after verification, and resynchronizes the backend session.
      * Parameters:
@@ -846,7 +921,13 @@ class AuthenticationControl extends ChangeNotifier
         await refreshedUser?.getIdToken(true);
       }
       await _synchronizeUser(refreshedUser);
-    });
+      // 미인증은 화면을 유지하되, 재확인 결과와 다음 행동을 분명히 안내한다.
+      if (_emailVerificationRequired && showPendingMessage) {
+        _setError(
+          'Email verification is not complete yet. Open the link in your email, then try again.',
+        );
+      }
+    }, clearError: showPendingMessage);
   }
 
   // Function Name: signOut
@@ -1066,17 +1147,19 @@ class AuthenticationControl extends ChangeNotifier
   // Parameters:
   // - operation (Future<void> Function()): Authentication operation run inside serialization and error handling.
   // - timeout (Duration?): Authentication timeout; null waits without a time limit.
+  // - clearError (bool): Whether to clear previous guidance before the request starts.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _runAuthOperation(
     Future<void> Function() operation, {
     Duration? timeout = _authenticationOperationTimeout,
+    bool clearError = true,
   }) async {
     if (_isBusy) {
       return;
     }
     _isBusy = true;
-    _errorMessage = null;
+    if (clearError) _errorMessage = null;
     notifyListeners();
     try {
       final pendingOperation = operation();
