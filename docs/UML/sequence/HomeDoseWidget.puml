@@ -57,7 +57,9 @@ User -> Widget: Tap schedule summary
 Widget -> Callback: Open own schedule in app (no write)
 end
 note over Widget,Store
-Logout/account switch clears the display.
+Logout/account switch clears the previous account's display.
+Without an account snapshot, show sign-in guidance and a Sign in action.
+Hide dose progress and refresh; open authentication without a dose write.
 Old-day, replayed and incompatible actions do not write.
 No authentication tokens, credentials or account IDs in PendingIntent data.
 end note
