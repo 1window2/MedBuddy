@@ -8,6 +8,7 @@ import 'package:medbuddy_frontend/controls/set_caregiver_notification_control.da
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 // 클래스명: _FakeCaregiverMedicationControl
@@ -59,6 +60,7 @@ class _FakeCaregiverMedicationControl extends CheckCaregiverMedication {
 // - 선택 환자와 시간대를 유지한 기본 보호자 알림 설정을 제공한다.
 // - 모든 지원 시간대 중 아침에만 복용 완료 알림을 활성화한다.
 class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
+  final CaregiverNotification? morning;
   // 함수이름: _FakeCaregiverNotificationControl
   // 함수역할:
   // - 보호자 caregiver-a의 로컬 알림 범위를 초기화한다.
@@ -66,7 +68,7 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
   // - 없음.
   // 반환값:
   // - 고정 보호자 범위의 알림 대역.
-  _FakeCaregiverNotificationControl()
+  _FakeCaregiverNotificationControl({this.morning})
     : super(baseUrl: 'http://localhost', caregiverHash: 'caregiver-a');
 
   // 함수이름: requestCaregiverNotificationSetting
@@ -101,7 +103,7 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
   requestCaregiverNotificationSettings({required String patientHash}) async {
     return {
       for (final slotKey in caregiverNotificationSlotKeys)
-        slotKey: CaregiverNotification(
+        slotKey: slotKey == 'morning' && morning != null ? morning! : CaregiverNotification(
           caregiverHash: 'caregiver-a',
           patientHash: patientHash,
           slotKey: slotKey,
@@ -121,6 +123,41 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // Show caregiver alert rules, not fabricated medication times, in both
+  // languages and clock formats. Large text must remain readable.
+  for (final language in ['en', 'ko']) {
+    for (final format in ['12h', '24h']) {
+      for (final mode in CaregiverNotificationMode.values) {
+        testWidgets('alert label $language $format $mode', (tester) async {
+          final setting = UserSetting(language: language, timeFormat: format);
+          await tester.pumpWidget(MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: CheckCaregiverMedicationUI(
+              caregiverHash: 'caregiver-a', patientHash: 'patient-a',
+              userSetting: setting,
+              control: _FakeCaregiverMedicationControl(),
+              notificationControl: _FakeCaregiverNotificationControl(morning: CaregiverNotification(
+                slotKey: 'morning', mode: mode, deadlineHour: 2, deadlineMinute: 38,
+              )),
+            ),
+          ));
+          await tester.pump();
+          final expected = switch (mode) {
+            CaregiverNotificationMode.disabled => language == 'en' ? 'Caregiver alerts off' : '보호자 알림 꺼짐',
+            CaregiverNotificationMode.doseCompleted => language == 'en' ? 'Alert on completion' : '복용 완료 시 알림',
+            CaregiverNotificationMode.missedDeadline => '${language == 'en' ? 'Missed-dose alert' : '미복용 알림'} ${setting.formatTime(2, 38)}',
+          };
+          expect(tester.widget<Text>(find.byKey(const ValueKey('caregiver-alert-time-morning'))).data, expected);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      }
+    }
+  }
+
   for (final width in [320.0, 411.0, 1024.0]) {
     // 함수이름: testWidgets 콜백
     // 함수역할: 기본 일정과 같은 카드 폭을 유지하고 체크 표시의 내부 공간만 제거하는지 검증한다.

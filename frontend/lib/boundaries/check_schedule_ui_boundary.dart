@@ -1559,15 +1559,11 @@ class _TimeSlotCard extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        Text(
-                          userSetting.formatTime(
-                            reminderSetting.isEnabled
-                                ? reminderSetting.hour
-                                : slot.hour,
-                            reminderSetting.isEnabled
-                                ? reminderSetting.minute
-                                : 0,
-                          ),
+                        if (!isSelectionMode) Text(
+                          reminderSetting.isEnabled && userSetting.medicationNotificationsEnabled
+                              ? '${text.isEnglish ? 'Reminder' : '복약 알림'} ${userSetting.formatTime(reminderSetting.hour, reminderSetting.minute)}'
+                              : (text.isEnglish ? 'Reminder off' : '복약 알림 꺼짐'),
+                          key: ValueKey('patient-alert-time-${slot.key}'),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 13,

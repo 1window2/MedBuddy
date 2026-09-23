@@ -277,11 +277,11 @@ class _MutableSetNotification extends SetNotification {
 
   // 함수이름: _MutableSetNotification
   // 함수역할: enabled로 초기 활성 상태를 지정한다. 반환값: 변경 추적 가능한 알림 대역.
-  _MutableSetNotification({bool enabled = false})
+  _MutableSetNotification({bool enabled = false, int hour = 8, int minute = 0})
     : _setting = MedicationAlarm(
         slotKey: 'morning',
-        hour: 8,
-        minute: 0,
+        hour: hour,
+        minute: minute,
         enabled: enabled,
       );
 
@@ -833,6 +833,21 @@ Future<void> _editReminderHour(WidgetTester tester, String hour) async {
 // 함수이름: main
 // 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
+  // A configured reminder is not a prescribed dose time; disabled alarms must
+  // not revert to a hard-coded 08:00 label. Viewing never saves a setting.
+  for (final enabled in [true, false]) {
+    testWidgets('patient header identifies reminder state $enabled', (tester) async {
+      final notification = _MutableSetNotification(enabled: enabled, hour: 2, minute: 38);
+      final model = await _pumpReminderSchedule(tester, notification, textScale: 2);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('patient-alert-time-morning'))).data,
+        enabled ? '복약 알림 02:38' : '복약 알림 꺼짐');
+      expect(notification.saveCount, 0);
+      expect(model.medicationReminderSettings['morning']!.isEnabled, enabled);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   // Function Name: testWidgets callback
   // Description:
   // - Expected behavior: schedule API failure shows a retry state.

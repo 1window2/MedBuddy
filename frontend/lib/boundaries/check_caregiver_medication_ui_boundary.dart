@@ -944,6 +944,33 @@ class _CaregiverScheduleHeader extends StatelessWidget {
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
 class _CaregiverTimeSlotCard extends StatelessWidget {
+  // Function Name: _alertTimingLabel
+  // Description: Describe this caregiver's alert rule, never a patient's dose time.
+  // Parameters: None. Returns: Localized status with the selected clock format.
+  String get _alertTimingLabel {
+    if (!userSetting.caregiverNotificationsEnabled) {
+      return isEnglish ? 'Caregiver alerts off' : '보호자 알림 꺼짐';
+    }
+    final setting = notificationSetting;
+    if (setting == null) {
+      return isNotificationLoading
+          ? (isEnglish ? 'Loading alert settings' : '알림 설정 불러오는 중')
+          : (isEnglish ? 'Alert settings unavailable' : '알림 설정 확인 필요');
+    }
+    switch (setting.mode) {
+      case CaregiverNotificationMode.disabled:
+        return isEnglish ? 'Caregiver alerts off' : '보호자 알림 꺼짐';
+      case CaregiverNotificationMode.doseCompleted:
+        return isEnglish ? 'Alert on completion' : '복용 완료 시 알림';
+      case CaregiverNotificationMode.missedDeadline:
+        if (!setting.hasValidDeadline) {
+          return isEnglish ? 'Alert time unavailable' : '알림 시각 확인 필요';
+        }
+        final time = userSetting.formatTime(setting.deadlineHour!, setting.deadlineMinute!);
+        return isEnglish ? 'Missed-dose alert $time' : '미복용 알림 $time';
+    }
+  }
+
   final _CaregiverScheduleSlot slot;
   final bool isEnglish;
   final UserSetting userSetting;
@@ -1019,7 +1046,8 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        userSetting.formatTime(slot.hour, 0),
+                        _alertTimingLabel,
+                        key: ValueKey('caregiver-alert-time-${slot.key}'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,
