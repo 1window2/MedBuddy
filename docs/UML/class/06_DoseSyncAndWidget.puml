@@ -18,6 +18,7 @@ package "Flutter" {
 }
 package "Android" {
   class DoseWidgetProvider <<Boundary>>
+  class DoseWidgetLayout <<Boundary helper>>
   class WorkManager <<External>>
 }
 package "FastAPI" {
@@ -48,6 +49,15 @@ DoseWidgetStore ..> DoseOutboxStore : 암호화 저장소 확장
 DoseWidgetStore --> DoseWidgetState
 DoseHomeWidget --> DoseWidgetProvider : 표시 상태·불투명 토큰
 DoseWidgetProvider --> DoseHomeWidget : 버튼 백그라운드 콜백
+DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크기별 배치
+
+note right of DoseWidgetLayout
+  Android 12 이상은 높이별 RemoteViews를 제공한다.
+  이전 버전은 런처의 회전별 높이에 맞춘다.
+  기본 240dp와 최소 축소 180dp를 분리해
+  지원 런처에 요청한 4 x 3 초기 크기를 유지한다.
+  작은 높이는 요약 배치로 전환하고 기록 권한은 바꾸지 않는다.
+end note
 
 note bottom of DoseWidgetStore
   본인 복약 큐와 연결 환자 조회 캐시를 분리한다.
