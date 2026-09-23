@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -176,18 +175,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
             val views = RemoteViews(context.packageName, R.layout.dose_home_widget)
-            // 작은 위젯이나 큰 글씨에서도 제목·버튼이 약 목록에 밀려 잘리지 않게 한다.
-            val heightOption = if (context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
-                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT
-            val height = manager.getAppWidgetOptions(id).getInt(heightOption, 300)
-            val largeText = context.resources.configuration.fontScale > 1.15f
-            val compact = height < 340 || largeText
-            views.setInt(R.id.widget_heading, "setMaxLines", if (known && compact) 1 else 2)
-            val detailLines = if (height < 300 || (largeText && (height < 340 || page.optBoolean("overdue")))) 1 else if (compact) 2 else 3
-            views.setInt(R.id.widget_details, "setMaxLines", if (known) detailLines else 2)
-            views.setInt(R.id.widget_warning, "setMaxLines", if (compact) 1 else 2)
-            views.setInt(R.id.widget_status, "setMaxLines", if (compact) 1 else 2)
             views.setOnClickPendingIntent(R.id.widget_content, open)
+            views.setOnClickPendingIntent(R.id.widget_compact_heading, open)
             views.setOnClickPendingIntent(R.id.widget_refresh, action(context, "refresh", ""))
             views.setContentDescription(R.id.widget_refresh, tr("새로고침", "Refresh"))
             // 계정 정보가 없는 상태는 조회 실패와 구분하고 로그인만 안내한다.
@@ -236,6 +225,16 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 else -> (if (patients.size > 1) "$count · " else "") + state.optString("status")
             })
             views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
+            // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
+            views.setTextViewText(R.id.widget_compact_heading, page.optString("heading"))
+            if (known && !expired) {
+                val description = listOfNotNull(
+                    page.optString("heading"), page.optString("details"),
+                    if (page.optBoolean("overdue")) tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses") else null,
+                ).joinToString(". ")
+                views.setContentDescription(R.id.widget_content, description)
+                views.setContentDescription(R.id.widget_compact_heading, description)
+            }
             views.setViewVisibility(R.id.widget_warning, if (page.optBoolean("overdue") && !expired) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.widget_pager, if (pages.size > 1) View.VISIBLE else View.GONE)
             val dots = intArrayOf(R.id.widget_dot_0, R.id.widget_dot_1, R.id.widget_dot_2, R.id.widget_dot_3)
@@ -285,7 +284,10 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     action(context, page.optString("action"), page.optString("token"), id)
                 else -> open
             })
-            manager.updateAppWidget(id, views)
+            manager.updateAppWidget(id, DoseWidgetLayout.responsive(
+                context, views, manager.getAppWidgetOptions(id), known,
+                page.optBoolean("overdue") && !expired, pages.size > 1,
+            ))
         }
         // Recover a killed callback and refresh the day without a polling loop.
         if (known && (pending || expired) && System.currentTimeMillis() - data.getLong(LAST_WAKE, 0L) > 5000) wake(context, data)

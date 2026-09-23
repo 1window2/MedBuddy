@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android 15 런처는 가로 화면의 최소 셀 높이도 검사하므로 초기 높이와 축소 한도를 분리한다. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/dose_home_widget"
     android:previewLayout="@layout/dose_home_widget_preview"
-    android:minWidth="250dp" android:minHeight="300dp"
-    android:minResizeWidth="250dp" android:minResizeHeight="300dp"
+    android:minWidth="250dp" android:minHeight="240dp"
+    android:minResizeWidth="250dp" android:minResizeHeight="180dp"
     android:targetCellWidth="4" android:targetCellHeight="3"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
