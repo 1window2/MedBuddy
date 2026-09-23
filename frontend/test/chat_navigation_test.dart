@@ -120,6 +120,8 @@ class _ViewModel extends MedBuddyViewModel {
 // 클래스명: _HomeMonitoring
 // 역할: 홈 조립 테스트에 활성 환자의 빈 일정을 제공한다.
 class _HomeMonitoring extends CheckCaregiverMedication {
+  // Bind the fake API to the authenticated caregiver used by this fixture.
+  _HomeMonitoring() : super(caregiverHash: 'caregiver');
   int calls = 0;
   // 함수이름: requestPatientMedicationInfo
   // 함수역할: 조회 횟수를 기록하고 활성 환자의 빈 일정을 제공한다.

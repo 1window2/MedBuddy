@@ -119,7 +119,7 @@ class DoseHomeWidget {
           final snapshots = await CheckCaregiverMedication(
             caregiverHash: owner,
             client: client,
-          ).requestMonitoringSnapshot();
+          ).requestScheduleSnapshot();
           if (day == doseWidgetDay(DateTime.now())) {
             await publish(
               owner: owner,

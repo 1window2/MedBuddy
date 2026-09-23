@@ -636,6 +636,8 @@ CaregiverMonitoringSnapshot _snapshot(PatientCaregiverLink link) =>
 // 클래스명: _Monitoring
 // 역할: 환자 조회 실패·지연과 다른 계정 결과를 재현한다.
 class _Monitoring extends CheckCaregiverMedication {
+  // Bind the fake API to the same caregiver as the Home under test.
+  _Monitoring() : super(caregiverHash: 'owner');
   int calls = 0;
   bool failure = false;
   List<CaregiverMonitoringSnapshot>? snapshots;

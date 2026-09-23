@@ -8,6 +8,8 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/patient_caregiver_link_entity.dart';
+import 'link_patient_caregiver_control.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
@@ -53,6 +55,46 @@ class CheckCaregiverMedication {
     http.Client? client,
   }) : _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
+
+  // Function Name: requestScheduleSnapshot
+  // Description: Read linked-patient schedules independently of alert preferences.
+  // Parameters: links - current Home links, or null to fetch fresh widget links.
+  // Returns: Scoped snapshots; failures propagate instead of becoming empty schedules.
+  Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
+    List<PatientCaregiverLink>? links,
+  }) async {
+    final currentLinks =
+        links ??
+        await LinkPatientCaregiver(
+          userHash: caregiverHash,
+          baseUrl: baseUrl,
+          client: _client,
+        ).requestLinkScreen();
+    final allowed = currentLinks.where(
+      (link) =>
+          link.linkStatus &&
+          (link.linkId ?? 0) > 0 &&
+          link.caregiverHash == caregiverHash &&
+          link.patientHash.isNotEmpty &&
+          link.patientHash != caregiverHash,
+    );
+    return Future.wait(
+      allowed.map((link) async {
+        final info = await requestPatientMedicationInfo(
+          patientHash: link.patientHash,
+        );
+        if (info.caregiverHash != caregiverHash ||
+            info.patientHash != link.patientHash) {
+          throw StateError('Caregiver medication response scope mismatch.');
+        }
+        return CaregiverMonitoringSnapshot(
+          link: link,
+          notificationSettings: const {},
+          schedules: info.todayMedicationScheduleList,
+        );
+      }),
+    );
+  }
 
   // 함수이름: requestMonitoringSnapshot
   // 함수역할: 보호자가 관리하는 모든 환자의 알림 설정과 오늘 일정을 한 번에 조회한다.

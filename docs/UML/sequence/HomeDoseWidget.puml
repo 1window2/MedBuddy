@@ -6,13 +6,13 @@ participant "Dart widget callback" as Callback
 database "Encrypted dose store" as Store
 participant "Existing dose sync worker" as Sync
 participant "Completion API" as API
-participant "Caregiver monitoring API" as Monitoring
+participant "Linked-patient schedule Control" as Schedules
 
 User -> Callback: Set home schedule source (self / patients)
 Callback -> Store: Persist shared source; invalidate incompatible actions
 alt Linked patients (read-only)
-Callback -> Monitoring: Fetch active linked-patient snapshots
-Monitoring --> Callback: Links, aliases and today's dose statuses
+Callback -> Schedules: Fetch fresh active links and authorized patient details
+Schedules --> Callback: Links, aliases and today's dose statuses\nIndependent of alert preferences; shared with Home
 Callback -> Store: Validate account, date and refresh revision\nCache separately from own dose outbox
 Callback -> Widget: Read-only patient pages; no take/cancel tokens
 User -> Widget: Patient arrows / slot arrows and dots
