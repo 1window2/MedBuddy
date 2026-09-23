@@ -520,14 +520,8 @@ class PushNotificationService {
     if (message.data['type'] == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
       if (linkId != null && linkId > 0) {
-        final slotKey = message.data['slot_key']?.trim() ?? '';
-        final isSlotRequest =
-            message.data['message_kind'] == 'slot_check_request' &&
-            const {'morning', 'lunch', 'evening', 'bedtime'}.contains(slotKey);
         NotificationService.handleNotificationPayload(
-          isSlotRequest
-              ? 'schedule:$slotKey:${linkId.hashCode & 0x7fffffff}'
-              : 'chat:$linkId',
+          'chat:$linkId',
         );
       }
       return;
@@ -540,6 +534,13 @@ class PushNotificationService {
       'caregiver:${Uri.encodeComponent(patientHash)}',
     );
   }
+
+  // Function Name: handleOpenedMessageForTesting
+  // Description: Exercise the same handler used by launch and background taps.
+  // Parameters: message - simulated FCM delivery. Returns: No value.
+  @visibleForTesting
+  void handleOpenedMessageForTesting(RemoteMessage message) =>
+      _handleOpenedMessage(message);
 
   // 함수이름: caregiverNotificationTextForTesting
   // 함수역할: 완료·미복약 보호자 푸시의 언어별 제목과 본문을 구성한다.

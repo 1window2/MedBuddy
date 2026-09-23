@@ -1006,11 +1006,9 @@ class NotificationService {
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      payload:
-          messageKind == 'slot_check_request' &&
-              _isSupportedScheduleSlot(slotKey)
-          ? 'schedule:${slotKey!.trim()}:$id'
-          : 'chat:$linkId',
+      // A dose-check request is still a chat message. Open its conversation;
+      // the patient chooses whether to record a dose from there.
+      payload: 'chat:$linkId',
     );
     if (recordHistory) {
       await _recordInbox(
@@ -1041,21 +1039,6 @@ class NotificationService {
     return language.trim().toLowerCase().startsWith('en')
         ? 'You received a new message from a linked family member.'
         : '연동된 가족에게 새 메시지가 도착했습니다.';
-  }
-
-  // 함수이름: _isSupportedScheduleSlot
-  // 함수역할: 선택적 시간대 문자열을 정규화해 지원하는 네 복약 시간대에 포함되는지 확인한다.
-  // 매개변수:
-  // - value (String?): 알림 이동에 사용할 수 있는지 검사할 시간대 키
-  // 반환값:
-  // - bool: 선택적 시간대 문자열을 정규화해 지원하는 네 복약 시간대에 포함되는지 확인한다.
-  static bool _isSupportedScheduleSlot(String? value) {
-    return const {
-      'morning',
-      'lunch',
-      'evening',
-      'bedtime',
-    }.contains(value?.trim().toLowerCase());
   }
 
   // 함수이름: _linkedChatMessagePreview

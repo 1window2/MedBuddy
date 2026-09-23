@@ -145,6 +145,24 @@ void main() {
     },
   );
 
+  // Chat dose requests must have the same conversation destination in the
+  // native notification and inbox; no completion action is synthesized.
+  for (final slot in ['morning', 'lunch', 'evening', 'bedtime', 'invalid']) {
+    test('dose request for $slot opens its conversation', () async {
+      await service.showLinkedChatAlert(
+        id: 301, linkId: 17, messageKind: 'slot_check_request', slotKey: slot,
+      );
+      final args = calls.singleWhere((call) => call.method == 'show').arguments as Map;
+      expect(args['payload'], 'chat:17');
+      final selection = NotificationService.selectionFromPayload(args['payload'] as String);
+      expect(selection!.destination, MedicationNotificationDestination.linkedChat);
+      expect(selection.linkId, 17);
+      expect(selection.action, MedicationNotificationAction.open);
+      expect(selection.slotKey, isNull);
+      expect((await NotificationInboxStore(userHash: 'patient').load()).single.payload, 'chat:17');
+    });
+  }
+
   // 함수이름: 내용 숨김 테스트
   // 함수역할: 종류만 표시하는 설정은 시스템 알림과 알림함 양쪽에서 본문을 숨긴다.
   // 매개변수: 없음. 반환값: 표시·저장 내용 검증 완료.
