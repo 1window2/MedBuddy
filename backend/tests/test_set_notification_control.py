@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.set_notification_control import SetNotification  # noqa: E402
+from entities.user_setting_entity import _UserSetting  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_alarm_entity import (  # noqa: E402
     _MedicationAlarm,
@@ -37,6 +38,46 @@ from entities.medication_alarm_entity import (  # noqa: E402
 # - db (Session): SQLAlchemy session holding only this test's database state.
 # - control (SetNotification): Use-case control under test, isolated from production state.
 class SetNotificationTest(unittest.TestCase):
+    # Function Name: test_unsaved_slots_follow_patient_defaults
+    # Description: Updated defaults apply to unsaved slots, without writes or cross-account leakage.
+    # Parameters: None.
+    # Returns: None; assertions cover all slots and subsequent default changes.
+    def test_unsaved_slots_follow_patient_defaults(self) -> None:
+        setting = _UserSetting(
+            user_hash="patient-a", default_morning_time="07:15",
+            default_lunch_time="13:25", default_evening_time="19:35",
+            default_bedtime="23:45",
+        )
+        self.db.add(setting)
+        self.db.commit()
+        alarms = self.control.requestMedicationAlarm("patient-a")["data"]
+        self.assertEqual([(a["hour"], a["minute"]) for a in alarms],
+                         [(7, 15), (13, 25), (19, 35), (23, 45)])
+        self.assertTrue(all(not a["is_enabled"] for a in alarms))
+        self.assertEqual(self.db.query(_MedicationAlarm).count(), 0)
+        self.assertEqual(self.control.requestAlarmToggle("patient-b", "morning")["data"]["hour"], 8)
+        setting.default_morning_time = "06:50"
+        self.db.commit()
+        alarm = self.control.requestAlarmToggle("patient-a", "morning")["data"]
+        self.assertEqual((alarm["hour"], alarm["minute"]), (6, 50))
+
+    # Function Name: test_default_changes_preserve_explicit_alarms
+    # Description: Neither enabled nor disabled saved times are overwritten by defaults.
+    # Parameters: None.
+    # Returns: None; assertions also cover disabling a previously unsaved slot.
+    def test_default_changes_preserve_explicit_alarms(self) -> None:
+        self.db.add(_UserSetting(user_hash="patient-a", default_morning_time="07:15",
+                                 default_lunch_time="13:25", default_evening_time="19:35"))
+        self.db.commit()
+        self.control.saveNotificationSetting("patient-a", "morning", 9, 40)
+        self.control.saveNotificationSetting("patient-a", "lunch", 14, 10)
+        self.control.disableAlarmSetting("patient-a", "lunch")
+        alarms = self.control.requestMedicationAlarm("patient-a")["data"]
+        self.assertEqual((alarms[0]["hour"], alarms[0]["minute"], alarms[0]["is_enabled"]), (9, 40, True))
+        self.assertEqual((alarms[1]["hour"], alarms[1]["minute"], alarms[1]["is_enabled"]), (14, 10, False))
+        disabled = self.control.disableAlarmSetting("patient-a", "evening")["data"]
+        self.assertEqual((disabled["hour"], disabled["minute"], disabled["is_enabled"]), (19, 35, False))
+
     # Function Name: setUp
     # Description:
     # - Creates an isolated medication-alarm database, upgrades its schema, and prepares the

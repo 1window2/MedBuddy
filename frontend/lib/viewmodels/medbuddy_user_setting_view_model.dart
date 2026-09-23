@@ -137,6 +137,10 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
         _userSetting.medicationNotificationsEnabled;
     final previousNotificationDetailMode = _userSetting.notificationDetailMode;
     final previousIsEnglishSetting = _isEnglishSetting;
+    final previousDefaultTimes = {
+      for (final slot in MedBuddyViewModel._reminderSlotKeys)
+        slot: _userSetting.defaultTimeForSlot(slot),
+    };
     final saveResult = await manageUserSetting.saveUserSetting(
       currentSetting: _userSetting,
       fontSizeOption: fontSizeOption,
@@ -173,6 +177,14 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     } else if (shouldRefreshScheduledMessages) {
       // 이미 예약된 알림에도 새 언어와 잠금 화면 공개 수준을 즉시 반영한다.
       await refreshMedicationSchedule();
+    }
+    if (saveResult.synchronizedWithServer &&
+        previousDefaultTimes.entries.any(
+          (entry) => entry.value != _userSetting.defaultTimeForSlot(entry.key),
+        )) {
+      // Refresh unsaved defaults for the next schedule/configuration screen.
+      // This read preserves explicit alarms and must not replace native snoozes.
+      await loadMedicationReminderSettings();
     }
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;

@@ -14,6 +14,7 @@ from entities.medication_alarm_entity import (
     valid_alarm_slot_keys,
 )
 from entities.patient_hash_entity import normalize_patient_hash
+from entities.user_setting_entity import _UserSetting
 
 logger = logging.getLogger(__name__)
 
@@ -178,11 +179,12 @@ class SetNotification:
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
             if setting is None:
+                default = self._default_setting_row(normalized_patient_hash, normalized_slot_key)
                 setting = _MedicationAlarm(
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
-                    hour=default_alarm_hour(normalized_slot_key),
-                    minute=0,
+                    hour=default.hour,
+                    minute=default.minute,
                     enabled=False,
                 )
                 self.db.add(setting)
@@ -352,7 +354,8 @@ class SetNotification:
 
     # Function Name: _default_setting_row
     # Description:
-    # - Constructs an unsaved disabled alarm using the slot's default hour and minute zero.
+    # - Constructs a disabled alarm from patient preferences, falling back to product defaults.
+    # - Reads do not persist synthetic defaults or overwrite explicit saved alarm times.
     # Parameters:
     # - patient_hash (str): Patient ownership scope for the operation.
     # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
@@ -363,11 +366,23 @@ class SetNotification:
         patient_hash: str,
         slot_key: str,
     ) -> MedicationAlarm:
+        preferences = self.db.query(_UserSetting).filter_by(user_hash=patient_hash).first()
+        field = {
+            "morning": "default_morning_time",
+            "lunch": "default_lunch_time",
+            "evening": "default_evening_time",
+            "bedtime": "default_bedtime",
+        }[slot_key]
+        time = getattr(preferences, field, None)
+        hour, minute = (
+            (int(part) for part in time.split(":"))
+            if time else (default_alarm_hour(slot_key), 0)
+        )
         return MedicationAlarm(
             patient_hash=patient_hash,
             slot_key=slot_key,
-            hour=default_alarm_hour(slot_key),
-            minute=0,
+            hour=hour,
+            minute=minute,
             enabled=False,
         )
 

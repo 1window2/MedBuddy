@@ -31,6 +31,88 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // Default-time saves refresh read-only alarm state without rescheduling
+  // explicit alarms, enabling notifications, or clearing a pending snooze.
+  test(
+    'saving defaults refreshes unsaved slots and preserves custom alarms',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final notifications = _FakeNotificationService();
+      var reads = 0;
+      var saveSucceeds = true;
+      final client = MockClient((request) async {
+        if (request.method == 'PUT') {
+          return saveSucceeds
+              ? _jsonResponse({'data': jsonDecode(request.body)})
+              : http.Response('Unavailable', 503);
+        }
+        expect(request.method, 'GET');
+        expect(request.url.path, endsWith('/notification/settings'));
+        reads++;
+        return _jsonResponse({
+          'data': [
+            {
+              'slot_key': 'morning',
+              'hour': 7,
+              'minute': 15,
+              'is_enabled': false,
+            },
+            {'slot_key': 'lunch', 'hour': 14, 'minute': 40, 'is_enabled': true},
+            {
+              'slot_key': 'evening',
+              'hour': 20,
+              'minute': 25,
+              'is_enabled': false,
+            },
+          ],
+        });
+      });
+      final viewModel = MedBuddyViewModel(
+        apiClient: client,
+        notificationService: notifications,
+        manageUserSetting: ManageUserSetting(
+          userHash: PatientHash.defaultPatientHash,
+          client: client,
+        ),
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.requestUserSettingSave(
+        fontSizeOption: 'medium',
+        readingSpeedOption: 'normal',
+        language: 'ko',
+        defaultMorningTime: '07:15',
+        defaultLunchTime: '13:15',
+        defaultEveningTime: '19:15',
+      );
+      expect(reads, 1);
+      expect(
+        viewModel.medicationReminderSettings['morning']!.timeLabel,
+        '07:15',
+      );
+      expect(viewModel.medicationReminderSettings['lunch']!.timeLabel, '14:40');
+      expect(viewModel.medicationReminderSettings['lunch']!.isEnabled, isTrue);
+      expect(
+        viewModel.medicationReminderSettings['evening']!.timeLabel,
+        '20:25',
+      );
+      expect(
+        viewModel.medicationReminderSettings['evening']!.isEnabled,
+        isFalse,
+      );
+      expect(notifications.registeredSlotKeys, isEmpty);
+      expect(notifications.canceledIds, isEmpty);
+      saveSucceeds = false;
+      final pending = await viewModel.requestUserSettingSave(
+        fontSizeOption: 'medium', readingSpeedOption: 'normal', language: 'ko',
+        defaultMorningTime: '06:45',
+      );
+      expect(pending.synchronizedWithServer, isFalse);
+      expect(reads, 1); // Do not fetch stale defaults after a failed server save.
+      expect(notifications.registeredSlotKeys, isEmpty);
+      expect(notifications.canceledIds, isEmpty);
+    },
+  );
+
   test('partial offline settings never cancel alarms; recovery performs reads only', () async {
     SharedPreferences.setMockInitialValues({});
     var offline = true;
