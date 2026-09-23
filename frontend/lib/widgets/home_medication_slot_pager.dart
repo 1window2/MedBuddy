@@ -101,6 +101,20 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       .where((schedule) => schedule.slotKeys.contains(slot))
       .toList(growable: false);
 
+  // 함수이름: _pageValue
+  // 함수역할: 화면 읽기에서 현재 위치와 이전·다음 시간대를 함께 안내한다.
+  // 매개변수: index: 시간대 순서. 반환값: 선택 언어로 표현한 페이지 위치.
+  String _pageValue(int index) {
+    final label = _slotLabel(medicationScheduleSlotKeys[index]);
+    final count = medicationScheduleSlotKeys.length;
+    return widget.isEnglish
+        ? '$label, ${index + 1} of $count time slots'
+        : '$label, $count개 시간대 중 ${index + 1}번째';
+  }
+
+  // 함수이름: build
+  // 함수역할: 선택한 시간대 요약·점 표시와 역할에 맞는 기록 또는 상세 조회 버튼을 구성한다.
+  // 매개변수: context: 화면 구성 환경. 반환값: 시간대 탐색 영역.
   @override
   Widget build(BuildContext context) {
     final slot = medicationScheduleSlotKeys[_index];
@@ -112,6 +126,11 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
+          value: _pageValue(_index),
+          increasedValue: _index < medicationScheduleSlotKeys.length - 1
+              ? _pageValue(_index + 1)
+              : null,
+          decreasedValue: _index > 0 ? _pageValue(_index - 1) : null,
           onIncrease: _index < medicationScheduleSlotKeys.length - 1
               ? () => _select(_index + 1)
               : null,
@@ -256,8 +275,41 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       compact: widget.compact,
       showDetailsArrow: widget.onDetailsRequested != null,
       descriptionMaxLines: 2,
+      pageIndicator: _pageIndicator(slot),
     );
   }
+
+  // 함수이름: _pageIndicator
+  // 함수역할: 요약 안에 네 시간대의 위치를 표시하고 작은 점은 별도 터치 대상으로 만들지 않는다.
+  // 매개변수: slot: 표시 중인 시간대. 반환값: 현재 시간대만 채워진 점 표시.
+  Widget _pageIndicator(String slot) => ExcludeSemantics(
+    child: Row(
+      key: const Key('home-slot-pagination'),
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (final key in medicationScheduleSlotKeys)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Container(
+              key: ValueKey('home-slot-dot-$key'),
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: key == slot
+                    ? MedBuddyColors.primaryDark
+                    : Colors.transparent,
+                border: Border.all(
+                  color: key == slot
+                      ? MedBuddyColors.primaryDark
+                      : MedBuddyColors.textSubtle,
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 
   Future<void> _updateSlot(String slot, {required bool completed}) async {
     if (_saving ||

@@ -32,10 +32,67 @@ Finder _page(String slot) => find.byKey(ValueKey('home-slot-page-$slot'));
 final _pager = find.byKey(const Key('home-medication-slot-pager'));
 final _completion = find.byKey(const ValueKey('homeNextSlotCompletionButton'));
 
+// 함수이름: _expectActiveDot
+// 함수역할: 네 시간대 점의 개수와 크기를 유지하면서 현재 시간대만 채워지는지 검증한다.
+// 매개변수: tester: 화면 검증 도구, slot: 현재 시간대. 반환값: 없음.
+void _expectActiveDot(WidgetTester tester, String slot) {
+  expect(find.byKey(const Key('home-slot-pagination')), findsOneWidget);
+  for (final key in medicationScheduleSlotKeys) {
+    final dot = find.byKey(ValueKey('home-slot-dot-$key'));
+    expect(dot, findsOneWidget);
+    expect(tester.getSize(dot), const Size(6, 6));
+    final decoration =
+        tester.widget<Container>(dot).decoration! as BoxDecoration;
+    expect(decoration.shape, BoxShape.circle);
+    expect(
+      decoration.color,
+      key == slot ? MedBuddyColors.primaryDark : Colors.transparent,
+    );
+  }
+}
+
 // 함수이름: main
 // 함수역할: 시간대 전환, 기록·취소 및 읽기 전용 표시의 회귀 검증을 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 검증은 테스트 도구가 실행한다.
 void main() {
+  for (final compact in [false, true]) {
+    // 함수이름: 시간대 점 표시 테스트
+    // 함수역할: 글 아래에 붙인 점이 박스 안에 머물고 빈 시간대와 취침 전까지 슬라이드에 맞춰 바뀌는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    testWidgets('시간대 점은 요약 안에서 글 바로 아래에 표시된다: compact=$compact', (
+      tester,
+    ) async {
+      var opened = 0;
+      await _show(tester, compact: compact, onDetails: () => opened++);
+      final box = tester.getRect(_page('morning'));
+      final description = tester.getRect(find.text('아침 저녁약'));
+      final indicator = tester.getRect(
+        find.byKey(const Key('home-slot-pagination')),
+      );
+      expect(indicator.top - description.bottom, 4);
+      expect(box.contains(indicator.topLeft), isTrue);
+      expect(box.contains(indicator.bottomRight), isTrue);
+      expect(box.height, lessThan(110));
+      _expectActiveDot(tester, 'morning');
+
+      for (final slot in ['lunch', 'evening', 'bedtime']) {
+        await tester.drag(_pager, const Offset(-180, 0));
+        await tester.pumpAndSettle();
+        expect(_page(slot), findsOneWidget);
+        _expectActiveDot(tester, slot);
+        expect(tester.getSize(_pager).height, box.height);
+      }
+      expect(opened, 0);
+      await tester.drag(_pager, const Offset(180, 0));
+      await tester.pumpAndSettle();
+      _expectActiveDot(tester, 'evening');
+      await tester.tap(_pager);
+      expect(opened, 1);
+      expect(find.byType(FilledButton), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 함수이름: 시간대 탐색 테스트
   // 함수역할: 같은 약의 시간대별 완료 상태가 섞이지 않고 마지막 페이지에서 순환하지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
@@ -207,6 +264,7 @@ void main() {
       );
       expect(name.maxLines, 2);
       expect(name.overflow, TextOverflow.ellipsis);
+      _expectActiveDot(tester, 'bedtime');
       await tester.ensureVisible(_completion);
       expect(_completion.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -342,10 +400,12 @@ void main() {
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('lunch'), findsOneWidget);
     expect(find.text('복용했어요'), findsOneWidget);
+    _expectActiveDot(tester, 'lunch');
     await tester.drag(_pager, const Offset(180, 0));
     await tester.pumpAndSettle();
     expect(find.text('아침 · 복용 완료'), findsOneWidget);
     expect(find.text('복용 취소'), findsOneWidget);
+    _expectActiveDot(tester, 'morning');
     await tester.tap(_completion);
     await tester.pumpAndSettle();
     await _show(tester, medicines: medicines, onUpdate: save);
@@ -442,7 +502,7 @@ void main() {
 // 함수역할: 공통 미리보기를 같은 위치에 갱신해 조회 이후에도 선택 상태가 유지되는지 검사한다.
 // 매개변수: tester/theme: 렌더링 환경, medicines/alarms: 일정·시각 대역,
 //   onUpdate/onDetails: 기록·조회 대역, isLoading/hasError: 조회 상태,
-//   language/scale: 언어·글씨 배율, initialSlot: 초기 시간대.
+//   language/scale/compact: 언어·글씨 배율·간결한 배치, initialSlot: 초기 시간대.
 // 반환값: 화면 구성과 한 프레임 갱신을 완료하는 Future<void>.
 Future<void> _show(
   WidgetTester tester, {
@@ -452,6 +512,7 @@ Future<void> _show(
   VoidCallback? onDetails,
   bool isLoading = false,
   bool hasError = false,
+  bool compact = false,
   String language = 'ko',
   double scale = 1,
   String initialSlot = 'morning',
@@ -471,6 +532,7 @@ Future<void> _show(
           padding: const EdgeInsets.all(20),
           child: HomeMedicationSlotPager(
             schedules: medicines,
+            compact: compact,
             isEnglish: language == 'en',
             initialSlotKey: initialSlot,
             isLoading: isLoading,

@@ -192,7 +192,8 @@ class HomeMedicationPreview extends StatelessWidget {
   );
 }
 
-// 역할: 홈 미리보기에서 사용하는 기존 아이콘과 간단한 요약 배치를 공유한다.
+// 클래스명: HomeMedicationSummary
+// 역할: 홈 미리보기의 아이콘·간단한 요약·선택적 시간대 위치 표시를 공유한다.
 class HomeMedicationSummary extends StatelessWidget {
   final String title;
   final String description;
@@ -200,7 +201,13 @@ class HomeMedicationSummary extends StatelessWidget {
   final bool compact;
   final bool showDetailsArrow;
   final int? descriptionMaxLines;
+  final Widget? pageIndicator;
 
+  // 함수이름: HomeMedicationSummary
+  // 함수역할: 요약 내용과 표시 옵션을 받아 공통 배치를 구성한다.
+  // 매개변수: title/description: 문구, hasPendingMedication: 미복용 여부,
+  //   compact/showDetailsArrow/descriptionMaxLines: 배치 옵션, pageIndicator: 시간대 위치 표시, key: 식별자.
+  // 반환값: 불변 요약 위젯.
   const HomeMedicationSummary({
     super.key,
     required this.title,
@@ -209,12 +216,20 @@ class HomeMedicationSummary extends StatelessWidget {
     this.compact = false,
     this.showDetailsArrow = false,
     this.descriptionMaxLines,
+    this.pageIndicator,
   });
 
+  // 함수이름: build
+  // 함수역할: 글 바로 아래에 선택적 점 표시를 붙이고 기존 요약 여백 안에 배치한다.
+  // 매개변수: context: 화면 구성 환경. 반환값: 요약 박스.
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
-    padding: EdgeInsets.all(compact ? 10 : 16),
+    // 점 표시에는 기존 위아래 여백을 일부 사용해 요약 박스 높이를 유지한다.
+    padding: EdgeInsets.symmetric(
+      horizontal: compact ? 10 : 16,
+      vertical: (compact ? 10.0 : 16.0) - (pageIndicator == null ? 0 : 4),
+    ),
     decoration: BoxDecoration(
       color: MedBuddyColors.surfaceSubtle,
       borderRadius: MedBuddyRadii.card,
@@ -267,6 +282,10 @@ class HomeMedicationSummary extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (pageIndicator != null) ...[
+                const SizedBox(height: 4),
+                pageIndicator!,
+              ],
             ],
           ),
         ),
