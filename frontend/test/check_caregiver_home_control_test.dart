@@ -338,13 +338,14 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('엄마'), findsOneWidget);
       }
-      expect(find.byKey(const Key('home-slot-page-bedtime')), findsOneWidget);
+      expect(find.byKey(const Key('home-slot-page-evening')), findsOneWidget);
+      expect(find.byKey(const Key('home-slot-dot-bedtime')), findsNothing);
       expect(find.byType(FilledButton), findsNothing);
       await tester.ensureVisible(find.text('엄마'));
       await tester.drag(find.text('엄마'), const Offset(-180, 0));
       await tester.pumpAndSettle();
       expect(find.text('엄마'), findsOneWidget);
-      expect(find.byKey(const Key('home-slot-page-bedtime')), findsOneWidget);
+      expect(find.byKey(const Key('home-slot-page-evening')), findsOneWidget);
       await tester.tap(next);
       await tester.pumpAndSettle();
       expect(tester.widget<IconButton>(previous).onPressed, isNotNull);
@@ -515,7 +516,7 @@ void main() {
     await loading;
     await tester.pump();
     expect(find.text('0/0'), findsOneWidget);
-    expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
+    expect(find.text('오늘 등록된 복약 일정이 없습니다.'), findsOneWidget);
 
     api.gate = null;
     api.snapshots = [

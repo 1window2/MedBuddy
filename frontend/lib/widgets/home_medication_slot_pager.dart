@@ -43,6 +43,7 @@ class HomeMedicationSlotPager extends StatefulWidget {
 }
 
 class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
+  List<String> _slotKeys = const [];
   int _index = 0;
   bool _userSelected = false;
   bool _saving = false;
@@ -51,16 +52,22 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   @override
   void initState() {
     super.initState();
+    _slotKeys = _availableSlots();
     _index = _initialIndex();
   }
 
+  // 함수이름: _availableSlots
+  // 함수역할: 완료 여부와 관계없이 등록된 약이 있는 시간대만 하루 순서대로 반환한다.
+  // 매개변수: 없음. 반환값: 현재 일정에 포함된 시간대 키 목록.
+  List<String> _availableSlots() => medicationScheduleSlotKeys
+      .where((slot) => widget.schedules.any((s) => s.slotKeys.contains(slot)))
+      .toList(growable: false);
+
   int _initialIndex() {
-    final preferred = medicationScheduleSlotKeys.indexOf(
-      widget.initialSlotKey ?? '',
-    );
+    final preferred = _slotKeys.indexOf(widget.initialSlotKey ?? '');
     if (preferred >= 0) return preferred;
-    for (var index = 0; index < medicationScheduleSlotKeys.length; index++) {
-      final slot = medicationScheduleSlotKeys[index];
+    for (var index = 0; index < _slotKeys.length; index++) {
+      final slot = _slotKeys[index];
       if (widget.schedules.any(
         (s) => s.slotKeys.contains(slot) && !s.isSlotCompleted(slot),
       )) {
@@ -73,15 +80,20 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   @override
   void didUpdateWidget(HomeMedicationSlotPager oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_userSelected && oldWidget.isLoading && !widget.isLoading) {
+    final selectedSlot = _slotKeys.isEmpty ? null : _slotKeys[_index];
+    _slotKeys = _availableSlots();
+    final retainedIndex = _slotKeys.indexOf(selectedSlot ?? '');
+    // 일정 추가·삭제로 순서가 달라져도 같은 시간대를 유지하고, 사라진 경우에만 다시 고른다.
+    if (retainedIndex < 0 ||
+        (!_userSelected && oldWidget.isLoading && !widget.isLoading)) {
       _index = _initialIndex();
+    } else {
+      _index = retainedIndex;
     }
   }
 
   void _select(int index) {
-    if (index < 0 ||
-        index >= medicationScheduleSlotKeys.length ||
-        index == _index) {
+    if (index < 0 || index >= _slotKeys.length || index == _index) {
       return;
     }
     setState(() {
@@ -105,8 +117,8 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   // 함수역할: 화면 읽기에서 현재 위치와 이전·다음 시간대를 함께 안내한다.
   // 매개변수: index: 시간대 순서. 반환값: 선택 언어로 표현한 페이지 위치.
   String _pageValue(int index) {
-    final label = _slotLabel(medicationScheduleSlotKeys[index]);
-    final count = medicationScheduleSlotKeys.length;
+    final label = _slotLabel(_slotKeys[index]);
+    final count = _slotKeys.length;
     return widget.isEnglish
         ? '$label, ${index + 1} of $count time slots'
         : '$label, $count개 시간대 중 ${index + 1}번째';
@@ -117,21 +129,24 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   // 매개변수: context: 화면 구성 환경. 반환값: 시간대 탐색 영역.
   @override
   Widget build(BuildContext context) {
-    final slot = medicationScheduleSlotKeys[_index];
-    final medications = _medications(slot);
-    final hasPending = medications.any((s) => !s.isSlotCompleted(slot));
+    final slot = _slotKeys.isEmpty ? null : _slotKeys[_index];
+    final medications = slot == null
+        ? const <MedicationSchedule>[]
+        : _medications(slot);
+    final hasPending =
+        slot != null && medications.any((s) => !s.isSlotCompleted(slot));
     final busy = _saving || widget.isCompletionLoading;
     final unavailable = widget.isLoading || widget.hasError;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
-          value: _pageValue(_index),
-          increasedValue: _index < medicationScheduleSlotKeys.length - 1
+          value: slot == null ? null : _pageValue(_index),
+          increasedValue: _index < _slotKeys.length - 1
               ? _pageValue(_index + 1)
               : null,
           decreasedValue: _index > 0 ? _pageValue(_index - 1) : null,
-          onIncrease: _index < medicationScheduleSlotKeys.length - 1
+          onIncrease: _index < _slotKeys.length - 1
               ? () => _select(_index + 1)
               : null,
           onDecrease: _index > 0 ? () => _select(_index - 1) : null,
@@ -151,13 +166,13 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
               }
             },
             // 약 개수와 관계없이 요약만 표시하고 넘길 때 박스 높이를 유지한다.
-            child: IndexedStack(
-              index: _index,
-              sizing: StackFit.loose,
-              children: [
-                for (final key in medicationScheduleSlotKeys) _slotSummary(key),
-              ],
-            ),
+            child: slot == null
+                ? _slotSummary(null)
+                : IndexedStack(
+                    index: _index,
+                    sizing: StackFit.loose,
+                    children: [for (final key in _slotKeys) _slotSummary(key)],
+                  ),
           ),
         ),
         if (widget.onStatusUpdateRequested != null ||
@@ -168,7 +183,11 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
             height: 52,
             child: FilledButton.icon(
               key: const ValueKey('homeNextSlotCompletionButton'),
-              onPressed: !unavailable && !busy && medications.isNotEmpty
+              onPressed:
+                  !unavailable &&
+                      !busy &&
+                      slot != null &&
+                      medications.isNotEmpty
                   ? () => _updateSlot(slot, completed: hasPending)
                   : null,
               icon: busy
@@ -225,10 +244,14 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     );
   }
 
-  Widget _slotSummary(String slot) {
-    final medications = _medications(slot);
-    final completed = medications.where((s) => s.isSlotCompleted(slot)).length;
-    final alarm = widget.reminderSettings == null
+  Widget _slotSummary(String? slot) {
+    final medications = slot == null
+        ? const <MedicationSchedule>[]
+        : _medications(slot);
+    final completed = slot == null
+        ? 0
+        : medications.where((s) => s.isSlotCompleted(slot)).length;
+    final alarm = slot == null || widget.reminderSettings == null
         ? null
         : widget.reminderSettings![slot] ?? MedicationAlarm.defaults(slot);
     String status;
@@ -243,8 +266,8 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     } else if (medications.isEmpty) {
       status = widget.isEnglish ? 'No scheduled doses' : '복약 일정 없음';
       description = widget.isEnglish
-          ? 'No medication scheduled for this time.'
-          : '이 시간대에 등록된 약이 없습니다.';
+          ? 'No medication scheduled for today.'
+          : '오늘 등록된 복약 일정이 없습니다.';
     } else {
       status = completed == medications.length
           ? (widget.isEnglish ? 'Completed' : '복용 완료')
@@ -265,8 +288,8 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       description = alarm == null ? names : '${alarm.timeLabel} · $names';
     }
     return HomeMedicationSummary(
-      key: ValueKey('home-slot-page-$slot'),
-      title: '${_slotLabel(slot)} · $status',
+      key: ValueKey('home-slot-page-${slot ?? 'empty'}'),
+      title: slot == null ? status : '${_slotLabel(slot)} · $status',
       description: description,
       hasPendingMedication:
           !widget.isLoading &&
@@ -275,19 +298,21 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       compact: widget.compact,
       showDetailsArrow: widget.onDetailsRequested != null,
       descriptionMaxLines: 2,
-      pageIndicator: _pageIndicator(slot),
+      pageIndicator: slot != null && _slotKeys.length > 1
+          ? _pageIndicator(slot)
+          : null,
     );
   }
 
   // 함수이름: _pageIndicator
-  // 함수역할: 요약 안에 네 시간대의 위치를 표시하고 작은 점은 별도 터치 대상으로 만들지 않는다.
+  // 함수역할: 등록된 시간대의 위치만 표시하고 작은 점은 별도 터치 대상으로 만들지 않는다.
   // 매개변수: slot: 표시 중인 시간대. 반환값: 현재 시간대만 채워진 점 표시.
   Widget _pageIndicator(String slot) => ExcludeSemantics(
     child: Row(
       key: const Key('home-slot-pagination'),
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        for (final key in medicationScheduleSlotKeys)
+        for (final key in _slotKeys)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3),
             child: Container(
@@ -325,14 +350,10 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       final success = await widget.onStatusUpdateRequested!(slot, completed);
       if (!mounted || !success || !completed) return;
       // 저장 중 사용자가 다른 시간대로 넘겼다면 그 선택을 유지한다.
-      final savedIndex = medicationScheduleSlotKeys.indexOf(slot);
-      if (_index != savedIndex) return;
-      for (
-        var next = savedIndex + 1;
-        next < medicationScheduleSlotKeys.length;
-        next++
-      ) {
-        final nextSlot = medicationScheduleSlotKeys[next];
+      final savedIndex = _slotKeys.indexOf(slot);
+      if (savedIndex < 0 || _index != savedIndex) return;
+      for (var next = savedIndex + 1; next < _slotKeys.length; next++) {
+        final nextSlot = _slotKeys[next];
         if (_medications(nextSlot).any((s) => !s.isSlotCompleted(nextSlot))) {
           _select(next);
           break;

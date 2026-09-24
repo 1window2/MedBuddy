@@ -33,12 +33,23 @@ final _pager = find.byKey(const Key('home-medication-slot-pager'));
 final _completion = find.byKey(const ValueKey('homeNextSlotCompletionButton'));
 
 // 함수이름: _expectActiveDot
-// 함수역할: 네 시간대 점의 개수와 크기를 유지하면서 현재 시간대만 채워지는지 검증한다.
-// 매개변수: tester: 화면 검증 도구, slot: 현재 시간대. 반환값: 없음.
-void _expectActiveDot(WidgetTester tester, String slot) {
-  expect(find.byKey(const Key('home-slot-pagination')), findsOneWidget);
+// 함수역할: 등록된 시간대의 점만 표시하고 현재 시간대만 채워지는지 검증한다.
+// 매개변수: tester: 화면 검증 도구, slot: 현재 시간대, slots: 등록된 시간대 목록. 반환값: 없음.
+void _expectActiveDot(
+  WidgetTester tester,
+  String slot, {
+  List<String> slots = const ['morning', 'evening', 'bedtime'],
+}) {
+  expect(
+    find.byKey(const Key('home-slot-pagination')),
+    slots.length > 1 ? findsOneWidget : findsNothing,
+  );
   for (final key in medicationScheduleSlotKeys) {
     final dot = find.byKey(ValueKey('home-slot-dot-$key'));
+    if (!slots.contains(key) || slots.length < 2) {
+      expect(dot, findsNothing);
+      continue;
+    }
     expect(dot, findsOneWidget);
     expect(tester.getSize(dot), const Size(6, 6));
     final decoration =
@@ -55,9 +66,132 @@ void _expectActiveDot(WidgetTester tester, String slot) {
 // 함수역할: 시간대 전환, 기록·취소 및 읽기 전용 표시의 회귀 검증을 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 검증은 테스트 도구가 실행한다.
 void main() {
+  for (final caregiver in [false, true]) {
+    // 함수이름: 등록된 시간대 조합 테스트
+    // 함수역할: 네 시간대의 모든 등록 조합에서 환자·보호자 모두 빈 시간대를 숨기고 완료 기록은 유지하는지 검증한다.
+    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    testWidgets('등록된 시간대 조합만 순서대로 표시한다: caregiver=$caregiver', (tester) async {
+      for (var mask = 0; mask < 16; mask++) {
+        final slots = [
+          for (
+            var index = 0;
+            index < medicationScheduleSlotKeys.length;
+            index++
+          )
+            if ((mask & (1 << index)) != 0) medicationScheduleSlotKeys[index],
+        ];
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _show(
+          tester,
+          medicines: [
+            if (slots.isNotEmpty)
+              MedicationSchedule(
+                medicationName: '등록된 약',
+                scheduleSlotKeys: slots,
+                slotStatuses: {for (final slot in slots) slot: true},
+              ),
+          ],
+          onUpdate: caregiver ? null : (_, _) async => true,
+          onDetails: caregiver ? () {} : null,
+        );
+        for (final slot in medicationScheduleSlotKeys) {
+          expect(
+            find.byKey(ValueKey('home-slot-page-$slot'), skipOffstage: false),
+            slots.contains(slot) ? findsOneWidget : findsNothing,
+            reason: 'mask=$mask, slot=$slot',
+          );
+        }
+        if (slots.isEmpty) {
+          expect(_page('empty'), findsOneWidget);
+          expect(find.byKey(const Key('home-slot-pagination')), findsNothing);
+          if (!caregiver) {
+            expect(tester.widget<FilledButton>(_completion).onPressed, isNull);
+          }
+        } else {
+          for (var index = 0; index < slots.length; index++) {
+            if (index > 0) {
+              await tester.drag(_pager, const Offset(-180, 0));
+              await tester.pumpAndSettle();
+            }
+            expect(_page(slots[index]), findsOneWidget);
+            _expectActiveDot(tester, slots[index], slots: slots);
+            if (!caregiver) expect(find.text('복용 취소'), findsOneWidget);
+          }
+          await tester.drag(_pager, const Offset(-180, 0));
+          await tester.pumpAndSettle();
+          expect(_page(slots.last), findsOneWidget);
+        }
+        if (caregiver) expect(find.byType(FilledButton), findsNothing);
+        expect(tester.takeException(), isNull, reason: 'mask=$mask');
+      }
+    });
+  }
+
+  // 함수이름: 초기 시간대 대체 테스트
+  // 함수역할: 사라진 초기 시간대 대신 실제 미복용 시간을 고르고 화면 읽기 순서도 표시 개수에 맞추는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('등록되지 않은 초기 시간대는 미복용 일정으로 이동한다', (tester) async {
+    await _show(tester, initialSlot: 'lunch');
+    expect(_page('evening'), findsOneWidget);
+    final semantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.value == '저녁, 3개 시간대 중 2번째',
+      ),
+    );
+    expect(semantics.properties.decreasedValue, '아침, 3개 시간대 중 1번째');
+    expect(semantics.properties.increasedValue, '취침 전, 3개 시간대 중 3번째');
+  });
+
+  // 함수이름: 조회 갱신 시 시간대 선택 유지 테스트
+  // 함수역할: 일정 추가·삭제로 페이지 번호가 바뀌어도 시간대 식별자를 유지하고 빈 목록과 재조회도 처리하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('조회 갱신으로 시간대가 추가되거나 사라져도 유효한 선택을 유지한다', (tester) async {
+    await _show(tester);
+    await tester.drag(_pager, const Offset(-180, 0));
+    await tester.pumpAndSettle();
+    expect(_page('evening'), findsOneWidget);
+    await _show(
+      tester,
+      medicines: const [
+        MedicationSchedule(
+          medicationName: '저녁 취침약',
+          scheduleSlotKeys: ['evening', 'bedtime'],
+        ),
+      ],
+    );
+    expect(_page('evening'), findsOneWidget);
+    _expectActiveDot(tester, 'evening', slots: ['evening', 'bedtime']);
+    await _show(
+      tester,
+      medicines: [
+        ..._medicines,
+        const MedicationSchedule(
+          medicationName: '점심약',
+          scheduleSlotKeys: ['lunch'],
+        ),
+      ],
+    );
+    expect(_page('evening'), findsOneWidget);
+    _expectActiveDot(tester, 'evening', slots: medicationScheduleSlotKeys);
+    await _show(tester, medicines: [_medicines.last]);
+    expect(_page('bedtime'), findsOneWidget);
+    _expectActiveDot(tester, 'bedtime', slots: ['bedtime']);
+    await _show(tester, medicines: const [], isLoading: true);
+    expect(find.text('복약 현황 확인 중'), findsOneWidget);
+    await _show(tester, medicines: const [], hasError: true);
+    expect(find.text('복약 현황 확인 필요'), findsOneWidget);
+    await _show(tester, medicines: const []);
+    expect(find.text('오늘 등록된 복약 일정이 없습니다.'), findsOneWidget);
+    await _show(tester);
+    expect(_page('morning'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final compact in [false, true]) {
     // 함수이름: 시간대 점 표시 테스트
-    // 함수역할: 글 아래에 붙인 점이 박스 안에 머물고 빈 시간대와 취침 전까지 슬라이드에 맞춰 바뀌는지 검증한다.
+    // 함수역할: 글 아래에 붙인 점이 박스 안에 머물고 등록된 시간대만 슬라이드에 맞춰 바뀌는지 검증한다.
     // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
     testWidgets('시간대 점은 요약 안에서 글 바로 아래에 표시된다: compact=$compact', (
       tester,
@@ -75,7 +209,7 @@ void main() {
       expect(box.height, lessThan(110));
       _expectActiveDot(tester, 'morning');
 
-      for (final slot in ['lunch', 'evening', 'bedtime']) {
+      for (final slot in ['evening', 'bedtime']) {
         await tester.drag(_pager, const Offset(-180, 0));
         await tester.pumpAndSettle();
         expect(_page(slot), findsOneWidget);
@@ -96,9 +230,7 @@ void main() {
   // 함수이름: 시간대 탐색 테스트
   // 함수역할: 같은 약의 시간대별 완료 상태가 섞이지 않고 마지막 페이지에서 순환하지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
-  testWidgets('네 시간대를 넘기며 복용 완료·미복용·일정 없음과 같은 약의 시간대별 상태를 구분한다', (
-    tester,
-  ) async {
+  testWidgets('빈 시간대를 건너뛰며 같은 약의 시간대별 완료·미복용 상태를 구분한다', (tester) async {
     final recorded = <String>[];
     await _show(
       tester,
@@ -118,13 +250,12 @@ void main() {
 
     await tester.drag(_pager, const Offset(-180, 0));
     await tester.pumpAndSettle();
-    expect(_page('lunch'), findsOneWidget);
-    expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
-    expect(tester.widget<FilledButton>(_completion).onPressed, isNull);
+    expect(
+      find.byKey(const Key('home-slot-page-lunch'), skipOffstage: false),
+      findsNothing,
+    );
+    expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsNothing);
     expect(tester.getSize(_pager).height, height);
-
-    await tester.drag(_pager, const Offset(-180, 0));
-    await tester.pumpAndSettle();
     expect(_page('evening'), findsOneWidget);
     expect(find.text('아침 저녁약'), findsOneWidget);
     expect(find.text('저녁 · 미복용'), findsOneWidget);
@@ -161,8 +292,6 @@ void main() {
     await _show(tester, onUpdate: save);
     await tester.drag(_pager, const Offset(-180, 0));
     await tester.pumpAndSettle();
-    await tester.drag(_pager, const Offset(-180, 0));
-    await tester.pumpAndSettle();
     await tester.tap(_completion);
     await tester.pump();
     expect(tester.widget<FilledButton>(_completion).onPressed, isNull);
@@ -196,8 +325,6 @@ void main() {
     await _show(tester, onDetails: () => opened++);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.textContaining('08:00'), findsNothing);
-    await tester.drag(_pager, const Offset(-180, 0));
-    await tester.pumpAndSettle();
     await tester.drag(_pager, const Offset(-180, 0));
     await tester.pumpAndSettle();
     expect(find.text('저녁 · 미복용'), findsOneWidget);
@@ -251,7 +378,7 @@ void main() {
       );
       await tester.drag(_pager, const Offset(-180, 0));
       await tester.pumpAndSettle();
-      expect(_page('lunch'), findsOneWidget);
+      expect(_page('bedtime'), findsOneWidget);
       await tester.drag(_pager, const Offset(-180, 0));
       await tester.pumpAndSettle();
       await tester.drag(_pager, const Offset(-180, 0));
@@ -264,7 +391,7 @@ void main() {
       );
       expect(name.maxLines, 2);
       expect(name.overflow, TextOverflow.ellipsis);
-      _expectActiveDot(tester, 'bedtime');
+      _expectActiveDot(tester, 'bedtime', slots: ['morning', 'bedtime']);
       await tester.ensureVisible(_completion);
       expect(_completion.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -298,11 +425,12 @@ void main() {
     final detailsSize = tester.getSize(details);
     expect(detailsShape.borderRadius, BorderRadius.circular(10));
 
-    for (final slot in ['morning', 'lunch', 'evening']) {
+    for (final slot in ['morning', 'evening', 'empty']) {
       await _show(
         tester,
         theme: theme,
         initialSlot: slot,
+        medicines: slot == 'empty' ? const [] : _medicines,
         onUpdate: (_, _) async => true,
       );
       await tester.pumpAndSettle();
@@ -400,12 +528,12 @@ void main() {
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('lunch'), findsOneWidget);
     expect(find.text('복용했어요'), findsOneWidget);
-    _expectActiveDot(tester, 'lunch');
+    _expectActiveDot(tester, 'lunch', slots: ['morning', 'lunch']);
     await tester.drag(_pager, const Offset(180, 0));
     await tester.pumpAndSettle();
     expect(find.text('아침 · 복용 완료'), findsOneWidget);
     expect(find.text('복용 취소'), findsOneWidget);
-    _expectActiveDot(tester, 'morning');
+    _expectActiveDot(tester, 'morning', slots: ['morning', 'lunch']);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
     await _show(tester, medicines: medicines, onUpdate: save);
@@ -490,10 +618,10 @@ void main() {
     await tester.pump();
     await tester.drag(_pager, const Offset(180, 0));
     await tester.pump();
-    expect(_page('lunch'), findsOneWidget);
+    expect(_page('morning'), findsOneWidget);
     gate.complete(true);
     await tester.pumpAndSettle();
-    expect(_page('lunch'), findsOneWidget);
+    expect(_page('morning'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
