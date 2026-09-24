@@ -48,7 +48,7 @@ class CheckTodayMedicationInfo {
   // Parameters:
   // - None.
   // Returns:
-  // - MedicationSchedule list from the summary payload.
+  // - MedicationSchedule list; invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestTodayMedicationInfo() async {
     try {
       final response = await _client
@@ -64,7 +64,16 @@ class CheckTodayMedicationInfo {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
+      final data = decodedData['data'];
+      final schedules = data is Map
+          ? data['schedules'] ?? data['schedule']
+          : data;
+      if (decodedData['success'] != true || schedules is! List) {
+        throw StateError(
+          'Today medication info response could not be verified.',
+        );
+      }
+      return MedicationSchedule.fromScheduleJsonList(schedules);
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {

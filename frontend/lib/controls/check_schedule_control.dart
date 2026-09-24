@@ -47,7 +47,7 @@ class CheckSchedule {
   // Parameters:
   // - None.
   // Returns:
-  // - Today's medication schedule list.
+  // - Today's medication schedule list; invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     try {
       final response = await _client
@@ -63,6 +63,9 @@ class CheckSchedule {
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
+      if (decodedData['success'] != true || decodedData['data'] is! List) {
+        throw StateError('Schedule response could not be verified.');
+      }
       return _decodeMedicationScheduleList(decodedData['data']);
     } on StateError {
       rethrow;
@@ -82,7 +85,8 @@ class CheckSchedule {
   // Parameters:
   // - days (int): Inclusive window length beginning today, up to 14 days.
   // Returns:
-  // - Medication courses needed to replenish notifications before they start.
+  // - Medication courses needed to replenish notifications before they start;
+  //   invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
     int days = 14,
   }) async {
@@ -101,6 +105,9 @@ class CheckSchedule {
         );
       }
       final decodedData = ApiResponseParser.decodeMap(responseBody);
+      if (decodedData['success'] != true || decodedData['data'] is! List) {
+        throw StateError('Schedule window response could not be verified.');
+      }
       return _decodeMedicationScheduleList(decodedData['data']);
     } on StateError {
       rethrow;

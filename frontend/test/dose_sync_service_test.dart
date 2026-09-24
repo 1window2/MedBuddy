@@ -90,6 +90,7 @@ void main() {
           }
           return http.Response(
             jsonEncode({
+              'success': true,
               'data': [medication.toJson()],
             }),
             200,
@@ -123,6 +124,7 @@ void main() {
         response.complete(
           http.Response(
             jsonEncode({
+              'success': true,
               'data': [medication.toJson()],
             }),
             200,
@@ -235,6 +237,7 @@ void main() {
       final client = MockClient(
         (_) async => http.Response(
           jsonEncode({
+            'success': true,
             'data': [medication.toJson()],
           }),
           200,
