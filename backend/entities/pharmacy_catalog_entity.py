@@ -97,6 +97,23 @@ class PharmacyCatalogRecord(Base):
     )
 
 
+# 클래스명: PharmacySearchCacheRecord
+# 역할: 공공 API 보완 검색에서 서버가 직접 받은 약국 식별 정보를 일시 보관한다.
+# 주요 책임: 전국 카탈로그의 완전성·요일별 운영시간과 분리해 채팅 공유를 지원한다.
+class PharmacySearchCacheRecord(Base):
+    """검색 좌표나 사용자 정보 없이 공개 약국 정보만 24시간 재사용한다."""
+
+    __tablename__ = "pharmacy_search_cache"
+
+    pharmacy_id = Column(String(length=32), primary_key=True)
+    name = Column(String(length=300), nullable=False)
+    address = Column(Text, nullable=False)
+    telephone = Column(String(length=80), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    fetched_at = Column(DateTime, nullable=False, index=True)
+
+
 # Class Name: PharmacyHolidaySchedule
 # Role:
 # - Date-specific pharmacy schedule reported by the NEMC holiday roster.

@@ -387,8 +387,16 @@ class CheckNearbyPharmacy:
                 item.name,
             )
         )
+        selected = pharmacies[:limit]
+        cache_results = getattr(repository, "cache_search_results", None)
+        if not catalog_entries and callable(cache_results):
+            try:
+                cache_results(selected)
+            except Exception:
+                # 캐시 쓰기 실패는 사용 가능한 공공 검색 결과까지 숨기지 않는다.
+                logger.exception("Pharmacy share cache could not be updated.")
         return NearbyPharmacySearchResult(
-            data=pharmacies[:limit],
+            data=selected,
             search_mode=search_mode.value,
             target_datetime=now,
             catalog_updated_at=catalog_updated_at,

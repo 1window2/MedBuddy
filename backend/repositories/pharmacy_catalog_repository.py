@@ -5,8 +5,10 @@ import math
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from entities.nearby_pharmacy_entity import NearbyPharmacy
 from entities.pharmacy_catalog_entity import (
     KoreanHolidayMonthFetchRecord,
     KoreanHolidayRecord,
@@ -15,7 +17,10 @@ from entities.pharmacy_catalog_entity import (
     PharmacyHolidayFetchRecord,
     PharmacyHolidaySchedule,
     PharmacyHolidayScheduleRecord,
+    PharmacySearchCacheRecord,
 )
+
+_SEARCH_CACHE_MAX_AGE = timedelta(hours=24)
 
 
 # 클래스명: PharmacyCatalogRepository
@@ -51,15 +56,63 @@ class PharmacyCatalogRepository:
 
     # 함수이름: find_by_id
     # 함수역할:
-    # - 공유 메시지에 사용할 약국 행을 기본키로 찾고 경계용 엔트리로 변환한다.
+    # - 전국 카탈로그를 우선하고, 없으면 최근 서버 검색에서 검증한 약국 정보로 공유한다.
     # 매개변수:
     # - pharmacy_id (str): 조회할 공공 약국 식별자.
     # 반환값:
     # - 약국 카탈로그 엔트리 또는 ID가 없으면 None.
     def find_by_id(self, pharmacy_id: str) -> PharmacyCatalogEntry | None:
-        """공유 메시지에 사용할 약국 한 건을 식별자로 조회한다."""
+        """사용자가 보낸 임의 정보 대신 서버의 카탈로그·검색 결과만 사용한다."""
         row = self.db.get(PharmacyCatalogRecord, pharmacy_id)
-        return self._to_entry(row) if row is not None else None
+        if row is not None:
+            return self._to_entry(row)
+        cached = self.db.get(PharmacySearchCacheRecord, pharmacy_id)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - _SEARCH_CACHE_MAX_AGE
+        if cached is None or cached.fetched_at <= cutoff:
+            return None
+        return PharmacyCatalogEntry(
+            pharmacy_id=cached.pharmacy_id, name=cached.name,
+            address=cached.address, telephone=cached.telephone,
+            latitude=cached.latitude, longitude=cached.longitude,
+            # 위치 조회의 한 날짜 운영시간을 주간 시간표로 추정하지 않는다.
+            weekly_hours={},
+        )
+
+    # 함수이름: cache_search_results
+    # 함수역할: 보완 검색 결과를 별도 캐시에 보관하고 만료된 공개 정보를 정리한다.
+    # 매개변수: pharmacies 서버가 공공 API에서 조회·검증한 결과. 반환값: 없음.
+    def cache_search_results(self, pharmacies: list[NearbyPharmacy]) -> None:
+        """중복 검색은 같은 행을 갱신하며 카탈로그 개수·갱신 시각은 바꾸지 않는다."""
+        now = datetime.now(UTC).replace(tzinfo=None)
+        try:
+            self.db.query(PharmacySearchCacheRecord).filter(
+                PharmacySearchCacheRecord.fetched_at <= now - _SEARCH_CACHE_MAX_AGE,
+            ).delete(synchronize_session=False)
+            for pharmacy in pharmacies:
+                values = dict(
+                    name=pharmacy.name, address=pharmacy.address,
+                    telephone=pharmacy.telephone, latitude=pharmacy.latitude,
+                    longitude=pharmacy.longitude, fetched_at=now,
+                )
+                query = self.db.query(PharmacySearchCacheRecord).filter_by(
+                    pharmacy_id=pharmacy.pharmacy_id,
+                )
+                if query.update(values, synchronize_session=False):
+                    continue
+                try:
+                    # 여러 서버 요청이 같은 ID를 처음 저장해도 검색 자체가 실패하지 않게 한다.
+                    with self.db.begin_nested():
+                        self.db.add(PharmacySearchCacheRecord(
+                            pharmacy_id=pharmacy.pharmacy_id, **values,
+                        ))
+                        self.db.flush()
+                except IntegrityError:
+                    if not query.update(values, synchronize_session=False):
+                        raise
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     # 함수이름: latest_source_updated_at
     # 함수역할:
