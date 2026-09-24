@@ -175,6 +175,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   late final PharmacyFavoriteService _favoriteService;
   List<NearbyPharmacy> _pharmacies = const [];
   Set<String> _favoritePharmacyIds = const {};
+  bool _favoritesLoaded = false;
+  bool _isSavingFavorite = false;
   DeviceLocationFailure? _locationFailure;
   DeviceCoordinate? _deviceLocation;
   String? _errorMessage;
@@ -505,50 +507,54 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _loadFavorites() async {
-    final favoriteIds = await _favoriteService.loadFavoriteIds();
-    if (mounted) {
-      // 함수이름: _loadFavorites.setState callback
-      // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_favoritePharmacyIds = favoriteIds`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() => _favoritePharmacyIds = favoriteIds);
+    try {
+      final favoriteIds = await _favoriteService.loadFavoriteIds();
+      if (mounted) {
+        setState(() {
+          _favoritePharmacyIds = favoriteIds;
+          _favoritesLoaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) _showActionFailure(_text.favoriteLoadFailed);
     }
   }
 
   // 함수이름: _toggleFavorite
-  // 함수역할: 즐겨찾기를 즉시 전환하고 저장 실패 시 해당 변경을 되돌려 안내한다.
+  // 함수역할: 저장을 한 번씩 처리하고 거절·예외 시 이전 즐겨찾기를 복원해 안내한다.
   // 매개변수:
   // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _toggleFavorite(NearbyPharmacy pharmacy) async {
+    if (!_favoritesLoaded || _isSavingFavorite) return;
+    final previousIds = _favoritePharmacyIds;
     final updatedIds = Set<String>.of(_favoritePharmacyIds);
     final isFavorite = updatedIds.remove(pharmacy.pharmacyId);
     if (!isFavorite) {
       updatedIds.add(pharmacy.pharmacyId);
     }
-    // 함수이름: _toggleFavorite.setState callback
-    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_favoritePharmacyIds = updatedIds`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() => _favoritePharmacyIds = updatedIds);
-    if (!await _favoriteService.saveFavoriteIds(updatedIds) && mounted) {
-      final restoredIds = Set<String>.of(_favoritePharmacyIds);
-      if (isFavorite) {
-        restoredIds.add(pharmacy.pharmacyId);
-      } else {
-        restoredIds.remove(pharmacy.pharmacyId);
-      }
-      // 함수이름: _toggleFavorite.setState callback
-      // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_favoritePharmacyIds = restoredIds`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() => _favoritePharmacyIds = restoredIds);
-      _showActionFailure(_text.favoriteSaveFailed);
+    setState(() {
+      _favoritePharmacyIds = updatedIds;
+      _isSavingFavorite = true;
+    });
+    var saved = false;
+    try {
+      saved = await _favoriteService.saveFavoriteIds(updatedIds);
+    } catch (_) {
+      // 저장소 예외도 저장 거절과 같은 복구 경로로 처리한다.
     }
+    if (!mounted) return;
+    setState(() {
+      if (!saved) _favoritePharmacyIds = previousIds;
+      _isSavingFavorite = false;
+    });
+    if (!saved) _showActionFailure(_text.favoriteSaveFailed);
   }
+
+  // 함수이름: _canChangeFavorite
+  // 함수역할: 초기 조회나 저장 도중에는 즐겨찾기 변경을 막아 저장 순서를 보존한다.
+  // 매개변수: 없음. 반환값: 즐겨찾기 버튼 활성화 여부.
+  bool get _canChangeFavorite => _favoritesLoaded && !_isSavingFavorite;
 
   // Function Name: _searchModeForFilter
   // Description: Maps the visible operating-hours filter to the pharmacy controller's search mode.
@@ -1008,8 +1014,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                             compact: compact,
                             onClose: _closePharmacyDetails,
                             onSelected: () => _selectPharmacy(selected),
-                            onFavoriteRequested: () =>
-                                _toggleFavorite(selected),
+                            onFavoriteRequested: _canChangeFavorite
+                                ? () => _toggleFavorite(selected)
+                                : null,
                             onPhoneRequested: selected.telephone.isEmpty
                                 ? null
                                 : () => _requestPhoneCall(selected),
@@ -1298,7 +1305,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       // 매개변수:
                       // - 없음.
                       // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                      onFavoriteRequested: () => _toggleFavorite(pharmacy),
+                      onFavoriteRequested: _canChangeFavorite
+                          ? () => _toggleFavorite(pharmacy)
+                          : null,
                       onPhoneRequested: pharmacy.telephone.isEmpty
                           ? null
                           // 함수이름: _buildBody.onPhoneRequested callback
@@ -2033,7 +2042,7 @@ class _PharmacyCard extends StatelessWidget {
   final bool isSelected;
   final bool isFavorite;
   final VoidCallback onSelected;
-  final VoidCallback onFavoriteRequested;
+  final VoidCallback? onFavoriteRequested;
   final VoidCallback? onPhoneRequested;
   final VoidCallback onDirectionsRequested;
   // 상세 정보창에서는 카드 테두리를 없애고 접힌 상태에 맞춰 정보를 줄인다.
@@ -2957,6 +2966,12 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get removeFavorite => isEnglish ? 'Remove favorite' : '즐겨찾기 해제';
+  // 함수이름: favoriteLoadFailed
+  // 함수역할: 즐겨찾기 조회 실패와 재시도 방법을 현재 언어로 알린다.
+  // 매개변수: 없음. 반환값: 오류 안내 문구.
+  String get favoriteLoadFailed => isEnglish
+      ? 'Could not load favorites. Reopen this screen to try again.'
+      : '즐겨찾기를 불러오지 못했습니다. 화면을 다시 열어주세요.';
   // 함수이름: favoriteSaveFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "약국 즐겨찾기를 저장하지 못했습니다." 문구를 제공한다.
   // 매개변수:

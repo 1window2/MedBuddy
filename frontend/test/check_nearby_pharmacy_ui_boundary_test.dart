@@ -15,6 +15,32 @@ import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
+import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
+
+// 클래스명: _DelayedFavorites
+// 역할: 즐겨찾기 저장 지연·거절·예외를 재현한다.
+// 주요 책임: 실제 기기 설정을 바꾸지 않고 요청 횟수와 완료 순서를 검사한다.
+class _DelayedFavorites extends PharmacyFavoriteService {
+  final writes = <Completer<bool>>[];
+  final requestedIds = <Set<String>>[];
+  Completer<Set<String>>? initialLoad;
+  // 함수이름: loadFavoriteIds
+  // 함수역할: 다른 약국의 기존 즐겨찾기를 시험 초기값으로 제공한다.
+  // 매개변수: 없음. 반환값: 기존 ID 집합.
+  @override
+  Future<Set<String>> loadFavoriteIds() async =>
+      initialLoad == null ? {'existing'} : await initialLoad!.future;
+  // 함수이름: saveFavoriteIds
+  // 함수역할: 저장 요청을 기록하고 테스트가 완료할 때까지 대기한다.
+  // 매개변수: pharmacyIds 저장할 ID 집합. 반환값: 저장 성공 여부.
+  @override
+  Future<bool> saveFavoriteIds(Set<String> pharmacyIds) {
+    final result = Completer<bool>();
+    writes.add(result);
+    requestedIds.add(Set.of(pharmacyIds));
+    return result.future;
+  }
+}
 
 // 클래스명: _FakeLocationBoundary
 // 역할: 위치 성공과 지정된 위치 오류를 선택할 수 있는 경계 대역.
@@ -176,6 +202,7 @@ Widget _testApp(
   bool nativeMap = false,
   String language = 'ko',
   double textScale = 1.6,
+  PharmacyFavoriteService? favoriteService,
 }) {
   return MaterialApp(
     home: MediaQuery(
@@ -187,6 +214,7 @@ Widget _testApp(
         userSetting: UserSetting(fontSize: 20, language: language),
         control: control,
         clock: clock,
+        favoriteService: favoriteService,
         mapBuilder: nativeMap ? null : _buildTestMap,
       ),
     ),
@@ -281,6 +309,136 @@ void main() {
   // 함수이름: setUp 콜백
   // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  // 함수이름: 즐겨찾기 중복 저장 차단 테스트
+  // 함수역할: 저장이 완료되지 않은 동안 중복 클릭으로 저장 순서가 뒤집히지 않도록 한다.
+  // 매개변수: tester 화면 시험 도구. 반환값: 검증 완료 Future.
+  testWidgets('즐겨찾기 저장 중 연속 입력은 한 번만 처리한다', (tester) async {
+    final favorites = _DelayedFavorites();
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      _testApp(control, favoriteService: favorites, textScale: 1),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    final star = find.byKey(const Key('pharmacy-detail-favorite'));
+    await tester.tap(star);
+    await tester.pump();
+    await tester.tap(star);
+    await tester.pump();
+    final count = favorites.writes.length;
+    for (final write in favorites.writes) {
+      write.complete(true);
+    }
+    await tester.pumpAndSettle();
+    expect(count, 1);
+    expect(favorites.requestedIds.single, {'existing', 'open'});
+    expect(tester.widget<IconButton>(star).tooltip, '즐겨찾기 해제');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final throwsError in [false, true]) {
+    // 함수이름: 즐겨찾기 저장 실패 복구 테스트
+    // 함수역할: 거절·저장소 예외에서 선택 상태를 복원하고 사용자에게 실패를 알린다.
+    // 매개변수: tester 화면 시험 도구. 반환값: 검증 완료 Future.
+    testWidgets('즐겨찾기 저장 실패를 복구한다: throws=$throwsError', (tester) async {
+      final favorites = _DelayedFavorites();
+      final control = _buildControl();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        _testApp(control, favoriteService: favorites, textScale: 1),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('test-map-marker-open')));
+      await tester.pumpAndSettle();
+      final star = find.byKey(const Key('pharmacy-detail-favorite'));
+      await tester.tap(star);
+      await tester.pump();
+      if (throwsError) {
+        favorites.writes.single.completeError(
+          StateError('Simulated storage failure'),
+        );
+      } else {
+        favorites.writes.single.complete(false);
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<IconButton>(star).tooltip, '즐겨찾기 추가');
+      expect(find.textContaining('즐겨찾기를 저장하지 못'), findsOneWidget);
+      await tester.tap(star);
+      await tester.pump();
+      expect(favorites.requestedIds.last, {'existing', 'open'});
+      favorites.writes.last.complete(true);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(star).tooltip, '즐겨찾기 해제');
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  for (final throwsError in [false, true]) {
+    // 함수이름: 즐겨찾기 초기 조회 보호 테스트
+    // 함수역할: 저장 목록을 알기 전에는 쓰기를 막고 조회 실패로 기존 목록을 덮어쓰지 않는다.
+    // 매개변수: tester 화면 시험 도구. 반환값: 검증 완료 Future.
+    testWidgets('즐겨찾기 초기 조회가 끝나야 변경할 수 있다: throws=$throwsError', (
+      tester,
+    ) async {
+      final initialLoad = Completer<Set<String>>();
+      final favorites = _DelayedFavorites()..initialLoad = initialLoad;
+      final control = _buildControl();
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        _testApp(control, favoriteService: favorites, textScale: 1),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('test-map-marker-open')));
+      await tester.pumpAndSettle();
+      final star = find.byKey(const Key('pharmacy-detail-favorite'));
+      expect(tester.widget<IconButton>(star).onPressed, isNull);
+      if (throwsError) {
+        initialLoad.completeError(StateError('Simulated load failure'));
+      } else {
+        initialLoad.complete({'existing', 'open'});
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(favorites.writes, isEmpty);
+      if (throwsError) {
+        expect(tester.widget<IconButton>(star).onPressed, isNull);
+        expect(find.textContaining('즐겨찾기를 불러오지 못'), findsOneWidget);
+      } else {
+        expect(tester.widget<IconButton>(star).tooltip, '즐겨찾기 해제');
+        await tester.tap(star);
+        await tester.pump();
+        expect(favorites.requestedIds.single, {'existing'});
+        favorites.writes.single.complete(true);
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  // 함수이름: 즐겨찾기 저장 중 화면 종료 테스트
+  // 함수역할: 화면을 닫은 뒤 도착한 저장 실패가 해제된 위젯에 접근하지 않는지 검사한다.
+  // 매개변수: tester 화면 시험 도구. 반환값: 검증 완료 Future.
+  testWidgets('화면 종료 후 즐겨찾기 저장 실패도 안전하게 마무리한다', (tester) async {
+    final favorites = _DelayedFavorites();
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      _testApp(control, favoriteService: favorites, textScale: 1),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('test-map-marker-open')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-detail-favorite')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    favorites.writes.single.completeError(StateError('Simulated late failure'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   // 함수이름: 목록 상단 드래그 복귀 테스트
   // 함수역할: 지도 노출 간격과 드래그 닫기를 확인하고 선택·지도·조회 결과가 유지되는지 검증한다.
