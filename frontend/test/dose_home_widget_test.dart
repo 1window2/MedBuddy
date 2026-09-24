@@ -62,6 +62,14 @@ void main() {
         action: value.view['action'] as String,
         actionToken: value.view['token'] as String,
       );
+  // 함수역할: 지정 시간대의 표시 데이터를 실제 버튼 입력과 같은 형태로 감싼다.
+  // 매개변수: value 전체 상태, slot 조회 시간대. 반환값: 해당 페이지의 동작·토큰.
+  // 함수이름: page
+  DoseWidgetState page(DoseWidgetState value, String slot) => DoseWidgetState({
+    'view': (value.view['pages'] as List).cast<Map>().singleWhere(
+      (p) => p['slot'] == slot,
+    ),
+  });
   // 함수이름: setUp
   // 함수역할: 각 테스트에 별도 임시 DB와 암호화 키를 만들고 테스트 계정의 기본 일정을 저장한다.
   // 매개변수: 없음. 반환값: 저장소 준비 완료 Future.
@@ -466,6 +474,208 @@ void main() {
     expect(await tap(before), isNull);
     expect(await store.pending('patient-a'), isEmpty);
   });
+
+  // 함수이름: 같은 계정 재로그인 후 지연 입력 테스트
+  // 함수역할: 로그아웃이나 다른 계정 사용 전에 만들어진 복용·취소 버튼을 재로그인 후에도 거부한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 저장했던 복약 기록은 유지한다.
+  for (final intermediate in <String?>[null, 'patient-b']) {
+    test('session boundary invalidates old take after $intermediate', () async {
+      final before = await state(config: {'hide_names': true});
+      await store.activate(intermediate);
+      await store.activate('patient-a');
+      await tap(before);
+      expect(await store.pending('patient-a'), isEmpty);
+      final current = await state();
+      expect(current.view['token'], isNot(before.view['token']));
+      expect(
+        current.view['navigation_key'],
+        isNot(before.view['navigation_key']),
+      );
+      expect(current.data['config']['hide_names'], isTrue);
+    });
+
+    test(
+      'session boundary invalidates old cancel after $intermediate',
+      () async {
+        final taken = (await tap(await state()))!;
+        final oldCancel = page(taken, 'morning');
+        await store.activate(intermediate);
+        await store.activate('patient-a');
+        await tap(oldCancel);
+        expect(await store.pending('patient-a'), hasLength(1));
+        expect((await state()).view['done'], 1);
+      },
+    );
+  }
+
+  // 함수이름: 보호자 재로그인 탐색·조회 응답 테스트
+  // 함수역할: 이전 로그인에서 발급한 환자 키와 뒤늦게 도착한 조회 응답을 다시 사용하지 않는다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 새 조회는 별도의 탐색 키를 발급한다.
+  test(
+    'caregiver relogin rejects old patient navigation and refresh',
+    () async {
+      await state(config: {'source': 'patients'});
+      final before = await patients([patient(1)]);
+      final oldKey = (before.view['patients'] as List).single['patient_key'];
+      await store.activate(null);
+      await store.activate('patient-a');
+      final rejected = await patients([
+        patient(1),
+      ], revision: before.data['patient_revision']);
+      expect(rejected.view['patients'], isEmpty);
+      final current = await patients([patient(1)]);
+      expect(
+        (current.view['patients'] as List).single['patient_key'],
+        isNot(oldKey),
+      );
+      expect(
+        await store.resolveWidgetPatient(
+          owner: 'patient-a',
+          patientKey: oldKey,
+          navigationKey: before.view['navigation_key'],
+          now: now,
+        ),
+        isNull,
+      );
+    },
+  );
+
+  // 함수이름: 같은 로그인 재초기화 테스트
+  // 함수역할: 앱 재시작 등 같은 계정의 반복 활성화는 유효한 버튼과 환자 탐색을 끊지 않는다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료.
+  test(
+    'reinitializing the active account keeps current widget actions',
+    () async {
+      final before = await state();
+      await store.activate('patient-a');
+      final current = await state();
+      expect(current.view['token'], before.view['token']);
+      expect(current.view['navigation_key'], before.view['navigation_key']);
+      await tap(before);
+      expect(await store.pending('patient-a'), hasLength(1));
+    },
+  );
+
+  // 함수이름: 시간대·역할·언어·개인정보 조합 검증
+  // 함수역할: 네 시간대의 없음·미복용·완료 조합을 환자와 보호자 표시에서 모두 확인한다.
+  // 매개변수: 없음. 반환값: 648개 조합의 진행률, 다음 시간대, 버튼 권한·이름 숨김 검증.
+  test(
+    '648 schedule role language privacy combinations preserve widget rules',
+    () {
+      const slots = ['morning', 'lunch', 'evening', 'bedtime'];
+      const times = {
+        'morning': '22:30',
+        'lunch': '05:00',
+        'evening': '20:00',
+        'bedtime': '00:15',
+      };
+      for (var code = 0; code < 81; code++) {
+        var digits = code;
+        final schedules = <MedicationSchedule>[];
+        final present = <String>[];
+        final remaining = <String>[];
+        for (var index = 0; index < slots.length; index++) {
+          final status = digits % 3;
+          digits ~/= 3;
+          if (status == 0) continue;
+          final slot = slots[index];
+          present.add(slot);
+          if (status == 1) remaining.add(slot);
+          schedules.add(
+            MedicationSchedule(
+              medicationID: '${91 + index}',
+              medicationName: 'secret-medicine-$index',
+              scheduleSlotKeys: [slot],
+              slotStatuses: {slot: status == 2},
+            ),
+          );
+        }
+        for (final caregiver in [false, true]) {
+          for (final language in ['ko', 'en']) {
+            for (final hideNames in [false, true]) {
+              final config = <String, dynamic>{
+                'source': caregiver ? 'patients' : 'self',
+                'language': language,
+                'hide_names': hideNames,
+                'alarms': times,
+              };
+              final snapshot = {
+                'date': doseWidgetDay(now),
+                'schedules': schedules.map((s) => s.toJson()).toList(),
+              };
+              final result = DoseWidgetState.build(
+                owner: 'patient-a',
+                cache: snapshot,
+                operations: [],
+                now: now,
+                configuration: config,
+                previous: caregiver
+                    ? {
+                        'patient_cache': {
+                          'date': doseWidgetDay(now),
+                          'patients': [
+                            {
+                              'key': 'test-patient-key',
+                              'alias': '환자',
+                              'schedules': snapshot['schedules'],
+                            },
+                          ],
+                        },
+                      }
+                    : {},
+              );
+              final view = caregiver
+                  ? Map<String, dynamic>.from(
+                      (result.view['patients'] as List).single,
+                    )
+                  : result.view;
+              final reason =
+                  '$code caregiver=$caregiver language=$language hidden=$hideNames';
+              expect(view['total'], present.length, reason: reason);
+              expect(
+                view['done'],
+                present.length - remaining.length,
+                reason: reason,
+              );
+              final pages = (view['pages'] as List).cast<Map>();
+              expect(pages.map((p) => p['slot']), present, reason: reason);
+              final next = [...remaining];
+              if (!caregiver) {
+                next.sort((a, b) => times[a]!.compareTo(times[b]!));
+              }
+              expect(view['slot'], next.firstOrNull ?? '', reason: reason);
+              for (final page in pages) {
+                final completed = !remaining.contains(page['slot']);
+                expect(page['completed'], completed, reason: reason);
+                expect(
+                  page['action'],
+                  caregiver
+                      ? 'open'
+                      : completed
+                      ? 'cancel'
+                      : 'take',
+                  reason: reason,
+                );
+                expect(
+                  (page['token'] as String).isEmpty,
+                  caregiver,
+                  reason: reason,
+                );
+                if (caregiver) expect(page['overdue'], false, reason: reason);
+              }
+              if (hideNames) {
+                expect(
+                  jsonEncode(view),
+                  isNot(contains('secret-medicine')),
+                  reason: reason,
+                );
+              }
+            }
+          }
+        }
+      }
+    },
+  );
   // 함수이름: 자정 이후 복용 버튼 거부 테스트
   // 함수역할: 전날 버튼을 다음 날 누르면 날짜를 바꿔 기록하지 않고 일정 새로고침을 안내하는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
@@ -774,15 +984,6 @@ void main() {
       expect(value.view['heading'], '오늘 복약 기록 완료');
     },
   );
-
-  // 함수역할: 지정 시간대의 표시 데이터를 실제 버튼 입력과 같은 형태로 감싼다.
-  // 매개변수: value 전체 상태, slot 조회 시간대. 반환값: 해당 페이지의 동작·토큰.
-  // 함수이름: page
-  DoseWidgetState page(DoseWidgetState value, String slot) => DoseWidgetState({
-    'view': (value.view['pages'] as List).cast<Map>().singleWhere(
-      (p) => p['slot'] == slot,
-    ),
-  });
 
   // 날짜 표시는 기기 UTC 날짜가 아닌 복약 기준일에 맞추고 언어 설정을 따른다.
   // 함수이름: 복약 기준일 날짜 표시 테스트

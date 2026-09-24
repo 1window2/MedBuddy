@@ -72,11 +72,53 @@ class DoseOutboxStore {
     return Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
   }
 
+  // 함수이름: activate
+  // 함수역할: 계정 전환과 이전 위젯 버튼 무효화를 함께 저장한다. 복약 전송 대기는 보존한다.
+  // 매개변수: owner 활성 계정, null이면 로그아웃. 반환값: 활성 계정 변경 완료 Future.
   Future<void> activate(String? owner) async {
-    await db.insert('metadata', {
-      'name': 'active',
-      'value': owner == null ? '' : await ownerKey(owner),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    final next = owner == null ? '' : await ownerKey(owner);
+    await db.transaction((tx) async {
+      final rows = await tx.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['active'],
+      );
+      final previous = rows.firstOrNull?['value'] as String? ?? '';
+      if (previous != next) {
+        // 설정은 유지하되 재로그인으로 과거 버튼·환자 탐색·지연 응답이 살아나지 않게 한다.
+        for (final token in {
+          previous,
+          next,
+        }.where((value) => value.isNotEmpty)) {
+          final widgetRows = await tx.query(
+            'metadata',
+            where: 'name = ?',
+            whereArgs: ['widget:$token'],
+          );
+          if (widgetRows.isEmpty) continue;
+          final widget = await _decrypt(
+            widgetRows.single['value'] as String,
+            token,
+          );
+          await tx.update(
+            'metadata',
+            {
+              'value': await _encrypt({
+                'owner': widget['owner'],
+                'config': widget['config'],
+                'patient_revision': newWidgetActionToken(),
+              }, token),
+            },
+            where: 'name = ?',
+            whereArgs: ['widget:$token'],
+          );
+        }
+      }
+      await tx.insert('metadata', {
+        'name': 'active',
+        'value': next,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   Future<bool> isActive(String owner) async {
