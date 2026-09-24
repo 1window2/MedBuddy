@@ -955,6 +955,8 @@ package "FastAPI Backend" {
         class "PharmacyCatalogRepository" as PharmacyCatalogRepository <<Repository: 전국 약국 일정 검색>> {
             + count(): int
             + search_nearby_candidates(latitude, longitude, max_distance_km): list<PharmacyCatalogEntry>
+            + find_by_id(pharmacy_id): PharmacyCatalogEntry?
+            + cache_search_results(pharmacies): void
             + replace_all(entries): void
         }
 
@@ -1631,6 +1633,18 @@ package "FastAPI Backend" {
             + source_updated_at: DateTime
         }
 
+        class "PharmacySearchCacheRecord" as DBPharmacySearchCache <<ORM: pharmacy_search_cache>> {
+            + pharmacy_id: String
+            + name, address, telephone: String
+            + latitude, longitude: Float
+            + fetched_at: DateTime
+        }
+        note right of DBPharmacySearchCache
+            공공 API 보완 검색 결과만 24시간 재사용한다.
+            전국 카탈로그의 개수·최신성 판단과 분리하며
+            한 날짜 운영시간을 주간 시간표로 추정하지 않는다.
+        end note
+
         class "PharmacyHolidayScheduleRecord" as DBPharmacyHolidaySchedule <<ORM: pharmacy_holiday_schedules>> {
             + schedule_date: Date
             + pharmacy_id: String
@@ -1941,6 +1955,7 @@ NEMCPharmacyAPI ..|> PharmacyLookupBoundary
 NEMCPharmacyAPI ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository --> DBPharmacyCatalog
+PharmacyCatalogRepository --> DBPharmacySearchCache
 PharmacyCatalogRepository --> DBPharmacyHolidaySchedule
 PharmacyCatalogRepository --> DBPharmacyHolidayFetch
 PharmacyCatalogRepository --> DBKoreanHoliday
