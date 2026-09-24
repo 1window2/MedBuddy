@@ -85,7 +85,11 @@ flutter {
 dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("com.google.guava:guava:33.5.0-android")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // 위젯의 실패 복구 예약에 사용하며 기존 위젯·백그라운드 플러그인 버전과 맞춘다.
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     // 처방전 한글 OCR에 필요한 온디바이스 ML Kit 모델을 릴리스 앱에 포함한다.
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")

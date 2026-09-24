@@ -12,10 +12,11 @@ import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.Toast
-import es.antonborri.home_widget.HomeWidgetBackgroundIntent
+import androidx.work.WorkManager
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
+import io.flutter.FlutterInjector
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -357,9 +358,16 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             }
             return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
+        // 함수이름: wake
+        // 함수역할: Flutter 콜백 실행 환경을 준비하고 실패 복구가 가능한 갱신 작업을 예약한다.
+        // 매개변수: context 실행 환경, data 최근 실행 시각을 보관할 위젯 설정. 반환값: 없음.
         private fun wake(context: Context, data: SharedPreferences) {
             data.edit().putLong(LAST_WAKE, System.currentTimeMillis()).apply()
-            HomeWidgetBackgroundIntent.getBroadcast(context, Uri.parse("medbuddy-widget://refresh")).send()
+            // 플러그인의 APPEND 경로를 우회하여 이전 실패 뒤의 클릭도 실행한다.
+            val loader = FlutterInjector.instance().flutterLoader()
+            loader.startInitialization(context.applicationContext)
+            loader.ensureInitializationComplete(context.applicationContext, null)
+            DoseWidgetRefreshScheduler.enqueue(WorkManager.getInstance(context))
         }
         private fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
