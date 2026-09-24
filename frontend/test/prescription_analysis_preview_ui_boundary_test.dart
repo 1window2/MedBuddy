@@ -458,7 +458,7 @@ void main() {
       find.byKey(const Key('ocr-edit-prescription-date')),
       '2026-08-01',
     );
-    for (final slotKey in const ['lunch', 'evening', 'bedtime']) {
+    for (final slotKey in const ['evening', 'bedtime']) {
       final slot = find.byKey(Key('ocr-edit-slot-$slotKey'));
       await tester.ensureVisible(slot);
       await tester.pumpAndSettle();
@@ -473,7 +473,7 @@ void main() {
     expect(updatedIndex, 0);
     expect(updatedSchedule?.medicationName, '애니코프캡슐');
     expect(updatedSchedule?.dosage, '0.5정');
-    expect(updatedSchedule?.intakeTime, '1일 2회');
+    expect(updatedSchedule?.dailyFrequencyCount, 2);
     expect(updatedSchedule?.medicationTime, 5);
     expect(updatedSchedule?.prescriptionDate, DateTime(2026, 8, 1));
     expect(updatedSchedule?.scheduleSlotKeys, ['morning', 'bedtime']);
@@ -731,6 +731,7 @@ void main() {
     expect(addedSchedule?.medicationName, '수동추가약');
     expect(addedSchedule?.dosage, '0.5정');
     expect(addedSchedule?.intakeTime, '3회');
+    expect(addedSchedule?.scheduleSlotKeys, ['morning', 'lunch', 'evening']);
     expect(addedSchedule?.medicationTime, 4);
     expect(addedSchedule?.prescriptionDate, DateTime(2026, 8, 25));
     expect(addedSchedule?.prescriptionBatchId, 'batch_20260825_alpha');

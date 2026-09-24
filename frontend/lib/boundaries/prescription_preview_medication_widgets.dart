@@ -859,6 +859,8 @@ class _MedicationScheduleEditDialogState
                 inputFormatters: [LengthLimitingTextInputFormatter(40)],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(labelText: text.dailyFrequency),
+                onChanged: _updateDailyFrequency,
+                validator: _validateDailyFrequency,
               ),
               TextFormField(
                 key: const Key('ocr-edit-days'),
@@ -909,7 +911,7 @@ class _MedicationScheduleEditDialogState
                         label: Text(text.slotLabel(slotKey)),
                         selected: _selectedSlotKeys.contains(slotKey),
                         // 함수이름: build.onSelected callback
-                        // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집에서 캡처된 작업 `setState(() {if (selected) {_selectedSlotKeys.add(slotKey);} else {_selectedSlotKeys.remove(slotKey);} _showSlotValidationError = false;})`을 실행한다.
+                        // 함수역할: 실제 복약 시간대와 표시 횟수를 함께 갱신한다.
                         // 매개변수:
                         // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
                         // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -924,6 +926,11 @@ class _MedicationScheduleEditDialogState
                               _selectedSlotKeys.add(slotKey);
                             } else {
                               _selectedSlotKeys.remove(slotKey);
+                            }
+                            if (_selectedSlotKeys.isNotEmpty) {
+                              _frequencyController.text = _selectedSlotKeys
+                                  .length
+                                  .toString();
                             }
                             _showSlotValidationError = false;
                           });
@@ -969,6 +976,37 @@ class _MedicationScheduleEditDialogState
       ],
     );
   }
+
+  // 함수이름: _readDailyFrequency
+  // 함수역할: 지원하는 하루 1~4회 입력을 읽고 음수·소수·모호한 문구는 추측하지 않는다.
+  // 매개변수: value 사용자가 확인한 횟수. 반환값: 유효한 횟수 또는 null.
+  int? _readDailyFrequency(String value) {
+    final match = RegExp(
+      r'^(?:(?:1\s*일|하루(?:에)?)\s*)?([1-4])\s*(?:회|번|times?|x)?$',
+      caseSensitive: false,
+    ).firstMatch(value.trim());
+    return match == null ? null : int.tryParse(match.group(1)!);
+  }
+
+  // 함수이름: _updateDailyFrequency
+  // 함수역할: 횟수가 달라질 때 기본 시간대를 갱신하되 같은 횟수의 사용자 선택은 유지한다.
+  // 매개변수: value 수정된 횟수. 반환값: 없음.
+  void _updateDailyFrequency(String value) {
+    final count = _readDailyFrequency(value);
+    if (count == null || count == _selectedSlotKeys.length) return;
+    setState(() {
+      _selectedSlotKeys = medicationScheduleSlotKeysForFrequency(count).toSet();
+      _showSlotValidationError = false;
+    });
+  }
+
+  // 함수이름: _validateDailyFrequency
+  // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다.
+  // 매개변수: value 횟수 입력. 반환값: 잘못된 입력 안내 또는 null.
+  String? _validateDailyFrequency(String? value) =>
+      _readDailyFrequency(value ?? '') == null
+      ? widget.previewText.invalidDailyFrequency
+      : null;
 
   // 함수이름: _validateMedicationDays
   // 함수역할: 총 투약일 입력값이 비어 있거나 허용 범위의 양의 정수인지 확인한다.
@@ -1404,6 +1442,12 @@ class _PreviewText {
   String get scheduleSlotRequired => isEnglish
       ? 'Select at least one medication time.'
       : '복약 시간대를 하나 이상 선택해주세요.';
+  // 함수이름: invalidDailyFrequency
+  // 함수역할: 지원하는 횟수 범위를 한국어 또는 영어로 안내한다.
+  // 매개변수: 없음. 반환값: 입력 확인 문구.
+  String get invalidDailyFrequency => isEnglish
+      ? 'Enter a daily frequency from 1 to 4.'
+      : '1일 횟수를 1~4회로 입력해주세요.';
   // 함수이름: invalidTotalDays
   // 함수역할: 현재 언어와 입력값에 맞춰 "1일 이상 3650일 이하의 숫자를 입력해주세요." 문구를 제공한다.
   // 매개변수:
