@@ -275,7 +275,7 @@ void main() {
       }
       if (source == 'patients') {
         expect(find.text('Patient 1'), findsOneWidget);
-        expect(find.text('이 시간대에 등록된 약이 없습니다.'), findsOneWidget);
+        expect(find.text('오늘 등록된 복약 일정이 없습니다.'), findsOneWidget);
         final previousCalls = api.calls;
         await tester.tap(find.byKey(const ValueKey('bottomNavigation-chat')));
         await tester.pumpAndSettle();
