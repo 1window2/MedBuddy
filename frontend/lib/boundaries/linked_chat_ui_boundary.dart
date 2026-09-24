@@ -137,6 +137,16 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   int _requestGeneration = 0;
   bool _showMedicationContextGuide = true;
 
+  // 함수이름: _isChatVisible
+  // 함수역할: 앱이 전면에 있고 다른 화면이 채팅을 가리지 않는지 확인한다.
+  // 매개변수: 없음. 반환값: 읽음 처리와 자동 스크롤을 허용할지 여부.
+  bool get _isChatVisible {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return mounted &&
+        (state == null || state == AppLifecycleState.resumed) &&
+        ModalRoute.of(context)?.isCurrent == true;
+  }
+
   // 함수이름: _text
   // 함수역할: 현재 언어에 맞는 연동 사용자 채팅과 약품·일정·약국 정보 공유 문구 객체를 만든다.
   // 매개변수:
@@ -243,6 +253,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_initializeChat());
     });
+  }
+
+  // 함수이름: didChangeDependencies
+  // 함수역할: 약 선택·상세 화면에서 돌아온 뒤 보이게 된 채팅의 읽음 상태를 갱신한다.
+  // 매개변수: 없음. 반환값: 없음.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isChatVisible && _messages.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_markLatestIncomingRead());
+      });
+    }
   }
 
   // 함수이름: dispose
@@ -444,7 +467,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         _isLoading = false;
         _errorMessage = null;
       });
-      _scrollToLatest();
+      _scrollToLatest(force: showLoading);
       await _markLatestIncomingRead();
     } catch (_) {
       if (!mounted || generation != _requestGeneration) {
@@ -505,7 +528,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           _messages = _mergeMessages(_messages, [message]);
           _errorMessage = null;
         });
-        _scrollToLatest();
+        _scrollToLatest(force: false);
         if (message.messageKind == ChatMessageKind.slotCheckRequest ||
             message.messageKind == ChatMessageKind.slotCompletion) {
           unawaited(_refreshScheduleContexts());
@@ -557,6 +580,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _markLatestIncomingRead() async {
+    if (!_isChatVisible) return;
     final incoming = _messages
         // 함수이름: _markLatestIncomingRead.where callback
         // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `message.senderHash != widget.currentUserHash` 조건으로 컬렉션 항목을 판별한다.
@@ -1256,7 +1280,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   // 함수이름: _mergeMessages
-  // 함수역할: 메시지 ID로 새 결과를 병합하고 본인 숨김·전체 삭제 상태를 유지하며 ID 순으로 정렬한다.
+  // 함수역할: 메시지 ID로 결과를 병합하되 확인된 읽음·삭제 상태를 오래된 응답으로 되돌리지 않는다.
   // 매개변수:
   // - current (List<ChatMessage>): 병합 이전에 화면이 보관한 메시지 목록.
   // - incoming (List<ChatMessage>): 조회 또는 실시간으로 수신한 메시지 목록.
@@ -1267,9 +1291,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   ) {
     final byId = <int, ChatMessage>{
       for (final message in current) message.messageId: message,
-      for (final message in incoming) message.messageId: message,
     };
     for (final message in incoming) {
+      final knownReadAt = byId[message.messageId]?.readAt;
+      byId[message.messageId] =
+          knownReadAt != null &&
+              (message.readAt == null || message.readAt!.isBefore(knownReadAt))
+          ? message.copyWith(readAt: knownReadAt)
+          : message;
       if (message.hiddenForMe) _hiddenMessageIds.add(message.messageId);
       if (message.deletedForEveryone) _deletedMessageIds.add(message.messageId);
     }
@@ -1491,11 +1520,17 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   // 함수이름: _scrollToLatest
-  // 함수역할: 레이아웃 완료 후 목록이 연결되어 있으면 220ms 동안 최신 메시지로 스크롤한다.
+  // 함수역할: 처음 진입하거나 직접 전송하면 하단으로 이동하고, 수신·조회 갱신에서는 이전 대화를 읽던 위치를 유지한다.
   // 매개변수:
-  // - 없음.
+  // - force (bool): 현재 스크롤 위치와 관계없이 최신 메시지로 이동할지 여부.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _scrollToLatest() {
+  void _scrollToLatest({bool force = true}) {
+    if (!force &&
+        (!_isChatVisible ||
+            (_scrollController.hasClients &&
+                _scrollController.position.extentAfter > 80))) {
+      return;
+    }
     // 함수이름: _scrollToLatest.addPostFrameCallback callback
     // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `_scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut)`을 실행한다.
     // 매개변수:
