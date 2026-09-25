@@ -207,7 +207,6 @@ class InputPrescriptionUI extends StatelessWidget {
                                   isCompletionLoading:
                                       isNextMedicationCompletionLoading,
                                 ),
-                            ?caregiverScheduleHint,
                             SizedBox(height: dashboardActionSpacing),
                             LayoutBuilder(
                               // 함수이름: 빠른 기능 영역 builder
@@ -352,6 +351,10 @@ class InputPrescriptionUI extends StatelessWidget {
                                 );
                               },
                             ),
+                            if (caregiverScheduleHint != null) ...[
+                              SizedBox(height: dashboardActionSpacing),
+                              caregiverScheduleHint!,
+                            ],
                           ],
                         ),
                       ),

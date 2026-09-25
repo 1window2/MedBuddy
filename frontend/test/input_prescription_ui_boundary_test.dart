@@ -133,6 +133,62 @@ class _HomeReminderViewModel extends MedBuddyViewModel {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final width in [280.0, 390.0]) {
+    for (final scale in [1.0, 2.0]) {
+      // Function Name: linked-patient guidance layout test
+      // Description: Keep guidance below all four cards and reachable at large text sizes.
+      // Parameters: tester - widget rendering and interaction harness.
+      // Returns: Completion of layout and tap assertions; mismatches fail the test.
+      testWidgets('linked-patient guidance follows cards at $width/$scale', (
+        tester,
+      ) async {
+        _setViewport(tester, Size(width, 844));
+        var taps = 0;
+        const hintKey = Key('linkedPatientGuidance');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: _home(
+                caregiverScheduleHint: TextButton(
+                  key: hintKey,
+                  // Function Name: guidance tap callback
+                  // Description: Record activation without navigating outside the fixture.
+                  // Parameters: None.
+                  // Returns: No value; increments the activation count.
+                  onPressed: () => taps++,
+                  child: const Text(
+                    'View your linked patient’s medication schedule',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final hint = find.byKey(hintKey);
+        for (final cardKey in [
+          'homePrescriptionAnalysisCard',
+          'homeHealthRecommendationCard',
+          'homeNearbyPharmacyCard',
+          'homeUserSettingsCard',
+        ]) {
+          expect(
+            tester.getTopLeft(hint).dy,
+            greaterThanOrEqualTo(
+              tester.getBottomLeft(find.byKey(Key(cardKey))).dy,
+            ),
+          );
+        }
+        await tester.ensureVisible(hint);
+        await tester.pumpAndSettle();
+        await tester.tap(hint);
+        expect(taps, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   // Function Name: home completion review test
   // Description: Opening the schedule after a home completion refreshes it without undoing the recorded slot.
   // Parameters: tester - widget rendering and interaction harness.
@@ -1781,6 +1837,7 @@ void _setViewport(WidgetTester tester, Size size) {
 // - Build the home dashboard from supplied schedules, alarms, progress, and a controllable clock.
 // Parameters:
 // - userSetting (UserSetting): Language, text-size, and speech preferences for the scenario.
+// - caregiverScheduleHint (Widget?): Optional linked-patient guidance below the action cards.
 // - schedules (List<MedicationSchedule>): Recognized or current dose schedules for the scenario.
 // - alarms (Map<String, MedicationAlarm>): Alarm settings indexed by dose slot.
 // - completedCount (int): Completed-dose count displayed in the dashboard.
@@ -1792,6 +1849,7 @@ void _setViewport(WidgetTester tester, Size size) {
 // - The configured InputPrescriptionUI with inert unrelated navigation callbacks.
 InputPrescriptionUI _home({
   UserSetting userSetting = const UserSetting(),
+  Widget? caregiverScheduleHint,
   List<MedicationSchedule> schedules = const [],
   Map<String, MedicationAlarm> alarms = const {},
   int completedCount = 0,
@@ -1803,6 +1861,7 @@ InputPrescriptionUI _home({
   return InputPrescriptionUI(
     statusMessage: '',
     userSetting: userSetting,
+    caregiverScheduleHint: caregiverScheduleHint,
     todayMedicationScheduleList: schedules,
     medicationReminderSettings: alarms,
     todayMedicationCompletedCount: completedCount,

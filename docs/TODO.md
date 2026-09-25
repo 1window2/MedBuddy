@@ -4,6 +4,9 @@ Current implementation, verification evidence, and remaining work are summarized
 in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
 The subsequent offline-dose date-boundary correction and SDK/lockfile follow-up
 are recorded in [the September 22 review](qa/v0.2.0-2026-09-22-dose-midnight-review.md).
+The latest contributor work, Home guidance follow-up, and new pharmacy-cache
+migration prerequisite are summarized in
+[the September 25 follow-up](qa/v0.2.0-2026-09-25-contributor-followup.md).
 Individual physical checks below remain open unless their exact scope has evidence;
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.
