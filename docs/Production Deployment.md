@@ -157,6 +157,15 @@ checklist are tracked in [TODO.md](TODO.md).
 
 ## Start or Update Production
 
+### Durable chat rollout (`b3a7d9e2f601`)
+
+The chat-delivery worker requires this migration after `6d4f8a2c9301`.
+Back up before migration and stop old workers during the coordinated update.
+The new table starts empty: existing chat history does not generate old pushes.
+Rollback discards pending delivery jobs, so do not downgrade while the new
+worker is running. See [durable chat delivery](MedBuddy%20-%20Durable%20Chat%20Delivery.md)
+for retry, suppression and duplicate-delivery semantics.
+
 ### Pharmacy-cache rollout (`6d4f8a2c9301`)
 
 The September 24 pharmacy-sharing changes require this migration before the

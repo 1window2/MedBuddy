@@ -52,7 +52,10 @@
 검증과 메시지·복약 데이터 계약은 변경하지 않는다.
 
 일반 채팅은 복용 약이 없어도 가능하며, HTTP 저장 후 Router에서 WebSocket으로 방송한다.
-미접속 상대의 일반 채팅 Push는 BackgroundTasks이고 보호자 알림 Outbox와 별개다.
+Ordinary chat push now uses a separate durable `chat_notification_jobs` queue,
+committed with the user message and processed by `ChatNotificationWorker`.
+The older sequence/PNG BackgroundTasks depiction is superseded by the
+[durable chat delivery design note](../../MedBuddy%20-%20Durable%20Chat%20Delivery.md).
 Outbox의 자동 완료 메시지 저장 자체는 WebSocket 방송을 수행하지 않는다.
 환자의 `먹었어요`는 선택한 약·시간대·날짜를 기기에 먼저 저장하고 서버의 복약
 기록과 채팅 영수증을 함께 갱신한다. 응답 전까지 전송 대기를 표시하며 같은 요청을

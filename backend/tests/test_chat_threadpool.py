@@ -59,7 +59,7 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
              patch.object(chat_router, "get_chat_connection_manager", return_value=manager), \
              patch.object(chat_router, "CheckSchedule", return_value=SimpleNamespace(
                  requestTodayMedicationSchedule=partial(blocking, "schedule", {"data": []}))):
-            if operation in {"send_message", "record_medication_taken"}:
+            if operation == "record_medication_taken":
                 kwargs["background_tasks"] = BackgroundTasks()
             route = {"send_message": chat_router.post_chat_message,
                      "delete_messages": chat_router.delete_chat_messages,

@@ -73,7 +73,7 @@ class DispatchChatMessageAlert:
                 return PushDeliveryResult(success_count=0)
             hidden_at = (row.patient_deleted_at if recipient_hash == str(link.patient_hash)
                          else row.caregiver_deleted_at)
-            if hidden_at is not None or row.deleted_for_everyone_at is not None:
+            if hidden_at is not None or row.deleted_for_everyone_at is not None or row.read_at is not None:
                 return PushDeliveryResult(success_count=0)
             message_body = str(row.body)
             message_kind = str(row.message_kind)

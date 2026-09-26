@@ -4,6 +4,7 @@
 import asyncio
 import logging
 import time
+from functools import partial
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -33,6 +34,8 @@ from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.config import settings
 from core.api_contract import ApiContractMiddleware
 from core.database import SessionLocal, engine
+from controls.process_chat_notifications_control import ProcessChatNotifications, reserve_chat_push
+from services.chat_notification_worker import ChatNotificationWorker
 from core.schema_initialization import prepare_database_schema, verify_database_revision
 from core.request_limits import RequestBodyLimitMiddleware
 from core.request_rate_limits import (
@@ -254,6 +257,13 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     alert_outbox_worker.start()
     app.state.caregiver_alert_outbox_worker = alert_outbox_worker
     app.state.readiness_probe_cache.reset()
+    chat_worker = ChatNotificationWorker(ProcessChatNotifications(
+        SessionLocal, get_push_notification_boundary,
+        app.state.chat_connection_manager.is_user_connected,
+        partial(reserve_chat_push, app.state.request_rate_limit_store),
+    ))
+    chat_worker.start()
+    app.state.chat_notification_worker = chat_worker
     if settings.PERIODIC_MAINTENANCE_ENABLED:
         maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
         maintenance_runner.start()
@@ -261,6 +271,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await chat_worker.stop()
         await alert_outbox_worker.stop()
         if maintenance_runner is not None:
             await maintenance_runner.stop()

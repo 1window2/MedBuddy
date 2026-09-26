@@ -90,7 +90,7 @@ def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path
 def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["6d4f8a2c9301"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["b3a7d9e2f601"]
     for revision in ("a6e2d903bc71", "e4a19c7b520d"):
         url = f"sqlite:///{(tmp_path / f'{revision}.db').as_posix()}"
         config.attributes["database_url"] = url

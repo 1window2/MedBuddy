@@ -414,6 +414,8 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         self.db.close()
         with self.engine.begin() as connection:
             connection.exec_driver_sql("ALTER TABLE device_push_tokens DROP COLUMN supports_caregiver_actions")
+            # This historical baseline predates the durable chat queue.
+            connection.exec_driver_sql("DROP TABLE chat_notification_jobs")
         processor = ProcessCaregiverAlertOutbox(self.db, DisabledPushNotificationBoundary())
         with patch("controls.process_caregiver_alert_outbox_control.utc_now", return_value=self.now):
             with self.assertLogs("controls.process_caregiver_alert_outbox_control", level="WARNING") as logs:
@@ -482,7 +484,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
                 principal = principal.model_copy(update={"user_hash": "patient-a"})
                 self.assertEqual(client.post(path, params={"user_hash": "caregiver-a"}).status_code, 404)
 
-    def test_chat_http_reuses_broadcast_and_background_push_once(self):
+    def test_chat_http_broadcasts_and_queues_durable_push_once(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from unittest.mock import AsyncMock
@@ -503,16 +505,16 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
                 "slot_key": "lunch", "source_alert_id": self.root.id}
         with patch("api.chat_router.get_chat_connection_manager", return_value=manager), \
              patch("api.chat_router._enforce_chat_daily_quota", new=AsyncMock()), \
-             patch("api.chat_router._reserve_chat_push_notification", new=AsyncMock(return_value=True)), \
-             patch("api.chat_router._dispatch_chat_notification") as push, TestClient(app) as client:
+             TestClient(app) as client:
             response = client.post(f"/api/v1/chat/links/{link_id}/messages", json=body)
             self.assertEqual(response.status_code, 200, response.text)
             self.assertTrue(response.json()["created"])
             self.assertFalse(client.post(f"/api/v1/chat/links/{link_id}/messages", json=body).json()["created"])
             self.assertEqual(manager.broadcast.await_count, 1)
-            self.assertEqual(push.call_count, 1)
-            self.assertEqual(push.call_args.kwargs["recipient_hash"], "patient-a")
-            self.assertEqual(push.call_args.kwargs["message_kind"], "slot_check_request")
+            from entities.chat_notification_job_entity import ChatNotificationJob
+            jobs = self.db.query(ChatNotificationJob).all()
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0].recipient_hash, "patient-a")
 
 
 if __name__ == "__main__":

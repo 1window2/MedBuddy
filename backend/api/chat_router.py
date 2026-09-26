@@ -32,7 +32,6 @@ from api.dependencies import (
 )
 from controls.authorization_control import AuthorizationControl
 from controls.check_schedule_control import CheckSchedule
-from controls.dispatch_chat_message_alert_control import DispatchChatMessageAlert
 from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from controls.process_caregiver_alert_outbox_control import ProcessCaregiverAlertOutbox
 from core.config import settings
@@ -229,7 +228,6 @@ def get_chat_medication_detail(
 # 매개변수:
 # - link_id (int): 저장된 환자·보호자 연동 식별자.
 # - payload (ChatMessageCreate): 검증된 텍스트·구조화 문맥 메시지 전송 요청.
-# - background_tasks (BackgroundTasks): 응답 이후 알림 전송을 예약할 작업 큐.
 # - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
 # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
 # - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
@@ -241,14 +239,13 @@ def get_chat_medication_detail(
 async def post_chat_message(
     link_id: int,
     payload: ChatMessageCreate,
-    background_tasks: BackgroundTasks,
     request: Request,
     user_hash: str = DEFAULT_PATIENT_HASH,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
-    """메시지를 저장하고 채팅방에 즉시 방송하며 필요하면 푸시를 예약한다."""
+    """Persist message and notification job atomically, then broadcast live state."""
     authorized_user_hash = await run_in_threadpool(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
@@ -269,7 +266,7 @@ async def post_chat_message(
         pharmacy_id=payload.pharmacy_id,
         source_alert_id=payload.source_alert_id,
     )
-    return await _publish_saved_message(link_id, result, request, background_tasks)
+    return await _publish_saved_message(link_id, result, request)
 
 
 @router.post("/links/{link_id}/medication-taken")
@@ -303,7 +300,7 @@ async def record_chat_medication_taken(
         CheckSchedule(chat.db).requestTodayMedicationSchedule, authorized_user_hash,
     )
     schedules = schedule_response["data"]
-    response = await _publish_saved_message(link_id, result, request, background_tasks)
+    response = await _publish_saved_message(link_id, result, request)
     return {**response, "schedules": schedules}
 
 
@@ -320,7 +317,6 @@ def _process_completion_alert(outbox_id: int) -> None:
 
 async def _publish_saved_message(
     link_id: int, result: ChatSendResult, request: Request,
-    background_tasks: BackgroundTasks,
 ) -> dict[str, object]:
     """Share the same post-commit delivery path for text and dose receipts."""
     response_message = result.message.to_response_dict()
@@ -330,24 +326,8 @@ async def _publish_saved_message(
             link_id=link_id,
             event={"type": "chat_message", "message": response_message},
         )
-        recipient_is_connected = await manager.is_user_connected(
-            link_id=link_id,
-            user_hash=result.recipient_hash,
-        )
-        if not recipient_is_connected and await _reserve_chat_push_notification(
-            request=request,
-            recipient_hash=result.recipient_hash,
-            link_id=link_id,
-        ):
-            background_tasks.add_task(
-                _dispatch_chat_notification,
-                recipient_hash=result.recipient_hash,
-                link_id=link_id,
-                message_body=result.message.body,
-                message_id=result.message.message_id,
-                message_kind=result.message.message_kind,
-                context_payload=result.message.context_payload,
-            )
+        # Notification delivery was queued atomically with the message. It must
+        # not depend on this response, the broadcast, or an in-process task.
     return {
         "success": True,
         "created": result.created,
@@ -568,37 +548,6 @@ async def _enforce_chat_daily_quota(
         )
 
 
-# 함수이름: _reserve_chat_push_notification
-# 함수역할:
-# - 짧은 시간에 같은 상대에게 푸시가 반복 전송되지 않도록 예약한다.
-# 매개변수:
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - recipient_hash (str): 알림을 받을 계정 식별자.
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# 반환값:
-# - 이번 메시지에 푸시를 전송할지 여부
-async def _reserve_chat_push_notification(
-    *,
-    request: Request,
-    recipient_hash: str,
-    link_id: int,
-) -> bool:
-    if not settings.RATE_LIMIT_ENABLED:
-        return True
-    try:
-        allowed, _ = await get_request_rate_limit_store(request).consume(
-            identity=f"chat-push:{recipient_hash}:{link_id}",
-            request_scope="POST:/api/v1/chat/push",
-            rule=RateLimitRule(
-                1,
-                settings.CHAT_PUSH_MIN_INTERVAL_SECONDS,
-            ),
-        )
-        return allowed
-    except RuntimeError:
-        # 푸시 제한 저장소 장애가 채팅 저장 자체를 실패시키지 않게 한다.
-        logger.warning("Chat push quota storage is temporarily unavailable.")
-        return False
 
 
 # 함수이름: _reserve_websocket_connection
@@ -673,62 +622,3 @@ def _websocket_close_code(status_code: int) -> int:
     if status_code == 409:
         return 4409
     return 1011
-
-
-# 함수이름: _dispatch_chat_notification
-# 함수역할:
-# - 채팅방에 접속하지 않은 상대에게 새 메시지 알림을 전달한다.
-# 매개변수:
-# - recipient_hash (str): 알림을 받을 계정 식별자.
-# - link_id (int): 저장된 환자·보호자 연동 식별자.
-# - message_body (str): 메시지 또는 푸시 미리보기에 사용할 사용자 입력 본문.
-# - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
-# - context_payload (dict[str, object] | None): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
-# - message_id (int): 저장된 채팅 메시지 식별자.
-# 반환값:
-# - 없음
-def _dispatch_chat_notification(
-    *,
-    recipient_hash: str,
-    link_id: int,
-    message_body: str,
-    message_kind: str,
-    context_payload: dict[str, object] | None,
-    message_id: int,
-) -> None:
-    """응답 이후 별도 DB 세션으로 오프라인 상대의 푸시를 전송한다."""
-    db = SessionLocal()
-    try:
-        DispatchChatMessageAlert(
-            db,
-            get_push_notification_boundary(),
-        ).notify_new_message(
-            recipient_hash=recipient_hash,
-            link_id=link_id,
-            message_body=message_body,
-            message_kind=message_kind,
-            slot_key=_notification_slot_key(context_payload),
-            message_id=message_id,
-        )
-    finally:
-        db.close()
-
-
-# 함수이름: _notification_slot_key
-# 함수역할:
-# - 구조화 메시지에서 알림 이동에 사용할 시간대 식별자를 꺼낸다.
-# 매개변수:
-# - context_payload (dict[str, object] | None): 메시지에 첨부된 복약·시간대·약국 구조화 문맥.
-# 반환값:
-# - 문맥의 시간대 키 또는 사용할 값이 없을 때 None.
-def _notification_slot_key(
-    context_payload: dict[str, object] | None,
-) -> str | None:
-    """구조화 메시지에서 알림 이동에 사용할 시간대 식별자를 꺼낸다."""
-    if not isinstance(context_payload, dict):
-        return None
-    schedule_context = context_payload.get("schedule_context")
-    if not isinstance(schedule_context, dict):
-        return None
-    slot_key = schedule_context.get("slot_key")
-    return str(slot_key) if slot_key else None

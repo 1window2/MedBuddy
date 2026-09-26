@@ -11,6 +11,8 @@ The migration data-preservation CI gate and rollout/rollback guidance are record
 in [the September 26 follow-up](qa/v0.2.0-2026-09-26-migration-release-gate.md).
 The event-loop blocking correction and exact-commit signing gate are recorded in
 [the P1 architecture follow-up](qa/v0.2.0-2026-09-26-p1-architecture-fixes.md).
+Ordinary chat push now has a transactional queue; migration and acceptance
+requirements are in [the durable delivery design](MedBuddy%20-%20Durable%20Chat%20Delivery.md).
 Individual physical checks below remain open unless their exact scope has evidence;
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.

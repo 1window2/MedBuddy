@@ -13,6 +13,7 @@ from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
+from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
@@ -439,6 +440,11 @@ class ManageLinkedChat:
         )
         try:
             self.message_repository.add(row)
+            if not allow_internal:
+                self.db.flush()
+                self.db.add(ChatNotificationJob(
+                    message_id=row.id, recipient_hash=recipient_hash,
+                ))
             self.db.commit()
             self.db.refresh(row)
         except IntegrityError:
@@ -526,6 +532,10 @@ class ManageLinkedChat:
                 },
             )
             self.message_repository.add(row)
+            self.db.flush()
+            self.db.add(ChatNotificationJob(
+                message_id=row.id, recipient_hash=str(link.caregiver_hash),
+            ))
             if commit:
                 self.db.commit()
                 self.db.refresh(row)

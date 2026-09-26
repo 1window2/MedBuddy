@@ -10,10 +10,10 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 
 from api.chat_router import (
     _enforce_chat_daily_quota,
-    _reserve_chat_push_notification,
     _reserve_websocket_connection,
 )
 from core.config import settings
+from controls.process_chat_notifications_control import reserve_chat_push
 from core.request_rate_limits import RequestRateLimitStore
 
 
@@ -93,20 +93,19 @@ async def test_chat_daily_quota_rejects_messages_above_limit() -> None:
 async def test_chat_push_is_throttled_per_recipient_and_link() -> None:
     """같은 상대와 연동에 대한 연속 푸시가 한 번만 예약되는지 검증한다."""
     store = _memory_rate_limit_store()
-    request = _request_with_store(store)
     try:
-        first = await _reserve_chat_push_notification(
-            request=request,
+        first = await reserve_chat_push(
+            store,
             recipient_hash="caregiver-a",
             link_id=17,
         )
-        second = await _reserve_chat_push_notification(
-            request=request,
+        second = await reserve_chat_push(
+            store,
             recipient_hash="caregiver-a",
             link_id=17,
         )
-        other_link = await _reserve_chat_push_notification(
-            request=request,
+        other_link = await reserve_chat_push(
+            store,
             recipient_hash="caregiver-a",
             link_id=18,
         )

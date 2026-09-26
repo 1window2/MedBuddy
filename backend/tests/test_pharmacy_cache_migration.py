@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
 from sqlalchemy import MetaData, Table, create_engine, inspect, select
 from sqlalchemy.engine import Connection
 
@@ -107,7 +108,7 @@ def test_cache_migration_preserves_existing_records_through_rollback(
     for _ in range(2):
         command.upgrade(config, CACHE_REVISION)
         command.upgrade(config, CACHE_REVISION)
-        verify_database_revision(connection)
+        assert MigrationContext.configure(connection).get_current_revision() == CACHE_REVISION
         assert CACHE_INDEX in {
             index["name"] for index in inspect(connection).get_indexes("pharmacy_search_cache")
         }
@@ -121,6 +122,19 @@ def test_cache_migration_preserves_existing_records_through_rollback(
         for name, rows in preserved.items():
             assert connection.execute(select(tables[name])).mappings().all() == rows
     command.upgrade(config, "head")
+    verify_database_revision(connection)
+    jobs = Table("chat_notification_jobs", MetaData(), autoload_with=connection)
+    assert connection.execute(select(jobs)).all() == []  # No historical push backfill.
+    connection.execute(jobs.insert().values(
+        message_id=1, recipient_hash="caregiver", status="pending", attempts=0,
+        available_at=now, created_at=now,
+    ))
+    command.downgrade(config, CACHE_REVISION)
+    assert not inspect(connection).has_table("chat_notification_jobs")
+    for name, rows in preserved.items():
+        assert connection.execute(select(tables[name])).mappings().all() == rows
+    command.upgrade(config, "head")
+    assert connection.execute(select(jobs)).all() == []
     verify_database_revision(connection)
 
 
@@ -145,7 +159,7 @@ def test_cache_migration_adopts_existing_rows_and_repairs_missing_index(
     before = connection.execute(select(table)).mappings().all()
     command.upgrade(config, CACHE_REVISION)
     command.upgrade(config, CACHE_REVISION)
-    verify_database_revision(connection)
+    assert MigrationContext.configure(connection).get_current_revision() == CACHE_REVISION
     assert connection.execute(select(table)).mappings().all() == before
     indexes = inspect(connection).get_indexes(table.name)
     assert [index["column_names"] for index in indexes if index["name"] == CACHE_INDEX] == [["fetched_at"]]
