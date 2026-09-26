@@ -7,6 +7,8 @@ are recorded in [the September 22 review](qa/v0.2.0-2026-09-22-dose-midnight-rev
 The latest contributor work, Home guidance follow-up, and new pharmacy-cache
 migration prerequisite are summarized in
 [the September 25 follow-up](qa/v0.2.0-2026-09-25-contributor-followup.md).
+The migration data-preservation CI gate and rollout/rollback guidance are recorded
+in [the September 26 follow-up](qa/v0.2.0-2026-09-26-migration-release-gate.md).
 Individual physical checks below remain open unless their exact scope has evidence;
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.

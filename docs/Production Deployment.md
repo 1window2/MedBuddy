@@ -157,6 +157,29 @@ checklist are tracked in [TODO.md](TODO.md).
 
 ## Start or Update Production
 
+### Pharmacy-cache rollout (`6d4f8a2c9301`)
+
+The September 24 pharmacy-sharing changes require this migration before the
+updated API starts. Back up the database before deployment and retain the prior
+application revision. Do not bypass the revision check with `alembic stamp head`.
+The existing `catalog-bootstrap` dependency runs migrations before backend startup;
+verify its successful exit and then check `/ready`.
+
+The automated rehearsal in `backend/tests/test_pharmacy_cache_migration.py`
+covers upgrade, repeat upgrade, rollback/re-upgrade, preservation of existing
+catalog/chat/dose records, and adoption of an already-created cache table with
+or without its expiry index. CI runs it against PostgreSQL 16 as well as SQLite.
+This is synthetic-data evidence, not a production backup/restore rehearsal.
+
+Rolling back only this migration to `f8a2c6d901be` intentionally discards the
+temporary pharmacy-search cache, but preserves already-sent pharmacy snapshots
+in chat and the national catalog. Stop the updated backend before rollback and
+pair the older schema with the older backend; do not leave the new API serving
+against a downgraded schema. A full database restore has separate data-loss
+implications and is not equivalent to this schema rollback.
+
+### Deployment command
+
 From the repository root:
 
 ```bash
