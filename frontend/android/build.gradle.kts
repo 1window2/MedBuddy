@@ -1,3 +1,6 @@
+// File Name: build.gradle.kts
+// Role: Shares Android repositories, build output locations and project cleanup configuration.
+
 plugins {
   // Add the dependency for the Google services Gradle plugin
   id("com.google.gms.google-services") version "4.5.0" apply false

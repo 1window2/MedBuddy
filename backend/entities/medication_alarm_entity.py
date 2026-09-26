@@ -1,5 +1,5 @@
 # File Name: medication_alarm_entity.py
-# Role: SQLAlchemy and DTO entities for medication alarms.
+# Role: Defines medication-alarm persistence, domain activation operations and local schema compatibility helpers.
 
 from datetime import UTC, datetime
 
@@ -29,24 +29,26 @@ from entities.user_account_entity import _UserAccount  # noqa: F401
 # Function Name: utc_now
 # Description:
 # - Returns a naive UTC timestamp for SQLite DateTime compatibility.
+# Parameters:
+# - None.
 # Returns:
 # - Current UTC datetime without tzinfo.
 def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# Class Name: _MedicationAlarm
-# Role: Internal SQLAlchemy row for one medication alarm setting.
-# Responsibilities:
-#   - Store a patient-scoped medication alarm by time slot.
-#   - Preserve whether the alarm is enabled and what local time it should use.
-# Attributes:
-#   - patient_hash: Patient ownership key.
-#   - slot_key: Medication schedule time slot such as morning or evening.
-#   - hour: 24-hour local notification hour.
-#   - minute: Local notification minute.
-#   - enabled: Whether the alarm is active.
-#   - updated_at: Last update timestamp.
+# 클래스명: _MedicationAlarm
+# 역할:
+# - 환자·복용 시간대별로 하나의 알람 시각과 활성 상태를 저장하고 계정 삭제에 연동한다.
+# 주요 책임:
+# - 환자별 시간대 중복을 막고 알람 활성 상태·현지 시각·최근 변경 시각을 보관한다.
+# 속성:
+# - patient_hash (String): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - slot_key (String): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# - hour (Integer): 24시간제 기준 현지 알람 시.
+# - minute (Integer): 현지 알람 분.
+# - enabled (Boolean): 해당 복약 시간대 알람의 활성 상태.
+# - updated_at (DateTime): 복약 알람 행의 마지막 갱신 시각.
 class _MedicationAlarm(Base):
     # Keep the existing physical table name so v0.0.4 SQLite databases preserve
     # saved alarm settings while this slot-level extension evolves independently.
@@ -76,16 +78,17 @@ class _MedicationAlarm(Base):
 
 
 # Class Name: MedicationAlarm
-# Role: Represents patient medication alarms.
+# Role:
+# - Represents patient medication alarms.
 # Responsibilities:
-#   - Extend the v5 NotificationSetting concept with schedule-slot granularity.
-#   - Convert database rows into API-safe dictionaries.
+# - Extend the v5 NotificationSetting concept with schedule-slot granularity.
+# - Convert database rows into API-safe dictionaries.
 # Attributes:
-#   - patient_hash: Patient ownership key.
-#   - slot_key: Medication schedule time slot.
-#   - hour: 24-hour local notification hour.
-#   - minute: Local notification minute.
-#   - enabled: Whether the alarm is active.
+# - patient_hash (str): Patient ownership key.
+# - slot_key (str): Medication schedule time slot.
+# - hour (int): 24-hour local notification hour.
+# - minute (int): Local notification minute.
+# - enabled (bool): Whether the alarm is active.
 class MedicationAlarm(BaseModel):
     patient_hash: str = DEFAULT_PATIENT_HASH
     slot_key: str = Field(default=DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY)
@@ -96,6 +99,8 @@ class MedicationAlarm(BaseModel):
     # Function Name: enable
     # Description:
     # - Returns an enabled copy of the setting.
+    # Parameters:
+    # - None.
     # Returns:
     # - Enabled MedicationAlarm.
     def enable(self) -> "MedicationAlarm":
@@ -104,6 +109,8 @@ class MedicationAlarm(BaseModel):
     # Function Name: disable
     # Description:
     # - Returns a disabled copy of the setting.
+    # Parameters:
+    # - None.
     # Returns:
     # - Disabled MedicationAlarm.
     def disable(self) -> "MedicationAlarm":
@@ -112,6 +119,8 @@ class MedicationAlarm(BaseModel):
     # Function Name: to_response_dict
     # Description:
     # - Converts the setting to the API field names used by Flutter.
+    # Parameters:
+    # - None.
     # Returns:
     # - JSON-compatible medication alarm dictionary.
     def to_response_dict(self) -> dict[str, object]:
@@ -128,7 +137,7 @@ class MedicationAlarm(BaseModel):
 # Description:
 # - Provides the default reminder hour for a medication schedule slot.
 # Parameters:
-# - slot_key: Schedule time slot key.
+# - slot_key (str): Schedule time slot key.
 # Returns:
 # - Default 24-hour alarm hour.
 def default_alarm_hour(slot_key: str) -> int:
@@ -143,6 +152,8 @@ def default_alarm_hour(slot_key: str) -> int:
 # Function Name: valid_alarm_slot_keys
 # Description:
 # - Returns all supported medication reminder slot keys.
+# Parameters:
+# - None.
 # Returns:
 # - Tuple of valid slot keys.
 def valid_alarm_slot_keys() -> tuple[str, ...]:
@@ -154,7 +165,7 @@ def valid_alarm_slot_keys() -> tuple[str, ...]:
 # - Creates or upgrades the medication alarm storage table for existing SQLite DBs.
 # - SQLAlchemy create_all creates missing tables but does not alter existing tables.
 # Parameters:
-# - db_engine: SQLAlchemy engine bound to the application database.
+# - db_engine (Engine): SQLAlchemy engine bound to the application database.
 # Returns:
 # - None.
 def ensure_medication_alarm_schema(db_engine: Engine) -> None:

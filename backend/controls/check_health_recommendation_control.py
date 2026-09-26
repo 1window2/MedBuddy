@@ -1,5 +1,5 @@
-# 파일명: check_health_recommendation_control.py
-# 역할: 현재 복용 중인 약 조합을 바탕으로 건강 관리 추천을 생성한다.
+# File Name: check_health_recommendation_control.py
+# Role: Builds and caches medication-based health guidance for the currently active course and requested language.
 
 import json
 import logging
@@ -22,13 +22,29 @@ from services.saved_medication_retention import SavedMedicationRetentionPolicy
 logger = logging.getLogger(__name__)
 
 # 클래스명: CheckHealthRecommendation
-# 역할: 건강 관리 추천 조회 유스케이스를 조정한다.
+# 역할:
+# - 오늘 복용 중인 약을 모아 건강 관리 안내를 생성하고 환자별 캐시를 관리한다.
 # 주요 책임:
-#   - 환자 또는 보호자 권한 범위의 현재 복용 약을 조회한다.
-#   - 복용 기간이 지난 오래된 저장 정보를 정리한다.
-#   - 같은 약 조합의 추천 결과가 있으면 로컬 캐시를 재사용한다.
-#   - 캐시가 없으면 현재 복용 약 조합을 AI 추천 생성기로 전달한다.
+# - 환자 또는 보호자 권한 범위의 현재 복용 약을 조회한다.
+# - 복용 기간이 지난 오래된 저장 정보를 정리한다.
+# - 같은 약 조합의 추천 결과가 있으면 로컬 캐시를 재사용한다.
+# - 캐시가 없으면 현재 복용 약 조합을 AI 추천 생성기로 전달한다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
+# - llm_service (LLMService): 활성 약품 요약으로 건강 관리 안내를 생성하는 서비스.
+# - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
 class CheckHealthRecommendation:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 저장 약 조회, 복용 기간 정책, AI 안내 생성과 보관 정책을 준비한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - llm_service (LLMService | None): 활성 약품 요약으로 건강 관리 안내를 생성하는 서비스.
+    # - course_policy (MedicationCoursePolicy | None): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
+    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -44,14 +60,14 @@ class CheckHealthRecommendation:
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
-    # 함수명: requestHealthRecommendation
+    # 함수이름: requestHealthRecommendation
     # 함수역할:
-    # - 오늘 복용 중인 약 조합을 바탕으로 건강 관리 추천을 반환한다.
+    # - 현재 복용 약과 언어로 캐시를 조회하고, 없으면 AI 안내를 생성해 저장한다.
     # 매개변수:
-    # - patient_hash: 건강 추천 조회 범위를 구분하는 환자 해시
-    # - language: 추천 응답 언어
+    # - patient_hash (str | None): 건강 추천 조회 범위를 구분하는 환자 해시
+    # - language (str): 추천 응답 언어
     # 반환값:
-    # - API 호환 건강 관리 추천 dictionary
+    # - 약품명과 건강 관리 안내를 담은 응답; 복용 중인 약이 없으면 HTTP 404.
     async def requestHealthRecommendation(
         self,
         patient_hash: str | None = None,
@@ -102,6 +118,15 @@ class CheckHealthRecommendation:
             "Health recommendation generated.",
         )
 
+    # Function Name: _build_response
+    # Description:
+    # - Validates generated guidance as a HealthRecommendation and attaches the source medication names.
+    # Parameters:
+    # - recommendation (dict[str, object]): AI-generated dietary, exercise and caution guidance.
+    # - medication_summaries (list[dict[str, str]]): Active medication guidance and course fields used by the AI prompt.
+    # - message (str): User-facing operation status message.
+    # Returns:
+    # - Success envelope containing the serialized recommendation.
     def _build_response(
         self,
         recommendation: dict[str, object],
@@ -120,6 +145,14 @@ class CheckHealthRecommendation:
             "data": health_recommendation.model_dump(),
         }
 
+    # Function Name: _build_recommendation_key
+    # Description:
+    # - Sorts medication summaries and hashes their JSON together with the normalized language.
+    # Parameters:
+    # - medication_summaries (list[dict[str, str]]): Active medication guidance and course fields used by the AI prompt.
+    # - language (str): Requested Korean or English content language.
+    # Returns:
+    # - SHA-256 cache key independent of medication input order.
     def _build_recommendation_key(
         self,
         medication_summaries: list[dict[str, str]],
@@ -144,9 +177,24 @@ class CheckHealthRecommendation:
         )
         return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
+    # Function Name: _normalize_language
+    # Description:
+    # - Selects English for an en-prefixed language and Korean otherwise.
+    # Parameters:
+    # - language (str): Requested Korean or English content language.
+    # Returns:
+    # - Supported language code, en or ko.
     def _normalize_language(self, language: str) -> str:
         return "en" if (language or "").strip().lower().startswith("en") else "ko"
 
+    # Function Name: _get_cached_recommendation
+    # Description:
+    # - Loads the newest patient/key cache entry and ignores malformed or non-object JSON.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - recommendation_key (str): Stable hash of medication inputs and response language.
+    # Returns:
+    # - Cached recommendation dictionary, or None when missing or invalid.
     def _get_cached_recommendation(
         self,
         patient_hash: str,
@@ -173,6 +221,15 @@ class CheckHealthRecommendation:
             return None
         return cached_payload
 
+    # Function Name: _save_cached_recommendation
+    # Description:
+    # - Commits a patient-scoped recommendation snapshot; rolls back and logs cache failures without failing the recommendation.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - recommendation_key (str): Stable hash of medication inputs and response language.
+    # - recommendation (dict[str, object]): AI-generated dietary, exercise and caution guidance.
+    # Returns:
+    # - None.
     def _save_cached_recommendation(
         self,
         patient_hash: str,
@@ -194,6 +251,14 @@ class CheckHealthRecommendation:
                 type(exc).__name__,
             )
 
+    # 함수이름: _get_active_medications
+    # 함수역할:
+    # - 환자 소유 저장 약 중 지정일에 복용 기간이 유효한 약만 선택한다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - today (date): 복용 기간 판정에 사용할 애플리케이션 현지 날짜.
+    # 반환값:
+    # - 지정일의 활성 복약 행 목록.
     def _get_active_medications(
         self,
         patient_hash: str,
@@ -206,6 +271,13 @@ class CheckHealthRecommendation:
             if self._is_active_today(medication, today)
         ]
 
+    # Function Name: _to_medication_summary
+    # Description:
+    # - Extracts drug guidance and dosage fields needed by the recommendation prompt.
+    # Parameters:
+    # - medication (_SavedMedication): Persisted patient-owned medication snapshot and course fields.
+    # Returns:
+    # - String-valued medication summary with empty values for missing fields.
     def _to_medication_summary(
         self,
         medication: _SavedMedication,
@@ -220,5 +292,13 @@ class CheckHealthRecommendation:
             "total_days": medication.total_days or "",
         }
 
+    # Function Name: _is_active_today
+    # Description:
+    # - Applies the shared medication-course policy to the requested day.
+    # Parameters:
+    # - medication (_SavedMedication): Persisted patient-owned medication snapshot and course fields.
+    # - today (date): Application-local date used to evaluate the medication course.
+    # Returns:
+    # - True when the medication course includes that day.
     def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
         return self.course_policy.is_active_on(medication, today)

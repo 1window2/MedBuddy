@@ -1,3 +1,6 @@
+// File Name: settings.gradle.kts
+// Role: Locates the Flutter SDK and registers the Android and Kotlin build plugins.
+
 pluginManagement {
     val flutterSdkPath =
         run {

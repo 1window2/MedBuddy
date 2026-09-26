@@ -1,0 +1,102 @@
+# File Name: test_holiday_emergency_pharmacy_api_boundary.py
+# Role: Regression coverage for date-specific emergency pharmacy roster parsing and request
+#   filters.
+"""Tests for the exact-date NEMC holiday pharmacy roster boundary."""
+
+import os
+import sys
+from datetime import date
+from pathlib import Path
+
+import httpx
+import pytest
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
+os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
+
+from boundaries.holiday_emergency_pharmacy_api_boundary import (  # noqa: E402
+    HolidayEmergencyPharmacyAPI,
+)
+
+
+# Function Name: test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored
+# Description:
+# - Parses only the pharmacy entry for the exact date and retains its 09:00-17:30 opening range.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_exact_date_schedule_is_parsed_and_non_pharmacies_are_ignored() -> None:
+    # Function Name: respond
+    # Description:
+    # - Checks the exact-date and 20,000-row query without a weekday filter, then serves a
+    #   roster containing pharmacy and non-pharmacy entries.
+    # Parameters:
+    # - request (httpx.Request): Intercepted HTTP request used to select or validate the
+    #   mock response.
+    # Returns:
+    # - httpx.Response: Synthetic HTTP 200 response containing the scenario XML.
+    def respond(request: httpx.Request) -> httpx.Response:
+        # The upstream service currently returns no rows for QD=H even though
+        # the unfiltered payload contains dutyDiv=H pharmacy records. Fetch the
+        # date roster and enforce the pharmacy classification locally.
+        assert "QD" not in request.url.params
+        assert request.url.params["QT"] == "20260925"
+        assert request.url.params["numOfRows"] == "20000"
+        return httpx.Response(
+            200,
+            content=b"""
+            <response><header><resultCode>00</resultCode></header><body>
+              <totalCount>2</totalCount><items><item>
+                <hpid>C1234</hpid>
+                <dutyDiv>H</dutyDiv>
+                <dutyDay1>2026-09-25</dutyDay1>
+                <dutyDaytime1>09:00~17:30</dutyDaytime1>
+                <dutyDayEtc>Call before visiting</dutyDayEtc>
+              </item><item>
+                <hpid>A5678</hpid>
+                <dutyDiv>A</dutyDiv>
+                <dutyDay1>2026-09-25</dutyDay1>
+                <dutyDaytime1>09:00~18:00</dutyDaytime1>
+              </item></items>
+            </body></response>
+            """,
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    boundary = HolidayEmergencyPharmacyAPI(client=client)
+    try:
+        result = await boundary.fetchSchedules(date(2026, 9, 25))
+    finally:
+        await client.aclose()
+
+    assert len(result) == 1
+    assert result[0].pharmacy_id == "C1234"
+    assert result[0].start_time == "0900"
+    assert result[0].end_time == "1730"
+
+
+# Function Name: test_invalid_time_range_is_not_claimed_as_date_specific
+# Description:
+# - Discards an invalid time range instead of claiming it as a date-specific pharmacy schedule.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_invalid_time_range_is_not_claimed_as_date_specific() -> None:
+    import xml.etree.ElementTree as ElementTree
+
+    item = ElementTree.fromstring(
+        "<item><hpid>C1234</hpid><dutyDay1>2026-09-25</dutyDay1>"
+        "<dutyDaytime1>contact pharmacy</dutyDaytime1></item>"
+    )
+
+    assert (
+        HolidayEmergencyPharmacyAPI._parse_item(item, date(2026, 9, 25))
+        is None
+    )

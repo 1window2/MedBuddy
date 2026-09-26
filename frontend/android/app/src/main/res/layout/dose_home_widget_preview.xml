@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 파일명: dose_home_widget_preview.xml
+     역할: 추가 창의 이름 영역을 가리지 않는 개인정보 없는 위젯 미리보기. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/dose_widget_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:gravity="center_vertical">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="나의 복약 일정"
+            android:textColor="#007E5E"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+        <ImageView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
+            android:src="@android:drawable/ic_popup_sync"
+            android:tint="#007E5E"
+            android:contentDescription="새로고침" />
+    </LinearLayout>
+
+    <!-- 실제 위젯의 세로 가중치 대신 내용만큼 측정해 런처가 축소할 수 있게 한다. -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="MedBuddy"
+        android:textColor="#25272B"
+        android:textSize="21sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="24dp"
+        android:layout_marginTop="8dp" android:gravity="center" android:orientation="horizontal">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:scaleType="center"
+            android:src="@drawable/dose_widget_dot_active" android:importantForAccessibility="no" />
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:scaleType="center"
+            android:src="@drawable/dose_widget_dot" android:importantForAccessibility="no" />
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:scaleType="center"
+            android:src="@drawable/dose_widget_dot" android:importantForAccessibility="no" />
+    </LinearLayout>
+    <ProgressBar
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="4dp"
+        android:indeterminate="false"
+        android:progressTint="#009C70"
+        android:progressBackgroundTint="#D0F5E5" />
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/dose_widget_button"
+        android:text="복용했어요"
+        android:textColor="#FFFFFF"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:textAllCaps="false"
+        android:padding="4dp" />
+</LinearLayout>

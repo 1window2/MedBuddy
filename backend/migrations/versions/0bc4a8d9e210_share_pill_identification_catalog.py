@@ -1,3 +1,5 @@
+# File Name: 0bc4a8d9e210_share_pill_identification_catalog.py
+# Role: Creates the shared pill-identification reference table and appearance/name indexes, with a unique product identifier.
 """Persist the loose-pill reference catalog in the shared application database.
 
 Revision ID: 0bc4a8d9e210
@@ -17,6 +19,13 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# Function Name: upgrade
+# Description:
+# - Creates the shared pill-identification reference table and appearance/name indexes, with a unique product identifier.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def upgrade() -> None:
     op.create_table(
         "pill_identification_references",
@@ -57,5 +66,12 @@ def upgrade() -> None:
         )
 
 
+# Function Name: downgrade
+# Description:
+# - Drops the shared pill-reference table and its indexes, removing the cached identification catalog.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def downgrade() -> None:
     op.drop_table("pill_identification_references")

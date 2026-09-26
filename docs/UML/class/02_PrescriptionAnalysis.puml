@@ -41,11 +41,11 @@ package "Flutter Frontend" #E8F4FF {
 package "FastAPI Backend" #EAF8F0 {
   class "InputPrescription" as BInputPrescription <<Control>>
   class OCRServiceBoundary <<Service>>
-  class MedicationNameVerifier <<Service>>
+  class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
 }
 
-cloud "Gemini OCR" as Gemini
+cloud "Gemini 비식별 텍스트 분석" as Gemini
 
 GuidedPrescriptionCameraUI -right-> PrescriptionImageCropService : crops to guide
 GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera-only rotation

@@ -1,9 +1,9 @@
 # 파일명: test_push_notification_controls.py
-# 역할: 기기 푸시 토큰 생명주기와 보호자 복약 완료 알림 분배를 검증한다.
+# 역할: 기기 토큰 소유권, 보호자 복약 푸시 정책 및 outbox 재시도·종료 처리를 검증한다.
 
 import sys
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -29,6 +29,8 @@ from controls.process_caregiver_alert_outbox_control import (  # noqa: E402
     ProcessCaregiverAlertOutbox,
 )
 from core.database import Base  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
+from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.caregiver_notification_entity import (  # noqa: E402
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -46,9 +48,26 @@ from entities.caregiver_alert_outbox_entity import (  # noqa: E402
 from entities.patient_caregiver_link_entity import (  # noqa: E402
     _PatientCaregiverLink,
 )
+from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
+# 클래스명: _RecordingPushBoundary
+# 역할: 푸시 요청을 기록하고 무효 토큰 및 일시 실패 건수를 지정할 수 있는 대체 경계다.
+# 주요 책임:
+# - 푸시 내용을 기록하고 무효·일시 실패를 제외한 성공 건수와 실패 정보를 반환한다.
+# 속성:
+# - invalid_tokens (tuple[str, ...]): 푸시 대체 객체가 영구 무효로 분류할 토큰.
+# - retryable_failure_count (int): 재시도가 필요한 일시 푸시 실패 건수.
+# - calls (list[dict[str, object]]): 후속 검증을 위해 순서대로 기록한 요청.
 class _RecordingPushBoundary:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 무효 토큰·재시도 가능 실패 건수와 빈 요청 이력을 준비한다.
+    # 매개변수:
+    # - invalid_tokens (tuple[str, ...]): 영구적으로 무효하다고 보고할 기기 토큰 목록.
+    # - retryable_failure_count (int): 추가 시도가 필요한 일시 푸시 실패 건수.
+    # 반환값:
+    # - 없음 (None).
     def __init__(
         self,
         invalid_tokens: tuple[str, ...] = (),
@@ -58,6 +77,16 @@ class _RecordingPushBoundary:
         self.retryable_failure_count = retryable_failure_count
         self.calls: list[dict[str, object]] = []
 
+    # 함수이름: send_notification
+    # 함수역할:
+    # - 푸시 내용을 기록하고 무효·일시 실패를 제외한 성공 건수와 실패 정보를 반환한다.
+    # 매개변수:
+    # - tokens (list[str]): 푸시 전달 대상으로 제출할 수신 기기 토큰 목록.
+    # - title (str): 푸시 대체 객체가 기록할 알림 제목.
+    # - body (str): 기록할 알림 본문.
+    # - data (dict[str, str]): 기록할 알림 라우팅 및 맥락 데이터.
+    # 반환값:
+    # - PushDeliveryResult: 대체 객체에 지정한 전송 성공 건수와 영구·일시 토큰 실패 정보.
     def send_notification(
         self,
         *,
@@ -86,7 +115,23 @@ class _RecordingPushBoundary:
         )
 
 
+# 클래스명: PushNotificationControlTest
+# 역할: 기기 토큰 등록부터 시간대별 보호자 알림과 outbox 전달 상태까지 검증하는 테스트 모음이다.
+# 주요 책임:
+# - 같은 기기 토큰의 소유자를 최신 사용자로 옮기고 다른 사용자의 해제는 무시하며 소유자 해제만 비활성화하는지 검증한다.
+# - 성공한 outbox 전달을 sent와 전송 시각으로 기록하고 처리 시작 표시를 해제하며 해당 환자·시간대만 알리는지 검증한다.
+# - 전달 예외 후 실패 유형과 시도 횟수를 기록하고 다음 실행 시각을 늦추며 처리 중 표시를 해제하는지 검증한다.
+# 속성:
+# - engine (Engine): 격리 인메모리 SQLite 엔진.
+# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
 class PushNotificationControlTest(unittest.TestCase):
+    # 함수이름: setUp
+    # 함수역할:
+    # - 격리된 SQLite 데이터베이스와 푸시·계정 엔티티용 세션을 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -96,10 +141,24 @@ class PushNotificationControlTest(unittest.TestCase):
         session_factory = sessionmaker(bind=self.engine)
         self.db = session_factory()
 
+    # 함수이름: tearDown
+    # 함수역할:
+    # - 푸시 전달 테스트의 DB 세션과 엔진을 닫는다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # 함수이름: test_push_token_registration_moves_ownership_and_unregisters
+    # 함수역할:
+    # - 같은 기기 토큰의 소유자를 최신 사용자로 옮기고 다른 사용자의 해제는 무시하며 소유자 해제만 비활성화하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_push_token_registration_moves_ownership_and_unregisters(self) -> None:
         control = ManagePushToken(self.db)
         token = "test-fcm-token-value-123456"
@@ -121,6 +180,13 @@ class PushNotificationControlTest(unittest.TestCase):
         self.db.refresh(rows[0])
         self.assertFalse(rows[0].enabled)
 
+    # 함수이름: test_completed_dose_is_sent_only_for_matching_slot_setting
+    # 함수역할:
+    # - 완료 알림이 설정된 시간대에만 발송되고 무효 토큰은 비활성화하되 유효 대상 성공은 정상 집계하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_completed_dose_is_sent_only_for_matching_slot_setting(self) -> None:
         invalid_token = "expired-fcm-token-value-1234"
         active_token = "active-fcm-token-value-12345"
@@ -197,6 +263,8 @@ class PushNotificationControlTest(unittest.TestCase):
             push_boundary.calls[0]["data"],
             {
                 "type": "caregiver_slot_completed",
+                "recipient_hash": "caregiver-a",
+                "language": "ko",
                 "patient_hash": "patient-a",
                 "slot_key": "morning",
             },
@@ -214,6 +282,42 @@ class PushNotificationControlTest(unittest.TestCase):
             .one()
         )
         self.assertFalse(invalid_row.enabled)
+
+    # Function Name: test_fcm_permanent_token_error_is_disabled_without_retry
+    # Description:
+    # - Separates permanent malformed-token failures from retryable FCM failures and does
+    #   not retry invalid tokens.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_action_capable_missed_is_data_only_but_other_notifications_are_unchanged(self) -> None:
+        boundary = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
+        boundary._app = object()
+        response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
+        with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast", return_value=response) as send:
+            for payload in (
+                {"type": "caregiver_slot_missed", "action_version": "1"},
+                {"type": "caregiver_slot_missed"},
+                {"type": "linked_chat_message"},
+                {"type": "caregiver_slot_completed"},
+            ):
+                boundary.send_notification(tokens=["test-token"], title="title", body="body", data=payload)
+                message = send.call_args.args[0]
+                if payload.get("action_version") == "1":
+                    self.assertIsNone(message.notification)
+                    self.assertIsNone(message.android.notification)
+                else:
+                    self.assertEqual(message.notification.title, "title")
+                    self.assertIsNotNone(message.android.notification)
+
+    def test_device_capability_is_opt_in_and_resets_for_legacy_registration(self) -> None:
+        control = ManagePushToken(self.db)
+        token = "capability-test-device-token-12345"
+        control.registerPushToken("user-a", token, "android", True)
+        self.assertTrue(self.db.query(_DevicePushToken).filter_by(token=token).one().supports_caregiver_actions)
+        control.registerPushToken("user-a", token, "android")
+        self.assertFalse(self.db.query(_DevicePushToken).filter_by(token=token).one().supports_caregiver_actions)
 
     def test_fcm_permanent_token_error_is_disabled_without_retry(self) -> None:
         malformed_token = "malformed-fcm-token-value-1234"
@@ -254,9 +358,90 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(result.retryable_failure_count, 1)
         self.assertFalse(result.all_valid_targets_succeeded)
 
+    # 함수이름: test_caregiver_global_setting_controls_completed_dose_push
+    # 함수역할:
+    # - 보호자 전역 알림 비활성 시 전송을 생략하고 종류만 표시 모드에서는 구체적 복약 내용 대신 일반 안내를 보내는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_caregiver_global_setting_controls_completed_dose_push(self) -> None:
+        self.db.add_all(
+            [
+                _PatientCaregiverLink(
+                    patient_hash="patient-a",
+                    caregiver_hash="caregiver-a",
+                    linked=True,
+                ),
+                _CaregiverNotification(
+                    patient_hash="patient-a",
+                    caregiver_hash="caregiver-a",
+                    enabled=True,
+                    alert_option=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                    slot_settings=encode_slot_settings(
+                        {
+                            "evening": {
+                                "notification_type": (
+                                    CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED
+                                ),
+                                "deadline_hour": None,
+                                "deadline_minute": None,
+                            }
+                        }
+                    ),
+                ),
+                _DevicePushToken(
+                    user_hash="caregiver-a",
+                    token="caregiver-setting-token-value-12345",
+                    platform="android",
+                    enabled=True,
+                ),
+                _UserSetting(
+                    user_hash="caregiver-a",
+                    caregiver_notifications_enabled=False,
+                ),
+            ]
+        )
+        self.db.commit()
+        boundary = _RecordingPushBoundary()
+        control = DispatchCaregiverAlert(self.db, boundary)
+
+        disabled_result = control.notifySlotCompleted(
+            patient_hash="patient-a",
+            slot_key="evening",
+        )
+
+        self.assertEqual(disabled_result.success_count, 0)
+        self.assertEqual(boundary.calls, [])
+
+        setting = self.db.query(_UserSetting).filter_by(user_hash="caregiver-a").one()
+        setting.caregiver_notifications_enabled = True
+        setting.notification_detail_mode = "type_only"
+        self.db.commit()
+
+        enabled_result = control.notifySlotCompleted(
+            patient_hash="patient-a",
+            slot_key="evening",
+        )
+
+        self.assertEqual(enabled_result.success_count, 1)
+        self.assertEqual(
+            boundary.calls[0]["body"],
+            "연동된 환자의 복약 상태가 변경되었습니다.",
+        )
+
+    # 함수이름: test_outbox_marks_successful_delivery_as_sent
+    # 함수역할:
+    # - 성공한 outbox 전달을 sent와 전송 시각으로 기록하고 처리 시작 표시를 해제하며 해당 환자·시간대만 알리는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_outbox_marks_successful_delivery_as_sent(self) -> None:
+        self._completed_slot("morning")
         row = _CaregiverAlertOutbox(
             event_key="event-success",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="morning",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -284,9 +469,18 @@ class PushNotificationControlTest(unittest.TestCase):
             slot_key="morning",
         )
 
+    # 함수이름: test_outbox_retries_after_partial_push_delivery
+    # 함수역할:
+    # - 일부 푸시가 일시 실패하면 outbox를 실패·1회 시도로 기록하고 전송 완료 시각을 남기지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_outbox_retries_after_partial_push_delivery(self) -> None:
+        self._completed_slot("lunch")
         row = _CaregiverAlertOutbox(
             event_key="event-partial-delivery",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="lunch",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -314,9 +508,18 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(row.last_error, "_RetryablePushDeliveryError")
         self.assertIsNone(row.sent_at)
 
+    # 함수이름: test_outbox_reschedules_failed_delivery
+    # 함수역할:
+    # - 전달 예외 후 실패 유형과 시도 횟수를 기록하고 다음 실행 시각을 늦추며 처리 중 표시를 해제하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
     def test_outbox_reschedules_failed_delivery(self) -> None:
+        self._completed_slot("evening")
         row = _CaregiverAlertOutbox(
             event_key="event-failure",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="evening",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -343,9 +546,19 @@ class PushNotificationControlTest(unittest.TestCase):
         self.assertEqual(row.last_error, "RuntimeError")
         self.assertIsNone(row.processing_started_at)
 
+    # Function Name: test_outbox_dead_letters_after_retry_budget_is_exhausted
+    # Description:
+    # - Dead-letters an outbox event after eight failed attempts and prevents later
+    #   due-event processing from retrying it.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_outbox_dead_letters_after_retry_budget_is_exhausted(self) -> None:
+        self._completed_slot("bedtime")
         row = _CaregiverAlertOutbox(
             event_key="event-retry-exhausted",
+            schedule_date=application_today(),
             patient_hash="patient-a",
             slot_key="bedtime",
             status=CAREGIVER_ALERT_STATUS_PENDING,
@@ -381,6 +594,79 @@ class PushNotificationControlTest(unittest.TestCase):
 
         self.assertEqual(due_result, {"sent": 0, "failed": 0, "skipped": 0})
         notify.assert_not_called()
+
+    # Function Name: _completed_slot
+    # Description: Persist a real, active completed dose for outbox delivery tests.
+    # Parameters: slot_key: Slot to complete.
+    # Returns: Saved fixture medication.
+    def _completed_slot(self, slot_key: str) -> _SavedMedication:
+        row = _SavedMedication(
+            patient_hash="patient-a", item_name="test-only-tablet",
+            created_date=application_today(), total_days="7 days",
+            schedule_slot_keys=f'["{slot_key}"]',
+            medication_status=True, medication_status_date=application_today(),
+        )
+        self.db.add(row)
+        self.db.commit()
+        return row
+
+    # Function Name: test_outbox_suppresses_stale_future_and_undated_completion
+    # Description: Delayed work cannot create today's chat or push from another
+    # day's event, even if today's slot happens to be complete.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    def test_outbox_suppresses_stale_future_and_undated_completion(self) -> None:
+        self._completed_slot("morning")
+        for offset in (-1, 1, None):
+            with self.subTest(offset=offset):
+                row = _CaregiverAlertOutbox(
+                    event_key=f"stale-{offset}", patient_hash="patient-a",
+                    slot_key="morning",
+                    schedule_date=(application_today() + timedelta(days=offset)
+                                   if offset is not None else None),
+                )
+                self.db.add(row)
+                self.db.commit()
+                with patch.object(DispatchCaregiverAlert, "notifySlotCompleted") as notify, patch(
+                    "controls.process_caregiver_alert_outbox_control.ManageLinkedChat.publish_slot_completion"
+                ) as publish:
+                    result = ProcessCaregiverAlertOutbox(self.db, _RecordingPushBoundary()).processOne(row.id)
+                self.assertEqual(result, "skipped")
+                self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+                self.assertEqual(row.last_error, "StaleOrUndatedCompletion")
+                self.assertIsNone(row.sent_at)
+                notify.assert_not_called()
+                publish.assert_not_called()
+
+    # Function Name: test_outbox_suppresses_corrected_or_deleted_completion
+    # Description: Reversing or deleting a dose before delivery suppresses its
+    # queued completion claim without changing the patient's correction.
+    # Parameters: self: Test case instance.
+    # Returns: None.
+    def test_outbox_suppresses_corrected_or_deleted_completion(self) -> None:
+        medication = self._completed_slot("morning")
+        medication.medication_status = False
+        self.db.commit()
+        for deleted in (False, True):
+            with self.subTest(deleted=deleted):
+                if deleted:
+                    self.db.delete(medication)
+                    self.db.commit()
+                row = _CaregiverAlertOutbox(
+                    event_key=f"corrected-{deleted}", patient_hash="patient-a",
+                    slot_key="morning", schedule_date=application_today(),
+                )
+                self.db.add(row)
+                self.db.commit()
+                with patch.object(DispatchCaregiverAlert, "notifySlotCompleted") as notify, patch(
+                    "controls.process_caregiver_alert_outbox_control.ManageLinkedChat.publish_slot_completion"
+                ) as publish:
+                    result = ProcessCaregiverAlertOutbox(self.db, _RecordingPushBoundary()).processOne(row.id)
+                self.assertEqual(result, "skipped")
+                self.assertEqual(row.last_error, "CompletionNoLongerCurrent")
+                self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+                notify.assert_not_called()
+                publish.assert_not_called()
 
 
 if __name__ == "__main__":

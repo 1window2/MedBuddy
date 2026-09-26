@@ -2,14 +2,24 @@
 # 역할: DB에 보존된 보호자 알림 요청을 안전하게 선점하고 전송한다.
 
 import logging
+import re
+import sqlite3
 from datetime import timedelta
 
 from sqlalchemy import or_, update
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import DBAPIError
 
 from boundaries.push_notification_boundary import PushNotificationBoundary
 from controls.dispatch_caregiver_alert_control import DispatchCaregiverAlert
+from controls.check_schedule_control import CheckSchedule
+from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_caregiver_alert_control import ManageCaregiverAlert
+from fastapi import HTTPException
+from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
+    CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
     CAREGIVER_ALERT_STATUS_PENDING,
@@ -26,20 +36,50 @@ _MAX_RETRY_DELAY_SECONDS = 15 * 60
 _MAX_DELIVERY_ATTEMPTS = 8
 
 
+def _delivery_error_summary(exc: Exception) -> str:
+    """Expose schema diagnostics without logging SQL parameters, tokens or patient data."""
+    summary = type(exc).__name__
+    if isinstance(exc, DBAPIError):
+        original = exc.orig
+        code = getattr(original, "sqlstate", None) or getattr(original, "sqlite_errorname", None)
+        if code and re.fullmatch(r"[A-Z0-9_]+", str(code)):
+            summary += f" [{code}]"
+        if isinstance(original, sqlite3.OperationalError) and re.fullmatch(
+            r"no such (?:column|table): [A-Za-z_][A-Za-z0-9_.]*", str(original)
+        ):
+            summary += f": {original}; check Alembic migrations"
+    return summary[:500]
+
+
 # 클래스명: _RetryablePushDeliveryError
-# 역할: 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
+# 역할:
+# - 유효한 일부 기기에 푸시가 전달되지 않아 아웃박스 재시도가 필요함을 표시한다.
+# 주요 책임:
+# - 일부 유효 기기 전송 실패를 아웃박스 재시도 상태로 전달한다.
 class _RetryablePushDeliveryError(RuntimeError):
     pass
 
 
 # 클래스명: ProcessCaregiverAlertOutbox
-# 역할: 보호자 알림 아웃박스를 한 건씩 선점하여 푸시 전송 결과를 기록한다.
+# 역할:
+# - 보호자 알림 아웃박스를 한 건씩 선점하여 푸시 전송 결과를 기록한다.
 # 주요 책임:
 # - 여러 서버가 같은 요청을 동시에 처리하지 않도록 원자적으로 선점한다.
 # - 실패한 요청을 지수 간격으로 다시 시도할 수 있게 만든다.
 # - 재시도 한도를 넘긴 요청을 종료 상태로 전환한다.
 # - 전송 완료 요청을 다시 보내지 않는다.
+# 속성:
+# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
 class ProcessCaregiverAlertOutbox:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 완료 알림 아웃박스를 처리할 DB 세션과 푸시 전송 경계를 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -48,11 +88,11 @@ class ProcessCaregiverAlertOutbox:
         self.db = db
         self.push_boundary = push_boundary
 
-    # 함수명: processDue
-    # 역할:
+    # 함수이름: processDue
+    # 함수역할:
     # - 지금 처리 가능한 알림 요청을 제한된 개수만큼 전송한다.
     # 매개변수:
-    # - limit: 한 번에 처리할 최대 요청 수
+    # - limit (int): 한 번에 처리할 최대 요청 수
     # 반환값:
     # - 처리 결과별 요청 개수
     def processDue(self, limit: int = 50) -> dict[str, int]:
@@ -94,13 +134,13 @@ class ProcessCaregiverAlertOutbox:
             results[outcome] += 1
         return results
 
-    # 함수명: processOne
-    # 역할:
+    # 함수이름: processOne
+    # 함수역할:
     # - 한 알림 요청을 선점한 뒤 보호자 알림 전송을 시도한다.
     # 매개변수:
-    # - outbox_id: 처리할 아웃박스 기본키
+    # - outbox_id (int): 처리할 아웃박스 기본키
     # 반환값:
-    # - sent, failed, skipped 중 하나
+    # - 전송 결과를 나타내는 sent, failed 또는 skipped 문자열.
     def processOne(self, outbox_id: int) -> str:
         now = utc_now()
         stale_before = now - _PROCESSING_TIMEOUT
@@ -142,13 +182,55 @@ class ProcessCaregiverAlertOutbox:
         if row is None:
             return "skipped"
         try:
-            delivery_result = DispatchCaregiverAlert(
+            dispatcher = DispatchCaregiverAlert(
                 db=self.db,
                 push_boundary=self.push_boundary,
-            ).notifySlotCompleted(
-                patient_hash=str(row.patient_hash),
-                slot_key=str(row.slot_key),
             )
+            event_type = str(
+                row.event_type or CAREGIVER_ALERT_EVENT_DOSE_COMPLETED
+            )
+            if event_type == CAREGIVER_ALERT_EVENT_DOSE_COMPLETED:
+                # Never reinterpret an old or undated event as today's dose.
+                reason = None
+                if row.schedule_date != application_today():
+                    reason = "StaleOrUndatedCompletion"
+                elif not CheckSchedule(self.db).is_medication_slot_complete(
+                    patient_hash=str(row.patient_hash),
+                    schedule_date=row.schedule_date,
+                    slot_key=str(row.slot_key),
+                ):
+                    reason = "CompletionNoLongerCurrent"
+                if reason is not None:
+                    row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+                    row.processing_started_at = None
+                    row.last_error = reason
+                    self.db.commit()
+                    return "skipped"
+                # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
+                ManageLinkedChat(self.db).publish_slot_completion(
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                )
+                delivery_result = dispatcher.notifySlotCompleted(
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                )
+            elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
+                if row.caregiver_hash is None or row.schedule_date is None:
+                    raise ValueError("Missed-dose outbox event is incomplete.")
+                try:
+                    alert_context = ManageCaregiverAlert(self.db).context(row)
+                except HTTPException:
+                    alert_context = None
+                delivery_result = dispatcher.notifySlotMissed(
+                    caregiver_hash=str(row.caregiver_hash),
+                    patient_hash=str(row.patient_hash),
+                    slot_key=str(row.slot_key),
+                    schedule_date=row.schedule_date,
+                    alert_context=alert_context,
+                )
+            else:
+                raise ValueError("Unsupported caregiver outbox event type.")
             if not delivery_result.all_valid_targets_succeeded:
                 raise _RetryablePushDeliveryError(
                     "Some valid caregiver devices did not receive the notification."
@@ -176,7 +258,7 @@ class ProcessCaregiverAlertOutbox:
                 row.status = CAREGIVER_ALERT_STATUS_FAILED
                 row.available_at = utc_now() + timedelta(seconds=retry_seconds)
             row.processing_started_at = None
-            row.last_error = type(exc).__name__[:500]
+            row.last_error = _delivery_error_summary(exc)
             self.db.commit()
             logger.warning(
                 "Caregiver alert outbox delivery failed "
@@ -184,6 +266,6 @@ class ProcessCaregiverAlertOutbox:
                 outbox_id,
                 row.attempt_count,
                 attempts_exhausted,
-                type(exc).__name__,
+                row.last_error,
             )
             return "failed"

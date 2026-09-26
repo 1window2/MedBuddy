@@ -1,3 +1,6 @@
+# File Name: check_release_metadata.py
+# Role: Rejects inconsistent release versions or missing Android signing safeguards.
+
 """Validate that Android release metadata and documentation agree."""
 
 from __future__ import annotations
@@ -10,10 +13,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# Function Name: _read
+# Description: Reads a repository document without depending on the caller's working directory.
+# Parameters: relative_path - path relative to the repository root.
+# Returns: The file's UTF-8 text; file access failures propagate to the caller.
 def _read(relative_path: str) -> str:
     return ROOT.joinpath(relative_path).read_text(encoding="utf-8")
 
 
+# Function Name: main
+# Description: Compares the declared app version with release documents and checks required signing/build gates.
+# Parameters: None; reads version and workflow files from the repository root.
+# Returns: Exit code 0 when consistent, or 1 after reporting all detected mismatches.
 def main() -> int:
     errors: list[str] = []
     pubspec = _read("frontend/pubspec.yaml")

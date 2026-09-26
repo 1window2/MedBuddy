@@ -2,6 +2,7 @@
 # 역할: 비용이 크거나 반복 대입 위험이 있는 API의 호출 횟수를 제한한다.
 
 import logging
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -13,6 +14,10 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
+_API_PATH_PREFIX = "/api/v1/"
+_PATH_PARAMETER_PATTERN = re.compile(r"^\{[^/{}]+\}$")
+_INTEGER_PATH_SEGMENT_PATTERN = re.compile(r"^\d+$")
+
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
@@ -22,13 +27,124 @@ return count
 """
 
 
+# 클래스명: RateLimitRule
+# 역할:
+# - 고정 시간창에서 허용할 요청 수를 표현하는 불변 정책 값이다.
+# 주요 책임:
+# - 최대 요청 수와 초 단위 창 길이를 함께 전달하여 저장소와 미들웨어가 같은 기준을 사용하게 한다.
+# 속성:
+# - max_requests (int): 시간창별 최대 허용 요청 수.
+# - window_seconds (int): 카운터 시간창 길이(초).
 @dataclass(frozen=True)
 class RateLimitRule:
     max_requests: int
     window_seconds: int
 
 
+# 함수이름: resolve_rate_limit_rule
+# 함수역할:
+# - 실제 요청 경로를 고정 경로 또는 매개변수 경로 규칙과 연결한다.
+# - 별도 규칙이 없는 인증 API에도 읽기·쓰기 기본 제한을 적용한다.
+# 매개변수:
+# - method (str): HTTP 메서드
+# - path (str): 실제 또는 FastAPI 정규 경로
+# - rules (Mapping[tuple[str, str], RateLimitRule] | None): 우선 적용할 경로별 제한 규칙
+# - include_api_default (bool): /api/v1 경로에 기본 제한을 적용할지 여부
+# - collapse_default_scope (bool): 기본 제한 카운터를 메서드별 공통 범위로 묶을지 여부
+# 반환값:
+# - 적용 규칙과 카운터를 공유할 정규 경로 또는 None
+def resolve_rate_limit_rule(
+    method: str,
+    path: str,
+    *,
+    rules: Mapping[tuple[str, str], RateLimitRule] | None = None,
+    include_api_default: bool = True,
+    collapse_default_scope: bool = False,
+) -> tuple[RateLimitRule, str] | None:
+    """요청에 적용할 가장 구체적인 호출 제한 규칙을 반환한다."""
+    normalized_method = method.upper()
+    normalized_path = path or "/"
+    configured_rules = DEFAULT_RATE_LIMIT_RULES if rules is None else rules
+
+    exact_rule = configured_rules.get((normalized_method, normalized_path))
+    if exact_rule is not None:
+        return exact_rule, normalized_path
+
+    for (rule_method, rule_path), rule in configured_rules.items():
+        if rule_method != normalized_method:
+            continue
+        if _path_matches_template(normalized_path, rule_path):
+            return rule, rule_path
+
+    if not include_api_default or not normalized_path.startswith(_API_PATH_PREFIX):
+        return None
+    default_rule = DEFAULT_AUTHENTICATED_API_RULES.get(normalized_method)
+    if default_rule is None:
+        return None
+    canonical_path = (
+        f"{_API_PATH_PREFIX}*"
+        if collapse_default_scope
+        else _canonicalize_api_path(normalized_path)
+    )
+    return default_rule, canonical_path
+
+
+# 함수이름: _path_matches_template
+# 함수역할:
+# - 중괄호 매개변수는 한 경로 조각에만 대응시키고 나머지 조각은 정확히 비교한다.
+# 매개변수:
+# - path (str): 규칙 비교 또는 정규화 대상 요청 URL 경로.
+# - template (str): {link_id} 같은 단일 조각 매개변수를 포함할 수 있는 경로 템플릿.
+# 반환값:
+# - 조각 수와 각 고정 조각이 모두 일치하면 True.
+def _path_matches_template(path: str, template: str) -> bool:
+    """중괄호 매개변수 한 칸을 임의의 단일 경로 조각과 비교한다."""
+    path_segments = path.strip("/").split("/")
+    template_segments = template.strip("/").split("/")
+    if len(path_segments) != len(template_segments):
+        return False
+    return all(
+        _PATH_PARAMETER_PATTERN.fullmatch(template_segment) is not None
+        or path_segment == template_segment
+        for path_segment, template_segment in zip(
+            path_segments,
+            template_segments,
+            strict=True,
+        )
+    )
+
+
+# 함수이름: _canonicalize_api_path
+# 함수역할:
+# - 숫자로만 된 경로 조각을 {id}로 바꿔 기본 카운터 키 수가 무한히 증가하지 않게 한다.
+# 매개변수:
+# - path (str): 규칙 비교 또는 정규화 대상 요청 URL 경로.
+# 반환값:
+# - 숫자 식별자 조각을 치환한 API 경로.
+def _canonicalize_api_path(path: str) -> str:
+    """숫자 식별자를 정규 조각으로 바꿔 카운터 키가 무한히 늘지 않게 한다."""
+    segments = path.split("/")
+    return "/".join(
+        "{id}" if _INTEGER_PATH_SEGMENT_PATTERN.fullmatch(segment) else segment
+        for segment in segments
+    )
+
+
+# Class Name: AsyncRateLimitRedis
+# Role:
+# - Defines the asynchronous Redis operations needed by the quota store.
+# Responsibilities:
+# - Provide atomic script execution and connection closure without coupling callers to a concrete Redis client.
 class AsyncRateLimitRedis(Protocol):
+    # Function Name: eval
+    # Description:
+    # - Execute the counter script with its Redis keys and expiry arguments in one atomic operation.
+    # Parameters:
+    # - script (str): Lua script containing the atomic counter update.
+    # - number_of_keys (int): Number of leading keys in keys_and_args.
+    # - keys_and_args (object): Redis keys followed by script arguments such as expiry seconds.
+    # Returns:
+    # - Redis script result, converted to a request count by the caller.
     async def eval(
         self,
         script: str,
@@ -36,12 +152,38 @@ class AsyncRateLimitRedis(Protocol):
         *keys_and_args: object,
     ) -> object: ...
 
+    # Function Name: aclose
+    # Description:
+    # - Release the asynchronous Redis client's network resources.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None after the client is closed.
     async def aclose(self) -> None: ...
 
 
+# Class Name: RequestRateLimitStore
+# Role:
+# - Owns fixed-window Redis quotas with a bounded local-development fallback.
+# Responsibilities:
+# - Increment distributed counters atomically, back off after failures and fail closed when Redis is mandatory.
+# Attributes:
+# - _redis (AsyncRateLimitRedis | None): Injected or lazily constructed client.
+# - require_redis (bool): Whether outages must reject quota checks.
+# - _memory_counters (dict): Local counts and monotonic expirations.
+# - _redis_retry_at (float): Earliest monotonic time for another Redis attempt.
 class RequestRateLimitStore:
     """Owns atomic Redis counters with a bounded local-development fallback."""
 
+    # Function Name: __init__
+    # Description:
+    # - Initialize lazy Redis access, outage backoff state and local fallback counters.
+    # Parameters:
+    # - redis_url (str): Redis connection URL for a lazily constructed client.
+    # - require_redis (bool): Whether to fail quota checks instead of using local counters on Redis outage.
+    # - redis_client (AsyncRateLimitRedis | None): Optional injected asynchronous Redis client.
+    # Returns:
+    # - None; no network connection is opened yet.
     def __init__(
         self,
         *,
@@ -58,6 +200,15 @@ class RequestRateLimitStore:
         self._redis_warning_logged = False
         self._memory_counters: dict[str, tuple[int, float]] = {}
 
+    # Function Name: consume
+    # Description:
+    # - Increment the identity's fixed-window quota atomically in Redis, applying outage backoff or the permitted memory fallback.
+    # Parameters:
+    # - identity (str): IP- or verified-user identity sharing this counter.
+    # - request_scope (str): Canonical method/route scope sharing this quota.
+    # - rule (RateLimitRule): Maximum request count and fixed-window duration to enforce.
+    # Returns:
+    # - Allowed flag and retry-after seconds; raises RuntimeError when required Redis storage is unavailable.
     async def consume(
         self,
         *,
@@ -107,6 +258,13 @@ class RequestRateLimitStore:
                     ) from exc
         return self._consume_memory(key, rule)
 
+    # Function Name: close
+    # Description:
+    # - Close the current Redis client and reset lazy-client state only when the store created it.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; an injected client reference is retained after closure.
     async def close(self) -> None:
         redis = self._redis
         if redis is None:
@@ -117,6 +275,13 @@ class RequestRateLimitStore:
             self._redis_available = True
             self._redis_retry_at = 0.0
 
+    # Function Name: _get_redis
+    # Description:
+    # - Reuse the current Redis client or lazily construct one with short connection and operation timeouts.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - The asynchronous Redis client used for quota scripts.
     def _get_redis(self) -> AsyncRateLimitRedis:
         redis = self._redis
         if redis is not None:
@@ -131,6 +296,14 @@ class RequestRateLimitStore:
         self._redis = redis
         return redis
 
+    # 함수이름: _consume_memory
+    # 함수역할:
+    # - 메모리 카운터를 증가시키고 만료 창을 재설정하며 항목이 많으면 만료된 키를 정리한다.
+    # 매개변수:
+    # - key (str): 요청 범위, 사용자와 시간창을 결합한 카운터 키.
+    # - rule (RateLimitRule): 적용할 최대 요청 수와 고정 시간창 길이.
+    # 반환값:
+    # - 요청 허용 여부와 최소 1초인 재시도 대기 시간.
     def _consume_memory(
         self,
         key: str,
@@ -157,15 +330,30 @@ class RequestRateLimitStore:
 
 
 # 클래스명: RequestRateLimitMiddleware
-# 역할: 경로별 고정 시간창의 광범위한 요청 IP 제한을 적용한다.
+# 역할:
+# - 경로별 고정 시간창의 광범위한 요청 IP 제한을 적용한다.
 # 주요 책임:
 # - Redis가 연결된 환경에서는 여러 서버 인스턴스가 같은 카운터를 공유한다.
 # - 로컬 개발에서 Redis를 사용할 수 없으면 프로세스 메모리 카운터로 대체한다.
 # - 운영에서 Redis가 필수이면 저장소 장애를 재시도 가능한 503으로 변환한다.
 # - 검증된 사용자별 제한은 인증 의존성이 같은 저장소에 별도로 적용한다.
+# 속성:
+# - store (RequestRateLimitStore): 공통 요청 카운터 저장소.
+# - rules (dict): 메서드와 경로별 기본 정책.
+# - enabled (bool): IP 제한 적용 여부.
 class RequestRateLimitMiddleware:
     _IP_LIMIT_MULTIPLIER = 20
 
+    # Function Name: __init__
+    # Description:
+    # - Bind the quota store and a copy of route rules, preserving the middleware enable switch.
+    # Parameters:
+    # - app (ASGIApp): Downstream ASGI application wrapped by this middleware.
+    # - store (RequestRateLimitStore): Shared quota counter store.
+    # - rules (Mapping[tuple[str, str], RateLimitRule]): Explicit rate limits indexed by HTTP method and route template.
+    # - enabled (bool): Whether HTTP requests should pass through IP quota enforcement.
+    # Returns:
+    # - None.
     def __init__(
         self,
         app: ASGIApp,
@@ -179,6 +367,15 @@ class RequestRateLimitMiddleware:
         self.rules = dict(rules)
         self.store = store
 
+    # 함수이름: __call__
+    # 함수역할:
+    # - IP별로 기본 정책의 20배 한도를 적용하고 초과는 429, 필수 저장소 장애는 503으로 응답한다.
+    # 매개변수:
+    # - scope (Scope): 요청 경로와 헤더를 포함한 ASGI 연결 정보.
+    # - receive (Receive): 다음 수신 메시지를 읽는 ASGI 콜백.
+    # - send (Send): 응답 메시지를 내보내는 ASGI 콜백.
+    # 반환값:
+    # - 없음; 허용된 요청은 하위 앱으로 전달하고 거부 응답에는 Retry-After를 포함한다.
     async def __call__(
         self,
         scope: Scope,
@@ -189,15 +386,16 @@ class RequestRateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        rule = self.rules.get(
-            (
-                str(scope.get("method", "")).upper(),
-                str(scope.get("path", "")),
-            )
+        resolved_rule = resolve_rate_limit_rule(
+            str(scope.get("method", "")),
+            str(scope.get("path", "")),
+            rules=self.rules,
+            collapse_default_scope=True,
         )
-        if rule is None:
+        if resolved_rule is None:
             await self.app(scope, receive, send)
             return
+        rule, canonical_path = resolved_rule
 
         retry_after = 0
         try:
@@ -207,7 +405,10 @@ class RequestRateLimitMiddleware:
             )
             allowed, retry_after = await self.store.consume(
                 identity=self._request_ip_identity(scope),
-                request_scope=self._request_scope(scope),
+                request_scope=self._request_scope(
+                    scope,
+                    canonical_path=canonical_path,
+                ),
                 rule=identity_rule,
             )
             if not allowed:
@@ -235,17 +436,36 @@ class RequestRateLimitMiddleware:
 
         await self.app(scope, receive, send)
 
+    # Function Name: _request_ip_identity
+    # Description:
+    # - Derive a quota identity from the ASGI peer address without trusting forwarded headers.
+    # Parameters:
+    # - scope (Scope): ASGI connection metadata, including request path and headers.
+    # Returns:
+    # - An ip:-prefixed host identity, using unknown when no client address exists.
     @staticmethod
     def _request_ip_identity(scope: Scope) -> str:
         client = scope.get("client")
         client_host = str(client[0]) if client else "unknown"
         return f"ip:{client_host}"
 
+    # 함수이름: _request_scope
+    # 함수역할:
+    # - HTTP 메서드와 정규 경로를 결합하여 카운터 공유 범위를 만든다.
+    # 매개변수:
+    # - scope (Scope): 요청 경로와 헤더를 포함한 ASGI 연결 정보.
+    # - canonical_path (str | None): 정규화한 경로; 생략하면 실제 요청 경로를 사용한다.
+    # 반환값:
+    # - 대문자 메서드와 경로를 콜론으로 연결한 문자열.
     @staticmethod
-    def _request_scope(scope: Scope) -> str:
+    def _request_scope(
+        scope: Scope,
+        *,
+        canonical_path: str | None = None,
+    ) -> str:
         return (
             f"{str(scope.get('method', '')).upper()}:"
-            f"{str(scope.get('path', ''))}"
+            f"{canonical_path or str(scope.get('path', ''))}"
         )
 
 
@@ -255,12 +475,46 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
         12,
         60,
     ),
+    # 프론트 최대 10개 일괄 작업과 제한 응답 재시도 여유를 정상 사용 범위로 허용한다.
     ("POST", "/api/v1/medication/pill-identification/candidates"): RateLimitRule(
-        6,
+        12,
+        60,
+    ),
+    ("POST", "/api/v1/medication/pill-identification/multiple-candidates"): RateLimitRule(
+        8,
         60,
     ),
     ("POST", "/api/v1/medication/identify"): RateLimitRule(30, 60),
     ("GET", "/api/v1/medication/health/recommendation"): RateLimitRule(12, 60),
+    ("GET", "/api/v1/pharmacy/nearby"): RateLimitRule(30, 60),
     ("POST", "/api/v1/medication/link/code"): RateLimitRule(10, 3_600),
     ("POST", "/api/v1/medication/link/register"): RateLimitRule(5, 300),
+    ("GET", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(60, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/medications"): RateLimitRule(60, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/schedule-contexts"): RateLimitRule(
+        60,
+        60,
+    ),
+    (
+        "GET",
+        "/api/v1/chat/links/{link_id}/medications/{medication_id}",
+    ): RateLimitRule(60, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(20, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/read"): RateLimitRule(60, 60),
+    ("POST", "/api/v1/chat/links/{link_id}/messages/delete"): RateLimitRule(10, 60),
+    ("GET", "/api/v1/chat/links/{link_id}/unread-count"): RateLimitRule(
+        60,
+        60,
+    ),
+}
+
+
+# 목록에 별도 제한이 없는 인증 API도 무제한으로 남지 않도록 보수적인
+# 기본값을 적용한다. 비용이 큰 API는 위의 더 엄격한 규칙이 우선한다.
+DEFAULT_AUTHENTICATED_API_RULES: dict[str, RateLimitRule] = {
+    "GET": RateLimitRule(180, 60),
+    "POST": RateLimitRule(60, 60),
+    "PUT": RateLimitRule(60, 60),
+    "PATCH": RateLimitRule(60, 60),
+    "DELETE": RateLimitRule(30, 60),
 }

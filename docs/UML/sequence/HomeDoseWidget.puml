@@ -1,0 +1,66 @@
+@startuml
+title Home-screen schedules (own recording / linked-patient viewing)
+actor User
+participant "Android widget" as Widget
+participant "Dart widget callback" as Callback
+database "Encrypted dose store" as Store
+participant "Existing dose sync worker" as Sync
+participant "Completion API" as API
+participant "Linked-patient schedule Control" as Schedules
+
+User -> Callback: Set home schedule source (self / patients)
+Callback -> Store: Persist shared source; invalidate incompatible actions
+alt Linked patients (read-only)
+Callback -> Schedules: Fetch fresh active links and authorized patient details
+Schedules --> Callback: Links, aliases and today's dose statuses\nIndependent of alert preferences; shared with Home
+Callback -> Store: Validate account, date and refresh revision\nCache separately from own dose outbox
+Callback -> Widget: Read-only patient pages; no take/cancel tokens
+User -> Widget: Patient arrows / slot arrows and dots
+Widget -> Widget: Select patient and slot locally (no write)
+User -> Widget: Open displayed patient's schedule
+Widget -> Callback: Opaque patient key + navigation context
+Callback -> Store: Resolve active-account current-day linked patient
+Callback -> User: Existing read-only patient detail screen
+else Own schedules
+
+User -> Widget: Select previous/next arrow or page dot
+Widget -> Widget: Change visible slot locally (no dose write)\nShow taken and remaining medicines
+alt Incomplete slot
+User -> Widget: Tap Taken (remaining medicines only)
+else Completed slot
+User -> Widget: Tap Undo dose (all medicines in displayed slot)
+end
+Widget -> Widget: Persist opaque action token
+Widget -> Callback: Wake background execution
+Callback -> Store: Validate active account, date and displayed slot token
+group SQLite transaction
+Store -> Store: Validate action kind, displayed medication IDs / prior state
+Store -> Store: Consume token + enqueue stable operation ID\ncompleted=true for Taken, false for Undo dose
+Store -> Store: Project pending records and select next incomplete slot\n(in configured time order; complete when none remain)
+end
+Store --> Callback: Local saved state
+Callback -> Widget: All slot pages + next slot + pending sync + acknowledge token
+alt Taken
+Widget -> Widget: Advance the initiating widget to next incomplete slot
+else Undo dose
+Widget -> Widget: Keep cancelled slot selected; enable Taken again
+end
+Callback -> Sync: Schedule upload
+loop Until acknowledged (ordered, same operation ID)
+Sync -> Store: Claim next operation
+Sync -> API: Existing completion-operations request
+API --> Sync: Receipt + authoritative schedule
+Sync -> Store: Atomically acknowledge and cache
+end
+Sync -> Widget: Server saved state
+User -> Widget: Tap schedule summary
+Widget -> Callback: Open own schedule in app (no write)
+end
+note over Widget,Store
+Logout/account switch clears the previous account's display.
+Without an account snapshot, show sign-in guidance and a Sign in action.
+Hide dose progress and refresh; open authentication without a dose write.
+Old-day, replayed and incompatible actions do not write.
+No authentication tokens, credentials or account IDs in PendingIntent data.
+end note
+@enduml

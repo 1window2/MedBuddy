@@ -4,7 +4,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/medication_image_url_entity.dart';
 
+// Function Name: main
+// Description:
+// - Register regression cases for trusted MFDS medication image URLs.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: accepts the trusted MFDS HTTPS medication image host.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('accepts the trusted MFDS HTTPS medication image host', () {
     expect(
       safeMedicationImageUrl(
@@ -14,6 +28,13 @@ void main() {
     );
   });
 
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: rejects cleartext, local, credentialed, and untrusted image URLs.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('rejects cleartext, local, credentialed, and untrusted image URLs', () {
     const rejectedUrls = [
       'http://nedrug.mfds.go.kr/image.png',

@@ -12,10 +12,31 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 환자 범위 처방 변경 요청 데이터 검증 사례와 테스트 대역을 등록한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 처방 변경 요청에 환자 식별자와 현재 복약 일정 필드를 함께 전달하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test(
     'requestPrescriptionChange sends patient-scoped schedule payload',
     () async {
+      // 함수이름: MockClient 콜백
+      // 함수역할:
+      // - 환자·처방일·약품 일정 요청 필드를 검사하고 복용 횟수 변경 비교 결과를 제공한다.
+      // 매개변수:
+      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+      // 반환값:
+      // - 이전 처방과 빈도 변경 한 건을 담은 HTTP 200 응답.
       final client = MockClient((http.Request request) async {
         expect(request.method, 'POST');
         expect(request.url.path, '/prescription/change-radar');

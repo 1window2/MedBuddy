@@ -1,5 +1,5 @@
 # File Name: config.py
-# Role: Loads backend environment variables and external service settings.
+# Role: Loads and validates backend environment, database, authentication and external-service settings.
 
 from pathlib import Path
 from typing import Any, Literal
@@ -21,30 +21,32 @@ _DEFAULT_API_CONTRACT_VERSION = (
 
 
 # Class Name: Settings
-# Role: Provides application configuration loaded from environment variables.
+# Role:
+# - Provides validated application configuration from environment values.
 # Responsibilities:
-#   - Load API keys and external service URLs.
-#   - Provide default URLs for public drug data APIs.
-#   - Provide a single settings object for the backend.
+# - Load external API keys and public-drug service URLs.
+# - Build the shared backend settings instance and validate database, host and time-zone values.
+# - Reject unsafe production authentication, storage and rate-limiting combinations.
 # Attributes:
-#   - GEMINI_API_KEY: Gemini API key.
-#   - PUBLIC_DATA_API_KEY: Korean public data portal API key.
-#   - BASIC_DRUG_API_BASE_URL: e약은요 API endpoint.
-#   - ADVANCED_DRUG_API_BASE_URL: Detailed approval API endpoint.
-#   - PILL_IMAGE_API_BASE_URL: Medication pill-identification API endpoint.
-#   - PILL_IMAGE_API_ENABLED: Enables optional MFDS pill-image enrichment.
-#   - PILL_IMAGE_API_TIMEOUT_SECONDS: Maximum optional image lookup duration.
-#   - PILL_IDENTIFICATION_MODEL_NAME: Visual feature extraction model.
-#   - PILL_IDENTIFICATION_TIMEOUT_SECONDS: Maximum pill image analysis duration.
-#   - PILL_IDENTIFICATION_CATALOG_TTL_HOURS: Local MFDS catalog cache lifetime.
-#   - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS: Maximum full catalog
-#     refresh duration.
-#   - PRESCRIPTION_OCR_TIMEOUT_SECONDS: Maximum structured OCR request duration.
-#   - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS: Maximum optional AI correction
-#     duration.
-#   - MEDICATION_SUMMARY_TIMEOUT_SECONDS: Maximum approval summary duration.
-#   - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS: Maximum health recommendation duration.
-#   - REDIS_URL: Optional Redis cache URL.
+# - GEMINI_API_KEY (str): Gemini API credential.
+# - PUBLIC_DATA_API_KEY (str): Government public-data credential.
+# - BASIC_DRUG_API_BASE_URL (str): Consumer medication-information endpoint.
+# - ADVANCED_DRUG_API_BASE_URL (str): Drug approval-detail endpoint.
+# - PILL_IMAGE_API_BASE_URL (str): MFDS pill-identification endpoint.
+# - PILL_IMAGE_API_ENABLED (bool): Enables optional MFDS image enrichment.
+# - PILL_IMAGE_API_TIMEOUT_SECONDS (float): Maximum optional image lookup duration.
+# - PILL_IDENTIFICATION_MODEL_NAME (str): Visual feature extraction model.
+# - PILL_IDENTIFICATION_TIMEOUT_SECONDS (float): Maximum pill image analysis duration.
+# - PILL_IDENTIFICATION_CATALOG_TTL_HOURS (int): Local MFDS snapshot lifetime.
+# - PILL_IDENTIFICATION_CATALOG_REFRESH_TIMEOUT_SECONDS (float): Maximum full refresh duration.
+# - PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR (int): Dated KPIC product-count floor required before publication.
+# - PRESCRIPTION_OCR_TIMEOUT_SECONDS (float): Maximum structured OCR request duration.
+# - PRESCRIPTION_NAME_FALLBACK_TIMEOUT_SECONDS (float): Maximum optional AI correction duration.
+# - MEDICATION_SUMMARY_TIMEOUT_SECONDS (float): Maximum approval-summary duration.
+# - HEALTH_RECOMMENDATION_TIMEOUT_SECONDS (float): Maximum recommendation duration.
+# - REDIS_URL (str): Redis cache and distributed-counter URL.
+# - DATABASE_URL (str): Effective SQLAlchemy database URL.
+# - APP_ENV / RUNTIME_ROLE (str): Environment and process role selecting production safeguards.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(_PROJECT_ROOT / ".env", _BACKEND_ROOT / ".env"),
@@ -101,6 +103,10 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/1471000/"
         "MdcinGrnIdntfcInfoService03/getMdcinGrnIdntfcInfoList03"
     )
+    PHARMACY_API_BASE_URL: str = (
+        "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService"
+    )
+    PHARMACY_API_TIMEOUT_SECONDS: float = Field(default=12.0, gt=0, le=120)
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
@@ -123,6 +129,11 @@ class Settings(BaseSettings):
         default=30.0,
         gt=0,
         le=600,
+    )
+    PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR: int = Field(
+        default=24_667,
+        ge=1_000,
+        le=50_000,
     )
     PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: bool = True
     PRESCRIPTION_OCR_TIMEOUT_SECONDS: float = Field(
@@ -178,18 +189,48 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
+    CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
+    CHAT_MESSAGE_RETENTION_DAYS: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description="환자·보호자 채팅 메시지를 보관하는 일수",
+    )
+    CHAT_PUSH_MIN_INTERVAL_SECONDS: int = Field(default=10, ge=1, le=300)
+    CHAT_WEBSOCKET_MAX_CONNECTIONS_PER_USER: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+    CHAT_WEBSOCKET_CONNECTIONS_PER_MINUTE: int = Field(
+        default=12,
+        ge=1,
+        le=120,
+    )
+    CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS: int = Field(
+        default=90,
+        ge=30,
+        le=600,
+    )
+    CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS: int = Field(
+        default=10,
+        ge=1,
+        le=60,
+    )
+    CHAT_WEBSOCKET_MAX_FRAME_BYTES: int = Field(
+        default=4_096,
+        ge=256,
+        le=65_536,
+    )
     API_CONTRACT_VERSION: str = _DEFAULT_API_CONTRACT_VERSION
 
     # Function Name: build_structured_database_url
     # Description:
-    # - Builds DATABASE_URL from separate connection fields when a deployment
-    #   supplies structured PostgreSQL settings.
-    # - Delegates escaping to SQLAlchemy so reserved password characters cannot
-    #   be misinterpreted as hostname or URL delimiters.
+    # - Build a PostgreSQL URL from complete structured fields, letting SQLAlchemy escape reserved password characters; reject mixed URL/field configuration.
     # Parameters:
-    # - values: Raw settings values collected by Pydantic.
+    # - values (Any): Raw settings values collected by Pydantic before validation.
     # Returns:
-    # - Settings values containing a safely rendered DATABASE_URL.
+    # - Original nonmapping or unstructured values, or a copied mapping with the rendered DATABASE_URL.
     @model_validator(mode="before")
     @classmethod
     def build_structured_database_url(cls, values: Any) -> Any:
@@ -248,13 +289,14 @@ class Settings(BaseSettings):
     # 함수역할:
     # - 공공데이터 API 주소가 암호화된 HTTPS 절대주소인지 시작 시점에 검증한다.
     # 매개변수:
-    # - value: 환경변수에서 읽은 외부 API 주소
+    # - value (str): 환경변수에서 읽은 외부 API 주소
     # 반환값:
     # - 앞뒤 공백을 제거한 HTTPS API 주소
     @field_validator(
         "BASIC_DRUG_API_BASE_URL",
         "ADVANCED_DRUG_API_BASE_URL",
         "PILL_IMAGE_API_BASE_URL",
+        "PHARMACY_API_BASE_URL",
     )
     @classmethod
     def validate_external_api_url(cls, value: str) -> str:
@@ -266,13 +308,11 @@ class Settings(BaseSettings):
 
     # Function Name: validate_trusted_hosts
     # Description:
-    # - Normalizes the comma-separated Host allowlist used by production ASGI.
-    # - Rejects wildcard or empty configurations so Host validation cannot be
-    #   silently disabled by deployment configuration.
+    # - Normalize and deduplicate the comma-separated host allowlist; reject empty lists and the unrestricted wildcard.
     # Parameters:
-    # - value: Comma-separated hostnames or literal IP addresses.
+    # - value (str): Comma-separated allowed hostnames or IP addresses.
     # Returns:
-    # - A normalized comma-separated allowlist.
+    # - Lowercase, comma-separated explicit hosts.
     @field_validator("TRUSTED_HOSTS")
     @classmethod
     def validate_trusted_hosts(cls, value: str) -> str:
@@ -281,6 +321,13 @@ class Settings(BaseSettings):
             raise ValueError("TRUSTED_HOSTS requires an explicit host allowlist.")
         return ",".join(dict.fromkeys(hosts))
 
+    # Function Name: trusted_host_list
+    # Description:
+    # - Expose the validated host allowlist as entries suitable for host-checking middleware.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Hostnames or IP addresses split from TRUSTED_HOSTS.
     @property
     def trusted_host_list(self) -> list[str]:
         return self.TRUSTED_HOSTS.split(",")
@@ -289,7 +336,7 @@ class Settings(BaseSettings):
     # 함수역할:
     # - 복약 일정 계산에 사용할 IANA 시간대 이름이 실제로 존재하는지 검증한다.
     # 매개변수:
-    # - value: 환경변수에서 읽은 시간대 이름
+    # - value (str): 환경변수에서 읽은 시간대 이름
     # 반환값:
     # - 앞뒤 공백을 제거한 유효한 IANA 시간대 이름
     @field_validator("APPLICATION_TIME_ZONE")
@@ -302,6 +349,13 @@ class Settings(BaseSettings):
             raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
         return normalized_time_zone
 
+    # Function Name: validate_security_configuration
+    # Description:
+    # - Validate production requirements by runtime role, including credentials, authentication, Redis quotas, catalog refresh mode and PostgreSQL migrations.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - This Settings instance when accepted; raises ValueError for an unsafe production configuration.
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":
         if self.APP_ENV != "production":

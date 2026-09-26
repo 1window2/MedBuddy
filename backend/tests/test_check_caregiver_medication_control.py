@@ -1,3 +1,6 @@
+# File Name: test_check_caregiver_medication_control.py
+# Role: Regression coverage for caregiver medication queries across multiple active patient
+#   links.
 import sys
 import unittest
 from datetime import date
@@ -20,7 +23,33 @@ from core.database import Base  # noqa: E402
 from schemas.medication import SavedMedicationCreate  # noqa: E402
 
 
+# Class Name: CheckCaregiverMedicationTest
+# Role: Isolated caregiver medication tests covering explicit patient selection and unlinked
+#   access.
+# Responsibilities:
+# - Saves a three-day medication snapshot with the requested patient and product name for
+#   caregiver queries.
+# - Requires an explicitly selected linked patient to determine both saved medications and
+#   today's schedules.
+# - Requires querying an unlinked patient to raise HTTP 404.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - saved_control (CheckSavedMedication): Saved-medication control used to seed patient
+#   snapshots.
+# - link_control (LinkPatientCaregiver): Linking control used to create the fixture's
+#   patient-caregiver relationships.
+# - control (CheckCaregiverMedication): Use-case control under test, isolated from production
+#   state.
 class CheckCaregiverMedicationTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates an in-memory database and saved-medication, linking, and caregiver-query
+    #   controls for each case.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -37,10 +66,26 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
         self.link_control = LinkPatientCaregiver(self.db)
         self.control = CheckCaregiverMedication(self.db)
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the test session and disposes its in-memory database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: _save_medication
+    # Description:
+    # - Saves a three-day medication snapshot with the requested patient and product name
+    #   for caregiver queries.
+    # Parameters:
+    # - patient_hash (str): Patient owner identifying the medication or linked-data scope.
+    # - item_name (str): Product name in the authoritative or saved medication record.
+    # Returns:
+    # - None.
     def _save_medication(self, patient_hash: str, item_name: str) -> None:
         self.saved_control.saveMedicationDetail(
             SavedMedicationCreate(
@@ -57,6 +102,16 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
             )
         )
 
+    # Function Name: _link
+    # Description:
+    # - Generates a patient's link code and connects the supplied caregiver through the
+    #   normal linking control.
+    # Parameters:
+    # - caregiver_hash (str): Caregiver identity used to scope links or notification
+    #   settings.
+    # - patient_hash (str): Patient owner identifying the medication or linked-data scope.
+    # Returns:
+    # - None.
     def _link(self, caregiver_hash: str, patient_hash: str) -> None:
         code = self.link_control.generatePatientHash(patient_hash)
         self.link_control.requestPatientCaregiverLink(
@@ -64,6 +119,14 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
             code["data"]["patient_code"],
         )
 
+    # Function Name: test_request_honors_explicit_patient_when_caregiver_has_multiple_links
+    # Description:
+    # - Requires an explicitly selected linked patient to determine both saved medications
+    #   and today's schedules.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_request_honors_explicit_patient_when_caregiver_has_multiple_links(
         self,
     ) -> None:
@@ -92,6 +155,13 @@ class CheckCaregiverMedicationTest(unittest.TestCase):
             ["B tablet"],
         )
 
+    # Function Name: test_request_rejects_unlinked_patient
+    # Description:
+    # - Requires querying an unlinked patient to raise HTTP 404.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_request_rejects_unlinked_patient(self) -> None:
         self._link("caregiver-a", "patient-a")
 

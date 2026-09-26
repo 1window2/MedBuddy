@@ -1,0 +1,71 @@
+@startuml
+title 복약 기록 동기화와 홈 위젯 주요 클래스
+skinparam shadowing false
+hide empty members
+
+package "Flutter" {
+  class MedBuddyViewModel <<Control>>
+  class LinkedChatUI <<Boundary>>
+  class CaregiverHomeSummaryUI <<Boundary>>
+  class CheckCaregiverHome <<Control>>
+  class DoseSyncService <<Service>>
+  class DoseOutboxStore <<Service>>
+  class DoseWidgetStore <<extension>>
+  class DoseSyncBackgroundScheduler <<Service>>
+  class DoseHomeWidget <<Service>>
+  class DoseWidgetState <<Entity>>
+  class UserSetting <<Entity>>
+}
+package "Android" {
+  class DoseWidgetProvider <<Boundary>>
+  class DoseWidgetLayout <<Boundary helper>>
+  class WorkManager <<External>>
+}
+package "FastAPI" {
+  class SyncDose <<Control>>
+  class CheckSchedule <<Control>>
+  class ManageLinkedChat <<Control>>
+  class DoseSyncRequest <<Entity>>
+  class _DoseSyncOperation <<Entity>>
+}
+
+MedBuddyViewModel --> DoseSyncService
+LinkedChatUI --> DoseSyncService : 선택한 약·시간대 기록
+DoseSyncService --> DoseOutboxStore : 영속 큐·캐시·선점
+DoseSyncService --> DoseSyncBackgroundScheduler
+DoseSyncBackgroundScheduler --> WorkManager
+WorkManager --> DoseSyncService : 연결 시 재전송
+DoseSyncService --> SyncDose : 인증된 completion-operations
+SyncDose --> DoseSyncRequest : 검증된 입력
+SyncDose --> _DoseSyncOperation : 환자별 처리 영수증
+SyncDose --> CheckSchedule : 날짜별 복용 상태 적용
+SyncDose --> ManageLinkedChat : 선택적 채팅 기록
+MedBuddyViewModel --> DoseHomeWidget : 기록·설정 변경 발행
+UserSetting --> DoseHomeWidget : homeScheduleSource
+CaregiverHomeSummaryUI --> CheckCaregiverHome : 환자별 미리보기·전환
+DoseHomeWidget --> CheckCaregiverHome : 연결 환자 읽기 전용 조회
+DoseHomeWidget --> DoseWidgetStore
+DoseWidgetStore ..> DoseOutboxStore : 암호화 저장소 확장
+DoseWidgetStore --> DoseWidgetState
+DoseHomeWidget --> DoseWidgetProvider : 표시 상태·불투명 토큰
+DoseWidgetProvider --> DoseHomeWidget : 버튼 백그라운드 콜백
+DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크기별 배치
+
+note right of DoseWidgetLayout
+  Android 12 이상은 높이별 RemoteViews를 제공한다.
+  이전 버전은 런처의 회전별 높이에 맞춘다.
+  기본 240dp와 최소 축소 180dp를 분리해
+  지원 런처에 요청한 4 x 3 초기 크기를 유지한다.
+  작은 높이는 요약 배치로 전환하고 기록 권한은 바꾸지 않는다.
+end note
+
+note bottom of DoseWidgetStore
+  본인 복약 큐와 연결 환자 조회 캐시를 분리한다.
+  환자 모드에는 복용·취소 토큰을 만들지 않는다.
+  계정·날짜·설정·조회 버전 변경을 재검증한다.
+end note
+note bottom of SyncDose
+  영수증·복약 변경·선택적 채팅을 함께 커밋한다.
+  응답 유실 후 재전송도 이후 취소 기록을 되돌리지 않는다.
+end note
+@enduml

@@ -1,3 +1,6 @@
+# 파일명: sync-drug-catalog.yml
+# 역할: 공공 약품 카탈로그 동기화 작업을 정의하며 현재 자체 서버 운영에서는 클라우드 예약 실행을 막는다.
+
 name: Synchronize Drug Catalog
 
 on:

@@ -1,3 +1,6 @@
+# File Name: env.py
+# Role: Configures Alembic metadata and database connectivity for offline SQL generation or online schema migration.
+
 from logging.config import fileConfig
 
 from alembic import context
@@ -6,13 +9,17 @@ from sqlalchemy import engine_from_config, pool
 from core.config import settings
 from core.database import Base
 from entities import caregiver_notification_entity  # noqa: F401
+from entities import chat_message_entity  # noqa: F401
+from entities import chat_notification_job_entity  # noqa: F401
 from entities import device_push_token_entity  # noqa: F401
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
+from entities import dose_sync_operation_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import patient_caregiver_link_entity  # noqa: F401
 from entities import pill_identification_entity  # noqa: F401
+from entities import pharmacy_catalog_entity  # noqa: F401
 from entities import saved_medication_entity  # noqa: F401
 from entities import user_setting_entity  # noqa: F401
 from entities import user_account_entity  # noqa: F401
@@ -26,6 +33,13 @@ config.set_main_option("sqlalchemy.url", str(database_url).replace("%", "%%"))
 target_metadata = Base.metadata
 
 
+# Function Name: run_migrations_offline
+# Description:
+# - Configures Alembic to emit migration SQL with literal binds without opening a database connection.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def run_migrations_offline() -> None:
     context.configure(
         url=str(database_url),
@@ -38,7 +52,24 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Function Name: run_migrations_online
+# Description:
+# - Opens an unpooled database connection and runs Alembic migrations in its transaction with type comparison enabled.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def run_migrations_online() -> None:
+    supplied_connection = config.attributes.get("connection")
+    if supplied_connection is not None:
+        context.configure(
+            connection=supplied_connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
