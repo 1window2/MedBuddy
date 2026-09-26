@@ -18,6 +18,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
@@ -44,6 +45,11 @@ from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Async routes await each blocking operation sequentially using the bounded
+# AnyIO worker pool. Request-scoped sessions must never be shared with parallel
+# tasks; FastAPI's get_db dependency retains responsibility for REST cleanup.
+# WebSocket sessions are closed by the handshake, not retained by idle sockets.
 
 
 # 함수이름: get_chat_connection_manager
@@ -117,8 +123,11 @@ async def delete_chat_messages(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
-    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
-    response = chat.delete_messages(
+    authorized_user_hash = await run_in_threadpool(
+        authorization.resolveOwnUserHash, principal, user_hash,
+    )
+    response = await run_in_threadpool(
+        chat.delete_messages,
         link_id=link_id, user_hash=authorized_user_hash,
         message_ids=payload.message_ids, scope=payload.scope,
     )
@@ -240,12 +249,15 @@ async def post_chat_message(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """메시지를 저장하고 채팅방에 즉시 방송하며 필요하면 푸시를 예약한다."""
-    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    authorized_user_hash = await run_in_threadpool(
+        authorization.resolveOwnUserHash, principal, user_hash,
+    )
     await _enforce_chat_daily_quota(
         request=request,
         user_hash=authorized_user_hash,
     )
-    result = chat.send_message(
+    result = await run_in_threadpool(
+        chat.send_message,
         link_id=link_id,
         sender_hash=authorized_user_hash,
         client_message_id=payload.client_message_id,
@@ -272,9 +284,12 @@ async def record_chat_medication_taken(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """Record only the patient's explicitly confirmed dose and publish its receipt."""
-    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+    authorized_user_hash = await run_in_threadpool(
+        authorization.resolveOwnUserHash, principal, user_hash,
+    )
     await _enforce_chat_daily_quota(request=request, user_hash=authorized_user_hash)
-    result, completion_events = chat.record_medication_taken(
+    result, completion_events = await run_in_threadpool(
+        chat.record_medication_taken,
         link_id=link_id, sender_hash=authorized_user_hash,
         client_message_id=payload.client_message_id,
         schedule_date=payload.schedule_date, slot_key=payload.slot_key,
@@ -284,7 +299,10 @@ async def record_chat_medication_taken(
         background_tasks.add_task(_process_completion_alert, int(event["outbox_id"]))
     # Return current state on retries too, rather than the historical message's
     # snapshot, so a later correction is never visually changed back to taken.
-    schedules = CheckSchedule(chat.db).requestTodayMedicationSchedule(authorized_user_hash)["data"]
+    schedule_response = await run_in_threadpool(
+        CheckSchedule(chat.db).requestTodayMedicationSchedule, authorized_user_hash,
+    )
+    schedules = schedule_response["data"]
     response = await _publish_saved_message(link_id, result, request, background_tasks)
     return {**response, "schedules": schedules}
 
@@ -361,8 +379,11 @@ async def mark_chat_read(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """현재 참여자가 확인한 상대 메시지를 읽음 처리하고 실시간으로 알린다."""
-    authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
-    response = chat.mark_read(
+    authorized_user_hash = await run_in_threadpool(
+        authorization.resolveOwnUserHash, principal, user_hash,
+    )
+    response = await run_in_threadpool(
+        chat.mark_read,
         link_id=link_id,
         reader_hash=authorized_user_hash,
         through_message_id=payload.through_message_id,
@@ -423,18 +444,19 @@ async def stream_chat_events(
     user_hash: str = DEFAULT_PATIENT_HASH,
 ) -> None:
     """인증된 연동 참여자에게 새 메시지와 읽음 이벤트를 실시간 전달한다."""
-    db = SessionLocal()
     manager = getattr(websocket.app.state, "chat_connection_manager", None)
     if not isinstance(manager, ChatConnectionManager):
         await websocket.close(code=1011)
-        db.close()
         return
+    db = SessionLocal()
     authorized_user_hash = ""
     connected = False
     try:
-        principal = _authenticate_websocket(websocket)
+        principal = await run_in_threadpool(_authenticate_websocket, websocket)
         authorization = AuthorizationControl(db)
-        authorized_user_hash = authorization.resolveOwnUserHash(principal, user_hash)
+        authorized_user_hash = await run_in_threadpool(
+            authorization.resolveOwnUserHash, principal, user_hash,
+        )
         try:
             allowed, retry_after = await _reserve_websocket_connection(
                 websocket=websocket,
@@ -442,28 +464,26 @@ async def stream_chat_events(
             )
         except RuntimeError:
             await websocket.close(code=1013)
-            db.close()
             return
         if not allowed:
             await websocket.close(code=4429, reason=str(max(1, retry_after)))
-            db.close()
             return
-        ManageLinkedChat(db).require_active_link(
+        await run_in_threadpool(
+            ManageLinkedChat(db).require_active_link,
             link_id=link_id,
             user_hash=authorized_user_hash,
         )
-        db.commit()
+        await run_in_threadpool(db.commit)
     except HTTPException as exc:
-        db.rollback()
+        await run_in_threadpool(db.rollback)
         await websocket.close(code=_websocket_close_code(exc.status_code))
-        db.close()
         return
     except Exception:
-        db.rollback()
+        await run_in_threadpool(db.rollback)
         await websocket.close(code=1011)
-        db.close()
         return
-
+    finally:
+        await run_in_threadpool(db.close)
     try:
         connected = await manager.connect(
             link_id=link_id,
@@ -508,7 +528,6 @@ async def stream_chat_events(
                 user_hash=authorized_user_hash,
                 websocket=websocket,
             )
-        db.close()
 
 
 # 함수이름: _enforce_chat_daily_quota

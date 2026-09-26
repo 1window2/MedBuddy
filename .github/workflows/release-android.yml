@@ -15,7 +15,24 @@ permissions:
   contents: read
 
 jobs:
+  verify-ci:
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/beta/v0.2.0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Source Code Checkout
+        uses: actions/checkout@v7
+      - name: Require successful CI for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_release_ci.py
+
   build:
+    needs: verify-ci
     if: >-
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/beta/v0.2.0'

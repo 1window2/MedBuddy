@@ -9,6 +9,8 @@ migration prerequisite are summarized in
 [the September 25 follow-up](qa/v0.2.0-2026-09-25-contributor-followup.md).
 The migration data-preservation CI gate and rollout/rollback guidance are recorded
 in [the September 26 follow-up](qa/v0.2.0-2026-09-26-migration-release-gate.md).
+The event-loop blocking correction and exact-commit signing gate are recorded in
+[the P1 architecture follow-up](qa/v0.2.0-2026-09-26-p1-architecture-fixes.md).
 Individual physical checks below remain open unless their exact scope has evidence;
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.
