@@ -171,7 +171,7 @@ for retry, suppression and duplicate-delivery semantics.
 The September 24 pharmacy-sharing changes require this migration before the
 updated API starts. Back up the database before deployment and retain the prior
 application revision. Do not bypass the revision check with `alembic stamp head`.
-The existing `catalog-bootstrap` dependency runs migrations before backend startup;
+The `database-migrate` dependency runs migrations before backend startup;
 verify its successful exit and then check `/ready`.
 
 The automated rehearsal in `backend/tests/test_pharmacy_cache_migration.py`
@@ -206,11 +206,26 @@ The five long-running production services must remain running or healthy:
 - `backend`
 - `cloudflared`
 
-Before those services start, the one-shot `catalog-bootstrap` service applies
-the Alembic migrations and seeds any empty shared medication and nationwide
-pharmacy schedule catalogs. A
-successful deployment therefore shows `catalog-bootstrap` as exited with code
-0; it is not expected to remain running.
+The one-shot `database-migrate` service applies Alembic migrations before the
+API or catalog jobs start. It must exit with code 0; migration failure still
+blocks startup. The independent `catalog-bootstrap` service seeds empty
+medication and pharmacy catalogs and retries failures. Its successful exit
+enables the periodic refresh worker, but does not gate the API or tunnel.
+
+`/ready` checks core database/schema, authentication and required Redis readiness.
+`/ready/catalogs` separately checks that all four shared catalogs contain rows;
+it returns 503 until seeded and caches results independently for five seconds.
+This is a seed-presence check, not a completeness or freshness certificate.
+Signed Android releases require both readiness endpoints. Catalog-dependent
+features may remain unavailable during initial import; pill identification
+reports unavailable reference data explicitly. Existing atomic replacement and
+external-provider fallback policies are unchanged.
+
+If initial catalog provisioning is unavailable, the full-stack `--wait` command
+may not complete successfully. Start only `backend cloudflared` with the same
+Compose options to recover core services without waiting for catalogs, then
+start `catalog-bootstrap catalog-refresh` separately and monitor their logs.
+Do not treat core readiness alone as approval for a new release.
 
 The separate `catalog-refresh` service performs a full atomic synchronization
 every seven days by default. Each successful complete refresh removes basic,

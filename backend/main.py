@@ -168,7 +168,7 @@ def _verify_catalog_seed(connection: object) -> None:
 
 # Function Name: _verify_database_dependencies
 # Description:
-# - Checks connectivity and migration revision in every environment, plus production catalog seeds.
+# - Checks core connectivity and migration revision independently of catalog imports.
 # Parameters:
 # - None.
 # Returns:
@@ -177,8 +177,29 @@ def _verify_database_dependencies() -> None:
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
         _verify_database_revision(connection)
-        if settings.APP_ENV == "production":
-            _verify_catalog_seed(connection)
+
+
+# Function Name: _verify_catalog_dependencies
+# Description:
+# - Checks catalog seeds separately so import outages do not disable core services.
+# Parameters:
+# - None.
+# Returns:
+# - None; raises when any required catalog is unavailable.
+async def _verify_catalog_dependencies() -> None:
+    await run_in_threadpool(_verify_catalog_database)
+
+
+# Function Name: _verify_catalog_database
+# Description:
+# - Opens an independent connection for the blocking catalog probe.
+# Parameters:
+# - None.
+# Returns:
+# - None; raises when any required catalog is empty or inaccessible.
+def _verify_catalog_database() -> None:
+    with engine.connect() as connection:
+        _verify_catalog_seed(connection)
 
 
 # Function Name: _ping_required_redis
@@ -257,6 +278,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     alert_outbox_worker.start()
     app.state.caregiver_alert_outbox_worker = alert_outbox_worker
     app.state.readiness_probe_cache.reset()
+    app.state.catalog_readiness_probe_cache.reset()
     chat_worker = ChatNotificationWorker(ProcessChatNotifications(
         SessionLocal, get_push_notification_boundary,
         app.state.chat_connection_manager.is_user_connected,
@@ -311,6 +333,9 @@ def create_app() -> FastAPI:
         )
     )
     app.state.readiness_probe_cache = _ReadinessProbeCache(
+        _READINESS_CACHE_TTL_SECONDS
+    )
+    app.state.catalog_readiness_probe_cache = _ReadinessProbeCache(
         _READINESS_CACHE_TTL_SECONDS
     )
     multipart_overhead_bytes = 512 * 1024
@@ -398,6 +423,21 @@ def create_app() -> FastAPI:
             "firebase_project_id": settings.FIREBASE_PROJECT_ID,
             "app_check_required": settings.FIREBASE_APP_CHECK_REQUIRED,
         }
+
+    # Function Name: catalog_readiness_check
+    # Description:
+    # - Provides a separately cached catalog release gate without changing core readiness.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - Catalog readiness metadata, or HTTP 503 while a required catalog is empty.
+    @app.get("/ready/catalogs", include_in_schema=False)
+    async def catalog_readiness_check() -> dict[str, str]:
+        if not await app.state.catalog_readiness_probe_cache.request_readiness(
+            _verify_catalog_dependencies
+        ):
+            raise HTTPException(status_code=503, detail="MedBuddy catalogs are not ready.")
+        return {"status": "ready", "api_contract": settings.API_CONTRACT_VERSION}
 
     return app
 

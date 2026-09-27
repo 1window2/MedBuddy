@@ -162,6 +162,9 @@ jobs:
           curl --fail --silent --show-error \
             --retry 3 --retry-all-errors --retry-delay 2 \
             "${BACKEND_ORIGIN}/ready" > "${RUNNER_TEMP}/backend-ready.json"
+          curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            "${BACKEND_ORIGIN}/ready/catalogs" > "${RUNNER_TEMP}/backend-catalogs.json"
           python - <<'PY'
           import json
           import os
@@ -175,7 +178,7 @@ jobs:
           expected_app_check = (
               os.environ["MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED"] == "true"
           )
-          for probe_name in ("backend-health.json", "backend-ready.json"):
+          for probe_name in ("backend-health.json", "backend-ready.json", "backend-catalogs.json"):
               payload = json.loads(
                   Path(os.environ["RUNNER_TEMP"])
                   .joinpath(probe_name)
@@ -186,6 +189,8 @@ jobs:
                       "The standalone backend API contract does not match the "
                       "Android release contract."
                   )
+              if probe_name == "backend-catalogs.json" and payload.get("status") != "ready":
+                  raise SystemExit("The backend catalogs must be ready before release.")
           ready_payload = json.loads(
               Path(os.environ["RUNNER_TEMP"])
               .joinpath("backend-ready.json")

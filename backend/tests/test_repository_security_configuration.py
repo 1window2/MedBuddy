@@ -200,8 +200,29 @@ def test_self_hosted_database_url_uses_structured_credentials() -> None:
 
     assert "${POSTGRES_PASSWORD}@postgres" not in compose_source
     assert "DATABASE_URL:" not in compose_source
-    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 3
-    assert compose_source.count("DATABASE_HOST: postgres") == 3
+    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 4
+    assert compose_source.count("DATABASE_HOST: postgres") == 4
+
+
+# Function Name: test_core_startup_does_not_depend_on_catalog_imports
+# Description:
+# - Preserves migration gating while keeping catalog provisioning outside the API startup chain.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_core_startup_does_not_depend_on_catalog_imports() -> None:
+    source = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(encoding="utf-8")
+    backend = source.split("\n  backend:", 1)[1].split("\n  cloudflared:", 1)[0]
+    migration = source.split("\n  database-migrate:", 1)[1].split("\n  catalog-bootstrap:", 1)[0]
+    assert "database-migrate:" in backend
+    assert "catalog-bootstrap:" not in backend
+    assert "alembic upgrade head" in migration
+    assert "sync_drug_catalog" not in migration
+    assert "RUNTIME_ROLE: migration" in migration
+    release = (_REPOSITORY_ROOT / ".github/workflows/release-android.yml").read_text(encoding="utf-8")
+    assert '${BACKEND_ORIGIN}/ready/catalogs' in release
+    assert 'payload.get("status") != "ready"' in release
 
 
 # Function Name: test_self_hosted_backend_prepares_secret_then_drops_privileges
