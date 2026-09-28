@@ -9,7 +9,7 @@ title Medication Management - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -35,6 +35,8 @@ package "Flutter Frontend" #E8F4FF {
   class CheckSavedMedicationUI <<UI>>
   class CheckMedicationDetailUI <<UI>>
   class MedBuddyViewModel <<Control>>
+  class NotificationService <<Service>>
+  class ManualMedicationImageStore <<Service>>
   class "CheckSchedule" as FCheckSchedule <<Control>>
   class "CheckSavedMedication" as FCheckSavedMedication <<Control>>
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
@@ -62,6 +64,22 @@ CheckMedicationDetailUI --> MedBuddyViewModel
 MedBuddyViewModel --> FCheckSchedule
 MedBuddyViewModel --> FCheckSavedMedication
 MedBuddyViewModel --> FCheckMedicationDetail
+MedBuddyViewModel --> NotificationService : reconcile reminder plans
+MedBuddyViewModel --> ManualMedicationImageStore : local image persistence
+
+note bottom of MedBuddyViewModel
+  일정 탭 재방문은 같은 날의 성공한 조회를 15초 미만 재사용한다.
+  명시적 새로고침은 재조회하며 상태 변경은 캐시를 무효화한다.
+  진행 중인 일정·알림 설정 조회는 합친다.
+end note
+note bottom of NotificationService
+  날짜별 계획과 기기 예약을 비교하여 변경분만 갱신한다.
+  동일 예약과 미루기를 보존하고 예약·미루기·취소를 직렬화한다.
+end note
+note bottom of ManualMedicationImageStore
+  사진 축소·압축은 별도 isolate에서 처리한다.
+  목록 썸네일은 표시 크기에 맞춰 디코딩 크기를 제한한다.
+end note
 
 FCheckSchedule --> BCheckSchedule : schedule API
 FCheckSavedMedication --> BCheckSavedMedication : saved medication API

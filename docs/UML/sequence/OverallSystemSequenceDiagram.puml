@@ -260,7 +260,7 @@ alt 가이드 카메라 촬영
     UI -> MediaService : 처방전 이미지 촬영
     MediaService --> UI : 촬영 이미지
     UI -> FrontService : PrescriptionImageCropService.cropToGuide(image, normalizedGuideRect)
-    FrontService -> FrontService : EXIF orientation 반영 및\n임시 원본 이미지 삭제
+    FrontService -> FrontService : compute isolate에서 EXIF orientation·자르기·JPEG 변환\n임시 원본 이미지 삭제
     FrontService --> UI : 가이드 영역으로 자른 이미지
     UI -> ViewModel : requestCapturedPrescriptionImage(croppedImage)
     UI -> FrontService : 촬영 화면 종료 시 restorePortrait()
@@ -664,7 +664,7 @@ loop Android Workmanager 12시간 주기
     ApiClient --> FrontControl : 현재 서버 상태
     FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
     FrontService -> FrontService : 다음 14일의 복용 기간 내 날짜 계산
-    FrontService -> LocalNotification : 기존 Slot 교체 및 Rolling Window 보충
+    FrontService -> LocalNotification : 날짜별 예약 계획 비교 후 변경분만 갱신\n동일 예약·미루기 유지, Rolling Window 보충
 end
 
 opt 홈에서 기기 알림함 확인
@@ -764,12 +764,20 @@ else 활성 연결이 없음
 end
 
 opt 보호자 홈 또는 감시 자료 갱신
-    FrontControl -> ApiClient : GET /caregiver/monitoring
+    alt 홈·위젯 조회
+        FrontControl -> ApiClient : GET /caregiver/schedules
+    else 전경 감시에서 진행 중인 홈 조회 또는 당일 15초 미만 결과가 있음
+        FrontControl -> FrontControl : 같은 세션의 조회 결과 공유
+    else 감시 전용 조회
+        FrontControl -> ApiClient : GET /caregiver/monitoring
+    end
+    opt 새 API 요청이 필요함
     ApiClient -> Router : 현재 보호자의 통합 snapshot 요청
-    Router -> BackControl : CheckCaregiverMonitoring.requestMonitoringSnapshot()
+    Router -> BackControl : CheckCaregiverMonitoring.requestMonitoringSnapshot(include_all_schedules)
     BackControl -> Database : 활성 연결과 환자별 알림 정책·복약 상태 조회
     BackControl --> UI : 환자별 서버 별칭과 조회된 현황
-    note right of BackControl : 현재 구현은 활성 알림 정책이 있는 환자만\nsnapshot의 오늘 복약 정보를 조회한다.
+    end
+    note right of BackControl : 홈·위젯은 알림을 끈 환자도 포함하며 약 상세는 제외한다.\n감시 전용 조회는 활성 알림 정책이 있는 환자만 조회한다.
 end
 
 opt 환자 또는 보호자가 활성 연결 해제
@@ -1121,11 +1129,12 @@ note over Router,BackService : 일반 채팅 Push는 BackgroundTasks이며 careg
 opt 환자가 시간대의 모든 약을 완료
     ref over OutboxControl,Database : Flow 5의 Outbox 처리에서 자동 완료 chat record 생성
     note over BackControl,Database : publish_slot_completion()은 직접 WebSocket broadcast하지 않는다.
-    UI -> FrontControl : 주기적 채팅 이력 갱신
+    UI -> FrontControl : 화면 복귀·재연결 또는 장애 보완 이력 조회
     FrontControl -> ApiClient : GET /chat/links/{linkId}/messages
     ApiClient -> Router : 이력 요청
     Router --> UI : 자동 완료 기록을 포함한 조회 가능한 이력
 end
+note over UI,FrontControl : 정상 실시간 연결·이력 조회 중에는 반복 조회하지 않는다.\n장애 중 현재 대화방만 12초 보완 조회하며 백그라운드에서 중지한다.\n복귀·재연결 시 마지막 확인 메시지까지 페이지를 이어 읽는다.
 note over UI,FrontControl : 조회·실시간 수신은 이전 대화를 읽던 스크롤을 유지한다.\n오래된 조회 응답으로 이미 받은 읽음 표시를 지우지 않는다.
 UI -> FrontControl : 앱 전경이며 채팅이 현재 화면일 때만 markRead(throughMessageId)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/read

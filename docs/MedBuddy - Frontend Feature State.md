@@ -49,6 +49,10 @@ fresh server read. Reminder reconciliation reads the feature's freshness flag;
 account clearing invalidates pending reads. Slot interpretation is a shared pure
 policy rather than a private helper inside prescription processing.
 
+The facade coalesces concurrent refreshes and may reuse a successful same-day
+schedule/reminder read for less than 15 seconds on tab revisits. Explicit refresh
+still reads the server, and schedule changes invalidate this reuse window.
+
 ## Reminders
 
 Reminder settings and read freshness are owned by the reminder feature. Schedule
@@ -56,3 +60,9 @@ lists, schedule freshness and user settings are supplied through read-only
 callbacks, not mutable sibling state. The facade retains the coordination point
 for post-save reconciliation. Reminder save/rollback, privacy and snooze-preserving
 refresh semantics are unchanged. Superseded or disposed loads cannot publish.
+
+At the native scheduling boundary, date-specific plans are reconciled with
+pending notifications instead of cancelling and rebuilding every slot. Unchanged
+bookings and snoozes survive; scheduling, snoozing and cancellation are serialized
+within the service. See the [client refresh policy](MedBuddy%20-%20Client%20Refresh%20Policy.md)
+for cache scope, widget publication and recovery behavior.

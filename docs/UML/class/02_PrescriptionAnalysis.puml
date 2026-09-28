@@ -9,7 +9,7 @@ title Prescription Analysis - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -62,6 +62,12 @@ BInputPrescription -right-> BMedicationSchedule : response DTO
 note bottom of PrescriptionAnalysisPreviewUI
   Users review OCR rows and restore
   missing medications before analysis.
+end note
+
+note bottom of PrescriptionImageCropService
+  Orientation, crop and JPEG encoding run
+  in a compute isolate, including temporary
+  source cleanup. OCR input stays unchanged.
 end note
 
 note top of GuidedPrescriptionCameraUI

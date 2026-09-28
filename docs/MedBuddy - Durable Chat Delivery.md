@@ -49,6 +49,15 @@ retention therefore bounds job retention. Old messages are not backfilled.
 
 ## Deployment
 
+Client reception is realtime-first: healthy sockets with a successful history
+read do not poll history. Foreground fallback polling remains active during
+connection/history failures, without postponement by repeated reconnect attempts.
+Resume and reconnect catch up through older pages to the last known message;
+concurrent refreshes are coalesced. Background clients stop periodic reads.
+See the [client refresh policy](MedBuddy%20-%20Client%20Refresh%20Policy.md).
+Caregiver-generated outbox messages still do not broadcast directly and become
+visible on a subsequent history read; this does not change server push durability.
+
 Apply Alembic `b3a7d9e2f601` (after `6d4f8a2c9301`) before starting the new
 backend. Stop old workers during rollout and follow the backup/readiness
 procedure. Rolling this migration back drops pending delivery work but leaves

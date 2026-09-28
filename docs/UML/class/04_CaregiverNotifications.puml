@@ -9,7 +9,7 @@ title Patient-Caregiver Link and Notifications - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -85,6 +85,12 @@ ManageChatList --> FLinkPatientCaregiver
 ManageChatList --> ManageCaregiverPatientLocalState
 ManageChatList --> ManageLinkedChat : latest messages
 LinkedChatUI --> ManageLinkedChat
+note top of LinkedChatUI
+  실시간 연결과 이력 조회가 정상이면 반복 조회하지 않는다.
+  장애 시 현재 대화방에서만 12초 보완 조회한다.
+  백그라운드에서 중지하고 복귀·재연결 시 누락분을 읽는다.
+  동시 조회와 반복 재연결로 조회가 겹치거나 미뤄지지 않게 한다.
+end note
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification

@@ -8,6 +8,8 @@ package "Flutter" {
   class LinkedChatUI <<Boundary>>
   class CaregiverHomeSummaryUI <<Boundary>>
   class CheckCaregiverHome <<Control>>
+  class CheckCaregiverMedication <<Control>>
+  class CaregiverNotificationMonitorService <<Service>>
   class DoseSyncService <<Service>>
   class DoseOutboxStore <<Service>>
   class DoseWidgetStore <<extension>>
@@ -24,6 +26,7 @@ package "Android" {
 package "FastAPI" {
   class SyncDose <<Control>>
   class CheckSchedule <<Control>>
+  class CheckCaregiverMonitoring <<Control>>
   class ManageLinkedChat <<Control>>
   class DoseSyncRequest <<Entity>>
   class _DoseSyncOperation <<Entity>>
@@ -44,6 +47,9 @@ MedBuddyViewModel --> DoseHomeWidget : 기록·설정 변경 발행
 UserSetting --> DoseHomeWidget : homeScheduleSource
 CaregiverHomeSummaryUI --> CheckCaregiverHome : 환자별 미리보기·전환
 DoseHomeWidget --> CheckCaregiverHome : 연결 환자 읽기 전용 조회
+CheckCaregiverHome --> CheckCaregiverMedication : 연결 환자 일정 일괄 조회
+CaregiverNotificationMonitorService --> CheckCaregiverMedication : 같은 전경 세션의 조회 공유
+CheckCaregiverMedication --> CheckCaregiverMonitoring : /caregiver/schedules 또는 /monitoring
 DoseHomeWidget --> DoseWidgetStore
 DoseWidgetStore ..> DoseOutboxStore : 암호화 저장소 확장
 DoseWidgetStore --> DoseWidgetState
@@ -63,6 +69,15 @@ note bottom of DoseWidgetStore
   본인 복약 큐와 연결 환자 조회 캐시를 분리한다.
   환자 모드에는 복용·취소 토큰을 만들지 않는다.
   계정·날짜·설정·조회 버전 변경을 재검증한다.
+end note
+note bottom of CheckCaregiverMedication
+  홈·위젯 일괄 조회는 알림을 끈 환자도 포함하고 약 상세는 제외한다.
+  감시는 진행 중인 홈 조회 또는 15초 미만의 당일 결과를 재사용한다.
+  계정·날짜·응답 권한을 검사하며 백그라운드와 전역 공유하지 않는다.
+end note
+note bottom of DoseSyncService
+  기기 영속 저장 이후 표시 콜백은 변경을 합쳐 비동기로 발행한다.
+  느린 위젯 갱신이 복용 기록 저장·서버 전송을 막지 않는다.
 end note
 note bottom of SyncDose
   영수증·복약 변경·선택적 채팅을 함께 커밋한다.

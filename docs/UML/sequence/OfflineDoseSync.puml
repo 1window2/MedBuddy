@@ -13,6 +13,7 @@ UI -> Sync: Explicit IDs, slot, original date, state
 Sync -> Local: Persist operation ID + encrypted payload
 Local --> Sync: Durable save
 Sync --> UI: Local state + pending indicator
+note over Sync,Local: Display callbacks are coalesced after durable save.\nWidget publication does not delay recording or upload.
 Sync -> Worker: Schedule connected work
 note over Local, Worker: Queue survives process death; account-scoped leases serialize senders
 Worker -> Sync: Restore authenticated session and drain

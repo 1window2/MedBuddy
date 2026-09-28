@@ -11,8 +11,9 @@ participant "Linked-patient schedule Control" as Schedules
 User -> Callback: Set home schedule source (self / patients)
 Callback -> Store: Persist shared source; invalidate incompatible actions
 alt Linked patients (read-only)
-Callback -> Schedules: Fetch fresh active links and authorized patient details
+Callback -> Schedules: GET /caregiver/schedules\nAggregate authorized active patients, no medication details
 Schedules --> Callback: Links, aliases and today's dose statuses\nIndependent of alert preferences; shared with Home
+note right of Schedules: Foreground home and monitoring share in-flight reads.\nMonitoring may reuse a same-day home result for <15s.\nBackground widget refresh uses its own control.
 Callback -> Store: Validate account, date and refresh revision\nCache separately from own dose outbox
 Callback -> Widget: Read-only patient pages; no take/cancel tokens
 User -> Widget: Patient arrows / slot arrows and dots
@@ -53,6 +54,7 @@ API --> Sync: Receipt + authoritative schedule
 Sync -> Store: Atomically acknowledge and cache
 end
 Sync -> Widget: Server saved state
+note over Sync,Widget: DoseSyncService coalesces display callbacks after durable save.\nSlow publication does not block upload; account/date validation remains.
 User -> Widget: Tap schedule summary
 Widget -> Callback: Open own schedule in app (no write)
 end
