@@ -1,47 +1,117 @@
-part of 'medbuddy_view_model.dart';
+// File Name: medbuddy_health_recommendation_view_model.dart
+// Role: Owns recommendation presentation state independently of other features.
 
-// 파일명: medbuddy_health_recommendation_view_model.dart
-// 역할: 복용 약 조합 기반 건강관리 추천 조회 상태를 관리한다.
+import 'package:flutter/foundation.dart';
 
-// 클래스명: MedBuddyHealthRecommendationViewModel
-// 역할: 복용 약 조합에 대한 건강 추천 조회 상태를 확장한다.
-// 주요 책임:
-// - 언어별 추천 Control을 호출하고 로딩·결과·실패 안내를 건강 추천 구독 화면에 반영한다.
-extension MedBuddyHealthRecommendationViewModel on MedBuddyViewModel {
-  // 함수이름: fetchHealthRecommendation
-  // 함수역할: 현재 복용 중인 약 조합을 바탕으로 건강 관리 추천을 서버에서 가져온다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> fetchHealthRecommendation() async {
-    _isHealthRecommendationLoading = true;
-    _hasNoActiveHealthMedications = false;
-    _healthRecommendation = null;
-    _statusMessage = _isEnglishSetting
+import '../controls/check_health_recommendation_control.dart';
+import '../entities/health_recommendation_entity.dart';
+
+// Class Name: MedBuddyHealthRecommendationViewModel
+// Role: Patient-scoped recommendation presentation state.
+// Responsibilities:
+// - Delegate requests to the existing control and accept only the latest result.
+// - Keep status messages isolated and ignore completions after disposal.
+// Attributes:
+// - _control: Borrowed control; its owner remains responsible for disposal.
+class MedBuddyHealthRecommendationViewModel extends ChangeNotifier {
+  final CheckHealthRecommendation _control;
+  bool _disposed = false;
+  int _requestId = 0;
+  bool _loading = false;
+  bool _empty = false;
+  HealthRecommendation? _recommendation;
+  String _statusMessage = '';
+
+  // Function Name: MedBuddyHealthRecommendationViewModel
+  // Description: Binds a borrowed patient-scoped control.
+  // Parameters: control: Existing recommendation use-case control.
+  // Returns: An initially idle feature model.
+  MedBuddyHealthRecommendationViewModel(CheckHealthRecommendation control)
+    : _control = control;
+
+  // Function Name: isLoading
+  // Description: Exposes whether the latest request is pending.
+  // Parameters: None.
+  // Returns: Latest request loading state.
+  bool get isLoading => _loading;
+
+  // Function Name: hasNoActiveMedications
+  // Description: Distinguishes confirmed empty medication data from a failure.
+  // Parameters: None.
+  // Returns: Whether the latest request confirmed no active medication.
+  bool get hasNoActiveMedications => _empty;
+
+  // Function Name: recommendation
+  // Description: Exposes only the latest successful request result.
+  // Parameters: None.
+  // Returns: Recommendation, or null before success.
+  HealthRecommendation? get recommendation => _recommendation;
+
+  // Function Name: statusMessage
+  // Description: Exposes a feature-local message in the request language.
+  // Parameters: None.
+  // Returns: Current recommendation status message.
+  String get statusMessage => _statusMessage;
+
+  // Function Name: fetch
+  // Description: Replaces presentation state only when this request is still current.
+  // Parameters: language: Language captured for both the request and its messages.
+  // Returns: Completion without propagating expected API failures to the UI.
+  Future<void> fetch({required String language}) async {
+    if (_disposed) return;
+    final requestId = ++_requestId;
+    final english = language.trim().toLowerCase().startsWith('en');
+    _loading = true;
+    _empty = false;
+    _recommendation = null;
+    _statusMessage = english
         ? 'Loading health recommendations.'
         : '건강 관리 추천을 불러오는 중입니다.';
-    _notifyViewModelListeners(MedBuddyFeature.healthRecommendation);
-
+    notifyListeners();
+    // A listener may dispose the owner or start a newer request synchronously.
+    if (!_isCurrent(requestId)) return;
     try {
-      final healthRecommendation = await checkHealthRecommendation
-          .requestHealthRecommendation(language: userSetting.language);
-      _healthRecommendation = healthRecommendation;
-      _statusMessage = _isEnglishSetting
+      final result = await _control.requestHealthRecommendation(
+        language: language,
+      );
+      if (!_isCurrent(requestId)) return;
+      _recommendation = result;
+      _statusMessage = english
           ? 'Health recommendations loaded.'
           : '건강 관리 추천을 불러왔습니다.';
     } on NoActiveMedicationsError {
-      _hasNoActiveHealthMedications = true;
-      _statusMessage = _isEnglishSetting
+      if (!_isCurrent(requestId)) return;
+      _empty = true;
+      _statusMessage = english
           ? 'You have no active medications.'
           : '현재 복용 중인 약이 없어요.';
     } catch (_) {
-      _statusMessage = _isEnglishSetting
+      if (!_isCurrent(requestId)) return;
+      _statusMessage = english
           ? 'Could not load health recommendations.'
           : '건강 관리 추천을 불러오지 못했습니다.';
     } finally {
-      _isHealthRecommendationLoading = false;
-      _notifyViewModelListeners(MedBuddyFeature.healthRecommendation);
+      if (_isCurrent(requestId)) {
+        _loading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  // Function Name: _isCurrent
+  // Description: Rejects superseded requests and disposed owners.
+  // Parameters: requestId: Generation captured by the request.
+  // Returns: Whether the request may still publish state.
+  bool _isCurrent(int requestId) => !_disposed && requestId == _requestId;
+
+  // Function Name: dispose
+  // Description: Invalidates pending completions without closing the borrowed control.
+  // Parameters: None.
+  // Returns: None.
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    super.dispose();
   }
 }

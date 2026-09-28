@@ -42,12 +42,12 @@ import '../services/manual_medication_image_store.dart';
 import '../services/notification_service.dart';
 import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
+import 'medbuddy_health_recommendation_view_model.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_view_model.dart';
 part 'medbuddy_schedule_view_model.dart';
 part 'medbuddy_reminder_view_model.dart';
-part 'medbuddy_health_recommendation_view_model.dart';
 part 'medbuddy_user_setting_view_model.dart';
 
 // 클래스명: TodayMedicationProgress
@@ -152,6 +152,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckSchedule checkSchedule;
   late final CheckTodayMedicationInfo checkTodayMedicationInfo;
   late final CheckHealthRecommendation checkHealthRecommendation;
+  late final MedBuddyHealthRecommendationViewModel _healthRecommendations;
   late final SetNotification setNotification;
   late final ManageUserSetting manageUserSetting;
   late final ManageAccount manageAccount;
@@ -282,19 +283,40 @@ class MedBuddyViewModel extends ChangeNotifier {
   // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
   int? _activeTodayScheduleLoadEpoch;
 
-  bool _isHealthRecommendationLoading = false;
   // 함수이름: isHealthRecommendationLoading
   // 함수역할: 건강 관리 추천 조회의 진행 여부를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - bool: 건강 관리 추천 조회의 진행 여부를 제공한다.
-  bool get isHealthRecommendationLoading => _isHealthRecommendationLoading;
+  bool get isHealthRecommendationLoading => _healthRecommendations.isLoading;
 
-  bool _hasNoActiveHealthMedications = false;
   // 함수이름: hasNoActiveHealthMedications
   // 함수역할: 서버에서 확인된 건강 추천 대상 약 없음 상태를 제공한다. 매개변수: 없음. 반환값: 대상 약 없음 여부.
-  bool get hasNoActiveHealthMedications => _hasNoActiveHealthMedications;
+  bool get hasNoActiveHealthMedications =>
+      _healthRecommendations.hasNoActiveMedications;
+
+  // Function Name: healthRecommendationStatusMessage
+  // Description: Keeps recommendation feedback independent of other features.
+  // Parameters: None.
+  // Returns: Current recommendation-only message.
+  String get healthRecommendationStatusMessage =>
+      _healthRecommendations.statusMessage;
+
+  // Function Name: fetchHealthRecommendation
+  // Description: Delegates to the isolated feature model using the current language.
+  // Parameters: None.
+  // Returns: Completion of the feature request.
+  Future<void> fetchHealthRecommendation() =>
+      _healthRecommendations.fetch(language: userSetting.language);
+
+  // Function Name: _onHealthRecommendationChanged
+  // Description: Bridges isolated state changes to existing feature subscribers.
+  // Parameters: None.
+  // Returns: None.
+  void _onHealthRecommendationChanged() {
+    _notifyViewModelListeners(MedBuddyFeature.healthRecommendation);
+  }
 
   String _statusMessage = '';
   // 함수이름: statusMessage
@@ -537,14 +559,14 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationSchedule> get todayMedicationScheduleList =>
       List.unmodifiable(_todayMedicationScheduleList);
 
-  HealthRecommendation? _healthRecommendation;
   // 함수이름: healthRecommendation
   // 함수역할: 현재 복용 약 조합에 대한 최근 건강 관리 추천을 제공하고 조회 전에는 null을 유지한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - HealthRecommendation?: 현재 복용 약 조합에 대한 최근 건강 관리 추천을 제공하고 조회 전에는 null을 유지한다.
-  HealthRecommendation? get healthRecommendation => _healthRecommendation;
+  HealthRecommendation? get healthRecommendation =>
+      _healthRecommendations.recommendation;
 
   // Function Name: todayMedicationProgress
   // Description: Counts every medication-slot dose in today's loaded schedules and separately totals slots marked completed.
@@ -661,6 +683,9 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.manageUserSetting =
         manageUserSetting ??
         ManageUserSetting(userHash: this.patientHash, client: _apiClient);
+    _healthRecommendations = MedBuddyHealthRecommendationViewModel(
+      this.checkHealthRecommendation,
+    )..addListener(_onHealthRecommendationChanged);
     this.manageAccount =
         manageAccount ??
         ManageAccount(userHash: this.patientHash, client: _apiClient);
@@ -749,6 +774,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    _healthRecommendations.removeListener(_onHealthRecommendationChanged);
+    _healthRecommendations.dispose();
     doseSync?.removeListener(_onDoseSyncChanged);
     doseSync?.dispose();
     for (final updates in _featureUpdates.values) {

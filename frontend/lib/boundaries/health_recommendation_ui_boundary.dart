@@ -167,7 +167,7 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
         text: text,
         message: viewModel.hasNoActiveHealthMedications
             ? text.emptyMessage
-            : viewModel.statusMessage,
+            : viewModel.healthRecommendationStatusMessage,
         isEmpty: viewModel.hasNoActiveHealthMedications,
         onRegisterRequested: _openingRegistration
             ? null
