@@ -35,6 +35,66 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  // 병원 이름·시간을 클라이언트가 확정하지 않고 ID·날짜만 보내며 서버 카드를 복원한다.
+  test('hospital share sends IDs and parses dated server context', () async {
+    final control = ManageLinkedChat(
+      userHash: 'patient-a',
+      chatUrlBuilder: (path) => '$baseUrl$path',
+      client: MockClient((request) async {
+        expect(jsonDecode(request.body), {
+          'client_message_id': 'hospital_001',
+          'body': '병원 공유',
+          'message_kind': 'hospital_share',
+          'hospital_id': 'A123',
+          'hospital_schedule_date': '2026-10-05',
+        });
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'message_id': 1,
+            'link_id': 17,
+            'sender_hash': 'patient-a',
+            'client_message_id': 'hospital_001',
+            'body': '병원 공유',
+            'message_kind': 'hospital_share',
+            'created_at': '2026-09-28T01:00:00Z',
+            'context': {
+              'hospital_context': {
+                'hospital_id': 'A123',
+                'name': '확인된 병원',
+                'address': '서울',
+                'telephone': '02-000-0000',
+                'latitude': 37.55,
+                'longitude': 126.92,
+                'schedule_date': '2026-10-05',
+                'today_hours': '10:00 - 13:00',
+                'departments': ['내과'],
+                'source_updated_at': '2026-09-28T01:00:00Z',
+              },
+            },
+          },
+        }, 200);
+      }),
+    );
+    final message = await control.sendMessage(
+      linkId: 17,
+      clientMessageId: 'hospital_001',
+      body: '병원 공유',
+      messageKind: ChatMessageKind.hospitalShare,
+      hospitalId: 'A123',
+      hospitalScheduleDate: '2026-10-05',
+    );
+    expect(message.messageKind, ChatMessageKind.hospitalShare);
+    expect(message.pharmacyContext, isNull);
+    expect(message.hospitalContext!.name, '확인된 병원');
+    expect(message.hospitalContext!.departments, ['내과']);
+    expect(message.hospitalContext!.scheduleDate, DateTime(2026, 10, 5));
+    expect(message.copyWith(deletedForEveryone: true).hospitalContext, isNull);
+    expect(message.copyWith(hiddenForMe: true).hospitalContext, isNull);
+    control.dispose();
+  });
+
+
   // 함수이름: 복용 확인 전용 요청 테스트
   // 함수역할: 일반 채팅 전송과 구분된 API에 원래 날짜·시간대·선택 약·요청 식별자를 전달하고 확인 메시지를 파싱하는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.

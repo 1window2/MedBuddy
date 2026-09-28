@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'check_nearby_pharmacy_ui_boundary.dart';
+import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -42,6 +43,7 @@ class LinkedChatUI extends StatefulWidget {
   final ManageLinkedChat? control;
   final LinkedChatRealtimeService? realtimeService;
   final AuthenticatedApiClient? apiClient;
+  final Widget Function(bool hospitals)? careSelectorBuilder;
 
   // 함수이름: LinkedChatUI
   // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 필요한 입력값과 표시 설정을 초기화한다.
@@ -68,6 +70,7 @@ class LinkedChatUI extends StatefulWidget {
     this.control,
     this.realtimeService,
     this.apiClient,
+    this.careSelectorBuilder,
   });
 
   // 함수이름: createState
@@ -133,6 +136,15 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   ChatMessageKind _pendingMessageKind = ChatMessageKind.text;
   String? _pendingSlotKey;
   String? _pendingPharmacyId;
+  String? _pendingHospitalId;
+  String? _pendingHospitalDate;
+  ({
+    NearbyPharmacySelection selection,
+    bool hospitals,
+    List<ChatMedicationContext> medications,
+    String clientMessageId,
+  })?
+  _pendingCareShare;
   int? _loadingMedicationId;
   int _requestGeneration = 0;
   Future<void>? _historyRefresh;
@@ -142,6 +154,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   bool _chatInitialized = false;
   bool _wasChatVisible = false;
   bool _showMedicationContextGuide = true;
+
 
   // 함수이름: _isChatVisible
   // 함수역할: 앱이 전면에 있고 다른 화면이 채팅을 가리지 않는지 확인한다.
@@ -265,6 +278,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     });
   }
 
+
+
+
+
   // 함수이름: didChangeDependencies
   // 함수역할: 약 선택·상세 화면에서 돌아온 뒤 보이게 된 채팅의 읽음 상태를 갱신한다.
   // 매개변수: 없음. 반환값: 없음.
@@ -364,8 +381,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 정상 연결은 실시간 수신을 사용하고, 끊긴 동안에만 보완 조회한다.
   void _updateFallbackRefresh() {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (!mounted || (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
-        (_connectionState == LinkedChatConnectionState.connected && !_historyNeedsRecovery)) {
+    if (!mounted ||
+        (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
+        (_connectionState == LinkedChatConnectionState.connected &&
+            !_historyNeedsRecovery)) {
       _fallbackRefreshTimer?.cancel();
       _fallbackRefreshTimer = null;
       return;
@@ -477,7 +496,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - showLoading (bool): 진행 중 표시를 보여줄지 여부.
   // - catchUp (bool): 복귀·재연결 중 기존 조회가 진행 중이면 완료 후 누락분을 다시 확인할지 여부.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _refreshMessages({required bool showLoading, bool catchUp = false}) {
+  Future<void> _refreshMessages({
+    required bool showLoading,
+    bool catchUp = false,
+  }) {
     final pending = _historyRefresh;
     if (pending != null) {
       // 연결 복구가 조회 도중 발생했으면 완료 후 한 번 더 누락분을 확인한다.
@@ -570,6 +592,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       });
     }
   }
+
+
+
+
 
   // 함수이름: _handleRealtimeEvent
   // 함수역할: 메시지 추가·삭제·읽음 이벤트를 검증해 반영하고 복약 관련 맥락을 필요 시 갱신한다.
@@ -718,6 +744,9 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
+    String? hospitalId,
+    String? hospitalScheduleDate,
+    String? requestId,
     bool clearComposer = false,
     bool clearMedicationSelection = false,
   }) async {
@@ -744,16 +773,22 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         _pendingMedicationIdsSignature == medicationIdsSignature &&
         _pendingMessageKind == messageKind &&
         _pendingSlotKey == slotKey &&
-        _pendingPharmacyId == pharmacyId;
-    final clientMessageId = canReusePendingRequest
-        ? _pendingClientMessageId ?? _createClientMessageId()
-        : _createClientMessageId();
+        _pendingPharmacyId == pharmacyId &&
+        _pendingHospitalId == hospitalId &&
+        _pendingHospitalDate == hospitalScheduleDate;
+    final clientMessageId =
+        requestId ??
+        (canReusePendingRequest
+            ? _pendingClientMessageId ?? _createClientMessageId()
+            : _createClientMessageId());
     _pendingClientMessageId = clientMessageId;
     _pendingMessageBody = normalizedBody;
     _pendingMedicationIdsSignature = medicationIdsSignature;
     _pendingMessageKind = messageKind;
     _pendingSlotKey = slotKey;
     _pendingPharmacyId = pharmacyId;
+    _pendingHospitalId = hospitalId;
+    _pendingHospitalDate = hospitalScheduleDate;
     try {
       final message = await _control.sendMessage(
         linkId: widget.linkId,
@@ -773,6 +808,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         messageKind: messageKind,
         slotKey: slotKey,
         pharmacyId: pharmacyId,
+        hospitalId: hospitalId,
+        hospitalScheduleDate: hospitalScheduleDate,
       );
       if (!mounted) {
         return message;
@@ -833,10 +870,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     _pendingMessageKind = ChatMessageKind.text;
     _pendingSlotKey = null;
     _pendingPharmacyId = null;
+    _pendingHospitalId = null;
+    _pendingHospitalDate = null;
+    _pendingCareShare = null;
   }
 
   // 함수이름: _sendQuickReply
-  // 함수역할: 사용자 역할과 선택 약품에 맞는 빠른 답장을 보내고 환자 약 부족 답장 뒤에는 약국 선택을 연다.
+  // 함수역할: 선택 약품과 빠른 답장을 보내고 병원·약국 탐색은 메시지 버튼에서 선택하게 한다.
   // 매개변수:
   // - reply (_ChatQuickReply): 전송할 빠른 답장 종류.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
@@ -870,19 +910,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       isPatient: _isPatient,
       peerName: _peerName,
     );
-    final sent = await _submitMessage(
+    await _submitMessage(
       body: body,
       medications: medications,
       messageKind: messageKind,
-      clearMedicationSelection:
-          !_isPatient || reply != _ChatQuickReply.shortage,
+      clearMedicationSelection: true,
     );
-    if (sent != null &&
-        _isPatient &&
-        reply == _ChatQuickReply.shortage &&
-        mounted) {
-      await _showPharmacySelector(medications: medications);
-    }
   }
 
   // 선택 화면에서 정한 날짜/시간대/약 조합을 그대로 기록한다.
@@ -1031,13 +1064,31 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     }
   }
 
+  // 대화 상대와 선택한 약을 유지한 채 병원·약국 중 탐색할 대상을 고른다.
+  Future<void> _showCareOptions() async {
+    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    final medications = List<ChatMedicationContext>.of(
+      _selectedMedicationContexts,
+    );
+    final destination = await showNearbyCareOptions(
+      context: context,
+      userSetting: widget.userSetting,
+    );
+    if (destination == null || !mounted) return;
+    await _showPharmacySelector(
+      medications: medications,
+      hospitals: destination == NearbyCareDestination.hospital,
+    );
+  }
+
   // 함수이름: _showPharmacySelector
-  // 함수역할: 약국 선택 결과를 전화 확인 여부에 맞는 메시지 종류로 공유한다.
+  // 함수역할: 병원·약국을 선택한 뒤 수신자와 공유 내용을 확인한다.
   // 매개변수:
   // - medications (List<ChatMedicationContext>): 조회·선택·정렬·표시에 사용할 약품 목록.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showPharmacySelector({
     List<ChatMedicationContext> medications = const [],
+    bool hospitals = false,
   }) async {
     if (_isSending) {
       return;
@@ -1050,25 +1101,115 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
         // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
         builder: (_) =>
-            CheckNearbyPharmacyUI.selection(userSetting: widget.userSetting),
+            widget.careSelectorBuilder?.call(hospitals) ??
+            CheckNearbyPharmacyUI.selection(
+              userSetting: widget.userSetting.copyWith(
+                userHash: widget.currentUserHash,
+              ),
+              hospitals: hospitals,
+            ),
       ),
     );
     if (selection == null || !mounted) {
       return;
     }
-    final messageKind = selection.phoneVerified
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        title: Text(_text.shareCareTitle),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_text.shareRecipient(_peerName)),
+            const SizedBox(height: 12),
+            Text(
+              selection.pharmacy.name,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            Text(selection.pharmacy.address),
+            if (hospitals && selection.scheduleDate != null)
+              Text(_text.careDate(selection.scheduleDate!)),
+            if (selection.pharmacy.todayOpenTime != null &&
+                selection.pharmacy.todayCloseTime != null)
+              Text(
+                '${selection.pharmacy.todayOpenTime} - ${selection.pharmacy.todayCloseTime}',
+              ),
+            if (medications.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(medications.map((item) => item.medicationName).join(', ')),
+            ],
+            if (hospitals) ...[
+              const SizedBox(height: 8),
+              Text(_text.hospitalHoursNotice),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_text.cancel),
+          ),
+          FilledButton.icon(
+            key: const ValueKey('confirmCareShare'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.send_outlined),
+            label: Text(_text.sendMessage),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _sendCareSelection(
+      selection,
+      hospitals: hospitals,
+      medications: medications,
+    );
+  }
+
+  // 다른 메시지를 보내다 실패해도 장소 공유 자체의 재시도 ID는 유지한다.
+  Future<void> _sendCareSelection(
+    NearbyPharmacySelection selection, {
+    required bool hospitals,
+    required List<ChatMedicationContext> medications,
+    String? requestId,
+  }) async {
+    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    final messageKind = hospitals
+        ? ChatMessageKind.hospitalShare
+        : selection.phoneVerified
         ? ChatMessageKind.pharmacyPhoneVerified
         : ChatMessageKind.pharmacyShare;
     final sent = await _submitMessage(
-      body: selection.phoneVerified
+      requestId: requestId,
+      body: hospitals
+          ? _text.hospitalShareBody(selection.pharmacy.name)
+          : selection.phoneVerified
           ? _text.pharmacyPhoneVerifiedBody(selection.pharmacy.name)
           : _text.pharmacyShareBody(selection.pharmacy.name),
       medications: medications,
       messageKind: messageKind,
-      pharmacyId: selection.pharmacy.pharmacyId,
+      pharmacyId: hospitals ? null : selection.pharmacy.pharmacyId,
+      hospitalId: hospitals ? selection.pharmacy.pharmacyId : null,
+      hospitalScheduleDate: hospitals
+          ? (selection.scheduleDate ?? DateTime.now())
+                .toIso8601String()
+                .split('T')
+                .first
+          : null,
       clearMedicationSelection: true,
     );
-    if (sent != null && mounted) {
+    if (sent == null && mounted) {
+      setState(
+        () => _pendingCareShare = (
+          selection: selection,
+          hospitals: hospitals,
+          medications: List.of(medications),
+          clientMessageId: _pendingClientMessageId!,
+        ),
+      );
+    } else if (mounted) {
       // 함수이름: _showPharmacySelector.setState callback
       // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_selectedMedicationContexts = const []`로 갱신한다.
       // 매개변수:
@@ -1122,7 +1263,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 매개변수:
   // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _callPharmacy(ChatPharmacyContext pharmacy) async {
+  Future<void> _callPharmacy(ChatPlaceContext pharmacy) async {
     final succeeded = await _pharmacyActionService.requestPhoneCall(
       pharmacy.telephone,
     );
@@ -1138,7 +1279,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 매개변수:
   // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _openPharmacyDirections(ChatPharmacyContext pharmacy) async {
+  Future<void> _openPharmacyDirections(ChatPlaceContext pharmacy) async {
     final succeeded = await _pharmacyActionService.requestDirections(
       name: pharmacy.name,
       address: pharmacy.address,
@@ -1672,6 +1813,15 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                     )
                   : null,
               actions: [
+                if (!_isSelectingMessages)
+                  IconButton(
+                    key: const ValueKey('chatCareSelector'),
+                    tooltip: _text.findNearbyCare,
+                    onPressed: _isLoading || _isSending
+                        ? null
+                        : _showCareOptions,
+                    icon: const Icon(Icons.local_hospital_outlined),
+                  ),
                 IconButton(
                   key: const ValueKey('deleteChatMessages'),
                   tooltip: _text.deleteMessages,
@@ -1897,11 +2047,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                         // 매개변수:
                         // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
                         // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        onFindPharmacyRequested: (medication) {
-                          unawaited(
-                            _showPharmacySelector(medications: [medication]),
-                          );
-                        },
+                        onFindPharmacyRequested: (medications) {
+                unawaited(_showPharmacySelector(medications: medications));
+              },
+              onFindHospitalRequested: (medications) {
+                unawaited(_showPharmacySelector(medications: medications, hospitals: true));
+              },
                       ),
                     ),
             ),
@@ -2012,6 +2163,25 @@ class _LinkedChatUIState extends State<LinkedChatUI>
               const SizedBox(height: 8),
             ],
             if (_sendErrorMessage != null) ...[
+              if (_pendingCareShare != null)
+                TextButton.icon(
+                  key: const ValueKey('retryCareShare'),
+                  onPressed: _isSending
+                      ? null
+                      : () {
+                          final pending = _pendingCareShare!;
+                          unawaited(
+                            _sendCareSelection(
+                              pending.selection,
+                              hospitals: pending.hospitals,
+                              medications: pending.medications,
+                              requestId: pending.clientMessageId,
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.refresh),
+                  label: Text(_text.retry),
+                ),
               Semantics(
                 liveRegion: true,
                 child: Align(
@@ -2533,6 +2703,7 @@ class _MedicationShortageContext extends StatelessWidget {
   final bool isMine;
   final _LinkedChatText text;
   final VoidCallback onFindPharmacyRequested;
+  final VoidCallback onFindHospitalRequested;
 
   // 함수이름: _MedicationShortageContext
   // 함수역할: 약 부족 알림과 약국 찾기 동작에 필요한 입력값과 표시 설정을 초기화한다.
@@ -2547,6 +2718,7 @@ class _MedicationShortageContext extends StatelessWidget {
     required this.isMine,
     required this.text,
     required this.onFindPharmacyRequested,
+    required this.onFindHospitalRequested,
   });
 
   // 함수이름: build
@@ -2571,14 +2743,28 @@ class _MedicationShortageContext extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 7),
-        OutlinedButton.icon(
-          onPressed: onFindPharmacyRequested,
-          icon: const Icon(Icons.local_pharmacy_outlined, size: 18),
-          label: Text(text.findNearbyPharmacy),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: foreground,
-            side: BorderSide(color: foreground.withValues(alpha: 0.72)),
-          ),
+        Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: onFindHospitalRequested,
+              icon: const Icon(Icons.local_hospital_outlined, size: 18),
+              label: Text(text.findNearbyHospital),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: foreground,
+                side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onFindPharmacyRequested,
+              icon: const Icon(Icons.local_pharmacy_outlined, size: 18),
+              label: Text(text.findNearbyPharmacy),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: foreground,
+                side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -2652,7 +2838,7 @@ class _MedicationSafetyGuidance extends StatelessWidget {
 // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
 // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
 class _MessagePharmacyContext extends StatelessWidget {
-  final ChatPharmacyContext pharmacy;
+  final ChatPlaceContext pharmacy;
   final bool isMine;
   final bool phoneVerified;
   final _LinkedChatText text;
@@ -2686,6 +2872,9 @@ class _MessagePharmacyContext extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    final hospital = pharmacy is ChatHospitalContext
+        ? pharmacy as ChatHospitalContext
+        : null;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),
@@ -2700,7 +2889,13 @@ class _MessagePharmacyContext extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.local_pharmacy_outlined, color: foreground, size: 22),
+              Icon(
+                hospital == null
+                    ? Icons.local_pharmacy_outlined
+                    : Icons.local_hospital_outlined,
+                color: foreground,
+                size: 22,
+              ),
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
@@ -2717,6 +2912,18 @@ class _MessagePharmacyContext extends StatelessWidget {
               ),
             ],
           ),
+          if (hospital != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              [
+                if (hospital.departments.isNotEmpty)
+                  hospital.departments.join(' · '),
+                text.careDate(hospital.scheduleDate),
+                if (hospital.todayHours.isEmpty) text.hoursUnknown,
+              ].join('\n'),
+              style: TextStyle(color: foreground, fontSize: 12, height: 1.4),
+            ),
+          ],
           if (pharmacy.todayHours.isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(
@@ -2756,32 +2963,37 @@ class _MessagePharmacyContext extends StatelessWidget {
               ),
             ),
           ],
+          if (hospital != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              [
+                if (hospital.sourceUpdatedAt != null)
+                  text.informationChecked(hospital.sourceUpdatedAt!),
+                text.hospitalHoursNotice,
+              ].join('\n'),
+              style: TextStyle(color: foreground, fontSize: 11, height: 1.4),
+            ),
+          ],
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 7,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: pharmacy.telephone.isEmpty
-                      ? null
-                      : onCallRequested,
-                  icon: const Icon(Icons.call_outlined, size: 17),
-                  label: Text(text.call),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: foreground,
-                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
-                  ),
+              OutlinedButton.icon(
+                onPressed: pharmacy.telephone.isEmpty ? null : onCallRequested,
+                icon: const Icon(Icons.call_outlined, size: 17),
+                label: Text(text.call),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: foreground,
+                  side: BorderSide(color: foreground.withValues(alpha: 0.72)),
                 ),
               ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onDirectionsRequested,
-                  icon: const Icon(Icons.directions_outlined, size: 17),
-                  label: Text(text.directions),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: foreground,
-                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
-                  ),
+              OutlinedButton.icon(
+                onPressed: onDirectionsRequested,
+                icon: const Icon(Icons.directions_outlined, size: 17),
+                label: Text(text.directions),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: foreground,
+                  side: BorderSide(color: foreground.withValues(alpha: 0.72)),
                 ),
               ),
             ],
@@ -3110,9 +3322,10 @@ class _MessageBubble extends StatelessWidget {
   final UserSetting userSetting;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
   final ValueChanged<ChatScheduleContext>? onSchedulePressed;
-  final ValueChanged<ChatPharmacyContext> onPharmacyCallRequested;
-  final ValueChanged<ChatPharmacyContext> onPharmacyDirectionsRequested;
-  final ValueChanged<ChatMedicationContext> onFindPharmacyRequested;
+  final ValueChanged<ChatPlaceContext> onPharmacyCallRequested;
+  final ValueChanged<ChatPlaceContext> onPharmacyDirectionsRequested;
+  final ValueChanged<List<ChatMedicationContext>> onFindPharmacyRequested;
+  final ValueChanged<List<ChatMedicationContext>> onFindHospitalRequested;
 
   // 함수이름: _MessageBubble
   // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에 필요한 입력값과 표시 설정을 초기화한다.
@@ -3139,6 +3352,7 @@ class _MessageBubble extends StatelessWidget {
     required this.onPharmacyCallRequested,
     required this.onPharmacyDirectionsRequested,
     required this.onFindPharmacyRequested,
+    required this.onFindHospitalRequested,
   });
 
   // 함수이름: build
@@ -3150,130 +3364,155 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final localTime = message.createdAt.toLocal();
     final timeLabel = userSetting.formatTime(localTime.hour, localTime.minute);
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.76,
-        ),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        decoration: BoxDecoration(
-          color: isMine ? MedBuddyColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: isMine
-              ? null
-              : Border.all(color: MedBuddyColors.outline, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final medication in message.attachedMedicationContexts) ...[
-              _MessageMedicationContext(
-                medication: medication,
-                isMine: isMine,
-                isLoading: medication.medicationId == loadingMedicationId,
-                text: text,
-                onPressed: loadingMedicationId != null
-                    ? null
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onMedicationPressed(medication)`을 실행한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : () => onMedicationPressed(medication),
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (message.scheduleContext != null) ...[
-              _MessageScheduleContext(
-                schedule: message.scheduleContext!,
-                isMine: isMine,
-                text: text,
-                onPressed: onSchedulePressed == null
-                    ? null
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문의 캡처된 상태에서 `onSchedulePressed!(message.scheduleContext!)` 값을 제공한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: `onSchedulePressed!(message.scheduleContext!)`의 값.
-                    : () => onSchedulePressed!(message.scheduleContext!),
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (message.pharmacyContext != null) ...[
-              _MessagePharmacyContext(
-                pharmacy: message.pharmacyContext!,
-                isMine: isMine,
-                phoneVerified:
-                    message.messageKind ==
-                    ChatMessageKind.pharmacyPhoneVerified,
-                text: text,
-                // 함수이름: build.onCallRequested callback
-                // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onPharmacyCallRequested(message.pharmacyContext!)`을 실행한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                onCallRequested: () =>
-                    onPharmacyCallRequested(message.pharmacyContext!),
-                // 함수이름: build.onDirectionsRequested callback
-                // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onPharmacyDirectionsRequested(message.pharmacyContext!)`을 실행한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                onDirectionsRequested: () =>
-                    onPharmacyDirectionsRequested(message.pharmacyContext!),
-              ),
-              const SizedBox(height: 8),
-            ],
-            if (message.messageKind == ChatMessageKind.medicationShortage &&
-                message.attachedMedicationContexts.isNotEmpty) ...[
-              _MedicationShortageContext(
-                message: message,
-                isMine: isMine,
-                text: text,
-                // 함수이름: build.onFindPharmacyRequested callback
-                // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onFindPharmacyRequested(message.attachedMedicationContexts.first)`을 실행한다.
-                // 매개변수:
-                // - 없음.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                onFindPharmacyRequested: () => onFindPharmacyRequested(
-                  message.attachedMedicationContexts.first,
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            Text(
-              message.body,
-              style: TextStyle(
-                color: isMine ? Colors.white : const Color(0xFF111827),
-                fontSize: 15,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-              ),
+    final bubble = Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.76,
+      ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+      decoration: BoxDecoration(
+        color: isMine ? MedBuddyColors.primary : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isMine
+            ? null
+            : Border.all(color: MedBuddyColors.outline, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final medication in message.attachedMedicationContexts) ...[
+            _MessageMedicationContext(
+              medication: medication,
+              isMine: isMine,
+              isLoading: medication.medicationId == loadingMedicationId,
+              text: text,
+              onPressed: loadingMedicationId != null
+                  ? null
+                  // 함수이름: build.onPressed callback
+                  // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onMedicationPressed(medication)`을 실행한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                  : () => onMedicationPressed(medication),
             ),
-            if (message.showSafetyGuidance) ...[
-              const SizedBox(height: 8),
-              _MedicationSafetyGuidance(isMine: isMine, text: text),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              isMine && message.readAt != null
-                  ? text.readAt(timeLabel)
-                  : timeLabel,
-              style: TextStyle(
-                color: isMine
-                    ? Colors.white.withValues(alpha: 0.78)
-                    : MedBuddyColors.textMuted,
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
+            const SizedBox(height: 8),
+          ],
+          if (message.scheduleContext != null) ...[
+            _MessageScheduleContext(
+              schedule: message.scheduleContext!,
+              isMine: isMine,
+              text: text,
+              onPressed: onSchedulePressed == null
+                  ? null
+                  // 함수이름: build.onPressed callback
+                  // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문의 캡처된 상태에서 `onSchedulePressed!(message.scheduleContext!)` 값을 제공한다.
+                  // 매개변수:
+                  // - 없음.
+                  // 반환값: `onSchedulePressed!(message.scheduleContext!)`의 값.
+                  : () => onSchedulePressed!(message.scheduleContext!),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (message.pharmacyContext != null) ...[
+            _MessagePharmacyContext(
+              pharmacy: message.pharmacyContext!,
+              isMine: isMine,
+              phoneVerified:
+                  message.messageKind == ChatMessageKind.pharmacyPhoneVerified,
+              text: text,
+              // 함수이름: build.onCallRequested callback
+              // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onPharmacyCallRequested(message.pharmacyContext!)`을 실행한다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onCallRequested: () =>
+                  onPharmacyCallRequested(message.pharmacyContext!),
+              // 함수이름: build.onDirectionsRequested callback
+              // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문에서 캡처된 작업 `onPharmacyDirectionsRequested(message.pharmacyContext!)`을 실행한다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onDirectionsRequested: () =>
+                  onPharmacyDirectionsRequested(message.pharmacyContext!),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (message.hospitalContext != null) ...[
+            _MessagePharmacyContext(
+              pharmacy: message.hospitalContext!,
+              isMine: isMine,
+              phoneVerified: false,
+              text: text,
+              onCallRequested: () =>
+                  onPharmacyCallRequested(message.hospitalContext!),
+              onDirectionsRequested: () =>
+                  onPharmacyDirectionsRequested(message.hospitalContext!),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (message.messageKind == ChatMessageKind.medicationShortage &&
+              message.attachedMedicationContexts.isNotEmpty) ...[
+            _MedicationShortageContext(
+              message: message,
+              isMine: isMine,
+              text: text,
+              // 함수이름: build.onFindPharmacyRequested callback
+              // 함수역할: 메시지에 첨부된 약 목록을 유지하며 약국 검색을 연다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+              onFindPharmacyRequested: () =>
+                  onFindPharmacyRequested(message.attachedMedicationContexts),
+              onFindHospitalRequested: () =>
+                  onFindHospitalRequested(message.attachedMedicationContexts),
+            ),
+            const SizedBox(height: 8),
+          ],
+          Text(
+            message.body,
+            style: TextStyle(
+              color: isMine ? Colors.white : const Color(0xFF111827),
+              fontSize: 15,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
+          if (message.showSafetyGuidance) ...[
+            const SizedBox(height: 8),
+            _MedicationSafetyGuidance(isMine: isMine, text: text),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  onFindHospitalRequested(message.attachedMedicationContexts),
+              icon: const Icon(Icons.local_hospital_outlined, size: 18),
+              label: Text(text.findNearbyHospital),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isMine ? Colors.white : MedBuddyColors.primary,
+                side: BorderSide(
+                  color: isMine ? Colors.white : MedBuddyColors.primary,
+                ),
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 4),
+          Text(
+            isMine && message.readAt != null ? text.readAt(timeLabel) : timeLabel,
+            style: TextStyle(
+              color: isMine
+                  ? Colors.white.withValues(alpha: 0.78)
+                  : MedBuddyColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+            ),
+          ),
+        ],
       ),
+    );
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: bubble,
     );
   }
 }
@@ -3300,6 +3539,28 @@ class _LinkedChatText {
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+
+  String get findNearbyCare =>
+      isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
+  String get findNearbyHospital => isEnglish ? 'Find hospitals' : '병원 찾기';
+  String get shareCareTitle => isEnglish ? 'Share place' : '장소 공유';
+  String shareRecipient(String name) =>
+      isEnglish ? 'Send to: $name' : '받는 사람: $name';
+  String careDate(DateTime date) => isEnglish
+      ? 'Consultation date: ${date.toIso8601String().split('T').first}'
+      : '진료 날짜: ${date.year}년 ${date.month}월 ${date.day}일';
+  String hospitalShareBody(String name) =>
+      isEnglish ? 'I am sharing $name.' : '$name 병원 정보를 공유해요.';
+  String get hoursUnknown => isEnglish ? 'Hours unavailable' : '진료시간 정보 없음';
+  String get hospitalHoursNotice => isEnglish
+      ? 'Hours may change. Call before visiting. This is not a reservation.'
+      : '진료시간은 변경될 수 있어요. 방문 전 전화로 확인해주세요. 예약이 확정된 것은 아니에요.';
+  String informationChecked(DateTime date) {
+    final local = date.toLocal();
+    final stamp =
+        '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return isEnglish ? 'Information checked: $stamp' : '정보 확인: $stamp';
+  }
 
   // 함수이름: family
   // 함수역할: 현재 언어와 입력값에 맞춰 "Family" 문구를 제공한다.
@@ -3715,8 +3976,7 @@ class _LinkedChatText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get findNearbyPharmacy =>
-      isEnglish ? 'Find nearby pharmacies' : '근처 운영 약국 찾기';
+  String get findNearbyPharmacy => isEnglish ? 'Find pharmacies' : '약국 찾기';
   // 함수이름: pharmacyShareBody
   // 함수역할: 현재 언어와 입력값에 맞춰 "$pharmacyName 정보를 공유했어요." 문구를 제공한다.
   // 매개변수:

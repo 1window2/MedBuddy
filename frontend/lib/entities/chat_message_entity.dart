@@ -14,7 +14,8 @@ enum ChatMessageKind {
   medicationShortage,
   medicationDiscomfort,
   pharmacyShare,
-  pharmacyPhoneVerified;
+  pharmacyPhoneVerified,
+  hospitalShare;
 
   // 함수이름: wireName
   // 함수역할: 현재 메시지 유형을 REST·WebSocket에서 공유하는 snake_case 전송값으로 변환한다.
@@ -30,6 +31,7 @@ enum ChatMessageKind {
     ChatMessageKind.medicationDiscomfort => 'medication_discomfort',
     ChatMessageKind.pharmacyShare => 'pharmacy_share',
     ChatMessageKind.pharmacyPhoneVerified => 'pharmacy_phone_verified',
+    ChatMessageKind.hospitalShare => 'hospital_share',
   };
 
   // 함수이름: fromWireName
@@ -145,7 +147,8 @@ class ChatMedicationContext {
          * - item (dynamic): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
          * - 정규화된 시간대 키 또는 빈 문자열.
-         */ (item) => item?.toString().trim().toLowerCase() ?? '',
+         */
+          (item) => item?.toString().trim().toLowerCase() ?? '',
         )
         .where(supportedKeys.contains)
         .toSet()
@@ -252,8 +255,8 @@ class ChatScheduleContext {
 // - latitude (double): WGS84 위도(도 단위)
 // - longitude (double): WGS84 경도(도 단위)
 // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
-class ChatPharmacyContext {
-  final String pharmacyId;
+// 병원·약국 카드의 연락처와 길찾기 데이터는 같은 계약을 사용한다.
+abstract class ChatPlaceContext {
   final String name;
   final String address;
   final String telephone;
@@ -261,6 +264,20 @@ class ChatPharmacyContext {
   final double latitude;
   final double longitude;
   final DateTime? sourceUpdatedAt;
+
+  const ChatPlaceContext({
+    required this.name,
+    required this.address,
+    required this.telephone,
+    required this.latitude,
+    required this.longitude,
+    this.todayHours = '',
+    this.sourceUpdatedAt,
+  });
+}
+
+class ChatPharmacyContext extends ChatPlaceContext {
+  final String pharmacyId;
 
   // 함수이름: ChatPharmacyContext
   // 함수역할: 공유 약국의 주소·전화·좌표·영업시간과 원본 갱신 시각을 메시지 맥락으로 보존한다.
@@ -277,13 +294,13 @@ class ChatPharmacyContext {
   // - ChatPharmacyContext: 초기화된 인스턴스.
   const ChatPharmacyContext({
     required this.pharmacyId,
-    required this.name,
-    required this.address,
-    required this.telephone,
-    this.todayHours = '',
-    required this.latitude,
-    required this.longitude,
-    this.sourceUpdatedAt,
+    required super.name,
+    required super.address,
+    required super.telephone,
+    super.todayHours,
+    required super.latitude,
+    required super.longitude,
+    super.sourceUpdatedAt,
   });
 
   // 함수이름: ChatPharmacyContext.fromJson
@@ -309,6 +326,51 @@ class ChatPharmacyContext {
       sourceUpdatedAt: DateTime.tryParse(
         ChatMessage._readString(json['source_updated_at']),
       ),
+    );
+  }
+}
+
+// 병원 공유는 선택한 진료 날짜와 정보 확인 시각을 별도로 보존한다.
+class ChatHospitalContext extends ChatPlaceContext {
+  final String hospitalId;
+  final List<String> departments;
+  final DateTime scheduleDate;
+
+  const ChatHospitalContext({
+    required this.hospitalId,
+    required super.name,
+    required super.address,
+    required super.telephone,
+    required super.latitude,
+    required super.longitude,
+    super.todayHours,
+    super.sourceUpdatedAt,
+    required this.departments,
+    required this.scheduleDate,
+  });
+
+  factory ChatHospitalContext.fromJson(Map<String, dynamic> json) {
+    final base = ChatPharmacyContext.fromJson({
+      ...json,
+      'pharmacy_id': json['hospital_id'],
+    });
+    final date = DateTime.tryParse(
+      ChatMessage._readString(json['schedule_date']),
+    );
+    if (date == null) throw const FormatException('병원 조회 날짜가 없습니다.');
+    return ChatHospitalContext(
+      hospitalId: base.pharmacyId,
+      name: base.name,
+      address: base.address,
+      telephone: base.telephone,
+      latitude: base.latitude,
+      longitude: base.longitude,
+      todayHours: base.todayHours,
+      sourceUpdatedAt: base.sourceUpdatedAt,
+      departments: (json['departments'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      scheduleDate: date,
     );
   }
 }
@@ -353,6 +415,7 @@ class ChatMessage {
   final List<ChatMedicationContext> medicationContexts;
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
+  final ChatHospitalContext? hospitalContext;
   final int? remainingDays;
   final DateTime? courseEndDate;
   final bool showSafetyGuidance;
@@ -394,6 +457,7 @@ class ChatMessage {
     this.medicationContexts = const [],
     this.scheduleContext,
     this.pharmacyContext,
+    this.hospitalContext,
     this.remainingDays,
     this.courseEndDate,
     this.showSafetyGuidance = false,
@@ -434,6 +498,7 @@ class ChatMessage {
         : const <String, dynamic>{};
     final rawScheduleContext = context['schedule_context'];
     final rawPharmacyContext = context['pharmacy_context'];
+    final rawHospitalContext = context['hospital_context'];
     final singleMedicationContext = rawMedicationContext is Map
         ? ChatMedicationContext.fromJson(
             Map<String, dynamic>.from(rawMedicationContext),
@@ -467,6 +532,11 @@ class ChatMessage {
       pharmacyContext: rawPharmacyContext is Map
           ? ChatPharmacyContext.fromJson(
               Map<String, dynamic>.from(rawPharmacyContext),
+            )
+          : null,
+      hospitalContext: rawHospitalContext is Map
+          ? ChatHospitalContext.fromJson(
+              Map<String, dynamic>.from(rawHospitalContext),
             )
           : null,
       remainingDays: _readInt(context['remaining_days']),
@@ -522,6 +592,7 @@ class ChatMessage {
       medicationContexts: redact ? const [] : medicationContexts,
       scheduleContext: redact ? null : scheduleContext,
       pharmacyContext: redact ? null : pharmacyContext,
+      hospitalContext: redact ? null : hospitalContext,
       remainingDays: redact ? null : remainingDays,
       courseEndDate: redact ? null : courseEndDate,
       showSafetyGuidance: !redact && showSafetyGuidance,
@@ -602,7 +673,8 @@ class ChatMessage {
        * - 없음.
        * 반환값:
        * - 중복 제거 목록에 사용할 약 문맥.
-       */ () => context,
+       */
+        () => context,
       );
     }
     return contextsById.values.toList(growable: false);

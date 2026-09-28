@@ -104,7 +104,8 @@ class ManageLinkedChat {
          * - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
          * - 메시지 본문과 복약 문맥을 담은 채팅 메시지.
-         */ (item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)),
+         */
+          (item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(growable: false);
   }
@@ -223,6 +224,8 @@ class ManageLinkedChat {
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
+    String? hospitalId,
+    String? hospitalScheduleDate,
     int? sourceAlertId,
   }) async {
     final normalizedMedicationIds = medicationIds
@@ -233,7 +236,8 @@ class ManageLinkedChat {
          * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
          * 반환값:
          * - ID가 양수이면 true.
-         */ (id) => id > 0,
+         */
+          (id) => id > 0,
         )
         .toSet()
         .toList(growable: false);
@@ -255,10 +259,17 @@ class ManageLinkedChat {
               'medication_ids': normalizedMedicationIds,
             'slot_key': ?slotKey,
             'pharmacy_id': ?pharmacyId,
+            'hospital_id': ?hospitalId,
+            'hospital_schedule_date': ?hospitalScheduleDate,
             'source_alert_id': ?sourceAlertId,
           }),
         )
-        .timeout(_requestTimeout);
+        // 병원 정보 확인의 서버 제한(22초)보다 응답 대기를 조금 길게 둔다.
+        .timeout(
+          messageKind == ChatMessageKind.hospitalShare
+              ? const Duration(seconds: 25)
+              : _requestTimeout,
+        );
     final decoded = _decodeSuccessfulResponse(response, '메시지를 보내지 못했습니다.');
     final rawMessage = decoded['data'];
     if (rawMessage is! Map) {
@@ -328,7 +339,8 @@ class ManageLinkedChat {
          * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
          * 반환값:
          * - ID가 1보다 작으면 true.
-         */ (id) => id < 1,
+         */
+          (id) => id < 1,
         )) {
       throw ArgumentError('Select between 1 and 50 messages.');
     }
