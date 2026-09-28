@@ -135,6 +135,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   String? _pendingPharmacyId;
   int? _loadingMedicationId;
   int _requestGeneration = 0;
+  Future<void>? _historyRefresh;
+  bool _historyRefreshAgain = false;
+  bool _historyNeedsRecovery = false;
+  int? _historyRecoveryBoundary;
+  bool _chatInitialized = false;
+  bool _wasChatVisible = false;
   bool _showMedicationContextGuide = true;
 
   // 함수이름: _isChatVisible
@@ -228,6 +234,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // - 없음.
         // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() => _connectionState = state);
+        _updateFallbackRefresh();
+        if (state == LinkedChatConnectionState.connected && _isChatVisible) {
+          unawaited(_refreshMessages(showLoading: false, catchUp: true));
+        }
       }
     });
     // 함수이름: initState.Timer callback
@@ -261,6 +271,15 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final visible = _isChatVisible;
+    if (visible && !_wasChatVisible && _chatInitialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _isChatVisible) {
+          unawaited(_refreshMessages(showLoading: false, catchUp: true));
+        }
+      });
+    }
+    _wasChatVisible = visible;
     if (_isChatVisible && _messages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_markLatestIncomingRead());
@@ -304,13 +323,16 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_realtimeService.start());
-      unawaited(_refreshMessages(showLoading: false));
+      _updateFallbackRefresh();
+      unawaited(_refreshMessages(showLoading: false, catchUp: true));
       return;
     }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
+      _fallbackRefreshTimer?.cancel();
+      _fallbackRefreshTimer = null;
       unawaited(_realtimeService.stop());
     }
   }
@@ -321,6 +343,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _initializeChat() async {
+    _chatInitialized = true;
     await Future.wait([
       _refreshMessages(showLoading: true),
       _refreshMedicationContexts(),
@@ -335,8 +358,22 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     // 매개변수:
     // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+    _updateFallbackRefresh();
+  }
+
+  // 정상 연결은 실시간 수신을 사용하고, 끊긴 동안에만 보완 조회한다.
+  void _updateFallbackRefresh() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (!mounted || (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
+        (_connectionState == LinkedChatConnectionState.connected && !_historyNeedsRecovery)) {
+      _fallbackRefreshTimer?.cancel();
+      _fallbackRefreshTimer = null;
+      return;
+    }
+    // 재연결 재시도는 기존 조회 주기를 미루지 않는다.
+    if (_fallbackRefreshTimer?.isActive == true) return;
     _fallbackRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      unawaited(_refreshMessages(showLoading: false));
+      if (_isChatVisible) unawaited(_refreshMessages(showLoading: false));
     });
   }
 
@@ -438,8 +475,29 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 함수역할: 최초 기록과 WebSocket 누락 가능성이 있는 메시지를 REST 조회로 보완한다.
   // 매개변수:
   // - showLoading (bool): 진행 중 표시를 보여줄지 여부.
+  // - catchUp (bool): 복귀·재연결 중 기존 조회가 진행 중이면 완료 후 누락분을 다시 확인할지 여부.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _refreshMessages({required bool showLoading}) async {
+  Future<void> _refreshMessages({required bool showLoading, bool catchUp = false}) {
+    final pending = _historyRefresh;
+    if (pending != null) {
+      // 연결 복구가 조회 도중 발생했으면 완료 후 한 번 더 누락분을 확인한다.
+      _historyRefreshAgain |= catchUp;
+      return pending;
+    }
+    return _historyRefresh = _refreshHistoryLoop(showLoading).whenComplete(() {
+      _historyRefresh = null;
+    });
+  }
+
+  Future<void> _refreshHistoryLoop(bool showLoading) async {
+    do {
+      _historyRefreshAgain = false;
+      await _loadMessages(showLoading: showLoading);
+      showLoading = false;
+    } while (_historyRefreshAgain && _isChatVisible);
+  }
+
+  Future<void> _loadMessages({required bool showLoading}) async {
     final generation = _requestGeneration;
     if (showLoading && mounted) {
       // 함수이름: _refreshMessages.setState callback
@@ -453,10 +511,34 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       });
     }
     try {
-      final messages = await _control.requestHistory(linkId: widget.linkId);
+      _historyRecoveryBoundary ??= _messages.isEmpty ? null :
+          _messages.map((m) => m.messageId).reduce((a, b) => a > b ? a : b);
+      final newestKnownId = _historyRecoveryBoundary;
+      var page = await _control.requestHistory(linkId: widget.linkId);
+      final messages = [...page];
+      // 긴 연결 단절에서도 마지막으로 본 메시지까지 이어서 읽어 누락을 막는다.
+      int? previousBoundary;
+      while (newestKnownId != null && page.length == 50) {
+        final oldest = page.map((m) => m.messageId).reduce((a, b) => a < b ? a : b);
+        if (oldest <= newestKnownId ||
+            (previousBoundary != null && oldest >= previousBoundary)) {
+          break;
+        }
+        if (!mounted || generation != _requestGeneration || !_isChatVisible) {
+          _historyNeedsRecovery = true;
+          return;
+        }
+        previousBoundary = oldest;
+        page = await _control.requestHistory(linkId: widget.linkId,
+            beforeMessageId: oldest);
+        messages.addAll(page);
+      }
       if (!mounted || generation != _requestGeneration) {
         return;
       }
+      _historyRecoveryBoundary = null;
+      _historyNeedsRecovery = false;
+      _updateFallbackRefresh();
       // 함수이름: _refreshMessages.setState callback
       // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_messages = _mergeMessages(_messages, messages); _isLoading = false; _errorMessage = null`로 갱신한다.
       // 매개변수:
@@ -473,6 +555,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       if (!mounted || generation != _requestGeneration) {
         return;
       }
+      _historyNeedsRecovery = true;
+      _updateFallbackRefresh();
       // 함수이름: _refreshMessages.setState callback
       // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isLoading = false; _errorMessage = _text.historyLoadFailed`로 갱신한다.
       // 매개변수:

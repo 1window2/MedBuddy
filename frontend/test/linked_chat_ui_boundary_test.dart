@@ -44,6 +44,11 @@ class _RetryChatControl extends ManageLinkedChat {
   final List<ChatMessage> historyMessages;
   int sendAttempts = 0;
   int detailRequests = 0;
+  int historyRequests = 0;
+  bool failHistory = false;
+  Completer<List<ChatMessage>>? historyGate;
+  Map<int?, List<ChatMessage>>? historyPages;
+  final historyBoundaries = <int?>[];
 
   // 함수이름: _RetryChatControl
   // 함수역할:
@@ -84,7 +89,13 @@ class _RetryChatControl extends ManageLinkedChat {
     required int linkId,
     int? beforeMessageId,
     int limit = 50,
-  }) async => historyMessages;
+  }) async {
+    historyRequests++;
+    if (failHistory) throw StateError('history unavailable');
+    historyBoundaries.add(beforeMessageId);
+    if (historyPages != null) return historyPages![beforeMessageId] ?? [];
+    return historyGate != null ? historyGate!.future : historyMessages;
+  }
 
   // 함수이름: requestMedicationContexts
   // 함수역할:
@@ -632,6 +643,112 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 재연결 상태가 반복되어도 보완 조회의 대기 시간을 처음부터 다시 세지 않는다.
+  testWidgets('repeated reconnect attempts do not postpone fallback polling', (tester) async {
+    final control = _RetryChatControl();
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
+      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
+      realtimeService: realtime,
+    )));
+    await tester.pumpAndSettle();
+    final initial = control.historyRequests;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      realtime._states.add(LinkedChatConnectionState.reconnecting);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+    }
+    await tester.pumpAndSettle();
+    expect(control.historyRequests, initial + 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 실시간 연결이 살아 있어도 누락분 조회 실패는 복구될 때까지 재시도한다.
+  testWidgets('failed catch-up retries even after websocket connected', (tester) async {
+    final control = _RetryChatControl();
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
+      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
+      realtimeService: realtime,
+    )));
+    await tester.pumpAndSettle();
+    control.failHistory = true;
+    realtime._states.add(LinkedChatConnectionState.connected);
+    await tester.pumpAndSettle();
+    final failed = control.historyRequests;
+    control.failHistory = false;
+    await tester.pump(const Duration(seconds: 12));
+    await tester.pumpAndSettle();
+    expect(control.historyRequests, failed + 1);
+    await tester.pump(const Duration(seconds: 36));
+    expect(control.historyRequests, failed + 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+  // 재연결 후 50개를 넘는 누락 메시지도 이미 보던 기록까지 페이지로 이어 읽는다.
+  testWidgets('reconnection fills a gap larger than the recent history page', (tester) async {
+    final control = _RetryChatControl(historyMessages: [_deletionMessage(id: 1)]);
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
+      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
+      realtimeService: realtime,
+    )));
+    await tester.pumpAndSettle();
+    control.historyBoundaries.clear();
+    control.historyPages = {
+      null: [for (var i = 100; i >= 51; i--) _deletionMessage(id: i)],
+      51: [for (var i = 50; i >= 1; i--) _deletionMessage(id: i)],
+    };
+    realtime._states.add(LinkedChatConnectionState.connected);
+    await tester.pumpAndSettle();
+    expect(control.historyBoundaries, [null, 51]);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+  // 정상 연결에서는 반복 조회하지 않고 장애·복귀 때만 한 요청씩 보완한다.
+  testWidgets('realtime polling stops while connected or backgrounded', (tester) async {
+    final control = _RetryChatControl();
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
+      currentUserHash: 'patient-a', patientHash: 'patient-a',
+      control: control, realtimeService: realtime,
+    )));
+    await tester.pumpAndSettle();
+    final initial = control.historyRequests;
+    await tester.pump(const Duration(seconds: 36));
+    expect(control.historyRequests, initial);
+    realtime._states.add(LinkedChatConnectionState.reconnecting);
+    await tester.pump();
+    control.historyGate = Completer<List<ChatMessage>>();
+    await tester.pump(const Duration(seconds: 12));
+    expect(control.historyRequests, initial + 1);
+    await tester.pump(const Duration(seconds: 36));
+    expect(control.historyRequests, initial + 1);
+    control.historyGate!.complete([]);
+    await tester.pumpAndSettle();
+    control.historyGate = null;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 36));
+    expect(control.historyRequests, initial + 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(control.historyRequests, greaterThan(initial + 1));
+    final resumed = control.historyRequests;
+    await tester.pump(const Duration(seconds: 36));
+    expect(control.historyRequests, resumed);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
   // 함수이름: 선택 시간대 오프라인 저장 테스트
   // 함수역할: 저녁 약을 선택하면 추가 확인창 없이 원래 날짜·연동·시간대를 대기열에 전달하고 별도 채팅 요청은 보내지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.

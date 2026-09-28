@@ -166,6 +166,8 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
         return;
       }
       _socket = socket;
+      // 응답 없는 연결도 장애로 감지해 재연결과 REST 보완 조회로 전환한다.
+      socket.pingInterval = const Duration(seconds: 30);
       _reconnectAttempt = 0;
       _stateController.add(LinkedChatConnectionState.connected);
       _startHeartbeat(socket, generation);
