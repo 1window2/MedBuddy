@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
+import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
@@ -39,7 +41,10 @@ class _RetryChatControl extends ManageLinkedChat {
   final List<List<int>> medicationIdGroups = [];
   final List<ChatMessageKind> messageKinds = [];
   final List<String?> slotKeys = [];
+  final List<String?> hospitalIds = [];
+  final List<String?> hospitalDates = [];
   final bool failFirstSend;
+  bool failSends = false;
   final List<ChatScheduleContext> scheduleContexts;
   final List<ChatMessage> historyMessages;
   int sendAttempts = 0;
@@ -49,6 +54,26 @@ class _RetryChatControl extends ManageLinkedChat {
   Completer<List<ChatMessage>>? historyGate;
   Map<int?, List<ChatMessage>>? historyPages;
   final historyBoundaries = <int?>[];
+  final markedReadIds = <int>[];
+  ChatUnreadSummary? unreadSummary;
+
+  // 실제 읽음 집계 없이 입장 직전 미확인 경계를 주입한다.
+  @override
+  Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
+    if (unreadSummary != null) return unreadSummary!;
+    final incoming = historyMessages
+        .where(
+          (m) =>
+              m.senderHash != 'patient-a' &&
+              m.readAt == null &&
+              !m.deletedForEveryone,
+        )
+        .toList();
+    return ChatUnreadSummary(
+      count: incoming.length,
+      firstMessageId: incoming.isEmpty ? null : incoming.first.messageId,
+    );
+  }
 
   // 함수이름: _RetryChatControl
   // 함수역할:
@@ -183,6 +208,8 @@ class _RetryChatControl extends ManageLinkedChat {
     ChatMessageKind messageKind = ChatMessageKind.text,
     String? slotKey,
     String? pharmacyId,
+    String? hospitalId,
+    String? hospitalScheduleDate,
   }) async {
     sendAttempts += 1;
     clientMessageIds.add(clientMessageId);
@@ -190,7 +217,9 @@ class _RetryChatControl extends ManageLinkedChat {
     medicationIdGroups.add(List<int>.unmodifiable(medicationIds));
     messageKinds.add(messageKind);
     slotKeys.add(slotKey);
-    if (failFirstSend && sendAttempts == 1) {
+    hospitalIds.add(hospitalId);
+    hospitalDates.add(hospitalScheduleDate);
+    if (failSends || (failFirstSend && sendAttempts == 1)) {
       throw StateError('temporary failure');
     }
     final contexts = medicationIds
@@ -234,7 +263,9 @@ class _RetryChatControl extends ManageLinkedChat {
   Future<void> markRead({
     required int linkId,
     required int throughMessageId,
-  }) async {}
+  }) async {
+    markedReadIds.add(throughMessageId);
+  }
 }
 
 // 명시적 복용 확인 요청만 기록하고 일반 메시지 전송과 구분하는 대역.
@@ -643,14 +674,510 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 발신 말풍선의 1은 상대 읽음 범위만큼 사라지고 오래된 조회가 복원하지 않는다.
+  testWidgets('outgoing unread receipt clears on peer read and stays cleared', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [
+        _deletionMessage(id: 1),
+        _deletionMessage(id: 2),
+        _deletionMessage(id: 3, sender: 'caregiver-a'),
+      ],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-3')), findsNothing);
+    realtime._events.add({
+      'type': 'chat_read',
+      'reader_hash': 'caregiver-a',
+      'through_message_id': 1,
+      'read_at': '2026-09-28T11:00:00Z',
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsNothing);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-2')), findsOneWidget);
+    realtime._states.add(LinkedChatConnectionState.connected);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsNothing);
+    realtime._events.add({
+      'type': 'chat_read',
+      'reader_hash': 'caregiver-a',
+      'through_message_id': 2,
+      'read_at': '2026-09-28T11:01:00Z',
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-unread-receipt-2')), findsNothing);
+    expect(find.textContaining('· 읽음'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 길이가 다른 긴 대화도 첫 진입과 화면 크기 변화 후 최신 메시지가 보인다.
+  testWidgets(
+    'long variable-height history opens at latest and keeps unread boundary',
+    (tester) async {
+      final latestRequest = ValueNotifier<int>(0);
+      addTearDown(latestRequest.dispose);
+      await tester.binding.setSurfaceSize(const Size(360, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final control = _RetryChatControl(
+        historyMessages: [
+          for (var id = 1; id <= 50; id++)
+            ChatMessage(
+              messageId: id,
+              linkId: 17,
+              senderHash: 'caregiver-a',
+              clientMessageId: 'long-$id',
+              body: 'Message $id ${'긴 대화 내용 ' * (id % 9)}',
+              createdAt: DateTime(2026, 9, 28, 10, id),
+              readAt: id < 48 ? DateTime(2026, 9, 28, 11) : null,
+            ),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            latestMessageRequest: latestRequest,
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final list = tester.widget<ListView>(
+        find.byKey(const Key('chat-message-list')),
+      );
+      expect(list.reverse, isTrue);
+      expect(list.controller!.offset, 0);
+      expect(
+        find.byKey(const ValueKey('chat-message-50')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(control.markedReadIds, contains(50));
+      await tester.binding.setSurfaceSize(const Size(360, 500));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-message-50')).hitTestable(),
+        findsOneWidget,
+      );
+      list.controller!.jumpTo(300);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('chat-message-48')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('chat-unread-divider')), findsOneWidget);
+      expect(find.text('여기까지 읽음'), findsOneWidget);
+      // 과거 대화를 읽고 있을 때 받은 메시지는 최신 위치로 돌아오기 전에는 읽지 않는다.
+      list.controller!.jumpTo(900);
+      await tester.pumpAndSettle();
+      realtime._events.add({
+        'type': 'chat_message',
+        'message': {
+          'message_id': 51,
+          'link_id': 17,
+          'sender_hash': 'caregiver-a',
+          'client_message_id': 'new-51',
+          'body': 'New incoming',
+          'created_at': '2026-09-28T12:00:00Z',
+        },
+      });
+      await tester.pumpAndSettle();
+      expect(list.controller!.offset, greaterThan(80));
+      expect(control.markedReadIds, isNot(contains(51)));
+      await tester.drag(
+        find.byKey(const Key('chat-message-list')),
+        const Offset(0, -1600),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('New incoming').hitTestable(), findsOneWidget);
+      expect(control.markedReadIds, contains(51));
+      await tester.enterText(find.byType(TextField), '작성 중인 메시지');
+      list.controller!.jumpTo(900);
+      await tester.pumpAndSettle();
+      latestRequest.value++;
+      await tester.pumpAndSettle();
+      expect(list.controller!.offset, 0);
+      expect(find.text('New incoming').hitTestable(), findsOneWidget);
+      expect(find.text('작성 중인 메시지'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  // 미확인 시작이 최근 50개보다 앞서도 이전 대화를 열면 같은 경계가 나타난다.
+  testWidgets('older history retains the entry unread boundary', (
+    tester,
+  ) async {
+    final control = _RetryChatControl()
+      ..unreadSummary = const ChatUnreadSummary(count: 60, firstMessageId: 1);
+    control.historyPages = {
+      null: [
+        for (var i = 11; i <= 60; i++)
+          _deletionMessage(id: i, sender: 'caregiver-a'),
+      ],
+      11: [
+        for (var i = 1; i <= 10; i++)
+          _deletionMessage(id: i, sender: 'caregiver-a'),
+      ],
+    };
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final list = tester.widget<ListView>(
+      find.byKey(const Key('chat-message-list')),
+    );
+    for (
+      var attempt = 0;
+      attempt < 8 &&
+          find.byKey(const Key('chat-load-older')).evaluate().isEmpty;
+      attempt++
+    ) {
+      list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(find.byKey(const Key('chat-load-older')));
+    await tester.tap(find.byKey(const Key('chat-load-older')));
+    await tester.pumpAndSettle();
+    for (
+      var attempt = 0;
+      attempt < 8 &&
+          find.byKey(const Key('chat-unread-divider')).evaluate().isEmpty;
+      attempt++
+    ) {
+      list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('여기까지 읽음'), findsOneWidget);
+    expect(control.historyBoundaries, contains(11));
+    expect(find.byKey(const Key('chat-load-older')), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 공유 확인을 취소하면 전송하지 않고, 실패 재시도는 같은 식별자와 날짜를 사용한다.
+  testWidgets(
+    'hospital sharing confirms recipient and retries the same request',
+    (tester) async {
+      final control = _RetryChatControl();
+      final realtime = _FakeRealtimeService();
+      final selectedModes = <bool>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            peerName: '보호자 테스트',
+            control: control,
+            realtimeService: realtime,
+            careSelectorBuilder: (hospitals) {
+              selectedModes.add(hospitals);
+              return Scaffold(
+                body: Builder(
+                  builder: (context) => FilledButton(
+                    key: const Key('pick-test-hospital'),
+                    onPressed: () => Navigator.pop(
+                      context,
+                      NearbyPharmacySelection(
+                        pharmacy: NearbyPharmacy.fromJson({
+                          'hospital_id': 'A123',
+                          'name': '공유병원',
+                          'address': '서울',
+                          'latitude': 37.55,
+                          'longitude': 126.92,
+                        }),
+                        phoneVerified: false,
+                        scheduleDate: DateTime(2026, 10, 5),
+                      ),
+                    ),
+                    child: const Text('병원 선택'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final confirm in [false, true]) {
+        await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('근처 병원'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('pick-test-hospital')));
+        await tester.pumpAndSettle();
+        expect(find.text('받는 사람: 보호자 테스트'), findsOneWidget);
+        expect(find.text('진료 날짜: 2026년 10월 5일'), findsOneWidget);
+        await tester.tap(
+          confirm
+              ? find.byKey(const ValueKey('confirmCareShare'))
+              : find.text('취소'),
+        );
+        await tester.pumpAndSettle();
+        expect(control.sendAttempts, confirm ? 1 : 0);
+      }
+      // 일반 메시지 실패가 끼어도 먼저 실패한 병원 공유 ID를 잃지 않는다.
+      control.failSends = true;
+      await tester.enterText(find.byType(TextField), '다른 메시지');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('chatSendButton')));
+      await tester.pumpAndSettle();
+      control.failSends = false;
+      await tester.tap(find.byKey(const ValueKey('retryCareShare')));
+      await tester.pumpAndSettle();
+      expect(selectedModes, [true, true]);
+      expect(control.messageKinds, [
+        ChatMessageKind.hospitalShare,
+        ChatMessageKind.text,
+        ChatMessageKind.hospitalShare,
+      ]);
+      expect(control.hospitalIds, ['A123', null, 'A123']);
+      expect(control.hospitalDates, ['2026-10-05', null, '2026-10-05']);
+      expect(control.clientMessageIds[0], control.clientMessageIds[2]);
+      expect(control.clientMessageIds[0], isNot(control.clientMessageIds[1]));
+      expect(find.byKey(const ValueKey('retryCareShare')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
+  // 약 부족·불편 안내에서는 메시지의 모든 약 첨부를 유지하고 검색은 명시적 선택으로만 연다.
+  for (final kind in [
+    ChatMessageKind.medicationShortage,
+    ChatMessageKind.medicationDiscomfort,
+  ]) {
+    testWidgets('$kind offers hospital search without automatic navigation', (
+      tester,
+    ) async {
+      final control = _RetryChatControl(
+        failFirstSend: false,
+        historyMessages: [
+          ChatMessage(
+            messageId: 10,
+            linkId: 17,
+            senderHash: 'caregiver-a',
+            clientMessageId: 'care_message_10',
+            body: '테스트 복약 메시지',
+            createdAt: DateTime.now().toUtc(),
+            messageKind: kind,
+            showSafetyGuidance: kind == ChatMessageKind.medicationDiscomfort,
+            medicationContexts: const [
+              ChatMedicationContext(medicationId: 91, medicationName: '테스트정'),
+              ChatMedicationContext(medicationId: 92, medicationName: '저녁정'),
+            ],
+          ),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      final modes = <bool>[];
+      await tester.binding.setSurfaceSize(const Size(600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+            careSelectorBuilder: (hospital) {
+              modes.add(hospital);
+              return const Scaffold(body: Text('선택 화면'));
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(modes, isEmpty);
+      expect(find.text('병원 찾기'), findsOneWidget);
+      if (kind == ChatMessageKind.medicationShortage) {
+        expect(find.text('약국 찾기'), findsOneWidget);
+      }
+      await tester.ensureVisible(find.text('병원 찾기'));
+      await tester.tap(find.text('병원 찾기'));
+      await tester.pumpAndSettle();
+      expect(modes, [true]);
+      expect(control.sendAttempts, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
+
+  // 보낸 메시지와 받은 메시지 모두 안전 안내 아래에 병원 찾기 버튼의 간격을 확보한다.
+  for (final mine in [true, false]) {
+    for (final language in ['ko', 'en']) {
+      testWidgets('safety guidance separates hospital action $mine/$language', (
+        tester,
+      ) async {
+        final control = _RetryChatControl(
+          historyMessages: [
+            ChatMessage(
+              messageId: 12,
+              linkId: 17,
+              senderHash: mine ? 'patient-a' : 'caregiver-a',
+              clientMessageId: 'discomfort-layout',
+              body: 'Test discomfort',
+              createdAt: DateTime.now().toUtc(),
+              messageKind: ChatMessageKind.medicationDiscomfort,
+              showSafetyGuidance: true,
+            ),
+          ],
+        );
+        final realtime = _FakeRealtimeService();
+        await tester.binding.setSurfaceSize(const Size(360, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+              child: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: 'patient-a',
+                patientHash: 'patient-a',
+                userSetting: UserSetting(language: language),
+                control: control,
+                realtimeService: realtime,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final notice = find
+            .ancestor(
+              of: find.byIcon(Icons.health_and_safety_outlined),
+              matching: find.byType(Container),
+            )
+            .first;
+        final button = find.widgetWithText(
+          OutlinedButton,
+          language == 'ko' ? '병원 찾기' : 'Find hospitals',
+        );
+        expect(
+          tester.getRect(button).top - tester.getRect(notice).bottom,
+          greaterThanOrEqualTo(12),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      });
+    }
+  }
+
+  // 병원 카드의 날짜·확인 시각·방문 안내와 전화·길찾기가 작은 화면에서도 겹치지 않는다.
+  for (final language in ['ko', 'en']) {
+    testWidgets('hospital card fits narrow large-text chat in $language', (
+      tester,
+    ) async {
+      final control = _RetryChatControl(
+        historyMessages: [
+          ChatMessage(
+            messageId: 11,
+            linkId: 17,
+            senderHash: 'caregiver-a',
+            clientMessageId: 'hospital_message_11',
+            body: 'Shared hospital',
+            createdAt: DateTime.now().toUtc(),
+            messageKind: ChatMessageKind.hospitalShare,
+            hospitalContext: ChatHospitalContext(
+              hospitalId: 'A123',
+              name: '메드버디병원',
+              address: '서울특별시 마포구',
+              telephone: '02-000-0000',
+              latitude: 37.55,
+              longitude: 126.92,
+              todayHours: '09:00 - 19:00',
+              departments: const ['내과', '이비인후과'],
+              scheduleDate: DateTime(2026, 10, 5),
+              sourceUpdatedAt: DateTime.utc(2026, 9, 28, 1),
+            ),
+          ),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.binding.setSurfaceSize(const Size(360, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(360, 1000),
+              textScaler: TextScaler.linear(1.6),
+            ),
+            child: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: language),
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('09:00 - 19:00'), findsOneWidget);
+      expect(find.byIcon(Icons.call_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.directions_outlined), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
   // 재연결 상태가 반복되어도 보완 조회의 대기 시간을 처음부터 다시 세지 않는다.
-  testWidgets('repeated reconnect attempts do not postpone fallback polling', (tester) async {
+  testWidgets('repeated reconnect attempts do not postpone fallback polling', (
+    tester,
+  ) async {
     final control = _RetryChatControl();
     final realtime = _FakeRealtimeService();
-    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
-      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
-      realtimeService: realtime,
-    )));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     final initial = control.historyRequests;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -666,13 +1193,22 @@ void main() {
   });
 
   // 실시간 연결이 살아 있어도 누락분 조회 실패는 복구될 때까지 재시도한다.
-  testWidgets('failed catch-up retries even after websocket connected', (tester) async {
+  testWidgets('failed catch-up retries even after websocket connected', (
+    tester,
+  ) async {
     final control = _RetryChatControl();
     final realtime = _FakeRealtimeService();
-    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
-      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
-      realtimeService: realtime,
-    )));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     control.failHistory = true;
     realtime._states.add(LinkedChatConnectionState.connected);
@@ -689,13 +1225,24 @@ void main() {
     control.dispose();
   });
   // 재연결 후 50개를 넘는 누락 메시지도 이미 보던 기록까지 페이지로 이어 읽는다.
-  testWidgets('reconnection fills a gap larger than the recent history page', (tester) async {
-    final control = _RetryChatControl(historyMessages: [_deletionMessage(id: 1)]);
+  testWidgets('reconnection fills a gap larger than the recent history page', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [_deletionMessage(id: 1)],
+    );
     final realtime = _FakeRealtimeService();
-    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
-      currentUserHash: 'patient-a', patientHash: 'patient-a', control: control,
-      realtimeService: realtime,
-    )));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     control.historyBoundaries.clear();
     control.historyPages = {
@@ -711,13 +1258,22 @@ void main() {
     control.dispose();
   });
   // 정상 연결에서는 반복 조회하지 않고 장애·복귀 때만 한 요청씩 보완한다.
-  testWidgets('realtime polling stops while connected or backgrounded', (tester) async {
+  testWidgets('realtime polling stops while connected or backgrounded', (
+    tester,
+  ) async {
     final control = _RetryChatControl();
     final realtime = _FakeRealtimeService();
-    await tester.pumpWidget(MaterialApp(home: LinkedChatUI(linkId: 17,
-      currentUserHash: 'patient-a', patientHash: 'patient-a',
-      control: control, realtimeService: realtime,
-    )));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     final initial = control.historyRequests;
     await tester.pump(const Duration(seconds: 36));

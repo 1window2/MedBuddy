@@ -44,6 +44,7 @@ class LinkedChatUI extends StatefulWidget {
   final LinkedChatRealtimeService? realtimeService;
   final AuthenticatedApiClient? apiClient;
   final Widget Function(bool hospitals)? careSelectorBuilder;
+  final Listenable? latestMessageRequest;
 
   // 함수이름: LinkedChatUI
   // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 필요한 입력값과 표시 설정을 초기화한다.
@@ -71,6 +72,7 @@ class LinkedChatUI extends StatefulWidget {
     this.realtimeService,
     this.apiClient,
     this.careSelectorBuilder,
+    this.latestMessageRequest,
   });
 
   // 함수이름: createState
@@ -154,7 +156,18 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   bool _chatInitialized = false;
   bool _wasChatVisible = false;
   bool _showMedicationContextGuide = true;
+  int? _firstUnreadMessageId;
+  bool _readBoundaryCaptured = false;
+  bool _hasOlderMessages = false;
+  bool _loadingOlderMessages = false;
+  bool _olderMessagesFailed = false;
+  int? _lastMarkedIncomingId;
+  bool _markingRead = false;
 
+  // 역방향 목록의 0 위치는 메시지 높이와 무관하게 항상 최신 대화다.
+  bool get _isAtLatest =>
+      _scrollController.hasClients &&
+      _scrollController.position.extentBefore <= 8;
 
   // 함수이름: _isChatVisible
   // 함수역할: 앱이 전면에 있고 다른 화면이 채팅을 가리지 않는지 확인한다.
@@ -217,6 +230,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   @override
   void initState() {
     super.initState();
+    widget.latestMessageRequest?.addListener(_onLatestMessageRequested);
     _medicationContexts = widget.initialMedicationContexts;
     WidgetsBinding.instance.addObserver(this);
     _ownsApiClient = widget.apiClient == null;
@@ -278,9 +292,25 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     });
   }
 
+  // 같은 알림 경로를 다시 열어도 초안과 선택을 유지하며 최신 대화로 이동한다.
+  void _onLatestMessageRequested() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_isChatVisible || !_chatInitialized) return;
+      await _refreshMessages(showLoading: false, catchUp: true);
+      if (_isChatVisible) _scrollToLatest();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
 
-
-
+  // 알림 진입 신호가 교체될 때 이전 구독이 남지 않게 한다.
+  @override
+  void didUpdateWidget(covariant LinkedChatUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.latestMessageRequest != widget.latestMessageRequest) {
+      oldWidget.latestMessageRequest?.removeListener(_onLatestMessageRequested);
+      widget.latestMessageRequest?.addListener(_onLatestMessageRequested);
+    }
+  }
 
   // 함수이름: didChangeDependencies
   // 함수역할: 약 선택·상세 화면에서 돌아온 뒤 보이게 된 채팅의 읽음 상태를 갱신한다.
@@ -311,6 +341,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
+    widget.latestMessageRequest?.removeListener(_onLatestMessageRequested);
     WidgetsBinding.instance.removeObserver(this);
     _requestGeneration += 1;
     _fallbackRefreshTimer?.cancel();
@@ -533,15 +564,23 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       });
     }
     try {
-      _historyRecoveryBoundary ??= _messages.isEmpty ? null :
-          _messages.map((m) => m.messageId).reduce((a, b) => a > b ? a : b);
+      final unreadFuture = _readBoundaryCaptured
+          ? Future<ChatUnreadSummary?>.value()
+          : _requestInitialUnread();
+      _historyRecoveryBoundary ??= _messages.isEmpty
+          ? null
+          : _messages.map((m) => m.messageId).reduce((a, b) => a > b ? a : b);
       final newestKnownId = _historyRecoveryBoundary;
       var page = await _control.requestHistory(linkId: widget.linkId);
+      final initialPageIsFull = page.length == 50;
       final messages = [...page];
+      final unread = await unreadFuture;
       // 긴 연결 단절에서도 마지막으로 본 메시지까지 이어서 읽어 누락을 막는다.
       int? previousBoundary;
       while (newestKnownId != null && page.length == 50) {
-        final oldest = page.map((m) => m.messageId).reduce((a, b) => a < b ? a : b);
+        final oldest = page
+            .map((m) => m.messageId)
+            .reduce((a, b) => a < b ? a : b);
         if (oldest <= newestKnownId ||
             (previousBoundary != null && oldest >= previousBoundary)) {
           break;
@@ -551,8 +590,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           return;
         }
         previousBoundary = oldest;
-        page = await _control.requestHistory(linkId: widget.linkId,
-            beforeMessageId: oldest);
+        page = await _control.requestHistory(
+          linkId: widget.linkId,
+          beforeMessageId: oldest,
+        );
         messages.addAll(page);
       }
       if (!mounted || generation != _requestGeneration) {
@@ -568,6 +609,23 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _messages = _mergeMessages(_messages, messages);
+        if (!_readBoundaryCaptured) {
+          _firstUnreadMessageId = unread?.firstMessageId;
+          // 구버전 서버도 최근 기록의 읽음 상태로 구분선을 표시할 수 있다.
+          if (_firstUnreadMessageId == null &&
+              (unread == null || unread.count > 0)) {
+            for (final message in _messages) {
+              if (message.senderHash != widget.currentUserHash &&
+                  message.readAt == null &&
+                  !message.deletedForEveryone) {
+                _firstUnreadMessageId = message.messageId;
+                break;
+              }
+            }
+          }
+          _hasOlderMessages = initialPageIsFull;
+          _readBoundaryCaptured = true;
+        }
         _isLoading = false;
         _errorMessage = null;
       });
@@ -593,9 +651,47 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     }
   }
 
+  // 개수 조회 실패는 대화 진입을 막지 않으며 목록의 읽음 표시로 보완한다.
+  Future<ChatUnreadSummary?> _requestInitialUnread() async {
+    try {
+      return await _control.requestUnreadSummary(linkId: widget.linkId);
+    } catch (_) {
+      return null;
+    }
+  }
 
-
-
+  // 오래된 미확인 경계도 찾을 수 있도록 필요할 때만 이전 기록을 가져온다.
+  Future<void> _loadOlderMessages() async {
+    if (_loadingOlderMessages || !_hasOlderMessages || _messages.isEmpty) {
+      return;
+    }
+    final generation = _requestGeneration;
+    final beforeId = _messages.first.messageId;
+    setState(() {
+      _loadingOlderMessages = true;
+      _olderMessagesFailed = false;
+    });
+    try {
+      final older = await _control.requestHistory(
+        linkId: widget.linkId,
+        beforeMessageId: beforeId,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+      setState(() {
+        _messages = _mergeMessages(_messages, older);
+        _hasOlderMessages =
+            older.length == 50 && older.any((m) => m.messageId < beforeId);
+      });
+    } catch (_) {
+      if (mounted && generation == _requestGeneration) {
+        setState(() => _olderMessagesFailed = true);
+      }
+    } finally {
+      if (mounted && generation == _requestGeneration) {
+        setState(() => _loadingOlderMessages = false);
+      }
+    }
+  }
 
   // 함수이름: _handleRealtimeEvent
   // 함수역할: 메시지 추가·삭제·읽음 이벤트를 검증해 반영하고 복약 관련 맥락을 필요 시 갱신한다.
@@ -635,6 +731,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // - 없음.
         // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
+          if (!_isLoading &&
+              !_isAtLatest &&
+              message.senderHash != widget.currentUserHash &&
+              !message.deletedForEveryone &&
+              message.readAt == null) {
+            _firstUnreadMessageId ??= message.messageId;
+          }
           _messages = _mergeMessages(_messages, [message]);
           _errorMessage = null;
         });
@@ -690,7 +793,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _markLatestIncomingRead() async {
-    if (!_isChatVisible) return;
+    if (!_isChatVisible || _isLoading || !_isAtLatest || _markingRead) return;
     final incoming = _messages
         // 함수이름: _markLatestIncomingRead.where callback
         // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `message.senderHash != widget.currentUserHash` 조건으로 컬렉션 항목을 판별한다.
@@ -702,13 +805,31 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     if (incoming.isEmpty) {
       return;
     }
+    final latestId = incoming.last.messageId;
+    if (_lastMarkedIncomingId != null && latestId <= _lastMarkedIncomingId!) {
+      return;
+    }
+    _markingRead = true;
     try {
       await _control.markRead(
         linkId: widget.linkId,
-        throughMessageId: incoming.last.messageId,
+        throughMessageId: latestId,
       );
+      if (_lastMarkedIncomingId == null || latestId > _lastMarkedIncomingId!) {
+        _lastMarkedIncomingId = latestId;
+      }
     } catch (_) {
       // 읽음 표시는 다음 실시간 이벤트 또는 보완 조회에서 다시 시도한다.
+    } finally {
+      _markingRead = false;
+    }
+    if (mounted &&
+        _lastMarkedIncomingId == latestId &&
+        _messages.any(
+          (m) =>
+              m.senderHash != widget.currentUserHash && m.messageId > latestId,
+        )) {
+      unawaited(_markLatestIncomingRead());
     }
   }
 
@@ -1753,11 +1874,11 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     if (!force &&
         (!_isChatVisible ||
             (_scrollController.hasClients &&
-                _scrollController.position.extentAfter > 80))) {
+                _scrollController.position.extentBefore > 80))) {
       return;
     }
     // 함수이름: _scrollToLatest.addPostFrameCallback callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `_scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut)`을 실행한다.
+    // 함수역할: 역방향 목록의 최신 위치로 이동한 뒤 보이는 대화를 읽음 처리한다.
     // 매개변수:
     // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
@@ -1765,10 +1886,14 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
+      unawaited(
+        _scrollController
+            .animateTo(
+              0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+            )
+            .then((_) => _markLatestIncomingRead()),
       );
     });
   }
@@ -1983,81 +2108,150 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         ),
       );
     }
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
-      itemCount: _messages.length,
-      // 함수이름: _buildMessageArea.itemBuilder callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 EdgeInsets.all을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      itemBuilder: (context, index) => GestureDetector(
-        // 함수이름: _buildMessageArea.onLongPress callback
-        // 함수역할: 전송·삭제 중에는 선택을 막고 메시지 선택을 최대 50개까지 전환한다.
+    return NotificationListener<ScrollEndNotification>(
+      onNotification: (_) {
+        unawaited(_markLatestIncomingRead());
+        return false;
+      },
+      child: ListView.builder(
+        key: const Key('chat-message-list'),
+        controller: _scrollController,
+        reverse: true,
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
+        itemCount: _messages.length + (_hasOlderMessages ? 1 : 0),
+        // 함수이름: _buildMessageArea.itemBuilder callback
+        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 EdgeInsets.all을 적용해 현재 배치를 구성한다.
         // 매개변수:
-        // - 없음.
-        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-        onLongPress: () => _toggleMessageSelection(_messages[index].messageId),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_isSelectingMessages)
-              Checkbox(
-                key: ValueKey(
-                  'selectChatMessage-${_messages[index].messageId}',
+        // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+        // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
+        // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
+        itemBuilder: (context, reverseIndex) {
+          if (reverseIndex == _messages.length) {
+            return Center(
+              child: TextButton(
+                key: const Key('chat-load-older'),
+                onPressed: _loadingOlderMessages ? null : _loadOlderMessages,
+                child: Text(
+                  _loadingOlderMessages
+                      ? (_text.isEnglish ? 'Loading...' : '불러오는 중...')
+                      : _olderMessagesFailed
+                      ? _text.retry
+                      : (_text.isEnglish ? 'Earlier messages' : '이전 대화 보기'),
                 ),
-                semanticLabel: _text.selectMessage,
-                value: _selectedMessageIds.contains(_messages[index].messageId),
-                onChanged: _isDeletingMessages
-                    ? null
-                    // 함수이름: _buildMessageArea.onChanged callback
-                    // 함수역할: 전송·삭제 중에는 선택을 막고 메시지 선택을 최대 50개까지 전환한다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    : (_) =>
-                          _toggleMessageSelection(_messages[index].messageId),
               ),
-            Expanded(
-              child: _messages[index].deletedForEveryone
-                  ? Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(_text.deletedMessage),
-                    )
-                  : IgnorePointer(
-                      ignoring: _isSelectingMessages,
-                      child: _MessageBubble(
-                        message: _messages[index],
-                        isMine:
-                            _messages[index].senderHash ==
-                            widget.currentUserHash,
-                        text: _text,
-                        userSetting: widget.userSetting,
-                        loadingMedicationId: _loadingMedicationId,
-                        onMedicationPressed: _openMedicationDetail,
-                        onSchedulePressed: _isPatient
-                            ? _openPatientSchedule
-                            : null,
-                        onPharmacyCallRequested: _callPharmacy,
-                        onPharmacyDirectionsRequested: _openPharmacyDirections,
-                        // 함수이름: _buildMessageArea.onFindPharmacyRequested callback
-                        // 함수역할: 약국 선택 결과를 전화 확인 여부에 맞는 메시지 종류로 공유한다.
-                        // 매개변수:
-                        // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-                        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        onFindPharmacyRequested: (medications) {
-                unawaited(_showPharmacySelector(medications: medications));
-              },
-              onFindHospitalRequested: (medications) {
-                unawaited(_showPharmacySelector(medications: medications, hospitals: true));
-              },
+            );
+          }
+          final index = _messages.length - 1 - reverseIndex;
+          return Column(
+            key: ValueKey('chat-message-${_messages[index].messageId}'),
+            children: [
+              if (_messages[index].messageId == _firstUnreadMessageId)
+                Padding(
+                  key: const Key('chat-unread-divider'),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Flexible(
+                        flex: 4,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            _text.isEnglish ? 'Read up to here' : '여기까지 읽음',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: MedBuddyColors.textSubtle,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                ),
+              GestureDetector(
+                // 함수이름: _buildMessageArea.onLongPress callback
+                // 함수역할: 전송·삭제 중에는 선택을 막고 메시지 선택을 최대 50개까지 전환한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onLongPress: () =>
+                    _toggleMessageSelection(_messages[index].messageId),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isSelectingMessages)
+                      Checkbox(
+                        key: ValueKey(
+                          'selectChatMessage-${_messages[index].messageId}',
+                        ),
+                        semanticLabel: _text.selectMessage,
+                        value: _selectedMessageIds.contains(
+                          _messages[index].messageId,
+                        ),
+                        onChanged: _isDeletingMessages
+                            ? null
+                            // 함수이름: _buildMessageArea.onChanged callback
+                            // 함수역할: 전송·삭제 중에는 선택을 막고 메시지 선택을 최대 50개까지 전환한다.
+                            // 매개변수:
+                            // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                            : (_) => _toggleMessageSelection(
+                                _messages[index].messageId,
+                              ),
+                      ),
+                    Expanded(
+                      child: _messages[index].deletedForEveryone
+                          ? Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(_text.deletedMessage),
+                            )
+                          : IgnorePointer(
+                              ignoring: _isSelectingMessages,
+                              child: _MessageBubble(
+                                message: _messages[index],
+                                isMine:
+                                    _messages[index].senderHash ==
+                                    widget.currentUserHash,
+                                text: _text,
+                                userSetting: widget.userSetting,
+                                loadingMedicationId: _loadingMedicationId,
+                                onMedicationPressed: _openMedicationDetail,
+                                onSchedulePressed: _isPatient
+                                    ? _openPatientSchedule
+                                    : null,
+                                onPharmacyCallRequested: _callPharmacy,
+                                onPharmacyDirectionsRequested:
+                                    _openPharmacyDirections,
+                                // 함수이름: _buildMessageArea.onFindPharmacyRequested callback
+                                // 함수역할: 약국 선택 결과를 전화 확인 여부에 맞는 메시지 종류로 공유한다.
+                                // 매개변수:
+                                // - medication (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
+                                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                                onFindPharmacyRequested: (medications) {
+                                  unawaited(
+                                    _showPharmacySelector(
+                                      medications: medications,
+                                    ),
+                                  );
+                                },
+                                onFindHospitalRequested: (medications) =>
+                                    unawaited(
+                                      _showPharmacySelector(
+                                        medications: medications,
+                                        hospitals: true,
+                                      ),
+                                    ),
+                              ),
+                            ),
                     ),
-            ),
-          ],
-        ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -3497,7 +3691,7 @@ class _MessageBubble extends StatelessWidget {
           ],
           const SizedBox(height: 4),
           Text(
-            isMine && message.readAt != null ? text.readAt(timeLabel) : timeLabel,
+            timeLabel,
             style: TextStyle(
               color: isMine
                   ? Colors.white.withValues(alpha: 0.78)
@@ -3512,7 +3706,37 @@ class _MessageBubble extends StatelessWidget {
     );
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: bubble,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (isMine)
+            SizedBox(
+              width: 22,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18, right: 6),
+                child: message.readAt == null
+                    ? Text(
+                        '1',
+                        key: ValueKey(
+                          'chat-unread-receipt-${message.messageId}',
+                        ),
+                        semanticsLabel: text.isEnglish
+                            ? 'Not read by recipient'
+                            : '상대가 아직 읽지 않음',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: MedBuddyColors.primaryDark,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          Flexible(child: bubble),
+        ],
+      ),
     );
   }
 }
@@ -4034,11 +4258,4 @@ class _LinkedChatText {
   String get discomfortSafetyGuidance => isEnglish
       ? 'This chat cannot diagnose symptoms. If symptoms are severe, breathing is difficult, or consciousness changes, call emergency services. Otherwise, contact a medical professional or pharmacist before changing how you take the medicine.'
       : '채팅만으로 증상을 판단할 수 없습니다. 증상이 심하거나 호흡 곤란·의식 변화가 있으면 즉시 119에 연락하고, 임의로 복용법을 바꾸기 전에 의료진이나 약사에게 상담하세요.';
-  // 함수이름: readAt
-  // 함수역할: 현재 언어와 입력값에 맞춰 "$timeLabel · 읽음" 문구를 제공한다.
-  // 매개변수:
-  // - timeLabel (String): 시간대 또는 알림 시각의 표시 문구.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String readAt(String timeLabel) =>
-      isEnglish ? '$timeLabel · Read' : '$timeLabel · 읽음';
 }

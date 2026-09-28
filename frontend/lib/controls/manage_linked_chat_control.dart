@@ -32,6 +32,14 @@ class ChatMedicationTakenResult {
   });
 }
 
+// 읽음 처리 전에 받은 개수와 첫 미확인 메시지 위치를 함께 보관한다.
+class ChatUnreadSummary {
+  final int count;
+  final int? firstMessageId;
+
+  const ChatUnreadSummary({required this.count, this.firstMessageId});
+}
+
 // 클래스명: ManageLinkedChat
 // 역할: 인증된 연동 참여자의 채팅 REST 요청을 조정한다.
 // 주요 책임:
@@ -358,6 +366,33 @@ class ManageLinkedChat {
     if (decoded['success'] != true) {
       throw StateError('Message deletion was not confirmed.');
     }
+  }
+
+  // 함수이름: requestUnreadSummary
+  // 함수역할: 읽음 상태를 바꾸지 않고 미확인 개수와 구분선 기준을 조회한다.
+  // 매개변수: linkId: 활성 연동 ID. 반환값: 서버의 미확인 상태.
+  Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
+    final response = await _client
+        .get(_buildUri('/links/$linkId/unread-count'))
+        .timeout(_requestTimeout);
+    final decoded = _decodeSuccessfulResponse(
+      response,
+      '안 읽은 메시지를 확인하지 못했습니다.',
+    );
+    final data = decoded['data'];
+    if (data is! Map ||
+        data['unread_count'] is! int ||
+        data['unread_count'] < 0) {
+      throw StateError('Invalid unread message count.');
+    }
+    final firstId = data['first_unread_message_id'];
+    if (firstId != null && (firstId is! int || firstId <= 0)) {
+      throw StateError('Invalid unread message boundary.');
+    }
+    return ChatUnreadSummary(
+      count: data['unread_count'] as int,
+      firstMessageId: firstId as int?,
+    );
   }
 
   // 함수이름: markRead

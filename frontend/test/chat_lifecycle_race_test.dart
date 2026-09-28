@@ -72,6 +72,7 @@ void main() {
     final flow = _ChatFlow()..history = [_message(1)];
     await flow.open(tester);
     addTearDown(() => flow.close(tester));
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsOneWidget);
     final delayed = Completer<List<Map<String, dynamic>>>();
     flow.nextHistory = delayed;
     await tester.pump(const Duration(seconds: 12));
@@ -82,10 +83,10 @@ void main() {
       'read_at': '2026-09-24T03:01:00Z',
     });
     await tester.pumpAndSettle();
-    expect(find.textContaining('읽음'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsNothing);
     delayed.complete(flow.history);
     await tester.pumpAndSettle();
-    expect(find.textContaining('읽음'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-1')), findsNothing);
   });
 
   // 함수이름: 이전 대화 스크롤 유지 테스트
@@ -98,17 +99,18 @@ void main() {
     addTearDown(() => flow.close(tester));
     final list = tester.widget<ListView>(find.byType(ListView).first);
     final controller = list.controller!;
-    controller.jumpTo(0);
+    controller.jumpTo(600);
     await tester.pump();
     await tester.pump(const Duration(seconds: 12));
     await tester.pumpAndSettle();
-    expect(controller.offset, 0);
+    expect(controller.offset, 600);
     flow.realtime.emit({
       'type': 'chat_message',
       'message': _message(36, sender: 'caregiver-a'),
     });
     await tester.pumpAndSettle();
-    expect(controller.offset, 0);
+    expect(controller.offset, 600);
+    expect(flow.readRequests, isNot(contains(36)));
   });
 
   // 함수이름: 최신 대화 수신 스크롤 테스트
@@ -122,15 +124,15 @@ void main() {
     final controller = tester
         .widget<ListView>(find.byType(ListView).first)
         .controller!;
-    final previousOffset = controller.offset;
-    expect(controller.position.extentAfter, 0);
+    expect(controller.position.extentBefore, 0);
     flow.realtime.emit({
       'type': 'chat_message',
       'message': _message(36, sender: 'caregiver-a'),
     });
     await tester.pumpAndSettle();
-    expect(controller.offset, greaterThan(previousOffset));
-    expect(controller.position.extentAfter, 0);
+    expect(controller.offset, 0);
+    expect(controller.position.extentBefore, 0);
+    expect(find.text('시험 메시지 36'), findsOneWidget);
     expect(flow.readRequests, contains(36));
   });
 }

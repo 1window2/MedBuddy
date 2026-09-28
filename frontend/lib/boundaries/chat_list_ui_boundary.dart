@@ -111,6 +111,7 @@ class ChatListUI extends StatelessWidget {
   // 매개변수: context, link: 표시 문맥과 활성 연동. 반환값: 대화 선택 행.
   Widget _buildConversation(BuildContext context, PatientCaregiverLink link) {
     final message = control.latestMessage(link.linkId!);
+    final unread = control.unreadCount(link.linkId!) ?? 0;
     final isCaregiver = control.isCaregiver(link);
     return Column(
       children: [
@@ -141,9 +142,24 @@ class ChatListUI extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          trailing: const Icon(
-            Icons.chevron_right,
-            color: MedBuddyColors.textSubtle,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (unread > 0)
+                Semantics(
+                  label: _isEnglish
+                      ? '$unread unread messages'
+                      : '안 읽은 메시지 $unread개',
+                  child: ExcludeSemantics(
+                    child: Badge(
+                      key: ValueKey('chatUnread-${link.linkId}'),
+                      label: Text(unread > 99 ? '99+' : '$unread'),
+                    ),
+                  ),
+                ),
+              if (unread > 0) const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: MedBuddyColors.textSubtle),
+            ],
           ),
           // 함수이름: 대화 선택 콜백
           // 함수역할: 해당 상대의 복약 맥락 채팅을 연다.

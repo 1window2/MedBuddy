@@ -35,6 +35,46 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  // 집계 조회는 읽음 변경 없이 서버 개수와 첫 메시지 ID를 보존한다.
+  test(
+    'unread summary uses read-only endpoint and preserves exact count',
+    () async {
+      final control = ManageLinkedChat(
+        userHash: 'patient-a',
+        chatUrlBuilder: (path) => '$baseUrl$path',
+        client: MockClient((request) async {
+          expect(request.method, 'GET');
+          expect(request.url.path, '/api/v1/chat/links/17/unread-count');
+          return _jsonResponse({
+            'success': true,
+            'data': {'unread_count': 120, 'first_unread_message_id': 41},
+          }, 200);
+        }),
+      );
+      final unread = await control.requestUnreadSummary(linkId: 17);
+      expect(unread.count, 120);
+      expect(unread.firstMessageId, 41);
+      control.dispose();
+    },
+  );
+  for (final invalid in [-1, '2', null]) {
+    test('invalid unread count does not become zero: $invalid', () async {
+      final control = ManageLinkedChat(
+        userHash: 'patient-a',
+        client: MockClient(
+          (_) async => _jsonResponse({
+            'data': {'unread_count': invalid},
+          }, 200),
+        ),
+      );
+      await expectLater(
+        control.requestUnreadSummary(linkId: 17),
+        throwsStateError,
+      );
+      control.dispose();
+    });
+  }
+
   // 병원 이름·시간을 클라이언트가 확정하지 않고 ID·날짜만 보내며 서버 카드를 복원한다.
   test('hospital share sends IDs and parses dated server context', () async {
     final control = ManageLinkedChat(
@@ -93,7 +133,6 @@ void main() {
     expect(message.copyWith(hiddenForMe: true).hospitalContext, isNull);
     control.dispose();
   });
-
 
   // 함수이름: 복용 확인 전용 요청 테스트
   // 함수역할: 일반 채팅 전송과 구분된 API에 원래 날짜·시간대·선택 약·요청 식별자를 전달하고 확인 메시지를 파싱하는지 검증한다.

@@ -1,5 +1,5 @@
 // 파일명: manage_chat_list_control.dart
-// 역할: 현재 사용자의 활성 대화 상대, 표시 이름과 최근 메시지를 조회한다.
+// 역할: 현재 사용자의 활성 대화 상대, 표시 이름·최근 메시지·안 읽은 개수를 조회한다.
 
 import 'package:flutter/foundation.dart';
 
@@ -23,6 +23,7 @@ class ManageChatList extends ChangeNotifier {
   List<PatientCaregiverLink> _links = const [];
   Map<String, String> _labels = const {};
   final Map<int, ChatMessage> _latestMessages = {};
+  final Map<int, int> _unreadCounts = {};
   final Set<int> _previewErrors = {};
   Future<void>? _pending;
   bool _refreshAgain = false;
@@ -55,6 +56,9 @@ class ManageChatList extends ChangeNotifier {
   // 함수역할: 선택한 연동의 최근 메시지를 읽는다.
   // 매개변수: linkId: 연동 ID. 반환값: 최근 메시지 또는 null.
   ChatMessage? latestMessage(int linkId) => _latestMessages[linkId];
+
+  // 조회 실패·미조회는 0으로 단정하지 않고 null로 구분한다.
+  int? unreadCount(int linkId) => _unreadCounts[linkId];
 
   // 함수이름: previewFailed
   // 함수역할: 특정 대화의 미리보기 조회 실패 여부를 구분한다.
@@ -135,6 +139,7 @@ class ManageChatList extends ChangeNotifier {
           _links = active.values.toList();
           // 해제된 연동의 미리보기는 즉시 제거한다.
           _latestMessages.removeWhere(_isInactive);
+          _unreadCounts.removeWhere((id, _) => _isInactiveId(id));
           _previewErrors.removeWhere(_isInactiveId);
           hasError = false;
           notifyListeners();
@@ -186,7 +191,7 @@ class ManageChatList extends ChangeNotifier {
   }
 
   // 함수이름: _loadPreview
-  // 함수역할: 읽음 처리 없이 최근 한 메시지만 가져오고 실패·숨김 시 오래된 본문을 제거한다.
+  // 함수역할: 읽음 처리 없이 최근 메시지와 미확인 개수를 가져오고 실패한 표시값은 제거한다.
   // 매개변수: link: 활성 연동. 반환값: 해당 미리보기 조회 완료.
   Future<void> _loadPreview(PatientCaregiverLink link) async {
     final id = link.linkId!;
@@ -204,6 +209,14 @@ class ManageChatList extends ChangeNotifier {
       if (_disposed) return;
       _latestMessages.remove(id);
       _previewErrors.add(id);
+    }
+    try {
+      final unread = await _chatControl.requestUnreadSummary(linkId: id);
+      if (_disposed) return;
+      _unreadCounts[id] = unread.count;
+    } catch (_) {
+      if (_disposed) return;
+      _unreadCounts.remove(id);
     }
   }
 
