@@ -19,9 +19,11 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.chat_router import router as chat_router
 from api.pharmacy_router import router as pharmacy_router
+from api.hospital_router import router as hospital_router
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
     close_pharmacy_boundary,
+    close_hospital_boundary,
     close_medication_detail_cache,
     close_pill_identification_boundaries,
     close_public_drug_boundaries,
@@ -302,6 +304,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await close_medication_detail_cache()
         await close_public_drug_boundaries()
         await close_pharmacy_boundary()
+        await close_hospital_boundary()
 
 
 # Function Name: create_app
@@ -376,6 +379,7 @@ def create_app() -> FastAPI:
         prefix="/api/v1/pharmacy",
         tags=["Pharmacy"],
     )
+    app.include_router(hospital_router, prefix="/api/v1/hospitals", tags=["Hospital"])
     app.include_router(
         chat_router,
         prefix="/api/v1/chat",

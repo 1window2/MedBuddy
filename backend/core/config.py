@@ -107,6 +107,19 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService"
     )
     PHARMACY_API_TIMEOUT_SECONDS: float = Field(default=12.0, gt=0, le=120)
+    HOSPITAL_API_KEY: str = Field(default="", repr=False)
+    HOSPITAL_API_BASE_URL: str = (
+        "https://apis.data.go.kr/B552657/HsptlAsembySearchService"
+    )
+    HOSPITAL_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=60)
+    HOSPITAL_LOCATION_CACHE_SECONDS: int = Field(default=300, ge=1, le=3600)
+    HOSPITAL_DETAIL_CACHE_SECONDS: int = Field(default=86400, ge=1, le=86400)
+    HOSPITAL_CACHE_MAX_ENTRIES: int = Field(default=512, ge=16, le=2048)
+    HOSPITAL_SEARCH_MAX_PAGES: int = Field(default=3, ge=1, le=5)
+    HOSPITAL_DETAIL_REQUEST_BUDGET: int = Field(default=12, ge=1, le=30)
+    HOSPITAL_SEARCH_TIMEOUT_SECONDS: float = Field(default=22, gt=0, le=24)
+    HOSPITAL_CALENDAR_TIMEOUT_SECONDS: float = Field(default=2, gt=0, le=3)
+    HOSPITAL_API_DAILY_REQUEST_BUDGET: int = Field(default=800, ge=1, le=10000)
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
@@ -297,6 +310,7 @@ class Settings(BaseSettings):
         "ADVANCED_DRUG_API_BASE_URL",
         "PILL_IMAGE_API_BASE_URL",
         "PHARMACY_API_BASE_URL",
+        "HOSPITAL_API_BASE_URL",
     )
     @classmethod
     def validate_external_api_url(cls, value: str) -> str:

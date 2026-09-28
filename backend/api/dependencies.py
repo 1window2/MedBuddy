@@ -37,6 +37,7 @@ from boundaries.public_drug_api_boundary import (
 from boundaries.pharmacy_api_boundary import (
     NationalEmergencyMedicalCenterPharmacyAPI,
 )
+from boundaries.hospital_api_boundary import NationalEmergencyMedicalCenterHospitalAPI
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
     TokenVerificationError,
@@ -64,6 +65,7 @@ from controls.check_medication_detail_control import (
     _MedicationDetailCache,
 )
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
+from controls.check_nearby_hospital_control import CheckNearbyHospital
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.check_schedule_control import CheckSchedule
@@ -94,6 +96,7 @@ _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
 _pill_image_api = PillImageAPI(transport=_public_drug_transport)
 _pharmacy_api = NationalEmergencyMedicalCenterPharmacyAPI()
+_hospital_api = NationalEmergencyMedicalCenterHospitalAPI()
 _korean_holiday_api = KoreanHolidayAPI()
 _holiday_emergency_pharmacy_api = HolidayEmergencyPharmacyAPI()
 _pill_boundary_lock = Lock()
@@ -661,6 +664,11 @@ async def close_pharmacy_boundary() -> None:
             )
 
 
+# 병원 경계의 공유 캐시와 연결을 서버 종료 시 회수한다.
+async def close_hospital_boundary() -> None:
+    await _hospital_api.close()
+
+
 # Function Name: get_input_prescription
 # Description:
 # - Binds OCR prescription parsing and local catalog verification to the request session.
@@ -783,6 +791,19 @@ def get_check_nearby_pharmacy(
             upstream=_korean_holiday_api,
         ),
         holiday_emergency_boundary=_holiday_emergency_pharmacy_api,
+    )
+
+
+# 요청 DB의 검증된 공휴일 캐시만 공유하고 약국 당번표와 지정 정보는 사용하지 않는다.
+def get_check_nearby_hospital(
+    db: Session = Depends(get_db),
+) -> CheckNearbyHospital:
+    return CheckNearbyHospital(
+        _hospital_api,
+        holiday_boundary=PersistentKoreanHolidayLookup(
+            cache=PharmacyCatalogRepository(db),
+            upstream=_korean_holiday_api,
+        ),
     )
 
 
