@@ -124,7 +124,7 @@ package "Flutter Frontend" {
 
         note "module-level functions\nmedication_schedule_review_ui_boundary.dart\nshowMedicationScheduleReview()\nshowMedicationScheduleEditor()" as MedicationScheduleReviewBoundary
 
-        class "CheckNearbyPharmacyUI" as CheckNearbyPharmacyUI <<UI: 근처 운영 약국>> {
+        class "CheckNearbyPharmacyUI" as CheckNearbyPharmacyUI <<UI: 공통 병원·약국 검색>> {
             + userSetting: UserSetting
             + control: CheckNearbyPharmacy
             + createState(): State
@@ -335,6 +335,12 @@ package "Flutter Frontend" {
             + openDeviceLocationSettings(): Future<bool>
         }
 
+        class "CheckNearbyHospital" as FCheckNearbyHospital <<Controller: 병원 검색 확장>> {
+            + department: String?
+            + nearbySearchUrl: String
+        }
+        class "LinkedChatEntryUI" as LinkedChatEntryUI <<UI: 알림의 활성 연결·역할 확인>>
+
         class "ManageLinkedChat" as FManageLinkedChat <<Controller: 연결 사용자 채팅>> {
             + userHash: String
             + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
@@ -343,6 +349,7 @@ package "Flutter Frontend" {
             + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
             + sendMessage(linkId, body, clientMessageId, medicationIds?): Future<ChatMessage>
             + markRead(linkId, throughMessageId): Future<void>
+            + requestUnreadSummary(linkId): Future<ChatUnreadSummary>
         }
 
         class "ManageChatList" as ManageChatList <<Controller: 계정별 대화 목록>> {
@@ -351,6 +358,7 @@ package "Flutter Frontend" {
             + refresh(includeMessages): Future<void>
             + latestMessage(linkId): ChatMessage
             + peerName(link, isEnglish): String
+            + unreadCount(linkId): int?
         }
 
         class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Controller: 연결 관리>> {
@@ -837,6 +845,12 @@ package "Flutter Frontend" {
             + completedCount: int
         }
 
+        abstract class "ChatPlaceContext" as FChatPlaceContext <<Entity: 공유 장소 계약>>
+        class "ChatHospitalContext" as FChatHospitalContext <<Entity: 채팅 병원 문맥>>
+        class "ChatUnreadSummary" as FChatUnreadSummary <<Entity: 미확인 요약>> {
+            + count: int
+            + firstMessageId: int?
+        }
         class "ChatPharmacyContext" as FChatPharmacyContext <<Entity: 채팅 약국 문맥>> {
             + pharmacyId: String
             + name: String
@@ -858,6 +872,7 @@ package "Flutter Frontend" {
             + medicationContexts: List<ChatMedicationContext>
             + scheduleContext: ChatScheduleContext?
             + pharmacyContext: ChatPharmacyContext?
+            + hospitalContext: ChatHospitalContext?
             + remainingDays: int?
             + courseEndDate: DateTime?
             + showSafetyGuidance: bool
@@ -952,6 +967,17 @@ package "FastAPI Backend" {
             + requestNearbyPharmacies(latitude, longitude, radius_km, current_time): list<NearbyPharmacy>
         }
 
+        class "CheckNearbyHospital" as BCheckNearbyHospital <<Control: 병원 필터·공유 검증>> {
+            + requestNearbyHospitalSearch(...): dict
+            + requestShareContext(hospital_id, schedule_date): dict
+        }
+        class "NationalEmergencyMedicalCenterHospitalAPI" as NEMCHospitalAPI <<Wrapper: 병원 위치·상세 API>> {
+            + fetchNearbyPage(...): HospitalLocationPage
+            + fetchDetails(hospital_id): HospitalDetails
+            + hasCachedDetails(hospital_id): bool
+        }
+        class "HospitalRouter" as HospitalRouter <<Boundary: 인증된 병원 조회>>
+
         class "PharmacyCatalogRepository" as PharmacyCatalogRepository <<Repository: 전국 약국 일정 검색>> {
             + count(): int
             + search_nearby_candidates(latitude, longitude, max_distance_km): list<PharmacyCatalogEntry>
@@ -970,7 +996,7 @@ package "FastAPI Backend" {
             + send_message(user_hash, link_id, body, client_message_id, message_kind, medication_ids?, context_id?): ChatSendResult
             + publish_slot_completion(patient_hash, slot_key): int
             + mark_read(user_hash, link_id, through_message_id): int
-            + request_unread_count(user_hash, link_id): int
+            + request_unread_count(user_hash, link_id): dict
             + require_active_link(user_hash, link_id): _PatientCaregiverLink
         }
 
@@ -1184,6 +1210,7 @@ package "FastAPI Backend" {
             + add(message): void
             + mark_incoming_read(link_id, reader_hash, through_message_id): int
             + unread_count(link_id, reader_hash): int
+            + unread_summary(link_id, reader_hash): tuple<int, int?>
         }
 
         class "ChatConnectionManager" as ChatConnectionManager <<Service: WebSocket 연결 Registry>> {
@@ -2075,5 +2102,20 @@ DBUserAccount "1" -- "0..*" DBPatientLinkCode : patient {FK, CASCADE}
 DBUserAccount "0..1" -- "0..*" DBPatientLinkCode : caregiver {FK, SET NULL}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : patient {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : caregiver {FK, CASCADE}
+
+FCheckNearbyHospital --|> FCheckNearbyPharmacy
+FCheckNearbyHospital --> HospitalRouter
+HospitalRouter --> BCheckNearbyHospital
+BCheckNearbyHospital --> NEMCHospitalAPI
+BCheckNearbyHospital --> PersistentKoreanHolidayLookup
+ChatRouter --> BCheckNearbyHospital : 서버가 병원 공유 내용 검증
+FChatHospitalContext --|> FChatPlaceContext
+FChatPharmacyContext --|> FChatPlaceContext
+FChatMessage --> FChatHospitalContext
+FManageLinkedChat --> FChatUnreadSummary
+ManageChatList --> FManageLinkedChat : 미확인 개수
+NotificationService --> LinkedChatEntryUI
+LinkedChatEntryUI --> FLinkPatientCaregiver : 현재 계정의 활성 연결·역할
+LinkedChatEntryUI --> LinkedChatUI : 최신 위치 또는 기존 초안 유지
 
 @enduml

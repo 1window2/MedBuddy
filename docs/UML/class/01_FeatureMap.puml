@@ -28,7 +28,7 @@ package "Flutter Frontend" as FE #E8F4FF {
   rectangle "Caregiver and\nNotifications" as FE_CARE #DCEEFF
   rectangle "Settings and\nAccessibility" as FE_SETTINGS #DCEEFF
   rectangle "연동 채팅" as FE_CHAT #DCEEFF
-  rectangle "근처 약국" as FE_PHARMACY #DCEEFF
+  rectangle "근처 병원·약국\n지도·조회 조건" as FE_PHARMACY #DCEEFF
 
   FE_AUTH -[hidden]right-> FE_RX
   FE_RX -[hidden]right-> FE_MED
@@ -45,7 +45,7 @@ package "FastAPI Backend" as BE #EAF8F0 {
   rectangle "Schedule and\nNotification" as BE_SCHEDULE #DDF5E7
   rectangle "Caregiver\nServices" as BE_CARE #DDF5E7
   rectangle "채팅 저장·권한\n실시간 연결" as BE_CHAT #DDF5E7
-  rectangle "약국·공휴일\n조회" as BE_PHARMACY #DDF5E7
+  rectangle "병원·약국·공휴일\n조회" as BE_PHARMACY #DDF5E7
   rectangle "External API\nIntegration" as BE_EXTERNAL #FFF1CC
   database "Persistence" as BE_DB #F8FAFC
 
@@ -65,6 +65,8 @@ FE_CARE --> BE_CARE
 FE_SETTINGS --> BE_API
 FE_CHAT --> BE_CHAT : HTTP / WebSocket
 FE_PHARMACY --> BE_PHARMACY
+FE_CHAT --> FE_PHARMACY : 장소 선택 후 공유 확인
+BE_CHAT --> BE_PHARMACY : 병원 문맥 서버 검증
 
 BE_RX --> BE_EXTERNAL
 BE_MED --> BE_EXTERNAL

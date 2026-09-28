@@ -1,0 +1,87 @@
+@startuml
+allowmixing
+!pragma layout smetana
+scale max 1920 width
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+hide empty members
+title Nearby Hospital / Pharmacy Search and Verified Chat Sharing
+
+package "Flutter: Boundary / Control / Entity" {
+  class "showNearbyCareOptions()" as NearbyCareOptionsSheet <<BoundaryFunction>>
+  class CheckNearbyPharmacyUI <<Boundary>>
+  class "_HospitalDepartmentSheet" as HospitalDepartmentSheet <<Boundary>>
+  class "_NearbyCareFilterSheet" as NearbyCareFilterSheet <<Boundary>>
+  class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<Boundary>>
+  class "NearbyPharmacyMap" as NearbyPharmacyMapWidget <<Boundary>>
+  class "CheckNearbyPharmacy" as FPharmacy <<Control>>
+  class "CheckNearbyHospital" as FHospital <<Control>>
+  class NearbyPharmacy <<Entity>>
+  class LinkedChatUI <<Boundary>>
+  class "ManageLinkedChat" as FChat <<Control>>
+  class ChatPlaceContext <<Entity>>
+}
+package "FastAPI: Boundary / Control / Entity" {
+  class HospitalRouter <<Boundary>>
+  class ChatRouter <<Boundary>>
+  class "CheckNearbyHospital" as BHospital <<Control>> {
+    + requestNearbyHospitalSearch(...)
+    + requestShareContext(hospital_id, schedule_date)
+  }
+  interface HospitalLookupBoundary {
+    + fetchNearbyPage(...)
+    + fetchDetails(hospital_id)
+    + hasCachedDetails(hospital_id)
+  }
+  class NationalEmergencyMedicalCenterHospitalAPI <<Boundary>>
+  class KoreanHolidayAPI <<Boundary>>
+  class PersistentKoreanHolidayLookup <<Boundary>>
+  class "ManageLinkedChat" as BChat <<Control>>
+  class HospitalDetails <<Entity>>
+  class HospitalLocationPage <<Entity>>
+  class ChatMessageRepository
+}
+cloud "NEMC hospital API" as NEMC
+cloud "KASI legal-holiday API" as KASI
+database "Messages / notification jobs" as DB
+
+NearbyCareOptionsSheet --> CheckNearbyPharmacyUI : hospital or pharmacy
+CheckNearbyPharmacyUI --> HospitalDepartmentSheet : hospital only
+CheckNearbyPharmacyUI --> NearbyCareFilterSheet : draft date + status / apply
+CheckNearbyPharmacyUI --> PharmacyDetailsSheet
+CheckNearbyPharmacyUI --> NearbyPharmacyMapWidget
+CheckNearbyPharmacyUI --> FPharmacy
+FHospital --|> FPharmacy
+FHospital --> HospitalRouter : authenticated hospital endpoint
+FPharmacy --> NearbyPharmacy
+HospitalRouter --> BHospital
+BHospital --> HospitalLookupBoundary
+NationalEmergencyMedicalCenterHospitalAPI ..|> HospitalLookupBoundary
+NationalEmergencyMedicalCenterHospitalAPI --> NEMC
+NationalEmergencyMedicalCenterHospitalAPI --> HospitalDetails
+NationalEmergencyMedicalCenterHospitalAPI --> HospitalLocationPage
+BHospital --> PersistentKoreanHolidayLookup
+PersistentKoreanHolidayLookup --> KoreanHolidayAPI
+KoreanHolidayAPI --> KASI
+LinkedChatUI --> CheckNearbyPharmacyUI : choose place (no send yet)
+LinkedChatUI --> FChat : confirm recipient / place / message
+FChat --> ChatRouter : hospital ID + selected date
+ChatRouter --> BHospital : server-verified share context
+ChatRouter --> BChat : role / link / idempotency checks
+BChat --> ChatMessageRepository
+ChatMessageRepository --> DB
+FChat --> ChatPlaceContext : verified response snapshot
+
+note bottom of NationalEmergencyMedicalCenterHospitalAPI
+  Bounded pages, detail budget, shared in-flight requests and TTL cache.
+  Daily provider budget is per process, not a distributed quota.
+  Real provider keys remain on the backend, never in Flutter.
+end note
+note bottom of BHospital
+  Unknown calendar or incomplete details do not mean closed.
+  Evening consultation means closing after 18:00, not emergency care.
+  Pharmacy catalog/roster logic remains separate.
+end note
+@enduml

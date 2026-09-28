@@ -1,0 +1,54 @@
+@startuml
+scale max 1920 width
+skinparam backgroundColor white
+skinparam shadowing false
+title Nearby Care Search and Hospital Sharing
+actor User
+participant "Nearby care UI" as UI
+participant "Frontend Control" as FC
+participant "HospitalRouter / ChatRouter" as API
+participant "CheckNearbyHospital" as HC
+participant "Hospital API boundary" as HB
+participant "Holiday lookup" as Holiday
+participant "ManageLinkedChat" as Chat
+database "Messages + notification jobs" as DB
+
+User -> UI : Choose hospital, department and date/status
+UI -> UI : Keep draft filters until Apply
+UI -> FC : Search current GPS or selected map area
+FC -> API : authenticated GET /hospitals/nearby
+API -> HC : validated coordinates and filters
+HC -> HB : bounded nearby pages / selected details
+HB --> HC : cached or validated provider records
+HC -> Holiday : legal-holiday classification (bounded wait)
+Holiday --> HC : known holiday/weekday or unknown
+HC --> UI : filtered results + partial/availability metadata
+UI --> User : shared map, list, favorite, call and directions
+
+User -> UI : Choose hospital in a linked conversation
+UI --> User : Recipient, hospital and editable message preview
+alt User cancels
+  UI --> User : Keep composer; no message is sent
+else User confirms
+  UI -> FC : sendMessage(stable clientMessageId, hospitalId, date)
+  FC -> API : POST /chat/links/{id}/messages
+  API -> Chat : active participant + existing request check
+  alt Existing successful request
+    Chat --> API : original stored message
+  else New request
+    API -> HC : requestShareContext(id, date)
+    HC -> HB : fetch verified details
+    HC -> Holiday : date classification
+    HC --> API : server-owned place snapshot
+    API -> Chat : save verified context, not client display fields
+    Chat -> DB : message + notification job in same transaction
+    DB --> Chat : saved message
+  end
+  API --> UI : saved message / actionable failure
+end
+note over UI,DB
+  Failed sends keep the selected place and client request ID for retry.
+  Symptom/shortage prompts do not automatically open or send a place.
+  Hospital hours are not an emergency-service availability guarantee.
+end note
+@enduml

@@ -20,6 +20,7 @@ actor "운영체제 위치 서비스" as Location
 actor "운영체제 전화 및 지도 앱" as ExternalApp
 actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
 actor "국립중앙의료원\n약국 공공데이터 서비스" as PharmacyAPI
+actor "국립중앙의료원\n병·의원 공공데이터 서비스" as HospitalAPI
 actor "공휴일 정보 서비스" as HolidayAPI
 actor "네이버 지도 서비스" as NaverMap
 actor "운영 실행 환경" as Ops
@@ -72,8 +73,9 @@ rectangle "메드버디" {
         usecase "UC-24\n데이터 생명주기 정리" as UC24
     }
 
-    package "약국 조회" {
+    package "병원·약국 조회" {
         usecase "UC-27\n근처 운영 약국 조회" as UC27
+        usecase "UC-30\n근처 병원 조회 및 공유" as UC30
     }
 }
 
@@ -102,6 +104,7 @@ U -- UC25
 U -- UC26
 U -- UC27
 U -- UC29
+U -- UC30
 
 P -- UC3P
 P -- UC4P
@@ -145,6 +148,12 @@ MFDS -- UC23
 PharmacyAPI -- UC27
 HolidayAPI -- UC27
 NaverMap -- UC27
+HospitalAPI -- UC30
+HolidayAPI -- UC30
+NaverMap -- UC30
+Location -- UC30
+ExternalApp -- UC30
+UC28 <.. UC30 : <<extend>> 장소 공유
 
 Camera -- UC1
 Camera -- UC20
