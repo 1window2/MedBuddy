@@ -45,13 +45,14 @@ import 'medbuddy_saved_medication_view_model.dart';
 import 'medbuddy_schedule_view_model.dart';
 import 'medbuddy_schedule_slot_policy.dart';
 import 'medbuddy_reminder_view_model.dart';
+import 'medbuddy_user_setting_view_model.dart';
 import 'saved_medication_batch_delete_result.dart';
 export 'saved_medication_batch_delete_result.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_facade.dart';
 
-part 'medbuddy_user_setting_view_model.dart';
+part 'medbuddy_application_flows.dart';
 
 // 클래스명: TodayMedicationProgress
 // 역할: 오늘 예정된 개별 복용 슬롯의 전체 수와 완료 수를 보관한다.
@@ -115,6 +116,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final SetNotification setNotification;
   late final MedBuddyReminderViewModel _reminders;
   late final ManageUserSetting manageUserSetting;
+  late final MedBuddyUserSettingViewModel _settings;
   late final ManageAccount manageAccount;
   final NotificationService notificationService;
   final ManualMedicationImageStore manualMedicationImageStore;
@@ -379,14 +381,7 @@ class MedBuddyViewModel extends ChangeNotifier {
         : '${parts.join(' · ')} 내역을 분석 전 확인해주세요.';
   }
 
-  UserSetting _userSetting = const UserSetting();
-  // Function Name: userSetting
-  // 함수역할: 현재 환자 범위의 접근성·언어·알림 설정을 제공한다.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - UserSetting: User settings including language, accessibility, and notification policy.
-  UserSetting get userSetting => _userSetting;
+  UserSetting get userSetting => _settings.userSetting;
   // 함수이름: _isEnglishSetting
   // 함수역할: 사용자 언어 코드를 정규화해 영어 계열 표시를 선택해야 하는지 확인한다.
   // 매개변수:
@@ -608,6 +603,15 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.manageUserSetting =
         manageUserSetting ??
         ManageUserSetting(userHash: this.patientHash, client: _apiClient);
+    _settings = MedBuddyUserSettingViewModel(
+      manageUserSetting: this.manageUserSetting,
+      notificationService: this.notificationService,
+      refreshMedicationOverview: refreshMedicationOverview,
+      refreshMedicationSchedule: refreshMedicationSchedule,
+      loadMedicationReminderSettings: loadMedicationReminderSettings,
+      onChanged: () => _notifyViewModelListeners(MedBuddyFeature.userSetting),
+      readEnglish: () => _isEnglishSetting,
+    );
     _healthRecommendations = MedBuddyHealthRecommendationViewModel(
       this.checkHealthRecommendation,
     )..addListener(_onHealthRecommendationChanged);
@@ -761,6 +765,44 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Parameters: None. Returns: Completion.
   Future<void> _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() =>
       _reminders.synchronizeIfFresh();
+  // Function Name: loadUserSetting
+  // Description: Delegates settings operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<void> loadUserSetting() => _settings.loadUserSetting();
+  // Function Name: requestUserSettingSave
+  // Description: Delegates settings operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<UserSettingSaveResult> requestUserSettingSave({
+    required String fontSizeOption,
+    required String readingSpeedOption,
+    required String language,
+    String? languageMode,
+    String? timeFormat,
+    String? homeScheduleSource,
+    bool? medicationNotificationsEnabled,
+    bool? caregiverNotificationsEnabled,
+    bool? chatNotificationsEnabled,
+    String? notificationDetailMode,
+    String? defaultMorningTime,
+    String? defaultLunchTime,
+    String? defaultEveningTime,
+    String? defaultBedtime,
+  }) => _settings.requestUserSettingSave(
+    fontSizeOption: fontSizeOption,
+    readingSpeedOption: readingSpeedOption,
+    language: language,
+    languageMode: languageMode,
+    timeFormat: timeFormat,
+    homeScheduleSource: homeScheduleSource,
+    medicationNotificationsEnabled: medicationNotificationsEnabled,
+    caregiverNotificationsEnabled: caregiverNotificationsEnabled,
+    chatNotificationsEnabled: chatNotificationsEnabled,
+    notificationDetailMode: notificationDetailMode,
+    defaultMorningTime: defaultMorningTime,
+    defaultLunchTime: defaultLunchTime,
+    defaultEveningTime: defaultEveningTime,
+    defaultBedtime: defaultBedtime,
+  );
   DoseSyncService? doseSync;
   Future<void>? _scheduleRefresh;
   DateTime? _scheduleRefreshedAt;
@@ -809,9 +851,9 @@ class MedBuddyViewModel extends ChangeNotifier {
         (feature == MedBuddyFeature.userSetting ||
             feature == MedBuddyFeature.reminder)) {
       final configuration = {
-        'language': _userSetting.language,
-        'source': _userSetting.homeScheduleSource,
-        'hide_names': _userSetting.notificationDetailMode != 'full',
+        'language': userSetting.language,
+        'source': userSetting.homeScheduleSource,
+        'hide_names': userSetting.notificationDetailMode != 'full',
         'alarms': {
           for (final entry in medicationReminderSettings.entries)
             entry.key: entry.value.timeLabel,
@@ -865,6 +907,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _savedMedications.dispose();
     _schedules.dispose();
     _reminders.dispose();
+    _settings.dispose();
     _healthRecommendations.removeListener(_onHealthRecommendationChanged);
     _healthRecommendations.dispose();
     doseSync?.removeListener(_onDoseSyncChanged);

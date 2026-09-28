@@ -1,25 +1,58 @@
-part of 'medbuddy_view_model.dart';
+// File Name: medbuddy_user_setting_view_model.dart
+// Role: Owns user settings without accessing sibling feature state.
+import '../controls/manage_user_setting_control.dart';
+import '../entities/user_setting_entity.dart';
+import '../entities/medication_schedule_entity.dart';
+import '../services/notification_service.dart';
+import 'medbuddy_feature_updates.dart';
 
-// 파일명: medbuddy_user_setting_view_model.dart
-// 역할: 사용자 설정, 초기 화면 데이터와 계정 데이터 삭제 흐름을 관리한다.
+// Class Name: MedBuddyUserSettingViewModel
+// Role: Settings state owner.
+// Responsibilities: Persist settings and request explicit cross-feature refreshes.
+class MedBuddyUserSettingViewModel {
+  UserSetting _userSetting = const UserSetting();
+  // Function Name: userSetting
+  // 함수역할: 현재 환자 범위의 접근성·언어·알림 설정을 제공한다.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - UserSetting: User settings including language, accessibility, and notification policy.
+  UserSetting get userSetting => _userSetting;
+  final ManageUserSetting manageUserSetting;
+  final NotificationService notificationService;
+  final Future<void> Function() refreshMedicationOverview;
+  final Future<void> Function() refreshMedicationSchedule;
+  final Future<void> Function({bool notifyAfterLoad})
+  loadMedicationReminderSettings;
+  final void Function() _onChanged;
+  final bool Function() _readEnglish;
+  bool _disposed = false;
+  // Function Name: MedBuddyUserSettingViewModel
+  // Description: Binds settings persistence and narrow refresh operations.
+  // Parameters: Borrowed dependencies and callbacks. Returns: Settings state owner.
+  MedBuddyUserSettingViewModel({
+    required this.manageUserSetting,
+    required this.notificationService,
+    required this.refreshMedicationOverview,
+    required this.refreshMedicationSchedule,
+    required this.loadMedicationReminderSettings,
+    required void Function() onChanged,
+    required bool Function() readEnglish,
+  }) : _onChanged = onChanged,
+       _readEnglish = readEnglish;
+  // Function Name: _isEnglishSetting
+  // Description: Reads current display locale. Parameters: None. Returns: English selection.
+  bool get _isEnglishSetting => _readEnglish();
+  // Function Name: _notifyViewModelListeners
+  // Description: Publishes settings-only changes. Parameters: feature: Tag. Returns: None.
+  void _notifyViewModelListeners(MedBuddyFeature feature) {
+    if (!_disposed) _onChanged();
+  }
 
-// 클래스명: MedBuddyUserSettingViewModel
-// 역할: 사용자 설정·초기 일정 및 계정 삭제 흐름을 확장한다.
-// 주요 책임:
-// - 알림 개인정보 정책을 설정 변경과 동기화하고 새로고침과 분석 상태 초기화 및 세션 데이터 정리를 조정한다.
-extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
-  /// Reconcile only reads and local alarms; never replay a completion write.
-  Future<bool> recoverMedicationConnectivity() async {
-    if (_schedules.isTodayScheduleLoading) return false;
-    // Foreground recovery refreshes the visible state without replacing native
-    // alarms (which could otherwise erase an outstanding ten-minute snooze).
-    // The persistent reminder worker owns rolling-window reconciliation.
-    await Future.wait([
-      loadMedicationReminderSettings(notifyAfterLoad: false),
-      fetchTodayMedicationSchedule(),
-    ]);
-    return _schedules.lastLoadSucceeded &&
-        _reminders.lastLoadSucceeded;
+  // Function Name: dispose
+  // Description: Stops subsequent publication. Parameters: None. Returns: None.
+  void dispose() {
+    _disposed = true;
   }
 
   // 함수이름: loadUserSetting
@@ -29,8 +62,11 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> loadUserSetting() async {
+    if (_disposed) return;
     try {
-      _userSetting = await manageUserSetting.requestUserSetting();
+      final setting = await manageUserSetting.requestUserSetting();
+      if (_disposed) return;
+      _userSetting = setting;
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );
@@ -38,90 +74,6 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     } finally {
       _notifyViewModelListeners(MedBuddyFeature.userSetting);
     }
-  }
-
-  // 함수이름: refreshMedicationOverview
-  // 함수역할: 알림 설정과 오늘 복약 요약을 함께 조회하고 일정 조회가 성공한 경우에만 로컬 예약을 동기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> refreshMedicationOverview() async {
-    await Future.wait([
-      loadMedicationReminderSettings(notifyAfterLoad: false),
-      fetchTodayMedicationInfo(),
-    ]);
-    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
-    _scheduleRefreshedAt = _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
-        ? DateTime.now() : null;
-  }
-
-  // 함수이름: refreshMedicationSchedule
-  // 함수역할: 알림 설정과 오늘 전체 일정을 함께 조회하고 최신 일정으로 알림 예약을 동기화한다.
-  // 매개변수:
-  // - reuseRecent (bool): 탭 재방문 시 같은 날의 최근 성공 조회를 재사용할지 여부.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> refreshMedicationSchedule({bool reuseRecent = false}) {
-    final last = _scheduleRefreshedAt;
-    final now = DateTime.now();
-    if (reuseRecent && last != null && _schedules.lastLoadSucceeded &&
-        _reminders.lastLoadSucceeded && doseScheduleDay(last) == doseScheduleDay(now) &&
-        now.difference(last) >= Duration.zero &&
-        now.difference(last) < const Duration(seconds: 15)) {
-      return Future<void>.value();
-    }
-    if (_scheduleRefresh != null &&
-        (reuseRecent || !_schedules.hasTodayScheduleLoadError)) {
-      return _scheduleRefresh!;
-    }
-    // 실패 화면의 명시적 재시도는 별도 알림 조회가 끝나기 전에도 허용한다.
-    late final Future<void> refresh;
-    refresh = _refreshMedicationSchedule().whenComplete(() {
-      if (identical(_scheduleRefresh, refresh)) _scheduleRefresh = null;
-    });
-    return _scheduleRefresh = refresh;
-  }
-
-  Future<void> _refreshMedicationSchedule() async {
-    await Future.wait([
-      loadMedicationReminderSettings(notifyAfterLoad: false),
-      fetchTodayMedicationSchedule(),
-    ]);
-    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
-    _scheduleRefreshedAt = _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
-        ? DateTime.now() : null;
-  }
-
-  // 함수이름: clearAnalysisResult
-  // 함수역할: 진행 중 처방 응답을 무효화하고 선택 파일·OCR·분석·저장 진행 상태를 초기화해 입력 대기 화면으로 돌아간다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
-  void clearAnalysisResult() {
-    _cancelPrescriptionOperation();
-    inputPrescription.cancelPendingRequests();
-    unawaited(inputPrescription.clearSelectedImage());
-    _recognizedMedicationScheduleList = [];
-    _recognizedTextRegionList = [];
-    _prescriptionPreviewImagePath = '';
-    _analyzedMedicationList = [];
-    _analyzedMedicationByScheduleIndex.clear();
-    _unverifiedMedicationScheduleIndexes.clear();
-    _prescriptionChangeRadar = null;
-    _isPrescriptionChangeLoading = false;
-    _completedMedicationSaveIndexes.clear();
-    _isAllMedicationSaving = false;
-    _savingMedicationIndex = null;
-    _analysisErrorMessage = '';
-    _clearPrescriptionRecognitionCounts();
-    _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
-    _prescriptionFlowState = PrescriptionFlowState.idle;
-    _statusMessage = _isEnglishSetting
-        ? 'Take a prescription photo or choose an image.'
-        : '처방전을 촬영하거나 이미지를 선택해주세요.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // 함수이름: requestUserSettingSave
@@ -183,6 +135,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       defaultEveningTime: defaultEveningTime,
       defaultBedtime: defaultBedtime,
     );
+    if (_disposed) return saveResult;
     _userSetting = saveResult.setting;
     notificationService.setShowSensitiveDetails(
       _userSetting.showNotificationDetails,
@@ -213,22 +166,5 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     }
     _notifyViewModelListeners(MedBuddyFeature.userSetting);
     return saveResult;
-  }
-
-  // Function Name: requestAccountDataDeletion
-  // Description: Cancels reminder work and session notifications, requests server and local account-data deletion, then clears analysis, saved-medication, and schedule state.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
-  Future<void> requestAccountDataDeletion() async {
-    await MedicationReminderBackgroundScheduler.cancel();
-    await notificationService.cancelAllMedicationReminders();
-    await manageAccount.deleteAccountData();
-    await doseSync?.deleteAccountData();
-    clearAnalysisResult();
-    _savedMedications.clear();
-    _schedules.clear();
-    _notifyViewModelListeners();
   }
 }

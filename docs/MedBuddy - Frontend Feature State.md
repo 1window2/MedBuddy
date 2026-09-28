@@ -61,6 +61,20 @@ callbacks, not mutable sibling state. The facade retains the coordination point
 for post-save reconciliation. Reminder save/rollback, privacy and snooze-preserving
 refresh semantics are unchanged. Superseded or disposed loads cannot publish.
 
+## User settings and application flows
+
+Settings now own their immutable setting value in an independent library.
+Persistence still uses `ManageUserSetting`; local notification policy and explicit
+refresh callbacks preserve the existing save behavior. The facade reads settings
+through an accessor rather than sharing a mutable field. Disposed settings reads
+cannot publish or initiate subsequent refresh work.
+
+Cross-feature recovery, account deletion and overview/schedule refresh remain
+application orchestration, not settings state. The application-flow adapter
+preserves the contributors' same-day 15-second schedule reuse, in-flight refresh
+coalescing and explicit retry behavior. Widget publication retains configuration
+deduplication while reading the isolated settings value.
+
 At the native scheduling boundary, date-specific plans are reconciled with
 pending notifications instead of cancelling and rebuilding every slot. Unchanged
 bookings and snoozes survive; scheduling, snoozing and cancellation are serialized
