@@ -126,9 +126,22 @@ PHARMACY_API_BASE_URL=https://apis.data.go.kr/B552657/ErmctInsttInfoInqireServic
 PHARMACY_API_TIMEOUT_SECONDS=12
 ```
 
+The hospital feature additionally needs approval for the
+[NEMC hospital lookup service](https://www.data.go.kr/data/15000736/openapi.do).
+It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`.
+Both nearby features use `PUBLIC_DATA_API_KEY` for the
+[KASI holiday calendar](https://www.data.go.kr/data/15012690/openapi.do), so approve
+that service separately even when the hospital-specific key works.
+Copy placeholders from `deploy/backend.env.example` and fill the ignored
+`deploy/backend.env` locally; never publish the populated file.
+
 Do not place the public-data key in Flutter compile-time values. The client
-sends only its current coordinates to the authenticated `/api/v1/pharmacy`
-boundary when the user explicitly opens the laboratory feature.
+sends search coordinates and filters to the authenticated `/api/v1/pharmacy`
+or `/api/v1/hospitals` boundary after the user chooses nearby care from Home.
+The hospital provider budget defaults to 800 calls per process per day and
+resets on restart. Multiple workers have independent counters; this is not a
+shared production quota. Keep worker counts and portal quotas consistent, and
+monitor provider failures without logging keys or credential-bearing URLs.
 
 The nearby endpoint accepts `search_mode` (`open_at_time`, `late_hours`,
 `official_late_night`, `weekend_holiday`, or `all`) and an ISO-8601

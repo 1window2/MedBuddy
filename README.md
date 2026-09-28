@@ -146,7 +146,7 @@ Contribution rules for preserving the UML-aligned structure are documented in
 - Flutter SDK and Android Studio
 - A running Android emulator or physical Android device
 - Gemini API key
-- Korean public data portal API key authorized for the drug APIs and the National Emergency Medical Center pharmacy service
+- Korean public data portal API key authorized for the drug, NEMC pharmacy/hospital, and KASI holiday services listed below
 - Redis server, optional for local cache and rate-limit testing; required for distributed production quotas
 - Optional local medication catalog database at `backend/medbuddy.db`
 
@@ -168,6 +168,8 @@ Open `backend/.env` and set at least:
 ```dotenv
 GEMINI_API_KEY=your_gemini_api_key
 PUBLIC_DATA_API_KEY=your_public_data_api_key
+# Optional: leave blank to reuse PUBLIC_DATA_API_KEY for hospital requests.
+HOSPITAL_API_KEY=
 APP_ENV=development
 AUTH_MODE=disabled
 AUTO_CREATE_SCHEMA=true
@@ -185,6 +187,38 @@ working with the existing placeholder when that API is unavailable or the dosage
 form has no public pill image. Set `PILL_IMAGE_API_ENABLED=false` only when the
 optional saved-medication image enrichment must be disabled. The experimental
 loose-pill flow still requires the MFDS identification catalog.
+
+### Nearby Care API Credentials
+
+The values above are placeholders, not working credentials. Enter your own keys
+only in the ignored `backend/.env` (or `deploy/backend.env` on the server).
+Do not commit either file, service-account JSON, Firebase configuration originals,
+local demo settings, or logs containing credentials. Never put public-data or
+Gemini keys in Flutter `--dart-define` values or client source.
+
+| Service to apply for | Used for | Backend setting |
+| --- | --- | --- |
+| [국립중앙의료원 전국 병·의원 찾기 서비스](https://www.data.go.kr/data/15000736/openapi.do) | Hospital coordinates, departments, contact information and weekly consultation hours | `HOSPITAL_API_KEY`; when blank, reuses `PUBLIC_DATA_API_KEY` |
+| [한국천문연구원 특일 정보](https://www.data.go.kr/data/15012690/openapi.do) | Determines whether a selected Korean date is a legal holiday, for both hospital and pharmacy hours | `PUBLIC_DATA_API_KEY` |
+| 국립중앙의료원 전국 약국 정보 조회 서비스 (`ErmctInsttInfoInqireService`) | Pharmacy catalog and weekly business hours | `PUBLIC_DATA_API_KEY` |
+| [국립중앙의료원 명절 비상진료기관 및 약국 조회 서비스](https://www.data.go.kr/data/15000480/openapi.do) | Exact-date holiday pharmacy rosters | `PUBLIC_DATA_API_KEY` |
+
+Apply for each service separately in the Public Data Portal and check approval
+for the key used by the running backend. A key that works for medication or
+hospital data does not automatically authorize holiday queries. `HOSPITAL_API_KEY`
+does not override the key used by the KASI calendar or pharmacy services.
+The backend URL-encodes request parameters; use the portal's decoded key value.
+
+Restart the backend after editing its local environment. For a 403 or
+`SERVICE_KEY_IS_NOT_REGISTERED_ERROR`, check service approval and the configured
+key without copying the real key or a credential-bearing request URL into an
+issue. Public-data failures are not treated as proof that a hospital is closed
+or that a date is an ordinary weekday. Visit-time availability still requires
+confirmation with the institution.
+
+The hospital request/cache limits and service base URLs are documented in
+`backend/.env.example`; retain those defaults for initial testing. Map rendering
+uses the existing Naver client-ID setup below, independently of backend data keys.
 
 DB 초기화 및 갱신 정책:
 
