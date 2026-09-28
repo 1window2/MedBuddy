@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_library;
 
 // 파일명: prescription_image_crop_service.dart
@@ -28,6 +29,15 @@ class PrescriptionImageCropService {
   // Returns:
   // - Future<XFile>: the derived guide JPEG after successful raw-capture cleanup; processing and nonsuppressed cleanup errors propagate.
   Future<XFile> cropToGuide({
+    required XFile sourceImage,
+    required Rect normalizedGuideRect,
+  }) async => XFile(await compute(
+    _cropPrescription,
+    (sourceImage.path, normalizedGuideRect),
+    debugLabel: 'prescription-crop',
+  ));
+
+  Future<XFile> _cropToGuide({
     required XFile sourceImage,
     required Rect normalizedGuideRect,
   }) async {
@@ -126,4 +136,12 @@ class PrescriptionImageCropService {
       bottom.toDouble(),
     );
   }
+}
+
+// 이미지 가공과 임시 파일 정리를 같은 작업에서 끝내 원본 정리 규칙을 유지한다.
+Future<String> _cropPrescription((String, Rect) input) async {
+  final result = await const PrescriptionImageCropService()._cropToGuide(
+    sourceImage: XFile(input.$1), normalizedGuideRect: input.$2,
+  );
+  return result.path;
 }

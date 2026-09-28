@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_library;
 import 'package:path_provider/path_provider.dart';
 
@@ -42,6 +43,18 @@ class ManualMedicationImageStore {
       return '';
     }
 
+    final jpeg = await compute(_encodeMedicationImage, sourcePath,
+        debugLabel: 'medication-photo');
+    final directory = await _patientDirectory(patientHash);
+    final destination = File(
+      '${directory.path}${Platform.pathSeparator}$medicationId.jpg',
+    );
+    await destination.writeAsBytes(jpeg, flush: true);
+    return destination.path;
+  }
+
+  // 디코딩·방향 보정·압축은 화면을 그리는 실행 흐름 밖에서 처리한다.
+  static Future<Uint8List> _encodeMedicationImage(String sourcePath) async {
     final sourceBytes = await File(sourcePath).readAsBytes();
     final decodedImage = image_library.decodeImage(sourceBytes);
     if (decodedImage == null) {
@@ -62,15 +75,7 @@ class ManualMedicationImageStore {
             );
     }
 
-    final directory = await _patientDirectory(patientHash);
-    final destination = File(
-      '${directory.path}${Platform.pathSeparator}$medicationId.jpg',
-    );
-    await destination.writeAsBytes(
-      image_library.encodeJpg(normalizedImage, quality: 86),
-      flush: true,
-    );
-    return destination.path;
+    return image_library.encodeJpg(normalizedImage, quality: 86);
   }
 
   // 함수이름: findImagePath

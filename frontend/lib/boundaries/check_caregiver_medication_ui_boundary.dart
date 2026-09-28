@@ -1260,6 +1260,7 @@ class _MedicationThumbnail extends StatelessWidget {
           : Image.network(
               imageUrl,
               fit: BoxFit.contain,
+              cacheWidth: 192,
               // 함수이름: build.errorBuilder callback
               // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
               // 매개변수:

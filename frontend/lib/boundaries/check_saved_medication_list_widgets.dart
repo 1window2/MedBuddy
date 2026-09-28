@@ -519,11 +519,13 @@ class _MedicationImageButton extends StatelessWidget {
           child: hasLocalImage
               ? Image.file(
                   localImageFile!,
+                  cacheWidth: 192,
                   fit: BoxFit.cover,
                   errorBuilder: _buildMedicationImageError,
                 )
               : Image.network(
                   imageUrl,
+                  cacheWidth: 192,
                   fit: BoxFit.cover,
                   errorBuilder: _buildMedicationImageError,
                 ),

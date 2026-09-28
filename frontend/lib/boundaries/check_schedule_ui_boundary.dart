@@ -1890,6 +1890,7 @@ class _MedicationThumbnail extends StatelessWidget {
               ? Image.network(
                   imageUrl,
                   fit: BoxFit.contain,
+                  cacheWidth: 216,
                   // 함수이름: build.errorBuilder callback
                   // 함수역할: errorBuilder에서 사진을 표시할 수 없는 약품의 대체 아이콘 위젯을 구성한다.
                   // 매개변수:
