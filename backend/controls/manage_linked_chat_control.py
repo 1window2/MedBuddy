@@ -685,16 +685,18 @@ class ManageLinkedChat:
         link_id: int,
         user_hash: str,
     ) -> dict[str, object]:
-        """현재 연동에서 사용자가 읽지 않은 메시지 수를 반환한다."""
+        """미확인 개수와 읽음 처리 전 첫 메시지 위치를 같은 시점에 반환한다."""
         link = self.require_active_link(link_id=link_id, user_hash=user_hash)
+        count, first_id = self.message_repository.unread_summary(
+            link_id=link_id,
+            reader_hash=user_hash,
+            is_patient=str(link.patient_hash) == user_hash,
+        )
         return {
             "success": True,
             "data": {
-                "unread_count": self.message_repository.unread_count(
-                    link_id=link_id,
-                    reader_hash=user_hash,
-                    is_patient=str(link.patient_hash) == user_hash,
-                )
+                "unread_count": count,
+                "first_unread_message_id": first_id,
             },
         }
 

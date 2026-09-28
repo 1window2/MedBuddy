@@ -147,10 +147,15 @@ class ManageLinkedChatTest(unittest.TestCase):
         )
 
         self.assertEqual(patient_unread["data"]["unread_count"], 0)
+        self.assertIsNone(patient_unread["data"]["first_unread_message_id"])
         self.assertEqual(caregiver_unread["data"]["unread_count"], 1)
+        self.assertEqual(caregiver_unread["data"]["first_unread_message_id"], sent.message.message_id)
         self.assertEqual(read_response["data"]["updated_count"], 1)
         self.assertEqual(len(history["data"]), 1)
         self.assertIsNotNone(history["data"][0]["read_at"])
+        self.assertEqual(self.chat.request_unread_count(
+            link_id=self.link_id, user_hash="caregiver-a",
+        )["data"], {"unread_count": 0, "first_unread_message_id": None})
 
     # 함수이름: test_history_has_more_only_when_an_older_message_exists
     # 함수역할:

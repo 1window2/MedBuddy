@@ -115,6 +115,29 @@ def test_private_deletion_hides_only_selected_user_and_unread(chat: ChatFixture,
     assert not history(chat, user)[-1]["hidden_for_me"]
 
 
+# 읽음 구분선과 개수는 숨김·전체삭제·상대 역할을 같은 조건으로 제외한다.
+@pytest.mark.parametrize("reader", ["patient-a", "caregiver-a"])
+def test_unread_boundary_skips_hidden_and_deleted_messages(chat: ChatFixture, reader: str) -> None:
+    control, link_id = chat
+    sender = "caregiver-a" if reader == "patient-a" else "patient-a"
+    first = send(chat, sender=sender, key="unread_first_001")
+    second = send(chat, sender=sender, key="unread_second_002")
+    third = send(chat, sender=sender, key="unread_third_003")
+    send(chat, sender=reader, key="unread_own_004")
+    assert control.request_unread_count(link_id=link_id, user_hash=reader)["data"] == {
+        "unread_count": 3, "first_unread_message_id": first,
+    }
+    control.delete_messages(link_id=link_id, user_hash=reader, message_ids=[first], scope="me")
+    control.delete_messages(link_id=link_id, user_hash=sender, message_ids=[second], scope="everyone")
+    assert control.request_unread_count(link_id=link_id, user_hash=reader)["data"] == {
+        "unread_count": 1, "first_unread_message_id": third,
+    }
+    control.mark_read(link_id=link_id, reader_hash=reader, through_message_id=third)
+    assert control.request_unread_count(link_id=link_id, user_hash=reader)["data"] == {
+        "unread_count": 0, "first_unread_message_id": None,
+    }
+
+
 # 함수이름: test_shared_deletion_enforces_server_time_and_redacts_snapshots
 # 함수역할:
 # - 전체 삭제의 서버 시간 경계를 검증하고, 허용 시 양측 본문·약 스냅샷·미읽음 및 재전송 응답이 삭제 상태를 유지하는지 확인한다.

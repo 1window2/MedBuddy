@@ -5,6 +5,7 @@
 
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from entities.chat_message_entity import _ChatMessage
@@ -162,8 +163,16 @@ class ChatMessageRepository:
         self, *, link_id: int, reader_hash: str, is_patient: bool = False,
     ) -> int:
         """현재 사용자가 아직 읽지 않은 상대 메시지 개수를 반환한다."""
-        return (
-            self.db.query(_ChatMessage)
+        return self.unread_summary(
+            link_id=link_id, reader_hash=reader_hash, is_patient=is_patient,
+        )[0]
+
+    # 읽음 구분선의 원래 위치와 개수를 같은 조회 시점에 얻는다.
+    def unread_summary(
+        self, *, link_id: int, reader_hash: str, is_patient: bool = False,
+    ) -> tuple[int, int | None]:
+        count, first_id = (
+            self.db.query(func.count(_ChatMessage.id), func.min(_ChatMessage.id))
             .filter(
                 _ChatMessage.link_id == link_id,
                 _ChatMessage.sender_hash != reader_hash,
@@ -172,5 +181,6 @@ class ChatMessageRepository:
                 (_ChatMessage.patient_deleted_at if is_patient
                  else _ChatMessage.caregiver_deleted_at).is_(None),
             )
-            .count()
+            .one()
         )
+        return int(count), int(first_id) if first_id is not None else None
