@@ -10,7 +10,7 @@ part of 'medbuddy_view_model.dart';
 extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
   /// Reconcile only reads and local alarms; never replay a completion write.
   Future<bool> recoverMedicationConnectivity() async {
-    if (_isTodayScheduleLoading) return false;
+    if (_schedules.isTodayScheduleLoading) return false;
     // Foreground recovery refreshes the visible state without replacing native
     // alarms (which could otherwise erase an outstanding ten-minute snooze).
     // The persistent reminder worker owns rolling-window reconciliation.
@@ -18,7 +18,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       loadMedicationReminderSettings(notifyAfterLoad: false),
       fetchTodayMedicationSchedule(),
     ]);
-    return _lastTodayScheduleLoadSucceeded &&
+    return _schedules.lastLoadSucceeded &&
         _lastReminderSettingsLoadSucceeded;
   }
 
@@ -203,7 +203,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     await doseSync?.deleteAccountData();
     clearAnalysisResult();
     _savedMedications.clear();
-    _todayMedicationScheduleList = [];
+    _schedules.clear();
     _notifyViewModelListeners();
   }
 }

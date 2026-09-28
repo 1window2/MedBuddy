@@ -43,12 +43,13 @@ import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
 import 'medbuddy_health_recommendation_view_model.dart';
 import 'medbuddy_saved_medication_view_model.dart';
+import 'medbuddy_schedule_view_model.dart';
+import 'medbuddy_schedule_slot_policy.dart';
 import 'saved_medication_batch_delete_result.dart';
 export 'saved_medication_batch_delete_result.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_facade.dart';
-part 'medbuddy_schedule_view_model.dart';
 part 'medbuddy_reminder_view_model.dart';
 part 'medbuddy_user_setting_view_model.dart';
 
@@ -107,6 +108,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckSavedMedication checkSavedMedication;
   late final MedBuddySavedMedicationViewModel _savedMedications;
   late final CheckSchedule checkSchedule;
+  late final MedBuddyScheduleViewModel _schedules;
   late final CheckTodayMedicationInfo checkTodayMedicationInfo;
   late final CheckHealthRecommendation checkHealthRecommendation;
   late final MedBuddyHealthRecommendationViewModel _healthRecommendations;
@@ -217,27 +219,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - bool: Whether the saved-medication list is being fetched.
   bool get isSavedMedicationLoading => _savedMedications.isLoading;
 
-  bool _isTodayScheduleLoading = false;
-  // Function Name: isTodayScheduleLoading
-  // Description: Exposes whether the tracked current schedule load is still pending.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Whether the tracked current schedule load is still pending.
-  bool get isTodayScheduleLoading => _isTodayScheduleLoading;
-  bool _hasTodayScheduleLoadError = false;
-  // Function Name: hasTodayScheduleLoadError
-  // Description: Exposes failure of the latest applicable schedule load for retry-state rendering.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Failure of the latest applicable schedule load for retry-state rendering.
-  bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
-  bool _lastTodayScheduleLoadSucceeded = false;
+  bool get isTodayScheduleLoading => _schedules.isTodayScheduleLoading;
+
+  bool get hasTodayScheduleLoadError => _schedules.hasTodayScheduleLoadError;
+
   bool _lastReminderSettingsLoadSucceeded = false;
-  int _todayScheduleEpoch = 0;
-  // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
-  int? _activeTodayScheduleLoadEpoch;
 
   // 함수이름: isHealthRecommendationLoading
   // 함수역할: 건강 관리 추천 조회의 진행 여부를 제공한다.
@@ -504,15 +490,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   List<MedicationDetail> get savedMedicationInfoList =>
       _savedMedications.medications;
 
-  List<MedicationSchedule> _todayMedicationScheduleList = [];
-  // Function Name: todayMedicationScheduleList
-  // Description: Exposes an unmodifiable list of the currently loaded medication courses for today.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - List<MedicationSchedule>: An unmodifiable list of the currently loaded medication courses for today.
   List<MedicationSchedule> get todayMedicationScheduleList =>
-      List.unmodifiable(_todayMedicationScheduleList);
+      _schedules.todayMedicationScheduleList;
 
   // 함수이름: healthRecommendation
   // 함수역할: 현재 복용 약 조합에 대한 최근 건강 관리 추천을 제공하고 조회 전에는 null을 유지한다.
@@ -533,7 +512,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     var totalCount = 0;
     var completedCount = 0;
 
-    for (final schedule in _todayMedicationScheduleList) {
+    for (final schedule in todayMedicationScheduleList) {
       for (final slotKey in _slotKeysForSchedule(schedule)) {
         totalCount += 1;
         if (schedule.isSlotCompleted(slotKey)) {
@@ -641,6 +620,13 @@ class MedBuddyViewModel extends ChangeNotifier {
     _healthRecommendations = MedBuddyHealthRecommendationViewModel(
       this.checkHealthRecommendation,
     )..addListener(_onHealthRecommendationChanged);
+    _schedules = MedBuddyScheduleViewModel(
+      checkSchedule: this.checkSchedule,
+      checkTodayMedicationInfo: this.checkTodayMedicationInfo,
+      readDoseSync: () => doseSync,
+      readEnglish: () => _isEnglishSetting,
+      onChanged: _onScheduleChanged,
+    );
     _savedMedications = MedBuddySavedMedicationViewModel(
       checkSavedMedication: this.checkSavedMedication,
       checkMedicationDetail: this.checkMedicationDetail,
@@ -657,6 +643,76 @@ class MedBuddyViewModel extends ChangeNotifier {
         ManageAccount(userHash: this.patientHash, client: _apiClient);
   }
 
+  // Function Name: _onScheduleChanged
+  // Description: Bridges isolated schedule state to existing listeners.
+  // Parameters: message: Schedule feedback. Returns: None.
+  void _onScheduleChanged(String message) {
+    if (_isDisposed) return;
+    if (message.isNotEmpty) _statusMessage = message;
+    _notifyViewModelListeners(MedBuddyFeature.schedule);
+  }
+
+  // Function Name: applyConfirmedTodaySchedules
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  void applyConfirmedTodaySchedules(List<MedicationSchedule> schedules) =>
+      _schedules.applyConfirmedTodaySchedules(schedules);
+  // Function Name: fetchTodayMedicationSchedule
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  Future<void> fetchTodayMedicationSchedule() =>
+      _schedules.fetchTodayMedicationSchedule();
+  // Function Name: fetchTodayMedicationInfo
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  Future<void> fetchTodayMedicationInfo() =>
+      _schedules.fetchTodayMedicationInfo();
+  // Function Name: isMedicationDoseCompleted
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  bool isMedicationDoseCompleted(String slotKey, MedicationSchedule schedule) =>
+      _schedules.isMedicationDoseCompleted(slotKey, schedule);
+  // Function Name: slotKeysForSchedule
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  List<String> slotKeysForSchedule(MedicationSchedule schedule) =>
+      _schedules.slotKeysForSchedule(schedule);
+  // Function Name: requestMedicationDoseStatusUpdate
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  Future<bool> requestMedicationDoseStatusUpdate(
+    String slotKey,
+    MedicationSchedule schedule,
+    bool medicationStatus,
+  ) => _schedules.requestMedicationDoseStatusUpdate(
+    slotKey,
+    schedule,
+    medicationStatus,
+  );
+  // Function Name: requestMedicationSlotStatusUpdate
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  Future<bool> requestMedicationSlotStatusUpdate(
+    String slotKey,
+    bool medicationStatus, {
+    String? expectedScheduleDate,
+  }) => _schedules.requestMedicationSlotStatusUpdate(
+    slotKey,
+    medicationStatus,
+    expectedScheduleDate: expectedScheduleDate,
+  );
+  // Function Name: requestMedicationStatusUpdate
+  // Description: Delegates to the schedule feature.
+  // Parameters: As declared in the schedule operation. Returns: Its result.
+  Future<bool> requestMedicationStatusUpdate(
+    MedicationSchedule medicationSchedule,
+    bool medicationStatus, {
+    String? slotKey,
+  }) => _schedules.requestMedicationStatusUpdate(
+    medicationSchedule,
+    medicationStatus,
+    slotKey: slotKey,
+  );
   DoseSyncService? doseSync;
 
   // Function Name: _onSavedMedicationChanged
@@ -685,11 +741,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _onDoseSyncChanged() {
     final sync = doseSync;
     if (_isDisposed || sync == null) return;
-    _todayScheduleEpoch++;
-    _activeTodayScheduleLoadEpoch = null;
-    _isTodayScheduleLoading = false;
-    _todayMedicationScheduleList = sync.schedules;
-    _notifyViewModelListeners(MedBuddyFeature.schedule);
+    _schedules.applyDoseProjection(sync.schedules);
   }
 
   // 함수이름: _notifyViewModelListeners
@@ -750,6 +802,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     }
     _isDisposed = true;
     _savedMedications.dispose();
+    _schedules.dispose();
     _healthRecommendations.removeListener(_onHealthRecommendationChanged);
     _healthRecommendations.dispose();
     doseSync?.removeListener(_onDoseSyncChanged);

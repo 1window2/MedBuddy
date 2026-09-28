@@ -22,7 +22,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
        * - onImageSelected (PrescriptionImageSelectedCallback?): 실제 이미지 선택 직후 진행 상태 수신자
        * 반환값:
        * - 촬영 이미지 입력 처리 결과의 Future.
-       */({onImageSelected}) {
+       */ ({onImageSelected}) {
         return inputPrescription.requestCapturedPrescriptionImage(
           image,
           onImageSelected: onImageSelected,
@@ -355,7 +355,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
          * - scheduleIndex (int): 원래 OCR 목록의 대상 행 인덱스
          * 반환값:
          * - 해당 일정의 상세 조회 결과를 완료하는 Future.
-         */(scheduleIndex) async {
+         */ (scheduleIndex) async {
           final schedule = schedules[scheduleIndex];
           try {
             final detail = await checkMedicationDetail.requestMedicationDetail(
@@ -430,21 +430,27 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   // - List<AnalyzedMedication>: 성공한 분석 결과를 원래 OCR 행 인덱스 순으로 정렬해 화면 목록으로 제공한다.
   List<AnalyzedMedication> _orderedAnalyzedMedications() {
     final entries = _analyzedMedicationByScheduleIndex.entries.toList()
-      ..sort(/* 함수이름: sort 콜백
+      ..sort(
+        /* 함수이름: sort 콜백
        * 함수역할: 조회 완료 순서와 무관하게 원래 일정 인덱스 오름차순으로 결과를 정렬한다.
        * 매개변수:
        * - left (MapEntry<int, AnalyzedMedication>): 정렬 비교의 첫 번째 일정 인덱스 항목
        * - right (MapEntry<int, AnalyzedMedication>): 정렬 비교의 두 번째 일정 인덱스 항목
        * 반환값:
        * - 원래 인덱스의 음수·0·양수 비교값.
-       */(left, right) => left.key.compareTo(right.key));
-    return entries.map(/* 함수이름: map 콜백
+       */ (left, right) => left.key.compareTo(right.key),
+      );
+    return entries
+        .map(
+          /* 함수이름: map 콜백
      * 함수역할: 인덱스 순으로 정렬된 결과에서 분석 약 정보만 꺼낸다.
      * 매개변수:
      * - entry (MapEntry<int, AnalyzedMedication>): 처리 중인 맵의 키·값 항목
      * 반환값:
      * - 해당 인덱스의 분석 약 정보.
-     */(entry) => entry.value).toList(growable: false);
+     */ (entry) => entry.value,
+        )
+        .toList(growable: false);
   }
 
   // 함수이름: _refreshPrescriptionChangeRadar
@@ -665,7 +671,7 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
          * - 없음.
          * 반환값:
          * - 없음.
-         */() {
+         */ () {
           if (_isCurrentPrescriptionOperation(operationId)) {
             _prescriptionPreviewImagePath =
                 inputPrescription.lastSelectedImagePath;
@@ -865,36 +871,10 @@ extension MedBuddyPrescriptionViewModel on MedBuddyViewModel {
   }
 
   // Function Name: _slotKeysForSchedule
-  // Description: Prefers explicit slots, then known daily frequency, then supported status-map keys, and finally the entity's default slot interpretation.
-  // Parameters:
-  // - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
-  // Returns:
-  // - List<String>: Prefers explicit slots, then known daily frequency, then supported status-map keys, and finally the entity's default slot interpretation.
-  List<String> _slotKeysForSchedule(MedicationSchedule schedule) {
-    if (schedule.scheduleSlotKeys.isNotEmpty) {
-      return schedule.slotKeys;
-    }
-    if (schedule.dailyFrequencyCount > 0) {
-      return medicationScheduleSlotKeysForFrequency(
-        schedule.dailyFrequencyCount,
-      );
-    }
-    if (schedule.slotStatuses.isNotEmpty) {
-      final slotKeys = medicationScheduleSlotKeys
-          .where(/* 함수이름: where 콜백
-           * 함수역할: 일정에 실제 상태 기록이 있는 시간대만 선택한다.
-           * 매개변수:
-           * - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-           * 반환값:
-           * - 상태 맵에 해당 시간대 키가 있으면 true.
-           */(slotKey) => schedule.slotStatuses.containsKey(slotKey))
-          .toList(growable: false);
-      if (slotKeys.isNotEmpty) {
-        return slotKeys;
-      }
-    }
-    return schedule.slotKeys;
-  }
+  // Description: Uses shared immutable slot interpretation.
+  // Parameters: schedule: Medication course. Returns: Resolved slot keys.
+  List<String> _slotKeysForSchedule(MedicationSchedule schedule) =>
+      resolveScheduleSlotKeys(schedule);
 }
 
 // 클래스명: _MedicationLookupResult

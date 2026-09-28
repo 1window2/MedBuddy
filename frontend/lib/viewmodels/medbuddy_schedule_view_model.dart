@@ -1,4 +1,10 @@
-part of 'medbuddy_view_model.dart';
+import '../controls/check_schedule_control.dart';
+import '../controls/check_today_medication_info_control.dart';
+import '../entities/medication_schedule_entity.dart';
+import '../services/dose_sync_service.dart';
+import '../services/user_facing_error_message.dart';
+import 'medbuddy_feature_updates.dart';
+import 'medbuddy_schedule_slot_policy.dart';
 
 // 파일명: medbuddy_schedule_view_model.dart
 // 역할: 오늘 복약 일정 조회와 시간대별 복용 완료 상태를 관리한다.
@@ -7,10 +13,107 @@ part of 'medbuddy_view_model.dart';
 // Role: Extends today's schedule loading and individual or whole-slot completion updates.
 // Responsibilities:
 // - Reject stale load generations, merge server-updated schedules, and publish loading and failure state to schedule listeners.
-extension MedBuddyScheduleViewModel on MedBuddyViewModel {
+class MedBuddyScheduleViewModel {
+  bool _isTodayScheduleLoading = false;
+  // Function Name: isTodayScheduleLoading
+  // Description: Exposes whether the tracked current schedule load is still pending.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Whether the tracked current schedule load is still pending.
+  bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+  bool _hasTodayScheduleLoadError = false;
+  // Function Name: hasTodayScheduleLoadError
+  // Description: Exposes failure of the latest applicable schedule load for retry-state rendering.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Failure of the latest applicable schedule load for retry-state rendering.
+  bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
+  bool _lastTodayScheduleLoadSucceeded = false;
+  int _todayScheduleEpoch = 0;
+  // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
+  int? _activeTodayScheduleLoadEpoch;
+  List<MedicationSchedule> _todayMedicationScheduleList = [];
+  // Function Name: todayMedicationScheduleList
+  // Description: Exposes an unmodifiable list of the currently loaded medication courses for today.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - List<MedicationSchedule>: An unmodifiable list of the currently loaded medication courses for today.
+  List<MedicationSchedule> get todayMedicationScheduleList =>
+      List.unmodifiable(_todayMedicationScheduleList);
+  final CheckSchedule checkSchedule;
+  final CheckTodayMedicationInfo checkTodayMedicationInfo;
+  final DoseSyncService? Function() _readDoseSync;
+  final bool Function() _readEnglish;
+  final void Function(String) _onChanged;
+  bool _disposed = false;
+  String _statusMessage = '';
+  // Function Name: MedBuddyScheduleViewModel
+  // Description: Binds borrowed controls and read-only runtime providers.
+  // Parameters: Controls, dose queue, language and update callback. Returns: State owner.
+  MedBuddyScheduleViewModel({
+    required this.checkSchedule,
+    required this.checkTodayMedicationInfo,
+    required DoseSyncService? Function() readDoseSync,
+    required bool Function() readEnglish,
+    required void Function(String) onChanged,
+  }) : _readDoseSync = readDoseSync,
+       _readEnglish = readEnglish,
+       _onChanged = onChanged;
+  // Function Name: doseSync
+  // Description: Reads the attached durable queue. Parameters: None. Returns: Queue or null.
+  DoseSyncService? get doseSync => _readDoseSync();
+  // Function Name: _isEnglishSetting
+  // Description: Reads display locale. Parameters: None. Returns: English selection.
+  bool get _isEnglishSetting => _readEnglish();
+  // Function Name: lastLoadSucceeded
+  // Description: Reports freshness for reminder reconciliation. Parameters: None. Returns: Freshness.
+  bool get lastLoadSucceeded => _lastTodayScheduleLoadSucceeded;
+  // Function Name: statusMessage
+  // Description: Exposes schedule-local feedback. Parameters: None. Returns: Feedback.
+  String get statusMessage => _statusMessage;
+  // Function Name: _notifyViewModelListeners
+  // Description: Publishes feature changes while alive. Parameters: feature: Tag. Returns: None.
+  void _notifyViewModelListeners(MedBuddyFeature feature) {
+    if (!_disposed) _onChanged(_statusMessage);
+  }
+
+  // Function Name: applyDoseProjection
+  // Description: Applies durable queue state without treating it as a fresh server read.
+  // Parameters: schedules: Projected courses. Returns: None.
+  void applyDoseProjection(List<MedicationSchedule> schedules) {
+    if (_disposed) return;
+    _todayScheduleEpoch++;
+    _activeTodayScheduleLoadEpoch = null;
+    _isTodayScheduleLoading = false;
+    _todayMedicationScheduleList = schedules;
+    _notifyViewModelListeners(MedBuddyFeature.schedule);
+  }
+
+  // Function Name: clear
+  // Description: Invalidates pending reads and clears account state. Parameters: None. Returns: None.
+  void clear() {
+    _todayScheduleEpoch++;
+    _activeTodayScheduleLoadEpoch = null;
+    _isTodayScheduleLoading = false;
+    _lastTodayScheduleLoadSucceeded = false;
+    _hasTodayScheduleLoadError = false;
+    _todayMedicationScheduleList = [];
+  }
+
+  // Function Name: dispose
+  // Description: Stops presentation updates without closing borrowed controls. Parameters: None. Returns: None.
+  void dispose() {
+    _disposed = true;
+    clear();
+  }
+
   // 함수역할: 채팅의 복용 기록 응답을 홈·일정에 즉시 반영하고 이전 조회를 무효화한다.
   // 매개변수: schedules: 서버가 확인한 오늘 전체 일정. 반환값: 없음.
   void applyConfirmedTodaySchedules(List<MedicationSchedule> schedules) {
+    if (_disposed) return;
     _todayScheduleEpoch += 1;
     _activeTodayScheduleLoadEpoch = null;
     _todayMedicationScheduleList = List.unmodifiable(schedules);
@@ -53,6 +156,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   Future<void> _loadTodayMedicationSchedule(
     Future<List<MedicationSchedule>> Function() loader,
   ) async {
+    if (_disposed) return;
     int? cacheRevision;
     if (doseSync != null) {
       try {
@@ -61,6 +165,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
         // Online reads remain available when local persistence is unavailable.
       }
     }
+    if (_disposed) return;
     final loadEpoch = ++_todayScheduleEpoch;
     _activeTodayScheduleLoadEpoch = loadEpoch;
     _isTodayScheduleLoading = true;
@@ -148,7 +253,7 @@ extension MedBuddyScheduleViewModel on MedBuddyViewModel {
   // 반환값:
   // - List<String>: 명시 시간대·하루 횟수·완료 상태에서 정한 공통 복약 시간대 목록을 화면에 제공한다.
   List<String> slotKeysForSchedule(MedicationSchedule schedule) {
-    return _slotKeysForSchedule(schedule);
+    return resolveScheduleSlotKeys(schedule);
   }
 
   // 함수이름: requestMedicationDoseStatusUpdate

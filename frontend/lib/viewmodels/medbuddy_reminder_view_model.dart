@@ -359,7 +359,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void>
   _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
-    if (!_lastTodayScheduleLoadSucceeded || !_lastReminderSettingsLoadSucceeded) {
+    if (!_schedules.lastLoadSucceeded || !_lastReminderSettingsLoadSucceeded) {
       return;
     }
     try {
@@ -484,7 +484,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   // 반환값:
   // - List<MedicationSchedule>: 현재 오늘 일정 중 명시·추론된 시간대가 선택한 알림 시간대를 포함하는 약만 모은다.
   List<MedicationSchedule> _schedulesForReminderSlot(String slotKey) {
-    return _todayMedicationScheduleList
+    return todayMedicationScheduleList
         .where(/* 함수이름: where 콜백
          * 함수역할: 정규화된 일정 시간대에 대상 알림 시간대가 포함되는지 검사한다.
          * 매개변수:

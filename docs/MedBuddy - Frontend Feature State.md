@@ -39,3 +39,12 @@ to avoid a circular import. Controls remain borrowed and parent-disposed.
 Only the latest list request may publish. Confirmed deletion invalidates earlier
 reads; clearing account data or disposing the feature also invalidates late list
 and image completions. Deletions publish a saved-medication update explicitly.
+
+## Schedules
+
+The schedule feature owns courses, loading/error state and request generations.
+The facade forwards screen operations and supplies a read-only durable-queue
+provider. Queue projection uses an explicit operation that does not claim a
+fresh server read. Reminder reconciliation reads the feature's freshness flag;
+account clearing invalidates pending reads. Slot interpretation is a shared pure
+policy rather than a private helper inside prescription processing.
