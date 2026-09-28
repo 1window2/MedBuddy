@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/linked_chat_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
@@ -32,6 +33,17 @@ class _EmptyCheckSchedule extends CheckSchedule {
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [];
   }
+}
+
+// 알림을 연속 선택할 때 실제 스크롤 위치도 바뀌는지 확인할 네 시간대 일정이다.
+class _AllSlotsCheckSchedule extends _EmptyCheckSchedule {
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async => const [
+    MedicationSchedule(
+      medicationID: '1', medicationName: '테스트정', intakeTime: '1정',
+      medicationTime: 4, scheduleSlotKeys: ['morning', 'lunch', 'evening', 'bedtime'],
+    ),
+  ];
 }
 
 // Class Name: _RecordingCheckSchedule
@@ -586,6 +598,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selectionHandler, isNotNull);
+    // 이전 계정용 보호자 알림은 현재 계정의 화면이나 액션을 실행하지 않는다.
+    final otherAccountAlert = CaregiverAlertContext(
+      alertId: 1, sourceAlertId: 1, linkId: 17,
+      eventId: 'a' * 64, sourceEventId: 'a' * 64,
+      patientHash: 'patient-other', recipientHash: 'another-account',
+      slotKey: 'morning', scheduleDate: '2026-09-28',
+    );
+    for (final action in [MedicationNotificationAction.open,
+      MedicationNotificationAction.caregiverSnooze,
+      MedicationNotificationAction.caregiverRequestCheck]) {
+      selectionHandler!(MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.caregiverSchedule,
+        caregiverAlert: otherAccountAlert, patientHash: 'patient-other', action: action,
+      ));
+      await tester.pumpAndSettle();
+      expect(navigatorKey.currentState?.canPop(), isFalse);
+    }
     selectionHandler!(
       const MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
@@ -596,6 +625,88 @@ void main() {
 
     expect(navigatorKey.currentState?.canPop(), isTrue);
     expect(find.byType(CheckScheduleUI), findsOneWidget);
+    final scheduleState = tester.state(find.byType(CheckScheduleUI));
+    // 다른 시간대 알림을 연속으로 눌러도 같은 화면에 새 목적지가 전달된다.
+    for (final slot in ['morning', 'evening', 'bedtime', 'lunch']) {
+      selectionHandler!(MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule,
+        slotKey: slot,
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckScheduleUI>(find.byType(CheckScheduleUI)).initialSlotKey, slot);
+      expect(tester.state(find.byType(CheckScheduleUI)), same(scheduleState));
+    }
+    navigatorKey.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(navigatorKey.currentState!.canPop(), isFalse);
+  });
+
+  // 같은 일정 화면에서 알림의 새 시간대까지 스크롤하며 중복 경로를 쌓지 않는다.
+  testWidgets('successive notification slots reveal their schedule cards', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    MedicationNotificationSelectionHandler? handler;
+    await tester.pumpWidget(MedBuddyApp(
+      notificationSelectionRegistrar: (value) => handler = value,
+      viewModelFactory: () => MedBuddyViewModel(
+        checkSchedule: _AllSlotsCheckSchedule(),
+        setNotification: _EmptySetNotification(),
+        manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+        notificationService: _NoopNotificationService(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    double? bedtimeOffset;
+    for (final slot in ['bedtime', 'morning']) {
+      handler!(MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.schedule, slotKey: slot,
+      ));
+      await tester.pumpAndSettle();
+      final target = find.byKey(ValueKey('schedule-entire-slot-toggle-$slot'));
+      expect(target, findsOneWidget);
+      final offset = Scrollable.of(tester.element(target)).position.pixels;
+      if (slot == 'bedtime') {
+        expect(offset, greaterThan(0));
+        bedtimeOffset = offset;
+      } else {
+        expect(offset, lessThan(bedtimeOffset!));
+      }
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
+  });
+
+  // 채팅 알림은 역할 정보가 없는 채팅 화면을 직접 열지 않고 연동 확인 경로를 거친다.
+  testWidgets('chat notification resolves the link before opening the room', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    MedicationNotificationSelectionHandler? selectionHandler;
+    await tester.pumpWidget(
+      MedBuddyApp(
+        notificationSelectionRegistrar: (handler) => selectionHandler = handler,
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: _EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: _NoopNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    selectionHandler!(
+      const MedicationNotificationSelection(
+        destination: MedicationNotificationDestination.linkedChat,
+        linkId: 17,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    final entry = tester.widget<LinkedChatEntryUI>(find.byType(LinkedChatEntryUI));
+    expect(entry.linkId, 17);
+    expect(entry.currentUserHash, isNotEmpty);
+    expect(entry.userSetting.userHash, entry.currentUserHash);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
   });
 
   // Function Name: testWidgets callback

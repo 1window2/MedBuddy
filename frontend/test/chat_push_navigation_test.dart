@@ -29,7 +29,7 @@ void main() {
     NotificationService.setNotificationSelectionHandler(null);
     client.close();
   });
-  for (final kind in ['slot_check_request', 'text']) {
+  for (final kind in ['slot_check_request', 'text', 'hospital_share', 'pharmacy_share', 'medication_discomfort', 'medication_shortage']) {
     for (final slot in ['morning', 'lunch', 'evening', 'bedtime', 'invalid']) {
       test('$kind / $slot opens the originating chat', () async {
         service.handleOpenedMessageForTesting(
@@ -84,5 +84,29 @@ void main() {
       ),
     );
     expect(selections, isEmpty);
+  });
+  // 알 수 없는 푸시가 환자 해시를 포함해도 복약 화면으로 잘못 보내지 않는다.
+  test('unknown push type does not fall through to caregiver schedule', () {
+    service.handleOpenedMessageForTesting(const RemoteMessage(data: {
+      'type': 'unknown', 'recipient_hash': 'patient', 'patient_hash': 'another',
+    }));
+    expect(selections, isEmpty);
+  });
+  for (final type in ['caregiver_slot_completed', 'caregiver_dose_completed', 'caregiver_slot_missed']) {
+    test('$type opens the matching patient schedule', () async {
+      service.handleOpenedMessageForTesting(RemoteMessage(data: {
+        'type': type, 'recipient_hash': 'patient', 'patient_hash': 'patient:two',
+      }));
+      await Future<void>.delayed(Duration.zero);
+      expect(selections.single.destination, MedicationNotificationDestination.caregiverSchedule);
+      expect(selections.single.patientHash, 'patient:two');
+    });
+  }
+  // 잘못된 시간대는 복약 처리·재알림 동작으로 전달하지 않는다.
+  test('invalid schedule slots cannot navigate or perform an action', () {
+    for (final slot in ['', 'unknown', 'morning/bedtime']) {
+      expect(NotificationService.selectionFromPayload('schedule:$slot:1:2026-09-28'), isNull);
+    }
+    expect(NotificationService.selectionFromPayload('schedule: Evening :1')?.slotKey, 'evening');
   });
 }

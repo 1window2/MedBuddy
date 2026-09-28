@@ -64,7 +64,7 @@ class LinkedChatUI extends StatefulWidget {
     super.key,
     required this.linkId,
     required this.currentUserHash,
-    this.patientHash = '',
+    required this.patientHash,
     this.peerName = '가족',
     this.userSetting = const UserSetting(),
     this.initialMedicationContexts = const [],

@@ -68,6 +68,15 @@ class _Links extends LinkPatientCaregiver {
 // 역할: 최근 메시지 조회와 실패를 재현한다. 속성: messages, failed: 응답·실패 연동 ID.
 class _History extends ManageLinkedChat {
   final Map<int, List<ChatMessage>> messages = {};
+  final unreadCounts = <int, int>{};
+  bool unreadFails = false;
+  // 읽음 집계 실패를 미리보기 실패와 별도로 재현한다.
+  @override
+  Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
+    if (unreadFails) throw StateError('unread offline');
+    return ChatUnreadSummary(count: unreadCounts[linkId] ?? 0);
+  }
+
   int? failed;
   int calls = 0;
   // 함수이름: _History
@@ -132,8 +141,14 @@ class _HomeMonitoring extends CheckCaregiverMedication {
     List<PatientCaregiverLink>? links,
   }) async {
     calls++;
-    return [for (final link in links ?? <PatientCaregiverLink>[])
-      CaregiverMonitoringSnapshot(link: link, notificationSettings: {}, schedules: [])];
+    return [
+      for (final link in links ?? <PatientCaregiverLink>[])
+        CaregiverMonitoringSnapshot(
+          link: link,
+          notificationSettings: {},
+          schedules: [],
+        ),
+    ];
   }
 }
 
@@ -176,41 +191,49 @@ void _viewport(WidgetTester tester, double width) {
 // 함수역할: 대화 조회와 동적 탐색 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
   // 저장 설정이 연동 조회보다 늦게 복원되어도 환자 조회와 위젯 발행 출처를 갱신한다.
-  testWidgets('late home source restoration refreshes linked patient schedules', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    _viewport(tester, 390);
-    final links = _Links()..result = [_link(1)];
-    final model = _ViewModel();
-    final api = _HomeMonitoring();
-    addTearDown(model.dispose);
-    addTearDown(api.dispose);
-    await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: model,
-        child: MaterialApp(home: HomeScreen(
-          chatListFactory: (hash) => ManageChatList(
-            userHash: hash, linkControl: links, chatControl: _History(),
+  testWidgets(
+    'late home source restoration refreshes linked patient schedules',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _viewport(tester, 390);
+      final links = _Links()..result = [_link(1)];
+      final model = _ViewModel();
+      final api = _HomeMonitoring();
+      addTearDown(model.dispose);
+      addTearDown(api.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+              caregiverHomeFactory: (hash) =>
+                  CheckCaregiverHome(userHash: hash, control: api),
+            ),
           ),
-          caregiverHomeFactory: (hash) => CheckCaregiverHome(userHash: hash, control: api),
-        )),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(api.calls, 0);
-    model.setting = const UserSetting(homeScheduleSource: 'patients');
-    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
-    await tester.pumpAndSettle();
-    expect(api.calls, 1);
-    expect(find.byKey(const Key('caregiver-home-summary')), findsOneWidget);
-    model.setting = const UserSetting(homeScheduleSource: 'self');
-    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
-    await tester.pumpAndSettle();
-    model.setting = const UserSetting(homeScheduleSource: 'patients');
-    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
-    await tester.pumpAndSettle();
-    expect(api.calls, 2);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(api.calls, 0);
+      model.setting = const UserSetting(homeScheduleSource: 'patients');
+      model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+      await tester.pumpAndSettle();
+      expect(api.calls, 1);
+      expect(find.byKey(const Key('caregiver-home-summary')), findsOneWidget);
+      model.setting = const UserSetting(homeScheduleSource: 'self');
+      model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+      await tester.pumpAndSettle();
+      model.setting = const UserSetting(homeScheduleSource: 'patients');
+      model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+      await tester.pumpAndSettle();
+      expect(api.calls, 2);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   // 함수역할: 홈의 실제 구성에서 설정과 연동 해제에 따라 환자 현황을 표시한다.
   for (final (source, ownMedication) in [
@@ -242,7 +265,9 @@ void main() {
         MultiProvider(
           providers: [
             ChangeNotifierProvider<MedBuddyViewModel>.value(value: model),
-            ChangeNotifierProvider<AuthenticationControl>.value(value: authentication),
+            ChangeNotifierProvider<AuthenticationControl>.value(
+              value: authentication,
+            ),
             ChangeNotifierProvider<AppLanguageControl>.value(value: language),
           ],
           child: MaterialApp(
@@ -274,35 +299,60 @@ void main() {
       );
       expect(model.userSetting.homeScheduleSource, source);
       if (source == 'self') {
-        expect(find.text('홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'),
-            findsOneWidget);
-        await tester.ensureVisible(find.byKey(const Key('caregiver-home-source-hint')));
+        expect(find.text('홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'), findsOneWidget);
+        await tester.ensureVisible(
+          find.byKey(const Key('caregiver-home-source-hint')),
+        );
         await tester.tap(find.byKey(const Key('caregiver-home-source-hint')));
         await tester.pumpAndSettle();
         expect(find.byType(ManageUserSettingUI), findsOneWidget);
         expect(find.text('화면 및 음성'), findsOneWidget);
-        expect(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')), findsNothing);
-        final sourceSelector = find.byKey(const ValueKey('homeScheduleSourceSelector'));
+        expect(
+          find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')),
+          findsNothing,
+        );
+        final sourceSelector = find.byKey(
+          const ValueKey('homeScheduleSourceSelector'),
+        );
         expect(sourceSelector, findsOneWidget);
-        expect(find.descendant(of: sourceSelector, matching: find.text('내 일정')),
-            findsOneWidget);
-        expect(tester.widget<ManageUserSettingUI>(find.byType(ManageUserSettingUI))
-            .initialSetting.homeScheduleSource, 'self');
+        expect(
+          find.descendant(of: sourceSelector, matching: find.text('내 일정')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<ManageUserSettingUI>(find.byType(ManageUserSettingUI))
+              .initialSetting
+              .homeScheduleSource,
+          'self',
+        );
         // Only an explicit selection changes the draft; navigation never saves it.
-        for (final (value, label) in [('patients', '연결된 환자'), ('self', '내 일정')]) {
+        for (final (value, label) in [
+          ('patients', '연결된 환자'),
+          ('self', '내 일정'),
+        ]) {
           await tester.ensureVisible(sourceSelector);
           await tester.tap(sourceSelector);
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(ValueKey('homeScheduleSource-$value')));
           await tester.pumpAndSettle();
-          expect(find.descendant(of: sourceSelector, matching: find.text(label)),
-              findsOneWidget);
+          expect(
+            find.descendant(of: sourceSelector, matching: find.text(label)),
+            findsOneWidget,
+          );
           expect(model.userSetting.homeScheduleSource, 'self');
         }
-        await Navigator.of(tester.element(find.byType(ManageUserSettingUI))).maybePop();
+        await Navigator.of(
+          tester.element(find.byType(ManageUserSettingUI)),
+        ).maybePop();
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')), findsOneWidget);
-        await Navigator.of(tester.element(find.byType(ManageUserSettingUI))).maybePop();
+        expect(
+          find.byKey(const ValueKey('settingsDisplayAndVoiceMenu')),
+          findsOneWidget,
+        );
+        await Navigator.of(
+          tester.element(find.byType(ManageUserSettingUI)),
+        ).maybePop();
         await tester.pumpAndSettle();
         expect(model.userSetting.homeScheduleSource, 'self');
         expect(api.calls, 0);
@@ -527,6 +577,52 @@ void main() {
   );
   // 함수이름: 목록·선택 테스트
   // 함수역할: 삭제된 본문을 숨기고 선택한 환자의 기존 채팅으로 이동한다. 매개변수: tester: 도구. 반환값: 검증 완료.
+  // 숫자는 실제 미확인 개수이며 0·실패 때는 표시하지 않고 100 이상은 99+로 줄인다.
+  testWidgets('conversation badges refresh and clear without marking read', (
+    tester,
+  ) async {
+    final links = _Links()..result = [_link(1), _link(2)];
+    final history = _History()..unreadCounts.addAll({1: 3, 2: 120});
+    final control = ManageChatList(
+      userHash: 'caregiver',
+      linkControl: links,
+      chatControl: history,
+    );
+    addTearDown(control.dispose);
+    await control.refresh(includeMessages: true);
+    await tester.binding.setSurfaceSize(const Size(320, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: ChatListUI(
+            control: control,
+            userSetting: const UserSetting(),
+            onManageLinks: _noop,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('99+'), findsOneWidget);
+    expect(control.unreadCount(2), 120);
+    history.unreadCounts[1] = 0;
+    await control.refresh(includeMessages: true);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('chatUnread-1')), findsNothing);
+    history.unreadFails = true;
+    await control.refresh(includeMessages: true);
+    await tester.pump();
+    expect(control.unreadCount(2), isNull);
+    expect(find.byKey(const ValueKey('chatUnread-2')), findsNothing);
+    history.unreadFails = false;
+    links.result = [_link(1)];
+    await control.refresh(includeMessages: true);
+    expect(control.unreadCount(2), isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('redacts deleted previews and opens the selected patient', (
     tester,
   ) async {

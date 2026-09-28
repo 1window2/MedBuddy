@@ -183,6 +183,12 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelectionMode) {
       _selectedDoses.retainAll(_selectableDoses);
+    } else if (widget.initialSlotKey != oldWidget.initialSlotKey) {
+      // 이미 열린 일정에서도 새 알림의 시간대로 이동한다.
+      _didRevealInitialSlot = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealInitialSlot();
+      });
     }
   }
 

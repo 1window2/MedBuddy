@@ -497,13 +497,21 @@ class PushNotificationService {
   }
 
   // 함수이름: _handleOpenedMessage
-  // 함수역할: 보호자가 시스템 푸시를 누르면 해당 환자의 복약 일정으로 이동시킨다.
+  // 함수역할: 수신자와 알림 유형을 확인해 해당 채팅 또는 환자의 복약 일정으로 이동시킨다.
   // 매개변수:
   // - message (RemoteMessage): 사용자가 선택한 FCM 메시지
   // 반환값:
   // - 없음.
   void _handleOpenedMessage(RemoteMessage message) {
     if (message.data['recipient_hash'] != userHash) return;
+    if (!const {
+      'linked_chat_message',
+      'caregiver_slot_completed',
+      'caregiver_dose_completed',
+      'caregiver_slot_missed',
+    }.contains(message.data['type'])) {
+      return;
+    }
     final alert = CaregiverAlertContext.fromData(message.data);
     if (alert != null) {
       NotificationService.handleNotificationPayload(alert.payload);

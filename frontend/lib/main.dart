@@ -13,7 +13,7 @@ import 'package:home_widget/home_widget.dart';
 
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
-import 'boundaries/linked_chat_ui_boundary.dart';
+import 'boundaries/linked_chat_entry_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
 import 'composition/linked_chat_notification_monitor_factory.dart';
@@ -170,6 +170,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   late final AppLanguageControl _appLanguageControl;
   late final bool _ownsAppLanguageControl;
   bool _isScheduleRouteOpen = false;
+  final _notificationScheduleSlot = ValueNotifier<String?>(null);
+  final _notificationChatLatest = ValueNotifier<int>(0);
   String? _openCaregiverScheduleRouteName;
   String? _openLinkedChatRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
@@ -265,6 +267,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // - 없음.
   @override
   void dispose() {
+    _notificationScheduleSlot.dispose();
+    _notificationChatLatest.dispose();
     unawaited(_widgetClicks?.cancel());
     _monitorGeneration += 1;
     _caregiverNotificationMonitor?.dispose();
@@ -432,9 +436,12 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _pushNotificationService = null;
     _monitoredUserHash = userHash;
     _sharedCaregiverRead?.dispose();
-    _sharedCaregiverRead = userHash == null || userHash.isEmpty ? null
-        : CheckCaregiverMedication(caregiverHash: userHash,
-            client: _authenticationControl.apiClient);
+    _sharedCaregiverRead = userHash == null || userHash.isEmpty
+        ? null
+        : CheckCaregiverMedication(
+            caregiverHash: userHash,
+            client: _authenticationControl.apiClient,
+          );
     previousMonitor?.dispose();
     unawaited(previousChatMonitor?.dispose());
     if (previousPushService != null) {
@@ -603,6 +610,19 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   void _navigateForNotificationWhenReady(
     MedicationNotificationSelection selection,
   ) {
+    final session = _authenticationControl.session;
+    if (!mounted || session == null) return;
+    final recipient = selection.caregiverAlert?.recipientHash;
+    if (recipient != null && recipient != session.userHash) return;
+    if (_navigatorKey.currentState == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // 로그인 계정이 바뀌면 이전 계정의 대기 중 알림을 실행하지 않는다.
+        if (mounted && identical(session, _authenticationControl.session)) {
+          _navigateForNotificationWhenReady(selection);
+        }
+      });
+      return;
+    }
     if (selection.caregiverAlert != null &&
         selection.action != MedicationNotificationAction.open) {
       _handleCaregiverActionWhenReady(selection);
@@ -694,7 +714,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
 
   final Set<String> _caregiverActionsInFlight = {};
 
-  void _handleCaregiverActionWhenReady(MedicationNotificationSelection selection) {
+  void _handleCaregiverActionWhenReady(
+    MedicationNotificationSelection selection,
+  ) {
     if (_navigatorKey.currentState == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _handleCaregiverActionWhenReady(selection);
@@ -704,25 +726,33 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     unawaited(_performCaregiverAction(selection));
   }
 
-  Future<void> _performCaregiverAction(MedicationNotificationSelection selection) async {
+  Future<void> _performCaregiverAction(
+    MedicationNotificationSelection selection,
+  ) async {
     final alert = selection.caregiverAlert;
     final session = _authenticationControl.session;
     final navigator = _navigatorKey.currentState;
     if (alert == null || session == null || navigator == null) return;
     final key = '${alert.eventId}:${selection.action.name}';
     if (!_caregiverActionsInFlight.add(key)) return;
-    final language = navigator.context.read<MedBuddyViewModel>().userSetting.language;
+    final language = navigator.context
+        .read<MedBuddyViewModel>()
+        .userSetting
+        .language;
     final english = language == 'en';
     var success = false;
     try {
       final action = switch (selection.action) {
-        MedicationNotificationAction.caregiverSnooze => CaregiverAlertAction.snooze,
-        MedicationNotificationAction.caregiverRequestCheck => CaregiverAlertAction.requestCheck,
+        MedicationNotificationAction.caregiverSnooze =>
+          CaregiverAlertAction.snooze,
+        MedicationNotificationAction.caregiverRequestCheck =>
+          CaregiverAlertAction.requestCheck,
         _ => null,
       };
       if (action == null) return;
       await CaregiverAlertActionControl(
-        userHash: session.userHash, client: _authenticationControl.apiClient,
+        userHash: session.userHash,
+        client: _authenticationControl.apiClient,
       ).execute(alert, action, language: language);
       success = true;
     } catch (_) {
@@ -730,18 +760,34 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     } finally {
       _caregiverActionsInFlight.remove(key);
     }
-    if (!mounted || !identical(_authenticationControl.session, session) || !navigator.mounted) return;
-    ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(SnackBar(
-      content: Text(success
-        ? selection.action == MedicationNotificationAction.caregiverSnooze
-          ? (english ? 'Reminder requested. We will check again in 10 minutes.' : '재알림을 접수했습니다. 10분 후 미복약 여부를 다시 확인합니다.')
-          : (english ? 'Schedule check request sent.' : '복약 일정 확인 요청을 보냈습니다.')
-        : (english ? 'Could not confirm this action. Please retry.' : '처리 결과를 확인하지 못했습니다. 다시 시도해 주세요.')),
-      action: success ? null : SnackBarAction(
-        label: english ? 'Retry' : '재시도',
-        onPressed: () => _handleCaregiverActionWhenReady(selection),
+    if (!mounted ||
+        !identical(_authenticationControl.session, session) ||
+        !navigator.mounted) {
+      return;
+    }
+    ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? selection.action == MedicationNotificationAction.caregiverSnooze
+                    ? (english
+                          ? 'Reminder requested. We will check again in 10 minutes.'
+                          : '재알림을 접수했습니다. 10분 후 미복약 여부를 다시 확인합니다.')
+                    : (english
+                          ? 'Schedule check request sent.'
+                          : '복약 일정 확인 요청을 보냈습니다.')
+              : (english
+                    ? 'Could not confirm this action. Please retry.'
+                    : '처리 결과를 확인하지 못했습니다. 다시 시도해 주세요.'),
+        ),
+        action: success
+            ? null
+            : SnackBarAction(
+                label: english ? 'Retry' : '재시도',
+                onPressed: () => _handleCaregiverActionWhenReady(selection),
+              ),
       ),
-    ));
+    );
   }
 
   // Function Name: _handleMedicationNotificationActionWhenReady
@@ -911,6 +957,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // 반환값:
   // - 없음.
   void _openSchedule(NavigatorState navigator, {String? initialSlotKey}) {
+    _notificationScheduleSlot.value = initialSlotKey;
     if (_isScheduleRouteOpen) {
       navigator.popUntil(
         // Function Name: popUntil callback
@@ -934,8 +981,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
              * 반환값:
              * - 초기 시간대가 적용된 복약 일정 화면.
-             */ (context) =>
-                CheckScheduleUI(initialSlotKey: initialSlotKey),
+             */ (context) => ValueListenableBuilder<String?>(
+              valueListenable: _notificationScheduleSlot,
+              builder: (context, slotKey, _) =>
+                  CheckScheduleUI(initialSlotKey: slotKey),
+            ),
           ),
         )
         .whenComplete(
@@ -990,7 +1040,13 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
              */ (context) => CheckCaregiverMedicationUI(
               caregiverHash: session.userHash,
               patientHash: patientHash,
-              userSetting: UserSetting(language: _appLanguageControl.language),
+              userSetting: context
+                  .read<MedBuddyViewModel>()
+                  .userSetting
+                  .copyWith(
+                    userHash: session.userHash,
+                    language: _appLanguageControl.language,
+                  ),
             ),
           ),
         )
@@ -1021,6 +1077,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     }
     final routeName = '$_linkedChatRoutePrefix$linkId';
     if (_openLinkedChatRouteName == routeName) {
+      _notificationChatLatest.value++;
       navigator.popUntil(
         // 함수이름: popUntil 콜백
         // 함수역할: 이미 열린 연결 채팅 경로를 찾되 루트 경로를 넘지 않는다.
@@ -1038,15 +1095,23 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
           MaterialPageRoute<void>(
             settings: RouteSettings(name: routeName),
             builder: /* 함수이름: builder 콜백
-             * 함수역할: 현재 사용자와 선택한 연결 ID·앱 언어를 가족 채팅 화면에 전달한다.
+             * 함수역할: 연동 정보를 조회해 환자·보호자 역할과 상대 이름을 확인한 뒤 채팅을 연다.
              * 매개변수:
              * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
              * 반환값:
              * - 선택한 가족 연결의 채팅 화면.
-             */ (context) => LinkedChatUI(
+             */ (context) => LinkedChatEntryUI(
+              key: ValueKey('${session.userHash}:$linkId'),
+              latestMessageRequest: _notificationChatLatest,
               linkId: linkId,
               currentUserHash: session.userHash,
-              userSetting: UserSetting(language: _appLanguageControl.language),
+              userSetting: context
+                  .read<MedBuddyViewModel>()
+                  .userSetting
+                  .copyWith(
+                    userHash: session.userHash,
+                    language: _appLanguageControl.language,
+                  ),
             ),
           ),
         )
@@ -1140,7 +1205,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                 caregiverHomeFactory: (owner) => CheckCaregiverHome(
                   userHash: owner,
                   control: _sharedCaregiverRead?.caregiverHash == owner
-                      ? _sharedCaregiverRead : null,
+                      ? _sharedCaregiverRead
+                      : null,
                 ),
               ),
             ),

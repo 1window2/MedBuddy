@@ -296,7 +296,8 @@ class NotificationService {
     final segments = payload?.split(':') ?? const <String>[];
     if ((segments.length == 3 || segments.length == 4) &&
         segments[0] == 'schedule' &&
-        segments[1].trim().isNotEmpty) {
+        const {'morning', 'lunch', 'evening', 'bedtime'}
+            .contains(segments[1].trim().toLowerCase())) {
       final notificationID = int.tryParse(segments[2]);
       if (notificationID == null || notificationID < 0) {
         return null;
@@ -313,7 +314,7 @@ class NotificationService {
       }
       return MedicationNotificationSelection(
         destination: MedicationNotificationDestination.schedule,
-        slotKey: segments[1].trim(),
+        slotKey: segments[1].trim().toLowerCase(),
         notificationId: notificationId ?? notificationID,
         scheduleDate: scheduleDate,
         action: switch (actionId) {
