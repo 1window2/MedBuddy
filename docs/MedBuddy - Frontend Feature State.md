@@ -26,3 +26,16 @@ this is an incremental extraction, not a claim of complete frontend decoupling.
 
 Regression coverage includes reversed completion, an old failure during a newer
 request, disposal, feature notification isolation, and existing health UI tests.
+
+## Saved medications
+
+The saved-medication feature now owns its list, loading generation and feedback
+in a separate library. A compatibility-only facade forwards existing methods;
+it owns no list state. Cross-feature coordination uses explicit schedule-refresh
+and reminder-synchronization callbacks, preserving existing overridden methods
+and refresh sequencing. Shared deletion results live outside the facade library
+to avoid a circular import. Controls remain borrowed and parent-disposed.
+
+Only the latest list request may publish. Confirmed deletion invalidates earlier
+reads; clearing account data or disposing the feature also invalidates late list
+and image completions. Deletions publish a saved-medication update explicitly.

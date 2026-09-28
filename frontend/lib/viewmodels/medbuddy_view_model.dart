@@ -26,7 +26,6 @@ import '../entities/identified_pill_save_request_entity.dart';
 import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
-import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/pill_identification_entity.dart';
@@ -43,9 +42,12 @@ import '../services/notification_service.dart';
 import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
 import 'medbuddy_health_recommendation_view_model.dart';
+import 'medbuddy_saved_medication_view_model.dart';
+import 'saved_medication_batch_delete_result.dart';
+export 'saved_medication_batch_delete_result.dart';
 
 part 'medbuddy_prescription_view_model.dart';
-part 'medbuddy_saved_medication_view_model.dart';
+part 'medbuddy_saved_medication_facade.dart';
 part 'medbuddy_schedule_view_model.dart';
 part 'medbuddy_reminder_view_model.dart';
 part 'medbuddy_user_setting_view_model.dart';
@@ -72,52 +74,6 @@ class TodayMedicationProgress {
     required this.completedCount,
     required this.totalCount,
   });
-}
-
-// Class Name: SavedMedicationBatchDeleteResult
-// Role: Summarizes successful and failed saved-medication deletions.
-// Responsibilities:
-// - Distinguish an empty selection, full success, and partial failure for the list UI.
-// Attributes:
-// - successCount (int): Number of successfully saved or deleted items.
-// - failureCount (int): Number of failed items.
-class SavedMedicationBatchDeleteResult {
-  final int successCount;
-  final int failureCount;
-
-  // Function Name: SavedMedicationBatchDeleteResult
-  // Description: Captures successful and failed deletion counts for an explicitly selected medication batch.
-  // Parameters:
-  // - successCount (int): Number of successfully saved or deleted items.
-  // - failureCount (int): Number of failed items.
-  // Returns:
-  // - SavedMedicationBatchDeleteResult: the initialized instance.
-  const SavedMedicationBatchDeleteResult({
-    required this.successCount,
-    required this.failureCount,
-  });
-
-  // Function Name: totalCount
-  // Description: Computes the number of attempted medication deletions from success and failure counts.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int: Computes the number of attempted medication deletions from success and failure counts.
-  int get totalCount => successCount + failureCount;
-  // Function Name: allSucceeded
-  // Description: Reports full success only when at least one medication was selected and no deletion failed.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Reports full success only when at least one medication was selected and no deletion failed.
-  bool get allSucceeded => totalCount > 0 && failureCount == 0;
-  // Function Name: hasFailures
-  // Description: Reports whether any selected medication failed to delete.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Whether any selected medication failed to delete.
-  bool get hasFailures => failureCount > 0;
 }
 
 // 클래스명: MedBuddyViewModel
@@ -149,6 +105,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckMedicationDetail checkMedicationDetail;
   late final CheckPrescriptionChange checkPrescriptionChange;
   late final CheckSavedMedication checkSavedMedication;
+  late final MedBuddySavedMedicationViewModel _savedMedications;
   late final CheckSchedule checkSchedule;
   late final CheckTodayMedicationInfo checkTodayMedicationInfo;
   late final CheckHealthRecommendation checkHealthRecommendation;
@@ -252,14 +209,13 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - bool: 분석 약 전체 저장 작업의 진행 여부를 제공한다.
   bool get isAllMedicationSaving => _isAllMedicationSaving;
 
-  bool _isSavedMedicationLoading = false;
   // Function Name: isSavedMedicationLoading
   // Description: Exposes whether the saved-medication list is being fetched.
   // Parameters:
   // - None.
   // Returns:
   // - bool: Whether the saved-medication list is being fetched.
-  bool get isSavedMedicationLoading => _isSavedMedicationLoading;
+  bool get isSavedMedicationLoading => _savedMedications.isLoading;
 
   bool _isTodayScheduleLoading = false;
   // Function Name: isTodayScheduleLoading
@@ -539,7 +495,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - bool: 결과 화면 뒤에서 진행하는 이전 처방 비교 요청의 로딩 상태를 제공한다.
   bool get isPrescriptionChangeLoading => _isPrescriptionChangeLoading;
 
-  List<MedicationDetail> _savedMedicationInfoList = [];
   // Function Name: savedMedicationInfoList
   // Description: Exposes an unmodifiable view of the currently loaded saved-medication details.
   // Parameters:
@@ -547,7 +502,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Returns:
   // - List<MedicationDetail>: An unmodifiable view of the currently loaded saved-medication details.
   List<MedicationDetail> get savedMedicationInfoList =>
-      List.unmodifiable(_savedMedicationInfoList);
+      _savedMedications.medications;
 
   List<MedicationSchedule> _todayMedicationScheduleList = [];
   // Function Name: todayMedicationScheduleList
@@ -686,12 +641,32 @@ class MedBuddyViewModel extends ChangeNotifier {
     _healthRecommendations = MedBuddyHealthRecommendationViewModel(
       this.checkHealthRecommendation,
     )..addListener(_onHealthRecommendationChanged);
+    _savedMedications = MedBuddySavedMedicationViewModel(
+      checkSavedMedication: this.checkSavedMedication,
+      checkMedicationDetail: this.checkMedicationDetail,
+      manualMedicationImageStore: this.manualMedicationImageStore,
+      patientHash: this.patientHash,
+      readEnglishSetting: () => _isEnglishSetting,
+      fetchTodayMedicationSchedule: fetchTodayMedicationSchedule,
+      synchronizeReminders:
+          _synchronizeMedicationReminderSchedulesIfScheduleIsFresh,
+      onChanged: _onSavedMedicationChanged,
+    );
     this.manageAccount =
         manageAccount ??
         ManageAccount(userHash: this.patientHash, client: _apiClient);
   }
 
   DoseSyncService? doseSync;
+
+  // Function Name: _onSavedMedicationChanged
+  // Description: Bridges owned feature state to legacy facade subscribers.
+  // Parameters: message: Saved-medication feedback. Returns: None.
+  void _onSavedMedicationChanged(String message) {
+    if (_isDisposed) return;
+    if (message.isNotEmpty) _statusMessage = message;
+    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+  }
 
   // Production injects a durable queue; isolated view-model tests may omit it.
   void attachDoseSync(DoseSyncService service) {
@@ -774,6 +749,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    _savedMedications.dispose();
     _healthRecommendations.removeListener(_onHealthRecommendationChanged);
     _healthRecommendations.dispose();
     doseSync?.removeListener(_onDoseSyncChanged);

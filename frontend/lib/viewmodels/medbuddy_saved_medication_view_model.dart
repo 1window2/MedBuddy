@@ -1,4 +1,17 @@
-part of 'medbuddy_view_model.dart';
+import 'dart:async';
+
+import '../controls/check_saved_medication_control.dart';
+import '../controls/check_medication_detail_control.dart';
+import '../entities/medication_detail_entity.dart';
+import '../entities/medication_schedule_entity.dart';
+import '../entities/manual_medication_entry_entity.dart';
+import '../entities/pill_identification_entity.dart';
+import '../entities/identified_pill_save_request_entity.dart';
+import '../entities/medication_image_url_entity.dart';
+import '../services/manual_medication_image_store.dart';
+import '../services/user_facing_error_message.dart';
+import 'medbuddy_feature_updates.dart';
+import 'saved_medication_batch_delete_result.dart';
 
 // 파일명: medbuddy_saved_medication_view_model.dart
 // 역할: 저장된 복약정보의 저장, 조회, 단건·일괄 삭제 상태를 관리한다.
@@ -7,7 +20,86 @@ part of 'medbuddy_view_model.dart';
 // 역할: 저장 약 등록·조회·삭제와 기기 사진 연결 상태를 확장한다.
 // 주요 책임:
 // - 수동 입력·알약 후보를 기존 저장 흐름에 연결하고 부분 실패를 보존하며 성공 후 일정과 알림을 갱신한다.
-extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
+class MedBuddySavedMedicationViewModel {
+  final CheckSavedMedication checkSavedMedication;
+  final CheckMedicationDetail checkMedicationDetail;
+  final ManualMedicationImageStore manualMedicationImageStore;
+  final String patientHash;
+  final bool Function() _readEnglishSetting;
+  final Future<void> Function() fetchTodayMedicationSchedule;
+  final Future<void> Function()
+  _synchronizeMedicationReminderSchedulesIfScheduleIsFresh;
+  final void Function(String) _onChanged;
+  bool _disposed = false;
+  int _loadGeneration = 0;
+  bool _isSavedMedicationLoading = false;
+  List<MedicationDetail> _savedMedicationInfoList = [];
+  String _statusMessage = '';
+
+  // Function Name: MedBuddySavedMedicationViewModel
+  // Description: Binds borrowed controls and narrow cross-feature refresh operations.
+  // Parameters: Controls, patient scope, locale reader, refresh and notification callbacks.
+  // Returns: An independent saved-medication state owner.
+  MedBuddySavedMedicationViewModel({
+    required this.checkSavedMedication,
+    required this.checkMedicationDetail,
+    required this.manualMedicationImageStore,
+    required this.patientHash,
+    required bool Function() readEnglishSetting,
+    required this.fetchTodayMedicationSchedule,
+    required Future<void> Function() synchronizeReminders,
+    required void Function(String) onChanged,
+  }) : _readEnglishSetting = readEnglishSetting,
+       _synchronizeMedicationReminderSchedulesIfScheduleIsFresh =
+           synchronizeReminders,
+       _onChanged = onChanged;
+
+  // Function Name: isLoading
+  // Description: Exposes loading owned by the newest request.
+  // Parameters: None. Returns: Whether a list request is active.
+  bool get isLoading => _isSavedMedicationLoading;
+
+  // Function Name: medications
+  // Description: Prevents callers from mutating the owned list.
+  // Parameters: None. Returns: Read-only medication snapshot.
+  List<MedicationDetail> get medications =>
+      List.unmodifiable(_savedMedicationInfoList);
+
+  // Function Name: statusMessage
+  // Description: Exposes feature-local feedback.
+  // Parameters: None. Returns: Latest saved-medication message.
+  String get statusMessage => _statusMessage;
+
+  // Function Name: _isEnglishSetting
+  // Description: Reads current display language without sharing settings state.
+  // Parameters: None. Returns: Whether English feedback is selected.
+  bool get _isEnglishSetting => _readEnglishSetting();
+
+  // Function Name: _notifyViewModelListeners
+  // Description: Publishes only this feature's feedback while alive.
+  // Parameters: feature: Existing operation tag. Returns: None.
+  void _notifyViewModelListeners(MedBuddyFeature feature) {
+    if (!_disposed) _onChanged(_statusMessage);
+  }
+
+  // Function Name: clear
+  // Description: Clears account data and invalidates pending list/image results.
+  // Parameters: None. Returns: None.
+  void clear() {
+    _loadGeneration++;
+    _savedMedicationInfoList = [];
+    _isSavedMedicationLoading = false;
+    _statusMessage = '';
+  }
+
+  // Function Name: dispose
+  // Description: Invalidates completions without disposing borrowed dependencies.
+  // Parameters: None. Returns: None.
+  void dispose() {
+    _disposed = true;
+    clear();
+  }
+
   // 함수이름: saveMedicationInfo
   // 함수역할: 약 상세 정보와 선택적 복약 스케줄을 저장 API로 전달하고 저장 목록을 갱신한다.
   // 매개변수:
@@ -188,13 +280,15 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
       }
     }
 
-    if (results.any(/* 함수이름: any 콜백
+    if (results.any(
+      /* 함수이름: any 콜백
      * 함수역할: 일괄 저장 결과 중 실패가 아닌 결과가 있는지 확인한다.
      * 매개변수:
      * - result (MedicationSaveResult): 해당 입력 알약의 성공 식별 결과
      * 반환값:
      * - 해당 저장 결과가 실패 상태가 아니면 true.
-     */(result) => result.status != MedicationSaveStatus.failed)) {
+     */ (result) => result.status != MedicationSaveStatus.failed,
+    )) {
       await fetchSavedMedicationInfo();
       await fetchTodayMedicationSchedule();
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
@@ -210,6 +304,8 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> fetchSavedMedicationInfo() async {
+    if (_disposed) return;
+    final generation = ++_loadGeneration;
     _isSavedMedicationLoading = true;
     _notifyViewModelListeners(MedBuddyFeature.savedMedication);
 
@@ -217,24 +313,31 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
     try {
       fetchedMedicationList = await checkSavedMedication
           .requestSavedMedicationInfo();
+      if (_disposed || generation != _loadGeneration) return;
       // 서버 목록을 먼저 표시하고 로컬 사진 파일 확인은 화면을 막지 않도록 분리한다.
       _savedMedicationInfoList = fetchedMedicationList;
     } on StateError catch (error) {
+      if (_disposed || generation != _loadGeneration) return;
       _statusMessage = UserFacingErrorMessage.resolve(
         error,
         isEnglish: _isEnglishSetting,
       );
     } catch (_) {
+      if (_disposed || generation != _loadGeneration) return;
       _statusMessage = _isEnglishSetting
           ? 'Could not load saved medication information.'
           : '저장된 복약 정보를 불러오지 못했습니다.';
     } finally {
-      _isSavedMedicationLoading = false;
-      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+      if (!_disposed && generation == _loadGeneration) {
+        _isSavedMedicationLoading = false;
+        _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+      }
     }
 
     if (fetchedMedicationList != null) {
-      unawaited(_refreshLocalMedicationImages(fetchedMedicationList));
+      unawaited(
+        _refreshLocalMedicationImages(fetchedMedicationList, generation),
+      );
     }
   }
 
@@ -273,7 +376,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
        * - savedMedicationId (int): 대상 저장 복약정보의 식별자
        * 반환값:
        * - 해당 약 삭제 성공 여부를 완료하는 Future.
-       */(savedMedicationId) async {
+       */ (savedMedicationId) async {
         try {
           return await checkSavedMedication.requestDelete(savedMedicationId);
         } catch (_) {
@@ -292,15 +395,20 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
     }
 
     if (deletedIds.isNotEmpty) {
+      _loadGeneration++;
+      _isSavedMedicationLoading = false;
       _savedMedicationInfoList = _savedMedicationInfoList
-          .where(/* 함수이름: where 콜백
+          .where(
+            /* 함수이름: where 콜백
            * 함수역할: 삭제에 성공한 약 ID를 현재 저장 목록에서 제외한다.
            * 매개변수:
            * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 삭제된 ID 집합에 속하지 않으면 true.
-           */(item) => !deletedIds.contains(item.id))
+           */ (item) => !deletedIds.contains(item.id),
+          )
           .toList(growable: false);
+      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
       await fetchTodayMedicationSchedule();
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
@@ -322,21 +430,25 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
   ) async {
     try {
       final activeIds = medicationList
-          .map(/* 함수이름: map 콜백
+          .map(
+            /* 함수이름: map 콜백
            * 함수역할: 로컬 이미지 정리에 사용할 저장 약 ID를 추출한다.
            * 매개변수:
            * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 저장 약 ID 또는 null.
-           */(item) => item.id)
+           */ (item) => item.id,
+          )
           .whereType<int>()
-          .where(/* 함수이름: where 콜백
+          .where(
+            /* 함수이름: where 콜백
            * 함수역할: 로컬 이미지 관리에 사용할 수 있는 양의 저장 약 ID만 남긴다.
            * 매개변수:
            * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
            * 반환값:
            * - ID가 양수이면 true.
-           */(id) => id > 0)
+           */ (id) => id > 0,
+          )
           .toSet();
       final itemsWithImages = await Future.wait(
         medicationList.map(/* 함수이름: map 콜백
@@ -345,7 +457,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
          * - medication (MedicationDetail): 로컬 이미지를 복원할 저장 약 정보
          * 반환값:
          * - 로컬 이미지 경로를 반영한 약 상세 정보의 Future.
-         */(medication) async {
+         */ (medication) async {
           final medicationId = medication.id;
           if (medicationId == null || medicationId <= 0) {
             return medication;
@@ -376,17 +488,21 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _refreshLocalMedicationImages(
     List<MedicationDetail> fetchedMedicationList,
+    int generation,
   ) async {
     final itemsWithImages = await _attachLocalMedicationImages(
       fetchedMedicationList,
     );
-    if (itemsWithImages.every(/* 함수이름: every 콜백
+    if (_disposed || generation != _loadGeneration) return;
+    if (itemsWithImages.every(
+      /* 함수이름: every 콜백
      * 함수역할: 저장된 약 전체에 로컬 이미지 경로가 없는지 확인한다.
      * 매개변수:
      * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
      * 반환값:
      * - 해당 약의 로컬 이미지 경로가 비어 있으면 true.
-     */(item) => item.localImagePath.isEmpty)) {
+     */ (item) => item.localImagePath.isEmpty,
+    )) {
       return;
     }
 
@@ -402,7 +518,7 @@ extension MedBuddySavedMedicationViewModel on MedBuddyViewModel {
          * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
          * - 이전 로컬 이미지를 유지한 약 정보 또는 원래 항목.
-         */(item) {
+         */ (item) {
           final medicationId = item.id;
           if (medicationId == null) {
             return item;

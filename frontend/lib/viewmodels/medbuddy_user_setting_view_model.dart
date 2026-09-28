@@ -202,7 +202,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     await manageAccount.deleteAccountData();
     await doseSync?.deleteAccountData();
     clearAnalysisResult();
-    _savedMedicationInfoList = [];
+    _savedMedications.clear();
     _todayMedicationScheduleList = [];
     _notifyViewModelListeners();
   }
