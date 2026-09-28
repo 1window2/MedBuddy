@@ -901,7 +901,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (!mounted) {
       return;
     }
-    _showReminderResultMessage(viewModel.statusMessage, success: success);
+    _showReminderResultMessage(viewModel.reminderStatusMessage, success: success);
   }
 
   // 함수이름: _showReminderConfiguration

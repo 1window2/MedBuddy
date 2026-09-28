@@ -320,7 +320,7 @@ class _MedicationReminderSettingsUIState
       schedules: schedules,
     );
     if (mounted) {
-      _showResult(viewModel.statusMessage, succeeded);
+      _showResult(viewModel.reminderStatusMessage, succeeded);
     }
   }
 
@@ -351,7 +351,7 @@ class _MedicationReminderSettingsUIState
       slotTitle: slot.label(text.isEnglish),
     );
     if (mounted) {
-      _showResult(viewModel.statusMessage, succeeded);
+      _showResult(viewModel.reminderStatusMessage, succeeded);
     }
   }
 

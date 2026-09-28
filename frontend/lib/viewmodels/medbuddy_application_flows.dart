@@ -1,12 +1,11 @@
 part of 'medbuddy_view_model.dart';
 
-// 파일명: medbuddy_user_setting_view_model.dart
-// 역할: 사용자 설정, 초기 화면 데이터와 계정 데이터 삭제 흐름을 관리한다.
+// File Name: medbuddy_application_flows.dart
+// Role: Coordinates recovery, refresh and account deletion across feature owners.
 
-// 클래스명: MedBuddyApplicationFlows
-// 역할: 사용자 설정·초기 일정 및 계정 삭제 흐름을 확장한다.
-// 주요 책임:
-// - 알림 개인정보 정책을 설정 변경과 동기화하고 새로고침과 분석 상태 초기화 및 세션 데이터 정리를 조정한다.
+// Class Name: MedBuddyApplicationFlows
+// Role: Application-level coordination without owning feature-private state.
+// Responsibilities: Preserve refresh/recovery policies and explicit reset operations.
 extension MedBuddyApplicationFlows on MedBuddyViewModel {
   /// Reconcile only reads and local alarms; never replay a completion write.
   Future<bool> recoverMedicationConnectivity() async {
@@ -79,37 +78,6 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
         _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
         ? DateTime.now()
         : null;
-  }
-
-  // 함수이름: clearAnalysisResult
-  // 함수역할: 진행 중 처방 응답을 무효화하고 선택 파일·OCR·분석·저장 진행 상태를 초기화해 입력 대기 화면으로 돌아간다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
-  void clearAnalysisResult() {
-    _cancelPrescriptionOperation();
-    inputPrescription.cancelPendingRequests();
-    unawaited(inputPrescription.clearSelectedImage());
-    _recognizedMedicationScheduleList = [];
-    _recognizedTextRegionList = [];
-    _prescriptionPreviewImagePath = '';
-    _analyzedMedicationList = [];
-    _analyzedMedicationByScheduleIndex.clear();
-    _unverifiedMedicationScheduleIndexes.clear();
-    _prescriptionChangeRadar = null;
-    _isPrescriptionChangeLoading = false;
-    _completedMedicationSaveIndexes.clear();
-    _isAllMedicationSaving = false;
-    _savingMedicationIndex = null;
-    _analysisErrorMessage = '';
-    _clearPrescriptionRecognitionCounts();
-    _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
-    _prescriptionFlowState = PrescriptionFlowState.idle;
-    _statusMessage = _isEnglishSetting
-        ? 'Take a prescription photo or choose an image.'
-        : '처방전을 촬영하거나 이미지를 선택해주세요.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // Function Name: requestAccountDataDeletion

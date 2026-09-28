@@ -384,6 +384,36 @@ class _FakeCheckPrescriptionChange extends CheckPrescriptionChange {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // Function Name: reset during save test
+  // Description: A late save failure cannot replace the new prescription flow's guidance.
+  // Parameters: None. Returns: Test completion.
+  test('reset prescription ignores an older save completion', () async {
+    final control = _DeferredCheckSavedMedication();
+    final model = MedBuddyViewModel(checkSavedMedication: control);
+    addTearDown(model.dispose);
+    const medication = AnalyzedMedication(
+      schedule: MedicationSchedule(medicationName: 'test'),
+      detail: MedicationDetail(
+        itemName: 'test',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+      ),
+    );
+    final save = model.requestMedicationSave(medication, 0);
+    model.clearAnalysisResult();
+    final resetMessage = model.prescriptionStatusMessage;
+    control.completer.complete(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.failed,
+        message: 'old failure',
+      ),
+    );
+    expect(await save, isFalse);
+    expect(model.prescriptionStatusMessage, resetMessage);
+    expect(model.completedMedicationSaveIndexes, isEmpty);
+    expect(model.savingMedicationIndex, isNull);
+  });
   // 함수이름: test 콜백
   // 함수역할:
   // - 갤러리 OCR 결과에 서버의 약명 수정 안내를 노출하는지 검증한다.

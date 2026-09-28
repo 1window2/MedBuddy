@@ -1,9 +1,8 @@
 // File Name: medbuddy_view_model.dart
-// Role: Owns patient-scoped feature state and composes prescription, schedule, reminder, and settings extensions.
+// Role: Composes independent patient-scoped feature owners and preserves the screen API.
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -38,7 +37,6 @@ import '../services/dose_home_widget_service.dart';
 import '../services/medication_reminder_background_service.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/notification_service.dart';
-import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
 import 'medbuddy_health_recommendation_view_model.dart';
 import 'medbuddy_saved_medication_view_model.dart';
@@ -46,10 +44,10 @@ import 'medbuddy_schedule_view_model.dart';
 import 'medbuddy_schedule_slot_policy.dart';
 import 'medbuddy_reminder_view_model.dart';
 import 'medbuddy_user_setting_view_model.dart';
+import 'medbuddy_prescription_view_model.dart';
 import 'saved_medication_batch_delete_result.dart';
 export 'saved_medication_batch_delete_result.dart';
 
-part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_facade.dart';
 
 part 'medbuddy_application_flows.dart';
@@ -104,6 +102,7 @@ class TodayMedicationProgress {
 // - _analyzedMedicationByScheduleIndex (Map<int, AnalyzedMedication>): 원래 OCR 행 인덱스별 분석 성공 결과
 class MedBuddyViewModel extends ChangeNotifier {
   late final InputPrescription inputPrescription;
+  late final MedBuddyPrescriptionViewModel _prescriptions;
   late final CheckMedicationDetail checkMedicationDetail;
   late final CheckPrescriptionChange checkPrescriptionChange;
   late final CheckSavedMedication checkSavedMedication;
@@ -139,80 +138,23 @@ class MedBuddyViewModel extends ChangeNotifier {
     return _featureUpdates[feature]!;
   }
 
-  PrescriptionFlowState _prescriptionFlowState = PrescriptionFlowState.idle;
-  // 함수이름: prescriptionFlowState
-  // 함수역할: 입력·인식·미리보기·분석·결과·실패를 구분하는 현재 처방 흐름 상태를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - PrescriptionFlowState: 입력·인식·미리보기·분석·결과·실패를 구분하는 현재 처방 흐름 상태를 제공한다.
-  PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
-  int _prescriptionOperationId = 0;
+  PrescriptionFlowState get prescriptionFlowState =>
+      _prescriptions.prescriptionFlowState;
 
-  AnalysisProgressStep _analysisProgressStep =
-      AnalysisProgressStep.prescriptionRecognition;
-  // 함수이름: analysisProgressStep
-  // 함수역할: 현재 처방 인식 또는 약품 분석 진행 단계 값을 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - AnalysisProgressStep: 현재 처방 인식 또는 약품 분석 진행 단계 값을 제공한다.
-  AnalysisProgressStep get analysisProgressStep => _analysisProgressStep;
+  AnalysisProgressStep get analysisProgressStep =>
+      _prescriptions.analysisProgressStep;
 
-  // 함수이름: isPrescriptionAnalyzing
-  // 함수역할: 처방전 인식이나 약품 상세 분석이 진행 중인 상태인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 처방전 인식이나 약품 상세 분석이 진행 중인 상태인지 확인한다.
-  bool get isPrescriptionAnalyzing {
-    return _prescriptionFlowState ==
-            PrescriptionFlowState.recognizingPrescription ||
-        _prescriptionFlowState == PrescriptionFlowState.analyzingMedication;
-  }
+  bool get isPrescriptionAnalyzing => _prescriptions.isPrescriptionAnalyzing;
 
-  // 함수이름: isLoading
-  // 함수역할: 기존 호출부가 처방 인식·분석 진행 여부를 공통 로딩 값으로 읽도록 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 기존 호출부가 처방 인식·분석 진행 여부를 공통 로딩 값으로 읽도록 제공한다.
-  bool get isLoading => isPrescriptionAnalyzing;
+  bool get isLoading => _prescriptions.isLoading;
 
-  int? _savingMedicationIndex;
-  // Function Name: savingMedicationIndex
-  // Description: Exposes the analysis-list index currently being saved, or null when no individual save is running.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int?: The analysis-list index currently being saved, or null when no individual save is running.
-  int? get savingMedicationIndex => _savingMedicationIndex;
-  // Function Name: isMedicationSaving
-  // Description: Reports whether an individual medication save has an active list index.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Whether an individual medication save has an active list index.
-  bool get isMedicationSaving => _savingMedicationIndex != null;
+  int? get savingMedicationIndex => _prescriptions.savingMedicationIndex;
+  bool get isMedicationSaving => _prescriptions.isMedicationSaving;
 
-  final Set<int> _completedMedicationSaveIndexes = {};
-  // 함수이름: completedMedicationSaveIndexes
-  // 함수역할: 이미 저장 또는 중복 확인된 분석 목록 인덱스를 변경할 수 없는 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 이미 저장 또는 중복 확인된 분석 목록 인덱스를 변경할 수 없는 집합으로 제공한다.
   Set<int> get completedMedicationSaveIndexes =>
-      Set.unmodifiable(_completedMedicationSaveIndexes);
+      _prescriptions.completedMedicationSaveIndexes;
 
-  bool _isAllMedicationSaving = false;
-  // 함수이름: isAllMedicationSaving
-  // 함수역할: 분석 약 전체 저장 작업의 진행 여부를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 분석 약 전체 저장 작업의 진행 여부를 제공한다.
-  bool get isAllMedicationSaving => _isAllMedicationSaving;
+  bool get isAllMedicationSaving => _prescriptions.isAllMedicationSaving;
 
   // Function Name: isSavedMedicationLoading
   // Description: Exposes whether the saved-medication list is being fetched.
@@ -262,6 +204,21 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   String _statusMessage = '';
+
+  // Function Name: prescriptionStatusMessage
+  // Description: Prevents unrelated feature feedback from replacing prescription guidance.
+  // Parameters: None. Returns: Prescription-local message or initial guidance.
+  String get prescriptionStatusMessage =>
+      _prescriptions.statusMessage.isNotEmpty
+      ? _prescriptions.statusMessage
+      : (_isEnglishSetting
+            ? 'Take a prescription photo or choose an image.'
+            : '처방전을 촬영하거나 이미지를 선택해주세요.');
+
+  // Function Name: reminderStatusMessage
+  // Description: Exposes reminder feedback independently of background feature updates.
+  // Parameters: None. Returns: Reminder-local feedback.
+  String get reminderStatusMessage => _reminders.statusMessage;
   // 함수이름: statusMessage
   // 함수역할: 최근 상태 안내를 제공하고 아직 없으면 현재 언어의 처방전 입력 안내를 사용한다.
   // 매개변수:
@@ -277,109 +234,22 @@ class MedBuddyViewModel extends ChangeNotifier {
         : '처방전을 촬영하거나 이미지를 선택해주세요.';
   }
 
-  String _analysisErrorMessage = '';
-  // 함수이름: analysisErrorMessage
-  // 함수역할: 처방 인식·상세 분석에서 기록한 최근 실패 안내를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 처방 인식·상세 분석에서 기록한 최근 실패 안내를 제공한다.
-  String get analysisErrorMessage => _analysisErrorMessage;
-  // 함수이름: canRetryPrescriptionAnalysis
-  // 함수역할: 인식 결과가 남아 있는 상세 분석 실패 또는 미확인 재검토 상태에서만 재분석을 허용한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 인식 결과가 남아 있는 상세 분석 실패 또는 미확인 재검토 상태에서만 재분석을 허용한다.
+  String get analysisErrorMessage => _prescriptions.analysisErrorMessage;
   bool get canRetryPrescriptionAnalysis =>
-      (_prescriptionFlowState == PrescriptionFlowState.analysisFailed ||
-          _prescriptionFlowState ==
-              PrescriptionFlowState.medicationReviewRequired) &&
-      _analysisProgressStep != AnalysisProgressStep.prescriptionRecognition &&
-      _recognizedMedicationScheduleList.isNotEmpty;
+      _prescriptions.canRetryPrescriptionAnalysis;
 
-  int _lastPrescriptionRawMedicationCount = 0;
-  int _lastPrescriptionParsedMedicationCount = 0;
-  int _lastPrescriptionSkippedMedicationCount = 0;
-  // Function Name: lastPrescriptionRawMedicationCount
-  // Description: Exposes the latest raw OCR medication count before parsing exclusions.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int: The latest raw OCR medication count before parsing exclusions.
   int get lastPrescriptionRawMedicationCount =>
-      _lastPrescriptionRawMedicationCount;
-  // Function Name: lastPrescriptionParsedMedicationCount
-  // Description: Exposes the latest count of usable parsed prescription entries.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int: The latest count of usable parsed prescription entries.
+      _prescriptions.lastPrescriptionRawMedicationCount;
   int get lastPrescriptionParsedMedicationCount =>
-      _lastPrescriptionParsedMedicationCount;
-  // Function Name: lastPrescriptionSkippedMedicationCount
-  // Description: Exposes the latest number of excluded OCR entries for the review notice.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int: The latest number of excluded OCR entries for the review notice.
+      _prescriptions.lastPrescriptionParsedMedicationCount;
   int get lastPrescriptionSkippedMedicationCount =>
-      _lastPrescriptionSkippedMedicationCount;
+      _prescriptions.lastPrescriptionSkippedMedicationCount;
 
-  // Function Name: correctedPrescriptionMedicationCount
-  // Description: Counts recognized medication entries with recorded name corrections.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - int: Counts recognized medication entries with recorded name corrections.
-  int get correctedPrescriptionMedicationCount {
-    return _recognizedMedicationScheduleList
-        .where(
-          /* Function Name: where callback
-         * Description: Selects prescription schedules whose recognized medication name has been corrected.
-         * Parameters:
-         * - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
-         * Returns:
-         * - Whether this schedule has a name correction.
-         */
-          (schedule) => schedule.hasNameCorrection,
-        )
-        .length;
-  }
+  int get correctedPrescriptionMedicationCount =>
+      _prescriptions.correctedPrescriptionMedicationCount;
 
-  // Function Name: prescriptionRecognitionNotice
-  // Description: Builds a localized preanalysis review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - String: Builds a localized preanalysis review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
-  String get prescriptionRecognitionNotice {
-    final correctedCount = correctedPrescriptionMedicationCount;
-    final skippedCount = _lastPrescriptionSkippedMedicationCount;
-    if (correctedCount <= 0 && skippedCount <= 0) {
-      return '';
-    }
-
-    final parts = <String>[];
-    if (correctedCount > 0) {
-      parts.add(
-        _isEnglishSetting
-            ? '$correctedCount name correction'
-            : '$correctedCount개 약명 보정',
-      );
-    }
-    if (skippedCount > 0) {
-      parts.add(
-        _isEnglishSetting
-            ? '$skippedCount OCR item skipped'
-            : '$skippedCount개 OCR 항목 제외',
-      );
-    }
-
-    return _isEnglishSetting
-        ? '${parts.join(' · ')}. Please review before analysis.'
-        : '${parts.join(' · ')} 내역을 분석 전 확인해주세요.';
-  }
+  String get prescriptionRecognitionNotice =>
+      _prescriptions.prescriptionRecognitionNotice;
 
   UserSetting get userSetting => _settings.userSetting;
   // 함수이름: _isEnglishSetting
@@ -391,89 +261,31 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get _isEnglishSetting =>
       userSetting.language.trim().toLowerCase().startsWith('en');
 
-  List<MedicationSchedule> _recognizedMedicationScheduleList = [];
-  // 함수이름: recognizedMedicationScheduleList
-  // 함수역할: 사용자가 검토·수정 중인 OCR 복약 일정 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<MedicationSchedule>: 사용자가 검토·수정 중인 OCR 복약 일정 목록을 읽기 전용으로 제공한다.
   List<MedicationSchedule> get recognizedMedicationScheduleList =>
-      List.unmodifiable(_recognizedMedicationScheduleList);
-  List<RecognizedTextRegion> _recognizedTextRegionList = [];
-  // 함수이름: recognizedTextRegionList
-  // 함수역할: 현재 처방전 미리보기의 약품·개인정보 영역 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<RecognizedTextRegion>: 현재 처방전 미리보기의 약품·개인정보 영역 목록을 읽기 전용으로 제공한다.
+      _prescriptions.recognizedMedicationScheduleList;
+
   List<RecognizedTextRegion> get recognizedTextRegionList =>
-      List.unmodifiable(_recognizedTextRegionList);
-  String _prescriptionPreviewImagePath = '';
-  // 함수이름: prescriptionPreviewImagePath
-  // 함수역할: 현재 처방 검토 화면에 표시할 로컬 이미지 경로를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 현재 처방 검토 화면에 표시할 로컬 이미지 경로를 제공한다.
-  String get prescriptionPreviewImagePath => _prescriptionPreviewImagePath;
+      _prescriptions.recognizedTextRegionList;
 
-  // 함수이름: medicationScheduleList
-  // 함수역할: 기존 호출부가 인식된 처방 일정 목록을 읽을 수 있도록 호환 접근자를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<MedicationSchedule>: 기존 호출부가 인식된 처방 일정 목록을 읽을 수 있도록 호환 접근자를 제공한다.
+  String get prescriptionPreviewImagePath =>
+      _prescriptions.prescriptionPreviewImagePath;
+
   List<MedicationSchedule> get medicationScheduleList =>
-      recognizedMedicationScheduleList;
+      _prescriptions.medicationScheduleList;
 
-  List<AnalyzedMedication> _analyzedMedicationList = [];
-  // 함수이름: analyzedMedicationList
-  // 함수역할: 원래 처방 순서로 정리된 상세 분석 성공 목록을 읽기 전용으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<AnalyzedMedication>: 원래 처방 순서로 정리된 상세 분석 성공 목록을 읽기 전용으로 제공한다.
   List<AnalyzedMedication> get analyzedMedicationList =>
-      List.unmodifiable(_analyzedMedicationList);
+      _prescriptions.analyzedMedicationList;
 
-  // 상세조회가 끝난 약은 원래 OCR 행 인덱스와 함께 보존해 재조회 시 중복 호출을 막는다.
-  final Map<int, AnalyzedMedication> _analyzedMedicationByScheduleIndex = {};
-  final Set<int> _unverifiedMedicationScheduleIndexes = {};
-  // 함수이름: verifiedMedicationScheduleIndexes
-  // 함수역할: 공공데이터 상세 조회가 성공한 원래 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 공공데이터 상세 조회가 성공한 원래 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
   Set<int> get verifiedMedicationScheduleIndexes =>
-      Set.unmodifiable(_analyzedMedicationByScheduleIndex.keys.toSet());
-  // 함수이름: unverifiedMedicationScheduleIndexes
-  // 함수역할: 재검토 또는 재조회가 필요한 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Set<int>: 재검토 또는 재조회가 필요한 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
+      _prescriptions.verifiedMedicationScheduleIndexes;
   Set<int> get unverifiedMedicationScheduleIndexes =>
-      Set.unmodifiable(_unverifiedMedicationScheduleIndexes);
+      _prescriptions.unverifiedMedicationScheduleIndexes;
 
-  PrescriptionChangeRadar? _prescriptionChangeRadar;
-  // 함수이름: prescriptionChangeRadar
-  // 함수역할: 현재 처방과 이전 처방의 비교 결과를 제공하고 조회 전·실패 시 null 상태를 유지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - PrescriptionChangeRadar?: 현재 처방과 이전 처방의 비교 결과를 제공하고 조회 전·실패 시 null 상태를 유지한다.
   PrescriptionChangeRadar? get prescriptionChangeRadar =>
-      _prescriptionChangeRadar;
-  bool _isPrescriptionChangeLoading = false;
-  // 함수이름: isPrescriptionChangeLoading
-  // 함수역할: 결과 화면 뒤에서 진행하는 이전 처방 비교 요청의 로딩 상태를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 결과 화면 뒤에서 진행하는 이전 처방 비교 요청의 로딩 상태를 제공한다.
-  bool get isPrescriptionChangeLoading => _isPrescriptionChangeLoading;
+      _prescriptions.prescriptionChangeRadar;
+
+  bool get isPrescriptionChangeLoading =>
+      _prescriptions.isPrescriptionChangeLoading;
 
   // Function Name: savedMedicationInfoList
   // Description: Exposes an unmodifiable view of the currently loaded saved-medication details.
@@ -507,7 +319,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     var completedCount = 0;
 
     for (final schedule in todayMedicationScheduleList) {
-      for (final slotKey in _slotKeysForSchedule(schedule)) {
+      for (final slotKey in resolveScheduleSlotKeys(schedule)) {
         totalCount += 1;
         if (schedule.isSlotCompleted(slotKey)) {
           completedCount += 1;
@@ -641,6 +453,17 @@ class MedBuddyViewModel extends ChangeNotifier {
       synchronizeReminders:
           _synchronizeMedicationReminderSchedulesIfScheduleIsFresh,
       onChanged: _onSavedMedicationChanged,
+    );
+    _prescriptions = MedBuddyPrescriptionViewModel(
+      inputPrescription: this.inputPrescription,
+      checkMedicationDetail: this.checkMedicationDetail,
+      checkPrescriptionChange: this.checkPrescriptionChange,
+      savedMedications: _savedMedications,
+      fetchTodayMedicationSchedule: fetchTodayMedicationSchedule,
+      synchronizeReminders:
+          _synchronizeMedicationReminderSchedulesIfScheduleIsFresh,
+      readEnglish: () => _isEnglishSetting,
+      onChanged: _onPrescriptionChanged,
     );
     this.manageAccount =
         manageAccount ??
@@ -803,6 +626,77 @@ class MedBuddyViewModel extends ChangeNotifier {
     defaultEveningTime: defaultEveningTime,
     defaultBedtime: defaultBedtime,
   );
+  // Function Name: requestCapturedPrescriptionImage
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<void> requestCapturedPrescriptionImage(XFile image) =>
+      _prescriptions.requestCapturedPrescriptionImage(image);
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<void> requestPrescriptionImageFromGallery() =>
+      _prescriptions.requestPrescriptionImageFromGallery();
+  // Function Name: updateRecognizedMedicationSchedule
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  void updateRecognizedMedicationSchedule(
+    int scheduleIndex,
+    MedicationSchedule medicationSchedule,
+  ) => _prescriptions.updateRecognizedMedicationSchedule(
+    scheduleIndex,
+    medicationSchedule,
+  );
+  // Function Name: addRecognizedMedicationSchedule
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  void addRecognizedMedicationSchedule(MedicationSchedule medicationSchedule) =>
+      _prescriptions.addRecognizedMedicationSchedule(medicationSchedule);
+  // Function Name: returnToPrescriptionPreview
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  void returnToPrescriptionPreview() =>
+      _prescriptions.returnToPrescriptionPreview();
+  // Function Name: requestPrescriptionAnalysis
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<void> requestPrescriptionAnalysis() =>
+      _prescriptions.requestPrescriptionAnalysis();
+  // Function Name: continueWithVerifiedMedicationAnalysis
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  bool continueWithVerifiedMedicationAnalysis() =>
+      _prescriptions.continueWithVerifiedMedicationAnalysis();
+  // Function Name: showMedicationAnalysisResult
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  void showMedicationAnalysisResult() =>
+      _prescriptions.showMedicationAnalysisResult();
+  // Function Name: requestMedicationSave
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<bool> requestMedicationSave(
+    AnalyzedMedication analyzedMedication,
+    int medicationIndex,
+  ) =>
+      _prescriptions.requestMedicationSave(analyzedMedication, medicationIndex);
+  // Function Name: requestAllAnalyzedMedicationSave
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<bool> requestAllAnalyzedMedicationSave() =>
+      _prescriptions.requestAllAnalyzedMedicationSave();
+  // Function Name: clearAnalysisResult
+  // Description: Delegates prescription operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  void clearAnalysisResult() => _prescriptions.clearAnalysisResult();
+  // Function Name: _onPrescriptionChanged
+  // Description: Bridges prescription-local feedback to compatibility listeners.
+  // Parameters: message: Feature feedback. Returns: None.
+  void _onPrescriptionChanged(String message) {
+    if (_isDisposed) return;
+    if (message.isNotEmpty) _statusMessage = message;
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
+  }
+
   DoseSyncService? doseSync;
   Future<void>? _scheduleRefresh;
   DateTime? _scheduleRefreshedAt;
@@ -915,7 +809,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     for (final updates in _featureUpdates.values) {
       updates.dispose();
     }
-    _cancelPrescriptionOperation();
+    _prescriptions.dispose();
     inputPrescription.dispose();
     checkMedicationDetail.dispose();
     checkPrescriptionChange.dispose();

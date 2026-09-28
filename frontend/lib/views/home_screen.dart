@@ -496,7 +496,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Parameters:
         // - None.
         // Returns: The value of `viewModel.statusMessage`.
-        statusMessageProvider: () => viewModel.statusMessage,
+        statusMessageProvider: () => viewModel.prescriptionStatusMessage,
         savingMedicationIndex: viewModel.savingMedicationIndex,
         completedMedicationSaveIndexes:
             viewModel.completedMedicationSaveIndexes,
@@ -771,7 +771,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             )
           : null,
-      statusMessage: viewModel.statusMessage,
+      statusMessage: viewModel.prescriptionStatusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
       medicationReminderSettings: viewModel.medicationReminderSettings,
