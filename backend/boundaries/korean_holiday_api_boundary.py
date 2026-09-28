@@ -2,8 +2,10 @@
 # Role: Resolves Korean legal holidays through the government special-day API.
 
 import asyncio
+from collections import OrderedDict
 from datetime import date, timedelta
 import logging
+import time
 from typing import Protocol
 import xml.etree.ElementTree as ElementTree
 
@@ -44,7 +46,9 @@ class KoreanHolidayAPI:
         self._client = client
         self._owns_client = client is None
         self._lock = asyncio.Lock()
-        self._cache: dict[tuple[int, int], frozenset[date]] = {}
+        self._cache: OrderedDict[tuple[int, int], frozenset[date]] = OrderedDict()
+        self._expires: dict[tuple[int, int], float] = {}
+        self._failures: OrderedDict[tuple[int, int], float] = OrderedDict()
 
     # Function Name: isHoliday
     # Description:
@@ -67,13 +71,31 @@ class KoreanHolidayAPI:
     # - Immutable holiday dates for the requested month.
     async def fetchMonth(self, year: int, month: int) -> frozenset[date]:
         cache_key = (year, month)
+        if self._expires.get(cache_key, 0) <= time.monotonic():
+            self._cache.pop(cache_key, None)
+            self._expires.pop(cache_key, None)
         dates = self._cache.get(cache_key)
         if dates is None:
             async with self._lock:
                 dates = self._cache.get(cache_key)
                 if dates is None:
-                    dates = await self._fetch_month(*cache_key)
+                    if self._failures.get(cache_key, 0) > time.monotonic():
+                        raise PharmacyApiUnavailableError("Holiday lookup is temporarily unavailable.")
+                    try:
+                        dates = await self._fetch_month(*cache_key)
+                    except (PharmacyApiUnavailableError, asyncio.CancelledError):
+                        # Prevent repeated failures and queued requests from amplifying calls for the same month.
+                        self._failures[cache_key] = time.monotonic() + 30
+                        self._failures.move_to_end(cache_key)
+                        while len(self._failures) > 48:
+                            self._failures.popitem(last=False)
+                        raise
                     self._cache[cache_key] = dates
+                    self._expires[cache_key] = time.monotonic() + 86400
+                    self._failures.pop(cache_key, None)
+                    while len(self._cache) > 48:
+                        removed, _ = self._cache.popitem(last=False)
+                        self._expires.pop(removed, None)
         return dates
 
     # Function Name: close
@@ -123,7 +145,11 @@ class KoreanHolidayAPI:
             ) from exc
 
         result_code = (root.findtext(".//resultCode") or "").strip()
-        if result_code not in {"", "00", "0000"}:
+        if (
+            root.tag != "response" or root.find("body") is None
+            or root.find(".//cmmMsgHeader") is not None
+            or result_code not in {"00", "0000"}
+        ):
             raise PharmacyApiUnavailableError(
                 "The Korean holiday data service rejected the request."
             )
@@ -131,10 +157,11 @@ class KoreanHolidayAPI:
         for element in root.findall(".//locdate"):
             raw_value = (element.text or "").strip()
             if len(raw_value) != 8 or not raw_value.isdigit():
-                continue
-            holidays.add(
-                date(int(raw_value[:4]), int(raw_value[4:6]), int(raw_value[6:]))
-            )
+                raise PharmacyApiUnavailableError("Invalid holiday date response.")
+            try:
+                holidays.add(date(int(raw_value[:4]), int(raw_value[4:6]), int(raw_value[6:])))
+            except ValueError:
+                raise PharmacyApiUnavailableError("Invalid holiday date response.") from None
         return frozenset(holidays)
 
 

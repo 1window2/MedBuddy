@@ -27,6 +27,23 @@ from boundaries.pharmacy_api_boundary import (  # noqa: E402
 )
 
 
+@pytest.mark.anyio
+async def test_gateway_error_never_becomes_cached_nonholiday() -> None:
+    """HTTP 200 인증 오류를 공휴일 없음으로 캐시하지 않고 재시도도 제한한다."""
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, content=b"<OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        boundary = KoreanHolidayAPI(client=client)
+        for day in (17, 18):
+            with pytest.raises(PharmacyApiUnavailableError):
+                await boundary.isHoliday(date(2026, 8, day))
+        assert not boundary._cache and len(requests) == 1
+
+
 # Function Name: test_holiday_month_is_parsed_and_cached
 # Description:
 # - Caches one parsed holiday month so holiday and ordinary dates require only one HTTP request.
