@@ -116,65 +116,57 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
 
   // 함수역할: 연결된 환자별 미리보기를 본인 홈과 같은 양식으로 표시한다. 매개변수: context.
   @override
-  Widget build(BuildContext context) => Column(
-    key: const Key('caregiver-home-summary'),
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (control.links.isEmpty || hasLinkError)
-        Row(
-          children: [
-            const Icon(Icons.people_outline, color: MedBuddyColors.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                isEnglish ? 'Patient schedules' : '환자의 오늘 복약',
-                style: const TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w800,
-                  color: MedBuddyColors.textStrong,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-            _refreshButton(),
+  Widget build(BuildContext context) {
+    if (!hasLinkError && control.links.isNotEmpty) {
+      return SizedBox(
+        key: const Key('caregiver-home-summary'),
+        child: _patientPager(context),
+      );
+    }
+    final loading = control.isLoading || isLoadingLinks;
+    // 연결 목록이 정상적으로 비어 있으면 이전 환자 일정 오류를 재사용하지 않는다.
+    final failed = hasLinkError;
+    return HomeMedicationPreview.status(
+      key: const Key('caregiver-home-summary'),
+      title: isEnglish ? 'Patient schedules' : '환자의 오늘 복약',
+      compact: MediaQuery.sizeOf(context).width >= 350,
+      headerAction: _refreshButton(),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (loading) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 12),
           ],
-        ),
-      if (control.isLoading || isLoadingLinks)
-        const LinearProgressIndicator(minHeight: 2),
-      if (control.hasError || hasLinkError)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Text(
-            isEnglish
-                ? 'Could not load medication status. Try again.'
-                : '복약 현황을 불러오지 못했습니다. 다시 조회해주세요.',
-            style: const TextStyle(
-              fontSize: 15,
-              color: MedBuddyColors.textMuted,
+          _statusMessage(
+            failed
+                ? _errorMessage
+                : loading
+                ? (isEnglish ? 'Loading status' : '복약 현황 확인 중')
+                : (isEnglish ? 'No linked patients.' : '연결된 환자가 없습니다.'),
+          ),
+          if (!loading && !failed && onLinkRequested != null) ...[
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              key: const Key('caregiver-home-link'),
+              onPressed: onLinkRequested,
+              icon: const Icon(Icons.person_add_alt),
+              label: Text(isEnglish ? 'Link a patient' : '환자 연결'),
             ),
-          ),
-        ),
-      if (control.links.isEmpty && !isLoadingLinks && !hasLinkError) ...[
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Text(
-            isEnglish ? 'No linked patients.' : '연결된 환자가 없습니다.',
-            style: const TextStyle(
-              fontSize: 16,
-              color: MedBuddyColors.textMuted,
-            ),
-          ),
-        ),
-        if (onLinkRequested != null)
-          OutlinedButton.icon(
-            key: const Key('caregiver-home-link'),
-            onPressed: onLinkRequested,
-            icon: const Icon(Icons.person_add_alt),
-            label: Text(isEnglish ? 'Link a patient' : '환자 연결'),
-          ),
-      ],
-      if (!hasLinkError && control.links.isNotEmpty) _patientPager(context),
-    ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  String get _errorMessage => isEnglish
+      ? 'Could not load medication status. Try again.'
+      : '복약 현황을 불러오지 못했습니다. 다시 조회해주세요.';
+
+  // 상태 문구는 카드 안에서 줄바꿈하며 큰 글씨에서도 잘리지 않게 한다.
+  Widget _statusMessage(String message) => Text(
+    message,
+    style: const TextStyle(fontSize: 15, color: MedBuddyColors.textMuted),
   );
 
   // 함수역할: 기존 일정의 시간대별 완료 상태를 집계한다. 환자 약을 변경하는 버튼은 제공하지 않는다.
@@ -185,6 +177,22 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
     bool showRefresh,
   ) {
     final snapshot = control.snapshotFor(link.linkId);
+    if (snapshot == null && control.hasError) {
+      return HomeMedicationPreview.status(
+        key: ValueKey('caregiver-home-patient-${link.linkId}'),
+        title: patientLabel(link),
+        compact: MediaQuery.sizeOf(context).width >= 350,
+        headerAction: showRefresh ? _refreshButton() : null,
+        titleLeading: control.links.length > 1
+            ? _patientNavigationButton(previous: true)
+            : null,
+        titleTrailing: control.links.length > 1
+            ? _patientNavigationButton(previous: false)
+            : null,
+        content: _statusMessage(_errorMessage),
+        onTap: () => onPatientRequested(link),
+      );
+    }
     var total = 0;
     var completed = 0;
     if (snapshot != null) {

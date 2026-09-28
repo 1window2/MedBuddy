@@ -22,6 +22,7 @@ class HomeMedicationPreview extends StatelessWidget {
   final Widget? titleLeading;
   final Widget? titleTrailing;
   final Widget? scheduleContent;
+  final Widget? statusContent;
 
   const HomeMedicationPreview({
     super.key,
@@ -40,7 +41,28 @@ class HomeMedicationPreview extends StatelessWidget {
     this.titleLeading,
     this.titleTrailing,
     this.scheduleContent,
-  });
+  }) : statusContent = null;
+
+  // 조회 중·실패·연결 없음 안내도 정상 일정과 같은 카드 틀을 사용한다.
+  const HomeMedicationPreview.status({
+    super.key,
+    required this.title,
+    required Widget content,
+    this.compact = false,
+    this.onTap,
+    this.headerAction,
+    this.titleLeading,
+    this.titleTrailing,
+  }) : statusContent = content,
+       progressTitle = '',
+       progressLabel = '',
+       progress = null,
+       progressSemanticsLabel = null,
+       scheduleTitle = '',
+       scheduleDescription = '',
+       hasPendingMedication = false,
+       scheduleContent = null,
+       action = null;
 
   Widget _heart() => Container(
     key: const Key('home-preview-heart'),
@@ -138,52 +160,56 @@ class HomeMedicationPreview extends StatelessWidget {
           children: [
             _header(context),
             SizedBox(height: compact ? 10 : 20),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    progressTitle,
+            if (statusContent != null)
+              statusContent!
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      progressTitle,
+                      style: const TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    progressLabel,
                     style: const TextStyle(
-                      color: MedBuddyColors.textStrong,
+                      color: MedBuddyColors.primaryDark,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  progressLabel,
-                  style: const TextStyle(
-                    color: MedBuddyColors.primaryDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: compact ? 6 : 9),
-            ClipRRect(
-              borderRadius: MedBuddyRadii.pill,
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: compact ? 7 : 9,
-                color: MedBuddyColors.primary,
-                backgroundColor: MedBuddyColors.mint,
-                semanticsLabel: progressSemanticsLabel,
+                ],
               ),
-            ),
-            SizedBox(height: compact ? 10 : 18),
-            scheduleContent ??
-                HomeMedicationSummary(
-                  title: scheduleTitle,
-                  description: scheduleDescription,
-                  hasPendingMedication: hasPendingMedication,
-                  compact: compact,
-                  showDetailsArrow: onTap != null,
+              SizedBox(height: compact ? 6 : 9),
+              ClipRRect(
+                borderRadius: MedBuddyRadii.pill,
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: compact ? 7 : 9,
+                  color: MedBuddyColors.primary,
+                  backgroundColor: MedBuddyColors.mint,
+                  semanticsLabel: progressSemanticsLabel,
                 ),
-            if (action != null) ...[
-              SizedBox(height: compact ? 10 : 14),
-              action!,
+              ),
+              SizedBox(height: compact ? 10 : 18),
+              scheduleContent ??
+                  HomeMedicationSummary(
+                    title: scheduleTitle,
+                    description: scheduleDescription,
+                    hasPendingMedication: hasPendingMedication,
+                    compact: compact,
+                    showDetailsArrow: onTap != null,
+                  ),
+              if (action != null) ...[
+                SizedBox(height: compact ? 10 : 14),
+                action!,
+              ],
             ],
           ],
         ),

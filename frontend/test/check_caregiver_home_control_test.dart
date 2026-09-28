@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.da
 import 'package:medbuddy_frontend/entities/caregiver_monitoring_snapshot_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
 
 const _link = PatientCaregiverLink(
@@ -559,11 +560,172 @@ void main() {
     await control.refresh();
     await tester.pump();
     expect(find.text('복약 현황을 불러오지 못했습니다. 다시 조회해주세요.'), findsOneWidget);
-    expect(find.text('-'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(HomeMedicationPreview),
+        matching: find.text('복약 현황을 불러오지 못했습니다. 다시 조회해주세요.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.text('-'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
     expect(find.text('0/0'), findsNothing);
     expect(find.text('복용했어요'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  for (final width in [320.0, 390.0]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final english in [false, true]) {
+        // 정상·조회 중·오류·미연동 모두 같은 카드 틀과 내부 동작을 유지한다.
+        testWidgets('보호자 상태 안내는 기존 카드 안에 표시된다: $width $scale $english', (
+          tester,
+        ) async {
+          tester.view.physicalSize = Size(width, 900);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final api = _Monitoring();
+          final control = CheckCaregiverHome(userHash: 'owner', control: api);
+          addTearDown(control.dispose);
+          addTearDown(api.dispose);
+          control.updateLinks([_link]);
+          await control.refresh();
+          var refreshes = 0;
+          var linkRequests = 0;
+
+          Future<void> showSummary({
+            bool loading = false,
+            bool failed = false,
+          }) => tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: CaregiverHomeSummaryUI(
+                      control: control,
+                      isEnglish: english,
+                      isLoadingLinks: loading,
+                      hasLinkError: failed,
+                      patientLabel: (_) => english ? 'Mom' : '엄마',
+                      onPatientRequested: (_) {},
+                      onRefreshRequested: () => refreshes++,
+                      onLinkRequested: () => linkRequests++,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          final card = find.byType(HomeMedicationPreview);
+          final frame = find.descendant(
+            of: card,
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Container &&
+                  widget.constraints?.minHeight == (width >= 350 ? 190 : 260) &&
+                  widget.decoration is BoxDecoration &&
+                  (widget.decoration! as BoxDecoration).border != null,
+            ),
+          );
+          final refresh = find.byKey(const Key('caregiver-home-refresh'));
+          await showSummary();
+          final normalRect = tester.getRect(card);
+          final normalFrame = tester.widget<Container>(frame);
+          final errorText = english
+              ? 'Could not load medication status. Try again.'
+              : '복약 현황을 불러오지 못했습니다. 다시 조회해주세요.';
+
+          for (final loading in [false, true]) {
+            await showSummary(loading: loading, failed: true);
+            expect(card, findsOneWidget);
+            expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+            final statusFrame = tester.widget<Container>(frame);
+            expect(statusFrame.decoration, normalFrame.decoration);
+            expect(statusFrame.padding, normalFrame.padding);
+            expect(statusFrame.constraints, normalFrame.constraints);
+            expect(
+              (statusFrame.decoration! as BoxDecoration).borderRadius,
+              MedBuddyRadii.largeCard,
+            );
+            final cardRect = tester.getRect(card);
+            final errorRect = tester.getRect(find.text(errorText));
+            expect(cardRect.left, normalRect.left);
+            expect(cardRect.width, normalRect.width);
+            expect(cardRect.contains(errorRect.topLeft), isTrue);
+            expect(cardRect.contains(errorRect.bottomRight), isTrue);
+            expect(
+              find.descendant(of: card, matching: refresh),
+              findsOneWidget,
+            );
+            expect(find.text('0/0'), findsNothing);
+            expect(find.text('1/3'), findsNothing);
+            expect(find.byKey(const Key('caregiver-home-link')), findsNothing);
+            if (loading) {
+              expect(
+                find.descendant(
+                  of: card,
+                  matching: find.byType(LinearProgressIndicator),
+                ),
+                findsOneWidget,
+              );
+              expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+            } else {
+              expect(find.byType(LinearProgressIndicator), findsNothing);
+              await tester.tap(refresh);
+              expect(refreshes, 1);
+            }
+            expect(tester.takeException(), isNull);
+          }
+
+          api.failure = true;
+          await control.refresh();
+          expect(control.hasError, isTrue);
+          control.updateLinks([]);
+          await showSummary(loading: true);
+          expect(
+            find.text(english ? 'Loading status' : '복약 현황 확인 중'),
+            findsOneWidget,
+          );
+          expect(find.byKey(const Key('caregiver-home-link')), findsNothing);
+          await showSummary();
+          final linkButton = find.byKey(const Key('caregiver-home-link'));
+          expect(
+            find.descendant(of: card, matching: linkButton),
+            findsOneWidget,
+          );
+          expect(
+            find.text(english ? 'No linked patients.' : '연결된 환자가 없습니다.'),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(linkButton);
+          await tester.tap(linkButton);
+          expect(linkRequests, 1);
+
+          api.failure = false;
+          control.updateLinks([_link]);
+          await control.refresh();
+          await showSummary();
+          expect(find.text('1/3'), findsOneWidget);
+          expect(find.text(errorText), findsNothing);
+          expect(
+            tester.widget<HomeMedicationPreview>(card).statusContent,
+            isNull,
+          );
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
 
   // 함수이름: 영문 시간대 요약 테스트
   // 함수역할: 큰 영문 글씨에서도 완료 수와 약 이름을 간단히 표시하고 불필요한 탭이나 복용 버튼이 생기지 않는지 검증한다.
