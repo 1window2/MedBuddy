@@ -23,7 +23,7 @@ from repositories.patient_caregiver_link_repository import (
 # 주요 책임:
 # - 보호자의 활성 환자 연결을 한 번만 조회한다.
 # - 환자별 네 시간대 알림 설정을 일괄 조회한다.
-# - 알림이 활성화된 환자의 오늘 일정만 응답에 포함한다.
+# - 감시는 활성 알림 환자만, 홈 조회는 모든 연동 환자의 오늘 일정을 포함한다.
 # 속성:
 # - link_repository (PatientCaregiverLinkRepository): 활성 환자·보호자 연동 저장소.
 # - notification_control (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
@@ -61,11 +61,14 @@ class CheckCaregiverMonitoring:
     # - 보호자 한 명이 관리하는 모든 환자의 현재 알림 감시 자료를 반환한다.
     # 매개변수:
     # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
+    # - include_all_schedules (bool): 홈·위젯 조회일 때 알림 비활성 환자도 포함한다.
     # 반환값:
     # - 연동 환자별 별칭·알림 설정·오늘 복약 정보를 담은 성공 응답.
     def requestMonitoringSnapshot(
         self,
         caregiver_hash: str,
+        *,
+        include_all_schedules: bool = False,
     ) -> dict[str, object]:
         normalized_caregiver_hash = normalize_patient_hash(caregiver_hash)
         links = self.link_repository.list_active_for_caregiver(
@@ -83,6 +86,7 @@ class CheckCaregiverMonitoring:
             self._build_patient_snapshot(
                 link,
                 settings_by_patient.get(str(link.patient_hash), []),
+                include_all_schedules=include_all_schedules,
             )
             for link in links
         ]
@@ -108,6 +112,8 @@ class CheckCaregiverMonitoring:
         self,
         link: _PatientCaregiverLink,
         notification_settings: list[dict[str, object]],
+        *,
+        include_all_schedules: bool = False,
     ) -> dict[str, object]:
         patient_hash = str(link.patient_hash)
         has_active_setting = any(
@@ -119,7 +125,8 @@ class CheckCaregiverMonitoring:
             "patient_hash": patient_hash,
             "schedules": [],
         }
-        if has_active_setting:
+        # 홈에서는 알림을 꺼 둔 환자의 일정도 필요하다. 약 상세 정보는 읽지 않는다.
+        if include_all_schedules or has_active_setting:
             response = self.today_medication_control.requestTodayMedicationInfo(
                 patient_hash
             )

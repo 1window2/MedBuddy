@@ -2,6 +2,8 @@
 // Role: Bootstraps authentication, global settings, notification routing, and session-owned application services.
 
 import 'dart:async';
+import 'controls/check_caregiver_home_control.dart';
+import 'controls/check_caregiver_medication_control.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -172,6 +174,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   String? _openLinkedChatRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
+  CheckCaregiverMedication? _sharedCaregiverRead;
   LinkedChatNotificationMonitorService? _linkedChatNotificationMonitor;
   PushNotificationService? _pushNotificationService;
   String? _monitoredUserHash;
@@ -265,6 +268,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     unawaited(_widgetClicks?.cancel());
     _monitorGeneration += 1;
     _caregiverNotificationMonitor?.dispose();
+    _sharedCaregiverRead?.dispose();
     unawaited(_linkedChatNotificationMonitor?.dispose());
     unawaited(_pushNotificationService?.stop());
     unawaited(CaregiverNotificationBackgroundScheduler.cancel());
@@ -427,6 +431,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _linkedChatNotificationMonitor = null;
     _pushNotificationService = null;
     _monitoredUserHash = userHash;
+    _sharedCaregiverRead?.dispose();
+    _sharedCaregiverRead = userHash == null || userHash.isEmpty ? null
+        : CheckCaregiverMedication(caregiverHash: userHash,
+            client: _authenticationControl.apiClient);
     previousMonitor?.dispose();
     unawaited(previousChatMonitor?.dispose());
     if (previousPushService != null) {
@@ -503,6 +511,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   ) async {
     final monitor = CaregiverNotificationMonitorFactory.create(
       caregiverHash: userHash,
+      sharedMedicationControl: _sharedCaregiverRead,
       client: _authenticationControl.apiClient,
       languageProvider: /* 함수이름: languageProvider 콜백
        * 함수역할: 보호자 모니터가 알림을 만들 때 최신 앱 언어를 제공한다.
@@ -1127,7 +1136,13 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
                 control: authentication,
                 languageControl: appLanguage,
               ),
-              authenticatedChild: const HomeScreen(),
+              authenticatedChild: HomeScreen(
+                caregiverHomeFactory: (owner) => CheckCaregiverHome(
+                  userHash: owner,
+                  control: _sharedCaregiverRead?.caregiverHash == owner
+                      ? _sharedCaregiverRead : null,
+                ),
+              ),
             ),
           );
           if (session == null) {

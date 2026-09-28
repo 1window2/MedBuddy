@@ -37,6 +37,7 @@ class CaregiverNotificationMonitorFactory {
   // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
   // - baseUrl (String): 복약 API 기본 주소
   // - client (http.Client?): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+  // - sharedMedicationControl (CheckCaregiverMedication?): 세션에서 빌려 쓰는 일정 조회 Control; 감시 종료 시 폐기하지 않는다.
   // - pollingInterval (Duration): 활성 보호자 연동이 있을 때 확인 간격
   // - idlePollingInterval (Duration): 활성 보호자 연동이 없을 때의 확인 간격
   // - requestPermission (bool): 감시 중 운영체제 권한 요청을 수행할지 여부
@@ -49,6 +50,7 @@ class CaregiverNotificationMonitorFactory {
     required String caregiverHash,
     String baseUrl = ApiConfig.baseUrl,
     http.Client? client,
+    CheckCaregiverMedication? sharedMedicationControl,
     Duration pollingInterval =
         CaregiverNotificationMonitorService.defaultPollingInterval,
     Duration idlePollingInterval =
@@ -69,7 +71,7 @@ class CaregiverNotificationMonitorFactory {
       caregiverHash: caregiverHash,
       client: client,
     );
-    final medicationControl = CheckCaregiverMedication(
+    final medicationControl = sharedMedicationControl ?? CheckCaregiverMedication(
       baseUrl: baseUrl,
       caregiverHash: caregiverHash,
       client: client,
@@ -176,7 +178,7 @@ class CaregiverNotificationMonitorFactory {
        */() {
         linkControl.dispose();
         settingControl.dispose();
-        medicationControl.dispose();
+        if (sharedMedicationControl == null) medicationControl.dispose();
         userSettingControl.dispose();
         if (client == null) deliveryClient.close();
       },

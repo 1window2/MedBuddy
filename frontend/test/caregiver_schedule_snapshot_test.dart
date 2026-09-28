@@ -1,6 +1,7 @@
 // File Name: caregiver_schedule_snapshot_test.dart
 // Role: Validate the shared Home/widget read path without native widget APIs.
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -18,6 +19,33 @@ void main() {
     'caregiver_hash': 'owner',
     'link_status': true,
   };
+  // 홈과 알림 감시가 겹쳐도 한 번만 읽고 다른 세션 객체는 재사용하지 않는다.
+  test('home and monitoring share only the current session snapshot', () async {
+    var reads = 0;
+    final gate = Completer<http.Response>();
+    final client = MockClient((_) async { reads++; return gate.future; });
+    addTearDown(client.close);
+    final control = CheckCaregiverMedication(caregiverHash: 'owner', client: client);
+    final first = control.requestScheduleSnapshot();
+    final second = control.requestScheduleSnapshot();
+    final monitoring = control.requestMonitoringSnapshot();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+    gate.complete(http.Response(jsonEncode({'data': {
+      'caregiver_hash': 'owner', 'patients': [{
+        'link': link, 'notification_settings': [],
+        'today_medication_info': {'schedules': []},
+      }],
+    }}), 200));
+    await Future.wait([first, second, monitoring]);
+    await control.requestMonitoringSnapshot();
+    expect(reads, 1);
+    control.dispose();
+    final newSession = CheckCaregiverMedication(caregiverHash: 'owner', client: client);
+    await newSession.requestMonitoringSnapshot();
+    expect(reads, 2);
+    newSession.dispose();
+  });
   test(
     'widget refresh retains schedules with alerts off and rereads links',
     () async {
@@ -26,29 +54,15 @@ void main() {
       final client = MockClient((request) async {
         expect(request.method, 'GET');
         paths.add(request.url.path);
-        if (request.url.path.endsWith('/link/list')) {
-          return http.Response(
-            jsonEncode({
-              'data': linked
-                  ? [
-                      link,
-                      {...link, 'link_id': 2, 'link_status': false},
-                      {...link, 'link_id': 3, 'caregiver_hash': 'someone'},
-                      {...link, 'link_id': 4, 'patient_hash': 'owner'},
-                    ]
-                  : [],
-            }),
-            200,
-          );
-        }
-        expect(request.url.path, '/caregiver/medications/patient');
+        expect(request.url.path, '/caregiver/schedules');
         expect(request.url.queryParameters['caregiver_hash'], 'owner');
         return http.Response(
           jsonEncode({
             'data': {
               'caregiver_hash': 'owner',
-              'patient_hash': 'patient',
-              'saved_medications': [],
+              'patients': linked ? [{
+              'link': link,
+              'notification_settings': [],
               'today_medication_info': {
                 'schedules': [
                   {
@@ -59,6 +73,7 @@ void main() {
                   },
                 ],
               },
+              }] : [],
             },
           }),
           200,
@@ -78,11 +93,9 @@ void main() {
       linked = false;
       expect(await control.requestScheduleSnapshot(), isEmpty);
       expect(paths, [
-        '/link/list',
-        '/caregiver/medications/patient',
-        '/link/list',
-        '/caregiver/medications/patient',
-        '/link/list',
+        '/caregiver/schedules',
+        '/caregiver/schedules',
+        '/caregiver/schedules',
       ]);
     },
   );
@@ -92,24 +105,17 @@ void main() {
     // replace previously known schedules with a successful empty result.
     test('$failure failure is not an empty successful schedule', () async {
       final client = MockClient((request) async {
-        if (request.url.path.endsWith('/link/list')) {
-          return http.Response(
-            jsonEncode({
-              'data': [link],
-            }),
-            failure == 'links' ? 503 : 200,
-          );
-        }
         return http.Response(
           jsonEncode({
             'data': {
               'caregiver_hash': failure == 'caregiver' ? 'someone' : 'owner',
-              'patient_hash': failure == 'patient' ? 'someone' : 'patient',
-              'saved_medications': [],
+              'patients': [{
+              'link': {...link, if (failure == 'patient') 'caregiver_hash': 'someone'},
               'today_medication_info': {'schedules': []},
+              }],
             },
           }),
-          failure == 'detail' ? 403 : 200,
+          failure == 'detail' ? 403 : failure == 'links' ? 503 : 200,
         );
       });
       addTearDown(client.close);

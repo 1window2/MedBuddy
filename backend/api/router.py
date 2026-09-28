@@ -1089,6 +1089,18 @@ def get_caregiver_monitoring_snapshot(
     )
 
 
+# 보호자 홈과 위젯은 약 상세 대신 연동된 환자의 오늘 일정만 일괄 조회한다.
+@router.get("/caregiver/schedules")
+def get_caregiver_schedule_snapshot(
+    caregiver_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+    monitoring_control: CheckCaregiverMonitoring = Depends(get_check_caregiver_monitoring),
+) -> dict[str, object]:
+    owner = authorization.resolveOwnUserHash(principal, caregiver_hash)
+    return monitoring_control.requestMonitoringSnapshot(owner, include_all_schedules=True)
+
+
 # Function Name: get_caregiver_patient_medication_info
 # Description:
 # - Requires an active caregiver link before returning the selected patient's read-only pillbox and daily summary.

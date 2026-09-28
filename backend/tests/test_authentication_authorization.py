@@ -2,7 +2,7 @@
 # Role: Regression coverage for Firebase identity, patient authorization, production settings,
 #   and request-scoped account locks.
 import asyncio
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request
@@ -18,7 +18,7 @@ from api.dependencies import (
     get_registered_principal,
     verify_app_check_token,
 )
-from api.router import check_prescription_change, router
+from api.router import check_prescription_change, get_caregiver_schedule_snapshot, router
 from boundaries.oidc_token_verifier_boundary import (
     TokenVerificationUnavailableError,
 )
@@ -79,6 +79,21 @@ def _principal(subject: str = "firebase-user") -> AuthenticatedPrincipal:
             "email_verified": True,
         }
     )
+
+
+def test_caregiver_home_aggregate_uses_verified_owner(db_session) -> None:
+    """일괄 조회에서도 전달된 타인 해시 대신 인증된 보호자 범위만 사용한다."""
+    principal = _principal("caregiver")
+    monitoring = Mock()
+    monitoring.requestMonitoringSnapshot.return_value = {"data": {"patients": []}}
+    result = get_caregiver_schedule_snapshot(
+        caregiver_hash="another-caregiver", principal=principal,
+        authorization=AuthorizationControl(db_session), monitoring_control=monitoring,
+    )
+    monitoring.requestMonitoringSnapshot.assert_called_once_with(
+        principal.user_hash, include_all_schedules=True,
+    )
+    assert result == {"data": {"patients": []}}
 
 
 # Function Name: _production_api_settings

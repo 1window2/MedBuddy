@@ -24,6 +24,7 @@ import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/entities/caregiver_monitoring_snapshot_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
@@ -123,20 +124,16 @@ class _HomeMonitoring extends CheckCaregiverMedication {
   // Bind the fake API to the authenticated caregiver used by this fixture.
   _HomeMonitoring() : super(caregiverHash: 'caregiver');
   int calls = 0;
-  // 함수이름: requestPatientMedicationInfo
+  // 함수이름: requestScheduleSnapshot
   // 함수역할: 조회 횟수를 기록하고 활성 환자의 빈 일정을 제공한다.
-  // 매개변수: 없음. 반환값: 테스트 환자 조회 결과 Future.
+  // 매개변수: links: 현재 홈의 연결 목록. 반환값: 테스트 환자별 일정 목록 Future.
   @override
-  Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
-    required String patientHash,
+  Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
+    List<PatientCaregiverLink>? links,
   }) async {
     calls++;
-    return (
-      caregiverHash: 'caregiver',
-      patientHash: patientHash,
-      savedMedications: const <Never>[],
-      todayMedicationScheduleList: const <Never>[],
-    );
+    return [for (final link in links ?? <PatientCaregiverLink>[])
+      CaregiverMonitoringSnapshot(link: link, notificationSettings: {}, schedules: [])];
   }
 }
 

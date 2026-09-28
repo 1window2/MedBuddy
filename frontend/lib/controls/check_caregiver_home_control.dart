@@ -1,6 +1,7 @@
 // 파일명: check_caregiver_home_control.dart
 // 역할: 환자 일정 표시를 선택한 사용자에게 연결 환자의 오늘 복약 현황을 제공한다.
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/dose_widget_state.dart';
@@ -70,6 +71,10 @@ class CheckCaregiverHome extends ChangeNotifier {
     final nextKeys = next
         .map((link) => (link.linkId, link.patientHash))
         .toSet();
+    if (jsonEncode(_links.map((l) => l.toJson()).toList()) ==
+        jsonEncode(next.map((l) => l.toJson()).toList())) {
+      return;
+    }
     if (!setEquals(oldKeys, nextKeys)) {
       _generation++;
       _snapshots = {};
@@ -89,7 +94,7 @@ class CheckCaregiverHome extends ChangeNotifier {
     notifyListeners();
     try {
       hasError = false;
-      // 알림 감시는 알림이 꺼진 환자의 일정을 생략하므로 상세 조회를 재사용한다.
+      // 홈 전용 일괄 조회는 알림이 꺼진 환자도 포함하고 약 상세는 제외한다.
       final received = await _control.requestScheduleSnapshot(links: _links);
       if (_disposed ||
           generation != _generation ||

@@ -9,7 +9,6 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
-import 'link_patient_caregiver_control.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
@@ -40,6 +39,10 @@ class CheckCaregiverMedication {
   final String caregiverHash;
   final http.Client _client;
   final bool _ownsClient;
+  Future<List<CaregiverMonitoringSnapshot>>? _scheduleRead;
+  List<CaregiverMonitoringSnapshot>? _recentSchedules;
+  DateTime? _scheduleReadAt;
+  bool _disposed = false;
 
   // Function Name: CheckCaregiverMedication
   // Description: Binds caregiver-scoped medication queries to the configured backend and an injected or owned authenticated HTTP client.
@@ -57,44 +60,34 @@ class CheckCaregiverMedication {
        _ownsClient = client == null;
 
   // Function Name: requestScheduleSnapshot
-  // Description: Read linked-patient schedules independently of alert preferences.
-  // Parameters: links - current Home links, or null to fetch fresh widget links.
+  // Description: Read aggregate linked-patient schedules independently of alert preferences.
+  // Parameters: links - optional Home scope filter; null keeps all authorized active links.
   // Returns: Scoped snapshots; failures propagate instead of becoming empty schedules.
   Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
     List<PatientCaregiverLink>? links,
   }) async {
-    final currentLinks =
-        links ??
-        await LinkPatientCaregiver(
-          userHash: caregiverHash,
-          baseUrl: baseUrl,
-          client: _client,
-        ).requestLinkScreen();
-    final allowed = currentLinks.where(
-      (link) =>
-          link.linkStatus &&
-          (link.linkId ?? 0) > 0 &&
-          link.caregiverHash == caregiverHash &&
-          link.patientHash.isNotEmpty &&
-          link.patientHash != caregiverHash,
-    );
-    return Future.wait(
-      allowed.map((link) async {
-        final info = await requestPatientMedicationInfo(
-          patientHash: link.patientHash,
-        );
-        if (info.caregiverHash != caregiverHash ||
-            info.patientHash != link.patientHash) {
-          throw StateError('Caregiver medication response scope mismatch.');
-        }
-        return CaregiverMonitoringSnapshot(
-          link: link,
-          notificationSettings: const {},
-          schedules: info.todayMedicationScheduleList,
-        );
-      }),
-    );
+    final snapshots = await (_scheduleRead ??= _loadScheduleSnapshot()
+        .whenComplete(() => _scheduleRead = null));
+    if (links == null) return snapshots;
+    final allowed = {for (final link in links) (link.linkId, link.patientHash)};
+    return snapshots.where((s) => allowed.contains((s.link.linkId, s.patientHash)))
+        .toList(growable: false);
   }
+
+  Future<List<CaregiverMonitoringSnapshot>> _loadScheduleSnapshot() async {
+    final started = DateTime.now();
+    _recentSchedules = null;
+    _scheduleReadAt = null;
+    final snapshots = await _requestSnapshot('schedules');
+    if (!_disposed && _sameDay(started, DateTime.now())) {
+      _recentSchedules = snapshots;
+      _scheduleReadAt = DateTime.now();
+    }
+    return snapshots;
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   // 함수이름: requestMonitoringSnapshot
   // 함수역할: 보호자가 관리하는 모든 환자의 알림 설정과 오늘 일정을 한 번에 조회한다.
@@ -102,11 +95,24 @@ class CheckCaregiverMedication {
   // - 없음.
   // 반환값:
   // - 환자별 통합 알림 감시 자료
-  Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() async {
+  Future<List<CaregiverMonitoringSnapshot>> requestMonitoringSnapshot() {
+    // 같은 로그인 세션의 홈 조회를 감시에도 재사용한다. 실패·자정에는 다시 읽는다.
+    if (_scheduleRead != null) return _scheduleRead!;
+    final at = _scheduleReadAt;
+    final now = DateTime.now();
+    if (!_disposed && at != null && _sameDay(at, now) &&
+        now.difference(at) >= Duration.zero &&
+        now.difference(at) < const Duration(seconds: 15)) {
+      return Future.value(_recentSchedules!);
+    }
+    return _requestSnapshot('monitoring');
+  }
+
+  Future<List<CaregiverMonitoringSnapshot>> _requestSnapshot(String resource) async {
     try {
       final response = await _client
           .get(
-            Uri.parse('$baseUrl/caregiver/monitoring').replace(
+            Uri.parse('$baseUrl/caregiver/$resource').replace(
               queryParameters: {
                 'caregiver_hash': PatientHash.normalizePatientHash(
                   caregiverHash,
@@ -131,7 +137,10 @@ class CheckCaregiverMedication {
           'Server response did not include caregiver monitoring data.',
         );
       }
-      return rawPatients
+      if (resource == 'schedules' && rawData['caregiver_hash'] != caregiverHash) {
+        throw StateError('Caregiver schedule response scope mismatch.');
+      }
+      final snapshots = rawPatients
           .whereType<Map>()
           .map(
             // 함수이름: map 콜백
@@ -145,6 +154,12 @@ class CheckCaregiverMedication {
             ),
           )
           .toList(growable: false);
+      if (snapshots.any((s) => !s.link.linkStatus ||
+          (s.link.linkId ?? 0) <= 0 || s.link.caregiverHash != caregiverHash ||
+          s.patientHash.isEmpty || s.patientHash == caregiverHash)) {
+        throw StateError('Caregiver schedule response scope mismatch.');
+      }
+      return snapshots;
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -267,6 +282,9 @@ class CheckCaregiverMedication {
   // Returns:
   // - No return value.
   void dispose() {
+    _disposed = true;
+    _recentSchedules = null;
+    _scheduleReadAt = null;
     if (_ownsClient) {
       _client.close();
     }

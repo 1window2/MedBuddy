@@ -36,20 +36,37 @@ const _other = PatientCaregiverLink(
 // 함수이름: main
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 같은 목록은 갱신하지 않고 연동 변경만 화면에 알린다.
+  test('동일한 연동 목록의 변경 알림을 생략한다', () {
+    final control = CheckCaregiverHome(userHash: 'owner');
+    addTearDown(control.dispose);
+    var changes = 0;
+    control.addListener(() => changes++);
+    control.updateLinks([_link]);
+    control.updateLinks([_link]);
+    expect(changes, 1);
+    control.updateLinks([]);
+    expect(changes, 2);
+  });
   test('알림이 꺼져 있어도 홈은 상세 화면과 같은 환자 일정을 조회한다', () async {
     final paths = <String>[];
     final client = MockClient((request) async {
       paths.add(request.url.path);
       expect(request.url.queryParameters['caregiver_hash'], 'owner');
-      // The monitoring API deliberately omits schedules when all alerts are off.
-      final monitoring = request.url.path.endsWith('/monitoring');
+      // The aggregate home API includes schedules even when all alerts are off.
+      final aggregate = request.url.path.endsWith('/schedules');
+      final schedules = [{
+        'medication_id': '1', 'medication_name': 'Scheduled medicine',
+        'schedule_slot_keys': ['morning', 'lunch', 'evening'],
+      }];
       return http.Response(jsonEncode({
         'success': true,
-        'data': monitoring ? {
+        'data': aggregate ? {
+          'caregiver_hash': 'owner',
           'patients': [{
             'link': _link.toJson(),
             'notification_settings': [],
-            'today_medication_info': {'schedules': []},
+            'today_medication_info': {'schedules': schedules},
           }],
         } : {
           'caregiver_hash': 'owner',
@@ -77,7 +94,7 @@ void main() {
     expect(control.snapshotFor(1)?.schedules, hasLength(1));
     expect(control.snapshotFor(1)!.schedules.single.slotKeys,
         detail.todayMedicationScheduleList.single.slotKeys);
-    expect(paths, ['/caregiver/medications/patient', '/caregiver/medications/patient']);
+    expect(paths, ['/caregiver/medications/patient', '/caregiver/schedules']);
     expect(control.hasError, isFalse);
   });
 
@@ -643,24 +660,18 @@ class _Monitoring extends CheckCaregiverMedication {
   bool failure = false;
   List<CaregiverMonitoringSnapshot>? snapshots;
   Completer<List<CaregiverMonitoringSnapshot>>? gate;
-  // 함수이름: requestPatientMedicationInfo
+  // 함수이름: requestScheduleSnapshot
   // 함수역할: 조회 횟수를 기록하고 지정한 응답·실패·지연으로 계정 전환 경합을 재현한다.
-  // 매개변수: patientHash: 조회할 환자. 반환값: 환자 조회 결과 Future; 실패 설정 시 StateError.
+  // 매개변수: links: 현재 홈의 연결 목록. 반환값: 환자별 일정 목록 Future; 실패 설정 시 StateError.
   @override
-  Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
-    required String patientHash,
+  Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
+    List<PatientCaregiverLink>? links,
   }) async {
     calls++;
     if (failure) throw StateError('offline');
     final results = gate != null
         ? await gate!.future
         : snapshots ?? [_snapshot(_link), _snapshot(_other)];
-    final snapshot = results.firstWhere((s) => s.patientHash == patientHash);
-    return (
-      caregiverHash: snapshot.link.caregiverHash,
-      patientHash: snapshot.patientHash,
-      savedMedications: const <Never>[],
-      todayMedicationScheduleList: snapshot.schedules,
-    );
+    return results;
   }
 }

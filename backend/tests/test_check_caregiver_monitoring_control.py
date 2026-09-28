@@ -178,3 +178,22 @@ def test_monitoring_snapshot_batches_links_settings_and_active_schedules() -> No
     ]
     assert patients[0]["today_medication_info"]["schedules"]
     assert patients[1]["today_medication_info"]["schedules"] == []
+
+
+def test_home_snapshot_includes_disabled_patients_without_medication_details() -> None:
+    """홈 일괄 조회는 알림 비활성 환자도 포함하되 저장 약 상세는 조회하지 않는다."""
+    links = [
+        _PatientCaregiverLink(id=i, patient_hash=patient,
+            caregiver_hash="caregiver-a", linked=True, created_at=datetime(2026, 8, 25))
+        for i, patient in enumerate(["patient-a", "patient-b"], start=1)
+    ]
+    repository = _LinkRepositoryStub(links)
+    settings = _NotificationControlStub()
+    today = _TodayMedicationControlStub()
+    control = CheckCaregiverMonitoring(None, repository, settings, today)
+    result = control.requestMonitoringSnapshot("caregiver-a", include_all_schedules=True)
+    assert repository.requested_caregiver_hashes == ["caregiver-a"]
+    assert len(settings.requests) == 1
+    assert today.requested_patient_hashes == ["patient-a", "patient-b"]
+    assert all(p["today_medication_info"]["schedules"] for p in result["data"]["patients"])
+    assert all("saved_medications" not in p for p in result["data"]["patients"])
