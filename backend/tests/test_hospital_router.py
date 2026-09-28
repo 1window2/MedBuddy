@@ -136,9 +136,9 @@ def test_settings_validate_hospital_bounds_and_https():
     ("unverified_row", None), ("missing", None),
 ])
 @pytest.mark.anyio
-async def test_hospital_dependency_reuses_only_verified_request_db_calendar(monkeypatch, cache_state, expected):
+async def test_hospital_dependency_reuses_only_verified_request_db_calendar(monkeypatch, tmp_path, cache_state, expected):
     """기존 월별 조회 기록을 재사용하고 미검증·빈 캐시와 외부 장애는 미확인으로 유지한다."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(f"sqlite:///{tmp_path / 'calendar.db'}")
     KoreanHolidayRecord.__table__.create(engine)
     KoreanHolidayMonthFetchRecord.__table__.create(engine)
     upstream = AsyncMock()
@@ -158,9 +158,9 @@ async def test_hospital_dependency_reuses_only_verified_request_db_calendar(monk
             control = get_check_nearby_hospital(db=db)
             lookup = control._holiday_boundary
             assert isinstance(lookup, PersistentKoreanHolidayLookup)
-            assert isinstance(lookup._cache, PharmacyCatalogRepository)
-            assert lookup._cache.db is db and lookup._upstream is upstream
+            assert lookup._upstream is upstream
             assert await control._is_holiday(target) is expected
+            assert not db.in_transaction()
             if expected is None:
                 upstream.fetchMonth.assert_awaited_once_with(2026, 9)
                 assert db.get(KoreanHolidayMonthFetchRecord, "2026-09") is None

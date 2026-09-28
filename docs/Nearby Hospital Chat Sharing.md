@@ -67,3 +67,18 @@ sequenceDiagram
 클래스 관계는 [병원 검색 클래스](UML/class/07_NearbyCare.puml), 동작 순서는
 [검색·공유 시퀀스](UML/sequence/NearbyCareSharing.puml), 사용자 흐름은
 [UC-27·UC-28·UC-30](UML/usecase/UseCaseDescription.md)을 따른다.
+
+## Calendar persistence isolation
+
+`PersistentKoreanHolidayLookup` offloads synchronous calendar-cache reads and
+writes to worker threads. `SessionScopedKoreanHolidayCache` opens a separate
+session per operation using the request's database engine; it never borrows the
+authentication or chat transaction. Sessions close before provider network I/O.
+Paired date lookups on one lookup instance serialize cache population to avoid
+duplicate same-month writes. Fresh and bounded-stale snapshot policies remain
+unchanged; database failures remain unknown holiday status, not ordinary days.
+
+This adapter refines the persistence implementation behind the existing nearby
+care boundary without changing public APIs, authorization, or database schema.
+An async deadline can stop waiting for a cache worker; it does not forcibly cancel
+an executing SQL statement. Such a worker still owns and closes its own session.

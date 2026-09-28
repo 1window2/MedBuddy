@@ -10,6 +10,7 @@ from typing import Protocol
 import xml.etree.ElementTree as ElementTree
 
 import httpx
+from starlette.concurrency import run_in_threadpool
 
 from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
 from core.config import settings
@@ -235,6 +236,7 @@ class PersistentKoreanHolidayLookup:
     ) -> None:
         self._cache = cache
         self._upstream = upstream
+        self._lookup_lock = asyncio.Lock()
 
     # Function Name: isHoliday
     # Description:
@@ -244,7 +246,17 @@ class PersistentKoreanHolidayLookup:
     # Returns:
     # - Whether the date is a holiday; propagates unavailability when no acceptable snapshot exists.
     async def isHoliday(self, value: date) -> bool:
-        cached = self._cache.get_cached_korean_holidays(
+        # Serialize paired same-month lookups without holding a database session.
+        async with self._lookup_lock:
+            return await self._lookup_holiday(value)
+
+    # Function Name: _lookup_holiday
+    # Description: Keeps blocking cache work off the event loop and provider I/O outside DB sessions.
+    # Parameters: value: Date being checked.
+    # Returns: Verified holiday status or an availability error.
+    async def _lookup_holiday(self, value: date) -> bool:
+        cached = await run_in_threadpool(
+            self._cache.get_cached_korean_holidays,
             value.year,
             value.month,
             max_age=self._FRESH_MAX_AGE,
@@ -253,14 +265,16 @@ class PersistentKoreanHolidayLookup:
             return value in cached
         try:
             holidays = await self._upstream.fetchMonth(value.year, value.month)
-            self._cache.replace_korean_holidays(
+            await run_in_threadpool(
+                self._cache.replace_korean_holidays,
                 value.year,
                 value.month,
                 holidays,
             )
             return value in holidays
         except PharmacyApiUnavailableError:
-            stale = self._cache.get_cached_korean_holidays(
+            stale = await run_in_threadpool(
+                self._cache.get_cached_korean_holidays,
                 value.year,
                 value.month,
                 max_age=self._STALE_MAX_AGE,

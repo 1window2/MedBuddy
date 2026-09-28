@@ -11,7 +11,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from boundaries.firebase_identity_boundary import (
@@ -88,6 +88,7 @@ from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
+from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
 _medication_detail_cache: _MedicationDetailCache | None = None
@@ -787,7 +788,7 @@ def get_check_nearby_pharmacy(
         pharmacy_boundary=_pharmacy_api,
         pharmacy_repository=pharmacy_repository,
         holiday_boundary=PersistentKoreanHolidayLookup(
-            cache=pharmacy_repository,
+            cache=SessionScopedKoreanHolidayCache(sessionmaker(bind=db.get_bind())),
             upstream=_korean_holiday_api,
         ),
         holiday_emergency_boundary=_holiday_emergency_pharmacy_api,
@@ -801,7 +802,7 @@ def get_check_nearby_hospital(
     return CheckNearbyHospital(
         _hospital_api,
         holiday_boundary=PersistentKoreanHolidayLookup(
-            cache=PharmacyCatalogRepository(db),
+            cache=SessionScopedKoreanHolidayCache(sessionmaker(bind=db.get_bind())),
             upstream=_korean_holiday_api,
         ),
     )
