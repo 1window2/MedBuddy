@@ -19,7 +19,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       fetchTodayMedicationSchedule(),
     ]);
     return _schedules.lastLoadSucceeded &&
-        _lastReminderSettingsLoadSucceeded;
+        _reminders.lastLoadSucceeded;
   }
 
   // 함수이름: loadUserSetting
@@ -138,7 +138,7 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
     final previousNotificationDetailMode = _userSetting.notificationDetailMode;
     final previousIsEnglishSetting = _isEnglishSetting;
     final previousDefaultTimes = {
-      for (final slot in MedBuddyViewModel._reminderSlotKeys)
+      for (final slot in medicationScheduleSlotKeys)
         slot: _userSetting.defaultTimeForSlot(slot),
     };
     final saveResult = await manageUserSetting.saveUserSetting(

@@ -1,4 +1,13 @@
-part of 'medbuddy_view_model.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../controls/set_notification_control.dart';
+import '../entities/medication_alarm_entity.dart';
+import '../entities/medication_schedule_entity.dart';
+import '../entities/user_setting_entity.dart';
+import '../services/notification_service.dart';
+import '../services/medication_reminder_background_service.dart';
+import 'medbuddy_feature_updates.dart';
+import 'medbuddy_schedule_slot_policy.dart';
 
 // 파일명: medbuddy_reminder_view_model.dart
 // 역할: 시간대별 복약 알림의 조회, 저장, 취소, 로컬 동기화를 관리한다.
@@ -7,7 +16,68 @@ part of 'medbuddy_view_model.dart';
 // 역할: 시간대별 복약 알림의 서버 설정과 로컬 예약 상태를 확장한다.
 // 주요 책임:
 // - 캐시 복원·권한 확인·저장 실패 롤백을 수행하고 최신 일정과 개인정보 설정으로 알림을 동기화한다.
-extension MedBuddyReminderViewModel on MedBuddyViewModel {
+class MedBuddyReminderViewModel {
+  bool _lastReminderSettingsLoadSucceeded = false;
+  final Map<String, MedicationAlarm> _medicationReminderSettings = {};
+  // Function Name: medicationReminderSettings
+  // Description: Exposes an unmodifiable slot-keyed map of the current medication alarm settings.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Map<String, MedicationAlarm>: An unmodifiable slot-keyed map of the current medication alarm settings.
+  Map<String, MedicationAlarm> get medicationReminderSettings =>
+      Map.unmodifiable(_medicationReminderSettings);
+  final SetNotification setNotification;
+  final NotificationService notificationService;
+  final String patientHash;
+  final UserSetting Function() _readUserSetting;
+  final List<MedicationSchedule> Function() _readSchedules;
+  final bool Function() _scheduleIsFresh;
+  final void Function(String) _onChanged;
+  bool _disposed = false;
+  int _loadGeneration = 0;
+  String _statusMessage = '';
+  // Function Name: MedBuddyReminderViewModel
+  // Description: Binds reminder dependencies and read-only feature snapshots.
+  // Parameters: Controls, patient, snapshot providers and change callback. Returns: State owner.
+  MedBuddyReminderViewModel({
+    required this.setNotification,
+    required this.notificationService,
+    required this.patientHash,
+    required UserSetting Function() readUserSetting,
+    required List<MedicationSchedule> Function() readSchedules,
+    required bool Function() scheduleIsFresh,
+    required void Function(String) onChanged,
+  }) : _readUserSetting = readUserSetting,
+       _readSchedules = readSchedules,
+       _scheduleIsFresh = scheduleIsFresh,
+       _onChanged = onChanged;
+  // Function Name: userSetting
+  // Description: Reads current settings without owning them. Parameters: None. Returns: Settings.
+  UserSetting get userSetting => _readUserSetting();
+  // Function Name: _isEnglishSetting
+  // Description: Resolves locale. Parameters: None. Returns: English selection.
+  bool get _isEnglishSetting =>
+      userSetting.language.trim().toLowerCase().startsWith('en');
+  // Function Name: lastLoadSucceeded
+  // Description: Exposes reminder-read freshness. Parameters: None. Returns: Freshness.
+  bool get lastLoadSucceeded => _lastReminderSettingsLoadSucceeded;
+  // Function Name: statusMessage
+  // Description: Exposes reminder-only feedback. Parameters: None. Returns: Feedback.
+  String get statusMessage => _statusMessage;
+  // Function Name: _notifyViewModelListeners
+  // Description: Publishes live feature state. Parameters: feature: Tag. Returns: None.
+  void _notifyViewModelListeners(MedBuddyFeature feature) {
+    if (!_disposed) _onChanged(_statusMessage);
+  }
+
+  // Function Name: dispose
+  // Description: Stops notifications without disposing borrowed services. Parameters: None. Returns: None.
+  void dispose() {
+    _disposed = true;
+    _loadGeneration++;
+  }
+
   // 함수이름: loadMedicationReminderSettings
   // 함수역할: 서버에서 시간대별 알림을 읽어 기본값과 캐시에 반영하고 조회 실패 시 사용자별 또는 구형 캐시로 복원한다.
   // 매개변수:
@@ -17,15 +87,18 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   Future<void> loadMedicationReminderSettings({
     bool notifyAfterLoad = true,
   }) async {
+    if (_disposed) return;
+    final generation = ++_loadGeneration;
     _lastReminderSettingsLoadSucceeded = false;
     try {
       final settings = await setNotification.requestMedicationAlarm();
+      if (_disposed || generation != _loadGeneration) return;
       final settingsBySlot = {
-        for (final slotKey in MedBuddyViewModel._reminderSlotKeys)
+        for (final slotKey in medicationScheduleSlotKeys)
           slotKey: _defaultMedicationAlarm(slotKey),
       };
       for (final setting in settings) {
-        if (MedBuddyViewModel._reminderSlotKeys.contains(setting.slotKey)) {
+        if (medicationScheduleSlotKeys.contains(setting.slotKey)) {
           // 비활성 상태에서도 사용자가 마지막으로 지정한 시각을 보존한다.
           settingsBySlot[setting.slotKey] = setting;
         }
@@ -35,15 +108,19 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
         ..addAll(settingsBySlot);
 
       final preferences = await SharedPreferences.getInstance();
+      if (_disposed || generation != _loadGeneration) return;
       for (final setting in settingsBySlot.values) {
         await _cacheMedicationReminderSetting(preferences, setting);
       }
-      _lastReminderSettingsLoadSucceeded = true;
+      if (!_disposed && generation == _loadGeneration) {
+        _lastReminderSettingsLoadSucceeded = true;
+      }
     } catch (_) {
-      await _loadMedicationReminderSettingsFromCache();
+      if (_disposed || generation != _loadGeneration) return;
+      await _loadMedicationReminderSettingsFromCache(generation);
     }
 
-    if (notifyAfterLoad) {
+    if (notifyAfterLoad && !_disposed && generation == _loadGeneration) {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
     }
   }
@@ -279,9 +356,10 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> _loadMedicationReminderSettingsFromCache() async {
+  Future<void> _loadMedicationReminderSettingsFromCache(int generation) async {
     final preferences = await SharedPreferences.getInstance();
-    for (final slotKey in MedBuddyViewModel._reminderSlotKeys) {
+    if (_disposed || generation != _loadGeneration) return;
+    for (final slotKey in medicationScheduleSlotKeys) {
       final rawSetting =
           preferences.getString(_reminderStorageKey(slotKey)) ??
           preferences.getString(_legacyReminderStorageKey(slotKey));
@@ -321,7 +399,7 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     }
 
     final preferences = await SharedPreferences.getInstance();
-    for (final slotKey in MedBuddyViewModel._reminderSlotKeys) {
+    for (final slotKey in medicationScheduleSlotKeys) {
       final setting =
           _medicationReminderSettings[slotKey] ??
           _defaultMedicationAlarm(slotKey);
@@ -351,15 +429,14 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
     }
   }
 
-  // 함수이름: _synchronizeMedicationReminderSchedulesIfScheduleIsFresh
+  // 함수이름: synchronizeIfFresh
   // 함수역할: 최근 일정 조회 성공 시에만 알림 예약을 동기화하고 예약 실패를 일정 조회 성공과 구분해 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void>
-  _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() async {
-    if (!_schedules.lastLoadSucceeded || !_lastReminderSettingsLoadSucceeded) {
+  Future<void> synchronizeIfFresh() async {
+    if (!_scheduleIsFresh() || !_lastReminderSettingsLoadSucceeded) {
       return;
     }
     try {
@@ -430,13 +507,16 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
             // - 현재 언어의 약 표시 이름.
             (schedule) => schedule.displayNameForLanguage(userSetting.language),
           )
-          .where(/* 함수이름: where 콜백
+          .where(
+            /* 함수이름: where 콜백
            * 함수역할: 복약 알림에서 공백뿐인 약 이름을 제외한다.
            * 매개변수:
            * - name (String): 표시·일치 여부를 검사할 약 이름
            * 반환값:
            * - 공백 외 내용이 있으면 true.
-           */(name) => name.trim().isNotEmpty)
+           */
+            (name) => name.trim().isNotEmpty,
+          )
           .toList(growable: false),
       activeDates: activeDates,
       medicationNamesByDate:
@@ -484,15 +564,15 @@ extension MedBuddyReminderViewModel on MedBuddyViewModel {
   // 반환값:
   // - List<MedicationSchedule>: 현재 오늘 일정 중 명시·추론된 시간대가 선택한 알림 시간대를 포함하는 약만 모은다.
   List<MedicationSchedule> _schedulesForReminderSlot(String slotKey) {
-    return todayMedicationScheduleList
+    return _readSchedules()
         .where(/* 함수이름: where 콜백
          * 함수역할: 정규화된 일정 시간대에 대상 알림 시간대가 포함되는지 검사한다.
          * 매개변수:
          * - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
          * 반환값:
          * - 대상 시간대의 일정이면 true.
-         */(schedule) {
-          return _slotKeysForSchedule(schedule).contains(slotKey);
+         */ (schedule) {
+          return resolveScheduleSlotKeys(schedule).contains(slotKey);
         })
         .toList(growable: false);
   }

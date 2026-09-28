@@ -48,3 +48,11 @@ provider. Queue projection uses an explicit operation that does not claim a
 fresh server read. Reminder reconciliation reads the feature's freshness flag;
 account clearing invalidates pending reads. Slot interpretation is a shared pure
 policy rather than a private helper inside prescription processing.
+
+## Reminders
+
+Reminder settings and read freshness are owned by the reminder feature. Schedule
+lists, schedule freshness and user settings are supplied through read-only
+callbacks, not mutable sibling state. The facade retains the coordination point
+for post-save reconciliation. Reminder save/rollback, privacy and snooze-preserving
+refresh semantics are unchanged. Superseded or disposed loads cannot publish.

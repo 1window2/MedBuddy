@@ -2,13 +2,11 @@
 // Role: Owns patient-scoped feature state and composes prescription, schedule, reminder, and settings extensions.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../controls/check_health_recommendation_control.dart';
 import '../controls/check_medication_detail_control.dart';
@@ -45,12 +43,13 @@ import 'medbuddy_health_recommendation_view_model.dart';
 import 'medbuddy_saved_medication_view_model.dart';
 import 'medbuddy_schedule_view_model.dart';
 import 'medbuddy_schedule_slot_policy.dart';
+import 'medbuddy_reminder_view_model.dart';
 import 'saved_medication_batch_delete_result.dart';
 export 'saved_medication_batch_delete_result.dart';
 
 part 'medbuddy_prescription_view_model.dart';
 part 'medbuddy_saved_medication_facade.dart';
-part 'medbuddy_reminder_view_model.dart';
+
 part 'medbuddy_user_setting_view_model.dart';
 
 // 클래스명: TodayMedicationProgress
@@ -113,6 +112,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   late final CheckHealthRecommendation checkHealthRecommendation;
   late final MedBuddyHealthRecommendationViewModel _healthRecommendations;
   late final SetNotification setNotification;
+  late final MedBuddyReminderViewModel _reminders;
   late final ManageUserSetting manageUserSetting;
   late final ManageAccount manageAccount;
   final NotificationService notificationService;
@@ -222,8 +222,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get isTodayScheduleLoading => _schedules.isTodayScheduleLoading;
 
   bool get hasTodayScheduleLoadError => _schedules.hasTodayScheduleLoadError;
-
-  bool _lastReminderSettingsLoadSucceeded = false;
 
   // 함수이름: isHealthRecommendationLoading
   // 함수역할: 건강 관리 추천 조회의 진행 여부를 제공한다.
@@ -527,16 +525,8 @@ class MedBuddyViewModel extends ChangeNotifier {
     );
   }
 
-  final Map<String, MedicationAlarm> _medicationReminderSettings = {};
-  // Function Name: medicationReminderSettings
-  // Description: Exposes an unmodifiable slot-keyed map of the current medication alarm settings.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Map<String, MedicationAlarm>: An unmodifiable slot-keyed map of the current medication alarm settings.
   Map<String, MedicationAlarm> get medicationReminderSettings =>
-      Map.unmodifiable(_medicationReminderSettings);
-  static const List<String> _reminderSlotKeys = medicationScheduleSlotKeys;
+      _reminders.medicationReminderSettings;
 
   // 함수이름: MedBuddyViewModel
   // 함수역할: 환자 해시를 정규화하고 공유 API 클라이언트를 통해 기능별 Control과 알림·기기 사진 경계를 주입하거나 생성한다.
@@ -627,6 +617,15 @@ class MedBuddyViewModel extends ChangeNotifier {
       readEnglish: () => _isEnglishSetting,
       onChanged: _onScheduleChanged,
     );
+    _reminders = MedBuddyReminderViewModel(
+      setNotification: this.setNotification,
+      notificationService: this.notificationService,
+      patientHash: this.patientHash,
+      readUserSetting: () => userSetting,
+      readSchedules: () => todayMedicationScheduleList,
+      scheduleIsFresh: () => _schedules.lastLoadSucceeded,
+      onChanged: _onReminderChanged,
+    );
     _savedMedications = MedBuddySavedMedicationViewModel(
       checkSavedMedication: this.checkSavedMedication,
       checkMedicationDetail: this.checkMedicationDetail,
@@ -713,6 +712,53 @@ class MedBuddyViewModel extends ChangeNotifier {
     medicationStatus,
     slotKey: slotKey,
   );
+  // Function Name: loadMedicationReminderSettings
+  // Description: Delegates to isolated reminder state.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<void> loadMedicationReminderSettings({bool notifyAfterLoad = true}) =>
+      _reminders.loadMedicationReminderSettings(
+        notifyAfterLoad: notifyAfterLoad,
+      );
+  // Function Name: requestMedicationReminderSave
+  // Description: Delegates to isolated reminder state.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<bool> requestMedicationReminderSave({
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<MedicationSchedule> schedules,
+  }) => _reminders.requestMedicationReminderSave(
+    slotKey: slotKey,
+    slotTitle: slotTitle,
+    hour: hour,
+    minute: minute,
+    schedules: schedules,
+  );
+  // Function Name: requestMedicationReminderCancel
+  // Description: Delegates to isolated reminder state.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<bool> requestMedicationReminderCancel({
+    required String slotKey,
+    required String slotTitle,
+  }) => _reminders.requestMedicationReminderCancel(
+    slotKey: slotKey,
+    slotTitle: slotTitle,
+  );
+  // Function Name: _onReminderChanged
+  // Description: Bridges reminder-local feedback to compatibility listeners.
+  // Parameters: message: Feature feedback. Returns: None.
+  void _onReminderChanged(String message) {
+    if (_isDisposed) return;
+    if (message.isNotEmpty) _statusMessage = message;
+    _notifyViewModelListeners(MedBuddyFeature.reminder);
+  }
+
+  // Function Name: _synchronizeMedicationReminderSchedulesIfScheduleIsFresh
+  // Description: Coordinates explicit reminder reconciliation after fresh schedule reads.
+  // Parameters: None. Returns: Completion.
+  Future<void> _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() =>
+      _reminders.synchronizeIfFresh();
   DoseSyncService? doseSync;
 
   // Function Name: _onSavedMedicationChanged
@@ -765,7 +811,7 @@ class MedBuddyViewModel extends ChangeNotifier {
                 'source': _userSetting.homeScheduleSource,
                 'hide_names': _userSetting.notificationDetailMode != 'full',
                 'alarms': {
-                  for (final entry in _medicationReminderSettings.entries)
+                  for (final entry in medicationReminderSettings.entries)
                     entry.key: entry.value.timeLabel,
                 },
               },
@@ -803,6 +849,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     _isDisposed = true;
     _savedMedications.dispose();
     _schedules.dispose();
+    _reminders.dispose();
     _healthRecommendations.removeListener(_onHealthRecommendationChanged);
     _healthRecommendations.dispose();
     doseSync?.removeListener(_onDoseSyncChanged);
