@@ -69,6 +69,36 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  // 위젯 갱신이 지연되어도 영속 저장과 서버 전송은 완료되어야 한다.
+  test('slow widget publication never blocks durable recording or delivery', () async {
+    final widgetGate = Completer<void>();
+    final posted = Completer<void>();
+    var publications = 0;
+    final client = MockClient((request) async {
+      if (!posted.isCompleted) posted.complete();
+      return http.Response('offline', 503);
+    });
+    final sync = DoseSyncService(owner: 'patient-a', client: client,
+      openStore: () async => store, clock: () => now,
+      onStateChanged: () async { publications++; await widgetGate.future; },
+    );
+    await sync.initialize();
+    await sync.cacheSchedules([medication], scheduleDate: doseScheduleDay(now));
+    final saved = await sync.record(medicationIds: [91], slotKey: 'morning',
+        scheduleDate: doseScheduleDay(now), completed: true)
+        .timeout(const Duration(seconds: 3));
+    expect(saved, isTrue);
+    await posted.future.timeout(const Duration(seconds: 3));
+    await sync.drain();
+    expect(await store.pending('patient-a'), hasLength(1));
+    expect(publications, 1);
+    widgetGate.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(publications, 2);
+    sync.dispose();
+    client.close();
+  });
+
   // Both foreground read boundaries must reject yesterday's delayed response,
   // then recover on an explicit same-day refresh without queueing any writes.
   for (final summary in [false, true]) {

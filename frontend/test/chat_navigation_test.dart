@@ -175,6 +175,43 @@ void _viewport(WidgetTester tester, double width) {
 // 함수이름: main
 // 함수역할: 대화 조회와 동적 탐색 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 저장 설정이 연동 조회보다 늦게 복원되어도 환자 조회와 위젯 발행 출처를 갱신한다.
+  testWidgets('late home source restoration refreshes linked patient schedules', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final links = _Links()..result = [_link(1)];
+    final model = _ViewModel();
+    final api = _HomeMonitoring();
+    addTearDown(model.dispose);
+    addTearDown(api.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(home: HomeScreen(
+          chatListFactory: (hash) => ManageChatList(
+            userHash: hash, linkControl: links, chatControl: _History(),
+          ),
+          caregiverHomeFactory: (hash) => CheckCaregiverHome(userHash: hash, control: api),
+        )),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(api.calls, 0);
+    model.setting = const UserSetting(homeScheduleSource: 'patients');
+    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+    await tester.pumpAndSettle();
+    expect(api.calls, 1);
+    expect(find.byKey(const Key('caregiver-home-summary')), findsOneWidget);
+    model.setting = const UserSetting(homeScheduleSource: 'self');
+    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+    await tester.pumpAndSettle();
+    model.setting = const UserSetting(homeScheduleSource: 'patients');
+    model.updatesFor(MedBuddyFeature.userSetting).markChanged();
+    await tester.pumpAndSettle();
+    expect(api.calls, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   // 함수역할: 홈의 실제 구성에서 설정과 연동 해제에 따라 환자 현황을 표시한다.
   for (final (source, ownMedication) in [
     ('self', false),

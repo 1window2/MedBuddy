@@ -2,6 +2,7 @@
 // Role: Owns patient-scoped feature state and composes prescription, schedule, reminder, and settings extensions.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -763,6 +764,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   DoseSyncService? doseSync;
   Future<void>? _scheduleRefresh;
   DateTime? _scheduleRefreshedAt;
+  String? _widgetConfigurationSignature;
 
   // Function Name: _onSavedMedicationChanged
   // Description: Bridges owned feature state to legacy facade subscribers.
@@ -806,27 +808,37 @@ class MedBuddyViewModel extends ChangeNotifier {
     if (doseSync != null &&
         (feature == MedBuddyFeature.userSetting ||
             feature == MedBuddyFeature.reminder)) {
-      unawaited(
-        DoseHomeWidget.publish(
-              owner: patientHash,
-              configuration: {
-                'language': _userSetting.language,
-                'source': _userSetting.homeScheduleSource,
-                'hide_names': _userSetting.notificationDetailMode != 'full',
-                'alarms': {
-                  for (final entry in medicationReminderSettings.entries)
-                    entry.key: entry.value.timeLabel,
-                },
-              },
-            )
-            .then((state) async {
-              if (state?.view['source'] == 'patients') {
-                await DoseHomeWidget.refreshInBackground();
-              }
-              return state;
-            })
-            .catchError((_) => null),
-      );
+      final configuration = {
+        'language': _userSetting.language,
+        'source': _userSetting.homeScheduleSource,
+        'hide_names': _userSetting.notificationDetailMode != 'full',
+        'alarms': {
+          for (final entry in medicationReminderSettings.entries)
+            entry.key: entry.value.timeLabel,
+        },
+      };
+      final signature = jsonEncode(configuration);
+      if (_widgetConfigurationSignature != signature) {
+        _widgetConfigurationSignature = signature;
+        unawaited(
+          DoseHomeWidget.publish(
+                owner: patientHash,
+                configuration: configuration,
+              )
+              .then((state) async {
+                if (state?.view['source'] == 'patients') {
+                  await DoseHomeWidget.refreshInBackground();
+                }
+                return state;
+              })
+              .catchError((_) {
+                if (_widgetConfigurationSignature == signature) {
+                  _widgetConfigurationSignature = null;
+                }
+                return null;
+              }),
+        );
+      }
     }
     if (feature == null) {
       for (final updates in _featureUpdates.values) {

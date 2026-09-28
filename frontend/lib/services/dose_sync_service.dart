@@ -41,6 +41,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   DoseOutboxStore? _store;
   Future<void>? _initializing;
   Future<void>? _draining;
+  bool _publishing = false;
+  bool _publishAgain = false;
   Timer? _timer;
   bool _disposed = false;
   bool _foreground = true;
@@ -138,11 +140,26 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _publishState() async {
-    if (_disposed) return;
+    if (_disposed || onStateChanged == null) return;
+    _publishAgain = true;
+    if (_publishing) return;
+    _publishing = true;
+    unawaited(_publishLoop());
+  }
+
+  // 기기 저장 이후 표시 작업은 전송을 막지 않고 최신 변경을 합쳐 반영한다.
+  Future<void> _publishLoop() async {
     try {
-      await onStateChanged?.call();
-    } catch (_) {
-      // 위젯 표시 실패로 이미 저장한 복용 기록을 실패 처리하지 않는다.
+      do {
+        _publishAgain = false;
+        try {
+          await onStateChanged?.call();
+        } catch (_) {
+          // 위젯 표시 실패로 이미 저장한 복용 기록을 실패 처리하지 않는다.
+        }
+      } while (_publishAgain && !_disposed);
+    } finally {
+      _publishing = false;
     }
   }
 

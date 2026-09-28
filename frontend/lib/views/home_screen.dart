@@ -1,6 +1,7 @@
 // 파일명: home_screen.dart
 // 역할: 처방 분석 흐름과 홈·일정·복약함·조건부 채팅·내 정보의 탐색을 구성한다.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../services/dose_home_widget_service.dart';
@@ -92,6 +93,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _homeScheduleSource;
   ManageNotificationInbox? _notificationInbox;
   Timer? _chatRefreshTimer;
+  Future<void>? _homeRefresh;
+  String? _linkDisplaySignature;
+  String? _widgetCacheSignature;
   ForegroundRecoveryService? _medicationRecovery;
   MedBuddyViewModel? _recoveryOwner;
   void _onScheduleRecoveryNeeded() {
@@ -131,6 +135,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_chatList?.userHash == userHash) {
       if (_homeScheduleSource != source) {
         _homeScheduleSource = source;
+        _widgetCacheSignature = null;
         // 저장값을 뒤늦게 복원한 경우에도 다음 주기까지 기다리지 않는다.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_refreshChatList());
@@ -139,6 +144,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     _homeScheduleSource = source;
+    _linkDisplaySignature = null;
+    _widgetCacheSignature = null;
+    _homeRefresh = null;
     _caregiverHome?.dispose();
     _caregiverHome =
         widget.caregiverHomeFactory?.call(userHash) ??
@@ -171,10 +179,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 매개변수: 없음. 반환값: 없음.
   void _onChatListChanged() {
     if (!mounted) return;
+    final signature = jsonEncode([
+      _chatList?.hasError,
+      _chatList?.links.map((link) => [link.toJson(), _chatList?.peerName(link, isEnglish: false)]).toList(),
+    ]);
+    if (_linkDisplaySignature == signature) return;
+    _linkDisplaySignature = signature;
     _caregiverHome?.updateLinks(
       _chatList?.hasError == true ? const [] : _chatList?.links ?? const [],
     );
-    if (_chatList?.isLoading == false) _publishCaregiverWidget();
+    _publishCaregiverWidget();
     setState(
       // 함수이름: 연동 상태 갱신 콜백
       // 함수역할: 연동 없는 채팅 탭의 방문·선택 상태를 해제한다.
@@ -193,7 +207,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 함수이름: _refreshChatList
   // 함수역할: 활성 앱의 연동을 갱신하고 대화 목록을 보고 있을 때만 미리보기를 읽는다.
   // 매개변수: 없음. 반환값: 없음.
-  Future<void> _refreshChatList() async {
+  Future<void> _refreshChatList() {
+    final pending = _homeRefresh;
+    if (pending != null) return pending;
+    final chat = _chatList;
+    return _homeRefresh = _loadHomeLinks().whenComplete(() {
+      if (identical(chat, _chatList)) _homeRefresh = null;
+    });
+  }
+
+  // 현재 화면에 필요한 연동·환자 일정만 읽고 완료한 상태를 위젯과 공유한다.
+  Future<void> _loadHomeLinks() async {
     if (!_isForeground) return;
     final chat = _chatList;
     await chat?.refresh(
@@ -219,14 +243,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || control == null || _homeScheduleSource != 'patients') {
       return;
     }
+    final cache = {
+      ...control.widgetCache,
+      'failed': control.hasError || _chatList?.hasError == true,
+    };
+    final signature = jsonEncode([control.userHash, cache]);
+    if (signature == _widgetCacheSignature) return;
+    _widgetCacheSignature = signature;
     unawaited(
       DoseHomeWidget.publish(
         owner: control.userHash,
-        patientCache: {
-          ...control.widgetCache,
-          'failed': control.hasError || _chatList?.hasError == true,
-        },
-      ).catchError((_) => null),
+        patientCache: cache,
+      ).then((value) {
+        if (value == null && _widgetCacheSignature == signature) {
+          _widgetCacheSignature = null;
+        }
+        return value;
+      }).catchError((_) {
+        if (_widgetCacheSignature == signature) _widgetCacheSignature = null;
+        return null;
+      }),
     );
   }
 
@@ -367,7 +403,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context, _) => _buildActiveScreen(context, viewModel),
+      builder: (context, _) {
+        // 부분 갱신으로 복원된 홈 설정도 조회·위젯 출처에 즉시 반영한다.
+        _syncChatControl(viewModel);
+        return _buildActiveScreen(context, viewModel);
+      },
     );
   }
 
