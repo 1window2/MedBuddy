@@ -15,6 +15,7 @@ from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
+    CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
     CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
@@ -321,6 +322,23 @@ class ManageLinkedChat:
             "data": self._medication_detail_response(medication),
         }
 
+    # 병원 조회 전에 연동 권한·중복을 확인하고 읽기 트랜잭션을 끝낸다.
+    def find_sent_message(self, *, link_id: int, sender_hash: str, client_message_id: str) -> ChatSendResult | None:
+        """중복 전송을 외부 조회 전에 확인하고 읽기 트랜잭션을 반환한다."""
+        try:
+            link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
+            existing = self.message_repository.find_client_request(
+                link_id=link_id, sender_hash=sender_hash, client_message_id=client_message_id,
+            )
+            if existing is None:
+                return None
+            return ChatSendResult(
+                message=self._message_for_user(existing, link, sender_hash),
+                recipient_hash=self._other_participant(link, sender_hash), created=False,
+            )
+        finally:
+            self.db.rollback()
+
     # 함수이름: send_message
     # 함수역할:
     # - 일반 또는 복약 맥락 메시지를 멱등하게 저장하고 상대 참여자를 반환한다.
@@ -351,6 +369,7 @@ class ManageLinkedChat:
         pharmacy_id: str | None = None,
         allow_internal: bool = False,
         source_alert_id: int | None = None,
+        hospital_context: dict[str, object] | None = None,
     ) -> ChatSendResult:
         """메시지를 한 번만 저장하고 상대 사용자 식별자를 반환한다."""
         link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
@@ -407,6 +426,7 @@ class ManageLinkedChat:
             slot_key=slot_key,
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
+            hospital_context=hospital_context,
         )
         if alert is not None:
             context_payload["schedule_context"]["schedule_date"] = alert.schedule_date.isoformat()
@@ -859,10 +879,15 @@ class ManageLinkedChat:
         slot_key: str | None,
         pharmacy_id: str | None,
         allow_internal: bool,
+        hospital_context: dict[str, object] | None = None,
     ) -> dict[str, object] | None:
         """메시지 유형별 입력을 검증하고 서버가 신뢰할 스냅샷만 생성한다."""
         if message_kind == CHAT_MESSAGE_KIND_TEXT:
             return None
+        if message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
+            if hospital_context is None:
+                raise HTTPException(400, "Verified hospital information is required.")
+            return {"hospital_context": dict(hospital_context)}
         if message_kind in (
             CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
             CHAT_MESSAGE_KIND_SLOT_COMPLETION,

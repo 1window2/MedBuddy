@@ -6,7 +6,7 @@
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
@@ -58,7 +58,23 @@ class ChatMessageCreate(BaseModel):
     )
     slot_key: str | None = Field(default=None, max_length=20)
     pharmacy_id: str | None = Field(default=None, max_length=32)
+    hospital_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,32}$")
+    hospital_schedule_date: date | None = None
     source_alert_id: int | None = Field(default=None, ge=1)
+
+    # 병원 공유에는 식별자와 조회 날짜만 받으며 제공자 정보는 서버에서 구성한다.
+    @model_validator(mode="after")
+    def validate_hospital_share(self):
+        if self.message_kind == "hospital_share":
+            if not self.hospital_id or self.hospital_schedule_date is None:
+                raise ValueError("Hospital sharing requires an identifier and schedule date.")
+            if not 1 < self.hospital_schedule_date.year < 9999:
+                raise ValueError("Invalid hospital share date.")
+            if self.pharmacy_id is not None:
+                raise ValueError("Hospital and pharmacy shares cannot be combined.")
+        elif self.hospital_id is not None or self.hospital_schedule_date is not None:
+            raise ValueError("Hospital fields require a hospital share message.")
+        return self
 
     # 함수이름: normalize_body
     # 함수역할:

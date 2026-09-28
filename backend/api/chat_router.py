@@ -26,6 +26,7 @@ from api.dependencies import (
     get_authenticated_principal,
     get_authorization_control,
     get_manage_linked_chat,
+    get_check_nearby_hospital,
     get_push_notification_boundary,
     get_request_rate_limit_store,
     verify_app_check_token,
@@ -39,6 +40,8 @@ from core.database import SessionLocal
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
+from entities.chat_message_entity import CHAT_MESSAGE_KIND_HOSPITAL_SHARE
+from boundaries.hospital_api_boundary import HospitalApiResponseError, HospitalApiUnavailableError
 from schemas.chat import ChatMedicationTaken, ChatMessageCreate, ChatMessageDelete, ChatReadUpdate
 from services.chat_connection_manager import ChatConnectionManager
 
@@ -253,6 +256,25 @@ async def post_chat_message(
         request=request,
         user_hash=authorized_user_hash,
     )
+    hospital_arguments = {}
+    if payload.message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
+        existing = await run_in_threadpool(
+            chat.find_sent_message, link_id=link_id, sender_hash=authorized_user_hash,
+            client_message_id=payload.client_message_id,
+        )
+        if existing is not None:
+            return await _publish_saved_message(link_id, existing, request)
+        hospital = get_check_nearby_hospital(db=chat.db)
+        try:
+            async with asyncio.timeout(settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS):
+                hospital_arguments["hospital_context"] = await hospital.requestShareContext(
+                    payload.hospital_id, payload.hospital_schedule_date,
+                )
+        except ValueError:
+            raise HTTPException(400, "Hospital information could not be verified.") from None
+        except (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError):
+            raise HTTPException(503, "Hospital information is temporarily unavailable.",
+                                headers={"Retry-After": "5"}) from None
     result = await run_in_threadpool(
         chat.send_message,
         link_id=link_id,
@@ -265,6 +287,7 @@ async def post_chat_message(
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,
         source_alert_id=payload.source_alert_id,
+        **hospital_arguments,
     )
     return await _publish_saved_message(link_id, result, request)
 
